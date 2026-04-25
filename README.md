@@ -8,43 +8,89 @@ A modular, security-focused chatbot system that integrates MITRE ATT&CK data to 
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Python 3.12+
-- OpenRouter API key (free tier available)
-- Internet connection
+### Current Status: ✅ **WORKING NOW** (Keyword-Based Search)
 
-### Setup (5 minutes)
+The chatbot **works right now** using keyword-based MITRE search (no API required). Phase 1 will add LLM-enhanced semantic search for better accuracy.
+
+### Run It Now (No API Needed!)
 
 ```bash
 # 1. Clone and navigate to project
 cd /path/to/DEV-TEST
 
-# 2. Create .env file with your API key
-echo "OPENROUTER_API_KEY=sk-or-v1-xxxxx" > .env
-
-# 3. Install dependencies
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# 4. Run quick test to verify setup
-/quick-test
+# 3. Run the chatbot immediately
+python chatbot/main.py
 
-# 5. (Optional) Generate embedding cache for semantic search
-/build-embeddings-cache  # Takes 10-15 min
+# Example input: "We allow PowerShell scripts for automation"
+# Output: Returns matching MITRE techniques and mitigations
 ```
 
-### Run the Chatbot
+**Works offline** - Uses keyword matching in MITRE ATT&CK data (835 techniques)
+
+### Optional: Enable LLM-Enhanced Search (Phase 1 - In Progress)
+
+For semantic search and LLM reasoning (requires API key):
 
 ```bash
-python chatbot/main.py
+# 1. Create .env file with your API key
+echo "OPENROUTER_API_KEY=sk-or-v1-xxxxx" > .env
+
+# 2. Run quick test to verify API
+/quick-test
+
+# 3. (Optional) Generate embedding cache for semantic search
+/build-embeddings-cache  # Takes 10-15 min
+
+# 4. Once Phase 1 modules are implemented, chatbot will use LLM automatically
 ```
+
+### What's Working NOW vs Coming Soon
+
+| Feature | Status | Requires API? |
+|---------|--------|---------------|
+| **Keyword-based search** | ✅ **Working Now** | ❌ No |
+| MITRE data (835 techniques) | ✅ Working | ❌ No |
+| Basic technique matching | ✅ Working | ❌ No |
+| Mitigation suggestions | ✅ Working | ❌ No |
+| **Semantic search** | 🚧 Phase 1 | ✅ Yes |
+| LLM reasoning | 🚧 Phase 1 | ✅ Yes |
+| Contextual advice | 🚧 Phase 1 | ✅ Yes |
 
 ---
 
-## 📋 Current Status (April 2025)
+## 📋 Current Status (April 2026)
 
-### ✅ Completed Features
+### ✅ **WORKING NOW - Keyword-Based Chatbot**
 
-**Core Infrastructure:**
+**You can use the chatbot right now!** It works offline using keyword matching:
+
+```bash
+python chatbot/main.py
+# Input: "We allow RDP for remote support"
+# Output: Matching MITRE techniques + mitigations
+```
+
+**How it works:**
+1. Takes user input (threat scenario)
+2. Extracts keywords (simple word splitting)
+3. Searches MITRE data (835 techniques) for matches
+4. Returns relevant techniques and mitigation advice
+
+**Limitations of current version:**
+- ⚠️ Simple keyword matching (not semantic)
+- ⚠️ May miss techniques with different wording
+- ⚠️ No LLM reasoning about relevance
+
+**But it works reliably offline with no API required!** ✅
+
+---
+
+### ✅ **Foundation Complete (Phase 0)**
+
+**Infrastructure Ready:**
 - ✅ Modular architecture with clear separation of concerns
 - ✅ MITRE ATT&CK integration (835 techniques, 14 tactics, 268 mitigations)
 - ✅ Rate limiting system (handles OpenRouter free tier: 20 req/min)
@@ -52,8 +98,8 @@ python chatbot/main.py
 - ✅ Automated testing suite (quick + comprehensive)
 - ✅ Four operational skills (quick-test, validate-integration, update-mitre-data, build-embeddings-cache)
 
-**LLM Integration:**
-- ✅ OpenRouter API integration (nvidia/llama-nemotron for embeddings, google/gemma-4-26b for analysis)
+**API Integration Ready:**
+- ✅ OpenRouter API integration configured
 - ✅ LiteLLM unified API client
 - ✅ Automatic retry with exponential backoff
 - ✅ Zero-risk rate limiting (prevents 429 errors)
@@ -61,16 +107,31 @@ python chatbot/main.py
 **Data Management:**
 - ✅ MITRE ATT&CK data loading and parsing
 - ✅ Automated MITRE data updates with backup
-- ✅ Embedding cache generation (semantic search ready)
+- ✅ Keyword-based search (working fallback)
 
-### 🚧 In Progress (Phase 1 Implementation)
+---
 
-- ⏳ `embeddings.py` - OpenRouter embedding client
+### 🚧 **In Progress (Phase 1) - LLM Enhancement**
+
+Adding semantic search and LLM reasoning to improve accuracy:
+
+- ⏳ `embeddings.py` - OpenRouter embedding client with rate limiting
 - ⏳ `mitre_embeddings.py` - Semantic search with caching
-- ⏳ `llm_mitre_analyzer.py` - LLM-enhanced analysis
-- ⏳ Integration into `agent.py` with fallback logic
+- ⏳ `llm_mitre_analyzer.py` - LLM-enhanced analysis and reasoning
+- ⏳ Integration into `agent.py` (automatic fallback to keyword search)
 
-### 📅 Planned (Phase 2+)
+**Phase 1 will add:**
+- ✨ Semantic understanding (understands similar concepts)
+- ✨ LLM reasoning (explains why techniques are relevant)
+- ✨ Better accuracy (top 3-5 most relevant techniques)
+- ✨ Contextual mitigation advice
+- ✨ Automatic fallback to keyword search if API unavailable
+
+**Chatbot will continue working during Phase 1 development** using keyword search.
+
+---
+
+### 📅 **Planned (Phase 2+)**
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for detailed roadmap.
 
