@@ -4,18 +4,25 @@ main.py - Simple extensible chatbot
 This script provides a basic chatbot loop and is designed for future extension with RAG, MCP, and agentic modules.
 """
 
-from core import Chatbot
+from chatbot.modules.agent import AgentManager
 
 def main():
-    bot = Chatbot()
-    print("Welcome to the DEV-TEST Chatbot! Type 'exit' to quit.")
-    while True:
-        user_input = input("You: ")
-        if user_input.lower() == "exit":
-            print("Goodbye!")
-            break
-        response = bot.respond(user_input)
-        print(f"Bot: {response}")
+    agent = AgentManager()
+    user_input = input("Describe your scenario: ")
+    result = agent.handle_input(user_input)
+    print(result["prompt"])
+    for detail in result["details"]:
+        print(f"\nTechnique {detail['technique_id']} Summary:")
+        print(detail["summary"] or "No summary available.")
+        print("Mitigation Advice:")
+        if detail["mitigations"]:
+            if isinstance(detail["mitigations"], list):
+                for m in detail["mitigations"]:
+                    print(f"- {m}")
+            else:
+                print(detail["mitigations"])
+        else:
+            print("No mitigation advice available.")
 
 if __name__ == "__main__":
     main()

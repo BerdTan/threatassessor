@@ -1,1 +1,4 @@
 # Basic requirements for extensible chatbot
+google-adk==1.5.0
+neo4j==5.28.1
+litellm==1.73.6

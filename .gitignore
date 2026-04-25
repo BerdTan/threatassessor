@@ -1,3 +1,5 @@
+# Exclude MITRE ATT&CK data files
+chatbot/data/*.json
 __pycache__/
 *.pyc
 *.pyo

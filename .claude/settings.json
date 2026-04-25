@@ -1,0 +1,10 @@
+{
+  "env": {
+    "CLAUDE_CODE_USE_BEDROCK": "1",
+    "AWS_REGION": "us-east-1"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "input=$(cat); model=$(echo \"$input\" | jq -r '.model.display_name'); cwd=$(echo \"$input\" | jq -r '.workspace.current_dir'); project=$(echo \"$input\" | jq -r '.workspace.project_dir'); if [ \"$cwd\" = \"$project\" ]; then printf \"[%s] %s\" \"$model\" \"$(basename \"$cwd\")\"; else printf \"[%s] %s → %s\" \"$model\" \"$(basename \"$project\")\" \"$(basename \"$cwd\")\"; fi"
+  }
+ }
