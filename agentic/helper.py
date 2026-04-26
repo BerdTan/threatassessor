@@ -2,14 +2,9 @@
 
 import os
 from dotenv import load_dotenv, find_dotenv
-
-from google.genai import types # For creating message Content/Parts
-from google.adk.agents import Agent
-from google.adk.sessions import InMemorySessionService, Session
-from google.adk.runners import Runner
 from typing import Optional, Dict, Any
 
-# these expect to find a .env file at the directory above the lesson.                                                                                                                     # the format for that file is (without the comment)                                                                                                                                       #API_KEYNAME=AStringThatIsTheLongAPIKeyFromSomeService                                                                                                                                     
+# these expect to find a .env file at the directory above the lesson.                                                                                                                     # the format for that file is (without the comment)                                                                                                                                       #API_KEYNAME=AStringThatIsTheLongAPIKeyFromSomeService
 def load_env():
     _ = load_dotenv(find_dotenv())
 
@@ -32,22 +27,26 @@ def get_neo4j_import_dir():
     return neo4j_import_dir
 
 ### ADK runner wrapper ###
+# NOTE: Google ADK imports moved inside class to avoid slow import times
 
 class AgentCaller:
     """A simple wrapper class for interacting with an ADK agent."""
-    
-    def __init__(self, agent: Agent, runner: Runner, user_id: str, session_id: str):
+
+    def __init__(self, agent, runner, user_id: str, session_id: str):
         """Initialize the AgentCaller with required components."""
         self.agent = agent
         self.runner = runner
         self.user_id = user_id
         self.session_id = session_id
-    
+
     def get_session(self):
         return self.runner.session_service.get_session(app_name=self.runner.app_name, user_id=self.user_id, session_id=self.session_id)
 
     async def call(self, query: str, verbose: bool = False):
         """Call the agent with a query and return the response."""
+        # Import only when needed (lazy import to avoid slow load times)
+        from google.genai import types
+
         print(f"\n>>> User Query: {query}")
 
         # Prepare the user's message in ADK format
@@ -77,13 +76,17 @@ class AgentCaller:
         print(f"<<< Agent Response: {final_response_text}")
         return final_response_text
 
-async def make_agent_caller(agent: Agent, initial_state: Optional[Dict[str, Any]] = {}) -> AgentCaller:
+async def make_agent_caller(agent, initial_state: Optional[Dict[str, Any]] = {}) -> AgentCaller:
     """Create and return an AgentCaller instance for the given agent."""
+    # Import only when needed (lazy import to avoid slow load times)
+    from google.adk.sessions import InMemorySessionService
+    from google.adk.runners import Runner
+
     session_service = InMemorySessionService()
     app_name = agent.name + "_app"
     user_id = agent.name + "_user"
     session_id = agent.name + "_session_01"
-    
+
     # Initialize a session
     await session_service.create_session(
         app_name=app_name,
@@ -91,11 +94,11 @@ async def make_agent_caller(agent: Agent, initial_state: Optional[Dict[str, Any]
         session_id=session_id,
         state=initial_state
     )
-    
+
     runner = Runner(
         agent=agent,
         app_name=app_name,
         session_service=session_service
     )
-    
+
     return AgentCaller(agent, runner, user_id, session_id)

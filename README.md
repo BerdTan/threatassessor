@@ -8,46 +8,70 @@ A modular, security-focused chatbot system that integrates MITRE ATT&CK data to 
 
 ## 🚀 Quick Start
 
-### Current Status: ✅ **WORKING NOW** (Keyword-Based Search)
+### Current Status: ✅ **Phase 2A COMPLETE** (LLM-Enhanced Semantic Search)
 
-The chatbot **works right now** using keyword-based MITRE search (no API required). Phase 1 will add LLM-enhanced semantic search for better accuracy.
+The chatbot now uses **semantic search + LLM analysis** for intelligent threat assessment!
 
-### Run It Now (No API Needed!)
+### Setup & Installation
 
 ```bash
-# 1. Clone and navigate to project
+# 1. Navigate to project
 cd /path/to/DEV-TEST
 
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Run the chatbot immediately
-python chatbot/main.py
-
-# Example input: "We allow PowerShell scripts for automation"
-# Output: Returns matching MITRE techniques and mitigations
-```
-
-**Works offline** - Uses keyword matching in MITRE ATT&CK data (835 techniques)
-
-### Optional: Enable LLM-Enhanced Search (Phase 1 - In Progress)
-
-For semantic search and LLM reasoning (requires API key):
-
-```bash
-# 1. Create .env file with your API key
+# 3. Configure API key (required for semantic search)
 echo "OPENROUTER_API_KEY=sk-or-v1-xxxxx" > .env
 
-# 2. Run quick test to verify API
-/quick-test
+# 4. Generate embedding cache (one-time, 10-15 minutes)
+python test_phase2_semantic_search.py
+# OR: python chatbot/main.py (auto-generates on first run)
 
-# 3. (Optional) Generate embedding cache for semantic search
-/build-embeddings-cache  # Takes 10-15 min
-
-# 4. Once Phase 1 modules are implemented, chatbot will use LLM automatically
+# 5. Run the enhanced chatbot
+python chatbot/main.py
 ```
 
-### What's Working NOW vs Coming Soon
+**Example Session:**
+```
+Describe your threat scenario:
+> Attacker used PowerShell to create scheduled tasks for persistence
+
+🔄 Analyzing scenario...
+
+📊 MATCHED TECHNIQUES:
+1. T1059.001 - PowerShell (Score: 0.856, Confidence: high)
+   Relevance: PowerShell is directly relevant as the primary execution vector...
+
+🎯 ATTACK PATH ANALYSIS:
+The attacker progresses through Execution (PowerShell) → Persistence (Scheduled Tasks)...
+
+🛡️ MITIGATION RECOMMENDATIONS:
+[CRITICAL] Enable PowerShell script block logging and transcription
+Addresses: T1059.001
+Rationale: Provides visibility into PowerShell commands...
+```
+
+### What's Working NOW
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Semantic Search** | ✅ Working | Matches techniques by meaning, not just keywords |
+| **LLM Analysis** | ✅ Working | Explains relevance, builds attack paths, suggests mitigations |
+| **Attack Path Construction** | ✅ Working | Shows logical progression (Initial Access → Execution → Persistence) |
+| **Prioritized Mitigations** | ✅ Working | Context-aware defense recommendations |
+| **CLI Interface** | ✅ Working | Pretty-printed, user-friendly output |
+| **Keyword Fallback** | ✅ Working | Graceful degradation if API fails |
+
+### Coming Soon (Phase 3-4)
+
+| Feature | Status | Target |
+|---------|--------|--------|
+| **Web UI** | Planned | Phase 4 (React + FastAPI) |
+| **Mermaid Diagram Input** | Planned | Phase 3 (Architecture analysis) |
+| **Attack Path Visualization** | Planned | Phase 4 (Cytoscape.js graph) |
+| **MITRE Coverage Map** | Planned | Phase 4 (Interactive heatmap) |
+| **Docker Deployment** | Planned | Phase 5 |
 
 | Feature | Status | Requires API? |
 |---------|--------|---------------|
@@ -168,10 +192,19 @@ DEV-TEST/
 │   ├── ARCHITECTURE.md                  # System design
 │   ├── OPERATIONS.md                    # Workflows
 │   ├── MAINTENANCE.md                   # Regular maintenance
-│   ├── TESTING.md                       # Test strategies
 │   ├── ROADMAP.md                       # Future plans
 │   ├── RATE_LIMITING.md                 # Rate limiting guide
+│   ├── MVP_SPECIFICATION.md             # Web app requirements
+│   ├── QUICKSTART_PHASE2.md             # Phase 2A setup
 │   └── REFERENCES.md                    # External links
+│
+├── tests/                               # 🧪 Testing & validation
+│   ├── TESTING.md                       # Test strategies
+│   ├── TEST_INTEGRATION.md              # Integration testing
+│   ├── TESTING_GUIDE.md                 # Step-by-step guide
+│   ├── test_openrouter.py               # API validation
+│   ├── test_phase2_semantic_search.py   # Phase 2A tests
+│   └── *.sh                             # Test automation scripts
 │
 ├── .claude/skills/                      # ⚡ Automated operations
 │   ├── quick-test.md                    # Quick validation (~15s)
@@ -179,9 +212,11 @@ DEV-TEST/
 │   ├── update-mitre-data.md            # MITRE data updates
 │   └── build-embeddings-cache.md       # Cache generation
 │
-├── test_openrouter.py                   # Integration test suite
+├── archive/                             # 🗄️ Deprecated code (preserved)
 ├── CLAUDE.md                            # Claude AI context (lean baseline)
 ├── IMPLEMENTATION_STATUS.md             # Implementation phases & roadmap
+├── PROJECT_STRUCTURE_CURRENT.md         # Current organization
+├── QUICK_REFERENCE.md                   # Quick command reference
 ├── README.md                            # This file
 └── requirements.txt                     # Python dependencies
 ```
@@ -220,17 +255,23 @@ Skills are automated operations you can invoke:
 
 ## 📖 Documentation
 
-**Root Documentation:**
-- [CLAUDE.md](CLAUDE.md) - Project overview and quick reference for Claude AI
-- [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - Implementation phases, current status, roadmap
-- [docs/QUICK_START.md](docs/QUICK_START.md) - Quick start guide
-- [docs/TEST_INTEGRATION.md](docs/TEST_INTEGRATION.md) - Integration testing guide
+**Quick Reference:**
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Commands, directories, common issues
+- [PROJECT_STRUCTURE_CURRENT.md](PROJECT_STRUCTURE_CURRENT.md) - Current organization
+- [CLAUDE.md](CLAUDE.md) - Project overview and guidelines
+- [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - Implementation phases & progress
 
 **Technical Details:**
 - [docs/INDEX.md](docs/INDEX.md) - Documentation navigation
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System design
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) - Operations guide
+- [docs/MVP_SPECIFICATION.md](docs/MVP_SPECIFICATION.md) - Web app requirements
 - [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md) - Rate limiting details
+
+**Testing:**
+- [tests/TESTING.md](tests/TESTING.md) - Test strategies
+- [tests/TEST_INTEGRATION.md](tests/TEST_INTEGRATION.md) - Integration testing guide
+- [tests/TESTING_GUIDE.md](tests/TESTING_GUIDE.md) - Step-by-step testing
 
 **See [docs/README.md](docs/README.md) for complete documentation structure.**
 

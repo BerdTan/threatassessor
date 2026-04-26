@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:code.claude.com)"
+      "WebFetch(domain:code.claude.com)",
+      "Bash(timeout 10 bash -c \"source .venv/bin/activate && python3 << 'EOF'\nimport os\nprint\\('✓ os'\\)\nimport numpy as np\nprint\\('✓ numpy'\\)\nimport requests  \nprint\\('✓ requests'\\)\nfrom typing import List, Union\nprint\\('✓ typing'\\)\nimport logging\nprint\\('✓ logging'\\)\nprint\\('All base imports OK, now testing project imports...'\\)\nfrom chatbot.modules.rate_limiter import rate_limited\nprint\\('✓ rate_limiter'\\)\nfrom agentic.helper import get_openrouter_api_key\nprint\\('✓ agentic.helper'\\)\nprint\\('All imports successful!'\\)\nEOF\n\" 2>&1)",
+      "Bash(timeout 5 bash -c \"source .venv/bin/activate && python3 << 'EOF'\nimport os\nimport numpy as np\nimport requests\nfrom typing import List\nimport logging\nprint\\('All standard library imports OK'\\)\nEOF\n\" 2>&1)",
+      "Bash(timeout 5 bash *)",
+      "Bash(timeout 10 bash *)",
+      "Bash(chmod +x quick_test_phase2.sh)",
+      "Bash(bash quick_test_phase2.sh)",
+      "Bash(grep -E \"\\\\.py$\")",
+      "Bash(git add *)",
+      "Bash(git rm *)"
     ],
     "deny": []
   }
