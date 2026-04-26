@@ -82,24 +82,79 @@ python chatbot/main.py
 
 ## Development Guidelines
 
+### Code Hygiene & Confidence Threshold
+
+**CRITICAL: 95% Confidence Rule**
+
+Before making ANY code changes, you MUST achieve **95% or higher confidence** that the changes are correct, necessary, and well-understood. This is a hard requirement to maintain code hygiene and system stability.
+
+**How to achieve 95% confidence:**
+
+1. **Ask clarifying questions FIRST** - Before writing code:
+   - What is the exact problem or requirement?
+   - What are the edge cases and constraints?
+   - What are the dependencies and integration points?
+   - What is the expected behavior vs current behavior?
+   - Are there existing patterns or utilities to reuse?
+
+2. **Research thoroughly** - Before proposing changes:
+   - Read related modules and understand context
+   - Check existing tests for expected behavior
+   - Review documentation for design decisions
+   - Search for similar implementations in codebase
+   - Understand why current code exists as-is
+
+3. **Validate assumptions** - Before implementing:
+   - Test your understanding with examples
+   - Verify file paths and function signatures exist
+   - Check that APIs/libraries work as expected
+   - Confirm user intent matches your interpretation
+   - Review dependencies are available
+
+4. **Plan incrementally** - Break large changes into phases:
+   - Start with smallest testable unit
+   - Validate each phase before proceeding
+   - Use skills like `/quick-test` to verify components
+   - Don't make speculative "might need this" changes
+
+**If confidence < 95%:** STOP and ask questions. Better to clarify than to break working code or introduce technical debt.
+
+**Examples of good questions:**
+- "Before I implement this, should we handle the case where X is null?"
+- "I see two ways to do this: A (faster) or B (more maintainable). Which do you prefer?"
+- "The existing code does X differently. Should I follow that pattern or change it?"
+- "I'm at 80% confidence because I'm unsure about Y. Can you clarify?"
+
+**Red flags (ask before proceeding):**
+- "I think this might work..."
+- "We probably need to..."
+- Making assumptions about requirements
+- Changing code you don't fully understand
+- Adding features not explicitly requested
+- Refactoring without clear benefit
+
 ### Code Standards
 - Follow existing module patterns
 - Use type hints for function signatures
 - Add docstrings for public APIs
 - Handle errors gracefully with fallbacks
 - Log important events for debugging
+- Reuse existing utilities before creating new ones
 
 ### Before Committing
-1. Run test suite
-2. Update relevant documentation
-3. Test with standard scenarios (see docs/TESTING.md)
-4. Verify no secrets in code
+1. Verify 95%+ confidence in all changes
+2. Run test suite (`/quick-test` or `/validate-integration`)
+3. Update relevant documentation
+4. Test with standard scenarios (see docs/TESTING.md)
+5. Verify no secrets in code
+6. Check no unintended changes included
 
 ### When to Update Docs
 - New modules/functions: Update ARCHITECTURE.md
 - New workflows/procedures: Update OPERATIONS.md
 - New test cases: Update TESTING.md
 - Feature planning: Update ROADMAP.md
+- API changes: Update relevant module docs
 
 ## Current Status
 
@@ -184,6 +239,6 @@ Skills provide automated operations for common tasks:
 
 ---
 
-*Version: 0.2.0 (LLM-enhanced semantic search - Planning Phase)*  
-*Last Updated: 2026-04-25*  
+*Version: 0.2.1 (Added 95% confidence rule for code hygiene)*  
+*Last Updated: 2026-04-26*  
 *Status: Validated & Ready for Implementation*
