@@ -18,6 +18,11 @@ def get_openai_api_key():
     openai_api_key = os.getenv("OPENAI_API_KEY")
     return openai_api_key
 
+def get_openrouter_api_key():
+    load_env()
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+    return openrouter_api_key
+
 
 def get_neo4j_import_dir():
     """Gets the neo4j import directory from an environment variable
