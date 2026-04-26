@@ -10,7 +10,8 @@
       "Bash(bash quick_test_phase2.sh)",
       "Bash(grep -E \"\\\\.py$\")",
       "Bash(git add *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(git commit *)"
     ],
     "deny": []
   }
