@@ -181,8 +181,8 @@ DEV-TEST/
 │
 ├── test_openrouter.py                   # Integration test suite
 ├── CLAUDE.md                            # Claude AI context (lean baseline)
-├── QUICK_START.md                       # Quick start guide
-├── TEST_INTEGRATION.md                  # Testing guide
+├── IMPLEMENTATION_STATUS.md             # Implementation phases & roadmap
+├── README.md                            # This file
 └── requirements.txt                     # Python dependencies
 ```
 
@@ -220,10 +220,11 @@ Skills are automated operations you can invoke:
 
 ## 📖 Documentation
 
-**Getting Started:**
-- [QUICK_START.md](QUICK_START.md) - Quick start guide
-- [CLAUDE.md](CLAUDE.md) - Lean baseline for Claude AI
-- [TEST_INTEGRATION.md](TEST_INTEGRATION.md) - Testing guide
+**Root Documentation:**
+- [CLAUDE.md](CLAUDE.md) - Project overview and quick reference for Claude AI
+- [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - Implementation phases, current status, roadmap
+- [docs/QUICK_START.md](docs/QUICK_START.md) - Quick start guide
+- [docs/TEST_INTEGRATION.md](docs/TEST_INTEGRATION.md) - Integration testing guide
 
 **Technical Details:**
 - [docs/INDEX.md](docs/INDEX.md) - Documentation navigation

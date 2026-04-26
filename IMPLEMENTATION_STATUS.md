@@ -95,6 +95,43 @@
 **Status:** Partially Complete (CLAUDE.md done)  
 **Files:** README.md updates
 
+### Phase 6: CLI Refactor & Automation
+*Goal: Create CLI commands for CI/CD, refactor skills as wrappers*
+
+**Status:** Not Started (Lower Priority)  
+**Dependencies:** Phases 1-5 complete  
+**Estimated Effort:** 3-4 hours implementation + 1-2 hours testing/docs
+
+**User Requirements:**
+- Primary users: Any developer (CLI) + CI/CD automation systems
+- Support: `python -m chatbot.cli update-mitre --rebuild-cache`
+- Optional auto-chaining via `--rebuild-cache` flag
+- Preserve skills as thin wrappers (backward compatibility)
+
+**Implementation Overview:**
+1. Create `chatbot/maintenance.py` - Extract skill logic to reusable functions
+2. Create `chatbot/cli.py` - CLI using click library
+3. Add `chatbot/__main__.py` - Enable `python -m chatbot.cli`
+4. Refactor `.claude/skills/*.md` - Call CLI internally
+5. Add `click>=8.1.0` to requirements
+6. Create `docs/CLI_REFERENCE.md` - Complete CLI docs
+7. Update docs: CLAUDE.md, OPERATIONS.md, MAINTENANCE.md, README.md
+
+**Success Criteria:**
+- [ ] CLI works: `python -m chatbot.cli update-mitre --rebuild-cache`
+- [ ] Skills work: `/update-mitre-data`, `/build-embeddings-cache`
+- [ ] CI/CD ready: Can run in GitHub Actions, bash scripts
+- [ ] No regressions: `/validate-integration` passes
+
+**Rationale:**
+Current skills work for Claude Code but lack portability. CLI enables:
+- Developer use without Claude Code
+- CI/CD integration (GitHub Actions, cron jobs)
+- Programmatic calling from agents/scripts
+- Optional chaining (update → rebuild in one command)
+
+**Files:** maintenance.py, cli.py, __main__.py, skills/*.md (refactor), CLI_REFERENCE.md
+
 ---
 
 ## Key Technical Decisions

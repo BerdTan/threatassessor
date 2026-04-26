@@ -305,6 +305,6 @@ After successful integration testing:
 ---
 
 **Need help?** See:
-- [QUICK_START.md](QUICK_START.md) - General quick start
-- [docs/TESTING.md](docs/TESTING.md) - Comprehensive testing guide
-- [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md) - Rate limiting details
+- [QUICK_START.md](QUICK_START.md) - General quick start (same folder)
+- [TESTING.md](TESTING.md) - Comprehensive testing guide
+- [RATE_LIMITING.md](RATE_LIMITING.md) - Rate limiting details
