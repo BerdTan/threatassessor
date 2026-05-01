@@ -4,6 +4,8 @@ agent.py - Persona/task manager for routing user input to appropriate modules
 This module integrates:
 - Semantic search (mitre_embeddings) for technique matching
 - LLM-enhanced analysis (llm_mitre_analyzer) for refinement and attack paths
+- Hybrid mitigation extraction (MITRE data + LLM prioritization)
+- Scoring rubric (accuracy, relevance, confidence)
 - Keyword-based fallback (mitre_template) for API failures
 """
 import logging
@@ -11,6 +13,7 @@ from chatbot.modules.mitre import MitreHelper
 from chatbot.modules.mitre_template import build_threat_prompt
 from chatbot.modules.mitre_embeddings import search_techniques
 from chatbot.modules.llm_mitre_analyzer import analyze_scenario
+from chatbot.modules.scoring import score_technique, score_mitigation
 
 logger = logging.getLogger(__name__)
 
@@ -97,18 +100,50 @@ class AgentManager:
 
         logger.info(f"Found {len(matched_techniques)} techniques via semantic search")
 
-        # Step 2: LLM-enhanced analysis
+        # Step 1.5: Extract MITRE mitigations from relationships (NEW)
+        logger.info("Step 1.5: Extracting official MITRE mitigations...")
+        technique_ids = [t['external_id'] for t in matched_techniques[:top_k]]
+        mitre_mitigations = self.mitre.get_mitigations_for_techniques(technique_ids)
+        logger.info(f"Found {len(mitre_mitigations)} unique MITRE mitigations (deduplicated)")
+
+        # Attach mitigations to techniques for scoring
+        for tech in matched_techniques:
+            tech['mitigations'] = self.mitre.get_technique_mitigations(tech['external_id'])
+
+        # Step 2: LLM-enhanced analysis (with MITRE mitigations as context)
         logger.info("Step 2: LLM analysis (refine, attack path, mitigations)...")
-        analysis = analyze_scenario(user_input, matched_techniques, top_k)
+        analysis = analyze_scenario(
+            user_input,
+            matched_techniques,
+            top_k,
+            mitre_mitigations=mitre_mitigations  # Pass MITRE data to LLM
+        )
+
+        # Step 3: Calculate scores (NEW)
+        logger.info("Step 3: Calculating accuracy/relevance/confidence scores...")
+
+        # Score refined techniques
+        refined_techniques = analysis.get("refined_techniques", [])
+        for tech in refined_techniques:
+            tech_mitigations = tech.get('mitigations', [])
+            similarity = tech.get('similarity_score', 1.0)
+            tech['scores'] = score_technique(tech, tech_mitigations, similarity)
+
+        # Score MITRE mitigations
+        for mit in mitre_mitigations:
+            mit['scores'] = score_mitigation(mit)
+
+        logger.info(f"Scored {len(refined_techniques)} techniques and {len(mitre_mitigations)} mitigations")
 
         # Build response
         result = {
             "query": user_input,
             "mode": "semantic",
             "techniques": matched_techniques,  # All matched techniques
-            "refined_techniques": analysis.get("refined_techniques", []),
+            "refined_techniques": refined_techniques,  # With scores
             "attack_path": analysis.get("attack_path", {}),
-            "mitigations": analysis.get("mitigations", {}),
+            "mitigations": analysis.get("mitigations", {}),  # Now includes mitre_mitigations
+            "mitre_mitigations": mitre_mitigations,  # Explicit MITRE section with scores
         }
 
         logger.info("Semantic threat assessment complete")

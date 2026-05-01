@@ -15,6 +15,9 @@ class MitreHelper:
         self.techniques = []
         self.tactics = []
         self.mitigations = []
+        self.relationships = []  # Store relationship objects
+        self.data_objects = {}    # Map object IDs to objects for fast lookup
+
         if use_local:
             # Default path for local enterprise-attack.json
             if not local_path:
@@ -23,12 +26,22 @@ class MitreHelper:
                 with open(local_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 for obj in data.get('objects', []):
-                    if obj.get('type') == 'attack-pattern':
+                    obj_id = obj.get('id')
+                    obj_type = obj.get('type')
+
+                    # Store in ID lookup map
+                    if obj_id:
+                        self.data_objects[obj_id] = obj
+
+                    # Categorize by type
+                    if obj_type == 'attack-pattern':
                         self.techniques.append(obj)
-                    elif obj.get('type') == 'x-mitre-tactic':
+                    elif obj_type == 'x-mitre-tactic':
                         self.tactics.append(obj)
-                    elif obj.get('type') == 'course-of-action':
+                    elif obj_type == 'course-of-action':
                         self.mitigations.append(obj)
+                    elif obj_type == 'relationship':
+                        self.relationships.append(obj)
             except Exception as e:
                 print(f"Error loading local MITRE ATT&CK data: {e}")
         else:
@@ -80,3 +93,149 @@ class MitreHelper:
             if name.lower() in tactic.get('name', '').lower():
                 return tactic
         return None
+
+    def get_technique_mitigations(self, technique_id):
+        """
+        Get official MITRE mitigations for a technique.
+
+        Args:
+            technique_id: External ID (e.g., 'T1059.001') or internal ID (attack-pattern-xxx)
+
+        Returns:
+            List of dicts with mitigation details:
+            [
+                {
+                    "mitigation_id": "M1042",
+                    "mitigation_internal_id": "course-of-action--xxx",
+                    "mitigation_name": "Disable or Remove Feature or Program",
+                    "description": "General mitigation description...",
+                    "specific_guidance": "How this mitigation applies to this technique...",
+                    "url": "https://attack.mitre.org/mitigations/M1042"
+                },
+                ...
+            ]
+        """
+        # Convert external ID to internal ID if needed
+        if technique_id.startswith('T'):
+            tech = self.find_technique(technique_id)
+            if not tech:
+                return []
+            technique_internal_id = tech.get('id')
+        else:
+            technique_internal_id = technique_id
+
+        # Find all mitigation relationships for this technique
+        mitigation_relationships = [
+            rel for rel in self.relationships
+            if rel.get('relationship_type') == 'mitigates'
+            and rel.get('target_ref') == technique_internal_id
+            and not rel.get('revoked', False)  # Skip deprecated relationships
+        ]
+
+        # Build mitigation details
+        mitigations = []
+
+        for rel in mitigation_relationships:
+            mitigation_internal_id = rel.get('source_ref')
+
+            # Get mitigation object
+            mitigation = self.data_objects.get(mitigation_internal_id)
+
+            if not mitigation:
+                continue
+
+            # Extract external ID (e.g., M1042)
+            ext_refs = mitigation.get('external_references', [])
+            mitigation_ext_id = next(
+                (ref.get('external_id') for ref in ext_refs if 'external_id' in ref),
+                'Unknown'
+            )
+
+            # Get URL
+            url = next(
+                (ref.get('url') for ref in ext_refs if ref.get('source_name') == 'mitre-attack'),
+                f"https://attack.mitre.org/mitigations/{mitigation_ext_id}"
+            )
+
+            mitigations.append({
+                "mitigation_id": mitigation_ext_id,
+                "mitigation_internal_id": mitigation_internal_id,
+                "mitigation_name": mitigation.get('name', 'Unknown'),
+                "description": mitigation.get('description', ''),
+                "specific_guidance": rel.get('description', ''),  # Relationship description
+                "url": url
+            })
+
+        return mitigations
+
+    def get_mitigations_for_techniques(self, technique_ids):
+        """
+        Get mitigations for multiple techniques with deduplication.
+
+        Args:
+            technique_ids: List of technique IDs (external or internal)
+
+        Returns:
+            List of deduplicated mitigation dicts with addresses_techniques field:
+            [
+                {
+                    "mitigation_id": "M1042",
+                    "mitigation_name": "...",
+                    "description": "...",
+                    "addresses_techniques": ["T1059.001", "T1053.005"],
+                    "specific_guidance": {
+                        "T1059.001": "How it applies to PowerShell...",
+                        "T1053.005": "How it applies to Scheduled Task..."
+                    },
+                    "url": "..."
+                },
+                ...
+            ]
+        """
+        # Collect all mitigations with technique mapping
+        mitigation_map = {}  # mitigation_id -> mitigation data
+
+        for tech_id in technique_ids:
+            tech_mitigations = self.get_technique_mitigations(tech_id)
+
+            for mit in tech_mitigations:
+                mit_id = mit['mitigation_id']
+
+                if mit_id not in mitigation_map:
+                    # First time seeing this mitigation
+                    mitigation_map[mit_id] = {
+                        "mitigation_id": mit_id,
+                        "mitigation_internal_id": mit['mitigation_internal_id'],
+                        "mitigation_name": mit['mitigation_name'],
+                        "description": mit['description'],
+                        "addresses_techniques": [],
+                        "specific_guidance": {},
+                        "url": mit['url']
+                    }
+
+                # Add technique to addresses list
+                # Convert to external ID if needed
+                if tech_id.startswith('attack-pattern'):
+                    tech = self.data_objects.get(tech_id)
+                    if tech:
+                        ext_refs = tech.get('external_references', [])
+                        tech_ext_id = next(
+                            (ref.get('external_id') for ref in ext_refs if 'external_id' in ref),
+                            tech_id
+                        )
+                    else:
+                        tech_ext_id = tech_id
+                else:
+                    tech_ext_id = tech_id
+
+                if tech_ext_id not in mitigation_map[mit_id]['addresses_techniques']:
+                    mitigation_map[mit_id]['addresses_techniques'].append(tech_ext_id)
+
+                # Store specific guidance for this technique
+                mitigation_map[mit_id]['specific_guidance'][tech_ext_id] = mit['specific_guidance']
+
+        # Return as list sorted by number of techniques addressed (ROI)
+        mitigations_list = list(mitigation_map.values())
+        mitigations_list.sort(key=lambda m: len(m['addresses_techniques']), reverse=True)
+
+        return mitigations_list

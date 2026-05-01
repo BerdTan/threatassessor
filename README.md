@@ -1,244 +1,382 @@
-# MITRE ATT&CK Chatbot - Semantic Search with LLM Analysis
+# MITRE ATT&CK Threat Assessment Chatbot
 
-AI-powered threat analysis tool that maps security scenarios to MITRE ATT&CK techniques using semantic search and LLM reasoning.
+Production-ready CLI tool that maps threat scenarios to MITRE ATT&CK techniques using semantic search and LLM analysis.
 
----
-
-## ✅ What's Working NOW
-
-**Current Status: Production-Ready CLI**
-
-- ✅ **Semantic Search** - Understands meaning, not just keywords (similarity scores 0.3-0.9)
-- ✅ **LLM Analysis** - Explains relevance and builds attack paths (~33% availability)
-- ✅ **Attack Path Construction** - Shows logical progression through tactics
-- ✅ **Mitigation Recommendations** - Context-aware defense suggestions
-- ✅ **Keyword Fallback** - Graceful degradation when LLM unavailable
-- ✅ **Rate Limiting** - Automatic pacing (20 req/min) with retry logic
+**Current Status:** ✅ Phase 2A Complete (Production CLI with Hybrid Mitigations + Scoring)
 
 ---
 
-## 🚀 Quick Start
-
-### 1. Setup Environment
+## Quick Start
 
 ```bash
-# Clone and navigate to project
-cd /path/to/DEV-TEST
+# Activate environment
+source .venv/bin/activate
+
+# Run chatbot (default: technical format)
+python3 -m chatbot.main
+
+# Or specify format for different audiences
+python3 -m chatbot.main --format executive     # Business summary with ROI
+python3 -m chatbot.main --format action-plan   # Implementation roadmap
+python3 -m chatbot.main --format technical     # Detailed analysis
+
+# Non-interactive mode
+python3 -m chatbot.main --format executive --query "PowerShell attack"
+```
+
+**Test Query:** "Attacker used PowerShell to create scheduled tasks"
+
+---
+
+## Key Features
+
+### 🔍 **Semantic Search**
+- Matches threats to 835 MITRE ATT&CK techniques
+- 2048-dimension embedding similarity (~2s response)
+- Pre-computed cache (45MB) for instant matching
+
+### 🛡️ **Hybrid Mitigations**
+- Extracts official MITRE mitigations from 1,445 relationships
+- LLM prioritization based on scenario context
+- Graceful fallback when LLM unavailable (MITRE data only)
+- Coverage: 69.7% of techniques have official mitigations
+
+### 📊 **Three-Dimensional Scoring**
+- **ACCURACY (0-100):** Attribution to authoritative sources
+- **RELEVANCE (0-100):** Impact vs resistance analysis
+- **CONFIDENCE (0-100):** Work factor and ROI assessment
+- Composite scoring guides prioritization
+
+### 🎯 **Multi-Format Output**
+- **Executive:** Business justification with ROI (for C-level)
+- **Action Plan:** Implementation roadmap with timeline (for managers)
+- **Technical:** Detailed analysis with scores (for analysts)
+- **All:** Comprehensive report combining all three
+
+### 🤖 **LLM-Enhanced Analysis** (Optional)
+- Attack path construction
+- Mitigation prioritization
+- Scenario-specific guidance
+- ~33% uptime on free tier, fallback to MITRE data
+
+---
+
+## Output Format Examples
+
+### Executive Summary
+```
+🎯 THREAT OVERVIEW
+Threat Type:     Persistence Attack
+Risk Level:      ⚠️  MODERATE (52/100)
+Coverage:        80% (4/5 techniques have official mitigations)
+
+💰 BUSINESS IMPACT
+Expected Loss:   $100K-$1M (if exploited)
+Time to Exploit: Days to weeks
+
+📊 EXPECTED ROI
+Implementation Cost:   ~$2.5K (5-7 days)
+Expected Savings:      $420K+ (prevented breach cost)
+ROI:                   ~170x
+
+✅ RECOMMENDATION: APPROVE IMMEDIATELY
+```
+
+### Action Plan
+```
+🔴 PRIORITY 1: IMMEDIATE (Days 1-2)
+
+1. User Account Management (M1018) - 4-8 hours
+   ┌─────────────────────────────────────────────────────┐
+   │ What: Limit privileges of user accounts            │
+   │ Impact: Covers 4 techniques                        │
+   │ Owner: Security Operations / Domain Admin Team     │
+   │ Validate: Test with red team simulation            │
+   └─────────────────────────────────────────────────────┘
+
+📅 IMPLEMENTATION ROADMAP
+PHASE 1: IMMEDIATE (Week 1)
+├─ Day 1-2: Implement 2 quick-win mitigations
+└─ Day 2-3: Test and validate
+
+📋 NEXT STEPS
+[ ] Day 1: Implement User Account Management
+[ ] Day 2: Test detection rules
+```
+
+---
+
+## Architecture
+
+```
+User Query → Semantic Search (embeddings, ~2s)
+                    ↓
+         Extract MITRE Mitigations
+         (from 1,445 relationships)
+                    ↓
+         LLM Analysis (optional, ~60s)
+         - Refine matches
+         - Build attack paths
+         - Prioritize mitigations
+                    ↓
+         Calculate Scores
+         - Accuracy/Relevance/Confidence
+         - Composite ranking
+                    ↓
+         Format Output
+         - Executive / Action Plan / Technical
+```
+
+---
+
+## Installation
+
+### Prerequisites
+- Python 3.9+
+- Virtual environment
+- OpenRouter API key (for LLM features)
+
+### Setup
+```bash
+# Clone repository
+git clone <repo-url>
+cd DEV-TEST
 
 # Activate virtual environment (already configured)
 source .venv/bin/activate
 
-# Configure API key (one-time)
+# Verify installation
+python3 -m chatbot.main --help
+
+# Set API key (optional, for LLM features)
 echo "OPENROUTER_API_KEY=sk-or-v1-xxxxx" > .env
 ```
 
-### 2. Run the Chatbot
+**Required Data Files:**
+- `chatbot/data/enterprise-attack.json` (44MB) - MITRE data
+- `chatbot/data/technique_embeddings.json` (45MB) - Pre-computed cache
 
+---
+
+## Usage
+
+### Interactive Mode
 ```bash
-# Start CLI
-python3 -m chatbot.main
-
-# Or if dependencies needed (already installed in .venv/)
-# pip install -r requirements.txt
+python3 -m chatbot.main --format executive
+> Attacker used ransomware via phishing email
 ```
 
-### 3. Example Session
+### Non-Interactive Mode
+```bash
+# Generate executive summary
+python3 -m chatbot.main --format executive \
+    --query "Lateral movement attack" > exec_brief.txt
 
-```
-Describe your threat scenario:
-> Attacker used PowerShell to create scheduled tasks for persistence
+# Generate action plan for sprint
+python3 -m chatbot.main --format action-plan \
+    --query "Credential theft" > sprint_plan.md
 
-🔄 Analyzing scenario...
+# Generate technical analysis
+python3 -m chatbot.main --format technical \
+    --query "Advanced persistent threat" > analysis.txt
 
-📊 MATCHED TECHNIQUES:
-1. T1059.001 - PowerShell (Score: 0.856)
-   Relevance: PowerShell is directly relevant as the primary execution vector...
-
-🎯 ATTACK PATH:
-Stage 1 (Execution): Attacker uses PowerShell (T1059.001)
-Stage 2 (Persistence): Creates scheduled tasks (T1053.005)
-
-🛡️ MITIGATIONS:
-[CRITICAL] Enable PowerShell script block logging
-Addresses: T1059.001
+# Generate comprehensive report
+python3 -m chatbot.main --format all \
+    --query "Multi-stage attack" > full_report.txt
 ```
 
----
+### Options
+```bash
+--format, -f {executive,action-plan,technical,all}
+    Output format (default: technical)
 
-## 📊 Performance
+--query, -q <text>
+    Threat scenario (skip interactive prompt)
 
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Semantic Search** | ~2s | Always available |
-| **LLM Analysis** | ~60s | ~33% uptime (free tier) |
-| **Top-3 Accuracy** | 60%+ | Validated with test queries |
-| **Total Response** | 2-60s | Depends on LLM availability |
-| **Cache Size** | 45MB | 834 techniques pre-computed |
-| **MITRE Data** | 44MB | 823 techniques, 14 tactics |
-
----
-
-## 🔧 What's In Progress
-
-### Phase 2.2: Validation Testing (Next - 1 hour)
-- Create automated accuracy tests
-- Validate against 109 test queries
-- Document baseline metrics
-
-### Phase 3: Architecture Analysis (Backlog - 5 hours)
-**Status: 71% Complete (5/7 requirements)**
-- ✅ Mermaid diagram parsing
-- ✅ Attack path generation from architecture
-- ✅ Risk prioritization (impact × resistance)
-- ✅ Mitigation mapping
-- ⚠️ **Missing:** Confidence scoring (1.5 hours)
-- ⚠️ **Missing:** Mermaid output generation (2-3 hours)
-
-See `STATUS_AND_PLAN.md` for detailed roadmap.
-
----
-
-## 📁 Key Files
-
-```
-DEV-TEST/
-├── .venv/                    # Virtual environment (configured)
-├── chatbot/
-│   ├── main.py              # ← Run this to start chatbot
-│   ├── modules/
-│   │   ├── mitre.py         # MITRE data access
-│   │   ├── embeddings.py    # Semantic search
-│   │   ├── llm_mitre_analyzer.py  # LLM analysis
-│   │   └── rate_limiter.py  # API rate limiting
-│   └── data/
-│       ├── enterprise-attack.json       # MITRE data (44MB)
-│       └── technique_embeddings.json    # Cache (45MB)
-├── agentic/
-│   └── llm.py               # LLM client (OpenRouter)
-├── docs/                    # Detailed documentation
-├── tests/                   # Test suite
-├── .env                     # API key configuration
-├── README.md               # ← You are here
-└── STATUS_AND_PLAN.md      # Implementation status
+--verbose, -v
+    Show debug logs
 ```
 
 ---
 
-## 🛠️ Key Technologies
+## Documentation
+
+### Essential Reading
+- **README.md** (this file) - Quick start guide
+- **[CLAUDE.md](CLAUDE.md)** - Developer guidelines and 95% confidence rule
+- **[STATUS_AND_PLAN.md](STATUS_AND_PLAN.md)** - Current status and roadmap
+
+### User Guides
+- **[docs/OUTPUT_FORMATS.md](docs/OUTPUT_FORMATS.md)** - Format usage guide
+- **[docs/OPERATIONS.md](docs/OPERATIONS.md)** - Troubleshooting and maintenance
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design details
+
+### Implementation Details
+- **[docs/implementation/IMPLEMENTATION_SUMMARY.md](docs/implementation/IMPLEMENTATION_SUMMARY.md)** - Hybrid mitigation + scoring
+- **[docs/implementation/FORMATS_IMPLEMENTATION.md](docs/implementation/FORMATS_IMPLEMENTATION.md)** - Output formats
+- **[docs/implementation/SESSION_COMPLETE.md](docs/implementation/SESSION_COMPLETE.md)** - Complete session summary
+- **[docs/implementation/CONFIDENCE_VALIDATION.md](docs/implementation/CONFIDENCE_VALIDATION.md)** - Validation roadmap
+
+### Specifications
+- **[docs/specs/MVP_SPECIFICATION.md](docs/specs/MVP_SPECIFICATION.md)** - Web UI requirements (Phase 4)
+
+---
+
+## Project Status
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| **Phase 1** | ✅ Complete | Keyword-based search (legacy) |
+| **Phase 2A** | ✅ Complete | Semantic search + LLM + Hybrid mitigations + Scoring |
+| **Phase 2.2** | ⏳ Next | Validation testing (1 hour) |
+| **Phase 3** | 📦 Backlog | Architecture analysis (5 hours) |
+| **Phase 4** | 📦 Backlog | Web UI (15-20 hours) |
+
+**Current Focus:** Production CLI with hybrid mitigations and multi-format output
+
+---
+
+## Technology Stack
 
 | Component | Technology | Notes |
 |-----------|-----------|-------|
 | **Embeddings** | nvidia/llama-nemotron-embed-vl-1b-v2:free | 2048 dimensions |
-| **LLM** | nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free | ~33% availability |
+| **LLM** | nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free | ~33% uptime (free tier) |
 | **API Router** | LiteLLM 1.73.6 | Multi-provider support |
-| **MITRE Data** | enterprise-attack.json | STIX 2.1 format |
-| **Rate Limiting** | Custom sliding window | 20 req/min |
+| **Rate Limiting** | Custom sliding window | 20 req/min, auto-retry |
+| **Data Source** | MITRE ATT&CK v16 | 835 techniques, 268 mitigations |
 
 ---
 
-## 📖 Documentation
+## Performance
 
-| Document | Purpose |
-|----------|---------|
-| `README.md` | Quick start guide (this file) |
-| `STATUS_AND_PLAN.md` | Implementation status and roadmap |
-| `CLAUDE.md` | Development guidelines |
-| `docs/ARCHITECTURE.md` | System design details |
-| `docs/OPERATIONS.md` | Troubleshooting and maintenance |
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **Response time** | 2-60s | 2s semantic search + 0-58s LLM (if available) |
+| **Technique matching** | 835 techniques | Pre-computed cache for speed |
+| **Mitigation coverage** | 69.7% | 582/835 techniques have official mitigations |
+| **Accuracy** | ~60% top-3 | Informal testing, validation in progress |
+| **Fallback reliability** | 100% | Works without LLM (MITRE data only) |
 
 ---
 
-## 🧪 Testing
+## Validation
 
+### Test Results: 9/9 Passed ✅
+- Edge cases: Deprecated, zero-mitigations, multi-tactic
+- Logic validation: Tactic weights, score ranges, ROI
+- Integration: Full scenario, composite scoring
+- Data integrity: Mitigation extraction
+
+**Run tests:**
 ```bash
-# Quick validation (~15s)
-pytest tests/ -k "test_semantic_search_basic" -v
-
-# Full integration test (~2min, requires API)
-python3 test_openrouter.py
+PYTHONPATH=. python3 tests/test_scoring.py
 ```
 
 ---
 
-## 🔄 Maintenance
+## Known Limitations
 
-### Update MITRE Data (Quarterly)
+1. **LLM Availability** (~33% uptime on free tier)
+   - Mitigation: Falls back to MITRE data only
+   - Future: Upgrade to paid tier
 
+2. **Response Time** (2-60s depending on LLM)
+   - Semantic search: ~2s (always)
+   - LLM analysis: 0-58s (when available)
+
+3. **Tactic Weights** (assumptions-based)
+   - Source: Attack chain progression logic
+   - Future: Validate against real breach data
+
+---
+
+## Contributing
+
+### Developer Guidelines
+See **[CLAUDE.md](CLAUDE.md)** for:
+- 95% confidence rule (validate before coding)
+- Code standards and testing requirements
+- Documentation guidelines
+- Commit procedures
+
+### Testing
 ```bash
-# Download latest MITRE data
-python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.update_data()"
+# Run validation tests
+PYTHONPATH=. python3 tests/test_scoring.py
 
-# Regenerate embedding cache (10-15 min)
-python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddings, save_embeddings_json; from chatbot.modules.mitre import MitreHelper; mitre = MitreHelper(use_local=True); cache = build_technique_embeddings(mitre); save_embeddings_json(cache)"
+# Test CLI manually
+python3 -m chatbot.main --query "Test scenario"
+
+# Check test queries
+pytest tests/test_semantic_search.py -v  # (when created)
 ```
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
-**API key not working:**
+**Chatbot not responding:**
 ```bash
-# Verify .env file exists
+# Check API key
 cat .env | grep OPENROUTER_API_KEY
+
+# Run with verbose logging
+python3 -m chatbot.main --verbose
 ```
 
-**Virtual environment not activated:**
-```bash
-source .venv/bin/activate
-```
-
-**Dependencies missing:**
-```bash
-pip install -r requirements.txt
-```
-
-**LLM unavailable (429 errors):**
-- System automatically falls back to semantic search only
+**LLM unavailable (expected ~67% of time on free tier):**
+- System falls back to MITRE data automatically
 - Response will be faster (2-3s) but less detailed
-- Check OpenRouter status: https://openrouter.ai/status
 
-**Cache missing or corrupted:**
+**Cache missing:**
 ```bash
-# Regenerate (takes 10-15 min)
+# Verify cache exists
+ls -lh chatbot/data/technique_embeddings.json
+
+# Regenerate if needed (10-15 min)
 python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddings, save_embeddings_json; from chatbot.modules.mitre import MitreHelper; mitre = MitreHelper(use_local=True); cache = build_technique_embeddings(mitre); save_embeddings_json(cache)"
 ```
 
----
-
-## 📝 Known Limitations
-
-- **LLM Availability**: Free tier models rate-limited (~33% uptime)
-  - Fallback: Semantic search always works
-  - Consider paid tier for production use
-- **Response Time**: 60s when LLM available (rate limiting + processing)
-- **Offline Mode**: Requires API for semantic search (keyword fallback available)
+See **[docs/OPERATIONS.md](docs/OPERATIONS.md)** for detailed troubleshooting.
 
 ---
 
-## 🚧 Future Plans
+## License
 
-### Phase 4: Web UI (Planned)
-- React + FastAPI web interface
-- Attack path visualization (graph)
-- MITRE coverage heatmap
-- Estimated: 15-20 hours
-
-### Phase 5: Advanced Features (Backlog)
-- Multi-turn conversation
-- Platform-aware filtering
-- Custom MITRE matrix
-- SIEM integration
-
-See `docs/ROADMAP.md` for detailed plans.
+[Specify license - e.g., MIT, Apache 2.0]
 
 ---
 
-## 📜 License
+## Acknowledgments
 
-[Add your license here]
+- MITRE ATT&CK Framework (https://attack.mitre.org)
+- OpenRouter API (https://openrouter.ai)
+- LiteLLM (https://github.com/BerriAI/litellm)
 
 ---
 
-**Version:** 0.3.0 (CLI with semantic search + LLM analysis)  
+## Quick Commands
+
+```bash
+# Start chatbot
+source .venv/bin/activate && python3 -m chatbot.main
+
+# Generate executive summary
+python3 -m chatbot.main --format executive --query "Your threat"
+
+# Generate action plan
+python3 -m chatbot.main --format action-plan --query "Your threat"
+
+# Run tests
+PYTHONPATH=. python3 tests/test_scoring.py
+
+# Update MITRE data (quarterly)
+python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.update_data()"
+```
+
+---
+
+**Version:** 0.4.0 (Hybrid Mitigations + Scoring + Multi-Format Output)  
 **Last Updated:** 2026-05-01  
-**Status:** Production-ready CLI | Web UI planned
+**Status:** ✅ Production-Ready

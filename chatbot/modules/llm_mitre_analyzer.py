@@ -475,14 +475,16 @@ Use exactly this format with blank lines between sections.
 def generate_mitigation_advice(
     user_query: str,
     matched_techniques: List[Dict],
+    mitre_mitigations: Optional[List[Dict]] = None,
     attack_path: Optional[Dict] = None
 ) -> Dict:
     """
-    Generate contextual mitigation advice based on matched techniques and attack path.
+    Generate hybrid mitigation advice (MITRE data + LLM prioritization).
 
     Args:
         user_query: Original user query/scenario
         matched_techniques: List of matched techniques
+        mitre_mitigations: Official MITRE mitigations from relationships (NEW)
         attack_path: Optional attack path analysis from generate_attack_path()
 
     Returns:
@@ -490,6 +492,7 @@ def generate_mitigation_advice(
         {
             "priority_mitigations": [
                 {
+                    "source": "mitre" | "llm",  # Track source
                     "priority": "critical",
                     "category": "prevention",
                     "recommendation": "Specific action to take...",
@@ -514,11 +517,31 @@ def generate_mitigation_advice(
     if not matched_techniques:
         logger.warning("No techniques provided for mitigation advice")
         return {
+            "mitre_mitigations": mitre_mitigations or [],
             "priority_mitigations": [],
             "defense_layers": {"prevention": [], "detection": [], "response": []},
             "quick_wins": [],
-            "long_term": []
+            "long_term": [],
+            "coverage_stats": {
+                "techniques_with_mitigations": 0,
+                "techniques_without_mitigations": 0,
+                "mitre_mitigation_count": len(mitre_mitigations) if mitre_mitigations else 0,
+                "llm_enrichment_applied": False
+            }
         }
+
+    # Build MITRE mitigation context (NEW)
+    mitre_context = ""
+    if mitre_mitigations:
+        mitre_context = "\n\nOfficial MITRE Mitigations Available:\n"
+        for mit in mitre_mitigations[:10]:  # Limit to top 10 for token efficiency
+            mitre_context += f"- {mit['mitigation_name']} ({mit['mitigation_id']})\n"
+            mitre_context += f"  Addresses: {', '.join(mit['addresses_techniques'][:3])}\n"
+            # Show first specific guidance as example
+            if mit.get('specific_guidance'):
+                first_tech = list(mit['specific_guidance'].keys())[0]
+                guidance = mit['specific_guidance'][first_tech][:100]
+                mitre_context += f"  Example: {guidance}...\n"
 
     # Build prompt
     techniques_text = "\n".join([
@@ -536,9 +559,14 @@ def generate_mitigation_advice(
 Matched MITRE Techniques:
 {techniques_text}
 {attack_context}
+{mitre_context}
 
 Task:
 Provide practical, prioritized mitigation advice to defend against these techniques.
+NOTE: Official MITRE mitigations are listed above. Your job is to:
+1. Prioritize them based on the attack scenario context
+2. Add scenario-specific guidance and rationale
+3. Fill gaps for techniques without official mitigations
 
 1. List 5 prioritized mitigations (CRITICAL/HIGH/MEDIUM priority)
 2. For each, explain what to do and why it matters
@@ -596,6 +624,23 @@ Use exactly this format. Continue for at least 5 mitigations.
             logger.warning("No mitigations extracted from LLM response")
             raise ValueError("Failed to parse mitigations from response")
 
+        # Add MITRE mitigations to response (authoritative section)
+        mitigation_data["mitre_mitigations"] = mitre_mitigations or []
+
+        # Add coverage stats
+        techniques_with_mits = sum(1 for t in matched_techniques if len(t.get('mitigations', [])) > 0)
+        mitigation_data["coverage_stats"] = {
+            "techniques_with_mitigations": techniques_with_mits,
+            "techniques_without_mitigations": len(matched_techniques) - techniques_with_mits,
+            "mitre_mitigation_count": len(mitre_mitigations) if mitre_mitigations else 0,
+            "llm_enrichment_applied": True
+        }
+
+        # Mark LLM-generated mitigations with source
+        for mit in mitigation_data.get("priority_mitigations", []):
+            if "source" not in mit:
+                mit["source"] = "llm"  # Default to LLM source
+
         logger.info(f"Generated {len(mitigation_data.get('priority_mitigations', []))} prioritized mitigations")
         return mitigation_data
 
@@ -603,38 +648,49 @@ Use exactly this format. Continue for at least 5 mitigations.
         logger.error(f"Mitigation advice generation failed: {str(e)}")
         logger.warning("Falling back to basic mitigation listing")
 
-        # Fallback: extract mitigations from technique data
-        all_mitigations = []
-        for t in matched_techniques:
-            # Note: This would work if technique dict includes mitigations
-            # For now, provide generic advice
-            all_mitigations.append(f"Review mitigations for {t['external_id']} ({t['name']})")
+        # Fallback: Return MITRE mitigations only (without LLM prioritization)
+        logger.info("Falling back to MITRE mitigations only (no LLM enrichment)")
+
+        # Convert MITRE mitigations to priority format
+        priority_mitigations = []
+        if mitre_mitigations:
+            for mit in mitre_mitigations[:5]:
+                priority_mitigations.append({
+                    "source": "mitre",
+                    "priority": "high",
+                    "category": "official",
+                    "recommendation": f"{mit['mitigation_name']}: {list(mit.get('specific_guidance', {}).values())[0][:100] if mit.get('specific_guidance') else mit.get('description', '')[:100]}...",
+                    "addresses_techniques": mit.get('addresses_techniques', []),
+                    "rationale": "Official MITRE ATT&CK mitigation"
+                })
+
+        # Coverage stats
+        techniques_with_mits = sum(1 for t in matched_techniques if len(t.get('mitigations', [])) > 0)
 
         return {
-            "priority_mitigations": [
-                {
-                    "priority": "high",
-                    "category": "general",
-                    "recommendation": m,
-                    "addresses_techniques": [matched_techniques[i]["external_id"]],
-                    "rationale": "Standard MITRE ATT&CK mitigation"
-                }
-                for i, m in enumerate(all_mitigations[:5])
-            ],
+            "mitre_mitigations": mitre_mitigations or [],
+            "priority_mitigations": priority_mitigations,
             "defense_layers": {
-                "prevention": ["Review and implement standard preventive controls"],
+                "prevention": ["Review and implement official MITRE mitigations"],
                 "detection": ["Configure monitoring for matched techniques"],
                 "response": ["Develop incident response playbooks"]
             },
-            "quick_wins": ["Enable logging and monitoring"],
-            "long_term": ["Implement defense-in-depth strategy"]
+            "quick_wins": [f"Implement {mit['mitigation_name']}" for mit in (mitre_mitigations or [])[:3]],
+            "long_term": ["Implement defense-in-depth strategy"],
+            "coverage_stats": {
+                "techniques_with_mitigations": techniques_with_mits,
+                "techniques_without_mitigations": len(matched_techniques) - techniques_with_mits,
+                "mitre_mitigation_count": len(mitre_mitigations) if mitre_mitigations else 0,
+                "llm_enrichment_applied": False
+            }
         }
 
 
 def analyze_scenario(
     user_query: str,
     matched_techniques: List[Dict],
-    top_k: int = 5
+    top_k: int = 5,
+    mitre_mitigations: Optional[List[Dict]] = None
 ) -> Dict:
     """
     Complete LLM-enhanced analysis: refine matches, build attack path, generate mitigations.
@@ -665,8 +721,13 @@ def analyze_scenario(
     # Step 2: Generate attack path
     attack_path = generate_attack_path(user_query, refined_techniques)
 
-    # Step 3: Generate mitigation advice
-    mitigations = generate_mitigation_advice(user_query, refined_techniques, attack_path)
+    # Step 3: Generate mitigation advice (with MITRE mitigations)
+    mitigations = generate_mitigation_advice(
+        user_query,
+        refined_techniques,
+        mitre_mitigations=mitre_mitigations,
+        attack_path=attack_path
+    )
 
     result = {
         "refined_techniques": refined_techniques,
