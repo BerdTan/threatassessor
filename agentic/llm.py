@@ -13,7 +13,10 @@ from agentic.helper import get_openrouter_api_key
 logger = logging.getLogger(__name__)
 
 # Default model configuration
-DEFAULT_LLM_MODEL = "openrouter/google/gemma-4-26b-a4b-it:free"
+# Using nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+# All other free models are rate-limited (Google, Venice providers)
+# Works ~33% of time but only available option
+DEFAULT_LLM_MODEL = "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
 
 
 def generate_response(
@@ -76,6 +79,11 @@ def generate_response(
 
         # Extract generated text
         generated_text = response.choices[0].message.content
+
+        # Handle None response
+        if generated_text is None:
+            logger.warning(f"LLM returned None content for model {model}")
+            raise RuntimeError("LLM returned empty response (None content)")
 
         logger.debug(f"Generated {len(generated_text)} chars using {model}")
         return generated_text
@@ -150,6 +158,11 @@ def generate_response_with_system(
 
         # Extract generated text
         generated_text = response.choices[0].message.content
+
+        # Handle None response
+        if generated_text is None:
+            logger.warning(f"LLM returned None content for model {model}")
+            raise RuntimeError("LLM returned empty response (None content)")
 
         logger.debug(f"Generated {len(generated_text)} chars using {model}")
         return generated_text

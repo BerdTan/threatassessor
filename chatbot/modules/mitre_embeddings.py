@@ -348,16 +348,25 @@ def search_techniques(
 
     for technique_id, external_id, name, score in raw_results:
         # Get full technique details from MITRE
-        technique = mitre.get_technique_by_id(technique_id)
+        technique = mitre.find_technique(external_id)
+
+        if not technique:
+            logger.warning(f"Could not find technique {external_id} ({name}) in MITRE data")
+            continue
 
         if technique:
+            # Extract tactics from kill_chain_phases
+            tactics = []
+            if "kill_chain_phases" in technique:
+                tactics = [phase["phase_name"] for phase in technique["kill_chain_phases"]]
+
             enriched_results.append({
                 "technique_id": technique_id,
                 "external_id": external_id,
                 "name": name,
                 "similarity_score": score,
                 "description": technique.get("description", ""),
-                "tactics": mitre.get_tactics_for_technique(external_id),
+                "tactics": tactics,
                 "platforms": technique.get("x_mitre_platforms", [])
             })
 

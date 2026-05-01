@@ -8,15 +8,194 @@ This module uses LLM (via OpenRouter) to:
 4. Explain relevance of techniques to user scenarios
 
 Rate limited to 20 req/min via OpenRouter free tier.
+
+Note: Uses structured text format instead of JSON for better LLM reliability.
 """
 
 import json
 import logging
+import re
 from typing import List, Dict, Optional, Tuple
 from chatbot.modules.rate_limiter import rate_limited
 from agentic.llm import generate_response_with_system
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Text Parsing Functions (for structured LLM output)
+# ============================================================================
+
+def parse_structured_techniques(response: str) -> List[Dict]:
+    """
+    Parse structured text response into technique dicts.
+
+    Expected format:
+        TECHNIQUE: T1059.001
+        RELEVANCE: Explanation here...
+        CONFIDENCE: HIGH
+
+        TECHNIQUE: T1053.005
+        RELEVANCE: Another explanation...
+        CONFIDENCE: MEDIUM
+
+    Returns:
+        [
+            {
+                "external_id": "T1059.001",
+                "relevance_explanation": "Explanation here...",
+                "confidence": "high"
+            },
+            ...
+        ]
+    """
+    techniques = []
+
+    # Split by blank lines to get individual technique blocks
+    blocks = re.split(r'\n\s*\n', response.strip())
+
+    for block in blocks:
+        if not block.strip():
+            continue
+
+        # Extract fields using regex (case-insensitive)
+        tech_match = re.search(r'TECHNIQUE[:\s]+([T]\d+(?:\.\d+)?)', block, re.IGNORECASE)
+        rel_match = re.search(r'RELEVANCE[:\s]+(.+?)(?=\nCONFIDENCE:|$)', block, re.IGNORECASE | re.DOTALL)
+        conf_match = re.search(r'CONFIDENCE[:\s]+(HIGH|MEDIUM|LOW)', block, re.IGNORECASE)
+
+        if tech_match and rel_match:
+            techniques.append({
+                "external_id": tech_match.group(1).strip(),
+                "relevance_explanation": rel_match.group(1).strip(),
+                "confidence": conf_match.group(1).lower() if conf_match else "medium"
+            })
+
+    return techniques
+
+
+def parse_structured_attack_path(response: str) -> Dict:
+    """
+    Parse structured attack path response.
+
+    Expected format:
+        NARRATIVE:
+        The attacker likely started by...
+
+        STAGE 1: Initial Access
+        TECHNIQUES: T1566, T1566.001
+        DESCRIPTION: Attacker sends phishing emails...
+
+        STAGE 2: Execution
+        TECHNIQUES: T1059.001
+        DESCRIPTION: PowerShell executes payload...
+
+    Returns:
+        {
+            "attack_narrative": "...",
+            "attack_path": [
+                {
+                    "stage": "Initial Access",
+                    "techniques": ["T1566", "T1566.001"],
+                    "description": "..."
+                },
+                ...
+            ]
+        }
+    """
+    result = {
+        "attack_narrative": "",
+        "attack_path": []
+    }
+
+    # Extract narrative
+    narrative_match = re.search(r'NARRATIVE[:\s]+(.+?)(?=\nSTAGE|\Z)', response, re.IGNORECASE | re.DOTALL)
+    if narrative_match:
+        result["attack_narrative"] = narrative_match.group(1).strip()
+
+    # Extract stages
+    stage_pattern = r'STAGE\s+\d+[:\s]+([^\n]+)\s+TECHNIQUES[:\s]+([^\n]+)\s+DESCRIPTION[:\s]+(.+?)(?=\nSTAGE|\Z)'
+    for match in re.finditer(stage_pattern, response, re.IGNORECASE | re.DOTALL):
+        stage_name = match.group(1).strip()
+        techniques_str = match.group(2).strip()
+        description = match.group(3).strip()
+
+        # Parse technique IDs
+        technique_ids = re.findall(r'T\d+(?:\.\d+)?', techniques_str)
+
+        result["attack_path"].append({
+            "stage": stage_name,
+            "techniques": technique_ids,
+            "description": description
+        })
+
+    return result
+
+
+def parse_structured_mitigations(response: str) -> Dict:
+    """
+    Parse structured mitigation response.
+
+    Expected format:
+        MITIGATION 1:
+        PRIORITY: CRITICAL
+        RECOMMENDATION: Deploy email security...
+        ADDRESSES: T1566, T1566.001
+        RATIONALE: Prevents malicious emails...
+
+        QUICK WINS:
+        - Enable anti-phishing policies
+        - Deploy MFA
+
+    Returns:
+        {
+            "priority_mitigations": [
+                {
+                    "priority": "critical",
+                    "recommendation": "...",
+                    "addresses_techniques": ["T1566", ...],
+                    "rationale": "..."
+                },
+                ...
+            ],
+            "quick_wins": ["...", ...]
+        }
+    """
+    result = {
+        "priority_mitigations": [],
+        "quick_wins": []
+    }
+
+    # Extract individual mitigations
+    mitigation_pattern = r'MITIGATION\s+\d+[:\s]*\s+PRIORITY[:\s]+([^\n]+)\s+RECOMMENDATION[:\s]+(.+?)ADDRESSES[:\s]+([^\n]+)\s+RATIONALE[:\s]+(.+?)(?=\nMITIGATION|\nQUICK WINS:|\Z)'
+
+    for match in re.finditer(mitigation_pattern, response, re.IGNORECASE | re.DOTALL):
+        priority = match.group(1).strip()
+        recommendation = match.group(2).strip()
+        addresses_str = match.group(3).strip()
+        rationale = match.group(4).strip()
+
+        # Parse technique IDs
+        technique_ids = re.findall(r'T\d+(?:\.\d+)?', addresses_str)
+
+        result["priority_mitigations"].append({
+            "priority": priority.lower(),
+            "recommendation": recommendation,
+            "addresses_techniques": technique_ids,
+            "rationale": rationale
+        })
+
+    # Extract quick wins
+    quick_wins_match = re.search(r'QUICK WINS[:\s]*\n((?:[-•]\s*.+\n?)+)', response, re.IGNORECASE)
+    if quick_wins_match:
+        quick_wins_text = quick_wins_match.group(1)
+        # Extract each bullet point
+        result["quick_wins"] = [
+            line.strip().lstrip('-•').strip()
+            for line in quick_wins_text.split('\n')
+            if line.strip() and (line.strip().startswith('-') or line.strip().startswith('•'))
+        ]
+
+    return result
 
 
 # System prompts for different analysis tasks
@@ -85,21 +264,21 @@ Matched MITRE Techniques (from semantic search):
 
 Task:
 1. Analyze which techniques are most relevant to this scenario
-2. Rank the top {top_k} techniques by relevance
-3. For each, provide a brief explanation (1-2 sentences) of WHY it's relevant
-4. Rate confidence level: high/medium/low
+2. Select the top {top_k} most relevant techniques
+3. For each technique, explain WHY it's relevant (1-2 sentences)
+4. Rate confidence level: HIGH/MEDIUM/LOW
 
-Return JSON format:
-{{
-  "refined_techniques": [
-    {{
-      "external_id": "T1059.001",
-      "relevance_explanation": "Brief explanation here...",
-      "confidence": "high"
-    }},
-    ...
-  ]
-}}
+Format your response EXACTLY like this example:
+
+TECHNIQUE: T1059.001
+RELEVANCE: PowerShell is directly relevant because attackers commonly use it for remote code execution and lateral movement in Windows environments.
+CONFIDENCE: HIGH
+
+TECHNIQUE: T1053.005
+RELEVANCE: Scheduled tasks provide persistence by ensuring malicious code runs automatically after system reboot.
+CONFIDENCE: HIGH
+
+Continue for all {top_k} techniques. Use exactly this format with blank lines between techniques.
 """
 
     try:
@@ -112,16 +291,16 @@ Return JSON format:
             max_tokens=1500
         )
 
-        # Parse JSON response
-        # Handle markdown code blocks if present
-        response_clean = response.strip()
-        if response_clean.startswith("```json"):
-            response_clean = response_clean.split("```json")[1].split("```")[0].strip()
-        elif response_clean.startswith("```"):
-            response_clean = response_clean.split("```")[1].split("```")[0].strip()
+        # Check if response is None or empty
+        if not response or not response.strip():
+            raise ValueError("LLM returned empty response")
 
-        refined_data = json.loads(response_clean)
-        refined_list = refined_data.get("refined_techniques", [])
+        # Parse structured text response
+        refined_list = parse_structured_techniques(response)
+
+        if not refined_list:
+            logger.warning("No techniques extracted from LLM response")
+            raise ValueError("Failed to parse any techniques from response")
 
         # Merge LLM analysis with original technique data
         result = []
@@ -216,24 +395,28 @@ Matched MITRE ATT&CK Techniques:
 Task:
 Construct a logical attack path showing how an attacker might progress through these techniques.
 
-1. Group techniques by MITRE tactic stages (Initial Access, Execution, Persistence, etc.)
-2. Order stages in a realistic attack progression
-3. For each stage, explain what the attacker is doing and why
-4. Create a narrative that ties everything together
+1. Write a narrative explaining the full attack chain (2-3 sentences)
+2. Break down the attack into stages based on MITRE tactics
+3. For each stage, list techniques and explain what's happening
 
-Return JSON format:
-{{
-  "attack_path": [
-    {{
-      "stage": "Initial Access",
-      "techniques": ["T1566.001"],
-      "description": "Brief explanation of what happens in this stage..."
-    }},
-    ...
-  ],
-  "attack_narrative": "A cohesive narrative explaining the full attack chain...",
-  "kill_chain_phases": ["reconnaissance", "weaponization", "delivery", ...]
-}}
+Format your response EXACTLY like this:
+
+NARRATIVE:
+The attacker likely began by sending phishing emails to gain initial access. Once a user opened the malicious attachment, PowerShell scripts were executed to establish persistence through scheduled tasks.
+
+STAGE 1: Initial Access
+TECHNIQUES: T1566, T1566.001
+DESCRIPTION: Attacker sends spearphishing emails with malicious attachments to gain initial foothold in the target environment.
+
+STAGE 2: Execution
+TECHNIQUES: T1059.001, T1204.002
+DESCRIPTION: User opens attachment, triggering PowerShell script execution that downloads and runs additional malware.
+
+STAGE 3: Persistence
+TECHNIQUES: T1053.005
+DESCRIPTION: Attacker creates scheduled tasks to maintain access across system reboots.
+
+Use exactly this format with blank lines between sections.
 """
 
     try:
@@ -246,14 +429,16 @@ Return JSON format:
             max_tokens=2000
         )
 
-        # Parse JSON response
-        response_clean = response.strip()
-        if response_clean.startswith("```json"):
-            response_clean = response_clean.split("```json")[1].split("```")[0].strip()
-        elif response_clean.startswith("```"):
-            response_clean = response_clean.split("```")[1].split("```")[0].strip()
+        # Check if response is None or empty
+        if not response or not response.strip():
+            raise ValueError("LLM returned empty response")
 
-        attack_data = json.loads(response_clean)
+        # Parse structured text response
+        attack_data = parse_structured_attack_path(response)
+
+        if not attack_data.get("attack_path"):
+            logger.warning("No attack path stages extracted from LLM response")
+            raise ValueError("Failed to parse attack path from response")
 
         logger.info(f"Generated attack path with {len(attack_data.get('attack_path', []))} stages")
         return attack_data
@@ -355,31 +540,39 @@ Matched MITRE Techniques:
 Task:
 Provide practical, prioritized mitigation advice to defend against these techniques.
 
-1. Identify critical mitigations (prevention, detection, response)
-2. Prioritize by impact and feasibility
+1. List 5 prioritized mitigations (CRITICAL/HIGH/MEDIUM priority)
+2. For each, explain what to do and why it matters
 3. Specify which techniques each mitigation addresses
-4. Separate quick wins (easy to implement) from long-term strategic improvements
+4. Add quick wins (easy to implement actions)
 
-Return JSON format:
-{{
-  "priority_mitigations": [
-    {{
-      "priority": "critical/high/medium",
-      "category": "prevention/detection/response",
-      "recommendation": "Specific action...",
-      "addresses_techniques": ["T1059.001"],
-      "rationale": "Why this matters..."
-    }},
-    ...
-  ],
-  "defense_layers": {{
-    "prevention": ["Action 1", ...],
-    "detection": ["Action 1", ...],
-    "response": ["Action 1", ...]
-  }},
-  "quick_wins": ["Easy action 1", ...],
-  "long_term": ["Strategic action 1", ...]
-}}
+Format your response EXACTLY like this:
+
+MITIGATION 1:
+PRIORITY: CRITICAL
+RECOMMENDATION: Deploy advanced email security gateway with attachment sandboxing and URL scanning
+ADDRESSES: T1566, T1566.001, T1566.002
+RATIONALE: Prevents malicious emails from reaching users, blocking the most common initial access vector
+
+MITIGATION 2:
+PRIORITY: HIGH
+RECOMMENDATION: Enforce multi-factor authentication (MFA) for all privileged accounts
+ADDRESSES: T1078, T1078.001
+RATIONALE: Even if credentials are compromised, MFA prevents unauthorized access
+
+MITIGATION 3:
+PRIORITY: HIGH
+RECOMMENDATION: Enable PowerShell logging and implement constrained language mode
+ADDRESSES: T1059.001, T1059.003
+RATIONALE: Provides visibility into PowerShell usage and limits script execution capabilities
+
+QUICK WINS:
+- Enable built-in anti-phishing policies in email gateway
+- Deploy MFA for all accounts
+- Block executable email attachments
+- Disable PowerShell v2.0
+- Enable Windows Defender Application Control
+
+Use exactly this format. Continue for at least 5 mitigations.
 """
 
     try:
@@ -392,14 +585,16 @@ Return JSON format:
             max_tokens=2500
         )
 
-        # Parse JSON response
-        response_clean = response.strip()
-        if response_clean.startswith("```json"):
-            response_clean = response_clean.split("```json")[1].split("```")[0].strip()
-        elif response_clean.startswith("```"):
-            response_clean = response_clean.split("```")[1].split("```")[0].strip()
+        # Check if response is None or empty
+        if not response or not response.strip():
+            raise ValueError("LLM returned empty response")
 
-        mitigation_data = json.loads(response_clean)
+        # Parse structured text response
+        mitigation_data = parse_structured_mitigations(response)
+
+        if not mitigation_data.get("priority_mitigations"):
+            logger.warning("No mitigations extracted from LLM response")
+            raise ValueError("Failed to parse mitigations from response")
 
         logger.info(f"Generated {len(mitigation_data.get('priority_mitigations', []))} prioritized mitigations")
         return mitigation_data
