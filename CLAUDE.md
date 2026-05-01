@@ -1,244 +1,298 @@
-# DEV-TEST Chatbot Project
+# DEV-TEST: MITRE Chatbot Project
 
 ## Project Overview
 
-A modular, security-focused chatbot system that integrates MITRE ATT&CK data to provide intelligent threat analysis, technique identification, and mitigation advice. The system uses LLM-based semantic search to map user-described threat scenarios to relevant MITRE techniques.
+Production-ready CLI chatbot that maps threat scenarios to MITRE ATT&CK techniques using semantic search and LLM analysis.
 
-**Primary Use Case:** Security teams describe threat scenarios in natural language, system identifies applicable MITRE ATT&CK techniques and provides contextual mitigation guidance.
+**Primary Use Case:** Security teams describe threats in natural language → System identifies MITRE techniques → Provides mitigation guidance.
 
-## Quick Reference
+**Current Status:** ✅ Phase 2A Complete (Production CLI) | Phase 2.2 Next (Validation Testing)
 
-- **Architecture & Design:** See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System design, module structure, tech stack, design decisions, performance metrics, and known limitations
-- **Operations & Workflows:** See [docs/OPERATIONS.md](docs/OPERATIONS.md) - Environment setup, data management, development workflows, troubleshooting, and security considerations
-- **Testing & Validation:** See [docs/TESTING.md](docs/TESTING.md) - Test strategies, scenarios, validation results, and how to run tests
-- **Roadmap & Future Plans:** See [docs/ROADMAP.md](docs/ROADMAP.md) - Current status, implementation phases, and backlog features
-- **External Resources:** See [docs/REFERENCES.md](docs/REFERENCES.md) - Links to MITRE, OpenRouter, LiteLLM, ADK documentation
+---
 
-## Core Workflow (Quick Summary)
+## Quick Start
 
+```bash
+# Activate environment
+source .venv/bin/activate
+
+# Run chatbot
+python3 -m chatbot.main
+
+# Test with: "Attacker used PowerShell to create scheduled tasks"
 ```
-User Input → AgentManager → Semantic Search (embeddings) 
-  → LLM Refinement (Gemma) → Mitigation Advice → Response
-  
-Fallback: Keyword search if API unavailable
+
+---
+
+## Documentation Map
+
+| Document | Purpose |
+|----------|---------|
+| `README.md` | Quick start guide (start here!) |
+| `STATUS_AND_PLAN.md` | Implementation status and roadmap |
+| `CLAUDE.md` | This file - Developer guidelines |
+| `docs/ARCHITECTURE.md` | System design details |
+| `docs/OPERATIONS.md` | Troubleshooting and maintenance |
+| `docs/MVP_SPECIFICATION.md` | Web UI requirements (Phase 4) |
+| `docs/testing/` | Testing strategy |
+
+---
+
+## Core Architecture
+
+### Data Flow
 ```
+User Input → Semantic Search (embeddings, ~2s)
+  → LLM Refinement (optional, ~60s, ~33% uptime)
+  → Attack Path + Mitigations
+  → Fallback to keyword search if API fails
+```
+
+### Key Components
+
+**Production modules:**
+- `chatbot/main.py` - CLI entry point
+- `chatbot/modules/agent.py` - Request routing with fallback
+- `chatbot/modules/mitre.py` - MITRE data access (823 techniques)
+- `chatbot/modules/embeddings.py` - Embedding client (2048-dim vectors)
+- `chatbot/modules/mitre_embeddings.py` - Semantic search with caching
+- `chatbot/modules/llm_mitre_analyzer.py` - LLM refinement (string format)
+- `chatbot/modules/rate_limiter.py` - API rate limiting (20 req/min)
+- `agentic/llm.py` - LLM client (OpenRouter)
+
+**Data files (required):**
+- `chatbot/data/enterprise-attack.json` (44MB) - MITRE data
+- `chatbot/data/technique_embeddings.json` (45MB) - Pre-computed cache
+- `.env` - API key: `OPENROUTER_API_KEY=sk-or-v1-xxxxx`
+
+---
 
 ## Key Technologies
 
-- **LLM Services:** OpenRouter (nvidia/llama-nemotron-embed-vl-1b-v2:free for embeddings, google/gemma-4-26b-a4b-it:free for analysis)
-- **MITRE Data:** enterprise-attack.json (823 techniques)
-- **API Client:** LiteLLM 1.73.6
-- **Framework:** Google ADK 1.5.0
-- **Database:** Neo4j 5.28.1 (for agentic features)
+| Component | Technology | Notes |
+|-----------|-----------|-------|
+| Embeddings | nvidia/llama-nemotron-embed-vl-1b-v2:free | 2048 dimensions |
+| LLM | nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free | ~33% uptime (free tier) |
+| API Router | LiteLLM 1.73.6 | Multi-provider support |
+| Rate Limiting | Custom sliding window | 20 req/min, auto-retry |
 
-## Getting Started
-
-### 1. Environment Setup
-
-Create `.env` file:
-```bash
-OPENROUTER_API_KEY=sk-or-v1-xxxxx
-```
-
-### 2. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Verify Setup
-```bash
-python test_openrouter.py
-```
-
-### 4. Generate Embedding Cache (one-time, ~10-15 min with rate limiting)
-```bash
-# Note: Takes 10-15 minutes due to OpenRouter free tier rate limit (20 req/min)
-python -c "from chatbot.modules.mitre_embeddings import build_technique_embeddings, save_embeddings_json; from chatbot.modules.mitre import MitreHelper; from chatbot.modules import embeddings; mitre = MitreHelper(use_local=True); cache = build_technique_embeddings(mitre, embeddings); save_embeddings_json(cache, 'chatbot/data/technique_embeddings.json')"
-```
-
-**Important:** OpenRouter free tier limits to 20 requests/minute. Cache generation is automatically rate-limited and will take 10-15 minutes. This is a one-time setup cost.
-
-### 5. Run Chatbot
-```bash
-python chatbot/main.py
-```
-
-## Module Quick Reference
-
-### Core Modules (`chatbot/modules/`)
-- `agent.py` - Request routing and coordination
-- `mitre.py` - MITRE ATT&CK data access
-- `rate_limiter.py` - API rate limiting (20 req/min) **[IMPLEMENTED]**
-- `embeddings.py` - OpenRouter embedding client (NEW)
-- `mitre_embeddings.py` - Semantic search with caching (NEW)
-- `llm_mitre_analyzer.py` - LLM-enhanced analysis (NEW)
-- `mitre_template.py` - Keyword fallback (EXISTING)
-
-### Agentic Modules (`agentic/`)
-- `llm.py` - LLM client wrapper (TO IMPLEMENT)
-- `helper.py` - Utility functions and env management
-- `agent_manager.py` - Agentic routing (future)
-- `rag.py`, `mcp.py` - Advanced features (placeholders)
+---
 
 ## Development Guidelines
 
-### Code Hygiene & Confidence Threshold
+### 95% Confidence Rule (CRITICAL)
 
-**CRITICAL: 95% Confidence Rule**
+Before making code changes, you MUST achieve **95%+ confidence** that changes are correct and necessary.
 
-Before making ANY code changes, you MUST achieve **95% or higher confidence** that the changes are correct, necessary, and well-understood. This is a hard requirement to maintain code hygiene and system stability.
+**How to reach 95% confidence:**
+1. **Ask clarifying questions FIRST** - Don't assume requirements
+2. **Research thoroughly** - Read related code, tests, documentation
+3. **Validate assumptions** - Test understanding with examples
+4. **Plan incrementally** - Break large changes into testable units
 
-**How to achieve 95% confidence:**
-
-1. **Ask clarifying questions FIRST** - Before writing code:
-   - What is the exact problem or requirement?
-   - What are the edge cases and constraints?
-   - What are the dependencies and integration points?
-   - What is the expected behavior vs current behavior?
-   - Are there existing patterns or utilities to reuse?
-
-2. **Research thoroughly** - Before proposing changes:
-   - Read related modules and understand context
-   - Check existing tests for expected behavior
-   - Review documentation for design decisions
-   - Search for similar implementations in codebase
-   - Understand why current code exists as-is
-
-3. **Validate assumptions** - Before implementing:
-   - Test your understanding with examples
-   - Verify file paths and function signatures exist
-   - Check that APIs/libraries work as expected
-   - Confirm user intent matches your interpretation
-   - Review dependencies are available
-
-4. **Plan incrementally** - Break large changes into phases:
-   - Start with smallest testable unit
-   - Validate each phase before proceeding
-   - Use skills like `/quick-test` to verify components
-   - Don't make speculative "might need this" changes
-
-**If confidence < 95%:** STOP and ask questions. Better to clarify than to break working code or introduce technical debt.
-
-**Examples of good questions:**
-- "Before I implement this, should we handle the case where X is null?"
-- "I see two ways to do this: A (faster) or B (more maintainable). Which do you prefer?"
-- "The existing code does X differently. Should I follow that pattern or change it?"
-- "I'm at 80% confidence because I'm unsure about Y. Can you clarify?"
+**If confidence < 95%:** STOP and ask questions. Better to clarify than break working code.
 
 **Red flags (ask before proceeding):**
 - "I think this might work..."
-- "We probably need to..."
 - Making assumptions about requirements
 - Changing code you don't fully understand
 - Adding features not explicitly requested
-- Refactoring without clear benefit
 
 ### Code Standards
-- Follow existing module patterns
+
+- Follow existing module patterns (see `chatbot/modules/` for reference)
 - Use type hints for function signatures
 - Add docstrings for public APIs
 - Handle errors gracefully with fallbacks
 - Log important events for debugging
-- Reuse existing utilities before creating new ones
+- Test with standard scenarios before committing
 
-### Before Committing
-1. Verify 95%+ confidence in all changes
-2. Run test suite (`/quick-test` or `/validate-integration`)
-3. Update relevant documentation
-4. Test with standard scenarios (see docs/TESTING.md)
-5. Verify no secrets in code
-6. Check no unintended changes included
+### Testing Before Commit
 
-### When to Update Docs
-- New modules/functions: Update ARCHITECTURE.md
-- New workflows/procedures: Update OPERATIONS.md
-- New test cases: Update TESTING.md
-- Feature planning: Update ROADMAP.md
-- API changes: Update relevant module docs
-
-## Current Status
-
-**Phase:** Planning Complete, Ready for Implementation  
-**Last Validated:** 2026-04-25  
-**Confidence:** 95%+ (all components validated)
-
-**Validated Systems:**
-✅ OpenRouter API (embeddings + LLM)  
-✅ LiteLLM integration  
-✅ MITRE data loading  
-✅ Semantic search pipeline  
-✅ Performance metrics  
-
-**Next Implementation Steps:**
-1. ✅ Create `chatbot/modules/rate_limiter.py` - Rate limiting (DONE)
-2. Create `chatbot/modules/embeddings.py` - Embedding client with rate limiting
-3. Create `chatbot/modules/mitre_embeddings.py` - Semantic search with rate limiting
-4. Create `chatbot/modules/llm_mitre_analyzer.py` - LLM refinement with rate limiting
-5. Implement `agentic/llm.py` - OpenRouter client with rate limiting
-6. Integrate into `agent.py` with fallback logic
-
-**Critical:** All OpenRouter API calls MUST use `@rate_limited` decorator to handle 20 req/min limit
-
-## Troubleshooting Quick Fixes
-
-**Embedding cache missing or outdated:**
-```bash
-# Use skill (recommended)
-/build-embeddings-cache
-
-# Note: Will take 10-15 minutes due to rate limiting
-```
-
-**MITRE data outdated:**
-```bash
-# Use skill to download latest version
-/update-mitre-data
-
-# IMPORTANT: Must regenerate cache after update
-/build-embeddings-cache
-```
-
-**API rate limit errors (429):**
-- ✅ Automatic retry with 60s wait (handled by rate limiter)
-- ✅ Exponential backoff on repeated errors
-- ⚠️  If still failing: Check OpenRouter service status
-- See [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md) for details
-
-**Poor matching results:**
-- Verify embedding cache is current
-- Check similarity scores (should be >0.5)
-- See docs/OPERATIONS.md for detailed debugging
-
-**Rate limiting issues:**
-- All API calls use `@rate_limited` decorator
-- Automatic pacing to stay under 20 req/min
-- See [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md) for patterns and best practices
-
-## Available Skills
-
-Skills provide automated operations for common tasks:
-
-**Testing & Validation:**
-- `/quick-test` - Fast check (~15s) to verify core components are working
-- `/validate-integration` - Comprehensive test suite (2-3 min, full validation)
-
-**Maintenance:**
-- `/update-mitre-data` - Download latest MITRE ATT&CK data and backup old version
-- `/build-embeddings-cache` - Generate embedding cache (10-15 min, one-time)
-
-**Recommended workflow:**
-1. Start session: `/quick-test` (verify everything works)
-2. After MITRE update: `/update-mitre-data` → `/build-embeddings-cache`
-3. Before deployment: `/validate-integration` (full test)
-
-## Additional Resources
-
-- See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for detailed phase tracking
-- See [README.md](README.md) for user-facing documentation
-- See [.github/](.github/) for CI/CD and contribution guidelines
+1. Run semantic search test: `pytest tests/test_semantic_search.py -v`
+2. Test CLI manually: `python3 -m chatbot.main`
+3. Verify no unintended file changes: `git status`
+4. Check no secrets committed: `grep -r "sk-or-v1" .`
 
 ---
 
-*Version: 0.2.1 (Added 95% confidence rule for code hygiene)*  
-*Last Updated: 2026-04-26*  
-*Status: Validated & Ready for Implementation*
+## Current Status
+
+### ✅ What's Working (Production-Ready)
+
+| Feature | Status | Performance |
+|---------|--------|-------------|
+| Semantic search | ✅ Working | ~2s, always available |
+| LLM analysis | ✅ Working | ~60s, ~33% uptime |
+| Attack paths | ✅ Working | Part of LLM output |
+| Mitigations | ✅ Working | Mapped to techniques |
+| Keyword fallback | ✅ Working | Graceful degradation |
+| Rate limiting | ✅ Working | Automatic retry/backoff |
+
+**Validation:**
+- Top-3 accuracy: ~60% (informal testing)
+- Embedding cache: 834 techniques, 45MB
+- Test query: "PowerShell" → Finds T1059.001 (score: 0.856)
+
+### ⏳ What's Next (1 hour)
+
+**Phase 2.2: Validation Testing**
+1. Create `tests/test_semantic_search.py`
+2. Create `tests/test_llm_analysis.py`
+3. Run 109 test queries (already ported)
+4. Document baseline accuracy metrics
+
+**See:** `STATUS_AND_PLAN.md` for detailed action plan
+
+### 📦 What's Backlog (5 hours)
+
+**Phase 3: Architecture Analysis (71% complete)**
+- Location: `_codex/threatassessor-master` (experimental)
+- Missing: Confidence scoring (1.5h), Mermaid output (2-3h)
+- Integration: Merge to main repo (2h)
+
+**Phase 4: Web UI (15-20 hours)**
+- React + FastAPI interface
+- Attack path visualization
+- MITRE coverage heatmap
+
+---
+
+## File Exclusions (.gitignore)
+
+**Do NOT commit:**
+- `_codex/` - Experimental features (threatassessor)
+- `.archive/` - Historical documents
+- `archive/` - Session notes and test results
+- `chatbot/data/*.json` - Large data files (44MB + 45MB)
+- `.venv/` - Virtual environment
+- `.env` - API keys
+
+**Rationale:**
+- `_codex/` is experimental architecture analysis (separate development track)
+- `archive/` contains historical context not needed for production use
+- Data files too large for git (regenerate with scripts)
+
+---
+
+## Troubleshooting Quick Fixes
+
+**Chatbot not responding:**
+```bash
+# Check API key configured
+cat .env | grep OPENROUTER_API_KEY
+
+# Activate virtual environment
+source .venv/bin/activate
+
+# Run with fallback (works without LLM)
+python3 -m chatbot.main
+```
+
+**LLM unavailable (429 errors):**
+- Expected behavior with free tier (~33% uptime)
+- System automatically falls back to semantic search only
+- Response will be faster (2-3s) but less detailed
+
+**Cache missing or corrupted:**
+```bash
+# Regenerate (takes 10-15 min with rate limiting)
+python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddings, save_embeddings_json; from chatbot.modules.mitre import MitreHelper; mitre = MitreHelper(use_local=True); cache = build_technique_embeddings(mitre); save_embeddings_json(cache)"
+```
+
+**Poor matching results:**
+- Verify cache exists: `ls -lh chatbot/data/technique_embeddings.json`
+- Check similarity scores in output (should be >0.3)
+- Try more specific queries: "PowerShell persistence" vs "malware"
+
+**See:** `docs/OPERATIONS.md` for detailed troubleshooting
+
+---
+
+## Quick Commands Reference
+
+**Run chatbot:**
+```bash
+source .venv/bin/activate && python3 -m chatbot.main
+```
+
+**Run tests:**
+```bash
+pytest tests/ -v
+```
+
+**Test OpenRouter API:**
+```bash
+python3 test_openrouter.py
+```
+
+**Update MITRE data (quarterly):**
+```bash
+# Download latest
+python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.update_data()"
+
+# Regenerate cache (required after update)
+python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddings, save_embeddings_json; from chatbot.modules.mitre import MitreHelper; mitre = MitreHelper(use_local=True); cache = build_technique_embeddings(mitre); save_embeddings_json(cache)"
+```
+
+---
+
+## Known Issues & Limitations
+
+### 1. LLM Availability (~33% uptime)
+**Cause:** Free tier rate limiting on nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free  
+**Impact:** LLM analysis intermittently unavailable  
+**Mitigation:** Automatic fallback to semantic search only  
+**Future:** Switch to paid tier or monitor google/gemma-4-26b-a4b-it:free availability
+
+### 2. Response Time (2-60s)
+**Cause:** 2s for semantic search, 60s when LLM available (rate limiting)  
+**Impact:** User waits longer for detailed analysis  
+**Mitigation:** None for free tier  
+**Future:** Paid tier for faster models
+
+### 3. String Parsing Brittleness
+**Cause:** LLM sometimes returns inconsistent format  
+**Impact:** Occasional parsing failures (attack paths/mitigations)  
+**Mitigation:** Regex-based parsing with error recovery (improved from 0% to 100% success when LLM returns text)
+
+---
+
+## Repository Organization
+
+### Main Repo (This Directory)
+**Focus:** Production-ready semantic MITRE search  
+**Status:** Phase 2A Complete (CLI working)  
+**Location:** `/mnt/c/BACKUP/DEV-TEST`
+
+### Experimental Features (_codex/)
+**Focus:** Architecture analysis (Mermaid diagrams, attack paths)  
+**Status:** 71% complete (5/7 requirements)  
+**Location:** `_codex/threatassessor-master` (excluded from git)
+
+**Sync:** Shared components (MITRE data, embeddings, LLM clients) synchronized via `scripts/sync_repos.sh` (weekly)
+
+---
+
+## Next Session Quick Start
+
+**Context:** Production CLI working, validation testing next (1 hour)
+
+**Resume:**
+```bash
+cd /mnt/c/BACKUP/DEV-TEST
+source .venv/bin/activate
+cat STATUS_AND_PLAN.md  # Read Phase 2.2 tasks
+```
+
+**Immediate tasks:**
+1. Create `tests/test_semantic_search.py`
+2. Create `tests/test_llm_analysis.py`
+3. Run 109 test queries for validation
+4. Document baseline accuracy metrics
+
+---
+
+*Version: 0.3.0 (Production CLI - Semantic Search + LLM Analysis)*  
+*Last Updated: 2026-05-01*  
+*Status: Phase 2A Complete ✅ | Phase 2.2 Next ⏳*
