@@ -11,7 +11,20 @@
       "Bash(grep -E \"\\\\.py$\")",
       "Bash(git add *)",
       "Bash(git rm *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(python3 -c \"from docx import Document; doc = Document\\('/mnt/c/BACKUP/DEV-TEST/_codex/ai_analysis_report.docx'\\); print\\('\\\\n'.join\\([p.text for p in doc.paragraphs]\\)\\)\")",
+      "Bash(unzip -p ai_analysis_report.docx word/document.xml)",
+      "Bash(python3 -c \"import sys, xml.dom.minidom as md; xml_data = sys.stdin.read\\(\\); parsed = md.parseString\\(xml_data\\); text_nodes = parsed.getElementsByTagName\\('w:t'\\); print\\(''.join\\([node.firstChild.nodeValue for node in text_nodes if node.firstChild]\\)\\)\")",
+      "Read(//tmp/**)",
+      "Bash(cp /mnt/c/BACKUP/DEV-TEST/_codex/ai_analysis_report.docx report.zip)",
+      "Bash(unzip -q report.zip)",
+      "Bash(unzip -c ai_analysis_report.docx word/document.xml)",
+      "Bash(grep -v \"^$\")",
+      "Bash(unzip -l ai_analysis_report.docx)",
+      "Bash(python3 -m pip list)",
+      "Bash(python3 -c \"import docx2txt; print\\(docx2txt.process\\('/mnt/c/BACKUP/DEV-TEST/_codex/ai_analysis_report.docx'\\)\\)\")",
+      "Bash(pytest tests/ --collect-only)"
     ],
     "deny": []
   }
