@@ -130,23 +130,50 @@ python3 -m chatbot.main --format technical     # Detailed analysis
 - Average response time: 2s (semantic only) or 60s (with LLM)
 - Test confidence: **79%** (production-ready)
 
-### 📦 Phase 3: Architecture Analysis (BACKLOG - 5 hours)
-**Status:** 71% Complete (5/7 requirements)  
-**Location:** `_codex/threatassessor-master` (experimental)
+### 📦 Phase 3: Architecture Analysis (REDESIGN - 20-25 hours)
+**Status:** ⚠️ Reverted - Redesign in Progress  
+**Previous Attempt:** Reverted (claimed 82% → actual 60% confidence)  
+**Redesign Plan:** See `docs/planning/PHASE3_REDESIGN.md`
 
-**What exists:**
-- ✅ Mermaid diagram parser (`mermaid_parser.py`)
-- ✅ Architecture analyzer (`architecture_analyzer.py`)
-- ✅ Attack path generation (`build_attack_paths()`)
-- ✅ Risk prioritization (likelihood × impact)
-- ✅ Mitigation suggestions (mapped to MITRE)
-- ✅ 13 test files covering all features
+**Why Reverted:**
+- Testing bias: RAG context told system what was missing (circular validation)
+- Single test case: 1 AWS architecture (5% coverage)
+- No control detection: Relied on being told vs parsing architecture
+- Premature confidence: Claimed 82%, actual ~60%
 
-**Critical gaps:**
-- ❌ Confidence scoring (1.5 hours) - `calculate_path_confidence()`
-- ❌ Mermaid output generation (2-3 hours) - `generate_mitigated_mermaid()`
+**Redesign Approach:**
+1. **LLM as Judge** (Novel)
+   - Use LLM to validate system output quality
+   - Three-way validation: system + LLM + human ground truth
+   - Catches blind spots, scalable testing
 
-**Integration:** Merge into main repo after gaps closed (2 hours)
+2. **Generative Test Suite**
+   - 100 diverse architectures (not just 1)
+   - Ground truth for objective metrics
+   - Topologies: layered, mesh, hub-spoke, random
+
+3. **Control Detection**
+   - Parse architecture labels for controls
+   - Cross-validate RAG claims vs actual architecture
+   - Flag discrepancies
+
+4. **Framework Flexibility**
+   - MITRE + RAPIDS = core baseline
+   - STRIDE, OWASP, NIST, CIS = augmentation
+   - Not hardcoded
+
+**Implementation Plan:**
+- Phase 3A: Parser + control detection (3-4h)
+- Phase 3B: Attack paths + MITRE mapping (4-5h)
+- Phase 3C: RAPIDS + prioritization (3-4h)
+- Phase 3D: LLM judge (2-3h)
+- Phase 3E: Generative testing (3-4h)
+- Phase 3F: Framework flexibility (2-3h)
+- Phase 3G: CLI + docs (2-3h)
+
+**Target Confidence:** 85%+ (honest, validated)
+
+**Decision:** Ship Phase 2 (79% confidence) first, redesign Phase 3 properly
 
 ### 🌐 Phase 4: Web UI (FUTURE - 15-20 hours)
 **Status:** Planned, not started
