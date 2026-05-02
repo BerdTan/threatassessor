@@ -1,0 +1,19 @@
+flowchart TB
+    MobileApp[Mobile App Users]
+    WebApp[Web App Users]
+
+    subgraph GCP[Google Cloud Platform]
+        APIGateway[API Gateway]
+        CloudFunctions[Cloud Functions]
+        Firestore[(Firestore)]
+        CloudStorage[(Cloud Storage)]
+        PubSub[Pub/Sub]
+    end
+
+    MobileApp --> APIGateway
+    WebApp --> APIGateway
+    APIGateway --> CloudFunctions
+    CloudFunctions --> Firestore
+    CloudFunctions --> CloudStorage
+    CloudFunctions --> PubSub
+    PubSub --> CloudFunctions

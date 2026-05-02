@@ -1,0 +1,25 @@
+flowchart LR
+    Internet((Internet))
+    Router[Router - No Firewall]
+
+    subgraph Flat_Network[Flat Network - No Segmentation]
+        WebServer[Web Server]
+        FileServer[File Server]
+        Database[(Database)]
+        Workstation1[Employee Workstation 1]
+        Workstation2[Employee Workstation 2]
+        PrintServer[Print Server]
+    end
+
+    Internet --> Router
+    Router --- WebServer
+    Router --- FileServer
+    Router --- Database
+    Router --- Workstation1
+    Router --- Workstation2
+    Router --- PrintServer
+
+    WebServer --- Database
+    FileServer --- Database
+    Workstation1 --- FileServer
+    Workstation2 --- Database

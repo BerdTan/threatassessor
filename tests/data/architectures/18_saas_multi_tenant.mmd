@@ -1,0 +1,26 @@
+flowchart TB
+    Tenant1((Tenant 1))
+    Tenant2((Tenant 2))
+    Tenant3((Tenant 3))
+    
+    LB[Load Balancer]
+    
+    subgraph Application_Layer
+        AppServer[Application Server Pool]
+    end
+    
+    subgraph Data_Layer
+        SharedDB[(Shared Database)]
+        Tenant1Schema[Tenant 1 Schema]
+        Tenant2Schema[Tenant 2 Schema]
+        Tenant3Schema[Tenant 3 Schema]
+    end
+    
+    Tenant1 --> LB
+    Tenant2 --> LB
+    Tenant3 --> LB
+    LB --> AppServer
+    AppServer --> SharedDB
+    SharedDB --> Tenant1Schema
+    SharedDB --> Tenant2Schema
+    SharedDB --> Tenant3Schema

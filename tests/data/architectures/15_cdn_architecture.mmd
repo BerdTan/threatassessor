@@ -1,0 +1,26 @@
+flowchart TB
+    Users((Global Users))
+
+    subgraph CDN[Content Delivery Network]
+        EdgeLocation1[Edge Location US]
+        EdgeLocation2[Edge Location EU]
+        EdgeLocation3[Edge Location APAC]
+    end
+
+    subgraph Origin[Origin Infrastructure]
+        LoadBalancer[Load Balancer]
+        WebServer1[Web Server 1]
+        WebServer2[Web Server 2]
+        S3[(S3 Static Assets)]
+    end
+
+    Users --> EdgeLocation1
+    Users --> EdgeLocation2
+    Users --> EdgeLocation3
+    EdgeLocation1 -->|Cache Miss| LoadBalancer
+    EdgeLocation2 -->|Cache Miss| LoadBalancer
+    EdgeLocation3 -->|Cache Miss| LoadBalancer
+    LoadBalancer --> WebServer1
+    LoadBalancer --> WebServer2
+    WebServer1 --> S3
+    WebServer2 --> S3

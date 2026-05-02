@@ -1,0 +1,13 @@
+flowchart TB
+    Node1["Web Server (v2.1.3)"]
+    Node2["App Server - Testing & QA"]
+    Node3["Database: MySQL 8.0"]
+    Node4["Cache Server [Redis]"]
+    Node5[API Gateway / Load Balancer]
+    Node6["Storage: S3 + CloudFront"]
+
+    Node1 -->|HTTPS:443| Node2
+    Node2 -->|TCP:3306| Node3
+    Node2 -->|TCP:6379| Node4
+    Node1 <--> Node5
+    Node2 --> Node6

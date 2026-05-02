@@ -1,0 +1,23 @@
+flowchart TB
+    Internet((Internet))
+
+    subgraph Zero_Trust_Network[Zero Trust Network - Micro-segmentation]
+        ZTGateway[Zero Trust Gateway]
+
+        subgraph App_Segment[App Segment - Isolated]
+            AppServer[App Server - Least Privilege]
+        end
+
+        subgraph DB_Segment[DB Segment - Isolated]
+            Database[(Database - Encrypted)]
+        end
+
+        subgraph Auth_Segment[Auth Segment - Isolated]
+            AuthServer[Auth Server - MFA Required]
+        end
+    end
+
+    Internet --> ZTGateway
+    ZTGateway -->|Verified| AuthServer
+    AuthServer -->|Token| AppServer
+    AppServer -->|Minimal Access| Database

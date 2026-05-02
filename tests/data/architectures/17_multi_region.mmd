@@ -1,0 +1,24 @@
+flowchart TB
+    Users((Global Users))
+    GlobalDNS[Global Load Balancer DNS]
+    
+    subgraph Region_US
+        USALB[US Load Balancer]
+        USApp[US Application]
+        USDB[(US Primary DB)]
+    end
+    
+    subgraph Region_EU
+        EUALB[EU Load Balancer]
+        EUApp[EU Application]
+        EUDB[(EU Replica DB)]
+    end
+    
+    Users --> GlobalDNS
+    GlobalDNS --> USALB
+    GlobalDNS --> EUALB
+    USALB --> USApp
+    EUALB --> EUApp
+    USApp --> USDB
+    EUApp --> EUDB
+    USDB <-->|Replication| EUDB

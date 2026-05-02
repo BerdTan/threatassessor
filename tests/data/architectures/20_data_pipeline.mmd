@@ -1,0 +1,28 @@
+flowchart LR
+    DataSources((Data Sources))
+    
+    subgraph Ingestion
+        KafkaCluster[Kafka Cluster]
+    end
+    
+    subgraph Processing
+        SparkCluster[Spark Cluster]
+    end
+    
+    subgraph Storage
+        DataLake[(Data Lake)]
+        DataWarehouse[(Data Warehouse)]
+    end
+    
+    subgraph Analytics
+        BI[BI Dashboard]
+        ML[ML Models]
+    end
+    
+    DataSources --> KafkaCluster
+    KafkaCluster --> SparkCluster
+    SparkCluster --> DataLake
+    SparkCluster --> DataWarehouse
+    DataLake --> ML
+    DataWarehouse --> BI
+    ML --> BI

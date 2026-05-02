@@ -1,0 +1,36 @@
+flowchart TB
+    Users((Users))
+    
+    subgraph API_Gateway_Layer
+        APIGateway[API Gateway]
+    end
+    
+    subgraph Microservices
+        UserService[User Service]
+        OrderService[Order Service]
+        PaymentService[Payment Service]
+        InventoryService[Inventory Service]
+    end
+    
+    subgraph Message_Bus
+        MessageQueue[Message Queue]
+    end
+    
+    subgraph Databases
+        UserDB[(User DB)]
+        OrderDB[(Order DB)]
+        PaymentDB[(Payment DB)]
+        InventoryDB[(Inventory DB)]
+    end
+    
+    Users --> APIGateway
+    APIGateway --> UserService
+    APIGateway --> OrderService
+    APIGateway --> PaymentService
+    UserService --> UserDB
+    OrderService --> OrderDB
+    OrderService --> MessageQueue
+    PaymentService --> PaymentDB
+    PaymentService --> MessageQueue
+    InventoryService --> InventoryDB
+    MessageQueue --> InventoryService

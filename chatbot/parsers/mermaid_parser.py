@@ -132,6 +132,7 @@ class MermaidParser:
             (r'(\w+)\[\(([^\]]+)\)\]', 'cylinder'),    # [(label)]
             (r'(\w+)\(\(([^\)]+)\)\)', 'circle'),      # ((label))
             (r'(\w+)\{{([^\}]+)\}}', 'hexagon'),       # {{label}}
+            (r'(\w+)\["([^"]+)"\]', 'rectangle'),      # ["label with special chars"]
             (r'(\w+)\[([^\]]+)\]', 'rectangle'),       # [label]
             (r'(\w+)\(([^\)]+)\)', 'rounded'),         # (label)
         ]

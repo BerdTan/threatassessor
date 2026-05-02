@@ -1,0 +1,28 @@
+flowchart TB
+    Internet((Internet))
+
+    subgraph Azure_Cloud[Azure Cloud]
+        subgraph Hub_VNet[Hub VNet]
+            Firewall[Azure Firewall]
+            VPN[VPN Gateway]
+        end
+
+        subgraph Spoke1[Spoke VNet 1 - Production]
+            App1[Web App 1]
+        end
+
+        subgraph Spoke2[Spoke VNet 2 - Development]
+            App2[Dev App]
+        end
+
+        subgraph Spoke3[Spoke VNet 3 - Database]
+            SQL[(Azure SQL)]
+        end
+    end
+
+    Internet --> Firewall
+    Firewall --> App1
+    Firewall --> App2
+    App1 --> SQL
+    App2 --> SQL
+    VPN ---|Remote Access| Firewall

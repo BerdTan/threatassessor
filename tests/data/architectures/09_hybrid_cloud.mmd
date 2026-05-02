@@ -1,0 +1,20 @@
+flowchart TB
+    Users((End Users))
+
+    subgraph On_Premises[On-Premises Data Center]
+        OnPremApp[Legacy Application]
+        OnPremDB[(On-Prem Database)]
+    end
+
+    subgraph AWS_Cloud[AWS Cloud]
+        DirectConnect[Direct Connect]
+        CloudApp[Cloud Application]
+        S3[(S3 Bucket)]
+    end
+
+    Users --> CloudApp
+    Users --> OnPremApp
+    CloudApp --> S3
+    CloudApp --> DirectConnect
+    DirectConnect --> OnPremDB
+    OnPremApp --> OnPremDB

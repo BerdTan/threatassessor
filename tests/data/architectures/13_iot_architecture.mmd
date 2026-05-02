@@ -1,0 +1,21 @@
+flowchart TB
+    IoTDevices((IoT Devices))
+    
+    subgraph Edge_Layer
+        EdgeGateway[Edge Gateway]
+    end
+    
+    subgraph Cloud_Platform
+        IoTHub[IoT Hub]
+        StreamProcessing[Stream Processing]
+        DataLake[(Data Lake)]
+        Analytics[Analytics Engine]
+        Dashboard[Dashboard]
+    end
+    
+    IoTDevices -->|MQTT| EdgeGateway
+    EdgeGateway -->|TLS| IoTHub
+    IoTHub --> StreamProcessing
+    StreamProcessing --> DataLake
+    DataLake --> Analytics
+    Analytics --> Dashboard

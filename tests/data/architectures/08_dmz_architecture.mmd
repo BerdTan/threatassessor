@@ -1,0 +1,24 @@
+flowchart TB
+    Internet((Internet))
+
+    subgraph DMZ[DMZ - Demilitarized Zone]
+        ExtFirewall[External Firewall]
+        WebServer[Web Server]
+        EmailServer[Email Server]
+    end
+
+    subgraph Internal_Network[Internal Network]
+        IntFirewall[Internal Firewall]
+        AppServer[Application Server]
+        Database[(Database)]
+        FileServer[File Server]
+    end
+
+    Internet --> ExtFirewall
+    ExtFirewall --> WebServer
+    ExtFirewall --> EmailServer
+    WebServer --> IntFirewall
+    EmailServer --> IntFirewall
+    IntFirewall --> AppServer
+    AppServer --> Database
+    AppServer --> FileServer

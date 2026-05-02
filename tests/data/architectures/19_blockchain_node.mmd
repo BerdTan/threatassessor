@@ -1,0 +1,17 @@
+flowchart LR
+    Peers((Peer Nodes))
+    
+    subgraph Blockchain_Node
+        APIEndpoint[API Endpoint]
+        Validator[Validator Service]
+        Consensus[Consensus Engine]
+        StateDB[(State Database)]
+        BlockStorage[(Block Storage)]
+    end
+    
+    Peers <-->|P2P Protocol| Validator
+    APIEndpoint --> Validator
+    Validator --> Consensus
+    Consensus --> StateDB
+    Consensus --> BlockStorage
+    StateDB <--> BlockStorage

@@ -1,0 +1,60 @@
+flowchart TB
+    Internet((Internet))
+    Partners((Partners))
+
+    subgraph Perimeter[Perimeter Security]
+        DDoSProtection[DDoS Protection]
+        WAF[WAF]
+    end
+
+    subgraph DMZ
+        LoadBalancer[Load Balancer]
+        ReverseProxy[Reverse Proxy]
+    end
+
+    subgraph Application_Tier[Application Tier]
+        WebApp1[Web App 1]
+        WebApp2[Web App 2]
+        APIServer[API Server]
+    end
+
+    subgraph Business_Logic[Business Logic Tier]
+        AppServer1[App Server 1]
+        AppServer2[App Server 2]
+        QueueService[Message Queue]
+    end
+
+    subgraph Data_Tier[Data Tier]
+        PrimaryDB[(Primary Database)]
+        ReplicaDB[(Replica Database)]
+        CacheServer[Cache Server]
+    end
+
+    subgraph Management[Management & Monitoring]
+        AdminPortal[Admin Portal]
+        Monitoring[Monitoring System]
+    end
+
+    Internet --> DDoSProtection
+    Partners --> DDoSProtection
+    DDoSProtection --> WAF
+    WAF --> LoadBalancer
+    LoadBalancer --> ReverseProxy
+    ReverseProxy --> WebApp1
+    ReverseProxy --> WebApp2
+    ReverseProxy --> APIServer
+    WebApp1 --> AppServer1
+    WebApp2 --> AppServer2
+    APIServer --> AppServer1
+    APIServer --> AppServer2
+    AppServer1 --> QueueService
+    AppServer2 --> QueueService
+    AppServer1 --> PrimaryDB
+    AppServer2 --> PrimaryDB
+    AppServer1 --> CacheServer
+    AppServer2 --> CacheServer
+    PrimaryDB --> ReplicaDB
+    AdminPortal --> PrimaryDB
+    Monitoring --> WebApp1
+    Monitoring --> AppServer1
+    Monitoring --> PrimaryDB

@@ -1,0 +1,87 @@
+{
+  "architecture": "03_aws_3tier.mmd",
+  "description": "Standard AWS 3-tier architecture with load balancer",
+  "controls_present": [
+    "load balancer",
+    "network segmentation"
+  ],
+  "controls_missing": [
+    "waf",
+    "mfa",
+    "edr",
+    "backup",
+    "encryption at rest",
+    "ddos protection"
+  ],
+  "expected_attack_paths": [
+    {
+      "id": "AP-1",
+      "entry": "Internet",
+      "target": "RDS",
+      "path": ["Internet", "ALB", "App1", "RDS"],
+      "techniques": [
+        "T1190",
+        "T1078",
+        "T1213"
+      ],
+      "technique_names": [
+        "Exploit Public-Facing Application",
+        "Valid Accounts",
+        "Data from Information Repositories"
+      ],
+      "rationale": "ALB provides load balancing but no WAF, apps can be exploited, direct DB access"
+    },
+    {
+      "id": "AP-2",
+      "entry": "Internet",
+      "target": "RDS",
+      "path": ["Internet", "ALB", "App2", "RDS"],
+      "techniques": [
+        "T1190",
+        "T1078",
+        "T1213"
+      ],
+      "technique_names": [
+        "Exploit Public-Facing Application",
+        "Valid Accounts",
+        "Data from Information Repositories"
+      ],
+      "rationale": "Redundant path through App2, same vulnerabilities"
+    }
+  ],
+  "expected_risk_score": 65,
+  "expected_defensibility": 40,
+  "rapids_assessment": {
+    "ransomware": {
+      "risk": 60,
+      "defensibility": 30,
+      "rationale": "Network segmentation helps but no backup or EDR visible"
+    },
+    "application_vulns": {
+      "risk": 75,
+      "defensibility": 35,
+      "rationale": "No WAF, Internet-facing ALB, unknown patch status"
+    },
+    "phishing": {
+      "risk": 70,
+      "defensibility": 20,
+      "rationale": "No MFA mentioned"
+    },
+    "insider_threat": {
+      "risk": 65,
+      "defensibility": 35,
+      "rationale": "Subnet segmentation provides some isolation but no access controls visible"
+    },
+    "dos": {
+      "risk": 40,
+      "defensibility": 60,
+      "rationale": "ALB provides some protection, multiple app servers (redundancy)"
+    },
+    "supply_chain": {
+      "risk": 50,
+      "defensibility": 20,
+      "rationale": "Cannot assess without CI/CD visibility"
+    }
+  },
+  "rationale": "Standard AWS architecture with basic segmentation and load balancing, but missing key security controls (WAF, MFA, EDR, backup)"
+}

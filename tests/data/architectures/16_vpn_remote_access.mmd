@@ -1,0 +1,17 @@
+flowchart TB
+    RemoteWorkers((Remote Workers))
+    
+    VPNGateway[VPN Gateway with MFA]
+    
+    subgraph Corporate_Network
+        ActiveDirectory[Active Directory]
+        FileServer[File Server]
+        InternalApp[Internal Application]
+        Database[(Corporate Database)]
+    end
+    
+    RemoteWorkers -->|VPN Tunnel| VPNGateway
+    VPNGateway --> ActiveDirectory
+    VPNGateway --> FileServer
+    VPNGateway --> InternalApp
+    InternalApp --> Database
