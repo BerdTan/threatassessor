@@ -1,0 +1,99 @@
+{
+  "architecture": "05_legacy_flat_network.mmd",
+  "description": "Legacy flat network - worst security practice, no segmentation, mesh connectivity",
+  "controls_present": [],
+  "controls_missing": [
+    "firewall",
+    "network segmentation",
+    "waf",
+    "mfa",
+    "edr",
+    "ids/ips",
+    "access logging",
+    "least privilege",
+    "vlan separation",
+    "dmz"
+  ],
+  "expected_attack_paths": [
+    {
+      "id": "AP-1",
+      "entry": "Internet",
+      "target": "Database",
+      "path": ["Internet", "Router", "Database"],
+      "techniques": ["T1190", "T1078", "T1213"],
+      "technique_names": ["Exploit Public-Facing Application", "Valid Accounts", "Data from Information Repositories"],
+      "rationale": "Direct path from Internet to Database through router with no firewall"
+    },
+    {
+      "id": "AP-2",
+      "entry": "Internet",
+      "target": "FileServer",
+      "path": ["Internet", "Router", "FileServer"],
+      "techniques": ["T1190", "T1005"],
+      "technique_names": ["Exploit Public-Facing Application", "Data from Local System"],
+      "rationale": "Direct access to file server from Internet"
+    },
+    {
+      "id": "AP-3",
+      "entry": "Internet",
+      "target": "Workstation1",
+      "path": ["Internet", "Router", "Workstation1"],
+      "techniques": ["T1190", "T1210", "T1570"],
+      "technique_names": ["Exploit Public-Facing Application", "Exploitation of Remote Services", "Lateral Tool Transfer"],
+      "rationale": "Workstations directly exposed to Internet, can pivot to other resources"
+    },
+    {
+      "id": "AP-4",
+      "entry": "Workstation1",
+      "target": "Database",
+      "path": ["Workstation1", "FileServer", "Database"],
+      "techniques": ["T1078", "T1021", "T1213"],
+      "technique_names": ["Valid Accounts", "Remote Services", "Data from Information Repositories"],
+      "rationale": "Lateral movement from compromised workstation through file server to database"
+    },
+    {
+      "id": "AP-5",
+      "entry": "WebServer",
+      "target": "Database",
+      "path": ["WebServer", "Database"],
+      "techniques": ["T1190", "T1213"],
+      "technique_names": ["Exploit Public-Facing Application", "Data from Information Repositories"],
+      "rationale": "Direct connection between web server and database (common in flat networks)"
+    }
+  ],
+  "expected_risk_score": 95,
+  "expected_defensibility": 5,
+  "rapids_assessment": {
+    "ransomware": {
+      "risk": 95,
+      "defensibility": 5,
+      "rationale": "No segmentation, no EDR, no backup visible. Everything is one hop from Internet."
+    },
+    "application_vulns": {
+      "risk": 95,
+      "defensibility": 5,
+      "rationale": "No WAF, no firewall, direct Internet exposure of all systems"
+    },
+    "phishing": {
+      "risk": 85,
+      "defensibility": 5,
+      "rationale": "Workstations exposed, no MFA, no email gateway"
+    },
+    "insider_threat": {
+      "risk": 95,
+      "defensibility": 5,
+      "rationale": "No access logging, no segmentation, workstations can reach everything"
+    },
+    "dos": {
+      "risk": 90,
+      "defensibility": 5,
+      "rationale": "Single router, no load balancing, no DDoS protection"
+    },
+    "supply_chain": {
+      "risk": 70,
+      "defensibility": 10,
+      "rationale": "Flat network means compromised vendor access = full access"
+    }
+  },
+  "rationale": "Worst-case legacy architecture: Flat network with no segmentation, no firewall on router, everything directly accessible from Internet, mesh connectivity allows unlimited lateral movement. This is a textbook example of what NOT to do."
+}

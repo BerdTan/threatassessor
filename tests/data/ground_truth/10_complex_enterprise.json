@@ -1,0 +1,96 @@
+{
+  "architecture": "10_complex_enterprise.mmd",
+  "description": "Complex enterprise multi-tier architecture with perimeter security, DMZ, and comprehensive monitoring",
+  "controls_present": [
+    "ddos protection",
+    "waf",
+    "load balancer",
+    "reverse proxy",
+    "network segmentation",
+    "database replication",
+    "cache",
+    "message queue",
+    "monitoring"
+  ],
+  "controls_missing": [
+    "mfa",
+    "edr",
+    "backup",
+    "encryption at rest",
+    "api rate limiting",
+    "access logging"
+  ],
+  "expected_attack_paths": [
+    {
+      "id": "AP-1",
+      "entry": "Internet",
+      "target": "PrimaryDB",
+      "path": ["Internet", "DDoSProtection", "WAF", "LoadBalancer", "ReverseProxy", "WebApp1", "AppServer1", "PrimaryDB"],
+      "techniques": ["T1190", "T1190", "T1078", "T1213"],
+      "technique_names": ["Exploit Public-Facing Application", "Exploit Public-Facing Application", "Valid Accounts", "Data from Information Repositories"],
+      "rationale": "Main attack path through web application tier, well-defended with DDoS protection and WAF"
+    },
+    {
+      "id": "AP-2",
+      "entry": "Partners",
+      "target": "PrimaryDB",
+      "path": ["Partners", "DDoSProtection", "WAF", "LoadBalancer", "ReverseProxy", "APIServer", "AppServer1", "PrimaryDB"],
+      "techniques": ["T1199", "T1078", "T1213"],
+      "technique_names": ["Trusted Relationship", "Valid Accounts", "Data from Information Repositories"],
+      "rationale": "Partner access through API server, same perimeter defenses"
+    },
+    {
+      "id": "AP-3",
+      "entry": "AdminPortal",
+      "target": "PrimaryDB",
+      "path": ["AdminPortal", "PrimaryDB"],
+      "techniques": ["T1078", "T1213"],
+      "technique_names": ["Valid Accounts", "Data from Information Repositories"],
+      "rationale": "Admin portal has direct database access - high-value target, no MFA mentioned"
+    },
+    {
+      "id": "AP-4",
+      "entry": "Internet",
+      "target": "CacheServer",
+      "path": ["Internet", "DDoSProtection", "WAF", "LoadBalancer", "ReverseProxy", "WebApp1", "AppServer1", "CacheServer"],
+      "techniques": ["T1190", "T1213"],
+      "technique_names": ["Exploit Public-Facing Application", "Data from Information Repositories"],
+      "rationale": "Cache server may contain sensitive session data or cached queries"
+    }
+  ],
+  "expected_risk_score": 45,
+  "expected_defensibility": 65,
+  "rapids_assessment": {
+    "ransomware": {
+      "risk": 50,
+      "defensibility": 60,
+      "rationale": "Good segmentation, database replication (availability), but no backup or EDR visible"
+    },
+    "application_vulns": {
+      "risk": 35,
+      "defensibility": 75,
+      "rationale": "Strong perimeter: DDoS protection, WAF, load balancer, reverse proxy. Well-architected."
+    },
+    "phishing": {
+      "risk": 60,
+      "defensibility": 40,
+      "rationale": "No MFA mentioned, admin portal is high-value target"
+    },
+    "insider_threat": {
+      "risk": 55,
+      "defensibility": 55,
+      "rationale": "Good segmentation, monitoring present, but no access logging or least privilege visible"
+    },
+    "dos": {
+      "risk": 25,
+      "defensibility": 85,
+      "rationale": "Excellent DoS protection: DDoS mitigation, load balancer, reverse proxy, database replication"
+    },
+    "supply_chain": {
+      "risk": 50,
+      "defensibility": 50,
+      "rationale": "Message queue and multiple tiers = more dependencies, but segmentation helps contain"
+    }
+  },
+  "rationale": "Well-designed enterprise architecture with defense-in-depth: Perimeter security (DDoS + WAF), DMZ (load balancer + reverse proxy), multi-tier application (separation of concerns), database replication (availability), monitoring. Key gaps: No MFA (admin portal risk), no EDR (detection gap), no backup visible (ransomware risk). Overall good security posture but room for improvement."
+}
