@@ -2,8 +2,10 @@
   "architecture": "11_edge_case_special_chars.mmd",
   "description": "Edge case test - special characters in node labels (parentheses, brackets, colons, slashes, ampersands)",
   "controls_present": [
+    "api gateway",
     "load balancer",
-    "cache"
+    "cache",
+    "cdn"
   ],
   "controls_missing": [
     "firewall",

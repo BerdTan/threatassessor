@@ -3,7 +3,7 @@
   "description": "Modern agentic AI system with LLM APIs, vector databases, and tool integrations",
   "controls_present": [
     "api gateway",
-    "sandbox (code execution)",
+    "sandbox",
     "audit log"
   ],
   "controls_missing": [
