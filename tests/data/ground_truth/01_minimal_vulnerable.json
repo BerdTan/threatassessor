@@ -1,0 +1,67 @@
+{
+  "architecture": "01_minimal_vulnerable.mmd",
+  "description": "Minimal vulnerable architecture - Internet directly to web server to database, no controls",
+  "controls_present": [],
+  "controls_missing": [
+    "waf",
+    "mfa",
+    "firewall",
+    "ids/ips",
+    "network segmentation",
+    "access logging"
+  ],
+  "expected_attack_paths": [
+    {
+      "id": "AP-1",
+      "entry": "Internet",
+      "target": "Database",
+      "path": ["Internet", "WebServer", "Database"],
+      "techniques": [
+        "T1190",
+        "T1078",
+        "T1213"
+      ],
+      "technique_names": [
+        "Exploit Public-Facing Application",
+        "Valid Accounts",
+        "Data from Information Repositories"
+      ],
+      "rationale": "Direct path from Internet to Database through Web Server with no security controls"
+    }
+  ],
+  "expected_risk_score": 90,
+  "expected_defensibility": 10,
+  "rapids_assessment": {
+    "ransomware": {
+      "risk": 60,
+      "defensibility": 0,
+      "rationale": "No backup, no EDR, no segmentation"
+    },
+    "application_vulns": {
+      "risk": 95,
+      "defensibility": 5,
+      "rationale": "No WAF, direct Internet exposure, no patching visibility"
+    },
+    "phishing": {
+      "risk": 70,
+      "defensibility": 0,
+      "rationale": "No MFA, no email gateway mentioned"
+    },
+    "insider_threat": {
+      "risk": 80,
+      "defensibility": 10,
+      "rationale": "No access logging, no least privilege, direct DB access"
+    },
+    "dos": {
+      "risk": 85,
+      "defensibility": 0,
+      "rationale": "No load balancer, no DDoS protection, single web server"
+    },
+    "supply_chain": {
+      "risk": 50,
+      "defensibility": 20,
+      "rationale": "Cannot assess without more context"
+    }
+  },
+  "rationale": "Worst-case architecture: Direct Internet exposure, no security controls, single path to sensitive data"
+}

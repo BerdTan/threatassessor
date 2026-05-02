@@ -1,0 +1,25 @@
+flowchart TB
+    subgraph Internet_Zone
+        Internet((Internet Users))
+    end
+
+    subgraph AWS_Cloud[AWS Cloud]
+        subgraph Public_Subnet[Public Subnet]
+            ALB[Application Load Balancer]
+        end
+
+        subgraph Private_Subnet_App[Private Subnet - App Tier]
+            App1[App Server 1]
+            App2[App Server 2]
+        end
+
+        subgraph Private_Subnet_DB[Private Subnet - Database Tier]
+            RDS[(RDS Database)]
+        end
+    end
+
+    Internet --> ALB
+    ALB --> App1
+    ALB --> App2
+    App1 --> RDS
+    App2 --> RDS

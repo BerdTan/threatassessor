@@ -1,0 +1,74 @@
+{
+  "architecture": "02_minimal_defended.mmd",
+  "description": "Minimal defended architecture - Multiple security layers between Internet and database",
+  "controls_present": [
+    "waf",
+    "mfa",
+    "load balancer",
+    "edr",
+    "encryption"
+  ],
+  "controls_missing": [
+    "ids/ips",
+    "network segmentation",
+    "access logging",
+    "backup",
+    "ddos protection"
+  ],
+  "expected_attack_paths": [
+    {
+      "id": "AP-1",
+      "entry": "Internet",
+      "target": "Database",
+      "path": ["Internet", "WAF", "ALB", "MFA", "WebServer", "Database"],
+      "techniques": [
+        "T1190",
+        "T1110",
+        "T1078",
+        "T1213"
+      ],
+      "technique_names": [
+        "Exploit Public-Facing Application",
+        "Brute Force",
+        "Valid Accounts",
+        "Data from Information Repositories"
+      ],
+      "rationale": "Path exists but heavily defended - WAF filters attacks, MFA blocks unauthorized access, EDR detects malicious activity"
+    }
+  ],
+  "expected_risk_score": 40,
+  "expected_defensibility": 70,
+  "rapids_assessment": {
+    "ransomware": {
+      "risk": 40,
+      "defensibility": 60,
+      "rationale": "EDR present (detects ransomware), but no backup mentioned"
+    },
+    "application_vulns": {
+      "risk": 35,
+      "defensibility": 75,
+      "rationale": "WAF present (blocks common exploits), load balancer (availability)"
+    },
+    "phishing": {
+      "risk": 25,
+      "defensibility": 80,
+      "rationale": "MFA present (blocks stolen credentials)"
+    },
+    "insider_threat": {
+      "risk": 50,
+      "defensibility": 50,
+      "rationale": "MFA helps, but no access logging or least privilege mentioned"
+    },
+    "dos": {
+      "risk": 45,
+      "defensibility": 55,
+      "rationale": "Load balancer helps, but no DDoS protection or auto-scaling"
+    },
+    "supply_chain": {
+      "risk": 50,
+      "defensibility": 20,
+      "rationale": "Cannot assess without more context"
+    }
+  },
+  "rationale": "Well-defended architecture: Multiple security layers (WAF, MFA, EDR), but room for improvement (backup, logging, DDoS protection)"
+}

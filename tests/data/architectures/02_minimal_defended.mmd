@@ -1,0 +1,13 @@
+flowchart TB
+    Internet((Internet))
+    WAF[WAF - Web Application Firewall]
+    ALB[Application Load Balancer]
+    MFA[MFA Gateway]
+    WebServer[Web Server with EDR]
+    Database[(Database with Encryption)]
+
+    Internet --> WAF
+    WAF --> ALB
+    ALB --> MFA
+    MFA --> WebServer
+    WebServer --> Database
