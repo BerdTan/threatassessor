@@ -24,7 +24,11 @@
       "Bash(unzip -l ai_analysis_report.docx)",
       "Bash(python3 -m pip list)",
       "Bash(python3 -c \"import docx2txt; print\\(docx2txt.process\\('/mnt/c/BACKUP/DEV-TEST/_codex/ai_analysis_report.docx'\\)\\)\")",
-      "Bash(pytest tests/ --collect-only)"
+      "Bash(pytest tests/ --collect-only)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -m json.tool --compact)",
+      "Bash(python3 *)",
+      "Bash(git checkout *)"
     ],
     "deny": []
   }
