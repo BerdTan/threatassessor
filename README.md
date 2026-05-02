@@ -2,7 +2,7 @@
 
 Production-ready CLI tool that maps threat scenarios to MITRE ATT&CK techniques using semantic search and LLM analysis.
 
-**Current Status:** ✅ Phase 2A Complete (Production CLI with Hybrid Mitigations + Scoring)
+**Current Status:** ✅ Phase 2 Complete (84.9% accuracy, 79% confidence, production-ready)
 
 ---
 
@@ -250,11 +250,11 @@ python3 -m chatbot.main --format all \
 |-------|--------|-------------|
 | **Phase 1** | ✅ Complete | Keyword-based search (legacy) |
 | **Phase 2A** | ✅ Complete | Semantic search + LLM + Hybrid mitigations + Scoring |
-| **Phase 2.2** | ⏳ Next | Validation testing (1 hour) |
-| **Phase 3** | 📦 Backlog | Architecture analysis (5 hours) |
-| **Phase 4** | 📦 Backlog | Web UI (15-20 hours) |
+| **Phase 2.2** | ✅ Complete | Validation testing (84.9% accuracy, 79% confidence) |
+| **Phase 3** | 🔄 Redesign | Architecture analysis (reverted, redesigning with proper rigor) |
+| **Phase 4** | 📦 Future | Web UI (15-20 hours) |
 
-**Current Focus:** Production CLI with hybrid mitigations and multi-format output
+**Current Status:** Phase 2 production-ready (79% confidence) | Phase 3 redesign in progress (see docs/planning/PHASE3_REDESIGN.md)
 
 ---
 
