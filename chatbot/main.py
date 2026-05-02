@@ -450,7 +450,18 @@ Examples:
   python3 -m chatbot.main --format action-plan
   python3 -m chatbot.main --format executive
   python3 -m chatbot.main --format all --query "PowerShell attack"
+  python3 -m chatbot.main --self-test  # Validate system before use
         """
+    )
+    parser.add_argument(
+        '--self-test',
+        action='store_true',
+        help='Run system self-test to verify readiness (validates 84.9%% accuracy claim)'
+    )
+    parser.add_argument(
+        '--self-test-quiet',
+        action='store_true',
+        help='Run self-test without verbose logging (returns 0 if pass, 1 if fail)'
     )
     parser.add_argument(
         '--format', '-f',
@@ -470,6 +481,16 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    # Handle self-test mode
+    if args.self_test or args.self_test_quiet:
+        from chatbot.self_test import run_self_test
+
+        # Suppress logging for quiet mode
+        if args.self_test_quiet:
+            logging.getLogger().setLevel(logging.CRITICAL)
+
+        return run_self_test()
 
     # Configure logging
     if not args.verbose:

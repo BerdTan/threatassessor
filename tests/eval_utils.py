@@ -27,12 +27,19 @@ def build_fake_cache(mitre: MitreHelper) -> Dict[str, Dict]:
     cache = {}
     for technique in mitre.get_techniques():
         technique_id = technique.get("id")
+        # Extract external_id from references
+        external_id = ""
+        for ref in technique.get("external_references", []):
+            if ref.get("source_name") == "mitre-attack":
+                external_id = ref.get("external_id", "")
+                break
+
         cache[technique_id] = {
-            "external_id": mitre.extract_external_id(technique),
+            "external_id": external_id,
             "name": technique.get("name", ""),
             "text": build_technique_text(
                 {
-                    "external_id": mitre.extract_external_id(technique),
+                    "external_id": external_id,
                     "name": technique.get("name", ""),
                     "description": technique.get("description", ""),
                 }
