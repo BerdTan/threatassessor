@@ -765,17 +765,211 @@ else:
 
 ---
 
-### Phase 3G: Framework Flexibility (2-3 hours)
+### Phase 3G: Image-to-Mermaid Conversion (3-4 hours) 🖼️ USER-FRIENDLY
+**Goal:** Accept PNG/JPG architecture diagrams, convert to .mmd
+
+**Problem:** Users often have architecture diagrams in image form (draw.io exports, screenshots, Visio exports)
+
+**Solution:** Multi-modal LLM (vision API) to extract Mermaid syntax
+
+**Implementation:**
+```python
+def image_to_mermaid(
+    image_path: str,
+    llm_model: str = "claude-sonnet-4"  # Has vision capabilities
+) -> Dict:
+    """
+    Convert architecture diagram image to Mermaid syntax.
+    
+    Uses vision-capable LLM to:
+    1. Identify nodes (boxes, circles, cylinders)
+    2. Extract labels (text inside nodes)
+    3. Detect edges (arrows, lines)
+    4. Infer topology (Internet → ALB → App → DB)
+    5. Generate Mermaid flowchart syntax
+    
+    Returns:
+    {
+        "mermaid": "flowchart TB\n...",
+        "confidence": 0.85,  # How confident in conversion
+        "warnings": ["Could not read label on Node 3"],
+        "detected_components": ["Internet", "ALB", "App Server", "Database"]
+    }
+    """
+    
+    # Read image
+    with open(image_path, 'rb') as f:
+        image_bytes = f.read()
+    
+    # Vision prompt
+    prompt = """
+You are an expert at analyzing architecture diagrams.
+
+**Task:** Convert this architecture diagram to Mermaid flowchart syntax.
+
+**Instructions:**
+1. Identify all nodes (boxes, circles, cylinders, clouds)
+2. Extract text labels from each node
+3. Identify all connections (arrows, lines) between nodes
+4. Determine flow direction (usually top-to-bottom or left-to-right)
+5. Generate Mermaid flowchart syntax
+
+**Output Format:**
+```mermaid
+flowchart TB
+    Node1[Label 1]
+    Node2[Label 2]
+    Node1 --> Node2
+```
+
+**Special Cases:**
+- Subgraphs: Use `subgraph` for grouped components (VPCs, networks)
+- Node shapes: 
+  - Box: `Node[Label]`
+  - Circle: `Node((Label))`
+  - Cylinder (database): `Node[(Label)]`
+  - Cloud: `Node{{Label}}`
+- Bidirectional: `Node1 <--> Node2`
+
+**Important:**
+- If you can't read a label, use descriptive placeholder: `Unknown_DB_1`
+- If uncertain about connection direction, explain in warning
+- Include confidence score (0-100) for conversion quality
+
+Analyze the diagram and output Mermaid syntax + metadata (JSON format).
+"""
+    
+    # Call vision LLM
+    response = llm.generate_with_vision(
+        prompt=prompt,
+        image_bytes=image_bytes,
+        model=llm_model
+    )
+    
+    # Parse response
+    result = parse_vision_response(response)
+    
+    # Validate generated Mermaid (does it parse?)
+    try:
+        validate_mermaid_syntax(result["mermaid"])
+        result["valid"] = True
+    except Exception as e:
+        result["valid"] = False
+        result["parse_error"] = str(e)
+    
+    return result
+```
+
+**Usage Flow:**
+```python
+# CLI accepts both .mmd and image files
+if file_path.endswith(('.png', '.jpg', '.jpeg')):
+    print("🖼️  Detected image file, converting to Mermaid...")
+    
+    # Convert image → Mermaid
+    conversion = image_to_mermaid(file_path)
+    
+    if not conversion["valid"]:
+        print(f"❌ Conversion failed: {conversion['parse_error']}")
+        print("💡 Try: Manually create .mmd file or use clearer diagram")
+        return 1
+    
+    if conversion["confidence"] < 70:
+        print(f"⚠️  Low confidence conversion ({conversion['confidence']}%)")
+        print("   Warnings:", conversion["warnings"])
+        print("   Review generated Mermaid before analysis")
+    
+    # Save converted .mmd
+    output_path = file_path.replace('.png', '.mmd')
+    with open(output_path, 'w') as f:
+        f.write(conversion["mermaid"])
+    
+    print(f"✅ Converted to: {output_path}")
+    print(f"   Detected: {', '.join(conversion['detected_components'])}")
+    
+    # Proceed with deterministic analysis
+    mermaid_text = conversion["mermaid"]
+
+elif file_path.endswith('.mmd'):
+    # Direct .mmd input
+    with open(file_path, 'r') as f:
+        mermaid_text = f.read()
+
+# Continue with Phase 3 analysis
+result = analyze_architecture_security(mermaid_text, rag_documents)
+```
+
+**Fallback Strategy (When LLM Unavailable):**
+```python
+if not llm_available():
+    print("⚠️  LLM unavailable for image conversion")
+    print("💡 Please:")
+    print("   1. Convert image to Mermaid manually: https://mermaid.live/")
+    print("   2. Use OCR + manual editing")
+    print("   3. Recreate diagram as .mmd file")
+    print("   4. Try again when LLM service is available")
+    return 1
+```
+
+**Validation:**
+- ✅ Test with 10 architecture images (AWS, Azure, GCP, on-prem)
+- ✅ Manual review: Does generated Mermaid match image?
+- ✅ Confidence scores correlate with accuracy
+- ✅ Handles common diagram tools (draw.io, Visio, Lucidchart exports)
+- ✅ Graceful failure when LLM unavailable
+
+**Test Images to Create:**
+```
+tests/data/images/
+├── aws_3tier.png         # Simple 3-tier (Internet → ALB → App → DB)
+├── azure_hub_spoke.png   # Hub-spoke topology
+├── gcp_serverless.png    # Serverless (API Gateway → Functions)
+├── complex_enterprise.png # 15+ nodes, multiple VPCs
+├── hand_drawn.jpg        # Whiteboard photo (challenging)
+├── visio_export.png      # Visio diagram screenshot
+├── drawio_export.png     # draw.io export
+├── cloudy_labeled.png    # AWS icons with labels
+├── minimal_simple.png    # 3 boxes and arrows (baseline)
+└── low_quality.png       # Pixelated/blurry (edge case)
+```
+
+**Expected Conversion Quality:**
+- Simple diagrams (3-5 nodes): 90%+ accuracy
+- Medium diagrams (6-15 nodes): 75%+ accuracy
+- Complex diagrams (16+ nodes): 60%+ accuracy (manual review needed)
+- Hand-drawn/low-quality: 40-60% accuracy (may need manual fixes)
+
+**Key Design Decisions:**
+1. **Vision LLM Required:** Only works when LLM available (~33% uptime)
+2. **User Review:** Show confidence score, suggest manual review if <70%
+3. **Fallback:** Clear error message + instructions for manual conversion
+4. **Caching:** Save .mmd output so conversion only happens once
+5. **Validation:** Parse generated Mermaid to catch syntax errors
+
+**CLI Flag:**
+```bash
+# Image input (auto-converts to .mmd)
+python3 -m chatbot.main --architecture diagram.png
+
+# Mermaid input (direct)
+python3 -m chatbot.main --architecture diagram.mmd
+
+# Both supported seamlessly
+```
+
+---
+
+### Phase 3H: Framework Flexibility (2-3 hours)
 **Goal:** Support STRIDE, OWASP, etc.
 
 ---
 
-### Phase 3H: CLI + Docs (2-3 hours)
+### Phase 3I: CLI + Docs (2-3 hours)
 **Goal:** Production integration
 
 ---
 
-**Total Time Estimate:** 22-28 hours
+**Total Time Estimate:** 25-32 hours (was 22-28)
 
 **Critical Path:**
 1. **Phase 3A** (parser + 20 .mmd + ground truth) - MUST DO FIRST ⭐
@@ -813,27 +1007,46 @@ Good: Parse → Analyze → [Optional: LLM Validate] (always works)
 
 ## 🎯 Key Innovations
 
-### 1. LLM as Judge (Novel)
+### 1. Grounding-First Architecture (Critical)
+**Problem:** LLM hallucination + 33% availability  
+**Solution:** Deterministic foundation, LLM as optional augmentation
+- Parser + rules work 100% of time (no LLM needed)
+- Ground truth prevents hallucination
+- Graceful degradation when LLM unavailable
+- **Novel approach:** Build reliable core BEFORE adding AI layer
+
+### 2. Image-to-Mermaid Conversion (User-Friendly) 🖼️
+**Problem:** Users have diagrams in draw.io, Visio, screenshots  
+**Solution:** Vision-capable LLM converts PNG/JPG → Mermaid
+- Accepts architecture images directly
+- Auto-converts to .mmd with confidence scores
+- Handles common tools (draw.io, Visio, Lucidchart)
+- Falls back gracefully: clear instructions for manual conversion
+- **Why matters:** Dramatically lowers entry barrier (no .mmd expertise needed)
+
+### 3. LLM as Judge (Novel)
 - First architecture analysis tool to use LLM for self-validation
 - Scalable quality assurance (no manual labeling bottleneck)
 - Catches blind spots system misses
+- **Grounded by human-labeled ground truth** (prevents hallucination)
 
-### 2. Generative Test Suite
+### 4. Generative Test Suite
 - 100 diverse architectures (not just 1)
 - Ground truth for objective metrics
 - Continuous validation (add more as we go)
+- 10 test images for vision conversion
 
-### 3. Control Detection from Architecture
+### 5. Control Detection from Architecture
 - Parses labels for controls (not just RAG context)
 - Cross-validates RAG claims vs actual architecture
 - Flags discrepancies (warns user)
 
-### 4. Framework Flexibility
+### 6. Framework Flexibility
 - MITRE + RAPIDS core
 - STRIDE, OWASP, NIST, CIS, custom as augmentation
 - Not hardcoded to one framework
 
-### 5. Honest Confidence
+### 7. Honest Confidence
 - Objective metrics (recall, precision, MAE)
 - Three-way validation (system + LLM + human)
 - 85%+ target (achievable with proper testing)
@@ -843,13 +1056,32 @@ Good: Parse → Analyze → [Optional: LLM Validate] (always works)
 ## 📝 Next Steps
 
 1. **Review this plan** - Any concerns or additions?
-2. **Implement Phase 3A** - Parser + control detection (3-4 hours)
-3. **Test with 10 diverse architectures** - Validate foundation
-4. **LLM judge prototype** - Test feasibility (1 hour)
-5. **Decide on generative testing scope** - 100 cases or start smaller?
+2. **Implement Phase 3A** - Parser + 20 .mmd samples + ground truth (3-4 hours)
+3. **Test with 20 diverse architectures** - Validate foundation (deterministic only)
+4. **Implement Phase 3G** - Image-to-Mermaid conversion (3-4 hours)
+5. **Test with 10 architecture images** - Validate vision conversion
+6. **Complete Phase 3B-3E** - Deterministic system (80%+ confidence)
+7. **Optional: LLM judge prototype** - If time permits (adds 5%)
+8. **Generative testing** - Scale to 100 cases for production confidence
 
 ---
 
-**Version:** 1.0  
+## 🎯 Critical Path Summary
+
+**Must Have (80% confidence):**
+1. Phase 3A: Parser + 20 .mmd + ground truth (⭐ FOUNDATION)
+2. Phase 3B-3E: Deterministic analysis (⭐ CORE VALUE)
+3. Phase 3G: Image-to-Mermaid (🖼️ USER-FRIENDLY)
+
+**Nice to Have (85% confidence):**
+4. Phase 3F: LLM judge (⚡ OPTIONAL AUGMENTATION)
+5. Phase 3E: Generative testing at scale (100 cases)
+
+**Minimum Viable Phase 3:** Items 1-3 (parser + deterministic + image support)
+
+---
+
+**Version:** 2.0  
 **Date:** 2026-05-02  
+**Updated:** Added image-to-Mermaid conversion (Phase 3G)  
 **Status:** Awaiting approval to proceed
