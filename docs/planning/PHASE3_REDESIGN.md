@@ -22,6 +22,51 @@
 
 ## 🎯 Core Principles (Redesign)
 
+### 0. Grounding First, LLM Second (NEW - Critical)
+**Problem:** LLM has same availability issues as Phase 2 (~33% uptime) + hallucination risk
+
+**Solution:** Build deterministic foundation, LLM as optional augmentation
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────┐
+│ Deterministic Layer (Always Available)                 │
+│ - Mermaid parser (graph theory)                        │
+│ - Control detection (keyword matching + rules)         │
+│ - Attack paths (BFS graph traversal)                   │
+│ - MITRE mapping (context-aware rules)                  │
+│ - RAPIDS scoring (formulas)                            │
+│ → Confidence: 80%+ (without LLM)                       │
+└─────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────┐
+│ LLM Augmentation Layer (Optional, 33% uptime)          │
+│ - LLM as judge (validates system output)               │
+│ - Suggests missed attack paths                         │
+│ - Grounded by human-labeled ground truth               │
+│ → Confidence: 85%+ (when LLM available)                │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key Points:**
+- **Deterministic first** - Parser + 20 .mmd samples + ground truth (Phase 3A)
+- **Human validation** - Ground truth prevents hallucination
+- **LLM optional** - Augments when available, not core dependency
+- **Graceful degradation** - Works like Phase 2 fallback (keyword-based → rule-based)
+
+**Validation Strategy:**
+1. Test deterministic layer on 100 architectures → 80%+ confidence
+2. Add LLM judge (when available) → 85%+ confidence
+3. If LLM unavailable → fall back to 80% (still production-ready)
+
+**Why This Matters:**
+- LLM availability: ~33% (free tier, same as Phase 2)
+- LLM hallucination: Judge might invent non-existent attack paths
+- Ground truth: Human-labeled .mmd files are source of truth
+- Robustness: System works 100% of time (deterministic core)
+
+---
+
 ### 1. MITRE + RAPIDS = Core Baseline
 - **MITRE ATT&CK:** Authoritative technique taxonomy (Phase 2: 84.9% accuracy)
 - **RAPIDS:** Business-focused threat categories
@@ -558,46 +603,211 @@ print(f"Phase 3 Confidence: {confidence:.1%}")  # Target: 85%+
 
 ---
 
-## 🛠️ Implementation Phases
+## 🛠️ Implementation Phases (REVISED - Grounding First)
 
-### Phase 3A: Foundation (3-4 hours)
-- Parser (1-2 hours)
-- Control detection (2 hours)
-- Basic validation (10 manual test cases)
+**Priority Order:** Deterministic foundation → Human validation → LLM augmentation
 
-### Phase 3B: Attack Paths (4-5 hours)
-- Entry/target detection (1 hour)
-- Path construction (2 hours)
-- MITRE mapping (1 hour)
-- Validation (10 test cases with ground truth)
+### Phase 3A: Parser + Test Data (3-4 hours) ⭐ CRITICAL
+**Goal:** Solid deterministic foundation (no LLM dependency)
 
-### Phase 3C: RAPIDS + Prioritization (3-4 hours)
-- RAPIDS assessment (2 hours)
-- Impact/resistance prioritization (1 hour)
-- Validation (10 test cases)
+**Tasks:**
+1. **Mermaid Parser** (1.5 hours)
+   - Parse flowchart syntax (TB, LR, TD)
+   - Extract nodes, edges, subgraphs, labels
+   - Build graph representation (adjacency list)
+   - Handle edge cases (special characters, multi-line labels)
 
-### Phase 3D: LLM Judge (2-3 hours)
-- Implement LLM judge (1.5 hours)
-- Three-way comparison (system + LLM + human)
-- Calibration on 10 human-labeled cases
+2. **Sample MMD Collection** (1.5 hours)
+   - Create 20 diverse .mmd files (manual curation)
+   - Topologies: layered, mesh, hub-spoke, random
+   - Sizes: minimal (3 nodes), small (5-7), medium (10-15), large (20+)
+   - Patterns:
+     - `minimal_vulnerable.mmd` - 3 nodes, no controls (baseline)
+     - `minimal_defended.mmd` - 3 nodes with MFA, WAF
+     - `aws_3tier.mmd` - Internet → ALB → App → RDS
+     - `azure_hub_spoke.mmd` - Hub VNet with spokes
+     - `gcp_serverless.mmd` - API Gateway → Cloud Functions → Firestore
+     - `onprem_legacy.mmd` - Flat network, no segmentation
+     - `zero_trust.mmd` - Micro-segmentation, no implicit trust
+     - `dmz_architecture.mmd` - Internet → DMZ → Internal → Database
+     - `hybrid_cloud.mmd` - On-prem + cloud connected
+     - `mesh_network.mmd` - Fully connected (insecure)
+     - ... 10 more variants
 
-### Phase 3E: Generative Testing (3-4 hours)
-- Architecture generator (2 hours)
-- Generate 80 architectures
-- Add 20 manual curated cases
-- Run full test suite
+3. **Ground Truth Labels** (1 hour)
+   - For each .mmd, create `.ground_truth.json`:
+   ```json
+   {
+     "architecture": "aws_3tier.mmd",
+     "controls_present": ["alb", "security_group"],
+     "controls_missing": ["mfa", "waf", "edr"],
+     "expected_attack_paths": [
+       {
+         "entry": "Internet",
+         "target": "RDS Database",
+         "path": ["Internet", "ALB", "App Server", "RDS Database"],
+         "techniques": ["T1190", "T1078", "T1213"]
+       }
+     ],
+     "expected_risk_score": 75,
+     "expected_defensibility": 30,
+     "rationale": "No WAF or MFA, direct path to database"
+   }
+   ```
 
-### Phase 3F: Framework Flexibility (2-3 hours)
-- Refactor for multiple frameworks
-- Add STRIDE implementation
-- Add OWASP Top 10 (optional)
+**Validation:**
+- ✅ Parser handles all 20 .mmd files without errors
+- ✅ Ground truth exists for all test cases
+- ✅ No LLM dependency (100% deterministic)
 
-### Phase 3G: CLI + Docs (2-3 hours)
-- CLI integration (--architecture flag)
-- Documentation updates
-- Final validation
+**Why First:**
+- Parser is foundation for everything else
+- Test data grounds all validation (no hallucination)
+- Works when LLM unavailable (same as Phase 2 fallback)
+- Human-labeled ground truth = objective validation
 
-**Total Time Estimate:** 20-25 hours (vs previous 5 hours rushed implementation)
+---
+
+### Phase 3B: Control Detection (2-3 hours)
+**Goal:** Detect controls from architecture (not just RAG)
+
+**Tasks:**
+1. Scan node labels for control keywords (1 hour)
+2. Cross-validate RAG claims vs architecture (1 hour)
+3. Test on 20 .mmd files with ground truth (1 hour)
+
+**Validation:**
+- ✅ 90%+ control detection accuracy vs ground truth
+- ✅ Flags discrepancies when RAG claims differ from architecture
+- ✅ No false positives (e.g., "Database Firewall" detected as "firewall" control)
+
+---
+
+### Phase 3C: Attack Paths (4-5 hours)
+**Goal:** Find attack paths (deterministic graph traversal)
+
+**Tasks:**
+1. Entry/target detection (1 hour)
+2. BFS path construction (2 hours)
+3. MITRE mapping (context-aware rules) (1 hour)
+4. Test on 20 .mmd with ground truth (1 hour)
+
+**Validation:**
+- ✅ 85%+ attack path recall (finds most paths in ground truth)
+- ✅ 80%+ precision (few false positive paths)
+- ✅ 80%+ MITRE mapping accuracy
+
+---
+
+### Phase 3D: RAPIDS + Prioritization (3-4 hours)
+**Goal:** Risk scoring + prioritization (deterministic formulas)
+
+**Tasks:**
+1. RAPIDS assessment (2 hours)
+2. Impact/resistance prioritization (1 hour)
+3. Test on 20 .mmd with ground truth (1 hour)
+
+**Validation:**
+- ✅ Risk score MAE ≤15 points vs ground truth
+- ✅ Defensibility scoring within ±20% of expected
+- ✅ Quick Wins correctly identified (MFA, DDoS Protection)
+
+---
+
+### Phase 3E: Generative Testing (3-4 hours) ⭐ SCALE UP
+**Goal:** Generate 80 more architectures (100 total)
+
+**Tasks:**
+1. Architecture generator (2 hours)
+2. Generate 80 architectures with ground truth (1 hour)
+3. Run full test suite on 100 cases (1 hour)
+
+**Validation:**
+- ✅ All metrics stable across 100 cases
+- ✅ Confidence ≥80% (deterministic only, no LLM yet)
+
+---
+
+### Phase 3F: LLM Judge (2-3 hours) ⚡ AUGMENTATION (Optional)
+**Goal:** LLM validation layer (augments deterministic, not replaces)
+
+**Approach:**
+```python
+# Deterministic system runs first (always works)
+system_result = analyze_architecture(arch.mmd)
+
+# LLM judge augments if available (~33% uptime)
+if llm_available():
+    llm_judgment = llm_judge(arch.mmd, system_result)
+    
+    # Compare system vs LLM vs ground_truth
+    agreement = calculate_agreement(system_result, llm_judgment, ground_truth)
+    
+    # Use LLM feedback to improve system
+    if llm_judgment.missing_paths:
+        log_for_future_improvement(llm_judgment.missing_paths)
+else:
+    # Graceful degradation (like Phase 2)
+    llm_judgment = None
+    agreement = compare_system_vs_ground_truth(system_result, ground_truth)
+```
+
+**Key Points:**
+- LLM is OPTIONAL augmentation, not core dependency
+- System works 100% of time (deterministic)
+- LLM improves quality when available (33% of time)
+- Ground truth is source of truth (prevents hallucination)
+
+**Validation:**
+- ✅ System works without LLM (100% uptime)
+- ✅ LLM judgment grounded by ground truth (no hallucination accepted)
+- ✅ LLM improves confidence when available (80% → 85%)
+
+---
+
+### Phase 3G: Framework Flexibility (2-3 hours)
+**Goal:** Support STRIDE, OWASP, etc.
+
+---
+
+### Phase 3H: CLI + Docs (2-3 hours)
+**Goal:** Production integration
+
+---
+
+**Total Time Estimate:** 22-28 hours
+
+**Critical Path:**
+1. **Phase 3A** (parser + 20 .mmd + ground truth) - MUST DO FIRST ⭐
+2. **Phase 3B-3E** (deterministic system, 80%+ confidence) - CORE VALUE ⭐
+3. **Phase 3F** (LLM judge) - OPTIONAL AUGMENTATION (adds 5% if available) ⚡
+
+---
+
+## 📊 Approach Comparison: Grounding vs LLM-First
+
+| Aspect | Previous Attempt (Failed) | Redesign (Grounding First) |
+|--------|---------------------------|----------------------------|
+| **Foundation** | LLM-heavy (hallucination risk) | Deterministic parser + rules |
+| **Test Data** | 1 .mmd file (5% coverage) | 20 manual .mmd + 80 generated = 100 total |
+| **Ground Truth** | None (circular validation) | Human-labeled for all 100 cases |
+| **LLM Role** | Core dependency | Optional augmentation |
+| **Availability** | Failed 67% of time (LLM down) | Works 100% of time (deterministic) |
+| **Hallucination** | No safeguards | Grounded by ground truth |
+| **Validation** | Told system what's missing | Objective metrics vs ground truth |
+| **Confidence** | Claimed 82%, actual 60% | Target 80% deterministic, 85% with LLM |
+| **Fallback** | None (fails when LLM down) | Graceful (like Phase 2 keyword fallback) |
+
+**Key Insight:** LLM as judge is valuable BUT only if grounded by:
+1. Deterministic parser (no hallucinated graphs)
+2. Human-labeled ground truth (source of truth)
+3. Optional layer (works without LLM)
+
+**Architecture Analogy:**
+```
+Bad:  LLM → Parse → Analyze (fails 67% of time, hallucinates)
+Good: Parse → Analyze → [Optional: LLM Validate] (always works)
+```
 
 ---
 
