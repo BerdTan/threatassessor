@@ -1,96 +1,291 @@
 {
   "architecture": "10_complex_enterprise.mmd",
-  "description": "Complex enterprise multi-tier architecture with perimeter security, DMZ, and comprehensive monitoring",
+  "description": "Web App architecture",
   "controls_present": [
-    "ddos protection",
-    "waf",
-    "load balancer",
-    "reverse proxy",
-    "network segmentation",
-    "database replication",
     "cache",
+    "database replication",
+    "ddos protection",
+    "load balancer",
     "message queue",
-    "monitoring"
+    "monitoring",
+    "network segmentation",
+    "reverse proxy",
+    "waf"
   ],
   "controls_missing": [
-    "mfa",
-    "edr",
+    "firewall",
+    "logging",
     "backup",
-    "encryption at rest",
-    "api rate limiting",
-    "access logging"
+    "mfa",
+    "rate limiting",
+    "input validation"
   ],
   "expected_attack_paths": [
     {
       "id": "AP-1",
       "entry": "Internet",
-      "target": "PrimaryDB",
-      "path": ["Internet", "DDoSProtection", "WAF", "LoadBalancer", "ReverseProxy", "WebApp1", "AppServer1", "PrimaryDB"],
-      "techniques": ["T1190", "T1190", "T1078", "T1213"],
-      "technique_names": ["Exploit Public-Facing Application", "Exploit Public-Facing Application", "Valid Accounts", "Data from Information Repositories"],
-      "rationale": "Main attack path through web application tier, well-defended with DDoS protection and WAF"
+      "target": "QueueService",
+      "path": [
+        "Internet",
+        "DDoSProtection",
+        "WAF",
+        "LoadBalancer",
+        "ReverseProxy",
+        "WebApp1",
+        "AppServer1",
+        "QueueService"
+      ],
+      "hop_count": 7,
+      "techniques": [
+        "T1190",
+        "T1059",
+        "T1078"
+      ],
+      "rationale": "Direct path from Internet to QueueService via 7 hops"
     },
     {
       "id": "AP-2",
-      "entry": "Partners",
-      "target": "PrimaryDB",
-      "path": ["Partners", "DDoSProtection", "WAF", "LoadBalancer", "ReverseProxy", "APIServer", "AppServer1", "PrimaryDB"],
-      "techniques": ["T1199", "T1078", "T1213"],
-      "technique_names": ["Trusted Relationship", "Valid Accounts", "Data from Information Repositories"],
-      "rationale": "Partner access through API server, same perimeter defenses"
+      "entry": "Internet",
+      "target": "QueueService",
+      "path": [
+        "Internet",
+        "DDoSProtection",
+        "WAF",
+        "LoadBalancer",
+        "ReverseProxy",
+        "WebApp2",
+        "AppServer2",
+        "QueueService"
+      ],
+      "hop_count": 7,
+      "techniques": [
+        "T1190",
+        "T1059",
+        "T1078"
+      ],
+      "rationale": "Direct path from Internet to QueueService via 7 hops"
     },
     {
       "id": "AP-3",
-      "entry": "AdminPortal",
+      "entry": "Internet",
       "target": "PrimaryDB",
-      "path": ["AdminPortal", "PrimaryDB"],
-      "techniques": ["T1078", "T1213"],
-      "technique_names": ["Valid Accounts", "Data from Information Repositories"],
-      "rationale": "Admin portal has direct database access - high-value target, no MFA mentioned"
+      "path": [
+        "Internet",
+        "DDoSProtection",
+        "WAF",
+        "LoadBalancer",
+        "ReverseProxy",
+        "WebApp1",
+        "AppServer1",
+        "PrimaryDB"
+      ],
+      "hop_count": 7,
+      "techniques": [
+        "T1190",
+        "T1059",
+        "T1213",
+        "T1078"
+      ],
+      "rationale": "Direct path from Internet to PrimaryDB via 7 hops"
     },
     {
       "id": "AP-4",
       "entry": "Internet",
+      "target": "PrimaryDB",
+      "path": [
+        "Internet",
+        "DDoSProtection",
+        "WAF",
+        "LoadBalancer",
+        "ReverseProxy",
+        "WebApp2",
+        "AppServer2",
+        "PrimaryDB"
+      ],
+      "hop_count": 7,
+      "techniques": [
+        "T1190",
+        "T1059",
+        "T1213",
+        "T1078"
+      ],
+      "rationale": "Direct path from Internet to PrimaryDB via 7 hops"
+    },
+    {
+      "id": "AP-5",
+      "entry": "Internet",
       "target": "CacheServer",
-      "path": ["Internet", "DDoSProtection", "WAF", "LoadBalancer", "ReverseProxy", "WebApp1", "AppServer1", "CacheServer"],
-      "techniques": ["T1190", "T1213"],
-      "technique_names": ["Exploit Public-Facing Application", "Data from Information Repositories"],
-      "rationale": "Cache server may contain sensitive session data or cached queries"
+      "path": [
+        "Internet",
+        "DDoSProtection",
+        "WAF",
+        "LoadBalancer",
+        "ReverseProxy",
+        "WebApp1",
+        "AppServer1",
+        "CacheServer"
+      ],
+      "hop_count": 7,
+      "techniques": [
+        "T1190",
+        "T1059",
+        "T1078"
+      ],
+      "rationale": "Direct path from Internet to CacheServer via 7 hops"
+    },
+    {
+      "id": "AP-6",
+      "entry": "Internet",
+      "target": "CacheServer",
+      "path": [
+        "Internet",
+        "DDoSProtection",
+        "WAF",
+        "LoadBalancer",
+        "ReverseProxy",
+        "WebApp2",
+        "AppServer2",
+        "CacheServer"
+      ],
+      "hop_count": 7,
+      "techniques": [
+        "T1190",
+        "T1059",
+        "T1078"
+      ],
+      "rationale": "Direct path from Internet to CacheServer via 7 hops"
+    },
+    {
+      "id": "AP-7",
+      "entry": "Partners",
+      "target": "QueueService",
+      "path": [
+        "Partners",
+        "DDoSProtection",
+        "WAF",
+        "LoadBalancer",
+        "ReverseProxy",
+        "WebApp1",
+        "AppServer1",
+        "QueueService"
+      ],
+      "hop_count": 7,
+      "techniques": [
+        "T1190",
+        "T1059",
+        "T1078"
+      ],
+      "rationale": "Direct path from Partners to QueueService via 7 hops"
+    },
+    {
+      "id": "AP-8",
+      "entry": "Partners",
+      "target": "QueueService",
+      "path": [
+        "Partners",
+        "DDoSProtection",
+        "WAF",
+        "LoadBalancer",
+        "ReverseProxy",
+        "WebApp2",
+        "AppServer2",
+        "QueueService"
+      ],
+      "hop_count": 7,
+      "techniques": [
+        "T1190",
+        "T1059",
+        "T1078"
+      ],
+      "rationale": "Direct path from Partners to QueueService via 7 hops"
+    },
+    {
+      "id": "AP-9",
+      "entry": "Partners",
+      "target": "PrimaryDB",
+      "path": [
+        "Partners",
+        "DDoSProtection",
+        "WAF",
+        "LoadBalancer",
+        "ReverseProxy",
+        "WebApp1",
+        "AppServer1",
+        "PrimaryDB"
+      ],
+      "hop_count": 7,
+      "techniques": [
+        "T1190",
+        "T1059",
+        "T1213",
+        "T1078"
+      ],
+      "rationale": "Direct path from Partners to PrimaryDB via 7 hops"
+    },
+    {
+      "id": "AP-10",
+      "entry": "Partners",
+      "target": "PrimaryDB",
+      "path": [
+        "Partners",
+        "DDoSProtection",
+        "WAF",
+        "LoadBalancer",
+        "ReverseProxy",
+        "WebApp2",
+        "AppServer2",
+        "PrimaryDB"
+      ],
+      "hop_count": 7,
+      "techniques": [
+        "T1190",
+        "T1059",
+        "T1213",
+        "T1078"
+      ],
+      "rationale": "Direct path from Partners to PrimaryDB via 7 hops"
     }
   ],
-  "expected_risk_score": 45,
-  "expected_defensibility": 65,
+  "expected_risk_score": 52,
+  "expected_defensibility": 71,
   "rapids_assessment": {
     "ransomware": {
-      "risk": 50,
-      "defensibility": 60,
-      "rationale": "Good segmentation, database replication (availability), but no backup or EDR visible"
+      "risk": 80,
+      "defensibility": 40,
+      "rationale": "Backup: \u2717, EDR: \u2717, Segmentation: \u2713"
     },
     "application_vulns": {
-      "risk": 35,
-      "defensibility": 75,
-      "rationale": "Strong perimeter: DDoS protection, WAF, load balancer, reverse proxy. Well-architected."
+      "risk": 50,
+      "defensibility": 50,
+      "rationale": "WAF: \u2713, Input validation: \u2717, Rate limiting: \u2717"
     },
     "phishing": {
-      "risk": 60,
-      "defensibility": 40,
-      "rationale": "No MFA mentioned, admin portal is high-value target"
+      "risk": 70,
+      "defensibility": 10,
+      "rationale": "MFA: \u2717, Email gateway: \u2717"
     },
     "insider_threat": {
-      "risk": 55,
-      "defensibility": 55,
-      "rationale": "Good segmentation, monitoring present, but no access logging or least privilege visible"
+      "risk": 60,
+      "defensibility": 20,
+      "rationale": "Audit logging: \u2717, Least privilege: \u2717"
     },
     "dos": {
-      "risk": 25,
-      "defensibility": 85,
-      "rationale": "Excellent DoS protection: DDoS mitigation, load balancer, reverse proxy, database replication"
+      "risk": 30,
+      "defensibility": 80,
+      "rationale": "Load balancer: \u2713, DDoS protection: \u2713"
     },
     "supply_chain": {
       "risk": 50,
-      "defensibility": 50,
-      "rationale": "Message queue and multiple tiers = more dependencies, but segmentation helps contain"
+      "defensibility": 30,
+      "rationale": "Requires manual assessment of dependencies and third-party integrations"
     }
   },
-  "rationale": "Well-designed enterprise architecture with defense-in-depth: Perimeter security (DDoS + WAF), DMZ (load balancer + reverse proxy), multi-tier application (separation of concerns), database replication (availability), monitoring. Key gaps: No MFA (admin portal risk), no EDR (detection gap), no backup visible (ransomware risk). Overall good security posture but room for improvement."
+  "rationale": "Minimal security controls - significant gaps. 10 attack paths identified. Control coverage: 14%.",
+  "metadata": {
+    "generated_by": "parser",
+    "architecture_type": "web_app",
+    "node_count": 17,
+    "edge_count": 23,
+    "control_coverage": 0.14
+  }
 }

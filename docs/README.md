@@ -2,10 +2,10 @@
 
 ---
 **Last Updated:** 2026-05-02  
-**Status:** Current (Phase 2.2 Complete)
+**Status:** Current (Phase 3A Complete - Architecture Analysis)
 ---
 
-Complete documentation for the MITRE ATT&CK Threat Assessment Chatbot.
+Complete documentation for the MITRE ATT&CK Threat Assessment System (Chatbot + Architecture Analysis).
 
 ## Quick Navigation
 

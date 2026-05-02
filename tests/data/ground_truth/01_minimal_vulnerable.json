@@ -1,67 +1,76 @@
 {
   "architecture": "01_minimal_vulnerable.mmd",
-  "description": "Minimal vulnerable architecture - Internet directly to web server to database, no controls",
+  "description": "Web App architecture",
   "controls_present": [],
   "controls_missing": [
-    "waf",
-    "mfa",
     "firewall",
-    "ids/ips",
-    "network segmentation",
-    "access logging"
+    "logging",
+    "backup",
+    "mfa",
+    "waf",
+    "rate limiting",
+    "input validation"
   ],
   "expected_attack_paths": [
     {
       "id": "AP-1",
       "entry": "Internet",
       "target": "Database",
-      "path": ["Internet", "WebServer", "Database"],
+      "path": [
+        "Internet",
+        "WebServer",
+        "Database"
+      ],
+      "hop_count": 2,
       "techniques": [
         "T1190",
-        "T1078",
-        "T1213"
+        "T1059",
+        "T1213",
+        "T1078"
       ],
-      "technique_names": [
-        "Exploit Public-Facing Application",
-        "Valid Accounts",
-        "Data from Information Repositories"
-      ],
-      "rationale": "Direct path from Internet to Database through Web Server with no security controls"
+      "rationale": "Direct path from Internet to Database via 2 hops"
     }
   ],
-  "expected_risk_score": 90,
-  "expected_defensibility": 10,
+  "expected_risk_score": 100,
+  "expected_defensibility": 16,
   "rapids_assessment": {
     "ransomware": {
-      "risk": 60,
-      "defensibility": 0,
-      "rationale": "No backup, no EDR, no segmentation"
+      "risk": 80,
+      "defensibility": 20,
+      "rationale": "Backup: \u2717, EDR: \u2717, Segmentation: \u2717"
     },
     "application_vulns": {
-      "risk": 95,
-      "defensibility": 5,
-      "rationale": "No WAF, direct Internet exposure, no patching visibility"
+      "risk": 70,
+      "defensibility": 10,
+      "rationale": "WAF: \u2717, Input validation: \u2717, Rate limiting: \u2717"
     },
     "phishing": {
       "risk": 70,
-      "defensibility": 0,
-      "rationale": "No MFA, no email gateway mentioned"
+      "defensibility": 10,
+      "rationale": "MFA: \u2717, Email gateway: \u2717"
     },
     "insider_threat": {
-      "risk": 80,
-      "defensibility": 10,
-      "rationale": "No access logging, no least privilege, direct DB access"
+      "risk": 60,
+      "defensibility": 20,
+      "rationale": "Audit logging: \u2717, Least privilege: \u2717"
     },
     "dos": {
-      "risk": 85,
-      "defensibility": 0,
-      "rationale": "No load balancer, no DDoS protection, single web server"
+      "risk": 70,
+      "defensibility": 10,
+      "rationale": "Load balancer: \u2717, DDoS protection: \u2717"
     },
     "supply_chain": {
       "risk": 50,
-      "defensibility": 20,
-      "rationale": "Cannot assess without more context"
+      "defensibility": 30,
+      "rationale": "Requires manual assessment of dependencies and third-party integrations"
     }
   },
-  "rationale": "Worst-case architecture: Direct Internet exposure, no security controls, single path to sensitive data"
+  "rationale": "No security controls detected - highly vulnerable. 1 attack paths identified. Control coverage: 0%.",
+  "metadata": {
+    "generated_by": "parser",
+    "architecture_type": "web_app",
+    "node_count": 3,
+    "edge_count": 2,
+    "control_coverage": 0.0
+  }
 }

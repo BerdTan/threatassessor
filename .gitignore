@@ -23,3 +23,9 @@ _codex/
 # Exclude archive directories
 .archive/
 archive/
+
+# Exclude generated report directories
+report/
+
+# Keep only JSON in ground_truth (no .md reports)
+tests/data/ground_truth/*.md

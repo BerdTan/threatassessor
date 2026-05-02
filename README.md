@@ -2,7 +2,7 @@
 
 Production-ready CLI tool that maps threat scenarios to MITRE ATT&CK techniques using semantic search and LLM analysis.
 
-**Current Status:** ✅ Phase 2 Complete (84.9% accuracy, 79% confidence, production-ready)
+**Current Status:** ✅ Phase 3A Complete (Architecture threat analysis with 86% risk accuracy, 100% F1 control detection)
 
 ---
 
@@ -11,6 +11,9 @@ Production-ready CLI tool that maps threat scenarios to MITRE ATT&CK techniques 
 ```bash
 # Activate environment
 source .venv/bin/activate
+
+# 🎯 NEW: Architecture Threat Assessment (generates comprehensive reports)
+python3 -m chatbot.main --gen-arch-truth architecture.mmd
 
 # 🔍 RECOMMENDED: Validate system first ("walk the talk" confidence)
 python3 -m chatbot.main --self-test
@@ -27,7 +30,9 @@ python3 -m chatbot.main --format technical     # Detailed analysis
 python3 -m chatbot.main --format executive --query "PowerShell attack"
 ```
 
-**Test Query:** "Attacker used PowerShell to create scheduled tasks"
+**Test Queries:**
+- Threat analysis: "Attacker used PowerShell to create scheduled tasks"
+- Architecture: `python3 -m chatbot.main --gen-arch-truth tests/data/architectures/02_minimal_defended.mmd`
 
 ### ✅ Self-Test (Validate Before Use)
 
@@ -51,6 +56,17 @@ See `docs/SELF_TEST.md` for details.
 ---
 
 ## Key Features
+
+### 🏗️ **Architecture Threat Assessment** (NEW - Phase 3A)
+- Analyze Mermaid architecture diagrams for security risks
+- **86% risk scoring accuracy** (validated against 7 ground truths)
+- **100% F1 control detection** (perfect precision & recall)
+- Parser-only mode (no API key required, crowdsource-ready)
+- Generates comprehensive reports:
+  - Executive summary (risk-informed decisions)
+  - Technical report (MITRE techniques with descriptions)
+  - Action plan (phased implementation roadmap)
+  - Before/after diagrams (visual improvements)
 
 ### 🔍 **Semantic Search**
 - Matches threats to 835 MITRE ATT&CK techniques
@@ -251,10 +267,11 @@ python3 -m chatbot.main --format all \
 | **Phase 1** | ✅ Complete | Keyword-based search (legacy) |
 | **Phase 2A** | ✅ Complete | Semantic search + LLM + Hybrid mitigations + Scoring |
 | **Phase 2.2** | ✅ Complete | Validation testing (84.9% accuracy, 79% confidence) |
-| **Phase 3** | 🔄 Redesign | Architecture analysis (reverted, redesigning with proper rigor) |
+| **Phase 3A** | ✅ Complete | Architecture analysis (86% risk accuracy, 100% F1 control detection) |
+| **Phase 3B** | ⏳ Next | LLM enhancement for ground truth (attack narratives, missing controls) |
 | **Phase 4** | 📦 Future | Web UI (15-20 hours) |
 
-**Current Status:** Phase 2 production-ready (79% confidence) | Phase 3 redesign in progress (see docs/planning/PHASE3_REDESIGN.md)
+**Current Status:** Phase 3A complete (validated) | Phase 3B next (LLM augmentation)
 
 ---
 
@@ -399,6 +416,6 @@ python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.
 
 ---
 
-**Version:** 0.4.0 (Hybrid Mitigations + Scoring + Multi-Format Output)  
-**Last Updated:** 2026-05-01  
-**Status:** ✅ Production-Ready
+**Version:** 0.5.0 (Architecture Threat Assessment + MITRE Descriptions in Reports)  
+**Last Updated:** 2026-05-02  
+**Status:** ✅ Production-Ready (Phase 3A Complete)

@@ -2,11 +2,13 @@
 
 ## Project Overview
 
-Production-ready CLI chatbot that maps threat scenarios to MITRE ATT&CK techniques using semantic search and LLM analysis.
+Production-ready CLI tools for MITRE-based threat analysis and architecture security assessment.
 
-**Primary Use Case:** Security teams describe threats in natural language → System identifies MITRE techniques → Provides mitigation guidance.
+**Primary Use Cases:**
+1. Threat scenarios → MITRE techniques → Mitigation guidance (Phase 2 - Complete)
+2. Architecture diagrams → Security assessment → Risk-informed decisions (Phase 3A - Complete)
 
-**Current Status:** ✅ Phase 2A Complete (Production CLI) | Phase 2.2 Next (Validation Testing)
+**Current Status:** ✅ Phase 3A Complete (Architecture Analysis: 86% accuracy, 100% F1) | Phase 3B Next (LLM Enhancement)
 
 ---
 
@@ -16,9 +18,11 @@ Production-ready CLI chatbot that maps threat scenarios to MITRE ATT&CK techniqu
 # Activate environment
 source .venv/bin/activate
 
-# Run chatbot
-python3 -m chatbot.main
+# Architecture threat assessment (NEW - Phase 3A)
+python3 -m chatbot.main --gen-arch-truth tests/data/architectures/02_minimal_defended.mmd
 
+# Threat scenario chatbot
+python3 -m chatbot.main
 # Test with: "Attacker used PowerShell to create scheduled tasks"
 ```
 
@@ -158,20 +162,48 @@ Before making code changes, you MUST achieve **95%+ confidence** that changes ar
 
 ---
 
-## File Exclusions (.gitignore)
+## File Organization & Exclusions
+
+### Directory Structure
+
+```
+DEV-TEST/
+├── chatbot/                      # Core engine
+│   ├── modules/                  # Threat modeling modules
+│   │   ├── ground_truth_generator.py  # Architecture analysis engine
+│   │   └── threat_report.py      # User-facing report generation
+│   └── parsers/                  # Mermaid parser
+├── tests/
+│   ├── data/
+│   │   ├── architectures/        # Test .mmd files (18 samples)
+│   │   └── ground_truth/         # Validation JSON ONLY (7 validated)
+│   └── validate_engine_accuracy.py  # Automated validation
+└── report/                       # Generated threat assessments (gitignored)
+    └── <arch_name>/
+        ├── README.md
+        ├── before.mmd & after.mmd
+        └── 01-03_reports.md
+```
+
+### .gitignore Rules
 
 **Do NOT commit:**
 - `_codex/` - Experimental features (threatassessor)
-- `.archive/` - Historical documents
-- `archive/` - Session notes and test results
-- `chatbot/data/*.json` - Large data files (44MB + 45MB)
+- `.archive/` & `archive/` - Historical documents and session notes
+- `report/` - Generated threat assessment reports (regenerate on demand)
+- `chatbot/data/*.json` - Large MITRE data files (44MB + 45MB)
+- `tests/data/ground_truth/*.md` - Report files (belong in `report/`)
 - `.venv/` - Virtual environment
 - `.env` - API keys
 
+**Commit ONLY:**
+- `tests/data/ground_truth/*.json` - Validation ground truths
+- `tests/data/architectures/*.mmd` - Test architecture diagrams
+
 **Rationale:**
-- `_codex/` is experimental architecture analysis (separate development track)
-- `archive/` contains historical context not needed for production use
-- Data files too large for git (regenerate with scripts)
+- `tests/data/ground_truth/` is for validation only (JSON format)
+- `report/` contains user-facing outputs (regenerate from .mmd files)
+- Separation keeps validation data clean and reports organized
 
 ---
 
@@ -261,38 +293,40 @@ python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddi
 ## Repository Organization
 
 ### Main Repo (This Directory)
-**Focus:** Production-ready semantic MITRE search  
-**Status:** Phase 2A Complete (CLI working)  
+**Focus:** Production-ready MITRE threat analysis + architecture assessment  
+**Status:** Phase 3A Complete (Architecture analysis: 86% accuracy, 100% F1)  
 **Location:** `/mnt/c/BACKUP/DEV-TEST`
 
-### Experimental Features (_codex/)
-**Focus:** Architecture analysis (Mermaid diagrams, attack paths)  
-**Status:** 71% complete (5/7 requirements)  
-**Location:** `_codex/threatassessor-master` (excluded from git)
-
-**Sync:** Shared components (MITRE data, embeddings, LLM clients) synchronized via `scripts/sync_repos.sh` (weekly)
+### Key Directories
+- `chatbot/modules/` - Core engines
+  - `ground_truth_generator.py` - Architecture threat assessment (NEW)
+  - `threat_report.py` - Comprehensive report generation (NEW)
+  - `agent.py`, `mitre.py`, `scoring.py` - Threat chatbot
+- `tests/data/architectures/` - 18 Mermaid test files
+- `tests/data/ground_truth/` - 7 validated JSON ground truths (validation only)
+- `report/` - Generated assessment reports (gitignored, regenerate on demand)
 
 ---
 
 ## Next Session Quick Start
 
-**Context:** Production CLI working, validation testing next (1 hour)
+**Context:** Phase 3A complete (architecture analysis validated), Phase 3B next (LLM enhancement)
 
 **Resume:**
 ```bash
 cd /mnt/c/BACKUP/DEV-TEST
 source .venv/bin/activate
-cat STATUS_AND_PLAN.md  # Read Phase 2.2 tasks
+cat STATUS_AND_PLAN.md  # Read Phase 3B tasks
 ```
 
-**Immediate tasks:**
-1. Create `tests/test_semantic_search.py`
-2. Create `tests/test_llm_analysis.py`
-3. Run 109 test queries for validation
-4. Document baseline accuracy metrics
+**Phase 3B tasks (2-3 hours):**
+1. Implement `--gen-arch-truth-llm` mode
+2. Add attack narratives (LLM-generated scenarios)
+3. LLM-based missing control detection
+4. Risk contextualization (industry, threat landscape)
 
 ---
 
-*Version: 0.3.0 (Production CLI - Semantic Search + LLM Analysis)*  
-*Last Updated: 2026-05-01*  
-*Status: Phase 2A Complete ✅ | Phase 2.2 Next ⏳*
+*Version: 0.5.0 (Architecture Threat Assessment + MITRE Descriptions)*  
+*Last Updated: 2026-05-02*  
+*Status: Phase 3A Complete ✅ | Phase 3B Next ⏳*

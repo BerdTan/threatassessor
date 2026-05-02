@@ -1,8 +1,8 @@
 # System Architecture
 
-**Last Updated:** 2026-05-01  
-**Status:** Phase 2A Complete (Semantic Search + LLM Analysis)  
-**Next:** Architecture Analysis Integration (threatassessor features)
+**Last Updated:** 2026-05-02  
+**Status:** Phase 3A Complete (Architecture Threat Assessment)  
+**Next:** Phase 3B - LLM Enhancement for Ground Truth
 
 ---
 
@@ -13,30 +13,38 @@
   - OpenRouter API integration (embeddings + LLM)
   - Rate limiting (20 req/min)
   - Environment management
-- **Phase 2A:** Semantic Search + LLM Analysis
-  - Embedding cache generation (45MB, 823 techniques)
-  - Semantic search with cosine similarity
-  - LLM-enhanced refinement and ranking
-  - Attack path generation
-  - Contextual mitigation advice
-  - Agent routing with keyword fallback
+  
+- **Phase 2:** Threat Scenario Chatbot
+  - Semantic search (84.9% accuracy, 146 queries validated)
+  - Hybrid mitigations (MITRE + LLM prioritization)
+  - 3D scoring (Accuracy/Relevance/Confidence)
+  - Multi-format output (Executive/Action Plan/Technical)
+  - LLM enhancement (~33% uptime, graceful fallback)
+  
+- **Phase 3A:** Architecture Threat Assessment (NEW)
+  - Mermaid diagram parsing (18 test architectures)
+  - Control detection (100% F1 score - perfect precision & recall)
+  - Attack path detection (93% accuracy - graph-based BFS)
+  - RAPIDS framework (86% risk scoring accuracy)
+  - Architecture-aware assessment (5 types: web_app, cloud, ai_system, iot, generic)
+  - Comprehensive reports (Executive/Technical/Action Plan + Before/After diagrams)
+  - MITRE technique descriptions (no more cryptic IDs)
 
-### 🔄 In Progress (Testing Phase)
-- **Test Infrastructure:** Setup complete (2026-05-01)
-  - 109 test queries copied
-  - Production data fixtures configured
-  - Evaluation utilities available
-- **Validation:** Creating semantic search accuracy tests
-- **Documentation:** Organized in `docs/testing/`
+### 🔄 In Progress
+- **Phase 3B:** LLM Enhancement for Ground Truth (Next - 2-3 hours)
+  - Attack narratives (human-readable scenarios)
+  - LLM-based missing control detection
+  - Risk contextualization (industry, threat landscape)
 
 ### 📋 Future (Backlog)
-- **Architecture Analysis:** From threatassessor-master
-  - Mermaid diagram parsing
+- **Phase 3C:** Advanced Features
+  - Confidence scoring for assessments
+  - Framework flexibility (STRIDE, OWASP, NIST, CIS)
+  - Custom control definitions
+- **Phase 4:** Web UI (15-20 hours)
+  - React + FastAPI interface
   - Attack path visualization
-  - STRIDE/PASTA framework validation
-- **Gaps to Close:**
-  - Confidence scoring for attack paths
-  - Mermaid diagram output generation
+  - MITRE coverage heatmap
 
 **See:** `STATUS_AND_PLAN.md` for detailed roadmap and action plan
 
@@ -99,6 +107,59 @@
     │  - Actionable mitigation steps     │
     └────────────────────────────────────┘
 ```
+
+### Phase 3A: Architecture Threat Assessment
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│           Mermaid Architecture Diagram (.mmd)               │
+│   flowchart TB                                              │
+│     Internet --> WAF --> WebServer --> Database             │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+         ┌───────────────────────────────────┐
+         │  Ground Truth Generator            │
+         │  (ground_truth_generator.py)       │
+         │  - Parse Mermaid diagram           │
+         │  - Detect controls (keyword-based) │
+         │  - Find attack paths (BFS graph)   │
+         │  - RAPIDS risk assessment          │
+         └───────────┬────────────────────────┘
+                     │
+          ┌──────────▼──┐     ┌─▼──────────────┐
+          │ Parser Mode │     │ LLM Mode       │
+          │ (Phase 3A)  │     │ (Phase 3B)     │
+          │ 86% accuracy│     │ Coming soon    │
+          └──────┬──────┘     └────────────────┘
+                 │
+                 ▼
+    ┌────────────────────────────────────┐
+    │  Threat Report Generator           │
+    │  (threat_report.py)                │
+    │  - Executive summary               │
+    │  - Technical report (MITRE desc.)  │
+    │  - Action plan (phased roadmap)    │
+    │  - Before/after diagrams           │
+    └────────────┬───────────────────────┘
+                 │
+                 ▼
+    ┌────────────────────────────────────┐
+    │  Report Package                    │
+    │  - README.md (navigation)          │
+    │  - ground_truth.json (raw data)    │
+    │  - 01_executive_summary.md         │
+    │  - 02_technical_report.md          │
+    │  - 03_action_plan.md               │
+    │  - before.mmd & after.mmd          │
+    └────────────────────────────────────┘
+```
+
+**Validation Results:**
+- Risk Scoring: 86% accuracy (6/7 within ±20 points)
+- Control Detection: 100% F1 (perfect precision & recall)
+- Attack Path Detection: 93% accuracy (3.7 vs 4.0 ground truth)
+- Architecture Types: web_app, cloud, ai_system, iot, generic
 
 ## Technology Stack
 

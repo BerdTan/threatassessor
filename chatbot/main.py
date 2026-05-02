@@ -445,12 +445,19 @@ Display Formats:
   executive    High-level summary for executives
   all          Show all three formats
 
+Ground Truth Generation:
+  --gen-arch-truth FILE.mmd       Generate ground truth (parser only, no LLM)
+  --gen-arch-truth-llm FILE.mmd   Generate with LLM enhancement
+  --output PATH                   Custom output path for ground truth
+
 Examples:
   python3 -m chatbot.main
   python3 -m chatbot.main --format action-plan
   python3 -m chatbot.main --format executive
   python3 -m chatbot.main --format all --query "PowerShell attack"
   python3 -m chatbot.main --self-test  # Validate system before use
+  python3 -m chatbot.main --gen-arch-truth tests/data/architectures/01_minimal.mmd
+  python3 -m chatbot.main --gen-arch-truth-llm file.mmd --output custom/path.json
         """
     )
     parser.add_argument(
@@ -479,8 +486,131 @@ Examples:
         action='store_true',
         help='Show debug logs'
     )
+    parser.add_argument(
+        '--gen-arch-truth',
+        type=str,
+        metavar='MMD_FILE',
+        help='Generate ground truth from architecture diagram (parser only, no LLM)'
+    )
+    parser.add_argument(
+        '--gen-arch-truth-llm',
+        type=str,
+        metavar='MMD_FILE',
+        help='Generate ground truth with LLM enhancement'
+    )
+    parser.add_argument(
+        '--output', '-o',
+        type=str,
+        help='Output path for generated ground truth (default: tests/data/ground_truth/<name>.json)'
+    )
 
     args = parser.parse_args()
+
+    # Handle ground truth generation mode
+    if args.gen_arch_truth or args.gen_arch_truth_llm:
+        from pathlib import Path
+        from chatbot.modules.ground_truth_generator import generate_ground_truth
+        from chatbot.modules.threat_report import (
+            generate_report_package,
+            generate_executive_summary,
+            generate_technical_report,
+            generate_action_plan
+        )
+
+        mmd_file = args.gen_arch_truth or args.gen_arch_truth_llm
+        use_llm = bool(args.gen_arch_truth_llm)
+
+        # Configure logging
+        if args.verbose:
+            logging.getLogger().setLevel(logging.DEBUG)
+        else:
+            logging.getLogger().setLevel(logging.INFO)
+
+        print(f"\n{'='*80}")
+        print(f"Ground Truth Generator ({'Parser + LLM' if use_llm else 'Parser Only'})")
+        print(f"{'='*80}\n")
+
+        try:
+            print(f"📊 Analyzing architecture: {mmd_file}")
+            if use_llm:
+                print("   Mode: LLM-enhanced (may take 30-60 seconds)")
+            else:
+                print("   Mode: Deterministic parser (fast, reproducible)")
+            print()
+
+            # Generate ground truth
+            truth = generate_ground_truth(mmd_file, use_llm=use_llm)
+
+            # Determine output directory
+            if args.output:
+                output_base = Path(args.output).parent
+            else:
+                output_base = Path("report")
+
+            # Generate complete report package
+            report_paths = generate_report_package(mmd_file, truth, str(output_base))
+
+            print(f"\n✅ Threat assessment complete!\n")
+            print(f"📁 Report Package: {Path(report_paths['readme']).parent}\n")
+            print(f"📊 Generated Files:")
+            print(f"   ├── README.md              # Quick start guide")
+            print(f"   ├── ground_truth.json      # Raw assessment data")
+            print(f"   ├── 01_executive_summary.md")
+            print(f"   ├── 02_technical_report.md")
+            print(f"   ├── 03_action_plan.md")
+            print(f"   ├── before.mmd             # Current architecture")
+            print(f"   └── after.mmd              # With recommended controls (green hexagons)\n")
+
+            # Display format based on --format flag
+            if args.format == 'executive':
+                exec_report = generate_executive_summary(truth)
+                print(exec_report)
+            elif args.format == 'technical':
+                tech_report = generate_technical_report(truth)
+                print(tech_report)
+            elif args.format == 'action-plan':
+                action_report = generate_action_plan(truth)
+                print(action_report)
+            elif args.format == 'all':
+                exec_report = generate_executive_summary(truth)
+                tech_report = generate_technical_report(truth)
+                action_report = generate_action_plan(truth)
+                print(exec_report)
+                print("\n" + "="*80 + "\n")
+                print(tech_report)
+                print("\n" + "="*80 + "\n")
+                print(action_report)
+            else:  # Default: show summary
+                print(f"{'='*80}")
+                print(f"ASSESSMENT SUMMARY")
+                print(f"{'='*80}")
+                print(f"Architecture Type: {truth['metadata']['architecture_type']}")
+                print(f"Components:        {truth['metadata']['node_count']} nodes, {truth['metadata']['edge_count']} edges")
+                print(f"Controls:          {len(truth['controls_present'])} present, {len(truth['controls_missing'])} missing")
+                print(f"Control Coverage:  {truth['metadata']['control_coverage']:.0%}")
+                print(f"Attack Paths:      {len(truth['expected_attack_paths'])} identified")
+                print(f"Risk Score:        {truth['expected_risk_score']}/100 (higher = worse)")
+                print(f"Defensibility:     {truth['expected_defensibility']}/100 (higher = better)")
+                print(f"\nRAPIDS Assessment:")
+                for category, scores in truth['rapids_assessment'].items():
+                    risk_icon = "🔴" if scores['risk'] >= 70 else ("⚠️ " if scores['risk'] >= 50 else "✅")
+                    print(f"  {risk_icon} {category:20s} Risk: {scores['risk']:3d}/100, Def: {scores['defensibility']:3d}/100")
+                print(f"\n{truth['rationale']}")
+                print(f"\n💡 View detailed reports in: {Path(report_paths['readme']).parent}")
+                print(f"   - README.md for quick start")
+                print(f"   - Use --format executive|technical|action-plan to print reports")
+                print(f"   - Compare before.mmd vs after.mmd for visual improvements")
+                print(f"{'='*80}\n")
+
+            return 0
+
+        except FileNotFoundError:
+            print(f"❌ Error: File not found: {mmd_file}")
+            return 1
+        except Exception as e:
+            logger.error(f"Ground truth generation failed: {e}", exc_info=True)
+            print(f"❌ Error: {e}")
+            return 1
 
     # Handle self-test mode
     if args.self_test or args.self_test_quiet:

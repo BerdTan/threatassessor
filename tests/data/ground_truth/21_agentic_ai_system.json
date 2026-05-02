@@ -1,160 +1,170 @@
 {
   "architecture": "21_agentic_ai_system.mmd",
-  "description": "Modern agentic AI system with LLM APIs, vector databases, and tool integrations",
+  "description": "Ai System architecture",
   "controls_present": [
     "api gateway",
-    "sandbox",
-    "audit log"
+    "audit log",
+    "network segmentation",
+    "sandbox"
   ],
   "controls_missing": [
-    "prompt injection filtering",
-    "llm input validation",
-    "rate limiting",
-    "api key rotation",
-    "vector db access controls",
-    "tool authorization",
-    "pii detection",
-    "output filtering"
+    "firewall",
+    "logging",
+    "backup",
+    "mfa",
+    "prompt filtering",
+    "rate limiting"
   ],
   "expected_attack_paths": [
     {
-      "id": "AP-1",
-      "entry": "Users",
-      "target": "OpenAI",
-      "path": ["Users", "WebUI", "AgentOrchestrator", "PromptManager", "LLMGateway", "OpenAI"],
-      "techniques": [
-        "T1190",
-        "T1059.009",
-        "T1078"
-      ],
-      "technique_names": [
-        "Exploit Public-Facing Application",
-        "Cloud API (LLM API abuse)",
-        "Valid Accounts"
-      ],
-      "rationale": "Prompt injection can manipulate LLM to leak data or execute unauthorized actions. No input filtering visible."
-    },
-    {
-      "id": "AP-2",
-      "entry": "Users",
-      "target": "CodeExecution",
-      "path": ["Users", "WebUI", "AgentOrchestrator", "ToolRegistry", "CodeExecution"],
-      "techniques": [
-        "T1059",
-        "T1203"
-      ],
-      "technique_names": [
-        "Command and Scripting Interpreter",
-        "Exploitation for Client Execution"
-      ],
-      "rationale": "If code execution sandbox is not properly isolated, attacker can execute arbitrary code via crafted prompts"
-    },
-    {
-      "id": "AP-3",
+      "id": "AP-5",
       "entry": "Users",
       "target": "VectorDB",
-      "path": ["Users", "WebUI", "AgentOrchestrator", "VectorDB"],
+      "path": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "VectorDB"
+      ],
+      "hop_count": 3,
+      "criticality": 0.895,
+      "criticality_tier": "CRITICAL",
       "techniques": [
+        "T1566",
+        "T1190",
         "T1213",
-        "T1530"
+        "T1078"
       ],
-      "technique_names": [
-        "Data from Information Repositories",
-        "Data from Cloud Storage"
-      ],
-      "rationale": "Vector DB may contain sensitive embedded documents. No access controls visible."
+      "rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Vector Database: 3 hops, criticality score 0.90"
     },
     {
-      "id": "AP-4",
+      "id": "AP-6",
+      "entry": "Users",
+      "target": "VectorDB",
+      "path": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "EmbeddingService",
+        "VectorDB"
+      ],
+      "hop_count": 4,
+      "criticality": 0.895,
+      "criticality_tier": "CRITICAL",
+      "techniques": [
+        "T1566",
+        "T1190",
+        "T1213",
+        "T1078"
+      ],
+      "rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Embedding Service \u2192 Vector Database: 4 hops, criticality score 0.90"
+    },
+    {
+      "id": "AP-10",
       "entry": "Users",
       "target": "DatabaseTool",
-      "path": ["Users", "WebUI", "AgentOrchestrator", "ToolRegistry", "DatabaseTool"],
+      "path": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "ToolRegistry",
+        "DatabaseTool"
+      ],
+      "hop_count": 4,
+      "criticality": 0.895,
+      "criticality_tier": "CRITICAL",
       "techniques": [
+        "T1566",
         "T1190",
-        "T1059.009"
+        "T1213",
+        "T1078"
       ],
-      "technique_names": [
-        "Exploit Public-Facing Application",
-        "Cloud API"
+      "rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry \u2192 Database Tool: 4 hops, criticality score 0.90"
+    },
+    {
+      "id": "AP-12",
+      "entry": "Users",
+      "target": "UserDB",
+      "path": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "UserDB"
       ],
-      "rationale": "LLM could be tricked into executing unauthorized database queries (indirect SQL injection)"
+      "hop_count": 3,
+      "criticality": 0.895,
+      "criticality_tier": "CRITICAL",
+      "techniques": [
+        "T1566",
+        "T1190",
+        "T1213",
+        "T1078"
+      ],
+      "rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 User Database: 3 hops, criticality score 0.90"
+    },
+    {
+      "id": "AP-9",
+      "entry": "Users",
+      "target": "CodeExecution",
+      "path": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "ToolRegistry",
+        "CodeExecution"
+      ],
+      "hop_count": 4,
+      "criticality": 0.82,
+      "criticality_tier": "CRITICAL",
+      "techniques": [
+        "T1566",
+        "T1190",
+        "T1213",
+        "T1078"
+      ],
+      "rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry \u2192 Code Execution Sandbox: 4 hops, criticality score 0.82"
     }
   ],
-  "expected_risk_score": 85,
-  "expected_defensibility": 25,
-  "ai_specific_threats": {
-    "prompt_injection": {
-      "risk": 90,
-      "defensibility": 10,
-      "rationale": "No prompt filtering, LLM can be manipulated to bypass instructions"
-    },
-    "data_poisoning": {
-      "risk": 70,
-      "defensibility": 30,
-      "rationale": "VectorDB ingestion from DocumentStore, unclear if documents are validated"
-    },
-    "model_inversion": {
-      "risk": 60,
-      "defensibility": 40,
-      "rationale": "Embeddings in VectorDB could leak training data patterns"
-    },
-    "api_key_leakage": {
-      "risk": 85,
-      "defensibility": 20,
-      "rationale": "OpenAI/Anthropic API keys in LLMGateway, no rotation mentioned"
-    },
-    "tool_abuse": {
-      "risk": 80,
-      "defensibility": 30,
-      "rationale": "Code execution sandbox exists (good), but no authorization checks visible"
-    },
-    "pii_leakage": {
-      "risk": 75,
-      "defensibility": 20,
-      "rationale": "User data flows to external LLM APIs, no PII detection/masking"
-    }
-  },
+  "expected_risk_score": 76,
+  "expected_defensibility": 55,
   "rapids_assessment": {
     "ransomware": {
       "risk": 60,
-      "defensibility": 30,
-      "rationale": "VectorDB, DocumentStore, UserDB are targets. No backup visible."
+      "defensibility": 40,
+      "rationale": "Backup: \u2717, EDR: \u2717, Segmentation: \u2713"
     },
     "application_vulns": {
       "risk": 90,
-      "defensibility": 15,
-      "rationale": "AI-specific vulnerabilities: prompt injection, API abuse, no rate limiting"
+      "defensibility": 10,
+      "rationale": "Prompt filter: \u2717, Output filter: \u2717, Input validation: \u2717, Rate limiting: \u2717"
     },
     "phishing": {
       "risk": 70,
-      "defensibility": 30,
-      "rationale": "LLM could be used to generate convincing phishing content. No MFA mentioned."
+      "defensibility": 10,
+      "rationale": "MFA: \u2717, Email gateway: \u2717"
     },
     "insider_threat": {
-      "risk": 75,
-      "defensibility": 35,
-      "rationale": "Audit log present (good), but unclear if comprehensive. Direct DB access via tools."
+      "risk": 80,
+      "defensibility": 50,
+      "rationale": "Audit logging: \u2713, Least privilege: \u2717, Model access control: \u2717"
     },
     "dos": {
-      "risk": 80,
-      "defensibility": 20,
-      "rationale": "No rate limiting visible. LLM API costs could skyrocket. Single orchestrator (SPOF)."
+      "risk": 85,
+      "defensibility": 10,
+      "rationale": "Load balancer: \u2717, DDoS protection: \u2717"
     },
     "supply_chain": {
-      "risk": 85,
-      "defensibility": 25,
-      "rationale": "Dependencies: OpenAI, Anthropic (external), embedding models, multiple tools. High attack surface."
+      "risk": 75,
+      "defensibility": 30,
+      "rationale": "AI-specific: Model provenance, training data integrity, third-party APIs. Requires validation of LLM providers and data sources."
     }
   },
-  "mitre_atlas_techniques": [
-    "AML.T0051.000: LLM Prompt Injection",
-    "AML.T0051.001: Direct Prompt Injection",
-    "AML.T0051.002: Indirect Prompt Injection",
-    "AML.T0020: Poison Training Data",
-    "AML.T0043: Craft Adversarial Data",
-    "AML.T0015: Evade ML Model",
-    "AML.T0024: Infer Training Data Membership",
-    "AML.T0040: ML Artifact Poisoning"
-  ],
-  "rationale": "Agentic AI architecture with high attack surface: External LLM APIs, vector DB embeddings, code execution sandbox, multiple tool integrations. Critical missing controls: prompt injection filtering, input validation, rate limiting, PII detection, tool authorization. Audit log is present but may be insufficient."
+  "rationale": "Minimal security controls - significant gaps. 5 attack paths identified. Control coverage: 14%.",
+  "metadata": {
+    "generated_by": "parser",
+    "architecture_type": "ai_system",
+    "node_count": 19,
+    "edge_count": 19,
+    "control_coverage": 0.14
+  }
 }

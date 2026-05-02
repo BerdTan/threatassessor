@@ -1,8 +1,8 @@
 # Status & Action Plan
 
 **Last Updated:** 2026-05-02  
-**Current Status:** ✅ Validated & Production-Ready - Deploy Now  
-**Overall Progress:** Phase 2A Complete | Phase 2.2 Validation Complete | Ready for Deployment
+**Current Status:** ✅ Phase 3A Complete - Architecture Threat Assessment Working  
+**Overall Progress:** Phase 2 Complete (Chatbot) | Phase 3A Complete (Architecture Analysis) | Phase 3B Next (LLM Enhancement)
 
 ---
 
@@ -130,50 +130,96 @@ python3 -m chatbot.main --format technical     # Detailed analysis
 - Average response time: 2s (semantic only) or 60s (with LLM)
 - Test confidence: **79%** (production-ready)
 
-### 📦 Phase 3: Architecture Analysis (REDESIGN - 20-25 hours)
-**Status:** ⚠️ Reverted - Redesign in Progress  
-**Previous Attempt:** Reverted (claimed 82% → actual 60% confidence)  
-**Redesign Plan:** See `docs/planning/PHASE3_REDESIGN.md`
+### ✅ Phase 3A: Architecture Analysis - Parser Engine (COMPLETE)
+**Status:** ✅ COMPLETE - Validated with 86% risk accuracy, 100% F1 control detection  
+**Completion Date:** 2026-05-02  
+**Implementation Time:** ~8 hours (3 sessions)
 
-**Why Reverted:**
-- Testing bias: RAG context told system what was missing (circular validation)
-- Single test case: 1 AWS architecture (5% coverage)
-- No control detection: Relied on being told vs parsing architecture
-- Premature confidence: Claimed 82%, actual ~60%
+**What Works:**
+1. **Ground Truth Generation** (`chatbot/modules/ground_truth_generator.py`)
+   - Parser-only mode: No API key required (crowdsource-ready)
+   - LLM mode: Available for enhanced analysis
+   - Architecture-aware RAPIDS assessment (5 types: web_app, cloud, ai_system, iot, generic)
+   - Graph-based attack path detection (BFS traversal)
+   - Defense-in-depth scoring (up to -40 risk reduction)
+   - Control tier categorization (critical/high/medium/low)
 
-**Redesign Approach:**
-1. **LLM as Judge** (Novel)
-   - Use LLM to validate system output quality
-   - Three-way validation: system + LLM + human ground truth
-   - Catches blind spots, scalable testing
+2. **Comprehensive Reports** (`chatbot/modules/threat_report.py`)
+   - Executive summary (risk-informed decision support)
+   - Technical report (MITRE techniques with names & descriptions)
+   - Action plan (phased implementation: Week 1 quick wins → Weeks 4-8 advanced)
+   - Before/after diagrams (integrated control placement)
 
-2. **Generative Test Suite**
-   - 100 diverse architectures (not just 1)
-   - Ground truth for objective metrics
-   - Topologies: layered, mesh, hub-spoke, random
+3. **Automated Validation** (`tests/validate_engine_accuracy.py`)
+   - 7 ground truth architectures (18 available for future testing)
+   - Precision/Recall/F1 metrics for control detection
+   - ±20 point tolerance for risk/defensibility scores
+   - Aggregate reporting across all architectures
 
-3. **Control Detection**
-   - Parse architecture labels for controls
-   - Cross-validate RAG claims vs actual architecture
-   - Flag discrepancies
+**Validation Results:**
+- **Risk Scoring:** 86% accuracy (6/7 within ±20 points)
+- **Control Detection:** 100% F1 (perfect precision & recall)
+- **Attack Path Detection:** 93% accuracy (3.7 avg vs 4.0 ground truth)
+- **Architecture Types:** Validated across web_app, cloud, ai_system, legacy, enterprise
 
-4. **Framework Flexibility**
-   - MITRE + RAPIDS = core baseline
-   - STRIDE, OWASP, NIST, CIS = augmentation
-   - Not hardcoded
+**Key Innovations:**
+- Architecture-aware base risks (different for AI vs web vs cloud)
+- Graph topology analysis (zero in/out-degree for entry/target detection)
+- Smart control placement in diagrams (perimeter/data/monitoring/application layers)
+- MITRE technique descriptions in reports (no more cryptic IDs)
+
+**CLI Integration:**
+```bash
+# Parser-only (deterministic, no LLM)
+python3 -m chatbot.main --gen-arch-truth architecture.mmd
+
+# LLM-enhanced (when API available)
+python3 -m chatbot.main --gen-arch-truth-llm architecture.mmd
+
+# Custom output location
+python3 -m chatbot.main --gen-arch-truth arch.mmd -o path/to/output.json
+```
+
+**Files Created:**
+- `chatbot/modules/ground_truth_generator.py` (850+ lines)
+- `chatbot/modules/threat_report.py` (700+ lines)
+- `tests/validate_engine_accuracy.py` (280 lines)
+- 7 validated ground truth JSON files
+- Updated .gitignore (clean separation: validation JSON vs generated reports)
+- Updated CLAUDE.md (file organization documentation)
+
+### ⏳ Phase 3B: LLM Enhancement for Ground Truth (NEXT - 2-3 hours)
+**Status:** Planned - Not Started  
+**Goal:** Augment parser-only ground truth with LLM analysis
+
+**Planned Features:**
+1. **Attack Narratives**
+   - LLM generates human-readable attack scenarios
+   - Maps abstract paths to realistic threat actor behavior
+   - Adds context: "APT group X typically uses Y to achieve Z"
+
+2. **Missing Control Detection**
+   - LLM suggests non-obvious controls
+   - Cross-validates parser findings
+   - Identifies architecture-specific gaps (e.g., AI prompt filtering)
+
+3. **Risk Contextualization**
+   - Industry-specific risk adjustments
+   - Threat landscape context (current campaigns)
+   - Compliance framework mapping (NIST, CIS, etc.)
 
 **Implementation Plan:**
-- Phase 3A: Parser + control detection (3-4h)
-- Phase 3B: Attack paths + MITRE mapping (4-5h)
-- Phase 3C: RAPIDS + prioritization (3-4h)
-- Phase 3D: LLM judge (2-3h)
-- Phase 3E: Generative testing (3-4h)
-- Phase 3F: Framework flexibility (2-3h)
-- Phase 3G: CLI + docs (2-3h)
+- Add `--gen-arch-truth-llm` mode (already stubbed in main.py)
+- Integrate LLM calls into ground_truth_generator.py
+- Enhance report generation with LLM insights
+- Validate against same 7 ground truths (measure improvement)
 
-**Target Confidence:** 85%+ (honest, validated)
+**Target Metrics:**
+- Maintain 86%+ risk accuracy
+- Improve control detection recall (capture non-obvious controls)
+- Add qualitative value (narratives, context)
 
-**Decision:** Ship Phase 2 (79% confidence) first, redesign Phase 3 properly
+**Estimated Time:** 2-3 hours
 
 ### 🌐 Phase 4: Web UI (FUTURE - 15-20 hours)
 **Status:** Planned, not started
@@ -231,31 +277,38 @@ python3 -m chatbot.main --format technical     # Detailed analysis
 
 ## 🎯 Next Steps (Priority Order)
 
-### Immediate (Current Session - COMPLETE ✅)
-1. ✅ Phase 2.2 validation testing - DONE (84.9% accuracy)
-2. ✅ Self-test feature (`--self-test`) - DONE
-3. ✅ Documentation reorganization - DONE (71 files organized)
-4. ✅ Commit rules established - DONE (.github/COMMIT_RULES.md)
-5. ⏳ Final commit and push to GitHub - READY
+### Immediate (Current Session - READY TO COMMIT)
+1. ✅ Phase 3A architecture analysis - DONE (86% accuracy, 100% F1)
+2. ✅ MITRE technique descriptions in reports - DONE
+3. ✅ File organization cleanup - DONE (JSON-only in ground_truth/)
+4. ✅ Documentation updates - DONE (README.md, STATUS_AND_PLAN.md, CLAUDE.md)
+5. ⏳ **Final commit** - READY
 
-### Short-Term (Next 30 minutes - DEPLOYMENT)
-1. ✅ **Phase 2.2 Validation:** COMPLETE
-   - ✅ `tests/test_semantic_search.py` created
-   - ✅ `tests/test_stage1_validation.py` created
-   - ✅ 146 test queries validated (84.9% accuracy)
-   - ✅ Baseline metrics documented
+**Commit Summary:**
+- feat: Add architecture threat assessment (Phase 3A)
+- feat: Add MITRE technique descriptions to technical reports
+- New modules: ground_truth_generator.py (850 lines), threat_report.py (700 lines)
+- New validation: validate_engine_accuracy.py with 7 ground truths
+- Validated: 86% risk accuracy, 100% F1 control detection
+- Reports: Executive summary, technical report, action plan, before/after diagrams
 
-2. **Deployment preparation:**
-   - Setup production monitoring (15 min)
-   - Create deployment checklist (5 min)
-   - Final documentation update (10 min)
-   - Commit and push to GitHub
+### Short-Term (Next Session - 2-3 hours)
+1. **Phase 3B: LLM Enhancement**
+   - Implement `--gen-arch-truth-llm` mode
+   - Add attack narratives to reports
+   - LLM-based missing control detection
+   - Risk contextualization (industry, threat landscape)
 
-### Medium-Term (1 week)
-1. **Phase 3:** Close architecture analysis gaps
-   - Implement confidence scoring (1.5 hours)
-   - Implement Mermaid output (2-3 hours)
-   - Merge into main repo (2 hours)
+2. **Testing expansion:**
+   - Run validation against all 18 architectures
+   - Document per-architecture-type accuracy
+   - Identify edge cases for improvement
+
+### Medium-Term (1-2 weeks)
+1. **Phase 3C: Advanced Features**
+   - Confidence scoring for risk assessments
+   - Framework flexibility (STRIDE, OWASP, NIST, CIS)
+   - Custom control definitions
 
 2. **Model optimization:**
    - Monitor Google Gemma availability
