@@ -97,6 +97,59 @@ Confidence is calculated from **5 factors**, each weighted differently:
 
 ---
 
+## Exposure Multiplier (Phase 3B Enhancement)
+
+**Why**: Systems with higher exposure need higher confidence - we can't afford to be wrong.
+
+### Exposure Score Calculation
+
+```
+exposure_score = 0
+
+# Internet-facing (+10)
+if has_internet_entry:
+    exposure_score += 10
+
+# Insider threat (+10, equal weight to internet)
+if insider_threat_risk >= 60:
+    exposure_score += 10
+
+# Privileged insider (+5, critical)
+if has_privileged_insider:
+    exposure_score += 5
+
+# Complexity (+5, more attack surface)
+if attack_path_count >= 5:
+    exposure_score += 5
+
+# High-value target (+5)
+if architecture_type in ["ai_system", "financial"]:
+    exposure_score += 5
+```
+
+### Multiplier Thresholds
+
+| Exposure Score | Multiplier | Required Confidence | Example |
+|---------------|-----------|---------------------|---------|
+| 25+ | 1.15x | 95%+ | Internet + Insider + Privileged + AI |
+| 20-24 | 1.10x | 90%+ | Internet + Insider + Complexity |
+| 10-19 | 1.0x | 85% | Internet only or Insider only |
+| <10 | 0.95x | 80% | Internal system, low complexity |
+
+### Application
+
+```python
+base_confidence = calculate_confidence(...)  # 5 factors above
+exposure_multiplier = calculate_exposure_multiplier(...)
+final_confidence = base_confidence * exposure_multiplier
+```
+
+**Example:**
+- 21_agentic_ai_system: Internet (10) + Insider (10) + AI (5) = 25 → 1.15x multiplier
+- Base confidence: 80% → Final: 92% (meets 90%+ bar for high exposure)
+
+---
+
 ## Confidence Levels
 
 | Level | Score Range | Meaning | When to Implement |

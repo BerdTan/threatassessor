@@ -208,38 +208,66 @@ python3 -m chatbot.main --gen-arch-truth arch.mmd -o path/to/output.json
 - `docs/REFERENCE_ARCHITECTURES.md` (NEW - validation benchmarks)
 - `docs/CONFIDENCE_METHODOLOGY.md` (NEW - 5-factor scoring)
 
-### ⏳ Phase 3B: Validation Fixes (NEXT - 2-3 hours)
-**Status:** Planned - Not Started  
-**Goal:** Fix validation issues to reach 100% pass rate
+### ⏳ Phase 3B: DDIR + Resilience Enhancement (NEXT - ~13 hours)
+**Status:** Planned - Ready for Implementation  
+**Goal:** Add defense-in-depth (DDIR) and resilience by design (DDIRR) to reach 100% validation and 89% confidence
 
-**Priority 1: Entry Point Detection (HIGH)**
-- **Problem:** T1190 (Exploit Public-Facing) incorrectly applied to "Users" entry
-- **Fix:** Strict check for internet/public/external keywords
-- **Expected Impact:** Validation pass rate: 0/2 → 1/2 (50%)
+**Core Philosophy:**
+```
+MITRE + RAPIDS → Threat Model (WHAT to defend)
+DDIR → Breadth & Depth (HOW to defend at each layer)
+DDIRR → Resilience (WHY architecture must be robust)
+```
 
-**Priority 2: RAPIDS Calibration**
-- **Problem:** AI system has HIGH app vuln risk without public entry
-- **Fix:** Adjust RAPIDS for architecture context (internal vs external)
-- **Expected Impact:** RAPIDS alignment: 67% → 100%
+**6 Implementation Phases:**
 
-**Priority 3: AI-Specific Techniques**
-- **Problem:** Prompt injection not represented in MITRE ATT&CK
-- **Solution:** Map to closest MITRE + add custom indicators
-- **Expected Impact:** AI threat coverage: 70% → 90%
+**Phase 3B-1: Context-Aware Technique Mapping (2h)**
+- Context-aware T1190 (internet + exploitable, not just internet)
+- T1566/T1078 for user/insider entries (not T1190)
+- Exploitability thresholds based on controls present
 
-**Priority 4: Confidence Target**
-- **Current:** 81% average confidence
-- **Target:** 85%+ for HIGH rating
-- **Actions:** Architecture context validation, CVE cross-reference, industry benchmarks
+**Phase 3B-2: Hop-Based Layered Defense + Resilience (5h)**
+- Categorize hops by descriptor (identity/network/device/app/data)
+- Assess DDIR per hop (security)
+- Assess resilience per hop (availability)
+- SPOF detection (graph topology analysis)
+- Generate hop-specific recommendations
+
+**Phase 3B-3: Breadth + Depth + Resilience Merge (2.5h)**
+- Triple-objective optimization (RAPIDS + DDIR + DDIRR)
+- Balance 10-12 controls across all three dimensions
+- Prefer controls serving multiple objectives
+
+**Phase 3B-4: Enhanced Validation (2.5h)**
+- Validate breadth (top RAPIDS threats)
+- Validate depth (DDIR coverage per hop)
+- Validate resilience (SPOF mitigation)
+- 6 checks total (vs 2 currently)
+
+**Phase 3B-5: Exposure + Insider Confidence (1.5h)**
+- Exposure multiplier (0.95x to 1.15x)
+- High-exposure systems need 90%+ confidence
+- Insider threat weighted equally to internet-facing
+
+**Phase 3B-6: Enhanced Reporting (1.5h)**
+- Defense-in-depth table (hop-by-hop)
+- SPOF mitigation plans
+- Assume breach scenarios
+- Specific placement guidance
 
 **Target Metrics:**
-- Validation pass rate: 0/2 → 2/2 (100%)
-- Average confidence: 81% → 85%+
-- Technique mapping accuracy: ~85% → 95%+
+- Validation pass rate: 0/2 → 6/6 (100%)
+- Average confidence: 81% → 89%
+- High-exposure confidence: 90%+
+- DDIR balance: 33/33/17/17 (prevent/detect/isolate/respond)
+- SPOF mitigation: 100%
 
-**Estimated Time:** 2-3 hours
+**Estimated Time:** ~13 hours (6 phases)
 
-**See:** docs/REFERENCE_ARCHITECTURES.md for detailed improvement roadmap
+**See:** 
+- docs/PHASE3B_PLAN.md (complete implementation plan)
+- docs/REFERENCE_ARCHITECTURES.md (validation roadmap)
+- docs/CONFIDENCE_METHODOLOGY.md (exposure multiplier)
 
 ### 🌐 Phase 4: Web UI (FUTURE - 15-20 hours)
 **Status:** Planned, not started

@@ -15,7 +15,7 @@ These are used to:
 
 ---
 
-## Current Status (2026-05-03)
+## Current Status (2026-05-03) - Pre-Phase 3B
 
 ### 02_minimal_defended.mmd (Web App with Controls)
 
@@ -35,10 +35,13 @@ Confidence Adjustments:
   • Rate Limiting: +5.5% ✓
 ```
 
-**Action Items**:
-1. WAF should not be treated as entry point for T1190
-2. Entry should be "Internet" → WAF → ...
-3. Update path detection to identify true external entries
+**Action Items (Phase 3B):**
+1. ✓ WAF should not be treated as entry point for T1190
+2. ✓ Entry should be "Internet" → WAF → ...
+3. ✓ Update path detection to identify true external entries
+4. ✓ Add DDIR assessment per hop (not just perimeter)
+5. ✓ Check for SPOFs (none expected in this simple architecture)
+6. ✓ Add resilience controls if needed
 
 ---
 
@@ -54,6 +57,8 @@ Confidence Adjustments:
 Issues:
   • Paths #1-5: T1190 marked but entry is "Users" not "Internet"
   • RAPIDS: No public entry but HIGH app vuln risk (may be overestimated)
+  • Perimeter-only defense (no depth)
+  • Potential SPOF: AgentOrchestrator (needs verification)
 
 Confidence Adjustments:
   • Least Privilege: 76% → 85% (MEDIUM → HIGH) ✓
@@ -61,11 +66,14 @@ Confidence Adjustments:
   • Rate Limiting: 74% → 82% (MEDIUM → HIGH) ✓
 ```
 
-**Action Items**:
-1. For AI systems, users access via WebUI - should be T1078 or internal threats
-2. T1190 only if truly internet-facing (e.g., public API endpoint)
-3. RAPIDS should lower app vuln risk if no public entry (unless internal threats)
-4. Consider AI-specific techniques (prompt injection = different technique?)
+**Action Items (Phase 3B):**
+1. ✓ "Users" entry → T1566 (Phishing) + T1078 (Valid Accounts), NOT T1190
+2. ✓ T1190 only if truly internet-facing (e.g., public API endpoint)
+3. ✓ RAPIDS should differentiate external vs internal threats
+4. ✓ Add DDIR assessment for each hop (Users → WebUI → Orchestrator → LLM → VectorDB → DB)
+5. ✓ Detect SPOF (likely: AgentOrchestrator as bottleneck)
+6. ✓ Add resilience controls (circuit breaker, LLM rate limiting, auto-scaling)
+7. ✓ AI-specific: Map prompt injection to closest MITRE + custom indicator
 
 ---
 
@@ -106,104 +114,187 @@ cat report/21_agentic_ai_system/02_technical_report.md
 
 ---
 
-## Improvement Roadmap
+## Phase 3B Improvement Roadmap
 
-### Phase 1: Fix Entry Point Detection (HIGH PRIORITY)
+### Phase 3B-1: Context-Aware Technique Mapping (HIGH PRIORITY)
 
 **Problem**: T1190 (Exploit Public-Facing Application) incorrectly assigned to non-internet entries
 
 **Fix**:
 ```python
 # In map_path_to_techniques(), update logic:
+def calculate_exploitability_threshold(present_controls):
+    """Conservative: Assume CVE present unless defended."""
+    if "patching" in present_controls and "vulnerability scanning" in present_controls:
+        return 50  # Well-maintained (zero-day only)
+    elif "waf" in present_controls:
+        return 60  # WAF mitigates some CVEs
+    else:
+        return 70  # Assume known CVEs present
+
 entry_label = nodes[path[0]].get("label", "").lower()
 
-# STRICT check for T1190
-if any(kw in entry_label for kw in ["internet", "public", "external network"]):
-    techniques.append("T1190")
-
-# Users/clients → phishing or valid accounts
-elif any(kw in entry_label for kw in ["user", "client", "employee"]):
+# Users/clients → phishing + credential theft
+if any(kw in entry_label for kw in ["user", "client", "employee", "admin"]):
     techniques.append("T1566")  # Phishing
-    techniques.append("T1078")  # Valid Accounts (if auth present)
-```
+    techniques.append("T1078")  # Valid Accounts
 
-**Expected Impact**: Validation PASS rate: 0% → 50% (1/2)
-
----
-
-### Phase 2: RAPIDS Calibration
-
-**Problem**: AI system has HIGH app vuln risk without public entry
-
-**Fix**:
-```python
-# In assess_rapids_risks(), adjust for entry point context
-if architecture_type == "ai_system":
-    has_public_entry = any(...)
+# Internet → only if exploitable
+elif any(kw in entry_label for kw in ["internet", "public", "external"]):
+    threshold = calculate_exploitability_threshold(present_controls)
+    app_vuln_risk = rapids.get("application_vulns", {}).get("risk", 0)
     
-    if not has_public_entry:
-        # Internal AI system - lower external threat risk
-        app_vuln_risk -= 20
-        dos_risk -= 15
-        # But increase insider/data poisoning risk
-        insider_risk += 15
+    if app_vuln_risk >= threshold:
+        techniques.append("T1190")  # Exploitable
 ```
 
-**Expected Impact**: RAPIDS alignment: 67% → 100%
+**Expected Impact**: Validation PASS rate: 0/2 → 2/2 (technique mapping)
 
 ---
 
-### Phase 3: AI-Specific Techniques
+### Phase 3B-2: Hop-Based Layered Defense + Resilience
 
-**Problem**: Prompt injection not represented in MITRE ATT&CK techniques
+**Problem**: Perimeter-only defense, no DDIR depth, no resilience assessment
 
-**Solution**: Map to closest MITRE techniques + add custom indicators
+**Fix**: New file `chatbot/modules/layered_defense.py`
+
 ```python
-# For AI/LLM components, add:
-if any(kw in path_str for kw in ["llm", "agent", "prompt", "model"]):
-    techniques.append("T1059")  # Command Injection (closest match)
-    techniques.append("T1190")  # If public-facing
-    # Add custom indicator for reporting
-    ai_specific_threats.append("Prompt Injection (no MITRE ID)")
+# Categorize each hop by descriptor (not position)
+def categorize_hop_layer(node_label):
+    # Returns: identity/network/device/application/data
+
+# Assess DDIR (security) per hop
+def assess_hop_ddir_coverage(hop, layer, present_controls):
+    # Returns: {"prevent": bool, "detect": bool, "isolate": bool, "respond": bool}
+
+# Assess resilience (availability) per hop
+def assess_hop_resilience(hop, layer, present_controls):
+    # Returns: {"prevent": bool, "detect": bool, "isolate": bool, "respond": bool}
+
+# Detect SPOFs from graph topology
+def identify_single_points_of_failure(nodes, edges):
+    # Bottleneck: in-degree ≤ 1 AND out-degree ≥ 2
+    # Bridge: Removing node disconnects critical assets
+
+# Generate controls per hop
+def generate_layered_defense(attack_paths, nodes, edges, present_controls, rapids):
+    # Returns: DDIR + resilience recommendations per hop
 ```
 
-**Expected Impact**: AI threat coverage: 70% → 90%
+**Expected Impact**: 
+- Each hop assessed for security + resilience
+- SPOFs identified (e.g., AgentOrchestrator in AI system)
+- Depth added (not just breadth)
 
 ---
 
-### Phase 4: Confidence Target: 85%+
+### Phase 3B-3: Breadth + Depth + Resilience Merge
 
-**Current**: Most controls are 71-78% (MEDIUM)  
-**Target**: 80-90% (HIGH) for direct mappings
+**Problem**: Need to balance RAPIDS threats (breadth), DDIR (depth), and SPOF mitigation (resilience)
 
-**Actions**:
-1. ✅ Validation increases confidence by 5-10% (implemented)
-2. Add architecture context validation (+5%)
-3. Cross-reference with CVE data for patching (+5%)
-4. Industry benchmarks (e.g., NIST, CIS) alignment (+5%)
+**Fix**: Update `chatbot/modules/rapids_driven_controls.py`
 
-**Expected Impact**: Average confidence: 75% → 85%
+```python
+def prioritize_breadth_and_depth_and_resilience(rapids_recs, layered_recs, resilience_recs, max_controls=12):
+    """
+    Triple-objective optimization:
+    - Top 3 RAPIDS threats covered (breadth)
+    - All 4 DDIR categories represented (depth)
+    - SPOFs mitigated (resilience)
+    - Prefer controls serving multiple objectives
+    """
+```
+
+**Expected Impact**:
+- 10-12 controls satisfying all three objectives
+- Example: Logging serves insider threat (RAPIDS) + detect (DDIR)
+- Security AND resilience weighted equally
 
 ---
 
-## Success Criteria
+### Phase 3B-4: Enhanced Validation
 
-### Validation PASS Checklist
+**Problem**: Only 2 validation checks (technique mapping), need 6 total
+
+**Fix**: Update `chatbot/modules/self_validation.py`
+
+```python
+# Validation 1-2: Technique mapping (existing)
+# Validation 3-4: Breadth & depth (NEW)
+def validate_breadth_and_depth(control_recs, attack_paths, rapids, nodes):
+    # Check: Top 3 RAPIDS covered
+    # Check: All 4 DDIR represented
+    # Check: Critical hops have ≥3 DDIR
+
+# Validation 5-6: Resilience (NEW)
+def validate_resilience_by_design(control_recs, attack_paths, nodes, edges, rapids):
+    # Check: SPOFs mitigated
+    # Check: Microservices have circuit breakers
+    # Check: AI systems have LLM rate limiting
+```
+
+**Expected Impact**: Validation: 2/2 → 6/6 (100%)
+
+---
+
+### Phase 3B-5: Exposure + Insider Confidence
+
+**Problem**: Flat confidence, doesn't account for exposure level
+
+**Fix**: Update `chatbot/modules/confidence_scoring.py`
+
+```python
+def calculate_exposure_multiplier(architecture_type, rapids, attack_paths, nodes):
+    exposure_score = 0
+    # Internet: +10, Insider: +10, Privileged: +5, Complexity: +5, High-value: +5
+    # Return multiplier: 0.95 to 1.15
+```
+
+**Expected Impact**: 
+- High-exposure (25+): 90%+ confidence required
+- Average confidence: 81% → 89%
+
+---
+
+### Phase 3B-6: Enhanced Reporting
+
+**Problem**: Reports lack DDIR details, SPOF identification, assume breach scenarios
+
+**Fix**: Update `chatbot/modules/threat_report.py`
+
+- Add "Defense-in-Depth Analysis" (hop-by-hop table)
+- Add "SPOF Mitigation" section
+- Add "Assume Breach Analysis" scenarios
+- Show specific placement (not generic)
+
+---
+
+## Success Criteria (Phase 3B)
+
+### Validation PASS Checklist (6 Checks)
 
 Architecture passes validation when:
-- [ ] All MITRE techniques justified by entry/target/path
-- [ ] RAPIDS scores align with controls present/missing
-- [ ] Control recommendations trace to techniques
-- [ ] Confidence ≥ 80% for ≥50% of recommendations
-- [ ] No critical validation issues
+- [ ] Technique Mapping (2 checks):
+  - [ ] T1190 only when internet + exploitable
+  - [ ] T1566/T1078 for user/insider entries
+- [ ] Breadth & Depth (2 checks):
+  - [ ] Top 3 RAPIDS threats have controls (≥2/3)
+  - [ ] All 4 DDIR categories represented
+  - [ ] Critical hops have ≥3 DDIR
+  - [ ] Insider paths are depth-focused
+- [ ] Resilience (2 checks):
+  - [ ] SPOFs identified and mitigated
+  - [ ] Microservices (≥3 services) have circuit breakers
+  - [ ] AI systems have LLM rate limiting
+  - [ ] High DoS risk → internal resilience controls
 
-### Current Scores
+### Current Scores (Pre-Phase 3B)
 
-| Architecture | Validation | Avg Confidence (Pre) | Avg Confidence (Post) |
-|--------------|-----------|---------------------|----------------------|
-| Minimal Defended | ✗ FAIL | 74% | 78% (+4%) |
-| AI System | ✗ FAIL | 78% | 84% (+6%) |
-| **AVERAGE** | **0/2 (0%)** | **76%** | **81% (+5%)** |
+| Architecture | Validation | Avg Confidence (Pre) | Avg Confidence (Post) | Target |
+|--------------|-----------|---------------------|----------------------|--------|
+| Minimal Defended | ✗ 0/2 | 74% | 78% (+4%) | 6/6, 87-89% |
+| AI System | ✗ 0/2 | 78% | 84% (+6%) | 6/6, 91-93% |
+| **AVERAGE** | **0/2 (0%)** | **76%** | **81% (+5%)** | **6/6 (100%), 89%** |
 
 ---
 
