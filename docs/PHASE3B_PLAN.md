@@ -38,12 +38,13 @@
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ PILLAR 2: DDIR Defense (HOW to defend at each layer)   │
+│ PILLAR 2: Prevention + Mitigation (HOW to defend)      │
 ├─────────────────────────────────────────────────────────┤
-│ • DETER (Prevent): WAF, MFA, Encryption                 │
-│ • DETECT: Logging, IDS, Monitoring                      │
-│ • ISOLATE: Network Segmentation, Circuit Breaker        │
-│ • RESPOND: Backup, Incident Response, Failover          │
+│ • PREVENTION (40%): Stop attack path (WAF, MFA, etc)    │
+│ • MITIGATION (60%): Assume prevention failed (DIR)      │
+│   ├─ DETECT (30%): Logging, IDS, Monitoring             │
+│   ├─ ISOLATE (20%): Network Seg, Circuit Breaker        │
+│   └─ RESPOND (10%): Backup, Incident Response           │
 │ • Result: Depth at each hop, assume breach mindset      │
 └─────────────────────────────────────────────────────────┘
 
@@ -59,9 +60,9 @@
 
 **Integration Formula:**
 ```
-MITRE + RAPIDS → Threat Model
-DDIR → Breadth & Depth (security)
-DDIRR → Resilience (availability)
+MITRE + RAPIDS → Threat Model (WHAT to defend against)
+Prevention + Mitigation (DIR) → Breadth & Depth (HOW to defend at each layer)
+Resilience (DDIRR) → Availability (WHY architecture must be robust)
 
 Result: Secure AND Resilient Architecture
 ```
@@ -124,20 +125,33 @@ Layers:
 
 ---
 
-### 3. DDIR Budget Allocation
+### 3. Prevention vs Mitigation (CRITICAL DISTINCTION)
 
-**33/33/17/17 Split:**
+**See:** docs/PREVENTION_VS_MITIGATION.md for complete explanation
+
+**PREVENTION (Critical Controls):**
+- **Goal:** STOP the attack path from advancing to next hop
+- **If successful:** Attack ENDS ✋
+- **Examples:** WAF blocks exploit, MFA stops credential theft, Firewall blocks connection
+
+**MITIGATION (Assume Prevention Failed):**
+- **Goal:** Manage the attack when prevention fails
+- **DETECT:** Know attack is happening (Logging, SIEM, IDS)
+- **ISOLATE:** Contain the breach (Network Segmentation, Least Privilege)
+- **RESPOND:** Recover from impact (Backup, Incident Response)
+
+**Budget Allocation (40/30/20/10):**
 ```
-Max 10-12 controls:
-- DETER (Prevent): 33% (3-4 controls)
-- DETECT: 33% (3-4 controls)
-- ISOLATE: 17% (2 controls)
-- RESPOND: 17% (2 controls)
+Max 10 controls:
+- PREVENTION: 40% (4 controls) - Critical, block attack paths
+- DETECT: 30% (3 controls) - Assume breach, get visibility
+- ISOLATE: 20% (2 controls) - Contain damage
+- RESPOND: 10% (1 control) - Recover from breach
 ```
 
-**Rationale:** Assume breach mindset requires detect/isolate/respond, not just prevent.
+**Rationale:** Prevention is MOST critical (stop attack). But assume prevention fails → Need strong detection + isolation.
 
-**Adjustment:** For insider threats, shift to 25/35/20/20 (more detect/isolate/respond).
+**NOT Using:** "DETER" or "DDIR" terminology (confusing). Using "Prevention + Mitigation (DIR)" instead.
 
 ---
 
