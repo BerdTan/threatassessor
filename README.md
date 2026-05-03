@@ -2,7 +2,7 @@
 
 Production-ready CLI tool that maps threat scenarios to MITRE ATT&CK techniques using semantic search and LLM analysis.
 
-**Current Status:** ✅ v1.0 Production Ready - RAPIDS-Driven Threat Modeling + Residual Risk Assessment (82-85% confidence)
+**Current Status:** ✅ v1.0 Production Ready - Prevention/DIR Framework + Residual Risk Assessment (BEFORE/AFTER) (82-85% confidence)
 
 ---
 
@@ -57,23 +57,33 @@ See `docs/SELF_TEST.md` for details.
 
 ## Key Features
 
-### 🏗️ **Architecture Threat Assessment** (Phase 3A Complete)
-- **RAPIDS-driven threat modeling**: Threats → Primary driver, Attack paths → Validation, MITRE → Traceability
-- **Self-validation framework**: 0/2 pass rate (identifies real issues like T1190 misapplication)
-- **81% average confidence** with 5-factor transparent scoring + exposure multiplier
+### 🏗️ **Architecture Threat Assessment** (v1.0)
+**Input:** Mermaid architecture diagram (.mmd)  
+**Output:** Comprehensive threat assessment with business-actionable recommendations
+
+#### Core Capabilities:
+- **RAPIDS-driven threat modeling**: Risk assessment across 6 categories (Ransomware, Application Vulns, Phishing, Insider, DoS, Supply Chain)
+- **Residual Risk Assessment (NEW)**: BEFORE/AFTER risk calculation with ROI justification
+  - BEFORE: Risk with only present controls (e.g., 65/100 MITIGATE)
+  - AFTER: Risk after implementing recommendations (e.g., 9.5/100 ACCEPT)
+  - Business thresholds: ACCEPT (<10), MONITOR (10-20), MITIGATE (>20)
+  - Risk reduction metrics and cost justification
+- **Prevention + DIR Framework**: Defense-in-depth with clear control categorization
+  - Prevention (40%): Controls that STOP attacks
+  - Detection (30%): Know when attack is happening
+  - Isolation (20%): Contain the breach
+  - Response (10%): Recover from impact
+- **Layered Defense Analysis**: Hop-by-hop security assessment with SPOF detection
+- **Context-aware control labeling**: Diagrams show Prevents/Detects/Contains/Recovers
 - **100% F1 control detection** (perfect precision & recall)
-- Parser-only mode (no API key required, crowdsource-ready)
-- **Phase 3B Next (Planned)**: DDIR + Resilience enhancement
-  - Defense-in-depth (DDIR) per hop: Deter, Detect, Isolate, Respond
-  - Resilience by design (DDIRR): SPOF detection, internal DoS protection
-  - Target: 6/6 validation (100%), 89% confidence
-  - See [docs/PHASE3B_PLAN.md](docs/PHASE3B_PLAN.md)
+- **80% validation pass rate** (4/5 architectures), 82-85% confidence
+- Parser-only mode (no API key required)
 - **Phase 3C Future**: LLM as Judge/Critic (gap detection beyond deterministic)
 - Generates comprehensive reports:
-  - Executive summary (risk-informed decisions)
-  - Technical report (RAPIDS threats + MITRE techniques with attack path evidence)
-  - Action plan (phased implementation roadmap)
-  - Before/after diagrams (visual improvements with MITRE context)
+  - Executive summary (BEFORE/AFTER risk with ROI)
+  - Technical report (RAPIDS + MITRE with attack path evidence)
+  - Action plan (8-week implementation roadmap)
+  - Before/after diagrams (with context-aware control labels)
 
 ### 🔍 **Semantic Search**
 - Matches threats to 835 MITRE ATT&CK techniques
@@ -250,11 +260,12 @@ python3 -m chatbot.main --format all \
 - **README.md** (this file) - Quick start guide
 - **[CLAUDE.md](CLAUDE.md)** - Developer guidelines and 95% confidence rule
 - **[STATUS_AND_PLAN.md](STATUS_AND_PLAN.md)** - Current status and roadmap
+- **[docs/V1_FEATURES.md](docs/V1_FEATURES.md)** - Complete v1.0 feature documentation
 
-### Architecture Threat Modeling (NEW)
-- **[docs/REFERENCE_ARCHITECTURES.md](docs/REFERENCE_ARCHITECTURES.md)** - 2 validation benchmarks, improvement roadmap
-- **[docs/CONFIDENCE_METHODOLOGY.md](docs/CONFIDENCE_METHODOLOGY.md)** - 5-factor confidence scoring + exposure multiplier
-- **[docs/PHASE3B_PLAN.md](docs/PHASE3B_PLAN.md)** - DDIR + Resilience implementation plan (~13h)
+### v1.0 Architecture Threat Modeling
+- **[docs/PREVENTION_VS_MITIGATION.md](docs/PREVENTION_VS_MITIGATION.md)** - Prevention + DIR framework
+- **[docs/REFERENCE_ARCHITECTURES.md](docs/REFERENCE_ARCHITECTURES.md)** - Validation benchmarks (80% pass rate)
+- **[docs/CONFIDENCE_METHODOLOGY.md](docs/CONFIDENCE_METHODOLOGY.md)** - 5-factor confidence scoring
 - **[docs/PHASE3C_OVERVIEW.md](docs/PHASE3C_OVERVIEW.md)** - LLM as Judge/Critic (future, ~4h)
 
 ### User Guides
@@ -280,12 +291,13 @@ python3 -m chatbot.main --format all \
 | **Phase 1** | ✅ Complete | Keyword-based search (legacy) |
 | **Phase 2A** | ✅ Complete | Semantic search + LLM + Hybrid mitigations + Scoring |
 | **Phase 2.2** | ✅ Complete | Validation testing (84.9% accuracy, 79% confidence) |
-| **Phase 3A** | ✅ Complete | RAPIDS-driven threat modeling with self-validation (81% confidence, 0/2 validation pass) |
-| **Phase 3B** | ⏳ Next | DDIR + Resilience enhancement (depth per hop, SPOF mitigation, 6/6 validation, 89% confidence) - ~13h |
-| **Phase 3C** | 📋 Planned | LLM as Judge/Critic (gap detection beyond deterministic) - ~4h |
+| **Phase 3A** | ✅ Complete | RAPIDS-driven threat modeling (81% confidence) |
+| **Phase 3B** | ✅ Complete | Prevention/DIR Framework + Residual Risk (BEFORE/AFTER) |
+| **v1.0** | ✅ **SHIPPED** | Production-ready architecture threat assessment (82-85% confidence) |
+| **Phase 3C** | 📋 Next | LLM as Judge/Critic (gap detection beyond deterministic) - ~4h |
 | **Phase 4** | 📦 Future | Web UI (15-20 hours) |
 
-**Current Status:** Phase 3A complete (RAPIDS-driven + self-validation) | Phase 3B next (DDIR + Resilience for 100% validation)
+**Current Status:** v1.0 Production Ready - RAPIDS + Prevention/DIR + Residual Risk Assessment
 
 ---
 
@@ -430,6 +442,6 @@ python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.
 
 ---
 
-**Version:** 0.6.0 (RAPIDS-Driven Threat Modeling + Self-Validation Framework)  
+**Version:** 1.0.0 (Prevention/DIR Framework + Residual Risk Assessment)  
 **Last Updated:** 2026-05-03  
-**Status:** ✅ Production-Ready (Phase 3A Complete - RAPIDS-first with 81% confidence)
+**Status:** ✅ Production-Ready (v1.0 - RAPIDS + Prevention/DIR + Residual Risk with 82-85% confidence) 🚀

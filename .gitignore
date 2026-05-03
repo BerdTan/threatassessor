@@ -12,6 +12,9 @@ ENV/
 .env.*
 .vscode/
 *.code-workspace
+
+# Claude Code settings (local permissions)
+.claude/settings.local.json
 .DS_Store
 Thumbs.db
 *.log

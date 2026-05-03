@@ -374,48 +374,61 @@ python3 -m chatbot.main --gen-arch-truth arch.mmd -o path/to/output.json
 
 ## 🎯 Next Steps (Priority Order)
 
-### ✅ Immediate (READY TO COMMIT - v1.0)
-1. ✅ Phase 3A architecture analysis - DONE (RAPIDS-driven, 81% confidence)
-2. ✅ Phase 3B residual risk assessment - DONE (BEFORE/AFTER with ROI)
-3. ✅ Prevention + DIR framework - DONE (40/30/20/10 budget)
-4. ✅ Layered defense module - DONE (hop-by-hop DDIR)
-5. ✅ Context-aware control labeling - DONE (Prevents/Detects/Contains/Recovers)
-6. ✅ Documentation updates - DONE (README.md, STATUS_AND_PLAN.md, CLAUDE.md)
-7. ⏳ **Final commit** - READY NOW
+### ✅ v1.0 SHIPPED (2026-05-03)
+1. ✅ Phase 3A architecture analysis - COMPLETE (RAPIDS-driven, 81% confidence)
+2. ✅ Phase 3B residual risk assessment - COMPLETE (BEFORE/AFTER with ROI)
+3. ✅ Prevention + DIR framework - COMPLETE (40/30/20/10 budget)
+4. ✅ Layered defense module - COMPLETE (hop-by-hop DDIR)
+5. ✅ Context-aware control labeling - COMPLETE (Prevents/Detects/Contains/Recovers)
+6. ✅ Documentation updates - COMPLETE (V1_FEATURES.md, README.md, STATUS_AND_PLAN.md, CLAUDE.md)
+7. ✅ **v1.0 Release** - SHIPPED 🚀
 
-**v1.0 Commit Summary:**
-- feat: Add residual risk assessment (BEFORE/AFTER with ROI calculation)
-- feat: Implement Prevention + DIR framework (defense-in-depth)
-- feat: Add layered defense module with hop-by-hop analysis
+**v1.0 Release Summary:**
+- feat: Residual risk assessment (BEFORE/AFTER with ROI calculation)
+- feat: Prevention + DIR framework (defense-in-depth)
+- feat: Layered defense module with hop-by-hop analysis
 - feat: Context-aware control verbs in diagrams (Prevents/Detects/Contains/Recovers)
 - New modules: layered_defense.py (498 lines), residual_risk.py (365 lines)
 - Enhanced: rapids_driven_controls.py (DIR inference), threat_report.py (BEFORE/AFTER sections)
+- Documentation: V1_FEATURES.md (260 lines), PREVENTION_VS_MITIGATION.md
 - Test architecture: 99_naked_vulnerable.mmd (validation upper bound)
-- Validated: 80% pass rate (4/5), 82-85% confidence
+- Validated: 80% pass rate (4/5 architectures), 82-85% confidence
 - Business-ready: Risk acceptance thresholds, ROI justification, signature requirement
 
-### Short-Term (Next Session - Post v1.0 Polish)
-1. **Optional Phase 3B Polish** (deferred from v1.0):
+### Short-Term (Next Session - Post v1.0)
+1. **Optional Polish** (enhancement, not required):
    - Enhanced validation (6 checks vs current 2)
    - Budget enforcement (strict 40/30/20/10)
    - Exposure multiplier for confidence scoring
    - Enhanced reporting (DDIR tables, SPOF mitigation plans)
+   - Hop-specific diagram placement (controls at exact hops)
 
 2. **Testing expansion:**
    - Run validation against all 18 architectures
    - Document per-architecture-type accuracy
    - Build validation benchmark suite
 
+3. **User feedback collection:**
+   - Real-world architecture tests
+   - Business value validation
+   - Report clarity assessment
+
 ### Medium-Term (1-2 weeks)
-1. **Phase 3C: Advanced Features**
-   - Confidence scoring for risk assessments
-   - Framework flexibility (STRIDE, OWASP, NIST, CIS)
-   - Custom control definitions
+1. **Phase 3C: LLM as Judge/Critic** (~4h)
+   - Gap detection beyond deterministic rules
+   - Architecture-specific risk identification
+   - Industry-specific threat considerations
+   - See docs/PHASE3C_OVERVIEW.md
 
 2. **Model optimization:**
    - Monitor Google Gemma availability
    - Test alternative models if needed
    - Document model performance matrix
+
+3. **Advanced features:**
+   - Framework flexibility (STRIDE, OWASP, NIST, CIS)
+   - Custom control definitions
+   - Integration with ticketing systems
 
 ### Long-Term (Future)
 1. **Phase 4:** Web UI implementation (15-20 hours)
@@ -523,13 +536,14 @@ python3 test_openrouter.py
 ---
 
 **Single source of truth for project status**  
-**Updated:** 2026-05-01  
-**Next Review:** After Phase 2.2 validation complete
+**Updated:** 2026-05-03  
+**Next Review:** After user feedback collection or Phase 3C start
 
 ---
 
 ## 📝 Documentation Updates
 
-- **2026-05-02:** Major reorganization - Phase 2.2 complete, self-test added, docs organized by purpose. Root: 3 files. Tests: consolidated results. Deployment: grouped in docs/deployment/. Commit rules established. See docs/REORGANIZATION_COMPLETE.md
+- **2026-05-03:** v1.0 released - Residual Risk Assessment (BEFORE/AFTER) + Prevention/DIR Framework. Added docs/V1_FEATURES.md (260 lines), docs/PREVENTION_VS_MITIGATION.md. Updated README, STATUS_AND_PLAN, CLAUDE.md to reflect v1.0 features. 80% validation pass rate, 82-85% confidence.
+- **2026-05-02:** Major reorganization - Phase 2.2 complete, self-test added, docs organized by purpose. Root: 3 files. Tests: consolidated results. Deployment: grouped in docs/deployment/. Commit rules established.
 - **2026-05-01:** Phase 2A complete, docs consolidated (27 → 12 files)
 
