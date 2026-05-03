@@ -1,0 +1,24 @@
+flowchart TB
+    %% DELIBERATELY VULNERABLE ARCHITECTURE
+    %% Zero controls, maximum exposure for residual risk testing
+
+    Internet((Internet))
+    WebServer[Unpatched Server]
+    AppServer[Application]
+    Database[(Database)]
+    AdminPanel[Admin Panel]
+    FileStorage[File Storage]
+
+    %% Direct exposure - no perimeter defense
+    Internet --> WebServer
+    Internet --> AdminPanel
+
+    %% Flat network - no segmentation
+    WebServer --> AppServer
+    WebServer --> Database
+    WebServer --> FileStorage
+    AppServer --> Database
+    AdminPanel --> Database
+    AdminPanel --> FileStorage
+
+    %% Zero monitoring, logging, or controls

@@ -425,48 +425,111 @@ def rank_and_deduplicate_paths(
     return unique_paths
 
 
+def calculate_exploitability_threshold(controls_present: List[str]) -> int:
+    """
+    Determine app vulnerability threshold for T1190 based on defensive posture.
+
+    Conservative assumption: If not actively defended, assume CVE present.
+
+    Args:
+        controls_present: List of control names (case-insensitive)
+
+    Returns:
+        int: Risk threshold (50-70). T1190 applies if app_vuln_risk >= threshold.
+            - 50: Well-maintained (patching + vuln scanning) - zero-day risk only
+            - 60: WAF present - mitigates some known CVEs
+            - 70: Neither - assume known CVEs present (conservative)
+    """
+    controls_lower = [c.lower() for c in controls_present]
+
+    has_patching = "patching" in controls_lower
+    has_vuln_scanning = "vulnerability scanning" in controls_lower
+    has_waf = "waf" in controls_lower
+
+    if has_patching and has_vuln_scanning:
+        return 50  # Well-maintained (zero-day risk only)
+    elif has_waf:
+        return 60  # WAF mitigates some known CVEs
+    else:
+        return 70  # Assume known CVEs present (conservative)
+
+
 def map_path_to_techniques(
     path: List[str],
     nodes: Dict[str, Dict],
-    controls_present: List[str]
+    controls_present: List[str],
+    rapids: Optional[Dict] = None
 ) -> List[str]:
     """
-    Map attack path to MITRE techniques based on components.
+    Map attack path to MITRE techniques based on entry, traversal, target, and context.
 
-    Simple heuristic mapping (can be enhanced with LLM).
+    Phase 3B Enhancement: Context-aware technique mapping
+    - T1190 only when internet-facing AND exploitable (not just internet-facing)
+    - T1566/T1078 for user/insider entries (not T1190)
+    - Exploitability based on defensive posture (patching, WAF, etc.)
+
+    Args:
+        path: List of node IDs in attack path
+        nodes: Node dictionary from architecture
+        controls_present: List of control names
+        rapids: Optional RAPIDS assessment (for app_vuln_risk)
+
+    Returns:
+        List of MITRE technique IDs (up to 5)
     """
     techniques = []
 
-    # Entry point techniques
-    entry_label = nodes[path[0]].get("label", "").lower()
-    if "internet" in entry_label or "public" in entry_label:
-        techniques.append("T1190")  # Exploit Public-Facing Application
-    if "user" in entry_label:
-        techniques.append("T1566")  # Phishing
+    if not path:
+        return techniques
 
-    # Traversal techniques
+    # Entry point techniques (Phase 3B: Context-aware)
+    entry_label = nodes[path[0]].get("label", "").lower()
+
+    # User/Insider/Employee entries → Phishing + Valid Accounts (NOT T1190)
+    if any(kw in entry_label for kw in ["user", "admin", "employee", "client", "mobile"]):
+        techniques.append("T1566")  # Phishing
+        techniques.append("T1078")  # Valid Accounts
+
+    # Internet entries → Only if exploitable (Phase 3B: NEW)
+    elif any(kw in entry_label for kw in ["internet", "public", "external"]):
+        if rapids:
+            threshold = calculate_exploitability_threshold(controls_present)
+            app_vuln_risk = rapids.get("application_vulns", {}).get("risk", 0)
+
+            if app_vuln_risk >= threshold:
+                techniques.append("T1190")  # Exploit Public-Facing Application
+                logger.info(f"T1190 assigned: app_vuln_risk={app_vuln_risk} >= threshold={threshold}")
+            else:
+                logger.info(f"T1190 NOT assigned: app_vuln_risk={app_vuln_risk} < threshold={threshold} (well-defended)")
+        else:
+            # Fallback: No RAPIDS data, use old logic
+            techniques.append("T1190")
+            logger.warning("T1190 assigned without RAPIDS check (fallback mode)")
+
+    # Traversal techniques (Phase 3B: Removed auto-T1190 for web/api - handled at entry only)
     for node_id in path[1:-1]:
         label = nodes[node_id].get("label", "").lower()
 
-        if "web" in label or "api" in label:
-            techniques.append("T1190")  # Exploit Public-Facing Application
+        # T1190 is now only assigned at entry point (see above)
+        # Removed: "web" or "api" → T1190 (caused false positives for MobileApp → API Gateway)
+
         if "server" in label or "application" in label:
             techniques.append("T1059")  # Command and Scripting Interpreter
         if "network" in label or "router" in label:
             techniques.append("T1090")  # Proxy
 
     # Target techniques
-    target_label = nodes[path[-1]].get("label", "").lower()
-    if "database" in target_label or "db" in target_label:
-        techniques.append("T1213")  # Data from Information Repositories
-    if "secret" in target_label or "key" in target_label:
-        techniques.append("T1552")  # Unsecured Credentials
+    if len(path) > 1:
+        target_label = nodes[path[-1]].get("label", "").lower()
+        if "database" in target_label or "db" in target_label:
+            techniques.append("T1213")  # Data from Information Repositories
+        if "secret" in target_label or "key" in target_label:
+            techniques.append("T1552")  # Unsecured Credentials
 
-    # Control-based technique mapping
-    if "waf" not in controls_present:
-        techniques.append("T1190")  # Exploit Public-Facing Application
-    if "mfa" not in controls_present:
-        techniques.append("T1078")  # Valid Accounts
+    # Control-based technique mapping (Phase 3B: Removed T1190 duplicate, kept T1078)
+    controls_lower = [c.lower() for c in controls_present]
+    if "mfa" not in controls_lower:
+        techniques.append("T1078")  # Valid Accounts (credential theft risk)
 
     # Deduplicate while preserving order
     seen = set()
@@ -533,14 +596,61 @@ def get_base_risk(category: str, architecture_type: str) -> int:
     return ARCHITECTURE_BASE_RISKS.get(architecture_type, ARCHITECTURE_BASE_RISKS["generic"]).get(category, 60)
 
 
+def adjust_rapids_for_exposure(rapids: Dict, exposure: str) -> Dict:
+    """
+    Adjust RAPIDS assessment based on entry point exposure.
+
+    Phase 3B-2: Dual-scenario support for ambiguous entries.
+
+    Args:
+        rapids: Base RAPIDS assessment
+        exposure: "external", "internal", or "ambiguous"
+
+    Returns:
+        Adjusted RAPIDS dict
+    """
+    adjusted = rapids.copy()
+
+    if exposure == "internal":
+        # Application vulns still exist (e.g., prompt injection), but less exposed
+        if "application_vulns" in adjusted:
+            original_risk = adjusted["application_vulns"]["risk"]
+            adjusted["application_vulns"]["risk"] = max(original_risk - 20, 50)
+            adjusted["application_vulns"]["rationale"] += " | Internal: Reduced exposure (-20)"
+
+        # Phishing risk higher for internal users (targeted attacks)
+        if "phishing" in adjusted:
+            original_risk = adjusted["phishing"]["risk"]
+            adjusted["phishing"]["risk"] = min(original_risk + 10, 90)
+            adjusted["phishing"]["rationale"] += " | Internal: Targeted phishing (+10)"
+
+        # DoS risk lower (not internet-facing)
+        if "dos" in adjusted:
+            original_risk = adjusted["dos"]["risk"]
+            adjusted["dos"]["risk"] = max(original_risk - 15, 40)
+            adjusted["dos"]["rationale"] += " | Internal: Not public-facing (-15)"
+
+    return adjusted
+
+
 def assess_rapids_risks(
     architecture_type: str,
     controls_present: List[str],
     attack_paths: List[Dict],
-    nodes: Dict[str, Dict]
+    nodes: Dict[str, Dict],
+    exposure: str = "external"
 ) -> Dict:
     """
     Calculate RAPIDS risk scores with architecture-type-aware baselines.
+
+    Phase 3B-2: Added exposure parameter for dual-scenario assessment.
+
+    Args:
+        architecture_type: web_app/cloud/ai_system/iot/generic
+        controls_present: List of controls already in architecture
+        attack_paths: List of attack paths (for context)
+        nodes: Node dictionary (for context)
+        exposure: "external" (default), "internal", or "ambiguous"
 
     Returns dict with 6 categories, each containing:
         - risk: 0-100 (higher = worse)
@@ -781,8 +891,9 @@ def calculate_overall_risk_score(
     - Control coverage (minor risk adjustment)
     """
     # Average RAPIDS risk (baseline threat level)
-    rapids_risks = [cat["risk"] for cat in rapids_assessment.values()]
-    avg_rapids_risk = sum(rapids_risks) / len(rapids_risks)
+    # Filter out metadata keys (start with _)
+    rapids_risks = [cat["risk"] for key, cat in rapids_assessment.items() if not key.startswith("_") and isinstance(cat, dict) and "risk" in cat]
+    avg_rapids_risk = sum(rapids_risks) / len(rapids_risks) if rapids_risks else 60
 
     # Defense-in-depth modifier (MAJOR impact)
     did_score = calculate_defense_in_depth_score(controls_present)
@@ -807,10 +918,12 @@ def calculate_overall_defensibility(
 ) -> int:
     """
     Calculate overall defensibility score (0-100, higher = better).
+
+    Phase 3B-2: Filter out metadata keys.
     """
-    # Average RAPIDS defensibility
-    rapids_def = [cat["defensibility"] for cat in rapids_assessment.values()]
-    avg_rapids_def = sum(rapids_def) / len(rapids_def)
+    # Average RAPIDS defensibility (filter metadata keys)
+    rapids_def = [cat["defensibility"] for key, cat in rapids_assessment.items() if not key.startswith("_") and isinstance(cat, dict) and "defensibility" in cat]
+    avg_rapids_def = sum(rapids_def) / len(rapids_def) if rapids_def else 40
 
     # Defense-in-depth bonus (MAJOR impact)
     did_score = calculate_defense_in_depth_score(controls_present)
@@ -918,26 +1031,51 @@ def generate_ground_truth(
     )
     logger.info(f"After ranking: {len(attack_paths)} critical paths")
 
-    # Enrich attack paths with techniques and enhanced rationale
+    # Phase 3B: RAPIDS assessment FIRST (needed for context-aware technique mapping)
+    # Temporarily enrich with basic rationale for RAPIDS
     for ap in attack_paths:
-        ap["techniques"] = map_path_to_techniques(
-            ap["path"],
-            parsed["nodes"],
-            controls_present
-        )
-
-        # Enhanced rationale with criticality
         tier = ap["criticality_tier"]
         path_str = " → ".join([parsed["nodes"][n].get("label", n) for n in ap["path"]])
         ap["rationale"] = f"[{tier}] {path_str}: {ap['hop_count']} hop{'s' if ap['hop_count'] != 1 else ''}, criticality score {ap['criticality']:.2f}"
 
-    # RAPIDS assessment
+    # Phase 3B-2: Check if entry is ambiguous (dual-scenario assessment)
+    from chatbot.modules.layered_defense import classify_entry_exposure
+
+    # Use first entry point from find_entry_points() (already correctly identified)
+    primary_entry_id = entry_points[0] if entry_points else None
+    entry_label = parsed["nodes"][primary_entry_id].get("label", "Unknown") if primary_entry_id else "Unknown"
+    exposure = classify_entry_exposure(entry_label)
+
+    logger.info(f"Entry point: {entry_label} (Exposure: {exposure})")
+
+    if exposure == "ambiguous":
+        logger.info("⚠️  Ambiguous entry detected - assuming external (conservative, recommend assessing both scenarios)")
+
+    # Generate RAPIDS assessment (use external for ambiguous - conservative)
     rapids_assessment = assess_rapids_risks(
         arch_type,
         controls_present,
         attack_paths,
-        parsed["nodes"]
+        parsed["nodes"],
+        exposure="external" if exposure == "ambiguous" else exposure
     )
+
+    # Store exposure metadata
+    rapids_assessment["_metadata"] = {
+        "exposure": exposure,
+        "entry_label": entry_label,
+        "is_ambiguous": exposure == "ambiguous"
+    }
+
+    # Phase 3B: NOW enrich attack paths with context-aware techniques (using RAPIDS)
+    logger.info("Phase 3B: Mapping techniques with RAPIDS context...")
+    for ap in attack_paths:
+        ap["techniques"] = map_path_to_techniques(
+            ap["path"],
+            parsed["nodes"],
+            controls_present,
+            rapids_assessment  # Pass RAPIDS for context-aware T1190
+        )
 
     # Overall scores (with defense-in-depth consideration)
     risk_score = calculate_overall_risk_score(rapids_assessment, len(attack_paths), coverage, controls_present)
@@ -1013,6 +1151,36 @@ def generate_ground_truth(
     # Update controls_missing with potentially re-prioritized list
     controls_missing_names = extract_control_names(adjusted_recommendations)
     ground_truth["controls_missing"] = controls_missing_names
+
+    # RESIDUAL RISK ASSESSMENT: Calculate BEFORE and AFTER
+    logger.info("\n")
+    from chatbot.modules.residual_risk import calculate_residual_risks, map_present_controls_to_rapids
+
+    # BEFORE: Current state with only present controls
+    logger.info("Calculating BEFORE residual risk (current state with present controls)...")
+    present_control_mappings = map_present_controls_to_rapids(
+        controls_present,
+        rapids_assessment,
+        attack_paths
+    )
+    residual_risks_before = calculate_residual_risks(
+        rapids_assessment,
+        present_control_mappings
+    )
+
+    # AFTER: Target state with all recommended controls implemented
+    logger.info("Calculating AFTER residual risk (after implementing recommendations)...")
+    residual_risks_after = calculate_residual_risks(
+        rapids_assessment,
+        adjusted_recommendations
+    )
+
+    # Store both in ground truth
+    ground_truth["residual_risks_before"] = residual_risks_before
+    ground_truth["residual_risks_after"] = residual_risks_after
+    # Keep "residual_risks" as alias for AFTER (backward compatibility)
+    ground_truth["residual_risks"] = residual_risks_after
+    logger.info("")
 
     # LLM enhancement (if requested and available)
     if use_llm:

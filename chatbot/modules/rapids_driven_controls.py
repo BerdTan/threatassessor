@@ -25,6 +25,36 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# DIR CATEGORY INFERENCE (for controls without hop-level enrichment)
+# ============================================================================
+
+def infer_dir_category(control_name: str) -> str:
+    """
+    Infer DIR category from control name.
+
+    Used when control is recommended by RAPIDS but not enriched by hop analysis.
+
+    Returns: "prevention", "detect", "isolate", or "respond"
+    """
+    control_lower = control_name.lower()
+
+    # DETECT: Monitoring, logging, alerting, scanning, assessment
+    if any(kw in control_lower for kw in ["log", "monitor", "siem", "ids", "detect", "alert", "audit", "behavioral", "anomaly", "scan", "assessment", "intelligence", "dlp"]):
+        return "detect"
+
+    # ISOLATE: Access control, segmentation, containment
+    if any(kw in control_lower for kw in ["segment", "privilege", "rbac", "isolat", "contain", "acl", "vlan", "quarantine", "timeout", "lockout"]):
+        return "isolate"
+
+    # RESPOND: Recovery, remediation, incident response
+    if any(kw in control_lower for kw in ["backup", "recover", "restore", "incident", "response", "rollback", "failover", "reimage", "forensic"]):
+        return "respond"
+
+    # PREVENTION: Default (blocks, filters, validates)
+    return "prevention"
+
+
+# ============================================================================
 # RAPIDS THREAT → MANDATORY CONTROLS MAPPING
 # ============================================================================
 
@@ -297,6 +327,9 @@ def generate_rapids_driven_controls(
 
         rationale = f"{rapids_context}{attack_evidence}"
 
+        # Infer DIR category if not already set
+        dir_category = infer_dir_category(control)
+
         results.append({
             "control": control,
             "priority": priority,
@@ -307,10 +340,95 @@ def generate_rapids_driven_controls(
             "techniques": sorted(list(data["techniques"])),
             "attack_paths": sorted(set(data["attack_path_evidence"])),
             "rationale": rationale,
-            "detailed_rationale": data["rationale"]
+            "detailed_rationale": data["rationale"],
+            "dir_category": dir_category  # Inferred from control name
         })
 
     # Sort by score (RAPIDS-driven + evidence boost)
+    results.sort(key=lambda x: (-x["score"], -x["rapids_risk_score"]))
+
+    # Phase 3B-2: Integrate layered defense (hop-level DDIR + resilience + SPOF)
+    logger.info("")
+    logger.info("Phase 3B-2: Integrating layered defense analysis...")
+    logger.info("=" * 80)
+
+    # Build edges from attack paths for SPOF detection
+    edges = []
+    for path in attack_paths:
+        path_nodes = path.get("path", [])
+        for i in range(len(path_nodes) - 1):
+            edges.append((path_nodes[i], path_nodes[i+1]))
+
+    # Generate layered defense recommendations
+    from chatbot.modules.layered_defense import generate_layered_defense
+
+    layered_defense = generate_layered_defense(
+        attack_paths,
+        nodes,
+        edges,
+        list(present_controls),
+        rapids
+    )
+
+    # Merge layered defense recommendations with RAPIDS recommendations
+    # Priority: RAPIDS (breadth) + Layered (depth) + SPOF (resilience)
+    hop_recs = layered_defense.get("recommendations", [])
+
+    logger.info(f"Layered defense generated {len(hop_recs)} hop-level recommendations")
+    logger.info(f"Identified {len(layered_defense.get('spofs', []))} SPOFs")
+
+    # Merge hop recommendations with RAPIDS recommendations
+    # Strategy: Enrich RAPIDS recs with hop placement, add unique hop recs
+    existing_control_map = {r["control"]: r for r in results}
+
+    for hop_rec in hop_recs:
+        control = hop_rec["control"]
+
+        if control in existing_control_map:
+            # ENRICH existing RAPIDS recommendation with hop placement data
+            existing = existing_control_map[control]
+
+            # Add hop-specific fields if not already present
+            if "layer" not in existing or not existing.get("layer"):
+                existing["layer"] = hop_rec.get("layer", "unknown")
+            if "placement" not in existing or not existing.get("placement"):
+                existing["placement"] = hop_rec.get("placement", "architecture")
+            if "control_type" not in existing or not existing.get("control_type"):
+                existing["control_type"] = hop_rec.get("control_type", "UNKNOWN")
+            if "dir_category" not in existing or not existing.get("dir_category"):
+                existing["dir_category"] = hop_rec.get("dir_category", "unknown")
+
+            # Append hop-specific rationale
+            hop_rationale = f"Depth: {hop_rec.get('control_type', 'control')} at {hop_rec.get('layer', 'unknown')} layer ({hop_rec.get('placement', 'hop')})"
+            if hop_rationale not in existing.get("detailed_rationale", []):
+                if isinstance(existing.get("detailed_rationale"), list):
+                    existing["detailed_rationale"].append(hop_rationale)
+
+        elif control not in present_controls:
+            # ADD new hop recommendation (not in RAPIDS list)
+            control_type = hop_rec.get("control_type", "UNKNOWN")
+            dir_category = hop_rec.get("dir_category", "unknown")
+
+            results.append({
+                "control": control,
+                "priority": hop_rec.get("priority", "high"),
+                "score": 5.0,  # Lower than RAPIDS-driven, but still recommended
+                "rapids_threats": [],
+                "rapids_risk_score": 0,
+                "mitigations": [],
+                "techniques": [],
+                "attack_paths": [],
+                "rationale": f"Depth: {control_type} at {hop_rec.get('layer', 'unknown')} layer",
+                "detailed_rationale": [f"{hop_rec.get('category', 'security')} control for {hop_rec.get('placement', 'architecture')}"],
+                "category": hop_rec.get("category", "security"),
+                "layer": hop_rec.get("layer", "unknown"),
+                "placement": hop_rec.get("placement", "architecture"),
+                "control_type": control_type,
+                "dir_category": dir_category
+            })
+            existing_control_map[control] = results[-1]
+
+    # Re-sort with hop recommendations included
     results.sort(key=lambda x: (-x["score"], -x["rapids_risk_score"]))
 
     # Add confidence scores
@@ -322,17 +440,37 @@ def generate_rapids_driven_controls(
         architecture_type
     )
 
-    # Log final recommendations
-    logger.info("Final RAPIDS-driven recommendations:")
+    # Log final recommendations with Prevention vs Mitigation labels
+    logger.info("Final RAPIDS-driven + Layered Defense recommendations:")
     logger.info("=" * 80)
     for i, rec in enumerate(results_with_confidence[:max_recommendations], 1):
         conf = rec.get("confidence", {})
-        logger.info(f"{i}. {rec['control'].upper()} ({rec['priority']}, score={rec['score']:.1f}, confidence={conf.get('level', 'N/A')} {conf.get('score', 0):.0%})")
-        logger.info(f"   RAPIDS: {', '.join(rec['rapids_threats'])}")
-        if rec['attack_paths']:
+
+        # Phase 3B-2: Show Prevention vs Mitigation (DIR)
+        control_type_label = ""
+        if rec.get("control_type"):
+            control_type_label = f" [{rec['control_type']}]"
+        elif rec.get("category") == "resilience":
+            control_type_label = " [RESILIENCE]"
+
+        logger.info(f"{i}. {rec['control'].upper()}{control_type_label} ({rec['priority']}, score={rec['score']:.1f}, confidence={conf.get('level', 'N/A')} {conf.get('score', 0):.0%})")
+        if rec.get('rapids_threats'):
+            logger.info(f"   RAPIDS: {', '.join(rec['rapids_threats'])}")
+        if rec.get('attack_paths'):
             logger.info(f"   Evidence: {len(rec['attack_paths'])} attack path(s)")
-        logger.info(f"   MITRE: {len(rec['techniques'])} technique(s), {len(rec['mitigations'])} mitigation(s)")
+        if rec.get('techniques'):
+            logger.info(f"   MITRE: {len(rec['techniques'])} technique(s), {len(rec.get('mitigations', []))} mitigation(s)")
+        if rec.get('layer'):
+            logger.info(f"   Layer: {rec['layer']}")
 
     logger.info("=" * 80)
 
-    return results_with_confidence[:max_recommendations]
+    # Attach layered defense metadata
+    return_data = results_with_confidence[:max_recommendations]
+    for rec in return_data:
+        rec["_layered_defense"] = {
+            "hop_analysis": layered_defense.get("hop_analysis", []),
+            "spofs": layered_defense.get("spofs", [])
+        }
+
+    return return_data

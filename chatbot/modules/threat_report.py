@@ -88,10 +88,14 @@ KEY FINDINGS
 
 """
 
-    # RAPIDS assessment summary
+    # RAPIDS assessment summary (Phase 3B-2: Filter metadata keys)
     rapids = ground_truth["rapids_assessment"]
     critical_threats = []
     for category, scores in rapids.items():
+        # Skip metadata keys (start with _)
+        if category.startswith("_") or not isinstance(scores, dict) or "risk" not in scores:
+            continue
+
         if scores["risk"] >= 70:
             critical_threats.append({
                 "category": category.replace("_", " ").title(),
@@ -120,6 +124,51 @@ KEY FINDINGS
             report += f"   Entry: {ap['entry']:20s} Target: {ap['target']}\n"
     else:
         report += "✓ No direct attack paths identified\n"
+
+    # Residual Risk Assessment (BEFORE and AFTER)
+    residual_before = ground_truth.get("residual_risks_before", {})
+    residual_after = ground_truth.get("residual_risks_after", {})
+
+    if residual_before and residual_after:
+        before_score = residual_before.get("overall_residual", 0)
+        before_status = residual_before.get("overall_status", "UNKNOWN")
+        after_score = residual_after.get("overall_residual", 0)
+        after_status = residual_after.get("overall_status", "UNKNOWN")
+
+        status_emoji = {
+            "ACCEPT": "✅",
+            "MONITOR": "⚠️",
+            "MITIGATE": "❌"
+        }.get(after_status, "❓")
+
+        # Calculate risk reduction
+        risk_reduction = before_score - after_score
+        risk_reduction_pct = (risk_reduction / before_score * 100) if before_score > 0 else 0
+
+        report += f"""
+═══════════════════════════════════════════════════════════════════════════════
+RESIDUAL RISK: BEFORE vs AFTER
+═══════════════════════════════════════════════════════════════════════════════
+
+CURRENT STATE (Before Controls):
+  Risk Score: {before_score:.1f}/100 ({before_status})
+  Status: {"❌ HIGH - Urgent mitigation needed" if before_status == "MITIGATE" else "⚠️ MEDIUM - Active monitoring required" if before_status == "MONITOR" else "✅ LOW - Quarterly reviews"}
+
+TARGET STATE (After Implementing Recommendations):
+  Risk Score: {after_score:.1f}/100 ({after_status})
+  Status: {status_emoji} {after_status}
+
+RISK REDUCTION: {risk_reduction:.1f} points ({risk_reduction_pct:.0f}% reduction)
+
+Even with ALL recommended controls, residual risk remains due to:
+• Zero-day exploits (no patch available)
+• Advanced Persistent Threats (APT with significant resources)
+• Insider threats with privileged access
+• Social engineering and human error
+
+Recommendation: {residual_after.get('summary', 'Review residual risks')}
+
+"""
 
     report += f"""
 ═══════════════════════════════════════════════════════════════════════════════
@@ -288,9 +337,11 @@ RAPIDS THREAT ASSESSMENT
 
 """
 
-    # RAPIDS categories with details
+    # RAPIDS categories with details (Phase 3B-2: Filter metadata)
     rapids = ground_truth["rapids_assessment"]
-    for category, scores in sorted(rapids.items(), key=lambda x: x[1]["risk"], reverse=True):
+    # Filter out metadata keys
+    rapids_filtered = {k: v for k, v in rapids.items() if not k.startswith("_") and isinstance(v, dict) and "risk" in v}
+    for category, scores in sorted(rapids_filtered.items(), key=lambda x: x[1]["risk"], reverse=True):
         risk = scores["risk"]
         defensibility = scores["defensibility"]
         rationale = scores["rationale"]
@@ -361,6 +412,65 @@ Recommended Implementation Order:
   3. Detection & Response (EDR, SIEM, logging)
   4. Data protection (Encryption, backup, DLP)
 
+═══════════════════════════════════════════════════════════════════════════════
+RESIDUAL RISK ASSESSMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+Even with ALL recommended controls implemented, residual risk remains.
+No control is 100% effective - this is a realistic assessment for risk acceptance.
+
+"""
+
+    # Detailed residual risk per threat
+    residual_risks = ground_truth.get("residual_risks", {})
+    if residual_risks and "per_threat" in residual_risks:
+        report += "| Threat Category      | Initial | Control Effectiveness | Residual | Status   |\n"
+        report += "|---------------------|---------|----------------------|----------|----------|\n"
+
+        for threat, data in residual_risks["per_threat"].items():
+            threat_name = threat.replace("_", " ").title()[:20].ljust(20)
+            initial = f"{data['initial_risk']}/100"
+            effectiveness = f"{data['combined_effectiveness']:.0%}"
+            residual = f"{data['residual_risk']}/100"
+            status_emoji = {"ACCEPT": "✅", "MONITOR": "⚠️", "MITIGATE": "❌"}.get(data['status'], "❓")
+            status = f"{status_emoji} {data['status']}"
+
+            controls_str = ", ".join([c["name"] for c in data["controls"][:2]])
+            if len(data["controls"]) > 2:
+                controls_str += f" +{len(data['controls'])-2} more"
+
+            report += f"| {threat_name} | {initial:7s} | {effectiveness:20s} | {residual:8s} | {status:8s} |\n"
+            report += f"|   Controls: {controls_str}\n"
+
+        overall_residual = residual_risks.get("overall_residual", 0)
+        overall_status = residual_risks.get("overall_status", "UNKNOWN")
+        status_emoji = {"ACCEPT": "✅", "MONITOR": "⚠️", "MITIGATE": "❌"}.get(overall_status, "❓")
+
+        report += f"\n{status_emoji} OVERALL RESIDUAL RISK: {overall_residual:.1f}/100 ({overall_status})\n\n"
+
+        # Thresholds
+        report += "Risk Acceptance Thresholds:\n"
+        report += "  • < 10:  ✅ ACCEPT (low risk, quarterly monitoring)\n"
+        report += "  • 10-20: ⚠️ MONITOR (medium risk, active monitoring required)\n"
+        report += "  • > 20:  ❌ MITIGATE (high risk, additional controls needed)\n\n"
+
+        # Why residual risk exists
+        report += "Why Residual Risk Exists (No Silver Bullet):\n"
+        report += "  • Zero-day exploits (no patch available yet)\n"
+        report += "  • Advanced Persistent Threats (sophisticated techniques)\n"
+        report += "  • Insider threats with privileged access\n"
+        report += "  • Social engineering and human error\n"
+        report += "  • Configuration drift and operational mistakes\n\n"
+
+        # Continuous improvement
+        report += "Continuous Improvement Recommendations:\n"
+        report += "  • Quarterly threat landscape review\n"
+        report += "  • Annual penetration testing\n"
+        report += "  • Bi-annual incident response drills\n"
+        report += "  • Control effectiveness validation\n"
+        report += "  • Security awareness training (quarterly)\n\n"
+
+    report += f"""
 ═══════════════════════════════════════════════════════════════════════════════
 ARCHITECTURE-SPECIFIC RECOMMENDATIONS
 ═══════════════════════════════════════════════════════════════════════════════
@@ -513,6 +623,52 @@ Validation Tests:
 Monitoring & Maintenance:
   • Weekly: Review security logs for anomalies
   • Monthly: Control effectiveness review
+  • Quarterly: Residual risk assessment and threat landscape review
+  • Annually: Full architecture security review and penetration testing
+
+═══════════════════════════════════════════════════════════════════════════════
+RESIDUAL RISK MONITORING PLAN
+═══════════════════════════════════════════════════════════════════════════════
+
+"""
+
+    # Add residual risk monitoring tasks
+    residual_risks = ground_truth.get("residual_risks", {})
+    if residual_risks and "per_threat" in residual_risks:
+        overall_residual = residual_risks.get("overall_residual", 0)
+        overall_status = residual_risks.get("overall_status", "UNKNOWN")
+
+        report += f"Post-Implementation Residual Risk: {overall_residual:.1f}/100 ({overall_status})\n\n"
+
+        if overall_status == "ACCEPT":
+            report += "Quarterly Monitoring (Low Residual Risk):\n"
+            report += "  • Review control effectiveness quarterly\n"
+            report += "  • Monitor for new threats and vulnerabilities\n"
+            report += "  • Update controls based on threat landscape\n"
+            report += "  • Annual penetration testing to validate controls\n\n"
+        elif overall_status == "MONITOR":
+            report += "Active Monitoring Required (Medium Residual Risk):\n"
+            report += "  • Monthly security posture reviews\n"
+            report += "  • Active threat hunting (weekly)\n"
+            report += "  • Incident response drills (quarterly)\n"
+            report += "  • Consider additional controls if risk increases\n"
+            report += "  • Quarterly penetration testing\n\n"
+        else:
+            report += "⚠️ CRITICAL: High Residual Risk - Additional Controls Needed\n"
+            report += "  • Implement additional controls immediately\n"
+            report += "  • Daily security monitoring\n"
+            report += "  • Weekly threat intelligence reviews\n"
+            report += "  • Monthly red team exercises\n"
+            report += "  • Escalate to executive leadership for risk acceptance\n\n"
+
+        # Risk acceptance
+        report += "Risk Acceptance Requirement:\n"
+        report += "  [ ] CISO / Security Leadership acknowledges residual risks\n"
+        report += "  [ ] Business Owner accepts risks within organizational appetite\n"
+        report += "  [ ] Commitment to continuous monitoring and improvement\n\n"
+        report += "  Signature: ________________  Date: __________\n"
+
+    report += """
   • Quarterly: Re-run threat assessment
   • Annually: Architecture security review
 
@@ -645,13 +801,22 @@ def generate_before_after_diagrams(
             mitigations = rec.get("mitigations", [])[:2]  # Top 2 mitigations
             techniques = rec.get("techniques", [])[:2]     # Top 2 techniques
             attack_paths = rec.get("attack_paths", [])[:3] # Top 3 paths
+            dir_category = rec.get("dir_category", "prevention")  # Get DIR category
 
-            logger.debug(f"Control {control}: mits={mitigations}, techs={techniques}, paths={attack_paths}")
+            logger.debug(f"Control {control}: mits={mitigations}, techs={techniques}, paths={attack_paths}, dir={dir_category}")
 
             if mitigations:
                 control_label += f"<br/>MITRE: {', '.join(mitigations)}"
             if techniques:
-                control_label += f"<br/>Blocks: {', '.join(techniques)}"
+                # Use context-aware verb based on DIR category
+                action_verb = {
+                    "prevention": "Prevents",    # Stops attack from happening
+                    "detect": "Detects",         # Identifies attack in progress
+                    "isolate": "Contains",       # Limits damage/spread
+                    "respond": "Recovers"        # Restores after breach
+                }.get(dir_category, "Addresses")  # Default fallback
+
+                control_label += f"<br/>{action_verb}: {', '.join(techniques)}"
             if attack_paths:
                 path_nums = ', '.join([f"#{p+1}" for p in attack_paths])
                 control_label += f"<br/>Paths: {path_nums}"
@@ -977,9 +1142,10 @@ cat after.mmd
 
 """
 
-    # Add RAPIDS summary
+    # Add RAPIDS summary (Phase 3B-2: Filter metadata)
     rapids = ground_truth['rapids_assessment']
-    for category, scores in sorted(rapids.items(), key=lambda x: x[1]['risk'], reverse=True):
+    rapids_filtered = {k: v for k, v in rapids.items() if not k.startswith("_") and isinstance(v, dict) and "risk" in v}
+    for category, scores in sorted(rapids_filtered.items(), key=lambda x: x[1]['risk'], reverse=True):
         risk = scores['risk']
         icon = "🔴" if risk >= 70 else ("🟠" if risk >= 50 else "🟡" if risk >= 30 else "🟢")
         readme_content += f"- {icon} **{category.replace('_', ' ').title()}**: Risk {risk}/100, Def {scores['defensibility']}/100\n"
