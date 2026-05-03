@@ -8,7 +8,7 @@ Production-ready CLI tools for MITRE-based threat analysis and architecture secu
 1. Threat scenarios → MITRE techniques → Mitigation guidance (Phase 2 - Complete)
 2. Architecture diagrams → Security assessment → Risk-informed decisions (Phase 3A - Complete)
 
-**Current Status:** ✅ Phase 3A Complete (Architecture Analysis: 86% accuracy, 100% F1) | Phase 3B Next (LLM Enhancement)
+**Current Status:** ✅ Phase 3A Complete (RAPIDS-Driven Threat Modeling: 81% confidence, self-validation) | Phase 3B Next (Validation Fixes)
 
 ---
 
@@ -35,9 +35,11 @@ python3 -m chatbot.main
 | `README.md` | Quick start guide (start here!) |
 | `STATUS_AND_PLAN.md` | Implementation status and roadmap |
 | `CLAUDE.md` | This file - Developer guidelines |
+| `docs/REFERENCE_ARCHITECTURES.md` | 2 validation benchmarks, improvement roadmap |
+| `docs/CONFIDENCE_METHODOLOGY.md` | 5-factor confidence scoring explained |
 | `docs/ARCHITECTURE.md` | System design details |
 | `docs/OPERATIONS.md` | Troubleshooting and maintenance |
-| `docs/MVP_SPECIFICATION.md` | Web UI requirements (Phase 4) |
+| `docs/specs/MVP_SPECIFICATION.md` | Web UI requirements (Phase 4) |
 | `docs/testing/` | Testing strategy |
 
 ---
@@ -294,13 +296,18 @@ python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddi
 
 ### Main Repo (This Directory)
 **Focus:** Production-ready MITRE threat analysis + architecture assessment  
-**Status:** Phase 3A Complete (Architecture analysis: 86% accuracy, 100% F1)  
+**Status:** Phase 3A Complete (RAPIDS-driven threat modeling: 81% confidence, self-validation)  
 **Location:** `/mnt/c/BACKUP/DEV-TEST`
 
 ### Key Directories
 - `chatbot/modules/` - Core engines
-  - `ground_truth_generator.py` - Architecture threat assessment (NEW)
-  - `threat_report.py` - Comprehensive report generation (NEW)
+  - `rapids_driven_controls.py` - RAPIDS-first recommendation engine (NEW)
+  - `confidence_scoring.py` - 5-factor transparent scoring (NEW)
+  - `self_validation.py` - Validates techniques, RAPIDS, control mappings (NEW)
+  - `threat_driven_controls.py` - MITRE technique → control mappings (NEW)
+  - `random_arch_generator.py` - Test architecture generator (NEW)
+  - `ground_truth_generator.py` - Architecture threat assessment (UPDATED)
+  - `threat_report.py` - Comprehensive report generation with MITRE context (UPDATED)
   - `agent.py`, `mitre.py`, `scoring.py` - Threat chatbot
 - `tests/data/architectures/` - 18 Mermaid test files
 - `tests/data/ground_truth/` - 7 validated JSON ground truths (validation only)
@@ -310,23 +317,24 @@ python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddi
 
 ## Next Session Quick Start
 
-**Context:** Phase 3A complete (architecture analysis validated), Phase 3B next (LLM enhancement)
+**Context:** Phase 3A complete (RAPIDS-driven + self-validation), Phase 3B next (validation fixes)
 
 **Resume:**
 ```bash
 cd /mnt/c/BACKUP/DEV-TEST
 source .venv/bin/activate
 cat STATUS_AND_PLAN.md  # Read Phase 3B tasks
+cat docs/REFERENCE_ARCHITECTURES.md  # Review validation issues
 ```
 
 **Phase 3B tasks (2-3 hours):**
-1. Implement `--gen-arch-truth-llm` mode
-2. Add attack narratives (LLM-generated scenarios)
-3. LLM-based missing control detection
-4. Risk contextualization (industry, threat landscape)
+1. Fix entry point detection (T1190 vs T1566 for "Users")
+2. RAPIDS calibration for architecture context
+3. AI-specific technique mapping (prompt injection)
+4. Increase confidence from 81% to 85%+ target
 
 ---
 
-*Version: 0.5.0 (Architecture Threat Assessment + MITRE Descriptions)*  
-*Last Updated: 2026-05-02*  
-*Status: Phase 3A Complete ✅ | Phase 3B Next ⏳*
+*Version: 0.6.0 (RAPIDS-Driven Threat Modeling + Self-Validation Framework)*  
+*Last Updated: 2026-05-03*  
+*Status: Phase 3A Complete ✅ (RAPIDS-first, 81% confidence) | Phase 3B Next ⏳ (Validation fixes)*

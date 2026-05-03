@@ -1,8 +1,8 @@
 # Documentation Index
 
 ---
-**Last Updated:** 2026-05-02  
-**Status:** Current (Phase 3A Complete - Architecture Analysis)
+**Last Updated:** 2026-05-03  
+**Status:** Current (Phase 3A Complete - RAPIDS-Driven Threat Modeling)
 ---
 
 Complete documentation for the MITRE ATT&CK Threat Assessment System (Chatbot + Architecture Analysis).
@@ -18,11 +18,13 @@ Complete documentation for the MITRE ATT&CK Threat Assessment System (Chatbot + 
 - **[../tests/README.md](../tests/README.md)** - How to run tests (START HERE)
 - **[SELF_TEST.md](SELF_TEST.md)** - Self-test feature (8-second validation)
 - **[testing/TESTING_STRATEGY.md](testing/TESTING_STRATEGY.md)** - Testing philosophy
+- **[REFERENCE_ARCHITECTURES.md](REFERENCE_ARCHITECTURES.md)** - 2 validation benchmarks
 
 ### 👨‍💻 For Developers
 - **[../CLAUDE.md](../CLAUDE.md)** - Developer guidelines and 95% confidence rule
 - **[../STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md)** - Current status and roadmap
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and components
+- **[CONFIDENCE_METHODOLOGY.md](CONFIDENCE_METHODOLOGY.md)** - 5-factor confidence scoring
 
 ### 🛠️ Operations
 - **[OPERATIONS.md](OPERATIONS.md)** - Troubleshooting, maintenance, and updates
@@ -318,6 +320,6 @@ Key checks:
 
 ---
 
-**Documentation Status:** ✅ Organized (Phase 2.2 complete)  
-**Last Updated:** 2026-05-02  
-**Total Active Docs:** ~30 files (3 root + 15 docs/ + 10 tests/ + archive/)
+**Documentation Status:** ✅ Organized (Phase 3A complete - RAPIDS-driven)  
+**Last Updated:** 2026-05-03  
+**Total Active Docs:** ~32 files (3 root + 17 docs/ + 10 tests/ + archive/)

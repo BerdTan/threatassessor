@@ -1,8 +1,8 @@
 # Status & Action Plan
 
-**Last Updated:** 2026-05-02  
-**Current Status:** ✅ Phase 3A Complete - Architecture Threat Assessment Working  
-**Overall Progress:** Phase 2 Complete (Chatbot) | Phase 3A Complete (Architecture Analysis) | Phase 3B Next (LLM Enhancement)
+**Last Updated:** 2026-05-03  
+**Current Status:** ✅ Phase 3A Complete - RAPIDS-Driven Threat Modeling with Self-Validation  
+**Overall Progress:** Phase 2 Complete (Chatbot) | Phase 3A Complete (RAPIDS-Driven + Self-Validation) | Phase 3B Next (Validation Fixes)
 
 ---
 
@@ -130,43 +130,59 @@ python3 -m chatbot.main --format technical     # Detailed analysis
 - Average response time: 2s (semantic only) or 60s (with LLM)
 - Test confidence: **79%** (production-ready)
 
-### ✅ Phase 3A: Architecture Analysis - Parser Engine (COMPLETE)
-**Status:** ✅ COMPLETE - Validated with 86% risk accuracy, 100% F1 control detection  
-**Completion Date:** 2026-05-02  
-**Implementation Time:** ~8 hours (3 sessions)
+### ✅ Phase 3A: RAPIDS-Driven Threat Modeling with Self-Validation (COMPLETE)
+**Status:** ✅ COMPLETE - RAPIDS-first approach with self-validation framework  
+**Completion Date:** 2026-05-03  
+**Implementation Time:** ~12 hours (4 sessions)
 
 **What Works:**
-1. **Ground Truth Generation** (`chatbot/modules/ground_truth_generator.py`)
-   - Parser-only mode: No API key required (crowdsource-ready)
-   - LLM mode: Available for enhanced analysis
-   - Architecture-aware RAPIDS assessment (5 types: web_app, cloud, ai_system, iot, generic)
-   - Graph-based attack path detection (BFS traversal)
-   - Defense-in-depth scoring (up to -40 risk reduction)
-   - Control tier categorization (critical/high/medium/low)
+1. **RAPIDS-Driven Control Recommendations** (`chatbot/modules/rapids_driven_controls.py`)
+   - RAPIDS threats as PRIMARY driver (6 categories: Ransomware, App Vulns, Phishing, Insider, DoS, Supply Chain)
+   - Attack paths as VALIDATION and EVIDENCE
+   - MITRE techniques as TRACEABILITY
+   - Mandatory controls mapped to threat scenarios (defensible recommendations)
+   - Evidence boost when attack paths confirm RAPIDS assessment
 
-2. **Comprehensive Reports** (`chatbot/modules/threat_report.py`)
-   - Executive summary (risk-informed decision support)
-   - Technical report (MITRE techniques with names & descriptions)
-   - Action plan (phased implementation: Week 1 quick wins → Weeks 4-8 advanced)
-   - Before/after diagrams (integrated control placement)
+2. **5-Factor Confidence Scoring** (`chatbot/modules/confidence_scoring.py`)
+   - Technique Mapping Confidence (30%): How certain are MITRE techniques?
+   - Mitigation-Control Mapping (30%): Direct vs indirect mapping strength
+   - Attack Path Coverage (20%): How many paths does control address?
+   - RAPIDS Validation (10%): Does high RAPIDS risk support this?
+   - Architecture Context (10%): Is control relevant to architecture type?
+   - Average confidence: 81% (target: 85%+)
 
-3. **Automated Validation** (`tests/validate_engine_accuracy.py`)
-   - 7 ground truth architectures (18 available for future testing)
-   - Precision/Recall/F1 metrics for control detection
-   - ±20 point tolerance for risk/defensibility scores
-   - Aggregate reporting across all architectures
+3. **Self-Validation Framework** (`chatbot/modules/self_validation.py`)
+   - Validates MITRE technique relevance to attack paths
+   - Validates RAPIDS scores align with architecture state
+   - Validates control-technique mappings
+   - Auto-adjusts confidence +3% to +15% when validations pass
+   - Identifies real issues (found T1190 misapplied to non-public entries)
+   - Current validation pass rate: 0/2 (identifies improvement areas)
 
-**Validation Results:**
-- **Risk Scoring:** 86% accuracy (6/7 within ±20 points)
-- **Control Detection:** 100% F1 (perfect precision & recall)
-- **Attack Path Detection:** 93% accuracy (3.7 avg vs 4.0 ground truth)
-- **Architecture Types:** Validated across web_app, cloud, ai_system, legacy, enterprise
+4. **Enhanced Visualizations** (`chatbot/modules/threat_report.py`)
+   - After.mmd shows MITRE context for each control
+   - Displays: Mitigations (e.g., M1016, M1018)
+   - Displays: Techniques blocked (e.g., T1059, T1190)
+   - Displays: Attack paths addressed (e.g., #1, #2, #3)
+   - Visual traceability from control → MITRE → attack paths
+
+5. **Test Architecture Generator** (`chatbot/modules/random_arch_generator.py`)
+   - Generate random architectures for testing (--gen-random-arch)
+   - Configurable orientation (TB/LR), complexity (low/medium/high), seed
+   - Sensible defaults: TB orientation, medium complexity
+
+**Validation Results (2 Reference Architectures):**
+- **Validation Pass Rate:** 0/2 (found real issues requiring fixes)
+- **Average Confidence:** 81% (before), 81% + 5% adjustment (after validation)
+- **Control Detection:** 100% F1 (perfect precision & recall maintained)
+- **Issues Identified:** T1190 misapplied to "Users" (should be T1566 Phishing)
 
 **Key Innovations:**
-- Architecture-aware base risks (different for AI vs web vs cloud)
-- Graph topology analysis (zero in/out-degree for entry/target detection)
-- Smart control placement in diagrams (perimeter/data/monitoring/application layers)
-- MITRE technique descriptions in reports (no more cryptic IDs)
+- RAPIDS-first recommendation engine (threat-driven, not technique-driven)
+- Self-validation identifies real issues (T1190 entry point detection)
+- Transparent confidence scoring with 5 factors
+- Enhanced visualizations show MITRE context directly in diagrams
+- Continuous improvement via validation feedback loop
 
 **CLI Integration:**
 ```bash
@@ -180,46 +196,50 @@ python3 -m chatbot.main --gen-arch-truth-llm architecture.mmd
 python3 -m chatbot.main --gen-arch-truth arch.mmd -o path/to/output.json
 ```
 
-**Files Created:**
-- `chatbot/modules/ground_truth_generator.py` (850+ lines)
-- `chatbot/modules/threat_report.py` (700+ lines)
-- `tests/validate_engine_accuracy.py` (280 lines)
-- 7 validated ground truth JSON files
-- Updated .gitignore (clean separation: validation JSON vs generated reports)
-- Updated CLAUDE.md (file organization documentation)
+**Files Created/Updated:**
+- `chatbot/modules/rapids_driven_controls.py` (NEW - 350 lines)
+- `chatbot/modules/confidence_scoring.py` (NEW - 270 lines)
+- `chatbot/modules/self_validation.py` (NEW - 416 lines)
+- `chatbot/modules/threat_driven_controls.py` (NEW - MITRE mappings)
+- `chatbot/modules/random_arch_generator.py` (NEW - 280 lines)
+- `chatbot/modules/ground_truth_generator.py` (UPDATED - integrated RAPIDS-driven)
+- `chatbot/modules/threat_report.py` (UPDATED - enhanced visualizations)
+- `chatbot/main.py` (UPDATED - added --gen-random-arch)
+- `docs/REFERENCE_ARCHITECTURES.md` (NEW - validation benchmarks)
+- `docs/CONFIDENCE_METHODOLOGY.md` (NEW - 5-factor scoring)
 
-### ⏳ Phase 3B: LLM Enhancement for Ground Truth (NEXT - 2-3 hours)
+### ⏳ Phase 3B: Validation Fixes (NEXT - 2-3 hours)
 **Status:** Planned - Not Started  
-**Goal:** Augment parser-only ground truth with LLM analysis
+**Goal:** Fix validation issues to reach 100% pass rate
 
-**Planned Features:**
-1. **Attack Narratives**
-   - LLM generates human-readable attack scenarios
-   - Maps abstract paths to realistic threat actor behavior
-   - Adds context: "APT group X typically uses Y to achieve Z"
+**Priority 1: Entry Point Detection (HIGH)**
+- **Problem:** T1190 (Exploit Public-Facing) incorrectly applied to "Users" entry
+- **Fix:** Strict check for internet/public/external keywords
+- **Expected Impact:** Validation pass rate: 0/2 → 1/2 (50%)
 
-2. **Missing Control Detection**
-   - LLM suggests non-obvious controls
-   - Cross-validates parser findings
-   - Identifies architecture-specific gaps (e.g., AI prompt filtering)
+**Priority 2: RAPIDS Calibration**
+- **Problem:** AI system has HIGH app vuln risk without public entry
+- **Fix:** Adjust RAPIDS for architecture context (internal vs external)
+- **Expected Impact:** RAPIDS alignment: 67% → 100%
 
-3. **Risk Contextualization**
-   - Industry-specific risk adjustments
-   - Threat landscape context (current campaigns)
-   - Compliance framework mapping (NIST, CIS, etc.)
+**Priority 3: AI-Specific Techniques**
+- **Problem:** Prompt injection not represented in MITRE ATT&CK
+- **Solution:** Map to closest MITRE + add custom indicators
+- **Expected Impact:** AI threat coverage: 70% → 90%
 
-**Implementation Plan:**
-- Add `--gen-arch-truth-llm` mode (already stubbed in main.py)
-- Integrate LLM calls into ground_truth_generator.py
-- Enhance report generation with LLM insights
-- Validate against same 7 ground truths (measure improvement)
+**Priority 4: Confidence Target**
+- **Current:** 81% average confidence
+- **Target:** 85%+ for HIGH rating
+- **Actions:** Architecture context validation, CVE cross-reference, industry benchmarks
 
 **Target Metrics:**
-- Maintain 86%+ risk accuracy
-- Improve control detection recall (capture non-obvious controls)
-- Add qualitative value (narratives, context)
+- Validation pass rate: 0/2 → 2/2 (100%)
+- Average confidence: 81% → 85%+
+- Technique mapping accuracy: ~85% → 95%+
 
 **Estimated Time:** 2-3 hours
+
+**See:** docs/REFERENCE_ARCHITECTURES.md for detailed improvement roadmap
 
 ### 🌐 Phase 4: Web UI (FUTURE - 15-20 hours)
 **Status:** Planned, not started
