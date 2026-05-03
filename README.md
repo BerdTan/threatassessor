@@ -60,9 +60,15 @@ See `docs/SELF_TEST.md` for details.
 ### 🏗️ **Architecture Threat Assessment** (Phase 3A Complete)
 - **RAPIDS-driven threat modeling**: Threats → Primary driver, Attack paths → Validation, MITRE → Traceability
 - **Self-validation framework**: 0/2 pass rate (identifies real issues like T1190 misapplication)
-- **81% average confidence** with 5-factor transparent scoring (target: 85%+)
+- **81% average confidence** with 5-factor transparent scoring + exposure multiplier
 - **100% F1 control detection** (perfect precision & recall)
 - Parser-only mode (no API key required, crowdsource-ready)
+- **Phase 3B Next (Planned)**: DDIR + Resilience enhancement
+  - Defense-in-depth (DDIR) per hop: Deter, Detect, Isolate, Respond
+  - Resilience by design (DDIRR): SPOF detection, internal DoS protection
+  - Target: 6/6 validation (100%), 89% confidence
+  - See [docs/PHASE3B_PLAN.md](docs/PHASE3B_PLAN.md)
+- **Phase 3C Future**: LLM as Judge/Critic (gap detection beyond deterministic)
 - Generates comprehensive reports:
   - Executive summary (risk-informed decisions)
   - Technical report (RAPIDS threats + MITRE techniques with attack path evidence)
@@ -247,7 +253,9 @@ python3 -m chatbot.main --format all \
 
 ### Architecture Threat Modeling (NEW)
 - **[docs/REFERENCE_ARCHITECTURES.md](docs/REFERENCE_ARCHITECTURES.md)** - 2 validation benchmarks, improvement roadmap
-- **[docs/CONFIDENCE_METHODOLOGY.md](docs/CONFIDENCE_METHODOLOGY.md)** - 5-factor confidence scoring explained
+- **[docs/CONFIDENCE_METHODOLOGY.md](docs/CONFIDENCE_METHODOLOGY.md)** - 5-factor confidence scoring + exposure multiplier
+- **[docs/PHASE3B_PLAN.md](docs/PHASE3B_PLAN.md)** - DDIR + Resilience implementation plan (~13h)
+- **[docs/PHASE3C_OVERVIEW.md](docs/PHASE3C_OVERVIEW.md)** - LLM as Judge/Critic (future, ~4h)
 
 ### User Guides
 - **[docs/OUTPUT_FORMATS.md](docs/OUTPUT_FORMATS.md)** - Format usage guide
@@ -273,10 +281,11 @@ python3 -m chatbot.main --format all \
 | **Phase 2A** | ✅ Complete | Semantic search + LLM + Hybrid mitigations + Scoring |
 | **Phase 2.2** | ✅ Complete | Validation testing (84.9% accuracy, 79% confidence) |
 | **Phase 3A** | ✅ Complete | RAPIDS-driven threat modeling with self-validation (81% confidence, 0/2 validation pass) |
-| **Phase 3B** | ⏳ Next | Fix validation issues (T1190 detection) to reach 100% pass rate |
+| **Phase 3B** | ⏳ Next | DDIR + Resilience enhancement (depth per hop, SPOF mitigation, 6/6 validation, 89% confidence) - ~13h |
+| **Phase 3C** | 📋 Planned | LLM as Judge/Critic (gap detection beyond deterministic) - ~4h |
 | **Phase 4** | 📦 Future | Web UI (15-20 hours) |
 
-**Current Status:** Phase 3A complete (RAPIDS-driven + self-validation) | Phase 3B next (validation fixes to reach 100% pass rate)
+**Current Status:** Phase 3A complete (RAPIDS-driven + self-validation) | Phase 3B next (DDIR + Resilience for 100% validation)
 
 ---
 

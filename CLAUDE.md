@@ -35,8 +35,10 @@ python3 -m chatbot.main
 | `README.md` | Quick start guide (start here!) |
 | `STATUS_AND_PLAN.md` | Implementation status and roadmap |
 | `CLAUDE.md` | This file - Developer guidelines |
+| `docs/PHASE3B_PLAN.md` | DDIR + Resilience implementation plan (~13h) |
+| `docs/PHASE3C_OVERVIEW.md` | LLM as Judge/Critic (future, ~4h) |
 | `docs/REFERENCE_ARCHITECTURES.md` | 2 validation benchmarks, improvement roadmap |
-| `docs/CONFIDENCE_METHODOLOGY.md` | 5-factor confidence scoring explained |
+| `docs/CONFIDENCE_METHODOLOGY.md` | 5-factor confidence + exposure multiplier |
 | `docs/ARCHITECTURE.md` | System design details |
 | `docs/OPERATIONS.md` | Troubleshooting and maintenance |
 | `docs/specs/MVP_SPECIFICATION.md` | Web UI requirements (Phase 4) |
@@ -317,21 +319,29 @@ python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddi
 
 ## Next Session Quick Start
 
-**Context:** Phase 3A complete (RAPIDS-driven + self-validation), Phase 3B next (validation fixes)
+**Context:** Phase 3A complete (RAPIDS-driven + self-validation), Phase 3B next (DDIR + Resilience)
 
 **Resume:**
 ```bash
 cd /mnt/c/BACKUP/DEV-TEST
 source .venv/bin/activate
-cat STATUS_AND_PLAN.md  # Read Phase 3B tasks
+cat docs/PHASE3B_PLAN.md  # Read complete Phase 3B plan
 cat docs/REFERENCE_ARCHITECTURES.md  # Review validation issues
+cat docs/CONFIDENCE_METHODOLOGY.md  # Review confidence approach
 ```
 
-**Phase 3B tasks (2-3 hours):**
-1. Fix entry point detection (T1190 vs T1566 for "Users")
-2. RAPIDS calibration for architecture context
-3. AI-specific technique mapping (prompt injection)
-4. Increase confidence from 81% to 85%+ target
+**Phase 3B Implementation (~13 hours, 6 phases):**
+1. Context-aware technique mapping (2h) - Fix T1190, add T1566/T1078
+2. Hop-based layered defense + resilience (5h) - DDIR per hop, SPOF detection
+3. Breadth + depth + resilience merge (2.5h) - Triple-objective optimization
+4. Enhanced validation (2.5h) - 6 validation checks (vs 2 currently)
+5. Exposure + insider confidence (1.5h) - Scale confidence to exposure
+6. Enhanced reporting (1.5h) - DDIR tables, SPOF mitigation, assume breach
+
+**Phase 3C (Future, ~4 hours):**
+- LLM as Judge/Critic
+- Gap detection beyond deterministic
+- See docs/PHASE3C_OVERVIEW.md
 
 ---
 
