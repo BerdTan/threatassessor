@@ -36,6 +36,12 @@ from chatbot.modules.scoring import (
     score_mitigation,
     calculate_composite_score
 )
+from chatbot.modules.threat_driven_controls import extract_control_names
+from chatbot.modules.rapids_driven_controls import generate_rapids_driven_controls
+from chatbot.modules.self_validation import (
+    run_self_validation,
+    apply_confidence_adjustments
+)
 
 logger = logging.getLogger(__name__)
 
@@ -951,12 +957,32 @@ def generate_ground_truth(
 
     rationale = f"{posture}. {len(attack_paths)} attack paths identified. Control coverage: {coverage:.0%}."
 
-    # Build ground truth
+    # Prepare partial ground truth for threat-driven recommendations
+    partial_ground_truth = {
+        "expected_attack_paths": attack_paths,
+        "rapids_assessment": rapids_assessment,
+    }
+
+    # RAPIDS-DRIVEN CONTROL RECOMMENDATIONS (Primary: RAPIDS threats, Secondary: MITRE validation)
+    # This generates controls based on RAPIDS threat assessment, validated by attack paths
+    # RAPIDS = PRIMARY driver (what threats exist?), Attack Paths = EVIDENCE (how are they exploitable?)
+    control_recommendations = generate_rapids_driven_controls(
+        partial_ground_truth,
+        set(controls_present),
+        parsed["nodes"],
+        arch_type,
+        max_recommendations=6
+    )
+    controls_missing_names = extract_control_names(control_recommendations)
+    logger.info(f"Threat-driven recommendations: {controls_missing_names}")
+
+    # Build initial ground truth
     ground_truth = {
         "architecture": Path(mmd_file_path).name,
         "description": f"{arch_type.replace('_', ' ').title()} architecture",
         "controls_present": controls_present,
         "controls_missing": controls_missing_names,
+        "control_recommendations": control_recommendations,  # Full details with confidence
         "expected_attack_paths": attack_paths,
         "expected_risk_score": risk_score,
         "expected_defensibility": defensibility_score,
@@ -970,6 +996,23 @@ def generate_ground_truth(
             "control_coverage": round(coverage, 2)
         }
     }
+
+    # SELF-VALIDATION: Check technique relevance, RAPIDS alignment, control mappings
+    # This adjusts confidence scores based on validation results
+    logger.info("\n")
+    validation_report = run_self_validation(ground_truth, parsed["nodes"], arch_type)
+
+    # Apply confidence adjustments from validation
+    adjusted_recommendations = apply_confidence_adjustments(
+        control_recommendations,
+        validation_report
+    )
+    ground_truth["control_recommendations"] = adjusted_recommendations
+    ground_truth["validation_report"] = validation_report
+
+    # Update controls_missing with potentially re-prioritized list
+    controls_missing_names = extract_control_names(adjusted_recommendations)
+    ground_truth["controls_missing"] = controls_missing_names
 
     # LLM enhancement (if requested and available)
     if use_llm:

@@ -449,6 +449,10 @@ Ground Truth Generation:
   --gen-arch-truth FILE.mmd       Generate ground truth (parser only, no LLM)
   --gen-arch-truth-llm FILE.mmd   Generate with LLM enhancement
   --output PATH                   Custom output path for ground truth
+  --gen-random-arch               Generate random architecture for testing
+  --orientation TB|LR             Diagram orientation (default: TB)
+  --complexity low|medium|high    Architecture complexity (default: medium)
+  --seed N                        Random seed for reproducibility
 
 Examples:
   python3 -m chatbot.main
@@ -458,6 +462,7 @@ Examples:
   python3 -m chatbot.main --self-test  # Validate system before use
   python3 -m chatbot.main --gen-arch-truth tests/data/architectures/01_minimal.mmd
   python3 -m chatbot.main --gen-arch-truth-llm file.mmd --output custom/path.json
+  python3 -m chatbot.main --gen-random-arch --complexity high --orientation LR
         """
     )
     parser.add_argument(
@@ -503,8 +508,65 @@ Examples:
         type=str,
         help='Output path for generated ground truth (default: tests/data/ground_truth/<name>.json)'
     )
+    parser.add_argument(
+        '--gen-random-arch',
+        action='store_true',
+        help='Generate random architecture diagram for testing'
+    )
+    parser.add_argument(
+        '--orientation',
+        type=str,
+        choices=['TB', 'LR'],
+        default='TB',
+        help='Diagram orientation: TB (top-bottom) or LR (left-right)'
+    )
+    parser.add_argument(
+        '--complexity',
+        type=str,
+        choices=['low', 'medium', 'high'],
+        default='medium',
+        help='Architecture complexity: low (5-8 nodes), medium (10-15), high (20-30)'
+    )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        help='Random seed for reproducibility'
+    )
 
     args = parser.parse_args()
+
+    # Handle random architecture generation mode
+    if args.gen_random_arch:
+        from chatbot.modules.random_arch_generator import save_random_architecture
+        import random as rand
+
+        # Set defaults if not in args
+        orientation = getattr(args, 'orientation', 'TB')
+        complexity = getattr(args, 'complexity', 'medium')
+        seed = args.seed if args.seed else rand.randint(1000, 9999)
+
+        print(f"\n{'='*80}")
+        print(f"Random Architecture Generator")
+        print(f"{'='*80}\n")
+        print(f"⚙️  Configuration:")
+        print(f"   Orientation: {orientation}")
+        print(f"   Complexity:  {complexity}")
+        print(f"   Seed:        {seed}")
+        print()
+
+        file_path = save_random_architecture(
+            args.output,
+            orientation=orientation,
+            complexity=complexity,
+            seed=seed
+        )
+
+        print(f"✅ Generated: {file_path}\n")
+        print(f"To regenerate this exact architecture, use: --seed {seed}")
+        print(f"\nTo test with threat assessment:")
+        print(f"  python3 -m chatbot.main --gen-arch-truth {file_path}")
+        print()
+        return
 
     # Handle ground truth generation mode
     if args.gen_arch_truth or args.gen_arch_truth_llm:

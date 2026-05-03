@@ -313,22 +313,48 @@ RAPIDS THREAT ASSESSMENT
     report += f"""
 
 ═══════════════════════════════════════════════════════════════════════════════
-CONTROL GAP ANALYSIS
+CONTROL GAP ANALYSIS (RAPIDS-Driven, MITRE-Validated)
 ═══════════════════════════════════════════════════════════════════════════════
 
-Missing Critical Controls:
+PRIMARY: RAPIDS threat assessment identifies what threats exist
+VALIDATION: Attack paths + MITRE techniques confirm exploitability
+
 """
 
-    # Missing controls with priority
-    missing = ground_truth.get("controls_missing", [])
-    if missing:
-        for i, control in enumerate(missing, 1):
-            report += f"  {i}. {control.upper()}\n"
+    # Show detailed control recommendations with confidence and threat context
+    control_recs = ground_truth.get("control_recommendations", [])
+    if control_recs:
+        report += "Recommended Controls (with threat context and confidence):\n\n"
+        for i, rec in enumerate(control_recs, 1):
+            control = rec["control"]
+            priority = rec["priority"]
+            confidence = rec.get("confidence", {})
+            conf_level = confidence.get("level", "UNKNOWN")
+            conf_score = confidence.get("score", 0.0)
+            enhanced_rationale = rec.get("enhanced_rationale", rec["rationale"])
+            mitigations = rec.get("mitigations", [])
+            techniques = rec.get("techniques", [])
+
+            # Confidence indicator
+            conf_indicator = "🟢" if conf_level == "HIGH" else "🟡" if conf_level == "MEDIUM" else "🟠"
+
+            report += f"{i}. {control.upper()} ({priority.upper()})\n"
+            report += f"   Confidence: {conf_indicator} {conf_level} ({conf_score:.0%})\n"
+            report += f"   Addresses: {enhanced_rationale}\n"
+            report += f"   MITRE Mitigations: {', '.join(mitigations[:3])}\n"
+            report += f"   MITRE Techniques: {', '.join(techniques[:3])}\n"
+            report += "\n"
     else:
-        report += "  None - all recommended controls implemented\n"
+        # Fallback to simple list if detailed recommendations not available
+        missing = ground_truth.get("controls_missing", [])
+        if missing:
+            report += "Missing Critical Controls:\n"
+            for i, control in enumerate(missing, 1):
+                report += f"  {i}. {control.upper()}\n"
+        else:
+            report += "  None - all recommended controls implemented\n"
 
     report += f"""
-
 Recommended Implementation Order:
   1. Perimeter defenses (WAF, Firewall, DDoS protection)
   2. Authentication (MFA, SSO, least privilege)
@@ -544,37 +570,49 @@ def generate_before_after_diagrams(
 
     # Parse to understand structure
     lines = original_content.strip().split('\n')
-    missing_controls = ground_truth.get('controls_missing', [])[:5]  # Top 5 missing
 
-    if not missing_controls:
+    # Get control recommendations with full details (MITRE, techniques, paths)
+    control_recommendations = ground_truth.get('control_recommendations', [])[:5]  # Top 5
+
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Building after.mmd with {len(control_recommendations)} control recommendations")
+    if control_recommendations:
+        first_rec = control_recommendations[0]
+        logger.info(f"First recommendation type: {type(first_rec)}, has mitigations: {'mitigations' in first_rec if isinstance(first_rec, dict) else False}")
+
+    # Fallback to simple list if detailed recommendations not available
+    if not control_recommendations:
+        missing_controls = ground_truth.get('controls_missing', [])[:5]
+        # Convert to simple format
+        control_recommendations = [{"control": c} for c in missing_controls]
+        logger.info("Falling back to simple controls_missing list")
+
+    if not control_recommendations:
         # No improvements needed, return same content with note
         after_content = original_content + "\n\n    %% ✓ All recommended controls implemented"
         return (original_content, after_content)
 
     # Build "after" version with strategically placed controls
     after_lines = []
-    node_declarations = []
+    structure_lines = []  # All non-edge, non-style lines (nodes, subgraphs, etc.)
     edge_declarations = []
     styling_declarations = []
     flowchart_line = None
-    current_section = "pre"  # pre, nodes, edges, post
 
-    # Parse original structure
+    # Parse original structure - preserve order for structure elements
     for line in lines:
         stripped = line.strip()
 
         if stripped.startswith('flowchart') or stripped.startswith('graph'):
             flowchart_line = line
-        elif '-->' in stripped or '---' in stripped or '<-->' in stripped:
+        elif '-->' in stripped or '---' in stripped or '<-->' in stripped or '.->' in stripped:
             edge_declarations.append(line)
-        elif 'style' in stripped:
+        elif stripped.startswith('style '):
             styling_declarations.append(line)
         elif stripped and not stripped.startswith('%%'):
-            # Node declaration or other
-            if any(char in stripped for char in ['[', '(', '{', '}']):
-                node_declarations.append(line)
-            else:
-                after_lines.append(line)
+            # Keep all structure: subgraphs, nodes, end keywords, etc.
+            structure_lines.append(line)
 
     # Rebuild with improvements
     if flowchart_line:
@@ -582,18 +620,43 @@ def generate_before_after_diagrams(
         after_lines.append("")
         after_lines.append("    %% ORIGINAL ARCHITECTURE")
 
-    # Add original nodes
-    for node in node_declarations:
-        after_lines.append(node)
+    # Add all original structure (preserves subgraphs and ordering)
+    for line in structure_lines:
+        after_lines.append(line)
 
-    # Add recommended control nodes
+    # Add recommended control nodes WITH MITRE CONTEXT
     after_lines.append("")
     after_lines.append("    %% RECOMMENDED SECURITY CONTROLS (GREEN)")
+    after_lines.append("    %% Format: Control Name<br/>MITRE: M####<br/>Addresses: T####")
 
     control_nodes = {}
-    for control in missing_controls:
+    for rec in control_recommendations:
+        control = rec.get("control", rec)  # Handle both dict and string
+        if isinstance(control, dict):
+            control = control.get("control")
+
         control_id = f"NEW_{control.replace(' ', '').replace('/', '').replace('-', '').upper()}"
+
+        # Build enhanced label with MITRE context
         control_label = control.title().replace('_', ' ')
+
+        # Add MITRE mitigations and techniques if available
+        if isinstance(rec, dict):
+            mitigations = rec.get("mitigations", [])[:2]  # Top 2 mitigations
+            techniques = rec.get("techniques", [])[:2]     # Top 2 techniques
+            attack_paths = rec.get("attack_paths", [])[:3] # Top 3 paths
+
+            logger.debug(f"Control {control}: mits={mitigations}, techs={techniques}, paths={attack_paths}")
+
+            if mitigations:
+                control_label += f"<br/>MITRE: {', '.join(mitigations)}"
+            if techniques:
+                control_label += f"<br/>Blocks: {', '.join(techniques)}"
+            if attack_paths:
+                path_nums = ', '.join([f"#{p+1}" for p in attack_paths])
+                control_label += f"<br/>Paths: {path_nums}"
+
+            logger.debug(f"Final label: {control_label}")
 
         # Choose shape based on control type
         if control in ['waf', 'firewall', 'ids/ips', 'ddos protection']:
@@ -609,7 +672,7 @@ def generate_before_after_diagrams(
             # Rectangle for general controls
             after_lines.append(f"    {control_id}[\"{control_label}\"]")
 
-        styling_declarations.append(f"    style {control_id} fill:#90EE90,stroke:#006400,stroke-width:3px")
+        styling_declarations.append(f"    style {control_id} fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000")
         control_nodes[control] = control_id
 
     # Add edges with strategic control placement
@@ -628,77 +691,152 @@ def generate_before_after_diagrams(
                 edge_dict[(source, target)] = edge_line
 
     # Find key nodes for control placement
-    internet_like = None
-    db_like = None
-    web_like = None
+    internet_like = []
+    db_like = []
+    web_like = []
+    all_app_nodes = []
 
-    for node_line in node_declarations:
+    for node_line in structure_lines:
+        stripped = node_line.strip()
+        if stripped.startswith('subgraph') or stripped == 'end':
+            continue  # Skip subgraph keywords
+
         lower = node_line.lower()
-        if 'internet' in lower or 'external' in lower or 'public' in lower:
-            # Extract node ID
-            for part in node_line.split():
-                if any(c in part for c in ['(', '[', '{']):
-                    internet_like = part.split('(')[0].split('[')[0].split('{')[0]
-                    break
-        if 'database' in lower or 'db' in lower:
-            for part in node_line.split():
-                if any(c in part for c in ['(', '[', '{']):
-                    db_like = part.split('(')[0].split('[')[0].split('{')[0]
-                    break
-        if 'web' in lower or 'app' in lower or 'server' in lower:
-            for part in node_line.split():
-                if any(c in part for c in ['(', '[', '{']):
-                    web_like = part.split('(')[0].split('[')[0].split('{')[0]
-                    break
+
+        # Extract node ID from declaration
+        node_id = None
+        for part in node_line.split():
+            if any(c in part for c in ['(', '[', '{']):
+                node_id = part.split('(')[0].split('[')[0].split('{')[0]
+                break
+
+        if not node_id:
+            continue
+
+        # Categorize nodes
+        if any(kw in lower for kw in ['internet', 'external', 'public', 'users', 'mobile', 'client']):
+            internet_like.append(node_id)
+        if any(kw in lower for kw in ['database', 'db', 'storage', 'store', 'data warehouse', 'cache']):
+            db_like.append(node_id)
+        if any(kw in lower for kw in ['web', 'app', 'server', 'service', 'api', 'gateway']):
+            web_like.append(node_id)
+            all_app_nodes.append(node_id)
+        elif any(kw in lower for kw in ['orchestrat', 'manager', 'controller', 'worker']):
+            all_app_nodes.append(node_id)
 
     # Add strategic control connections
     controls_placed = set()
 
-    # 1. WAF/Firewall: Between Internet and first component
-    for control in ['waf', 'firewall']:
-        if control in control_nodes and internet_like and not controls_placed:
+    # 1. WAF/Firewall/DDoS: Between Internet and first component
+    for control in ['waf', 'firewall', 'ddos protection']:
+        if control in control_nodes and internet_like:
             control_id = control_nodes[control]
-            # Find what Internet connects to
-            for (src, dst), edge_line in edge_dict.items():
-                if src == internet_like:
-                    # Insert control in the middle
-                    after_lines.append(f"    {src} --> {control_id}")
-                    after_lines.append(f"    {control_id} --> {dst}")
-                    controls_placed.add(control)
+            # Find what Internet-like nodes connect to
+            placed_for_control = False
+            for src_node in internet_like[:1]:  # Use first internet-like node
+                for (src, dst), edge_line in edge_dict.items():
+                    if src == src_node:
+                        # Insert control in the middle
+                        after_lines.append(f"    {src} --> {control_id}")
+                        after_lines.append(f"    {control_id} --> {dst}")
+                        controls_placed.add(control)
+                        placed_for_control = True
+                        break
+                if placed_for_control:
                     break
 
     # 2. Backup/Replication: Connected to database
-    for control in ['backup', 'database replication']:
+    for control in ['backup', 'database replication', 'encryption at rest']:
         if control in control_nodes and db_like:
             control_id = control_nodes[control]
-            after_lines.append(f"    {db_like} -.->|replicated to| {control_id}")
+            # Connect to first database
+            after_lines.append(f"    {db_like[0]} -.->|protected by| {control_id}")
             controls_placed.add(control)
 
     # 3. Logging/SIEM/Monitoring: Connected to multiple components
     for control in ['logging', 'siem', 'audit log', 'monitoring']:
         if control in control_nodes:
             control_id = control_nodes[control]
-            # Connect to key components
-            if web_like:
-                after_lines.append(f"    {web_like} -.->|logs to| {control_id}")
+            # Connect to key components (prefer app layer first, then data layer)
+            if all_app_nodes:
+                after_lines.append(f"    {all_app_nodes[0]} -.->|logs to| {control_id}")
             if db_like:
-                after_lines.append(f"    {db_like} -.->|audits to| {control_id}")
+                after_lines.append(f"    {db_like[0]} -.->|audits to| {control_id}")
             controls_placed.add(control)
             break  # Only add one monitoring control
 
     # 4. Rate limiting/Input validation: At application layer
-    for control in ['rate limiting', 'input validation']:
-        if control in control_nodes and web_like:
+    for control in ['rate limiting', 'input validation', 'api gateway']:
+        if control in control_nodes and (web_like or all_app_nodes):
             control_id = control_nodes[control]
-            after_lines.append(f"    {control_id} --> {web_like}")
+            target = web_like[0] if web_like else all_app_nodes[0]
+            after_lines.append(f"    {control_id} --> {target}")
             controls_placed.add(control)
 
-    # 5. Other controls: Add remaining original edges and annotate with unplaced controls
+    # 5. MFA/SSO: Before application layer
+    for control in ['mfa', 'sso', 'iam']:
+        if control in control_nodes and (web_like or all_app_nodes):
+            control_id = control_nodes[control]
+            target = web_like[0] if web_like else all_app_nodes[0]
+            # If there's an internet-like source, place between them
+            if internet_like:
+                after_lines.append(f"    {internet_like[0]} --> {control_id}")
+                after_lines.append(f"    {control_id} --> {target}")
+            else:
+                after_lines.append(f"    {control_id} --> {target}")
+            controls_placed.add(control)
+
+    # 6. AI-specific controls: Connected to LLM/AI components
+    for control in ['prompt filtering', 'output filtering', 'sandbox']:
+        if control in control_nodes:
+            control_id = control_nodes[control]
+            # Look for AI-related nodes
+            ai_nodes = [n for n in all_app_nodes if any(kw in structure_lines[i].lower()
+                       for i, line in enumerate(structure_lines)
+                       for kw in ['llm', 'agent', 'prompt', 'ai', 'model']
+                       if n in line)]
+            if ai_nodes:
+                after_lines.append(f"    {control_id} --> {ai_nodes[0]}")
+            elif all_app_nodes:
+                after_lines.append(f"    {control_id} --> {all_app_nodes[0]}")
+            controls_placed.add(control)
+
+    # 7. Network segmentation: Shown as protecting perimeter or data layer
+    for control in ['network segmentation', 'ids/ips', 'zero trust']:
+        if control in control_nodes:
+            control_id = control_nodes[control]
+            # Connect between layers
+            if db_like and all_app_nodes:
+                after_lines.append(f"    {control_id} -.->|isolates| {db_like[0]}")
+            elif all_app_nodes:
+                after_lines.append(f"    {control_id} -.->|protects| {all_app_nodes[0]}")
+            controls_placed.add(control)
+
+    # 8. Policy/process controls: Show as protecting entire architecture
+    # These are process-level controls that don't fit into data flow
+    process_controls = [
+        'least privilege', 'patching', 'vulnerability scanning', 'vulnerability management',
+        'user training', 'phishing simulation', 'code signing', 'integrity monitoring',
+        'threat intelligence', 'auto-update', 'container scanning', 'secrets management'
+    ]
+    for control in process_controls:
+        if control in control_nodes:
+            control_id = control_nodes[control]
+            # Connect to ALL components as a policy overlay
+            # Pick a representative node to show the policy applies
+            if all_app_nodes:
+                after_lines.append(f"    {control_id} -.->|applies to all| {all_app_nodes[0]}")
+            elif db_like:
+                after_lines.append(f"    {control_id} -.->|applies to all| {db_like[0]}")
+            controls_placed.add(control)
+
+    # 9. Other controls: Add remaining original edges and annotate with unplaced controls
     for edge_line in edge_declarations:
         after_lines.append(edge_line)
 
     # Add note for unplaced controls
-    unplaced = set(missing_controls) - controls_placed
+    all_control_names = [rec.get("control") if isinstance(rec, dict) else rec for rec in control_recommendations]
+    unplaced = set(all_control_names) - controls_placed
     if unplaced:
         after_lines.append("")
         after_lines.append(f"    %% Additional recommended: {', '.join(unplaced)}")
