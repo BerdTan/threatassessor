@@ -269,6 +269,40 @@ DDIRR → Resilience (WHY architecture must be robust)
 - docs/REFERENCE_ARCHITECTURES.md (validation roadmap)
 - docs/CONFIDENCE_METHODOLOGY.md (exposure multiplier)
 
+### 🤖 Phase 3C: LLM as Judge/Critic (FUTURE - 4 hours)
+**Status:** Planned - After Phase 3B Complete  
+**Goal:** Use LLM to identify gaps beyond deterministic assessment
+
+**Philosophy:** 
+- Phase 3B = Deterministic foundation (rule-based, no LLM required)
+- Phase 3C = LLM enhancement (critique, gap detection)
+
+**LLM as Critic Questions:**
+1. What threats did we miss?
+2. Are controls sufficient for this context?
+3. Architecture-specific risks not captured?
+4. Industry-specific threats relevant?
+5. Emerging threats not in MITRE?
+6. Cascading failure scenarios?
+7. Supply chain risks?
+8. Regulatory/compliance gaps?
+
+**Implementation:**
+- `--gen-arch-truth-llm` mode (LLM critique enabled)
+- LLM findings in separate report section: "LLM-Identified Considerations"
+- Marked for human review (not auto-applied)
+- Graceful degradation if LLM unavailable
+
+**Expected Outcome:**
+- Identifies ≥1 genuine gap per architecture
+- <20% false positives
+- Actionable suggestions
+- +1-2% confidence boost if LLM confirms deterministic findings
+
+**See:** docs/PHASE3C_OVERVIEW.md (detailed plan)
+
+---
+
 ### 🌐 Phase 4: Web UI (FUTURE - 15-20 hours)
 **Status:** Planned, not started
 
@@ -278,7 +312,7 @@ DDIRR → Resilience (WHY architecture must be robust)
 - MITRE coverage heatmap
 - Input forms (text + Mermaid editor)
 
-**Decision needed:** Framework choices (see docs/MVP_SPECIFICATION.md)
+**Decision needed:** Framework choices (see docs/specs/MVP_SPECIFICATION.md)
 
 ---
 

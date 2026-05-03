@@ -26,6 +26,10 @@ Complete documentation for the MITRE ATT&CK Threat Assessment System (Chatbot + 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and components
 - **[CONFIDENCE_METHODOLOGY.md](CONFIDENCE_METHODOLOGY.md)** - 5-factor confidence scoring
 
+### 📋 Phase Implementation Plans
+- **[PHASE3B_PLAN.md](PHASE3B_PLAN.md)** - DDIR + Resilience (NEXT, ~13h)
+- **[PHASE3C_OVERVIEW.md](PHASE3C_OVERVIEW.md)** - LLM as Judge/Critic (FUTURE, ~4h)
+
 ### 🛠️ Operations
 - **[OPERATIONS.md](OPERATIONS.md)** - Troubleshooting, maintenance, and updates
 
