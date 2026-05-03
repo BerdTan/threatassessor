@@ -40,6 +40,45 @@ python3 -m chatbot.main --gen-arch-truth tests/data/architectures/02_minimal_def
 # Output: report/02_minimal_defended/ with 3 reports + 2 diagrams
 ```
 
+---
+
+## Demonstrations
+
+### 🎬 Interactive Demos
+
+Two demo scripts showcase the system's capabilities:
+
+**1. Architecture Analysis Demo** (`demo_architecture.sh`)
+```bash
+./demo_architecture.sh
+```
+Demonstrates v1.0 flagship feature with side-by-side comparison:
+- Vulnerable baseline vs defended architecture
+- RAPIDS threat assessment (6 categories)
+- Residual risk (BEFORE/AFTER) with ROI calculation
+- Prevention + DIR control recommendations
+- Full report package generation
+- ~2 minutes runtime
+
+**2. Output Formats Demo** (`demo_formats.sh`)
+```bash
+./demo_formats.sh
+```
+Shows three output formats for threat scenario analysis:
+- Executive format (C-level/Board presentation)
+- Action Plan format (Security Manager roadmap)
+- Technical format (Security Analyst details)
+- Same query, different audiences
+- ~1 minute runtime
+
+**Use cases:**
+- New user orientation
+- Stakeholder demonstrations
+- Feature validation after updates
+- Training and onboarding
+
+---
+
 ### ✅ Self-Test (Validate Before Use)
 
 Before first use, run self-test to verify **84.9% accuracy claim**:
