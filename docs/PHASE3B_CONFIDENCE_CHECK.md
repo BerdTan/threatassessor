@@ -201,12 +201,41 @@ Examples:
 ```
 Residual Risk Score = (Initial RAPIDS Risk) * (1 - Control Effectiveness)
 
-Control Effectiveness:
+Control Effectiveness (Starting Conservative Values):
 - Prevention controls: 70-90% effective (can be bypassed)
 - Detection controls: 60-80% effective (may miss sophisticated attacks)
 - Isolation controls: 50-70% effective (can be circumvented)
 - Response controls: 40-60% effective (damage may already be done)
 ```
+
+**IMPORTANT PRINCIPLES (User Guidance):**
+
+1. **More Controls ≠ More Secure**
+   - 20 weak controls < 5 well-designed controls
+   - Focus on control QUALITY and VERIFICATION, not quantity
+   - Example: 10 logging tools without correlation < 1 SIEM with proper tuning
+
+2. **Controls Should NOT Be Static**
+   - Architecture evolves → Controls must evolve
+   - New threats emerge → Controls must adapt
+   - Technology changes → Controls must be re-evaluated
+   - Example: WAF rules from 2020 may not catch 2026 attacks
+
+3. **Zero Trust Mindset**
+   - Design matters: Assume controls will fail
+   - Verification matters: Test controls regularly (pentesting, red team)
+   - Layering matters: Defense-in-depth with overlapping controls
+   - Example: Don't just deploy MFA, verify it can't be bypassed
+
+4. **Architecture-Specific Effectiveness**
+   - WAF 70% effective for web apps, but only 40% for API-first architectures
+   - Encryption 90% effective for data at rest, but only if keys are secured
+   - Network segmentation 65% effective if enforced, 20% if misconfigured
+
+**Future Enhancement:**
+- Phase 3C: LLM judges control effectiveness per architecture
+- Phase 4: Control verification testing framework
+- Ongoing: Update effectiveness based on pentesting results
 
 **Example (21_agentic_ai_system):**
 
@@ -241,12 +270,17 @@ Even with all recommended controls implemented, residual risk remains:
 
 | Threat Category | Initial Risk | Control Effectiveness | Residual Risk | Status |
 |----------------|--------------|----------------------|---------------|--------|
-| DoS | 85/100 | 80% (Rate Limiting) | 17/100 | ✅ ACCEPTABLE |
-| Application Vulns | 80/100 | 70% (WAF) | 24/100 | ✅ ACCEPTABLE |
-| Insider Threat | 70/100 | 60% (Logging) | 28/100 | ⚠️ MONITOR |
-| Ransomware | 60/100 | 85% (Backup) | 9/100 | ✅ ACCEPTABLE |
+| DoS | 85/100 | 80% (Rate Limiting) | 17/100 | ⚠️ MONITOR |
+| Application Vulns | 80/100 | 70% (WAF) | 24/100 | ❌ MITIGATE |
+| Insider Threat | 70/100 | 60% (Logging) | 28/100 | ❌ MITIGATE |
+| Ransomware | 60/100 | 85% (Backup) | 9/100 | ✅ ACCEPT |
 
-**Overall Residual Risk: 23/100 (LOW-MEDIUM, ACCEPTABLE)**
+**Overall Residual Risk: 19.5/100 (MEDIUM, REQUIRES ACTION)**
+
+**Updated Thresholds (Per User):**
+- **< 10:** ✅ ACCEPT
+- **10-20:** ⚠️ MONITOR (quarterly review)
+- **> 20:** ❌ MITIGATE (need additional controls)
 
 ### Qualitative Assessment
 
@@ -331,75 +365,91 @@ Date: ___________  Signature: ___________
 
 ## Questions Before Implementation
 
-### 1. Test Architectures
+### 1. Test Architectures ✅ CONFIRMED
 **Question:** SafeEntry was excluded in Phase 3A. Should we include it now for Phase 3B testing?
 
-**My Assumption:** YES (you mentioned "safeentry, minimal_defended, agentic_ai")
+**User Answer:** ✅ YES - All 3 architectures in report/ folder:
+- 00_safeentry
+- 02_minimal_defended  
+- 21_agentic_ai_system
 
-**Confidence Impact:** If NO → Need to regenerate SafeEntry ground truth first
+**Confidence Impact:** ✅ 85% → 95% (confirmed)
 
 ---
 
-### 2. Control Effectiveness Values
+### 2. Control Effectiveness Values ✅ CONFIRMED (with caveats)
 **Question:** What control effectiveness percentages should we use?
 
-**Options:**
-- A) Research-based (NIST, CIS frameworks) - More accurate but time-consuming
-- B) Conservative estimates (60-80% range) - Quick but less defensible
-- C) Architecture-specific (varies by context) - Most accurate but complex
+**User Answer:** ✅ YES, use conservative 60-90% as START, but:
+- **CRITICAL:** Controls should NOT be static
+- **IMPORTANT:** More controls ≠ More secure
+- **PRINCIPLE:** Design and control verification matters (zero trust angle)
+- **FUTURE:** Explore more effective controls based on architecture context
 
-**My Recommendation:** Start with B (conservative estimates), refine in future
+**Starting Values (Conservative):**
+- Prevention: 70-90% effective
+- Detection: 60-80% effective  
+- Isolation: 50-70% effective
+- Response: 40-60% effective
 
-**Confidence Impact:** Affects residual risk accuracy
+**Future Enhancement:** Architecture-specific effectiveness (e.g., WAF 70% for web, but only 40% for API-first architectures)
+
+**Confidence Impact:** ✅ 70% → 95% (confirmed with evolution path)
 
 ---
 
-### 3. Residual Risk Thresholds
+### 3. Residual Risk Thresholds ✅ CONFIRMED (ADJUSTED)
 **Question:** What residual risk levels are "acceptable"?
 
-**Options:**
-- < 20: Acceptable (low risk)
-- 20-40: Monitor (medium risk)
-- > 40: Mitigate (high risk, need more controls)
+**User Answer:** ✅ ADJUSTED thresholds (more stringent):
+- **< 10:** ✅ ACCEPT (low risk)
+- **10-20:** ⚠️ MONITOR (medium risk, quarterly review)
+- **> 20:** ❌ MITIGATE (high risk, need more controls)
 
-**My Assumption:** These thresholds seem reasonable
+**Rationale:** More conservative than initial proposal (was < 20 accept). Reflects zero-trust mindset - keep residual risk as low as possible.
 
-**Confidence Impact:** Affects risk acceptance recommendations
+**Confidence Impact:** ✅ 95% (confirmed, more stringent is better)
 
 ---
 
-### 4. Report Location
+### 4. Report Location ✅ CONFIRMED
 **Question:** Where should residual risk section appear in reports?
 
-**Options:**
-- A) End of technical report (after control recommendations)
-- B) Separate "Residual Risk Report"
-- C) In executive summary (business focus)
+**User Answer:** ✅ YES, technical report + executive mention, but:
+- **IMPORTANT:** Depth differs by audience
+  - Executive: High-level summary (quantitative table + acceptance decision)
+  - Technical: Detailed analysis (qualitative + mitigation recommendations)
+  - Action Plan: Residual risk monitoring tasks
 
-**My Recommendation:** A (end of technical report) + mention in executive summary
+**Implementation:**
+- Executive Summary: 1-2 paragraphs + table
+- Technical Report: Full residual risk section (2-3 pages)
+- Action Plan: Monitoring tasks for residual risks
 
-**Confidence Impact:** Affects report structure changes
+**Confidence Impact:** ✅ 95% (confirmed with audience-specific depth)
 
 ---
 
-## Confidence Summary
+## Confidence Summary (UPDATED with User Answers)
 
-| Component | Confidence | Blocker? | Action Needed |
-|-----------|-----------|----------|---------------|
-| Technique Mapping Logic | ✅ 95% | No | Proceed after reading code |
-| Test Architecture Setup | 🟡 85% | Yes | Confirm SafeEntry inclusion |
-| Residual Risk Formula | ✅ 95% | No | Use conservative estimates |
-| Control Effectiveness | 🟡 70% | No | Start conservative, refine later |
-| Report Integration | ✅ 90% | No | Straightforward addition |
+| Component | Before | After User Confirmation | Blocker? |
+|-----------|--------|------------------------|----------|
+| Technique Mapping Logic | ✅ 95% | ✅ 95% | No |
+| Test Architecture Setup | 🟡 85% | ✅ 95% | **CLEARED** |
+| Residual Risk Formula | ✅ 95% | ✅ 95% | No |
+| Control Effectiveness | 🟡 70% | ✅ 95% | **CLEARED** |
+| Residual Risk Thresholds | 🟡 85% | ✅ 95% | **CLEARED** |
+| Report Integration | ✅ 90% | ✅ 95% | No |
 
-**Overall Confidence: 🟡 87%**
+**Overall Confidence: ✅ 95%+**
 
-**Blocker:** Need to confirm SafeEntry inclusion and regenerate if needed
+**All Blockers Cleared:**
+1. ✅ SafeEntry confirmed in test set (report/00_safeentry)
+2. ✅ Control effectiveness values confirmed (conservative 60-90%, evolve later)
+3. ✅ Residual risk thresholds adjusted (< 10 accept, 10-20 monitor, > 20 mitigate)
+4. ✅ Report structure confirmed (audience-specific depth)
 
-**Recommendation:** 
-1. Clarify test architecture list
-2. Read current ground_truth_generator.py
-3. Then proceed with 95%+ confidence
+**Recommendation:** ✅ READY TO START PHASE 3B-1 IMPLEMENTATION
 
 ---
 
