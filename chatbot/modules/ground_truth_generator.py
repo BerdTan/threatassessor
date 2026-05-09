@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from chatbot.parsers.mermaid_parser import parse_mermaid_file, MermaidParser
+from chatbot.modules.mitre import MitreHelper
 from tests.data.architectures.control_detection import (
     detect_controls_in_architecture,
     identify_missing_controls,
@@ -976,6 +977,9 @@ def generate_ground_truth(
     """
     logger.info(f"Generating ground truth for {mmd_file_path} (LLM: {use_llm})")
 
+    # Initialize MITRE helper for exhaustive mitigation analysis
+    mitre = MitreHelper(use_local=True)
+
     # Parse architecture
     parsed = parse_mermaid_file(mmd_file_path)
     parser = MermaidParser()
@@ -1067,15 +1071,25 @@ def generate_ground_truth(
         "is_ambiguous": exposure == "ambiguous"
     }
 
-    # Phase 3B: NOW enrich attack paths with context-aware techniques (using RAPIDS)
-    logger.info("Phase 3B: Mapping techniques with RAPIDS context...")
+    # Phase 3B: NOW enrich attack paths with per-node techniques (using RAPIDS)
+    logger.info("Phase 3B: Mapping per-node techniques with RAPIDS context...")
+    from chatbot.modules.per_node_ttp_mapper import (
+        map_path_to_per_node_techniques,
+        get_all_techniques_from_path
+    )
+
     for ap in attack_paths:
-        ap["techniques"] = map_path_to_techniques(
+        # Get per-node technique mapping
+        per_node_techniques = map_path_to_per_node_techniques(
             ap["path"],
             parsed["nodes"],
             controls_present,
             rapids_assessment  # Pass RAPIDS for context-aware T1190
         )
+
+        # Store both per-node AND aggregated techniques
+        ap["per_node_techniques"] = per_node_techniques  # NEW: Detailed hop-by-hop
+        ap["techniques"] = get_all_techniques_from_path(per_node_techniques)  # Aggregated list (backwards compatible)
 
     # Overall scores (with defense-in-depth consideration)
     risk_score = calculate_overall_risk_score(rapids_assessment, len(attack_paths), coverage, controls_present)
@@ -1104,15 +1118,36 @@ def generate_ground_truth(
     # RAPIDS-DRIVEN CONTROL RECOMMENDATIONS (Primary: RAPIDS threats, Secondary: MITRE validation)
     # This generates controls based on RAPIDS threat assessment, validated by attack paths
     # RAPIDS = PRIMARY driver (what threats exist?), Attack Paths = EVIDENCE (how are they exploitable?)
+    # No hard limit - let RAPIDS recommend all critical controls across 6 threat categories
     control_recommendations = generate_rapids_driven_controls(
         partial_ground_truth,
         set(controls_present),
         parsed["nodes"],
         arch_type,
-        max_recommendations=6
+        max_recommendations=15  # Reasonable upper bound (~2-3 per RAPIDS category)
     )
     controls_missing_names = extract_control_names(control_recommendations)
     logger.info(f"Threat-driven recommendations: {controls_missing_names}")
+
+    # Phase 3B: Augment with exhaustive MITRE mitigation analysis to fill gaps
+    logger.info("\nPhase 3B: Running exhaustive mitigation analysis for technique coverage...")
+    from chatbot.modules.exhaustive_mitigation_mapper import augment_with_exhaustive_mitigations
+
+    # Get all techniques from attack paths
+    all_techniques = set()
+    for ap in attack_paths:
+        all_techniques.update(ap.get('techniques', []))
+
+    control_recommendations = augment_with_exhaustive_mitigations(
+        control_recommendations=control_recommendations,
+        all_techniques=list(all_techniques),
+        controls_present=controls_present,
+        rapids_assessment=rapids_assessment,
+        mitre=mitre,
+        max_total_recommendations=None  # No hard limit - add all controls needed for 100% coverage
+    )
+    controls_missing_names = extract_control_names(control_recommendations)
+    logger.info(f"Final recommendations (with gap filling): {controls_missing_names}")
 
     # Build initial ground truth
     ground_truth = {
@@ -1131,7 +1166,9 @@ def generate_ground_truth(
             "architecture_type": arch_type,
             "node_count": len(parsed["nodes"]),
             "edge_count": len(parsed["edges"]),
-            "control_coverage": round(coverage, 2)
+            "control_coverage": round(coverage, 2),
+            "parsed_nodes": parsed["nodes"],  # Phase 3B: For orphan node detection
+            "parsed_edges": parsed["edges"]   # Phase 3B: For graph validation
         }
     }
 
@@ -1205,7 +1242,7 @@ def enhance_with_llm(
     - More specific missing control recommendations
     - Improved overall description and rationale
     """
-    from agentic.llm import generate_response_with_system
+    from agentic.llm_client import generate_response_with_system
 
     with open(mmd_file_path, 'r') as f:
         mermaid_content = f.read()

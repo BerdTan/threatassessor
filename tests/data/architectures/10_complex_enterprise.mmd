@@ -1,6 +1,7 @@
 flowchart TB
     Internet((Internet))
     Partners((Partners))
+    VPN((VPN Remote Access))
 
     subgraph Perimeter[Perimeter Security]
         DDoSProtection[DDoS Protection]
@@ -37,6 +38,7 @@ flowchart TB
 
     Internet --> DDoSProtection
     Partners --> DDoSProtection
+    VPN --> AdminPortal
     DDoSProtection --> WAF
     WAF --> LoadBalancer
     LoadBalancer --> ReverseProxy
@@ -55,6 +57,7 @@ flowchart TB
     AppServer2 --> CacheServer
     PrimaryDB --> ReplicaDB
     AdminPortal --> PrimaryDB
+    AdminPortal --> Monitoring
     Monitoring --> WebApp1
     Monitoring --> AppServer1
     Monitoring --> PrimaryDB
