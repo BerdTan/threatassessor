@@ -728,11 +728,16 @@ def generate_before_after_diagrams(
     lines = original_content.strip().split('\n')
 
     # Get control recommendations with full details (MITRE, techniques, paths)
-    control_recommendations = ground_truth.get('control_recommendations', [])[:5]  # Top 5
+    # Phase 3B: Visualize ALL recommended controls (no [:5] limit)
+    control_recommendations = ground_truth.get('control_recommendations', [])
 
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"Building after.mmd with {len(control_recommendations)} control recommendations")
+    logger.info(f"Building after.mmd with {len(control_recommendations)} control recommendations (ALL)")
+
+    # No hard limit - visualize all recommended controls
+    # User needs to see complete defense strategy, not truncated view
+    # Mermaid can handle 20+ nodes, and users can zoom/scroll if needed
     if control_recommendations:
         first_rec = control_recommendations[0]
         logger.info(f"First recommendation type: {type(first_rec)}, has mitigations: {'mitigations' in first_rec if isinstance(first_rec, dict) else False}")
@@ -798,12 +803,13 @@ def generate_before_after_diagrams(
 
         # Add MITRE mitigations and techniques if available
         if isinstance(rec, dict):
-            mitigations = rec.get("mitigations", [])[:2]  # Top 2 mitigations
-            techniques = rec.get("techniques", [])[:2]     # Top 2 techniques
-            attack_paths = rec.get("attack_paths", [])[:3] # Top 3 paths
+            # Phase 3B: Show ALL information (no truncation) for completeness
+            mitigations = rec.get("mitigations", [])[:3]  # Top 3 mitigations (increased from 2)
+            techniques = rec.get("techniques", [])[:3]     # Top 3 techniques (increased from 2)
+            attack_paths = rec.get("attack_paths", [])     # ALL paths (removed [:3] limit)
             dir_category = rec.get("dir_category", "prevention")  # Get DIR category
 
-            logger.debug(f"Control {control}: mits={mitigations}, techs={techniques}, paths={attack_paths}, dir={dir_category}")
+            logger.debug(f"Control {control}: mits={mitigations}, techs={techniques}, paths={len(attack_paths)} paths, dir={dir_category}")
 
             if mitigations:
                 control_label += f"<br/>MITRE: {', '.join(mitigations)}"
@@ -843,6 +849,10 @@ def generate_before_after_diagrams(
     # Add edges with strategic control placement
     after_lines.append("")
     after_lines.append("    %% CONNECTIONS (with integrated controls)")
+
+    # Track control edges vs original edges for color coding
+    control_edges = []  # Lines with control connections (will be colored)
+    original_edges_start_idx = None  # Where original edges begin
 
     # Parse existing edges to understand flow
     edge_dict = {}  # {(source, target): label}
@@ -889,28 +899,83 @@ def generate_before_after_diagrams(
         elif any(kw in lower for kw in ['orchestrat', 'manager', 'controller', 'worker']):
             all_app_nodes.append(node_id)
 
-    # Add strategic control connections
+    # Phase 3B+: PATH-BASED STRATEGIC CONTROL PLACEMENT
+    # Use attack path data to place controls where they actually protect
     controls_placed = set()
 
-    # 1. WAF/Firewall/DDoS: Between Internet and first component
+    # Get attack paths from ground truth for intelligent placement
+    attack_paths = ground_truth.get('expected_attack_paths', [])
+
+    # Build entry_point -> first_hop mapping for inline controls
+    entry_to_first_hop = {}
+    for path in attack_paths:
+        entry = path.get('entry')
+        path_nodes = path.get('path', [])
+        if entry and len(path_nodes) > 1:
+            # path[0] is entry itself, path[1] is first internal hop
+            if entry == path_nodes[0] and len(path_nodes) > 1:
+                entry_to_first_hop[entry] = path_nodes[1]
+
+    logger.info(f"Entry points found: {list(entry_to_first_hop.keys())}")
+
+    # 1. MFA/Authentication Controls: Place on ALL entry points they protect
+    # Check which attack paths the control addresses
+    for control in ['mfa', 'sso', 'iam', 'authentication']:
+        if control not in control_nodes:
+            continue
+
+        control_id = control_nodes[control]
+        control_rec = next((r for r in control_recommendations if r.get('control') == control), None)
+
+        if not control_rec:
+            continue
+
+        # Get attack paths this control addresses
+        control_attack_paths = control_rec.get('attack_paths', [])
+        placed_on_entries = set()
+
+        for path_idx in control_attack_paths:
+            if path_idx < len(attack_paths):
+                path = attack_paths[path_idx]
+                entry = path.get('entry')
+
+                # Place MFA between entry and first hop
+                if entry and entry in entry_to_first_hop and entry not in placed_on_entries:
+                    first_hop = entry_to_first_hop[entry]
+                    after_lines.append(f"    {entry} --> {control_id}")
+                    after_lines.append(f"    {control_id} --> {first_hop}")
+                    placed_on_entries.add(entry)
+                    logger.info(f"Placed {control} on entry: {entry} -> {first_hop}")
+
+        if placed_on_entries:
+            controls_placed.add(control)
+            logger.info(f"MFA placed on {len(placed_on_entries)} entry points: {placed_on_entries}")
+
+    # 2. WAF/Firewall/DDoS: Between Internet-like entries and first component
     for control in ['waf', 'firewall', 'ddos protection']:
         if control in control_nodes and internet_like:
             control_id = control_nodes[control]
             # Find what Internet-like nodes connect to
             placed_for_control = False
             for src_node in internet_like[:1]:  # Use first internet-like node
+                if src_node in entry_to_first_hop:
+                    first_hop = entry_to_first_hop[src_node]
+                    after_lines.append(f"    {src_node} --> {control_id}")
+                    after_lines.append(f"    {control_id} --> {first_hop}")
+                    controls_placed.add(control)
+                    placed_for_control = True
+                    break
+
+            # Fallback to old logic if no path data
+            if not placed_for_control:
                 for (src, dst), edge_line in edge_dict.items():
-                    if src == src_node:
-                        # Insert control in the middle
+                    if src in internet_like:
                         after_lines.append(f"    {src} --> {control_id}")
                         after_lines.append(f"    {control_id} --> {dst}")
                         controls_placed.add(control)
-                        placed_for_control = True
                         break
-                if placed_for_control:
-                    break
 
-    # 2. Backup/Replication: Connected to database
+    # 3. Backup/Replication: Connected to database (recovery layer)
     for control in ['backup', 'database replication', 'encryption at rest']:
         if control in control_nodes and db_like:
             control_id = control_nodes[control]
@@ -918,7 +983,7 @@ def generate_before_after_diagrams(
             after_lines.append(f"    {db_like[0]} -.->|protected by| {control_id}")
             controls_placed.add(control)
 
-    # 3. Logging/SIEM/Monitoring: Connected to multiple components
+    # 4. Logging/SIEM/Monitoring: Connected to multiple components (detection layer)
     for control in ['logging', 'siem', 'audit log', 'monitoring']:
         if control in control_nodes:
             control_id = control_nodes[control]
@@ -930,20 +995,12 @@ def generate_before_after_diagrams(
             controls_placed.add(control)
             break  # Only add one monitoring control
 
-    # 4. Rate limiting/Input validation: At application layer
+    # 5. Rate limiting/Input validation: At application layer (prevention)
     for control in ['rate limiting', 'input validation', 'api gateway']:
         if control in control_nodes and (web_like or all_app_nodes):
             control_id = control_nodes[control]
             target = web_like[0] if web_like else all_app_nodes[0]
-            after_lines.append(f"    {control_id} --> {target}")
-            controls_placed.add(control)
-
-    # 5. MFA/SSO: Before application layer
-    for control in ['mfa', 'sso', 'iam']:
-        if control in control_nodes and (web_like or all_app_nodes):
-            control_id = control_nodes[control]
-            target = web_like[0] if web_like else all_app_nodes[0]
-            # If there's an internet-like source, place between them
+            # Place before the application node
             if internet_like:
                 after_lines.append(f"    {internet_like[0]} --> {control_id}")
                 after_lines.append(f"    {control_id} --> {target}")
@@ -951,7 +1008,87 @@ def generate_before_after_diagrams(
                 after_lines.append(f"    {control_id} --> {target}")
             controls_placed.add(control)
 
-    # 6. AI-specific controls: Connected to LLM/AI components
+    # 6. CDN: At perimeter, before Internet entry
+    if 'cdn' in control_nodes and internet_like:
+        control_id = control_nodes['cdn']
+        # CDN sits at edge, before internet entry reaches architecture
+        if internet_like and internet_like[0] in entry_to_first_hop:
+            first_hop = entry_to_first_hop[internet_like[0]]
+            after_lines.append(f"    {control_id} --> {internet_like[0]}")
+            after_lines.append(f"    %% CDN caches content at edge, protects from DDoS")
+        else:
+            after_lines.append(f"    {control_id} -.->|edge protection| {internet_like[0]}")
+        controls_placed.add('cdn')
+
+    # 7. Load Balancer: Between perimeter and application layer
+    if 'load balancer' in control_nodes:
+        control_id = control_nodes['load balancer']
+        if web_like:
+            # Check if there's already a LoadBalancer node in architecture
+            has_lb_node = any('loadbalancer' in line.lower() or 'load balancer' in line.lower()
+                            for line in structure_lines)
+            if not has_lb_node and internet_like and web_like:
+                # Place between perimeter and web tier
+                after_lines.append(f"    {internet_like[0]} --> {control_id}")
+                after_lines.append(f"    {control_id} --> {web_like[0]}")
+            else:
+                # Already exists or unclear topology, show as protecting web tier
+                after_lines.append(f"    {control_id} -.->|balances load to| {web_like[0]}")
+        controls_placed.add('load balancer')
+
+    # 8. IDS/IPS: Network monitoring at perimeter or between segments
+    for control in ['ids', 'ips', 'ids/ips', 'intrusion detection']:
+        if control in control_nodes:
+            control_id = control_nodes[control]
+            # IDS monitors network traffic passively
+            if internet_like and web_like:
+                after_lines.append(f"    {control_id} -.->|monitors| {internet_like[0]}")
+                after_lines.append(f"    {control_id} -.->|monitors| {web_like[0]}")
+            elif all_app_nodes:
+                after_lines.append(f"    {control_id} -.->|monitors network| {all_app_nodes[0]}")
+            controls_placed.add(control)
+
+    # 9. EDR: Endpoint detection and response on servers
+    for control in ['edr', 'endpoint detection', 'antivirus']:
+        if control in control_nodes:
+            control_id = control_nodes[control]
+            # EDR runs on endpoints (application servers, databases)
+            nodes_to_protect = []
+            if all_app_nodes:
+                nodes_to_protect.extend(all_app_nodes[:2])  # First 2 app nodes
+            if db_like:
+                nodes_to_protect.append(db_like[0])
+
+            for node in nodes_to_protect[:3]:  # Max 3 connections to avoid clutter
+                after_lines.append(f"    {node} -.->|protected by| {control_id}")
+            controls_placed.add(control)
+
+    # 10. DLP: Data loss prevention at data layer
+    for control in ['dlp', 'data loss prevention']:
+        if control in control_nodes and db_like:
+            control_id = control_nodes[control]
+            # DLP monitors data access and exfiltration
+            after_lines.append(f"    {db_like[0]} -.->|monitored by| {control_id}")
+            if len(db_like) > 1:
+                after_lines.append(f"    {db_like[1]} -.->|monitored by| {control_id}")
+            controls_placed.add(control)
+
+    # 11. Web Content Filtering: At application/web layer
+    if 'web content filtering' in control_nodes and web_like:
+        control_id = control_nodes['web content filtering']
+        after_lines.append(f"    {web_like[0]} -.->|filtered by| {control_id}")
+        controls_placed.add('web content filtering')
+
+    # 12. Email Gateway: Protects against phishing at user entry
+    for control in ['email gateway', 'email filtering', 'anti-phishing']:
+        if control in control_nodes:
+            control_id = control_nodes[control]
+            # Email gateway sits before users/internal systems
+            if all_app_nodes:
+                after_lines.append(f"    {control_id} -.->|filters email to| {all_app_nodes[0]}")
+            controls_placed.add(control)
+
+    # 13. AI-specific controls: Connected to LLM/AI components
     for control in ['prompt filtering', 'output filtering', 'sandbox']:
         if control in control_nodes:
             control_id = control_nodes[control]
@@ -966,13 +1103,14 @@ def generate_before_after_diagrams(
                 after_lines.append(f"    {control_id} --> {all_app_nodes[0]}")
             controls_placed.add(control)
 
-    # 7. Network segmentation: Shown as protecting perimeter or data layer
-    for control in ['network segmentation', 'ids/ips', 'zero trust']:
+    # 14. Network segmentation/Zero Trust: Shown as protecting perimeter or data layer
+    for control in ['network segmentation', 'zero trust', 'micro-segmentation']:
         if control in control_nodes:
             control_id = control_nodes[control]
-            # Connect between layers
+            # Connect between layers to show isolation
             if db_like and all_app_nodes:
                 after_lines.append(f"    {control_id} -.->|isolates| {db_like[0]}")
+                after_lines.append(f"    {control_id} -.->|isolates| {all_app_nodes[0]}")
             elif all_app_nodes:
                 after_lines.append(f"    {control_id} -.->|protects| {all_app_nodes[0]}")
             controls_placed.add(control)
@@ -995,7 +1133,9 @@ def generate_before_after_diagrams(
                 after_lines.append(f"    {control_id} -.->|applies to all| {db_like[0]}")
             controls_placed.add(control)
 
-    # 9. Other controls: Add remaining original edges and annotate with unplaced controls
+    # 9. Add original architecture edges (after control placements)
+    after_lines.append("")
+    after_lines.append("    %% ORIGINAL ARCHITECTURE EDGES (below)")
     for edge_line in edge_declarations:
         after_lines.append(edge_line)
 
