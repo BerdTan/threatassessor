@@ -17,7 +17,7 @@ import logging
 import re
 from typing import List, Dict, Optional, Tuple
 from chatbot.modules.rate_limiter import rate_limited
-from agentic.llm import generate_response_with_system
+from agentic.llm_client import generate_response_with_system
 
 logger = logging.getLogger(__name__)
 
