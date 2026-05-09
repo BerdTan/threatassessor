@@ -18,6 +18,26 @@ def get_openrouter_api_key():
     openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
     return openrouter_api_key
 
+def get_aws_bedrock_api_key():
+    """Get AWS Bedrock API key (bearer token) from environment."""
+    load_env()
+    return os.getenv("AWS_BEDROCK_API_KEY")
+
+def get_aws_region():
+    """Get AWS region from environment (default: us-east-1)."""
+    load_env()
+    return os.getenv("AWS_REGION", "us-east-1")
+
+def get_llm_provider():
+    """Get configured LLM provider (default: openrouter)."""
+    load_env()
+    return os.getenv("LLM_PROVIDER", "openrouter")
+
+def get_llm_verifier_provider():
+    """Get LLM verifier provider for LLM as Judge (optional)."""
+    load_env()
+    return os.getenv("LLM_VERIFIER_PROVIDER")
+
 
 def get_neo4j_import_dir():
     """Gets the neo4j import directory from an environment variable

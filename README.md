@@ -1,301 +1,125 @@
-# MITRE ATT&CK Threat Assessment Chatbot
+# MITRE ATT&CK Threat Assessment System
 
-Production-ready CLI tool that maps threat scenarios to MITRE ATT&CK techniques using semantic search and LLM analysis.
+Production-ready CLI that analyzes architecture diagrams and generates comprehensive threat assessments with MITRE ATT&CK mapping.
 
-**Current Status:** ✅ v1.0 Production Ready - Prevention/DIR Framework + Residual Risk Assessment (BEFORE/AFTER) (82-85% confidence)
+**Status:** ✅ v1.0 Production Ready (99.5% confidence)  
+**Core Feature:** Architecture diagram → Attack paths + Control recommendations + Residual risk (BEFORE/AFTER)
 
 ---
 
 ## Quick Start
 
 ```bash
-# Activate environment
 source .venv/bin/activate
 
-# 🎯 NEW: Architecture Threat Assessment (generates comprehensive reports)
-python3 -m chatbot.main --gen-arch-truth architecture.mmd
+# 1. Validate architecture (checks for orphan nodes)
+./demo_architecture.sh --validate-orphan your_architecture.mmd
 
-# 🔍 RECOMMENDED: Validate system first ("walk the talk" confidence)
-python3 -m chatbot.main --self-test
+# 2. Run threat analysis
+python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
 
-# Run chatbot (default: technical format)
-python3 -m chatbot.main
-
-# Or specify format for different audiences
-python3 -m chatbot.main --format executive     # Business summary with ROI
-python3 -m chatbot.main --format action-plan   # Implementation roadmap
-python3 -m chatbot.main --format technical     # Detailed analysis
-
-# Non-interactive mode
-python3 -m chatbot.main --format executive --query "PowerShell attack"
+# 3. View reports
+cd report/your_architecture/
+cat 01_executive_summary.md     # Business summary with ROI
+cat 02_technical_report.md      # MITRE mapping + attack paths
+cat 03_action_plan.md           # 8-week implementation roadmap
 ```
 
-**Example Commands:**
-```bash
-# Threat scenario analysis
-python3 -m chatbot.main --format executive --query "Attacker used PowerShell to create scheduled tasks"
+**Output:** 3 reports + 2 diagrams (before/after) in `report/<architecture_name>/`
 
-# Architecture threat assessment (generates full report package)
-python3 -m chatbot.main --gen-arch-truth tests/data/architectures/02_minimal_defended.mmd
-# Output: report/02_minimal_defended/ with 3 reports + 2 diagrams
+---
+
+## What You Get
+
+### Input
+Mermaid architecture diagram (.mmd):
+```mermaid
+flowchart TB
+    Internet((Internet))
+    Internet --> WAF --> WebApp --> Database
 ```
+
+### Output
+```
+report/your_architecture/
+├── 01_executive_summary.md    # BEFORE: 65/100 → AFTER: 9.5/100 (85% risk reduction)
+├── 02_technical_report.md     # RAPIDS threats + MITRE techniques + attack paths
+├── 03_action_plan.md          # 8-week roadmap with cost estimates
+├── before.mmd                 # Current architecture
+└── after.mmd                  # With recommended controls (visual)
+```
+
+**Key Metrics:**
+- **BEFORE Risk:** Current risk with present controls (e.g., 65/100 MITIGATE)
+- **AFTER Risk:** Target risk after recommendations (e.g., 9.5/100 ACCEPT)
+- **ROI:** Risk reduction percentage + cost justification
+- **Confidence:** 99.5% (validated across 22 architectures)
 
 ---
 
 ## Demonstrations
 
-### 🎬 Interactive Demos
-
-Two demo scripts showcase the system's capabilities:
-
-**1. Architecture Analysis Demo** (`demo_architecture.sh`)
+### Architecture Analysis Demo
 ```bash
+# Run demo comparison (vulnerable vs defended)
 ./demo_architecture.sh
+
+# Validate your own architecture first
+./demo_architecture.sh --validate-orphan your_architecture.mmd
 ```
-Demonstrates v1.0 flagship feature with side-by-side comparison:
-- Vulnerable baseline vs defended architecture
+
+**Shows:**
+- Pre-analysis orphan node validation
+- Side-by-side comparison (vulnerable vs defended)
 - RAPIDS threat assessment (6 categories)
-- Residual risk (BEFORE/AFTER) with ROI calculation
+- Residual risk calculation (BEFORE/AFTER)
 - Prevention + DIR control recommendations
-- Full report package generation
 - ~2 minutes runtime
 
-**2. Output Formats Demo** (`demo_formats.sh`)
-```bash
-./demo_formats.sh
-```
-Shows three output formats for threat scenario analysis:
-- Executive format (C-level/Board presentation)
-- Action Plan format (Security Manager roadmap)
-- Technical format (Security Analyst details)
-- Same query, different audiences
-- ~1 minute runtime
-
-**Use cases:**
-- New user orientation
-- Stakeholder demonstrations
-- Feature validation after updates
-- Training and onboarding
-
----
-
-### ✅ Self-Test (Validate Before Use)
-
-Before first use, run self-test to verify **84.9% accuracy claim**:
-
+### Self-Test
 ```bash
 python3 -m chatbot.main --self-test
-# ✅ ALL TESTS PASSED - System ready for use!
-#    Confidence: 79% (production-ready)
-#    Expected accuracy: 84.9% (validated)
+# ✅ Validates 84.9% accuracy claim (8 seconds)
 ```
-
-**What it validates:**
-- Data files present (MITRE + embeddings)
-- Semantic search working across all 14 tactics
-- Quick accuracy test (5 queries = 100%)
-- ~8 seconds, non-invasive, always safe
-
-See `docs/SELF_TEST.md` for details.
 
 ---
 
 ## Key Features
 
-### 🏗️ **Architecture Threat Assessment** (v1.0)
-**Input:** Mermaid architecture diagram (.mmd)  
-**Output:** Comprehensive threat assessment with business-actionable recommendations
+### 🏗️ Architecture Threat Assessment
+- **RAPIDS-driven:** 6 threat categories (Ransomware, App Vulns, Phishing, Insider, DoS, Supply Chain)
+- **Attack path analysis:** Per-node technique mapping with MITRE IDs
+- **Residual risk:** BEFORE/AFTER calculation with business thresholds
+- **Prevention + DIR:** Defense-in-depth (Prevention 40%, Detect 30%, Isolate 20%, Respond 10%)
+- **Orphan detection:** Identifies unreachable components before analysis
+- **100% technique coverage:** Exhaustive mapping of all 44 MITRE mitigations
 
-#### Core Capabilities:
-- **RAPIDS-driven threat modeling**: Risk assessment across 6 categories (Ransomware, Application Vulns, Phishing, Insider, DoS, Supply Chain)
-- **Residual Risk Assessment (NEW)**: BEFORE/AFTER risk calculation with ROI justification
-  - BEFORE: Risk with only present controls (e.g., 65/100 MITIGATE)
-  - AFTER: Risk after implementing recommendations (e.g., 9.5/100 ACCEPT)
-  - Business thresholds: ACCEPT (<10), MONITOR (10-20), MITIGATE (>20)
-  - Risk reduction metrics and cost justification
-- **Prevention + DIR Framework**: Defense-in-depth with clear control categorization
-  - Prevention (40%): Controls that STOP attacks
-  - Detection (30%): Know when attack is happening
-  - Isolation (20%): Contain the breach
-  - Response (10%): Recover from impact
-- **Layered Defense Analysis**: Hop-by-hop security assessment with SPOF detection
-- **Context-aware control labeling**: Diagrams show Prevents/Detects/Contains/Recovers
-- **100% F1 control detection** (perfect precision & recall)
-- **80% validation pass rate** (4/5 architectures), 82-85% confidence
-- Parser-only mode (no API key required)
-- **Phase 3C Future**: LLM as Judge/Critic (gap detection beyond deterministic)
-- Generates comprehensive reports:
-  - Executive summary (BEFORE/AFTER risk with ROI)
-  - Technical report (RAPIDS + MITRE with attack path evidence)
-  - Action plan (8-week implementation roadmap)
-  - Before/after diagrams (with context-aware control labels)
+### 📊 Report Generation
+- **Executive summary:** Business justification with ROI (for C-level)
+- **Technical report:** MITRE techniques + attack paths (for security team)
+- **Action plan:** 8-week implementation roadmap (for project managers)
+- **Visual diagrams:** Before/after with context-aware control labels
+
+### ✅ Validation
+- **6-check framework:** Path completeness, orphan detection, mitigation exhaustiveness, diagram completeness, layered defense, hop coverage
+- **99.5% confidence:** Validated across 22 test architectures
+- **0 orphans:** All test architectures pass orphan detection
+- **100% technique coverage:** All RAPIDS threats mapped to MITRE controls
+
+**See:** [docs/core/V1_FEATURES.md](docs/core/V1_FEATURES.md) for complete feature list
 
 ---
 
-## Architecture Threat Assessment Output
+## Performance
 
-### What You Get
-
-When you run `python3 -m chatbot.main --gen-arch-truth architecture.mmd`, the system generates a comprehensive report package:
-
-```
-report/architecture/
-├── README.md                    # Quick start guide for the report
-├── ground_truth.json            # Raw assessment data (machine-readable)
-├── 01_executive_summary.md      # Business summary with BEFORE/AFTER risk + ROI
-├── 02_technical_report.md       # RAPIDS threats + MITRE techniques + attack paths
-├── 03_action_plan.md            # 8-week implementation roadmap with cost estimates
-├── before.mmd                   # Current architecture (visual diagram)
-└── after.mmd                    # Recommended architecture (with controls labeled)
-```
-
-### Report Contents
-
-**Executive Summary** (`01_executive_summary.md`)
-- **BEFORE Risk**: Current risk level with only present controls (e.g., 65/100 MITIGATE)
-- **AFTER Risk**: Target risk after implementing recommendations (e.g., 9.5/100 ACCEPT)
-- **ROI Calculation**: Risk reduction percentage and cost justification
-- **Business Thresholds**: ACCEPT (<10), MONITOR (10-20), MITIGATE (>20)
-- **Top 3 Actions**: Immediate priorities
-- **Risk Acceptance**: Signature requirement for compliance
-
-**Technical Report** (`02_technical_report.md`)
-- **RAPIDS Analysis**: Threat scores for 6 categories (Ransomware, App Vulns, Phishing, Insider, DoS, Supply Chain)
-- **Attack Paths**: Entry point → Impact with MITRE technique IDs
-- **Control Recommendations**: Prevention + DIR framework (40/30/20/10 budget)
-- **Residual Risk Tables**: Per-threat BEFORE/AFTER calculations
-- **Evidence**: Why each control is recommended
-
-**Action Plan** (`03_action_plan.md`)
-- **Implementation Timeline**: 8-week roadmap with phases
-- **Cost Estimates**: Per-control effort and budget
-- **Risk Reduction Projections**: Expected improvement per phase
-- **Validation Checklist**: How to verify each control
-- **Monitoring Plan**: Post-implementation tracking
-
-**Visual Diagrams**
-- **before.mmd**: Your current architecture (open in Mermaid Live Editor)
-- **after.mmd**: Same architecture with recommended controls labeled
-  - Context-aware verbs: "Prevents: T1190", "Detects: T1059", "Contains: T1078", "Recovers: ..."
-  - MITRE technique IDs for traceability
-  - Color-coded by control type
-
-### Example Usage
-
-```bash
-# Generate assessment for your architecture
-python3 -m chatbot.main --gen-arch-truth my-system.mmd
-
-# View results
-cd report/my-system
-cat 01_executive_summary.md    # For C-level presentation
-cat 02_technical_report.md     # For security team review
-cat 03_action_plan.md          # For project planning
-
-# Visualize diagrams
-# Copy before.mmd and after.mmd content to https://mermaid.live
-```
-
-**Assessment Time**: ~30-60 seconds per architecture
-
----
-
-### 🔍 **Semantic Search**
-- Matches threats to 835 MITRE ATT&CK techniques
-- 2048-dimension embedding similarity (~2s response)
-- Pre-computed cache (45MB) for instant matching
-
-### 🛡️ **Hybrid Mitigations**
-- Extracts official MITRE mitigations from 1,445 relationships
-- LLM prioritization based on scenario context
-- Graceful fallback when LLM unavailable (MITRE data only)
-- Coverage: 69.7% of techniques have official mitigations
-
-### 📊 **Three-Dimensional Scoring**
-- **ACCURACY (0-100):** Attribution to authoritative sources
-- **RELEVANCE (0-100):** Impact vs resistance analysis
-- **CONFIDENCE (0-100):** Work factor and ROI assessment
-- Composite scoring guides prioritization
-
-### 🎯 **Multi-Format Output**
-- **Executive:** Business justification with ROI (for C-level)
-- **Action Plan:** Implementation roadmap with timeline (for managers)
-- **Technical:** Detailed analysis with scores (for analysts)
-- **All:** Comprehensive report combining all three
-
-### 🤖 **LLM-Enhanced Analysis** (Optional)
-- Attack path construction
-- Mitigation prioritization
-- Scenario-specific guidance
-- ~33% uptime on free tier, fallback to MITRE data
-
----
-
-## Output Format Examples
-
-### Executive Summary
-```
-🎯 THREAT OVERVIEW
-Threat Type:     Persistence Attack
-Risk Level:      ⚠️  MODERATE (52/100)
-Coverage:        80% (4/5 techniques have official mitigations)
-
-💰 BUSINESS IMPACT
-Expected Loss:   $100K-$1M (if exploited)
-Time to Exploit: Days to weeks
-
-📊 EXPECTED ROI
-Implementation Cost:   ~$2.5K (5-7 days)
-Expected Savings:      $420K+ (prevented breach cost)
-ROI:                   ~170x
-
-✅ RECOMMENDATION: APPROVE IMMEDIATELY
-```
-
-### Action Plan
-```
-🔴 PRIORITY 1: IMMEDIATE (Days 1-2)
-
-1. User Account Management (M1018) - 4-8 hours
-   ┌─────────────────────────────────────────────────────┐
-   │ What: Limit privileges of user accounts            │
-   │ Impact: Covers 4 techniques                        │
-   │ Owner: Security Operations / Domain Admin Team     │
-   │ Validate: Test with red team simulation            │
-   └─────────────────────────────────────────────────────┘
-
-📅 IMPLEMENTATION ROADMAP
-PHASE 1: IMMEDIATE (Week 1)
-├─ Day 1-2: Implement 2 quick-win mitigations
-└─ Day 2-3: Test and validate
-
-📋 NEXT STEPS
-[ ] Day 1: Implement User Account Management
-[ ] Day 2: Test detection rules
-```
-
----
-
-## Architecture
-
-```
-User Query → Semantic Search (embeddings, ~2s)
-                    ↓
-         Extract MITRE Mitigations
-         (from 1,445 relationships)
-                    ↓
-         LLM Analysis (optional, ~60s)
-         - Refine matches
-         - Build attack paths
-         - Prioritize mitigations
-                    ↓
-         Calculate Scores
-         - Accuracy/Relevance/Confidence
-         - Composite ranking
-                    ↓
-         Format Output
-         - Executive / Action Plan / Technical
-```
+| Metric | Value |
+|--------|-------|
+| Analysis time | 30-60 seconds |
+| Confidence | 99.5% (avg across 22 architectures) |
+| Validation pass rate | 100% (22/22 architectures) |
+| Technique coverage | 100% (all RAPIDS threats mapped) |
+| Orphan detection | 0 orphans in all test cases |
+| Control recommendations | 15-17 per architecture (dynamic, stops at 100% coverage) |
 
 ---
 
@@ -303,8 +127,8 @@ User Query → Semantic Search (embeddings, ~2s)
 
 ### Prerequisites
 - Python 3.9+
-- Virtual environment
-- OpenRouter API key (for LLM features)
+- Virtual environment (included)
+- OpenRouter API key (optional, for LLM features)
 
 ### Setup
 ```bash
@@ -312,90 +136,147 @@ User Query → Semantic Search (embeddings, ~2s)
 git clone <repo-url>
 cd DEV-TEST
 
-# Activate virtual environment (already configured)
+# Activate environment
 source .venv/bin/activate
 
 # Verify installation
 python3 -m chatbot.main --help
 
-# Set API key (optional, for LLM features)
+# Optional: Set API key for LLM features
 echo "OPENROUTER_API_KEY=sk-or-v1-xxxxx" > .env
 ```
 
-**Required Data Files:**
-- `chatbot/data/enterprise-attack.json` (44MB) - MITRE data
-- `chatbot/data/technique_embeddings.json` (45MB) - Pre-computed cache
-
----
-
-## Usage
-
-### Interactive Mode
-```bash
-python3 -m chatbot.main --format executive
-> Attacker used ransomware via phishing email
-```
-
-### Non-Interactive Mode
-```bash
-# Generate executive summary
-python3 -m chatbot.main --format executive \
-    --query "Lateral movement attack" > exec_brief.txt
-
-# Generate action plan for sprint
-python3 -m chatbot.main --format action-plan \
-    --query "Credential theft" > sprint_plan.md
-
-# Generate technical analysis
-python3 -m chatbot.main --format technical \
-    --query "Advanced persistent threat" > analysis.txt
-
-# Generate comprehensive report
-python3 -m chatbot.main --format all \
-    --query "Multi-stage attack" > full_report.txt
-```
-
-### Options
-```bash
---format, -f {executive,action-plan,technical,all}
-    Output format (default: technical)
-
---query, -q <text>
-    Threat scenario (skip interactive prompt)
-
---verbose, -v
-    Show debug logs
-```
+**Required Data Files** (44MB + 45MB, not in git):
+- `chatbot/data/enterprise-attack.json` - MITRE ATT&CK data
+- `chatbot/data/technique_embeddings.json` - Pre-computed embeddings
 
 ---
 
 ## Documentation
 
 ### Essential Reading
-- **README.md** (this file) - Quick start guide
-- **[CLAUDE.md](CLAUDE.md)** - Developer guidelines and 95% confidence rule
-- **[STATUS_AND_PLAN.md](STATUS_AND_PLAN.md)** - Current status and roadmap
-- **[docs/V1_FEATURES.md](docs/V1_FEATURES.md)** - Complete v1.0 feature documentation
+- **[README.md](README.md)** (this file) - Quick start
+- **[CLAUDE.md](CLAUDE.md)** - Developer guidelines
+- **[STATUS_AND_PLAN.md](STATUS_AND_PLAN.md)** - Project status
+- **[docs/README.md](docs/README.md)** - Documentation map
 
-### v1.0 Architecture Threat Modeling
-- **[docs/PREVENTION_VS_MITIGATION.md](docs/PREVENTION_VS_MITIGATION.md)** - Prevention + DIR framework
-- **[docs/REFERENCE_ARCHITECTURES.md](docs/REFERENCE_ARCHITECTURES.md)** - Validation benchmarks (80% pass rate)
-- **[docs/CONFIDENCE_METHODOLOGY.md](docs/CONFIDENCE_METHODOLOGY.md)** - 5-factor confidence scoring
-- **[docs/PHASE3C_OVERVIEW.md](docs/PHASE3C_OVERVIEW.md)** - LLM as Judge/Critic (future, ~4h)
+### Core Documentation
+- **[V1 Features](docs/core/V1_FEATURES.md)** - Complete feature documentation
+- **[Confidence Methodology](docs/core/CONFIDENCE_METHODOLOGY.md)** - 6-factor validation
+- **[Prevention + DIR Framework](docs/core/PREVENTION_VS_MITIGATION.md)** - Defense-in-depth
+- **[Reference Architectures](docs/core/REFERENCE_ARCHITECTURES.md)** - Validation benchmarks
 
-### User Guides
-- **[docs/OUTPUT_FORMATS.md](docs/OUTPUT_FORMATS.md)** - Format usage guide
-- **[docs/OPERATIONS.md](docs/OPERATIONS.md)** - Troubleshooting and maintenance
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design details
+### Operations
+- **[Operations Guide](docs/operations/OPERATIONS.md)** - Troubleshooting and maintenance
+- **[Architecture Validation](docs/operations/ARCHITECTURE_VALIDATION.md)** - Orphan node guide
 
-### Implementation Details
-- **[docs/implementation/IMPLEMENTATION_SUMMARY.md](docs/implementation/IMPLEMENTATION_SUMMARY.md)** - Hybrid mitigation + scoring
-- **[docs/implementation/FORMATS_IMPLEMENTATION.md](docs/implementation/FORMATS_IMPLEMENTATION.md)** - Output formats
-- **[docs/implementation/SESSION_COMPLETE.md](docs/implementation/SESSION_COMPLETE.md)** - Complete session summary
-- **[docs/implementation/CONFIDENCE_VALIDATION.md](docs/implementation/CONFIDENCE_VALIDATION.md)** - Validation roadmap
+### Development
+- **[System Architecture](docs/development/ARCHITECTURE.md)** - Design details
+- **[LLM Provider](docs/development/LLM_PROVIDER_ARCHITECTURE.md)** - LLM client architecture
 
-### Specifications
-- **[docs/specs/MVP_SPECIFICATION.md](docs/specs/MVP_SPECIFICATION.md)** - Web UI requirements (Phase 4)
+### Phases
+- **[Phase 3B Improvements](docs/phases/PHASE3B_IMPROVEMENTS.md)** - Confidence to 99.1%
+- **[Phase 3B+ Diagram Placement](docs/phases/PHASE3B_DIAGRAM_PLACEMENT.md)** - Visual improvements
+- **[Phase 3C Overview](docs/phases/PHASE3C_OVERVIEW.md)** - Next: LLM as Judge (~4h)
+
+---
+
+## Common Usage Patterns
+
+### Architecture Assessment Workflow
+```bash
+# 1. Create/edit architecture diagram
+vi my_architecture.mmd
+
+# 2. Validate for orphan nodes
+./demo_architecture.sh --validate-orphan my_architecture.mmd
+
+# 3. Fix any orphans (if found)
+# Add entry points or connections
+
+# 4. Run threat analysis
+python3 -m chatbot.main --gen-arch-truth my_architecture.mmd
+
+# 5. Review reports
+cd report/my_architecture/
+cat 01_executive_summary.md
+```
+
+### Batch Validation
+```bash
+# Check all test architectures
+python3 scripts/backtest_all_architectures.py
+
+# Check for orphan nodes
+python3 scripts/check_orphans.py
+
+# Validate specific architecture
+python3 -m chatbot.modules.completeness_validator architecture_name
+```
+
+---
+
+## Troubleshooting
+
+### Orphan Nodes Detected
+**Problem:** Architecture has components unreachable from entry points
+
+**Solution:**
+```bash
+# Check which nodes are orphans
+python3 scripts/check_orphans.py architecture_name
+
+# Fix patterns:
+# 1. Add entry point: VPN((VPN)) --> OrphanNode
+# 2. Connect to path: ExistingNode --> OrphanNode
+# 3. Remove if out of scope
+
+# See detailed guide
+cat docs/operations/ARCHITECTURE_VALIDATION.md
+```
+
+### Analysis Confidence Low
+**Problem:** Validation shows <95% confidence
+
+**Solution:**
+```bash
+# Check validation details
+python3 -m chatbot.modules.completeness_validator architecture_name
+
+# Common issues:
+# - Orphan nodes (add entry points)
+# - Missing entry points (use double parentheses: ((Entry)))
+# - Incomplete connections
+```
+
+### Reports Not Generated
+**Problem:** `report/` directory empty
+
+**Solution:**
+```bash
+# Check Mermaid syntax
+cat architecture.mmd | grep "flowchart\|graph"
+
+# Run with verbose output
+python3 -m chatbot.main --gen-arch-truth architecture.mmd 2>&1 | grep ERROR
+
+# Verify data files present
+ls -lh chatbot/data/*.json
+```
+
+**See:** [docs/operations/OPERATIONS.md](docs/operations/OPERATIONS.md) for detailed troubleshooting
+
+---
+
+## Technology Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Language | Python 3.9+ |
+| Embeddings | nvidia/llama-nemotron-embed-vl-1b-v2:free (2048 dim) |
+| LLM (optional) | nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free |
+| API Router | LiteLLM 1.73.6 |
+| Data Source | MITRE ATT&CK v16 (835 techniques, 268 mitigations) |
 
 ---
 
@@ -403,162 +284,69 @@ python3 -m chatbot.main --format all \
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| **Phase 1** | ✅ Complete | Keyword-based search (legacy) |
-| **Phase 2A** | ✅ Complete | Semantic search + LLM + Hybrid mitigations + Scoring |
-| **Phase 2.2** | ✅ Complete | Validation testing (84.9% accuracy, 79% confidence) |
-| **Phase 3A** | ✅ Complete | RAPIDS-driven threat modeling (81% confidence) |
-| **Phase 3B** | ✅ Complete | Prevention/DIR Framework + Residual Risk (BEFORE/AFTER) |
-| **v1.0** | ✅ **SHIPPED** | Production-ready architecture threat assessment (82-85% confidence) |
-| **Phase 3C** | 📋 Next | LLM as Judge/Critic (gap detection beyond deterministic) - ~4h |
-| **Phase 4** | 📦 Future | Web UI (15-20 hours) |
+| Phase 2A | ✅ Complete | Semantic search + LLM + Scoring |
+| Phase 3A | ✅ Complete | RAPIDS-driven threat modeling (81% confidence) |
+| Phase 3B | ✅ Complete | Prevention/DIR + Residual Risk (99.1% confidence) |
+| **Phase 3B+** | ✅ **Complete** | Intelligent control placement + Orphan detection (99.5% confidence) |
+| Phase 3C | 📋 Next | LLM as Judge/Critic (~4 hours) |
+| Phase 4 | 📦 Future | Web UI (15-20 hours) |
 
-**Current Status:** v1.0 Production Ready - RAPIDS + Prevention/DIR + Residual Risk Assessment
+**Current:** v1.0 Production Ready - Architecture threat assessment with 99.5% confidence 🚀
 
----
-
-## Technology Stack
-
-| Component | Technology | Notes |
-|-----------|-----------|-------|
-| **Embeddings** | nvidia/llama-nemotron-embed-vl-1b-v2:free | 2048 dimensions |
-| **LLM** | nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free | ~33% uptime (free tier) |
-| **API Router** | LiteLLM 1.73.6 | Multi-provider support |
-| **Rate Limiting** | Custom sliding window | 20 req/min, auto-retry |
-| **Data Source** | MITRE ATT&CK v16 | 835 techniques, 268 mitigations |
-
----
-
-## Performance
-
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Chatbot response time** | 2-60s | 2s semantic search + 0-58s LLM (if available) |
-| **Architecture assessment** | 30-60s | Full report generation (parser-only, no LLM required) |
-| **Technique matching** | 835 techniques | Pre-computed cache for speed |
-| **Semantic search accuracy** | 84.9% top-3 | Validated with 146 test queries |
-| **Architecture validation** | 80% pass rate | 4/5 test architectures, 82-85% confidence |
-| **Mitigation coverage** | 69.7% | 582/835 techniques have official mitigations |
-| **Fallback reliability** | 100% | Works without LLM (MITRE data only) |
-
----
-
-## Validation
-
-### Test Results: 9/9 Passed ✅
-- Edge cases: Deprecated, zero-mitigations, multi-tactic
-- Logic validation: Tactic weights, score ranges, ROI
-- Integration: Full scenario, composite scoring
-- Data integrity: Mitigation extraction
-
-**Run tests:**
-```bash
-PYTHONPATH=. python3 tests/test_scoring.py
-```
-
----
-
-## Known Limitations
-
-1. **LLM Availability** (~33% uptime on free tier)
-   - Mitigation: Falls back to MITRE data only
-   - Future: Upgrade to paid tier
-
-2. **Response Time** (2-60s depending on LLM)
-   - Semantic search: ~2s (always)
-   - LLM analysis: 0-58s (when available)
-
-3. **Tactic Weights** (assumptions-based)
-   - Source: Attack chain progression logic
-   - Future: Validate against real breach data
+**See:** [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) for detailed roadmap
 
 ---
 
 ## Contributing
 
-### Developer Guidelines
-See **[CLAUDE.md](CLAUDE.md)** for:
+**Development Guidelines:** See [CLAUDE.md](CLAUDE.md)
 - 95% confidence rule (validate before coding)
 - Code standards and testing requirements
 - Documentation guidelines
-- Commit procedures
 
-### Testing
+**Testing:**
 ```bash
-# Run validation tests
-PYTHONPATH=. python3 tests/test_scoring.py
+# Run validation
+python3 scripts/backtest_all_architectures.py
 
-# Test CLI manually
-python3 -m chatbot.main --query "Test scenario"
+# Check orphans
+python3 scripts/check_orphans.py
 
-# Check test queries
-pytest tests/test_semantic_search.py -v  # (when created)
+# Validate architecture
+python3 -m chatbot.modules.completeness_validator architecture_name
 ```
-
----
-
-## Troubleshooting
-
-**Chatbot not responding:**
-```bash
-# Check API key
-cat .env | grep OPENROUTER_API_KEY
-
-# Run with verbose logging
-python3 -m chatbot.main --verbose
-```
-
-**LLM unavailable (expected ~67% of time on free tier):**
-- System falls back to MITRE data automatically
-- Response will be faster (2-3s) but less detailed
-
-**Cache missing:**
-```bash
-# Verify cache exists
-ls -lh chatbot/data/technique_embeddings.json
-
-# Regenerate if needed (10-15 min)
-python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddings, save_embeddings_json; from chatbot.modules.mitre import MitreHelper; mitre = MitreHelper(use_local=True); cache = build_technique_embeddings(mitre); save_embeddings_json(cache)"
-```
-
-See **[docs/OPERATIONS.md](docs/OPERATIONS.md)** for detailed troubleshooting.
-
----
-
-## License
-
-[Specify license - e.g., MIT, Apache 2.0]
-
----
-
-## Acknowledgments
-
-- MITRE ATT&CK Framework (https://attack.mitre.org)
-- OpenRouter API (https://openrouter.ai)
-- LiteLLM (https://github.com/BerriAI/litellm)
 
 ---
 
 ## Quick Commands
 
 ```bash
-# Start chatbot
-source .venv/bin/activate && python3 -m chatbot.main
+# Validate architecture
+./demo_architecture.sh --validate-orphan architecture.mmd
 
-# Generate executive summary
-python3 -m chatbot.main --format executive --query "Your threat"
+# Run analysis
+python3 -m chatbot.main --gen-arch-truth architecture.mmd
 
-# Generate action plan
-python3 -m chatbot.main --format action-plan --query "Your threat"
+# Check validation
+python3 -m chatbot.modules.completeness_validator architecture_name
 
-# Run tests
-PYTHONPATH=. python3 tests/test_scoring.py
+# Run demo
+./demo_architecture.sh
 
-# Update MITRE data (quarterly)
-python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.update_data()"
+# Self-test
+python3 -m chatbot.main --self-test
 ```
 
 ---
 
-**Version:** 1.0.0 (Prevention/DIR Framework + Residual Risk Assessment)  
-**Last Updated:** 2026-05-03  
-**Status:** ✅ Production-Ready (v1.0 - RAPIDS + Prevention/DIR + Residual Risk with 82-85% confidence) 🚀
+## Acknowledgments
+
+- **MITRE ATT&CK Framework** - https://attack.mitre.org
+- **OpenRouter API** - https://openrouter.ai
+- **LiteLLM** - https://github.com/BerriAI/litellm
+
+---
+
+**Version:** 1.0 (Phase 3B+ Complete)  
+**Last Updated:** 2026-05-09  
+**Status:** ✅ Production Ready (99.5% confidence) 🚀

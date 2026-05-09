@@ -1,7 +1,21 @@
 # DEV-TEST: MITRE Threat Modeling System
 
-**Status:** ✅ v1.0 Production Ready (82-85% confidence) 🚀  
-**Primary Feature:** Architecture diagram → Comprehensive threat assessment + Residual risk (BEFORE/AFTER)
+**Version:** 1.0 (Phase 3B+ Complete)  
+**Status:** ✅ Production Ready (99.5% confidence)  
+**Core Feature:** Architecture diagram (.mmd) → Threat assessment + Residual risk (BEFORE/AFTER)
+
+---
+
+## What This Does
+
+Analyze architecture diagrams to:
+1. Identify attack paths and RAPIDS threats (6 categories)
+2. Recommend security controls (Prevention + DIR framework)
+3. Calculate residual risk: BEFORE (current) vs AFTER (with controls)
+4. Generate business-ready reports with ROI justification
+
+**Time:** 30-60 seconds per architecture  
+**Confidence:** 99.5% (validated across 22 architectures)
 
 ---
 
@@ -10,243 +24,219 @@
 ```bash
 source .venv/bin/activate
 
-# Architecture threat assessment (v1.0 feature)
-python3 -m chatbot.main --gen-arch-truth architecture.mmd
+# Validate for orphan nodes first (recommended)
+./demo_architecture.sh --validate-orphan your_architecture.mmd
 
-# Threat scenario chatbot
-python3 -m chatbot.main
+# Run threat analysis
+python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
+
+# View reports
+ls report/your_architecture/
 ```
 
 ---
 
-## Documentation Map
+## Key Modules
 
-**Start Here:**
-- `README.md` - Quick start and overview
-- `docs/V1_FEATURES.md` - Complete v1.0 feature documentation
-- `STATUS_AND_PLAN.md` - Implementation status and roadmap
+**Core Analysis:**
+- `chatbot/modules/ground_truth_generator.py` - Main analysis engine
+- `chatbot/modules/completeness_validator.py` - 6-check validation (99.5% confidence)
+- `chatbot/modules/per_node_ttp_mapper.py` - Per-node technique mapping
+- `chatbot/modules/exhaustive_mitigation_mapper.py` - All 44 MITRE mitigations
+- `chatbot/modules/threat_report.py` - Report generation with path-based control placement
 
-**Key Docs:**
-- `docs/PREVENTION_VS_MITIGATION.md` - Prevention + DIR framework
-- `docs/CONFIDENCE_METHODOLOGY.md` - 5-factor confidence scoring
-- `docs/REFERENCE_ARCHITECTURES.md` - Validation benchmarks
-- `docs/OPERATIONS.md` - Troubleshooting and maintenance
+**Data:**
+- `chatbot/data/enterprise-attack.json` (44MB) - MITRE ATT&CK (not in git)
+- `chatbot/data/technique_embeddings.json` (45MB) - Embeddings cache (not in git)
+- `.env` - API key (optional, not in git)
 
-**Future:**
-- `docs/PHASE3C_OVERVIEW.md` - LLM as Judge/Critic (~4h)
-- `docs/specs/MVP_SPECIFICATION.md` - Web UI (Phase 4, 15-20h)
+**See:** [docs/core/V1_FEATURES.md](docs/core/V1_FEATURES.md) for complete feature documentation
 
 ---
 
-## Core Architecture
+## File Organization
 
-### v1.0 Feature: Residual Risk Assessment
-
-**Input:** Mermaid architecture diagram (.mmd)  
-**Output:** Comprehensive threat assessment with BEFORE/AFTER residual risk
-
-**What it does:**
-1. Parse architecture → Identify attack paths
-2. Assess RAPIDS threats (Ransomware, AppVulns, Phishing, Insider, DoS, Supply Chain)
-3. Recommend controls (Prevention + DIR framework)
-4. Calculate residual risk:
-   - **BEFORE**: Risk with present controls (e.g., 65/100 MITIGATE)
-   - **AFTER**: Risk after implementing recommendations (e.g., 9.5/100 ACCEPT)
-   - **ROI**: Risk reduction % and cost justification
-
-**Output Files:**
 ```
-report/<arch_name>/
-├── 01_executive_summary.md    # Business summary with ROI
-├── 02_technical_report.md     # Technical details with MITRE mapping
-├── 03_action_plan.md          # Implementation roadmap (8 weeks)
-├── before.mmd                 # Current architecture
-└── after.mmd                  # With recommended controls (context-aware labels)
+DEV-TEST/
+├── README.md, CLAUDE.md, STATUS_AND_PLAN.md    # Core 3 files only
+├── chatbot/modules/                            # 22 core modules
+├── docs/
+│   ├── core/                                   # System documentation (4 files)
+│   ├── operations/                             # Operations guides (2 files)
+│   ├── development/                            # Dev guides (3 files)
+│   ├── phases/                                 # Implementation history (3 files)
+│   └── specs/                                  # Specifications (1 file)
+├── tests/data/architectures/                   # 22 test .mmd files
+├── scripts/                                    # Utilities (check_orphans.py, etc.)
+├── report/                                     # Generated (gitignored)
+└── archive/                                    # Historical (gitignored)
 ```
 
-### Key Modules
-
-**Core Engine:**
-- `chatbot/modules/ground_truth_generator.py` - Architecture analysis engine
-- `chatbot/modules/rapids_driven_controls.py` - RAPIDS-first recommendations
-- `chatbot/modules/layered_defense.py` - Hop-by-hop Prevention + DIR
-- `chatbot/modules/residual_risk.py` - BEFORE/AFTER risk calculation
-- `chatbot/modules/threat_report.py` - Report generation
-
-**Data Requirements:**
-- `chatbot/data/enterprise-attack.json` (44MB) - MITRE ATT&CK data
-- `chatbot/data/technique_embeddings.json` (45MB) - Pre-computed embeddings
-- `.env` - API key (optional, for LLM enhancement)
+**Documentation Map:** See [docs/README.md](docs/README.md)
 
 ---
 
 ## Development Guidelines
 
 ### 95% Confidence Rule
-
 Before code changes: **Ask clarifying questions** → **Research thoroughly** → **Test incrementally**
 
-**Red flags:** "I think this might work...", assumptions, unexplored code
+**Red flags:** "I think...", assumptions, unexplored code paths
 
 ### Code Standards
-
-- Follow existing patterns in `chatbot/modules/`
+- Follow patterns in `chatbot/modules/`
 - Type hints + docstrings for public APIs
-- Log important events
-- Test before committing
+- Test on multiple architectures before committing
+- No secrets in code (use `.env`)
 
-### Testing Checklist
-
+### Testing
 ```bash
-# Run architecture assessment on test cases
+# Validate architecture for orphan nodes
+./demo_architecture.sh --validate-orphan tests/data/architectures/02_minimal_defended.mmd
+
+# Run full analysis
 python3 -m chatbot.main --gen-arch-truth tests/data/architectures/02_minimal_defended.mmd
 
-# Check no regressions
-pytest tests/test_semantic_search.py -v
+# Check validation
+python3 -m chatbot.modules.completeness_validator 02_minimal_defended
 
-# Verify no secrets
-grep -r "sk-or-v1" .
+# Batch test
+python3 scripts/backtest_all_architectures.py
 ```
+
+**See:** [docs/operations/OPERATIONS.md](docs/operations/OPERATIONS.md) for troubleshooting
 
 ---
 
-## File Organization
+## What NOT to Commit
 
-### Directory Structure
-
-```
-DEV-TEST/
-├── chatbot/modules/         # Core engines (18 modules)
-├── chatbot/parsers/         # Mermaid parser
-├── tests/data/
-│   ├── architectures/       # Test .mmd files (18 samples)
-│   └── ground_truth/        # Validation JSON (7 validated)
-├── docs/                    # Documentation
-├── report/                  # Generated reports (gitignored)
-└── archive/                 # Historical docs (gitignored)
+```gitignore
+_codex/                                  # Experimental code
+archive/                                 # Historical docs
+report/                                  # Generated reports
+chatbot/data/*.json                      # Large data files (44MB + 45MB)
+.env                                     # API keys
+.claude/settings.local.json              # Local settings
 ```
 
-### .gitignore Rules
-
-**DO NOT commit:**
-- `_codex/` - Experimental code
-- `archive/` - Historical documents
-- `report/` - Generated reports (regenerate from .mmd)
-- `chatbot/data/*.json` - Large data files (44MB + 45MB)
-- `.env` - API keys
-
-**COMMIT:**
-- `tests/data/ground_truth/*.json` - Validation ground truths
+**DO commit:**
 - `tests/data/architectures/*.mmd` - Test diagrams
+- `docs/` - All documentation
+- `.claude/skills/` - Housekeeping skills
 
 ---
 
-## Current Status (v1.0)
+## Current Capabilities (v1.0)
 
-### Production Ready ✅
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Architecture parsing | ✅ | 22 test architectures |
+| RAPIDS threat assessment | ✅ | 6 categories, 100% coverage |
+| Attack path analysis | ✅ | Per-node technique mapping |
+| Control recommendations | ✅ | 15-17 controls per arch (100% coverage) |
+| Residual risk (BEFORE/AFTER) | ✅ | Business thresholds + ROI |
+| Orphan node detection | ✅ | 0 orphans across all tests |
+| Path-based control placement | ✅ | Multi-path, visual clarity 95% |
+| Completeness validation | ✅ | 6 checks, 99.5% confidence |
 
-| Feature | Status | Performance |
-|---------|--------|-------------|
-| Architecture parsing | ✅ Working | 18 test architectures |
-| RAPIDS threat assessment | ✅ Working | 6 threat categories |
-| Control recommendations | ✅ Working | 80+ control mappings |
-| Residual risk (BEFORE/AFTER) | ✅ Working | Tested across 5 architectures |
-| Prevention + DIR framework | ✅ Working | Context-aware control labels |
-| Report generation | ✅ Working | 3 formats + diagrams |
+**Validation:** 22/22 architectures pass, 99.5% avg confidence
 
-**Validation:**
-- Pass rate: 80% (4/5 architectures)
-- Confidence: 82-85%
-- Residual risk accuracy: ✅ (65→9.5, 26→13 tested)
-- ROI calculation: ✅ (risk reduction %)
+---
 
-### Known Limitations
+## Phase History (Quick Reference)
 
-1. **Hop visualization**: Controls placed heuristically (data correct in JSON, polish item)
-2. **AI/ML edge cases**: Ambiguous entries may flag validation warnings (acceptable)
-3. **LLM optional**: System works without LLM (deterministic parser)
+- **Phase 3A** (May 2): RAPIDS-driven analysis → 81% confidence
+- **Phase 3B** (May 3): Prevention + DIR + Residual Risk → 99.1% confidence
+- **Phase 3B+** (May 9): Intelligent control placement + Orphan detection → 99.5% confidence
+
+**Next:** Phase 3C (LLM as Judge/Critic, ~4h) or Phase 4 (Web UI, ~15-20h)
+
+**See:** [docs/phases/](docs/phases/) for detailed phase documentation
 
 ---
 
 ## Quick Commands
 
 ```bash
-# Architecture assessment
+# Architecture analysis
 python3 -m chatbot.main --gen-arch-truth architecture.mmd
 
-# Run tests
-pytest tests/ -v
+# Validate for orphan nodes
+./demo_architecture.sh --validate-orphan architecture.mmd
 
+# Check all architectures
+python3 scripts/backtest_all_architectures.py
+
+# Check orphans
+python3 scripts/check_orphans.py
+
+# Housekeep docs
+# (Enhanced housekeep-docs skill - see .claude/skills/)
+```
+
+---
+
+## When Things Break
+
+**Orphan nodes detected:**
+```bash
+# Shows which nodes are unreachable
+python3 scripts/check_orphans.py architecture_name
+
+# See remediation patterns
+cat docs/operations/ARCHITECTURE_VALIDATION.md
+```
+
+**Analysis seems wrong:**
+```bash
+# Check validation details
+python3 -m chatbot.modules.completeness_validator architecture_name
+
+# View ground truth
+cat report/architecture_name/ground_truth.json
+```
+
+**Need to update:**
+```bash
 # Update MITRE data (quarterly)
 python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.update_data()"
 
-# Regenerate embeddings cache (after MITRE update)
+# Regenerate embeddings
 python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddings, save_embeddings_json; from chatbot.modules.mitre import MitreHelper; mitre = MitreHelper(use_local=True); cache = build_technique_embeddings(mitre); save_embeddings_json(cache)"
 ```
 
----
-
-## Troubleshooting
-
-**Architecture assessment not working:**
-```bash
-# Check Mermaid syntax
-cat architecture.mmd
-
-# Run with verbose output
-python3 -m chatbot.main --gen-arch-truth architecture.mmd 2>&1 | grep ERROR
-```
-
-**Residual risk calculation seems off:**
-- Check control detection: `grep "Controls present" report/<name>/ground_truth.json`
-- Verify RAPIDS scores: Look for "ransomware", "application_vulns" in logs
-- See control effectiveness: `chatbot/modules/residual_risk.py` lines 43-129
-
-**See:** `docs/OPERATIONS.md` for detailed troubleshooting
+**See:** [docs/operations/OPERATIONS.md](docs/operations/OPERATIONS.md) for detailed troubleshooting
 
 ---
 
-## What's New in v1.0
+## Documentation Structure
 
-**Major Features:**
-1. **Residual Risk Assessment** - BEFORE/AFTER with ROI calculation
-2. **Prevention + DIR Framework** - Defense-in-depth clarity (40/30/20/10 budget)
-3. **Layered Defense** - Hop-by-hop security + resilience analysis
-4. **Context-Aware Labels** - Diagram controls show Prevents/Detects/Contains/Recovers
-5. **SPOF Detection** - Graph topology identifies single points of failure
+**Essential (read these first):**
+- [README.md](README.md) - User quick start
+- [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Current status
+- [docs/core/V1_FEATURES.md](docs/core/V1_FEATURES.md) - Complete feature list
 
-**Files Added:**
-- `chatbot/modules/layered_defense.py` (498 lines)
-- `chatbot/modules/residual_risk.py` (365 lines)
-- `docs/V1_FEATURES.md` - Complete feature documentation
-- `docs/PREVENTION_VS_MITIGATION.md` - Framework documentation
+**Core System:**
+- [docs/core/CONFIDENCE_METHODOLOGY.md](docs/core/CONFIDENCE_METHODOLOGY.md) - 6-factor validation
+- [docs/core/PREVENTION_VS_MITIGATION.md](docs/core/PREVENTION_VS_MITIGATION.md) - Prevention + DIR framework
+- [docs/core/REFERENCE_ARCHITECTURES.md](docs/core/REFERENCE_ARCHITECTURES.md) - Validation benchmarks
 
-**Files Enhanced:**
-- `chatbot/modules/ground_truth_generator.py` - Residual risk integration
-- `chatbot/modules/rapids_driven_controls.py` - DIR inference + hop enrichment
-- `chatbot/modules/threat_report.py` - Context-aware verbs + BEFORE/AFTER sections
+**Operations:**
+- [docs/operations/OPERATIONS.md](docs/operations/OPERATIONS.md) - Day-to-day usage
+- [docs/operations/ARCHITECTURE_VALIDATION.md](docs/operations/ARCHITECTURE_VALIDATION.md) - Orphan node guide
 
----
+**Development:**
+- [docs/development/ARCHITECTURE.md](docs/development/ARCHITECTURE.md) - System design
+- [docs/development/LLM_PROVIDER_ARCHITECTURE.md](docs/development/LLM_PROVIDER_ARCHITECTURE.md) - LLM client
 
-## Next Steps (Post v1.0)
-
-**Optional Polish (~6h):**
-- Enhanced validation (6 checks vs 2)
-- Budget enforcement (strict 40/30/20/10)
-- Hop-specific diagram placement
-
-**Phase 3C: LLM as Critic (~4h):**
-- Gap detection beyond deterministic rules
-- Architecture-specific risk identification
-- See `docs/PHASE3C_OVERVIEW.md`
-
-**Phase 4: Web UI (15-20h):**
-- React + FastAPI interface
-- Interactive attack path visualization
-- See `docs/specs/MVP_SPECIFICATION.md`
+**Phases:**
+- [docs/phases/PHASE3B_IMPROVEMENTS.md](docs/phases/PHASE3B_IMPROVEMENTS.md) - Phase 3B details
+- [docs/phases/PHASE3B_DIAGRAM_PLACEMENT.md](docs/phases/PHASE3B_DIAGRAM_PLACEMENT.md) - Visual improvements
+- [docs/phases/PHASE3C_OVERVIEW.md](docs/phases/PHASE3C_OVERVIEW.md) - Next phase plan
 
 ---
 
-*Version: 1.0.0 (Residual Risk Assessment)*  
-*Last Updated: 2026-05-03*  
-*Status: Production Ready 🚀*
+**Purpose:** System instructions for Claude Code  
+**Audience:** AI assistant (this document), developers (reference)  
+**Keep Updated:** After major features, before commits  
+**Last Updated:** 2026-05-09

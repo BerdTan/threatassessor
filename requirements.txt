@@ -1,6 +1,7 @@
 # Core LLM and embedding services
 litellm==1.73.6
 openai>=1.0.0
+boto3>=1.34.0  # AWS Bedrock support
 
 # Data processing
 numpy>=1.24.0
