@@ -1,92 +1,59 @@
+# 📋 Security Action Plan
 
+**Architecture:** 01_minimal_vulnerable.mmd  
+**Current Risk:** 91/100  
+**Target Risk:** 51/100 (after implementation)  
+**Timeline:** 2-4 weeks
 
-SECURITY ACTION PLAN
+## ⚡ Phase 1: Immediate (Week 1) - Quick Wins
 
-Architecture: 01_minimal_vulnerable.mmd
-Current Risk: 91/100
-Target Risk:  51/100 (after implementation)
-Timeline:     2-4 weeks
+| Task | Control | Owner | Effort | Cost | Impact | Validation |
+|------|---------|-------|--------|------|--------|------------|
+| 1 | **RATE LIMITING** | Security Ops | 4-8 hours | $500-$1K | -10 to -15 pts | Security team test |
+| 2 | **LOGGING** | Security Ops | 4-8 hours | $500-$1K | -10 to -15 pts | Security team test |
+| 3 | **MFA** | Security Ops | 4-8 hours | $500-$1K | -10 to -15 pts | Security team test |
 
-PHASE 1: IMMEDIATE (Week 1) - Quick Wins
+## 🛡️ Phase 2: Short-Term (Weeks 2-3) - Critical Controls
 
-Task 1: Implement RATE LIMITING
-  Owner:    Security Operations Team
-  Effort:   4-8 hours
-  Cost:     $500-$1K
-  Impact:   Risk reduction: -10 to -15 points
-  Validate: Test with security team
+| Task | Control | Owner | Effort | Cost | Impact | Validation |
+|------|---------|-------|--------|------|--------|------------|
+| 1 | **BACKUP** | Infra / Sec Arch | 2-3 days | $3K-$5K | -15 to -20 pts | Penetration test |
+| 2 | **WAF** | Infra / Sec Arch | 2-3 days | $3K-$5K | -15 to -20 pts | Penetration test |
 
-Task 2: Implement LOGGING
-  Owner:    Security Operations Team
-  Effort:   4-8 hours
-  Cost:     $500-$1K
-  Impact:   Risk reduction: -10 to -15 points
-  Validate: Test with security team
+## 🚀 Phase 3: Long-Term (Weeks 4-8) - Advanced Protection
 
-Task 3: Implement MFA
-  Owner:    Security Operations Team
-  Effort:   4-8 hours
-  Cost:     $500-$1K
-  Impact:   Risk reduction: -10 to -15 points
-  Validate: Test with security team
+| Task | Control | Owner | Effort | Cost | Impact | Validation |
+|------|---------|-------|--------|------|--------|------------|
+| 1 | **EDR** | Sec Arch (approval req) | 1-2 weeks | $10K-$20K | -20 to -30 pts | Red team exercise |
+| 2 | **NETWORK SEGMENTATION** | Sec Arch (approval req) | 1-2 weeks | $10K-$20K | -20 to -30 pts | Red team exercise |
 
-PHASE 2: SHORT-TERM (Weeks 2-3) - Critical Controls
+## ✅ Success Metrics & Validation
 
-Task 1: Deploy BACKUP
-  Owner:    Infrastructure / Security Architecture
-  Effort:   2-3 days
-  Cost:     $3K-$5K
-  Impact:   Risk reduction: -15 to -20 points
-  Validate: Penetration testing
+**Target Metrics (Post-Implementation):**
 
-Task 2: Deploy WAF
-  Owner:    Infrastructure / Security Architecture
-  Effort:   2-3 days
-  Cost:     $3K-$5K
-  Impact:   Risk reduction: -15 to -20 points
-  Validate: Penetration testing
-
-PHASE 3: LONG-TERM (Weeks 4-8) - Advanced Protection
-
-Task 1: Implement EDR
-  Owner:    Security Architecture (requires approval)
-  Effort:   1-2 weeks
-  Cost:     $10K-$20K
-  Impact:   Risk reduction: -20 to -30 points
-  Validate: Red team exercise
-
-Task 2: Implement NETWORK SEGMENTATION
-  Owner:    Security Architecture (requires approval)
-  Effort:   1-2 weeks
-  Cost:     $10K-$20K
-  Impact:   Risk reduction: -20 to -30 points
-  Validate: Red team exercise
-
-SUCCESS METRICS & VALIDATION
-
-Target Metrics (Post-Implementation):
   • Risk Score:        < 40/100
   • Defensibility:     > 70/100
   • Control Coverage:  > 80%
   • Attack Paths:      Mitigated with monitoring
 
-Validation Tests:
+**Validation Tests:**
+
   1. Automated security scanning (weekly)
   2. Penetration testing (post-Phase 2)
   3. Red team exercise (post-Phase 3)
   4. Compliance audit (quarterly)
 
-Monitoring & Maintenance:
+**Monitoring & Maintenance:**
   • Weekly: Review security logs for anomalies
   • Monthly: Control effectiveness review
   • Quarterly: Residual risk assessment and threat landscape review
   • Annually: Full architecture security review and penetration testing
 
-RESIDUAL RISK MONITORING PLAN
+## 📊 Residual Risk Monitoring Plan
 
 Post-Implementation Residual Risk: 3.0/100 (ACCEPT)
 
-Quarterly Monitoring (Low Residual Risk):
+**Quarterly Monitoring (Low Residual Risk):**
   • Review control effectiveness quarterly
   • Monitor for new threats and vulnerabilities
   • Update controls based on threat landscape
@@ -102,25 +69,26 @@ Risk Acceptance Requirement:
   • Quarterly: Re-run threat assessment
   • Annually: Architecture security review
 
-RESOURCE REQUIREMENTS
+## 💰 Resource Requirements
 
-Team Allocation:
+**Team Allocation:**
+
   • Security Engineer:    100% (Weeks 1-4)
   • Cloud Architect:      50% (Weeks 2-4)
   • DevOps Engineer:      25% (Weeks 1-4)
 
-Budget Estimate:
+**Budget Estimate:**
   • Phase 1 (Quick Wins):        $2K-$3K
   • Phase 2 (Critical Controls): $10K-$15K
   • Phase 3 (Advanced):          $30K-$40K
   • Total:                       $42K-$58K
 
-Expected ROI:
+**Expected ROI:**
   • Prevented breach cost:  $420K (industry average)
   • Implementation cost:    $50K
   • ROI:                    840% (8.4x return)
 
-NEXT STEPS
+## 📅 Next Steps
 
 [ ] Week 1: Executive approval & budget allocation
 [ ] Week 1: Begin Phase 1 implementation

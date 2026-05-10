@@ -101,7 +101,7 @@ flowchart TB
 ```
 
 **Features:**
-- ✅ 16 recommended controls total (stops at 100% technique coverage)
+- ✅ 17 recommended controls total (stops at 100% technique coverage)
 - ✅ MITRE technique mapping per control (T#### = attack types)
 - ✅ MITRE mitigation mapping (M#### = control standards)
 - ✅ Attack path correlation (#1, #2 = which paths protected)
@@ -109,7 +109,7 @@ flowchart TB
 - ✅ Path-based placement (MFA at entry, Backup at data layer, EDR on endpoints)
 - ✅ Black text on green background (high contrast, readable)
 
-**See full sample:** [report_samples/example_architecture/after.mmd](report_samples/example_architecture/after.mmd) (complete with 16 controls)
+**See full sample:** [report_samples/example_architecture/after.mmd](report_samples/example_architecture/after.mmd) (complete with 17 controls)
 
 **2. Business Reports**
 ```

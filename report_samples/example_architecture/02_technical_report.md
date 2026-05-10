@@ -19,222 +19,147 @@
 
 ## 🛣️ Attack Path Analysis
 
-[1] CRITICAL PRIORITY (Criticality: 0.96)
+### Path #1: CRITICAL Priority
 
-Entry Point:  Internet
-Target:       Database
-Path:         Internet → WebServer → Database
-Hop Count:    2
-MITRE ATT&CK:
-  • T1190: Exploit Public-Facing Application
-    Adversaries may attempt to exploit a weakness in an Internet-facing host or system to initially access a network.
-  • T1133: External Remote Services
-    Adversaries may leverage external-facing remote services to initially access and/or persist within a network.
-  • T1059: Command and Scripting Interpreter
-    Adversaries may abuse command and script interpreters to execute commands, scripts, or binaries.
-  • T1203: Exploitation for Client Execution
-    Adversaries may exploit software vulnerabilities in client applications to execute code.
-  • T1213: Data from Information Repositories
-    Adversaries may leverage information repositories to mine valuable information.
-  • T1005: Data from Local System
-    Adversaries may search local system sources, such as file systems, configuration files, local databases, virtual machine files, or process memory, ...
-  • T1567: Exfiltration Over Web Service
-    Adversaries may use an existing, legitimate external Web service to exfiltrate data rather than their primary command and control channel.
-  • T1486: Data Encrypted for Impact
-    Adversaries may encrypt data on target systems or on large numbers of systems in a network to interrupt availability to system and network resources.
-  • T1490: Inhibit System Recovery
-    Adversaries may delete or remove built-in data and turn off services designed to aid in the recovery of a corrupted system to prevent recovery.
-  • T1485: Data Destruction
-    Adversaries may destroy data and files on specific systems or in large numbers on a network to interrupt availability to systems, services, and net...
-Rationale:    [CRITICAL] Internet → Web Server → Database: 2 hops, criticality score 0.96
+| Attribute | Value |
+|-----------|-------|
+| **Entry Point** | Internet |
+| **Target** | Database |
+| **Attack Path** | Internet → WebServer → Database |
+| **Hop Count** | 2 |
+| **Criticality** | 0.96 |
 
-[2] CRITICAL PRIORITY (Criticality: 0.93)
+**MITRE ATT&CK Techniques:**
 
-Entry Point:  WebServer
-Target:       Database
-Path:         WebServer → Database
-Hop Count:    1
-MITRE ATT&CK:
-  • T1213: Data from Information Repositories
-    Adversaries may leverage information repositories to mine valuable information.
-  • T1005: Data from Local System
-    Adversaries may search local system sources, such as file systems, configuration files, local databases, virtual machine files, or process memory, ...
-  • T1567: Exfiltration Over Web Service
-    Adversaries may use an existing, legitimate external Web service to exfiltrate data rather than their primary command and control channel.
-  • T1486: Data Encrypted for Impact
-    Adversaries may encrypt data on target systems or on large numbers of systems in a network to interrupt availability to system and network resources.
-  • T1490: Inhibit System Recovery
-    Adversaries may delete or remove built-in data and turn off services designed to aid in the recovery of a corrupted system to prevent recovery.
-  • T1485: Data Destruction
-    Adversaries may destroy data and files on specific systems or in large numbers on a network to interrupt availability to systems, services, and net...
-Rationale:    [CRITICAL] Web Server → Database: 1 hop, criticality score 0.93
+- **T1190: Exploit Public-Facing Application**  
+  Adversaries may attempt to exploit a weakness in an Internet-facing host or system to initially access a network.
 
-RAPIDS THREAT ASSESSMENT
+- **T1133: External Remote Services**  
+  Adversaries may leverage external-facing remote services to initially access and/or persist within a network.
 
-APPLICATION VULNS: 🔴 CRITICAL
-  Risk:          80/100
-  Defensibility: 10/100
-  Assessment:    WAF: ✗, Input validation: ✗, Rate limiting: ✗
+- **T1059: Command and Scripting Interpreter**  
+  Adversaries may abuse command and script interpreters to execute commands, scripts, or binaries.
 
-RANSOMWARE: 🔴 CRITICAL
-  Risk:          70/100
-  Defensibility: 20/100
-  Assessment:    Backup: ✗, EDR: ✗, Segmentation: ✗
+- **T1203: Exploitation for Client Execution**  
+  Adversaries may exploit software vulnerabilities in client applications to execute code.
 
-DOS: 🔴 CRITICAL
-  Risk:          70/100
-  Defensibility: 10/100
-  Assessment:    Load balancer: ✗, DDoS protection: ✗
+- **T1213: Data from Information Repositories**  
+  Adversaries may leverage information repositories to mine valuable information.
 
-PHISHING: 🟠 HIGH
-  Risk:          60/100
-  Defensibility: 10/100
-  Assessment:    MFA: ✗, Email gateway: ✗
+- **T1005: Data from Local System**  
+  Adversaries may search local system sources, such as file systems, configuration files, local databases, virtual mach...
 
-SUPPLY CHAIN: 🟠 HIGH
-  Risk:          60/100
-  Defensibility: 30/100
-  Assessment:    Requires manual assessment of dependencies and third-party integrations
+- **T1567: Exfiltration Over Web Service**  
+  Adversaries may use an existing, legitimate external Web service to exfiltrate data rather than their primary command...
 
-INSIDER THREAT: 🟠 HIGH
-  Risk:          50/100
-  Defensibility: 20/100
-  Assessment:    Audit logging: ✗, Least privilege: ✗
+- **T1486: Data Encrypted for Impact**  
+  Adversaries may encrypt data on target systems or on large numbers of systems in a network to interrupt availability ...
 
-CONTROL GAP ANALYSIS (RAPIDS-Driven, MITRE-Validated)
+- **T1490: Inhibit System Recovery**  
+  Adversaries may delete or remove built-in data and turn off services designed to aid in the recovery of a corrupted s...
 
-PRIMARY: RAPIDS threat assessment identifies what threats exist
-VALIDATION: Attack paths + MITRE techniques confirm exploitability
+- **T1485: Data Destruction**  
+  Adversaries may destroy data and files on specific systems or in large numbers on a network to interrupt availability...
 
-Recommended Controls (with threat context and confidence):
+**Analysis:** [CRITICAL] Internet → Web Server → Database: 2 hops, criticality score 0.96
 
-1. LEAST PRIVILEGE (CRITICAL)
-   Confidence: 🟡 MEDIUM (79%)
-   Addresses: Mitigates T1059 in path(s) #1, T1133 in path(s) #1
-   MITRE Mitigations: M1016, M1018, M1026
-   MITRE Techniques: T1059, T1133, T1190
+### Path #2: CRITICAL Priority
 
-2. RATE LIMITING (CRITICAL)
-   Confidence: 🟢 HIGH (87%)
-   Addresses: Mitigates T1059 in path(s) #1, T1133 in path(s) #1
-   MITRE Mitigations: M1033, M1035, M1037
-   MITRE Techniques: T1059, T1133, T1190
+| Attribute | Value |
+|-----------|-------|
+| **Entry Point** | WebServer |
+| **Target** | Database |
+| **Attack Path** | WebServer → Database |
+| **Hop Count** | 1 |
+| **Criticality** | 0.93 |
 
-3. LOGGING (CRITICAL)
-   Confidence: 🟢 HIGH (84%)
-   Addresses: Mitigates T1059 in path(s) #1, T1213 in path(s) #1, #2
-   MITRE Mitigations: M1047
-   MITRE Techniques: T1059, T1213
+**MITRE ATT&CK Techniques:**
 
-4. PATCHING (HIGH)
-   Confidence: 🟢 HIGH (81%)
-   Addresses: Mitigates T1190 in path(s) #1, T1203 in path(s) #1
-   MITRE Mitigations: M1017, M1051, M1054
-   MITRE Techniques: T1190, T1203, T1213
+- **T1213: Data from Information Repositories**  
+  Adversaries may leverage information repositories to mine valuable information.
 
-5. USER TRAINING (HIGH)
-   Confidence: 🟠 LOW (46%)
-   Addresses: Mitigates 
-   MITRE Mitigations: 
-   MITRE Techniques: 
+- **T1005: Data from Local System**  
+  Adversaries may search local system sources, such as file systems, configuration files, local databases, virtual mach...
 
-6. BACKUP (HIGH)
-   Confidence: 🟢 HIGH (100%)
-   Addresses: Mitigates T1485 in path(s) #1, #2, T1486 in path(s) #1, #2
-   MITRE Mitigations: M1053
-   MITRE Techniques: T1485, T1486, T1490
+- **T1567: Exfiltration Over Web Service**  
+  Adversaries may use an existing, legitimate external Web service to exfiltrate data rather than their primary command...
 
-7. EDR (HIGH)
-   Confidence: 🟢 HIGH (93%)
-   Addresses: Mitigates T1059 in path(s) #1, T1486 in path(s) #1, #2
-   MITRE Mitigations: M1040, M1049
-   MITRE Techniques: T1059, T1486
+- **T1486: Data Encrypted for Impact**  
+  Adversaries may encrypt data on target systems or on large numbers of systems in a network to interrupt availability ...
 
-8. WAF (HIGH)
-   Confidence: 🟢 HIGH (100%)
-   Addresses: Mitigates T1190 in path(s) #1, T1203 in path(s) #1
-   MITRE Mitigations: M1037, M1050
-   MITRE Techniques: T1190, T1203
+- **T1490: Inhibit System Recovery**  
+  Adversaries may delete or remove built-in data and turn off services designed to aid in the recovery of a corrupted s...
 
-9. INPUT VALIDATION (HIGH)
-   Confidence: 🟢 HIGH (98%)
-   Addresses: Mitigates T1190 in path(s) #1, T1203 in path(s) #1
-   MITRE Mitigations: M1050
-   MITRE Techniques: T1190, T1203
+- **T1485: Data Destruction**  
+  Adversaries may destroy data and files on specific systems or in large numbers on a network to interrupt availability...
 
-10. MFA (HIGH)
-   Confidence: 🟢 HIGH (96%)
-   Addresses: Mitigates T1133 in path(s) #1, T1213 in path(s) #1, #2
-   MITRE Mitigations: M1032
-   MITRE Techniques: T1133, T1213, T1485
+**Analysis:** [CRITICAL] Web Server → Database: 1 hop, criticality score 0.93
+## 🎯 RAPIDS Threat Assessment
 
-11. CODE SIGNING (HIGH)
-   Confidence: 🟡 MEDIUM (78%)
-   Addresses: Mitigates T1059 in path(s) #1, T1490 in path(s) #1, #2
-   MITRE Mitigations: M1038, M1045
-   MITRE Techniques: T1059, T1490
+| Threat Category | Level | Risk Score | Defensibility | Assessment |
+|----------------|-------|------------|---------------|------------|
+| Application Vulns | 🔴 CRITICAL    | 80/100 | 10/100 | WAF: ✗, Input validation: ✗, Rate limiting: ✗ |
+| Ransomware     | 🔴 CRITICAL    | 70/100 | 20/100 | Backup: ✗, EDR: ✗, Segmentation: ✗ |
+| Denial of Service | 🔴 CRITICAL    | 70/100 | 10/100 | Load balancer: ✗, DDoS protection: ✗ |
+| Phishing       | 🟠 HIGH        | 60/100 | 10/100 | MFA: ✗, Email gateway: ✗ |
+| Supply Chain   | 🟠 HIGH        | 60/100 | 30/100 | Requires manual assessment of dependencies and third-part... |
+| Insider Threat | 🟠 HIGH        | 50/100 | 20/100 | Audit logging: ✗, Least privilege: ✗ |
 
-12. VULNERABILITY SCANNING (HIGH)
-   Confidence: 🟡 MEDIUM (72%)
-   Addresses: Mitigates T1213 in path(s) #1, #2
-   MITRE Mitigations: M1017
-   MITRE Techniques: T1213
+## 🔍 Control Gap Analysis
 
-13. NETWORK SEGMENTATION (HIGH)
-   Confidence: 🟢 HIGH (96%)
-   Addresses: Mitigates T1133 in path(s) #1, T1190 in path(s) #1
-   MITRE Mitigations: M1030
-   MITRE Techniques: T1133, T1190
+**Methodology:** RAPIDS-Driven, MITRE-Validated
 
-14. AUDIT LOG (HIGH)
-   Confidence: 🟢 HIGH (84%)
-   Addresses: Mitigates T1059 in path(s) #1, T1213 in path(s) #1, #2
-   MITRE Mitigations: M1047
-   MITRE Techniques: T1059, T1213
+- **PRIMARY:** RAPIDS threat assessment identifies what threats exist
+- **VALIDATION:** Attack paths + MITRE techniques confirm exploitability
 
-15. BEHAVIORAL ANALYSIS (HIGH)
-   Confidence: 🟢 HIGH (81%)
-   Addresses: Mitigates T1059 in path(s) #1, T1486 in path(s) #1, #2
-   MITRE Mitigations: M1040
-   MITRE Techniques: T1059, T1486
+**Recommended Controls:**
 
-16. DLP (MEDIUM)
-   Confidence: 🟢 HIGH (90%)
-   Addresses: Addresses 2 technique(s): T1005, T1567
-   MITRE Mitigations: M1057
-   MITRE Techniques: T1005, T1567
+| # | Control | Priority | Confidence | MITRE Mitigations | MITRE Techniques | Threat Context |
+|---|---------|----------|------------|-------------------|------------------|----------------|
+| 1 | **LEAST PRIVILEGE** | CRITICAL | 🟡 MEDIUM (79%) | M1016, M1018, M1026 +1 | T1059, T1133, T1190 +3 | Mitigates T1059 in path(s) #1, T1133 in path(s)... |
+| 2 | **RATE LIMITING** | CRITICAL | 🟢 HIGH (87%) | M1033, M1035, M1037 | T1059, T1133, T1190 | Mitigates T1059 in path(s) #1, T1133 in path(s)... |
+| 3 | **LOGGING** | CRITICAL | 🟢 HIGH (84%) | M1047 | T1059, T1213 | Mitigates T1059 in path(s) #1, T1213 in path(s)... |
+| 4 | **PATCHING** | HIGH | 🟢 HIGH (81%) | M1017, M1051, M1054 | T1190, T1203, T1213 | Mitigates T1190 in path(s) #1, T1203 in path(s)... |
+| 5 | **USER TRAINING** | HIGH | 🟠 LOW (46%) |  |  | Mitigates  |
+| 6 | **BACKUP** | HIGH | 🟢 HIGH (100%) | M1053 | T1485, T1486, T1490 | Mitigates T1485 in path(s) #1, #2, T1486 in pat... |
+| 7 | **EDR** | HIGH | 🟢 HIGH (93%) | M1040, M1049 | T1059, T1486 | Mitigates T1059 in path(s) #1, T1486 in path(s)... |
+| 8 | **WAF** | HIGH | 🟢 HIGH (100%) | M1037, M1050 | T1190, T1203 | Mitigates T1190 in path(s) #1, T1203 in path(s)... |
+| 9 | **INPUT VALIDATION** | HIGH | 🟢 HIGH (98%) | M1050 | T1190, T1203 | Mitigates T1190 in path(s) #1, T1203 in path(s)... |
+| 10 | **MFA** | HIGH | 🟢 HIGH (96%) | M1032 | T1133, T1213, T1485 | Mitigates T1133 in path(s) #1, T1213 in path(s)... |
+| 11 | **CODE SIGNING** | HIGH | 🟡 MEDIUM (78%) | M1038, M1045 | T1059, T1490 | Mitigates T1059 in path(s) #1, T1490 in path(s)... |
+| 12 | **VULNERABILITY SCANNING** | HIGH | 🟡 MEDIUM (72%) | M1017 | T1213 | Mitigates T1213 in path(s) #1, #2 |
+| 13 | **NETWORK SEGMENTATION** | HIGH | 🟢 HIGH (96%) | M1030 | T1133, T1190 | Mitigates T1133 in path(s) #1, T1190 in path(s)... |
+| 14 | **AUDIT LOG** | HIGH | 🟢 HIGH (84%) | M1047 | T1059, T1213 | Mitigates T1059 in path(s) #1, T1213 in path(s)... |
+| 15 | **BEHAVIORAL ANALYSIS** | HIGH | 🟢 HIGH (81%) | M1040 | T1059, T1486 | Mitigates T1059 in path(s) #1, T1486 in path(s)... |
+| 16 | **DLP** | MEDIUM | 🟢 HIGH (90%) | M1057 | T1567, T1005 | Addresses 2 technique(s): T1567, T1005 |
+| 17 | **WEB CONTENT FILTERING** | MEDIUM | 🟢 HIGH (90%) | M1021 | T1567 | Addresses 1 technique(s): T1567 |
 
-17. WEB CONTENT FILTERING (MEDIUM)
-   Confidence: 🟢 HIGH (90%)
-   Addresses: Addresses 1 technique(s): T1567
-   MITRE Mitigations: M1021
-   MITRE Techniques: T1567
+**Recommended Implementation Order:**
 
-Recommended Implementation Order:
-  1. Perimeter defenses (WAF, Firewall, DDoS protection)
-  2. Authentication (MFA, SSO, least privilege)
-  3. Detection & Response (EDR, SIEM, logging)
-  4. Data protection (Encryption, backup, DLP)
+1. Perimeter defenses (WAF, Firewall, DDoS protection)
+2. Authentication (MFA, SSO, least privilege)
+3. Detection & Response (EDR, SIEM, logging)
+4. Data protection (Encryption, backup, DLP)
 
-RESIDUAL RISK ASSESSMENT
+## ⚖️ Residual Risk Assessment
 
-Even with ALL recommended controls implemented, residual risk remains.
+**Key Principle:** Even with ALL recommended controls implemented, residual risk remains.
 No control is 100% effective - this is a realistic assessment for risk acceptance.
 
 | Threat Category      | Initial | Control Effectiveness | Residual | Status   |
 |---------------------|---------|----------------------|----------|----------|
-| Ransomware           | 70/100  | 100%                 | 0/100    | ✅ ACCEPT |
-|   Controls: least privilege, backup +2 more
-| Application Vulns    | 80/100  | 100%                 | 0/100    | ✅ ACCEPT |
-|   Controls: rate limiting, patching +2 more
-| Phishing             | 60/100  | 100%                 | 0/100    | ✅ ACCEPT |
-|   Controls: least privilege, logging +2 more
-| Insider Threat       | 50/100  | 100%                 | 0/100    | ✅ ACCEPT |
-|   Controls: least privilege, logging +3 more
-| Dos                  | 70/100  | 80%                  | 13/100   | ⚠️ MONITOR |
-|   Controls: rate limiting
-| Supply Chain         | 60/100  | 91%                  | 5/100    | ✅ ACCEPT |
-|   Controls: code signing, vulnerability scanning
+| **Ransomware** | 70/100  | 100%                 | 0/100    | ✅ ACCEPT |
+| ↳ *Controls:* least privilege, backup, edr, +1 more | | | | |
+| **Application Vulns** | 80/100  | 100%                 | 0/100    | ✅ ACCEPT |
+| ↳ *Controls:* rate limiting, patching, waf, +1 more | | | | |
+| **Phishing** | 60/100  | 100%                 | 0/100    | ✅ ACCEPT |
+| ↳ *Controls:* least privilege, logging, user training, +1 more | | | | |
+| **Insider Threat** | 50/100  | 100%                 | 0/100    | ✅ ACCEPT |
+| ↳ *Controls:* least privilege, logging, user training, +2 more | | | | |
+| **Denial of Service** | 70/100  | 80%                  | 13/100   | ⚠️ MONITOR |
+| ↳ *Controls:* rate limiting | | | | |
+| **Supply Chain** | 60/100  | 91%                  | 5/100    | ✅ ACCEPT |
+| ↳ *Controls:* code signing, vulnerability scanning | | | | |
 
 ✅ OVERALL RESIDUAL RISK: 3.0/100 (ACCEPT)
 
@@ -257,7 +182,7 @@ Continuous Improvement Recommendations:
   • Control effectiveness validation
   • Security awareness training (quarterly)
 
-ARCHITECTURE-SPECIFIC RECOMMENDATIONS
+## 🏗️ Architecture-Specific Recommendations
 
 Web Application Security:
   • Deploy Web Application Firewall (WAF)

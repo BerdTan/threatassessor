@@ -331,23 +331,28 @@ def generate_technical_report(ground_truth: Dict) -> str:
     # Attack Path Analysis
     report += format_section_header("Attack Path Analysis", "🛣️", 2)
 
-    # Detailed attack paths
+    # Detailed attack paths with improved formatting
     for i, ap in enumerate(ground_truth["expected_attack_paths"], 1):
         tier = ap.get("criticality_tier", "UNKNOWN")
         criticality = ap.get("criticality", 0.0)
         path_str = " → ".join(ap["path"])
 
-        report += f"\n[{i}] {tier} PRIORITY (Criticality: {criticality:.2f})\n"
-        report += f"{'─'*80}\n"
-        report += f"Entry Point:  {ap['entry']}\n"
-        report += f"Target:       {ap['target']}\n"
-        report += f"Path:         {path_str}\n"
-        report += f"Hop Count:    {ap['hop_count']}\n"
+        # Path header
+        report += f"\n### Path #{i}: {tier} Priority\n\n"
+
+        # Path details table
+        report += "| Attribute | Value |\n"
+        report += "|-----------|-------|\n"
+        report += f"| **Entry Point** | {ap['entry']} |\n"
+        report += f"| **Target** | {ap['target']} |\n"
+        report += f"| **Attack Path** | {path_str} |\n"
+        report += f"| **Hop Count** | {ap['hop_count']} |\n"
+        report += f"| **Criticality** | {criticality:.2f} |\n\n"
 
         # MITRE techniques with descriptions
         techniques = ap.get("techniques", [])
         if techniques:
-            report += f"MITRE ATT&CK:\n"
+            report += "**MITRE ATT&CK Techniques:**\n\n"
             for tech_id in techniques:
                 # Get technique details from MITRE
                 if mitre:
@@ -358,35 +363,41 @@ def generate_technical_report(ground_truth: Dict) -> str:
                         # Truncate description to first sentence for readability
                         if tech_desc:
                             first_sentence = tech_desc.split('.')[0] + '.'
-                            if len(first_sentence) > 150:
-                                first_sentence = first_sentence[:147] + '...'
-                            report += f"  • {tech_id}: {tech_name}\n"
-                            report += f"    {first_sentence}\n"
+                            if len(first_sentence) > 120:
+                                first_sentence = first_sentence[:117] + '...'
+                            report += f"- **{tech_id}: {tech_name}**  \n"
+                            report += f"  {first_sentence}\n\n"
                         else:
-                            report += f"  • {tech_id}: {tech_name}\n"
+                            report += f"- **{tech_id}: {tech_name}**\n\n"
                     else:
-                        report += f"  • {tech_id}\n"
+                        report += f"- {tech_id}\n\n"
                 else:
-                    report += f"  • {tech_id}\n"
+                    report += f"- {tech_id}\n\n"
 
-        report += f"Rationale:    {ap.get('rationale', 'N/A')}\n"
+        # Rationale
+        rationale = ap.get('rationale', 'N/A')
+        report += f"**Analysis:** {rationale}\n"
 
-    report += f"""
-
-═══════════════════════════════════════════════════════════════════════════════
-RAPIDS THREAT ASSESSMENT
-═══════════════════════════════════════════════════════════════════════════════
-
-"""
+    report += format_section_header("RAPIDS Threat Assessment", "🎯", 2)
 
     # RAPIDS categories with details (Phase 3B-2: Filter metadata)
     rapids = ground_truth["rapids_assessment"]
     # Filter out metadata keys
     rapids_filtered = {k: v for k, v in rapids.items() if not k.startswith("_") and isinstance(v, dict) and "risk" in v}
+
+    # Create table format for better readability
+    report += "\n| Threat Category | Level | Risk Score | Defensibility | Assessment |\n"
+    report += "|----------------|-------|------------|---------------|------------|\n"
+
     for category, scores in sorted(rapids_filtered.items(), key=lambda x: x[1]["risk"], reverse=True):
         risk = scores["risk"]
         defensibility = scores["defensibility"]
         rationale = scores["rationale"]
+        category_name = category.replace('_', ' ').title()
+
+        # Handle special case for DoS
+        if category.lower() == "dos":
+            category_name = "Denial of Service"
 
         # Risk level indicator
         if risk >= 70:
@@ -398,26 +409,24 @@ RAPIDS THREAT ASSESSMENT
         else:
             indicator = "🟢 LOW"
 
-        report += f"\n{category.replace('_', ' ').upper()}: {indicator}\n"
-        report += f"  Risk:          {risk}/100\n"
-        report += f"  Defensibility: {defensibility}/100\n"
-        report += f"  Assessment:    {rationale}\n"
+        # Truncate rationale if too long for table
+        rationale_short = rationale if len(rationale) < 60 else rationale[:57] + "..."
+        report += f"| {category_name:<14} | {indicator:<13} | {risk}/100 | {defensibility}/100 | {rationale_short} |\n"
 
-    report += f"""
+    report += "\n"
 
-═══════════════════════════════════════════════════════════════════════════════
-CONTROL GAP ANALYSIS (RAPIDS-Driven, MITRE-Validated)
-═══════════════════════════════════════════════════════════════════════════════
-
-PRIMARY: RAPIDS threat assessment identifies what threats exist
-VALIDATION: Attack paths + MITRE techniques confirm exploitability
-
-"""
+    report += format_section_header("Control Gap Analysis", "🔍", 2)
+    report += "\n**Methodology:** RAPIDS-Driven, MITRE-Validated\n\n"
+    report += "- **PRIMARY:** RAPIDS threat assessment identifies what threats exist\n"
+    report += "- **VALIDATION:** Attack paths + MITRE techniques confirm exploitability\n\n"
 
     # Show detailed control recommendations with confidence and threat context
     control_recs = ground_truth.get("control_recommendations", [])
     if control_recs:
-        report += "Recommended Controls (with threat context and confidence):\n\n"
+        report += "**Recommended Controls:**\n\n"
+        report += "| # | Control | Priority | Confidence | MITRE Mitigations | MITRE Techniques | Threat Context |\n"
+        report += "|---|---------|----------|------------|-------------------|------------------|----------------|\n"
+
         for i, rec in enumerate(control_recs, 1):
             control = rec["control"]
             priority = rec["priority"]
@@ -431,12 +440,21 @@ VALIDATION: Attack paths + MITRE techniques confirm exploitability
             # Confidence indicator
             conf_indicator = "🟢" if conf_level == "HIGH" else "🟡" if conf_level == "MEDIUM" else "🟠"
 
-            report += f"{i}. {control.upper()} ({priority.upper()})\n"
-            report += f"   Confidence: {conf_indicator} {conf_level} ({conf_score:.0%})\n"
-            report += f"   Addresses: {enhanced_rationale}\n"
-            report += f"   MITRE Mitigations: {', '.join(mitigations[:3])}\n"
-            report += f"   MITRE Techniques: {', '.join(techniques[:3])}\n"
-            report += "\n"
+            # Truncate for table readability
+            mitigations_str = ", ".join(mitigations[:3])
+            if len(mitigations) > 3:
+                mitigations_str += f" +{len(mitigations)-3}"
+
+            techniques_str = ", ".join(techniques[:3])
+            if len(techniques) > 3:
+                techniques_str += f" +{len(techniques)-3}"
+
+            # Truncate rationale for table
+            rationale_short = enhanced_rationale if len(enhanced_rationale) < 50 else enhanced_rationale[:47] + "..."
+
+            report += f"| {i} | **{control.upper()}** | {priority.upper()} | {conf_indicator} {conf_level} ({conf_score:.0%}) | {mitigations_str} | {techniques_str} | {rationale_short} |\n"
+
+        report += "\n"
     else:
         # Fallback to simple list if detailed recommendations not available
         missing = ground_truth.get("controls_missing", [])
@@ -447,21 +465,15 @@ VALIDATION: Attack paths + MITRE techniques confirm exploitability
         else:
             report += "  None - all recommended controls implemented\n"
 
-    report += f"""
-Recommended Implementation Order:
-  1. Perimeter defenses (WAF, Firewall, DDoS protection)
-  2. Authentication (MFA, SSO, least privilege)
-  3. Detection & Response (EDR, SIEM, logging)
-  4. Data protection (Encryption, backup, DLP)
+    report += "\n**Recommended Implementation Order:**\n\n"
+    report += "1. Perimeter defenses (WAF, Firewall, DDoS protection)\n"
+    report += "2. Authentication (MFA, SSO, least privilege)\n"
+    report += "3. Detection & Response (EDR, SIEM, logging)\n"
+    report += "4. Data protection (Encryption, backup, DLP)\n\n"
 
-═══════════════════════════════════════════════════════════════════════════════
-RESIDUAL RISK ASSESSMENT
-═══════════════════════════════════════════════════════════════════════════════
-
-Even with ALL recommended controls implemented, residual risk remains.
-No control is 100% effective - this is a realistic assessment for risk acceptance.
-
-"""
+    report += format_section_header("Residual Risk Assessment", "⚖️", 2)
+    report += "\n**Key Principle:** Even with ALL recommended controls implemented, residual risk remains.\n"
+    report += "No control is 100% effective - this is a realistic assessment for risk acceptance.\n\n"
 
     # Detailed residual risk per threat
     residual_risks = ground_truth.get("residual_risks", {})
@@ -470,19 +482,26 @@ No control is 100% effective - this is a realistic assessment for risk acceptanc
         report += "|---------------------|---------|----------------------|----------|----------|\n"
 
         for threat, data in residual_risks["per_threat"].items():
-            threat_name = threat.replace("_", " ").title()[:20].ljust(20)
+            # Handle special case for DoS -> Denial of Service
+            if threat.lower() == "dos":
+                threat_name = "Denial of Service"
+            else:
+                threat_name = threat.replace("_", " ").title()
+
+            threat_name = threat_name[:20].ljust(20)
             initial = f"{data['initial_risk']}/100"
             effectiveness = f"{data['combined_effectiveness']:.0%}"
             residual = f"{data['residual_risk']}/100"
             status_emoji = {"ACCEPT": "✅", "MONITOR": "⚠️", "MITIGATE": "❌"}.get(data['status'], "❓")
             status = f"{status_emoji} {data['status']}"
 
-            controls_str = ", ".join([c["name"] for c in data["controls"][:2]])
-            if len(data["controls"]) > 2:
-                controls_str += f" +{len(data['controls'])-2} more"
+            controls_list = [c["name"] for c in data["controls"][:3]]
+            if len(data["controls"]) > 3:
+                controls_list.append(f"+{len(data['controls'])-3} more")
+            controls_str = ", ".join(controls_list)
 
-            report += f"| {threat_name} | {initial:7s} | {effectiveness:20s} | {residual:8s} | {status:8s} |\n"
-            report += f"|   Controls: {controls_str}\n"
+            report += f"| **{threat_name.strip()}** | {initial:7s} | {effectiveness:20s} | {residual:8s} | {status:8s} |\n"
+            report += f"| ↳ *Controls:* {controls_str} | | | | |\n"
 
         overall_residual = residual_risks.get("overall_residual", 0)
         overall_status = residual_risks.get("overall_status", "UNKNOWN")
@@ -512,12 +531,7 @@ No control is 100% effective - this is a realistic assessment for risk acceptanc
         report += "  • Control effectiveness validation\n"
         report += "  • Security awareness training (quarterly)\n\n"
 
-    report += f"""
-═══════════════════════════════════════════════════════════════════════════════
-ARCHITECTURE-SPECIFIC RECOMMENDATIONS
-═══════════════════════════════════════════════════════════════════════════════
-
-"""
+    report += format_section_header("Architecture-Specific Recommendations", "🏗️", 2)
 
     # Type-specific guidance
     if arch_type == "ai_system":
@@ -574,106 +588,72 @@ def generate_action_plan(ground_truth: Dict) -> str:
     risk = ground_truth["expected_risk_score"]
     missing = ground_truth.get("controls_missing", [])
 
-    report = f"""
-{'='*80}
-SECURITY ACTION PLAN
-{'='*80}
+    report = f"# 📋 Security Action Plan\n\n"
+    report += f"**Architecture:** {ground_truth['architecture']}  \n"
+    report += f"**Current Risk:** {risk}/100  \n"
+    report += f"**Target Risk:** {max(20, risk - 40)}/100 (after implementation)  \n"
+    report += f"**Timeline:** {'2-4 weeks' if risk >= 60 else '4-8 weeks'}\n\n"
 
-Architecture: {ground_truth["architecture"]}
-Current Risk: {risk}/100
-Target Risk:  {max(20, risk - 40)}/100 (after implementation)
-Timeline:     {"2-4 weeks" if risk >= 60 else "4-8 weeks"}
-
-═══════════════════════════════════════════════════════════════════════════════
-PHASE 1: IMMEDIATE (Week 1) - Quick Wins
-═══════════════════════════════════════════════════════════════════════════════
-
-"""
+    report += format_section_header("Phase 1: Immediate (Week 1) - Quick Wins", "⚡", 2)
 
     # Quick wins (easy to implement)
     quick_wins = [c for c in missing if c in ["mfa", "logging", "rate limiting", "audit log"]][:3]
 
     if quick_wins:
+        report += "\n| Task | Control | Owner | Effort | Cost | Impact | Validation |\n"
+        report += "|------|---------|-------|--------|------|--------|------------|\n"
         for i, control in enumerate(quick_wins, 1):
-            report += f"Task {i}: Implement {control.upper()}\n"
-            report += f"  Owner:    Security Operations Team\n"
-            report += f"  Effort:   4-8 hours\n"
-            report += f"  Cost:     $500-$1K\n"
-            report += f"  Impact:   Risk reduction: -10 to -15 points\n"
-            report += f"  Validate: Test with security team\n\n"
+            report += f"| {i} | **{control.upper()}** | Security Ops | 4-8 hours | $500-$1K | -10 to -15 pts | Security team test |\n"
+        report += "\n"
     else:
-        report += "✓ No quick-win controls needed\n\n"
+        report += "\n✓ No quick-win controls needed\n\n"
 
-    report += f"""
-═══════════════════════════════════════════════════════════════════════════════
-PHASE 2: SHORT-TERM (Weeks 2-3) - Critical Controls
-═══════════════════════════════════════════════════════════════════════════════
-
-"""
+    report += format_section_header("Phase 2: Short-Term (Weeks 2-3) - Critical Controls", "🛡️", 2)
 
     # Medium-effort controls
     medium_effort = [c for c in missing if c in ["waf", "firewall", "backup", "encryption", "ids/ips"]][:3]
 
     if medium_effort:
+        report += "\n| Task | Control | Owner | Effort | Cost | Impact | Validation |\n"
+        report += "|------|---------|-------|--------|------|--------|------------|\n"
         for i, control in enumerate(medium_effort, 1):
-            report += f"Task {i}: Deploy {control.upper()}\n"
-            report += f"  Owner:    Infrastructure / Security Architecture\n"
-            report += f"  Effort:   2-3 days\n"
-            report += f"  Cost:     $3K-$5K\n"
-            report += f"  Impact:   Risk reduction: -15 to -20 points\n"
-            report += f"  Validate: Penetration testing\n\n"
+            report += f"| {i} | **{control.upper()}** | Infra / Sec Arch | 2-3 days | $3K-$5K | -15 to -20 pts | Penetration test |\n"
+        report += "\n"
     else:
-        report += "✓ All critical controls implemented\n\n"
+        report += "\n✓ All critical controls implemented\n\n"
 
-    report += f"""
-═══════════════════════════════════════════════════════════════════════════════
-PHASE 3: LONG-TERM (Weeks 4-8) - Advanced Protection
-═══════════════════════════════════════════════════════════════════════════════
-
-"""
+    report += format_section_header("Phase 3: Long-Term (Weeks 4-8) - Advanced Protection", "🚀", 2)
 
     # Complex controls
     complex_controls = [c for c in missing if c in ["network segmentation", "edr", "siem", "iam"]][:3]
 
     if complex_controls:
+        report += "\n| Task | Control | Owner | Effort | Cost | Impact | Validation |\n"
+        report += "|------|---------|-------|--------|------|--------|------------|\n"
         for i, control in enumerate(complex_controls, 1):
-            report += f"Task {i}: Implement {control.upper()}\n"
-            report += f"  Owner:    Security Architecture (requires approval)\n"
-            report += f"  Effort:   1-2 weeks\n"
-            report += f"  Cost:     $10K-$20K\n"
-            report += f"  Impact:   Risk reduction: -20 to -30 points\n"
-            report += f"  Validate: Red team exercise\n\n"
+            report += f"| {i} | **{control.upper()}** | Sec Arch (approval req) | 1-2 weeks | $10K-$20K | -20 to -30 pts | Red team exercise |\n"
+        report += "\n"
     else:
-        report += "✓ Advanced controls in place\n\n"
+        report += "\n✓ Advanced controls in place\n\n"
 
-    report += f"""
-═══════════════════════════════════════════════════════════════════════════════
-SUCCESS METRICS & VALIDATION
-═══════════════════════════════════════════════════════════════════════════════
+    report += format_section_header("Success Metrics & Validation", "✅", 2)
+    report += "\n**Target Metrics (Post-Implementation):**\n\n"
+    report += "  • Risk Score:        < 40/100\n"
+    report += "  • Defensibility:     > 70/100\n"
+    report += "  • Control Coverage:  > 80%\n"
+    report += "  • Attack Paths:      Mitigated with monitoring\n\n"
+    report += "**Validation Tests:**\n\n"
+    report += "  1. Automated security scanning (weekly)\n"
+    report += "  2. Penetration testing (post-Phase 2)\n"
+    report += "  3. Red team exercise (post-Phase 3)\n"
+    report += "  4. Compliance audit (quarterly)\n\n"
+    report += "**Monitoring & Maintenance:**\n"
+    report += "  • Weekly: Review security logs for anomalies\n"
+    report += "  • Monthly: Control effectiveness review\n"
+    report += "  • Quarterly: Residual risk assessment and threat landscape review\n"
+    report += "  • Annually: Full architecture security review and penetration testing\n\n"
 
-Target Metrics (Post-Implementation):
-  • Risk Score:        < 40/100
-  • Defensibility:     > 70/100
-  • Control Coverage:  > 80%
-  • Attack Paths:      Mitigated with monitoring
-
-Validation Tests:
-  1. Automated security scanning (weekly)
-  2. Penetration testing (post-Phase 2)
-  3. Red team exercise (post-Phase 3)
-  4. Compliance audit (quarterly)
-
-Monitoring & Maintenance:
-  • Weekly: Review security logs for anomalies
-  • Monthly: Control effectiveness review
-  • Quarterly: Residual risk assessment and threat landscape review
-  • Annually: Full architecture security review and penetration testing
-
-═══════════════════════════════════════════════════════════════════════════════
-RESIDUAL RISK MONITORING PLAN
-═══════════════════════════════════════════════════════════════════════════════
-
-"""
+    report += format_section_header("Residual Risk Monitoring Plan", "📊", 2)
 
     # Add residual risk monitoring tasks
     residual_risks = ground_truth.get("residual_risks", {})
@@ -684,13 +664,13 @@ RESIDUAL RISK MONITORING PLAN
         report += f"Post-Implementation Residual Risk: {overall_residual:.1f}/100 ({overall_status})\n\n"
 
         if overall_status == "ACCEPT":
-            report += "Quarterly Monitoring (Low Residual Risk):\n"
+            report += "\n**Quarterly Monitoring (Low Residual Risk):**\n"
             report += "  • Review control effectiveness quarterly\n"
             report += "  • Monitor for new threats and vulnerabilities\n"
             report += "  • Update controls based on threat landscape\n"
             report += "  • Annual penetration testing to validate controls\n\n"
         elif overall_status == "MONITOR":
-            report += "Active Monitoring Required (Medium Residual Risk):\n"
+            report += "\n**Active Monitoring Required (Medium Residual Risk):**\n"
             report += "  • Monthly security posture reviews\n"
             report += "  • Active threat hunting (weekly)\n"
             report += "  • Incident response drills (quarterly)\n"
@@ -715,30 +695,28 @@ RESIDUAL RISK MONITORING PLAN
   • Quarterly: Re-run threat assessment
   • Annually: Architecture security review
 
-═══════════════════════════════════════════════════════════════════════════════
-RESOURCE REQUIREMENTS
-═══════════════════════════════════════════════════════════════════════════════
-
-Team Allocation:
+"""
+    report += format_section_header("Resource Requirements", "💰", 2)
+    report += "\n**Team Allocation:**\n"
+    report += """
   • Security Engineer:    100% (Weeks 1-4)
   • Cloud Architect:      50% (Weeks 2-4)
   • DevOps Engineer:      25% (Weeks 1-4)
 
-Budget Estimate:
+**Budget Estimate:**
   • Phase 1 (Quick Wins):        $2K-$3K
   • Phase 2 (Critical Controls): $10K-$15K
   • Phase 3 (Advanced):          $30K-$40K
   • Total:                       $42K-$58K
 
-Expected ROI:
+**Expected ROI:**
   • Prevented breach cost:  $420K (industry average)
   • Implementation cost:    $50K
   • ROI:                    840% (8.4x return)
 
-═══════════════════════════════════════════════════════════════════════════════
-NEXT STEPS
-═══════════════════════════════════════════════════════════════════════════════
-
+"""
+    report += format_section_header("Next Steps", "📅", 2)
+    report += """
 [ ] Week 1: Executive approval & budget allocation
 [ ] Week 1: Begin Phase 1 implementation
 [ ] Week 2: Phase 1 validation testing
