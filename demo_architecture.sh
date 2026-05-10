@@ -83,9 +83,7 @@ validate_architecture() {
     local arch_file=$1
     local arch_name=$(basename "$arch_file" .mmd)
 
-    echo "═══════════════════════════════════════════════════════════════════════════"
     echo "📋 PRE-ANALYSIS VALIDATION: $arch_name"
-    echo "═══════════════════════════════════════════════════════════════════════════"
     echo ""
 
     # Check 1: File exists
@@ -153,9 +151,7 @@ if [ "$1" == "--validate-orphan" ]; then
         exit 1
     fi
 
-    echo "╔══════════════════════════════════════════════════════════════════════╗"
     echo "║     Architecture Validation - Orphan Node Check                     ║"
-    echo "╚══════════════════════════════════════════════════════════════════════╝"
     echo ""
 
     source .venv/bin/activate
@@ -177,9 +173,7 @@ if [ "$1" == "--validate-orphan" ]; then
     exit $exit_code
 fi
 
-echo "╔══════════════════════════════════════════════════════════════════════╗"
 echo "║     MITRE Chatbot - Architecture Threat Assessment (v1.0)           ║"
-echo "╚══════════════════════════════════════════════════════════════════════╝"
 echo ""
 echo "This demo compares two architectures:"
 echo "  1️⃣  Vulnerable baseline (no security controls)"
@@ -196,7 +190,6 @@ echo "ℹ️  Usage:"
 echo "  Demo mode:           $0"
 echo "  Check for orphans:   $0 --validate-orphan your_architecture.mmd"
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
 # Activate virtual environment
@@ -204,7 +197,6 @@ source .venv/bin/activate
 
 # Validate both architectures before starting
 echo "🔬 Pre-Analysis Validation"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
 ARCH1="tests/data/architectures/01_minimal_vulnerable.mmd"
@@ -231,14 +223,12 @@ if [ $? -ne 0 ]; then
 fi
 
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
 # Clean previous reports
 rm -rf report/01_minimal_vulnerable report/02_minimal_defended 2>/dev/null
 
 echo "🔍 SCENARIO 1: Vulnerable Baseline Architecture"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Architecture: Internet → Web Server → Database"
 echo "Controls: None (baseline)"
@@ -251,7 +241,6 @@ python3 -m chatbot.main --gen-arch-truth tests/data/architectures/01_minimal_vul
 if [ -f "report/01_minimal_vulnerable/01_executive_summary.md" ]; then
     echo ""
     echo "📊 KEY FINDINGS:"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     # Extract residual risk section
     awk '/## Residual Risk/,/^##/ {print}' report/01_minimal_vulnerable/01_executive_summary.md | head -n 15
 
@@ -262,10 +251,8 @@ fi
 
 echo ""
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "🛡️  SCENARIO 2: Defended Architecture"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Architecture: Internet → WAF → ALB → MFA → Web Server (EDR) → Database (Encrypted)"
 echo "Controls: WAF, MFA, EDR, Encryption"
@@ -278,7 +265,6 @@ python3 -m chatbot.main --gen-arch-truth tests/data/architectures/02_minimal_def
 if [ -f "report/02_minimal_defended/01_executive_summary.md" ]; then
     echo ""
     echo "📊 KEY FINDINGS:"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     # Extract residual risk section
     awk '/## Residual Risk/,/^##/ {print}' report/02_minimal_defended/01_executive_summary.md | head -n 15
 
@@ -289,9 +275,7 @@ fi
 
 echo ""
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "🔬 COMPARISON SUMMARY"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "                           Vulnerable    →    Defended"
 echo "────────────────────────────────────────────────────────────────────────"
@@ -315,7 +299,6 @@ echo "  • Data protection:    ❌ Plaintext     →  ✅ Encrypted"
 echo ""
 
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✅ DEMONSTRATION COMPLETE"
 echo ""
 echo "📖 Output Structure (for each architecture):"

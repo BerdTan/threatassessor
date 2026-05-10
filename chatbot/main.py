@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 def print_semantic_results(result: dict):
     """Display semantic search results with scores in readable format."""
-    print("\n" + "="*80)
+    print("\n")
     print("THREAT ASSESSMENT RESULTS (Semantic Mode)")
-    print("="*80)
+    print("")
 
     # Display matched techniques with scores
     refined = result.get("refined_techniques", [])
@@ -135,7 +135,7 @@ def print_semantic_results(result: dict):
 
 def print_keyword_results(result: dict):
     """Display keyword search results in readable format (legacy)."""
-    print("\n" + "="*80)
+    print("\n")
     print("THREAT ASSESSMENT RESULTS (Keyword Mode - Fallback)")
     print("="*80 + "\n")
 
@@ -156,14 +156,12 @@ def print_keyword_results(result: dict):
         else:
             print("No mitigation advice available.")
 
-    print("\n" + "="*80 + "\n")
+    print("\n")
 
 
 def print_executive_summary(result: dict):
     """Display executive summary (high-level only)."""
-    print("\n" + "╔" + "═"*78 + "╗")
-    print("║" + " "*20 + "EXECUTIVE THREAT SUMMARY" + " "*34 + "║")
-    print("╚" + "═"*78 + "╝")
+    print("\n## 📊 Executive Threat Summary\n")
 
     refined = result.get("refined_techniques", [])
     mitigations = result.get("mitigations", {})
@@ -263,14 +261,12 @@ def print_executive_summary(result: dict):
         print(f"ROI:                   ~170x")
 
     print(f"\n✅ RECOMMENDATION: {'APPROVE IMMEDIATELY' if avg_composite >= 50 else 'APPROVE FOR NORMAL CYCLE'}")
-    print("\n" + "═" * 80 + "\n")
+    print("\n")
 
 
 def print_action_plan(result: dict):
     """Display manager-focused action plan with timeline."""
-    print("\n" + "╔" + "═"*78 + "╗")
-    print("║" + " "*24 + "SECURITY ACTION PLAN" + " "*35 + "║")
-    print("╚" + "═"*78 + "╝")
+    print("\n## 📅 Security Action Plan\n")
 
     refined = result.get("refined_techniques", [])
     mitre_mits = result.get("mitre_mitigations", [])
@@ -429,7 +425,7 @@ def print_action_plan(result: dict):
     print(f"[ ] Week 4: Purple team validation exercise")
     print(f"[ ] Month 2: Continuous monitoring automation")
 
-    print("\n" + "═" * 80 + "\n")
+    print("\n")
 
 
 def main():
@@ -588,9 +584,8 @@ Examples:
         else:
             logging.getLogger().setLevel(logging.INFO)
 
-        print(f"\n{'='*80}")
-        print(f"Ground Truth Generator ({'Parser + LLM' if use_llm else 'Parser Only'})")
-        print(f"{'='*80}\n")
+        print(f"\n## 📊 Ground Truth Generator\n")
+        print(f"**Mode:** {'Parser + LLM (enhanced)' if use_llm else 'Parser Only (deterministic)'}\n")
 
         try:
             print(f"📊 Analyzing architecture: {mmd_file}")
@@ -686,9 +681,9 @@ Examples:
         # Suppress logs in non-verbose mode
         logging.getLogger().setLevel(logging.ERROR)
 
-    print("\n" + "="*80)
+    print("\n")
     print("LLM-Enhanced MITRE Attack Path Analyzer")
-    print("="*80)
+    print("")
     if args.format != 'all':
         print(f"\nOutput Format: {args.format.upper()}")
     print("\nThis tool uses semantic search and LLM analysis to map threats")
