@@ -31,28 +31,62 @@ cat 03_action_plan.md           # 8-week implementation roadmap
 
 ## What You Get
 
-### Input
-Mermaid architecture diagram (.mmd):
+### Input (before.mmd)
+Your architecture diagram:
 ```mermaid
 flowchart TB
     Internet((Internet))
-    Internet --> WAF --> WebApp --> Database
+    Internet --> WebApp[Web Application]
+    WebApp --> Database[(Database)]
 ```
 
 ### Output
+
+**1. Enhanced Architecture (after.mmd)**
+
+Diagram with recommended controls:
+```mermaid
+flowchart TB
+    Internet((Internet))
+    WAF[Web Application Firewall]
+    MFA[Multi-Factor Authentication]
+    IDS[Intrusion Detection System]
+    WebApp[Web Application]
+    EDR[Endpoint Detection & Response]
+    Database[(Database - Encrypted)]
+    SIEM[Security Monitoring]
+    
+    Internet --> WAF
+    WAF --> MFA
+    MFA --> WebApp
+    WebApp --> Database
+    
+    IDS -.monitor.-> Internet
+    EDR -.monitor.-> WebApp
+    SIEM -.monitor.-> Database
+    
+    style WAF fill:#90EE90
+    style MFA fill:#90EE90
+    style IDS fill:#87CEEB
+    style EDR fill:#87CEEB
+    style SIEM fill:#87CEEB
+```
+
+**2. Business Reports**
 ```
 report/your_architecture/
 ├── 01_executive_summary.md    # BEFORE: 65/100 → AFTER: 9.5/100 (85% risk reduction)
 ├── 02_technical_report.md     # RAPIDS threats + MITRE techniques + attack paths
 ├── 03_action_plan.md          # 8-week roadmap with cost estimates
-├── before.mmd                 # Current architecture
-└── after.mmd                  # With recommended controls (visual)
+├── ground_truth.json          # Complete analysis data
+├── before.mmd                 # Current architecture (input)
+└── after.mmd                  # With recommended controls (visual output)
 ```
 
 **Key Metrics:**
 - **BEFORE Risk:** Current risk with present controls (e.g., 65/100 MITIGATE)
 - **AFTER Risk:** Target risk after recommendations (e.g., 9.5/100 ACCEPT)
-- **ROI:** Risk reduction percentage + cost justification
+- **ROI:** 85% risk reduction with justified control investments
 - **Confidence:** 99.5% (validated across 22 architectures)
 
 ---
