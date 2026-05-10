@@ -65,7 +65,7 @@ NEW_BACKUP[("Backup<br/>MITRE: M1053<br/>Recovers: T1485, T1486, T1490<br/>Paths
 NEW_LOGGING[/"Logging<br/>MITRE: M1047<br/>Detects: T1059, T1213<br/>Paths: #1"/]
 ```
 
-**Generated diagram (after.mmd):**
+**Generated diagram (simplified example showing 5 of 17 controls):**
 ```mermaid
 flowchart TB
     %% ORIGINAL ARCHITECTURE
@@ -73,14 +73,14 @@ flowchart TB
     WebServer[Web Server]
     Database[(Database)]
 
-    %% RECOMMENDED SECURITY CONTROLS (with MITRE mapping)
-    NEW_MFA["MFA<br/>MITRE: M1032<br/>Prevents: T1133, T1213, T1485<br/>Paths: #1, #2"]
+    %% RECOMMENDED SECURITY CONTROLS (showing 5 of 17)
+    NEW_MFA["MFA<br/>MITRE: M1032<br/>Prevents: T1133, T1213<br/>Paths: #1, #2"]
     NEW_WAF["WAF<br/>MITRE: M1037, M1050<br/>Prevents: T1190, T1203<br/>Paths: #1"]
-    NEW_BACKUP[("Backup<br/>MITRE: M1053<br/>Recovers: T1485, T1486, T1490<br/>Paths: #1, #2")]
+    NEW_BACKUP[("Backup<br/>MITRE: M1053<br/>Recovers: T1485, T1486<br/>Paths: #1, #2")]
     NEW_EDR["EDR<br/>MITRE: M1040, M1049<br/>Prevents: T1059, T1486<br/>Paths: #1, #2"]
     NEW_LOGGING[/"Logging<br/>MITRE: M1047<br/>Detects: T1059, T1213<br/>Paths: #1, #2"/]
     
-    %% CONTROL PLACEMENT (based on attack paths)
+    %% CONTROL PLACEMENT (inline and monitoring)
     Internet --> NEW_MFA
     NEW_MFA --> WebServer
     Internet --> NEW_WAF
@@ -99,6 +99,7 @@ flowchart TB
     style NEW_EDR fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
     style NEW_LOGGING fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
 ```
+*Note: This shows 5 key controls for clarity. The actual output includes all 17 controls with complete MITRE mappings.*
 
 **Features:**
 - ✅ 17 recommended controls total (stops at 100% technique coverage)

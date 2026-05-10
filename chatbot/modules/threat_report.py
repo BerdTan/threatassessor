@@ -507,71 +507,63 @@ def generate_technical_report(ground_truth: Dict) -> str:
         overall_status = residual_risks.get("overall_status", "UNKNOWN")
         status_emoji = {"ACCEPT": "✅", "MONITOR": "⚠️", "MITIGATE": "❌"}.get(overall_status, "❓")
 
-        report += f"\n{status_emoji} OVERALL RESIDUAL RISK: {overall_residual:.1f}/100 ({overall_status})\n\n"
+        report += f"\n**{status_emoji} OVERALL RESIDUAL RISK:** {overall_residual:.1f}/100 ({overall_status})\n\n"
 
         # Thresholds
-        report += "Risk Acceptance Thresholds:\n"
-        report += "  • < 10:  ✅ ACCEPT (low risk, quarterly monitoring)\n"
-        report += "  • 10-20: ⚠️ MONITOR (medium risk, active monitoring required)\n"
-        report += "  • > 20:  ❌ MITIGATE (high risk, additional controls needed)\n\n"
+        report += "**Risk Acceptance Thresholds:**\n\n"
+        report += "- < 10:  ✅ ACCEPT (low risk, quarterly monitoring)\n"
+        report += "- 10-20: ⚠️ MONITOR (medium risk, active monitoring required)\n"
+        report += "- > 20:  ❌ MITIGATE (high risk, additional controls needed)\n\n"
 
         # Why residual risk exists
-        report += "Why Residual Risk Exists (No Silver Bullet):\n"
-        report += "  • Zero-day exploits (no patch available yet)\n"
-        report += "  • Advanced Persistent Threats (sophisticated techniques)\n"
-        report += "  • Insider threats with privileged access\n"
-        report += "  • Social engineering and human error\n"
-        report += "  • Configuration drift and operational mistakes\n\n"
+        report += "**Why Residual Risk Exists (No Silver Bullet):**\n\n"
+        report += "- Zero-day exploits (no patch available yet)\n"
+        report += "- Advanced Persistent Threats (sophisticated techniques)\n"
+        report += "- Insider threats with privileged access\n"
+        report += "- Social engineering and human error\n"
+        report += "- Configuration drift and operational mistakes\n\n"
 
         # Continuous improvement
-        report += "Continuous Improvement Recommendations:\n"
-        report += "  • Quarterly threat landscape review\n"
-        report += "  • Annual penetration testing\n"
-        report += "  • Bi-annual incident response drills\n"
-        report += "  • Control effectiveness validation\n"
-        report += "  • Security awareness training (quarterly)\n\n"
+        report += "**Continuous Improvement Recommendations:**\n\n"
+        report += "- Quarterly threat landscape review\n"
+        report += "- Annual penetration testing\n"
+        report += "- Bi-annual incident response drills\n"
+        report += "- Control effectiveness validation\n"
+        report += "- Security awareness training (quarterly)\n\n"
 
     report += format_section_header("Architecture-Specific Recommendations", "🏗️", 2)
 
     # Type-specific guidance
     if arch_type == "ai_system":
-        report += """
-AI/LLM System Security:
-  • Implement prompt injection filtering (CRITICAL)
-  • Add output filtering for PII/sensitive data
-  • Enforce rate limiting on API endpoints
-  • Implement model access controls
-  • Add vector database access controls
-  • Monitor for model inversion attacks
-"""
+        report += "\n**AI/LLM System Security:**\n\n"
+        report += "- Implement prompt injection filtering (CRITICAL)\n"
+        report += "- Add output filtering for PII/sensitive data\n"
+        report += "- Enforce rate limiting on API endpoints\n"
+        report += "- Implement model access controls\n"
+        report += "- Add vector database access controls\n"
+        report += "- Monitor for model inversion attacks\n\n"
     elif arch_type == "web_app":
-        report += """
-Web Application Security:
-  • Deploy Web Application Firewall (WAF)
-  • Implement input validation/sanitization
-  • Add rate limiting to prevent abuse
-  • Enable HTTPS/TLS encryption
-  • Implement security headers (CSP, HSTS)
-  • Add API authentication/authorization
-"""
+        report += "\n**Web Application Security:**\n\n"
+        report += "- Deploy Web Application Firewall (WAF)\n"
+        report += "- Implement input validation/sanitization\n"
+        report += "- Add rate limiting to prevent abuse\n"
+        report += "- Enable HTTPS/TLS encryption\n"
+        report += "- Implement security headers (CSP, HSTS)\n"
+        report += "- Add API authentication/authorization\n\n"
     elif arch_type == "cloud":
-        report += """
-Cloud Architecture Security:
-  • Implement network segmentation (VPCs, subnets)
-  • Enable cloud-native firewall (Security Groups)
-  • Configure IAM least privilege access
-  • Enable encryption at rest and in transit
-  • Implement cloud backup/disaster recovery
-  • Enable cloud audit logging
-"""
+        report += "\n**Cloud Architecture Security:**\n\n"
+        report += "- Implement network segmentation (VPCs, subnets)\n"
+        report += "- Enable cloud-native firewall (Security Groups)\n"
+        report += "- Configure IAM least privilege access\n"
+        report += "- Enable encryption at rest and in transit\n"
+        report += "- Implement cloud backup/disaster recovery\n"
+        report += "- Enable cloud audit logging\n\n"
     else:
-        report += """
-General Security Recommendations:
-  • Implement defense-in-depth (multiple control layers)
-  • Enable comprehensive logging and monitoring
-  • Regular security testing and validation
-  • Incident response plan and runbooks
-"""
+        report += "\n**General Security Recommendations:**\n\n"
+        report += "- Implement defense-in-depth (multiple control layers)\n"
+        report += "- Enable comprehensive logging and monitoring\n"
+        report += "- Regular security testing and validation\n"
+        report += "- Incident response plan and runbooks\n\n"
 
     # Clean up any remaining ASCII separators
     report = remove_ascii_separators(report, remove_all=True)
@@ -685,48 +677,39 @@ def generate_action_plan(ground_truth: Dict) -> str:
             report += "  • Escalate to executive leadership for risk acceptance\n\n"
 
         # Risk acceptance
-        report += "Risk Acceptance Requirement:\n"
-        report += "  [ ] CISO / Security Leadership acknowledges residual risks\n"
-        report += "  [ ] Business Owner accepts risks within organizational appetite\n"
-        report += "  [ ] Commitment to continuous monitoring and improvement\n\n"
-        report += "  Signature: ________________  Date: __________\n"
+        report += "**Risk Acceptance Requirement:**\n\n"
+        report += "- [ ] CISO / Security Leadership acknowledges residual risks\n"
+        report += "- [ ] Business Owner accepts risks within organizational appetite\n"
+        report += "- [ ] Commitment to continuous monitoring and improvement\n\n"
+        report += "**Signature:** ________________  **Date:** __________\n\n"
+        report += "**Ongoing Activities:**\n\n"
+        report += "- Quarterly: Re-run threat assessment\n"
+        report += "- Annually: Architecture security review\n\n"
 
-    report += """
-  • Quarterly: Re-run threat assessment
-  • Annually: Architecture security review
-
-"""
     report += format_section_header("Resource Requirements", "💰", 2)
-    report += "\n**Team Allocation:**\n"
-    report += """
-  • Security Engineer:    100% (Weeks 1-4)
-  • Cloud Architect:      50% (Weeks 2-4)
-  • DevOps Engineer:      25% (Weeks 1-4)
-
-**Budget Estimate:**
-  • Phase 1 (Quick Wins):        $2K-$3K
-  • Phase 2 (Critical Controls): $10K-$15K
-  • Phase 3 (Advanced):          $30K-$40K
-  • Total:                       $42K-$58K
-
-**Expected ROI:**
-  • Prevented breach cost:  $420K (industry average)
-  • Implementation cost:    $50K
-  • ROI:                    840% (8.4x return)
-
-"""
+    report += "\n**Team Allocation:**\n\n"
+    report += "- Security Engineer:    100% (Weeks 1-4)\n"
+    report += "- Cloud Architect:      50% (Weeks 2-4)\n"
+    report += "- DevOps Engineer:      25% (Weeks 1-4)\n\n"
+    report += "**Budget Estimate:**\n\n"
+    report += "- Phase 1 (Quick Wins):        $2K-$3K\n"
+    report += "- Phase 2 (Critical Controls): $10K-$15K\n"
+    report += "- Phase 3 (Advanced):          $30K-$40K\n"
+    report += "- **Total:**                   **$42K-$58K**\n\n"
+    report += "**Expected ROI:**\n\n"
+    report += "- Prevented breach cost:  $420K (industry average)\n"
+    report += "- Implementation cost:    $50K\n"
+    report += "- **ROI:**                **840% (8.4x return)**\n\n"
     report += format_section_header("Next Steps", "📅", 2)
-    report += """
-[ ] Week 1: Executive approval & budget allocation
-[ ] Week 1: Begin Phase 1 implementation
-[ ] Week 2: Phase 1 validation testing
-[ ] Week 2-3: Phase 2 implementation
-[ ] Week 4: Phase 2 validation (penetration test)
-[ ] Week 4-8: Phase 3 implementation
-[ ] Week 8: Final red team validation
-[ ] Week 9: Continuous monitoring begins
-
-"""
+    report += "\n**Implementation Checklist:**\n\n"
+    report += "- [ ] Week 1: Executive approval & budget allocation\n"
+    report += "- [ ] Week 1: Begin Phase 1 implementation\n"
+    report += "- [ ] Week 2: Phase 1 validation testing\n"
+    report += "- [ ] Week 2-3: Phase 2 implementation\n"
+    report += "- [ ] Week 4: Phase 2 validation (penetration test)\n"
+    report += "- [ ] Week 4-8: Phase 3 implementation\n"
+    report += "- [ ] Week 8: Final red team validation\n"
+    report += "- [ ] Week 9: Continuous monitoring begins\n\n"
 
     # Clean up any remaining ASCII separators
     report = remove_ascii_separators(report, remove_all=True)

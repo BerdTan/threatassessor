@@ -131,7 +131,7 @@
 | 13 | **NETWORK SEGMENTATION** | HIGH | 🟢 HIGH (96%) | M1030 | T1133, T1190 | Mitigates T1133 in path(s) #1, T1190 in path(s)... |
 | 14 | **AUDIT LOG** | HIGH | 🟢 HIGH (84%) | M1047 | T1059, T1213 | Mitigates T1059 in path(s) #1, T1213 in path(s)... |
 | 15 | **BEHAVIORAL ANALYSIS** | HIGH | 🟢 HIGH (81%) | M1040 | T1059, T1486 | Mitigates T1059 in path(s) #1, T1486 in path(s)... |
-| 16 | **DLP** | MEDIUM | 🟢 HIGH (90%) | M1057 | T1567, T1005 | Addresses 2 technique(s): T1567, T1005 |
+| 16 | **DLP** | MEDIUM | 🟢 HIGH (90%) | M1057 | T1005, T1567 | Addresses 2 technique(s): T1005, T1567 |
 | 17 | **WEB CONTENT FILTERING** | MEDIUM | 🟢 HIGH (90%) | M1021 | T1567 | Addresses 1 technique(s): T1567 |
 
 **Recommended Implementation Order:**
@@ -161,33 +161,38 @@ No control is 100% effective - this is a realistic assessment for risk acceptanc
 | **Supply Chain** | 60/100  | 91%                  | 5/100    | ✅ ACCEPT |
 | ↳ *Controls:* code signing, vulnerability scanning | | | | |
 
-✅ OVERALL RESIDUAL RISK: 3.0/100 (ACCEPT)
+**✅ OVERALL RESIDUAL RISK:** 3.0/100 (ACCEPT)
 
-Risk Acceptance Thresholds:
-  • < 10:  ✅ ACCEPT (low risk, quarterly monitoring)
-  • 10-20: ⚠️ MONITOR (medium risk, active monitoring required)
-  • > 20:  ❌ MITIGATE (high risk, additional controls needed)
+**Risk Acceptance Thresholds:**
 
-Why Residual Risk Exists (No Silver Bullet):
-  • Zero-day exploits (no patch available yet)
-  • Advanced Persistent Threats (sophisticated techniques)
-  • Insider threats with privileged access
-  • Social engineering and human error
-  • Configuration drift and operational mistakes
+- < 10:  ✅ ACCEPT (low risk, quarterly monitoring)
+- 10-20: ⚠️ MONITOR (medium risk, active monitoring required)
+- > 20:  ❌ MITIGATE (high risk, additional controls needed)
 
-Continuous Improvement Recommendations:
-  • Quarterly threat landscape review
-  • Annual penetration testing
-  • Bi-annual incident response drills
-  • Control effectiveness validation
-  • Security awareness training (quarterly)
+**Why Residual Risk Exists (No Silver Bullet):**
+
+- Zero-day exploits (no patch available yet)
+- Advanced Persistent Threats (sophisticated techniques)
+- Insider threats with privileged access
+- Social engineering and human error
+- Configuration drift and operational mistakes
+
+**Continuous Improvement Recommendations:**
+
+- Quarterly threat landscape review
+- Annual penetration testing
+- Bi-annual incident response drills
+- Control effectiveness validation
+- Security awareness training (quarterly)
 
 ## 🏗️ Architecture-Specific Recommendations
 
-Web Application Security:
-  • Deploy Web Application Firewall (WAF)
-  • Implement input validation/sanitization
-  • Add rate limiting to prevent abuse
-  • Enable HTTPS/TLS encryption
-  • Implement security headers (CSP, HSTS)
-  • Add API authentication/authorization
+**Web Application Security:**
+
+- Deploy Web Application Firewall (WAF)
+- Implement input validation/sanitization
+- Add rate limiting to prevent abuse
+- Enable HTTPS/TLS encryption
+- Implement security headers (CSP, HSTS)
+- Add API authentication/authorization
+

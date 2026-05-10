@@ -59,43 +59,50 @@ Post-Implementation Residual Risk: 3.0/100 (ACCEPT)
   • Update controls based on threat landscape
   • Annual penetration testing to validate controls
 
-Risk Acceptance Requirement:
-  [ ] CISO / Security Leadership acknowledges residual risks
-  [ ] Business Owner accepts risks within organizational appetite
-  [ ] Commitment to continuous monitoring and improvement
+**Risk Acceptance Requirement:**
 
-  Signature: ________________  Date: __________
+- [ ] CISO / Security Leadership acknowledges residual risks
+- [ ] Business Owner accepts risks within organizational appetite
+- [ ] Commitment to continuous monitoring and improvement
 
-  • Quarterly: Re-run threat assessment
-  • Annually: Architecture security review
+**Signature:** ________________  **Date:** __________
+
+**Ongoing Activities:**
+
+- Quarterly: Re-run threat assessment
+- Annually: Architecture security review
 
 ## 💰 Resource Requirements
 
 **Team Allocation:**
 
-  • Security Engineer:    100% (Weeks 1-4)
-  • Cloud Architect:      50% (Weeks 2-4)
-  • DevOps Engineer:      25% (Weeks 1-4)
+- Security Engineer:    100% (Weeks 1-4)
+- Cloud Architect:      50% (Weeks 2-4)
+- DevOps Engineer:      25% (Weeks 1-4)
 
 **Budget Estimate:**
-  • Phase 1 (Quick Wins):        $2K-$3K
-  • Phase 2 (Critical Controls): $10K-$15K
-  • Phase 3 (Advanced):          $30K-$40K
-  • Total:                       $42K-$58K
+
+- Phase 1 (Quick Wins):        $2K-$3K
+- Phase 2 (Critical Controls): $10K-$15K
+- Phase 3 (Advanced):          $30K-$40K
+- **Total:**                   **$42K-$58K**
 
 **Expected ROI:**
-  • Prevented breach cost:  $420K (industry average)
-  • Implementation cost:    $50K
-  • ROI:                    840% (8.4x return)
+
+- Prevented breach cost:  $420K (industry average)
+- Implementation cost:    $50K
+- **ROI:**                **840% (8.4x return)**
 
 ## 📅 Next Steps
 
-[ ] Week 1: Executive approval & budget allocation
-[ ] Week 1: Begin Phase 1 implementation
-[ ] Week 2: Phase 1 validation testing
-[ ] Week 2-3: Phase 2 implementation
-[ ] Week 4: Phase 2 validation (penetration test)
-[ ] Week 4-8: Phase 3 implementation
-[ ] Week 8: Final red team validation
-[ ] Week 9: Continuous monitoring begins
+**Implementation Checklist:**
+
+- [ ] Week 1: Executive approval & budget allocation
+- [ ] Week 1: Begin Phase 1 implementation
+- [ ] Week 2: Phase 1 validation testing
+- [ ] Week 2-3: Phase 2 implementation
+- [ ] Week 4: Phase 2 validation (penetration test)
+- [ ] Week 4-8: Phase 3 implementation
+- [ ] Week 8: Final red team validation
+- [ ] Week 9: Continuous monitoring begins
 
