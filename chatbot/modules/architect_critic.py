@@ -333,6 +333,28 @@ if __name__ == "__main__":
     for i, strength in enumerate(score.strengths, 1):
         print(f"  {i}. {strength}")
 
+    print(f"\n{'='*70}")
+    print(f"IMPROVEMENT ROADMAP (How to increase score)")
+    print(f"{'='*70}")
+    if score.improvement_roadmap:
+        total_gain = sum(item.get('points_gained', 0) for item in score.improvement_roadmap)
+        target_score = score.score + total_gain
+        print(f"Current: {score.score}/100 → Target: {target_score}/100 (+{total_gain} points)\n")
+
+        for item in score.improvement_roadmap:
+            priority = item.get('priority', '?')
+            action = item.get('action', 'N/A')
+            points = item.get('points_gained', 0)
+            effort = item.get('effort', 'N/A')
+            verification = item.get('verification_method', 'N/A')
+
+            print(f"Priority {priority}: {action}")
+            print(f"  Points gained: +{points} | Effort: {effort}")
+            print(f"  Verification: {verification}")
+            print()
+    else:
+        print("(No roadmap provided)")
+
     # Save results
     output_path = Path(f"report/{arch_name}/04_architect_critique.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -58,6 +58,7 @@ class CritiqueScore:
     breakdown: Dict[str, Dict]  # Per-rubric-category scores
     gaps: List[Dict]  # Identified gaps/issues
     strengths: List[str]  # What was done well
+    improvement_roadmap: List[Dict]  # How to increase score (priority-ordered)
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -162,7 +163,8 @@ class CriticAgent:
             rating=critique_data.get("rating", "UNKNOWN"),
             breakdown=critique_data.get("breakdown", {}),
             gaps=critique_data.get("gaps", []),
-            strengths=critique_data.get("strengths", [])
+            strengths=critique_data.get("strengths", []),
+            improvement_roadmap=critique_data.get("improvement_roadmap", [])
         )
 
         logger.info(f"{self.role}: Critique complete - Score: {score.score}/{score.max_score} ({score.rating})")
@@ -307,8 +309,25 @@ OUTPUT FORMAT (JSON):
   "strengths": [
     "Strength 1...",
     "Strength 2..."
+  ],
+  "improvement_roadmap": [
+    {{
+      "action": "Specific improvement action",
+      "category": "threat_completeness|control_appropriateness|defense_in_depth|context_awareness",
+      "points_gained": 5,
+      "effort": "LOW|MEDIUM|HIGH",
+      "priority": 1,
+      "verification_method": "How Tester agent can verify this improvement",
+      "expected_outcome": "What will change in the assessment"
+    }}
   ]
 }}
+
+CRITICAL: The improvement_roadmap must show HOW TO INCREASE THE SCORE.
+- List improvements in priority order (priority: 1 = highest)
+- Each action should increase score by specific points_gained
+- Include verification_method so Tester agent can validate improvements
+- Sum of points_gained should bring score close to 100
 """
         return prompt.strip()
 
