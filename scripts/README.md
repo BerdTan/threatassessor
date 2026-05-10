@@ -1,105 +1,129 @@
 # Scripts Directory
 
-Integration tests, validation utilities, and workflow automation scripts.
+Integration tests, validation utilities, and data generation scripts organized by purpose.
 
 ---
 
-## Purpose
+## Directory Structure
 
-Scripts for:
-- **Integration testing** - Cross-module validation
-- **Workflow automation** - Batch operations and data generation
-- **System validation** - End-to-end checks
-
-**Not for:** Unit tests (use `tests/` with pytest)
+```
+scripts/
+├── integration/          # Integration tests (cross-module validation)
+│   ├── test_llm_providers.py
+│   ├── test_openrouter.py
+│   ├── backtest_all_architectures.py
+│   ├── validate_engine_accuracy.py
+│   └── validate_parser_harness.py
+├── validation/           # Quick validation utilities
+│   ├── check_orphans.py
+│   └── validate_llm_config.py
+├── generation/           # Data generation & demo utilities
+│   ├── generate_ground_truth.py
+│   ├── batch_generate_ground_truth.sh
+│   └── demo_mitre_advice.py
+└── sync_repos.sh         # Repository synchronization
+```
 
 ---
 
 ## Integration Tests
 
-### LLM Provider Testing
-- **`test_llm_providers.py`** - Multi-provider LLM integration tests
-  ```bash
-  python3 scripts/test_llm_providers.py                    # All providers
-  python3 scripts/test_llm_providers.py --provider bedrock # Specific provider
-  python3 scripts/test_llm_providers.py --test-verify      # LLM as Judge
-  ```
-  Results: `tests/results/test_results_llm_providers.json`
+### LLM Provider Testing (`integration/`)
 
-- **`test_openrouter.py`** - OpenRouter API integration validation
-  ```bash
-  python3 scripts/test_openrouter.py
-  ```
+**`test_llm_providers.py`** - Multi-provider LLM integration tests
+```bash
+python3 scripts/integration/test_llm_providers.py                    # All providers
+python3 scripts/integration/test_llm_providers.py --provider bedrock # Specific provider
+python3 scripts/integration/test_llm_providers.py --test-verify      # LLM as Judge
+```
+Results: `tests/results/test_results_llm_providers.json`
 
-### Architecture Validation
-- **`backtest_all_architectures.py`** - Validate all test architectures
-  ```bash
-  python3 scripts/backtest_all_architectures.py                          # All architectures
-  python3 scripts/backtest_all_architectures.py --architectures 10_* 03_* # Specific ones
-  ```
+**`test_openrouter.py`** - OpenRouter API integration validation
+```bash
+python3 scripts/integration/test_openrouter.py
+```
 
-- **`validate_engine_accuracy.py`** - Engine accuracy against ground truth
-  ```bash
-  python3 scripts/validate_engine_accuracy.py
-  ```
+### Architecture Validation (`integration/`)
 
-- **`validate_parser_harness.py`** - Parser correctness validation
-  ```bash
-  python3 scripts/validate_parser_harness.py
-  ```
+**`backtest_all_architectures.py`** - Validate all test architectures
+```bash
+python3 scripts/integration/backtest_all_architectures.py                          # All
+python3 scripts/integration/backtest_all_architectures.py --architectures 10_* 03_* # Specific
+```
 
----
+**`validate_engine_accuracy.py`** - Engine accuracy against ground truth
+```bash
+python3 scripts/integration/validate_engine_accuracy.py
+```
 
-## Validation Utilities
-
-- **`check_orphans.py`** - Check for orphan nodes in architectures
-  ```bash
-  python3 scripts/check_orphans.py                     # All architectures
-  python3 scripts/check_orphans.py 10_complex 03_aws  # Specific ones
-  ```
-
-- **`validate_llm_config.py`** - Validate LLM provider configuration
-  ```bash
-  python3 scripts/validate_llm_config.py
-  ```
+**`validate_parser_harness.py`** - Parser correctness validation
+```bash
+python3 scripts/integration/validate_parser_harness.py
+```
 
 ---
 
-## Data Generation & Utilities
+## Validation Utilities (`validation/`)
 
-- **`generate_ground_truth.py`** - Semi-automated ground truth generation
-  ```bash
-  python3 scripts/generate_ground_truth.py tests/data/architectures/06_azure_3tier.mmd
-  ```
+**`check_orphans.py`** - Check for orphan nodes in architectures
+```bash
+python3 scripts/validation/check_orphans.py                     # All architectures
+python3 scripts/validation/check_orphans.py 10_complex 03_aws  # Specific ones
+```
 
-- **`batch_generate_ground_truth.sh`** - Batch ground truth generation
-  ```bash
-  ./scripts/batch_generate_ground_truth.sh
-  ```
-
-- **`demo_mitre_advice.py`** - Demo MITRE helper functionality
-  ```bash
-  python3 scripts/demo_mitre_advice.py
-  ```
+**`validate_llm_config.py`** - Validate LLM provider configuration
+```bash
+python3 scripts/validation/validate_llm_config.py
+```
 
 ---
 
-## Workflow Scripts
+## Data Generation (`generation/`)
 
-- **`sync_repos.sh`** - Repository synchronization utility
-  ```bash
-  ./scripts/sync_repos.sh
-  ```
+**`generate_ground_truth.py`** - Semi-automated ground truth generation
+```bash
+python3 scripts/generation/generate_ground_truth.py tests/data/architectures/06_azure_3tier.mmd
+```
+
+**`batch_generate_ground_truth.sh`** - Batch ground truth generation
+```bash
+./scripts/generation/batch_generate_ground_truth.sh
+```
+
+**`demo_mitre_advice.py`** - Demo MITRE helper functionality
+```bash
+python3 scripts/generation/demo_mitre_advice.py
+```
+
+---
+
+## Workflow Utilities
+
+**`sync_repos.sh`** - Repository synchronization
+```bash
+./scripts/sync_repos.sh
+```
 
 ---
 
 ## Organization Principles
 
+### Directory Purpose
+
+| Directory | Purpose | Examples |
+|-----------|---------|----------|
+| **integration/** | Cross-module integration tests | LLM providers, architecture backtesting |
+| **validation/** | Quick validation checks | Orphan detection, config validation |
+| **generation/** | Data generation & demos | Ground truth generation, MITRE demos |
+| **Root** | Standalone utilities | Repository sync |
+
 ### scripts/ vs tests/
+
 - **scripts/** - Integration tests, workflows, batch operations
 - **tests/** - Unit tests (pytest), test data, test fixtures
 
 ### When to use scripts/
+
 ✅ Integration testing (cross-module validation)  
 ✅ Workflow automation (batch processing)  
 ✅ System validation (end-to-end checks)  
@@ -107,6 +131,7 @@ Scripts for:
 ✅ Demo/example scripts
 
 ### When to use tests/
+
 ✅ Unit tests (pytest test_*.py)  
 ✅ Test fixtures and utilities (conftest.py, eval_utils.py)  
 ✅ Test data (tests/data/)  
@@ -121,13 +146,40 @@ Scripts for:
 pytest tests/ -v
 
 # 2. Architecture validation
-python3 scripts/backtest_all_architectures.py
+python3 scripts/integration/backtest_all_architectures.py
 
 # 3. LLM provider validation
-python3 scripts/validate_llm_config.py
+python3 scripts/validation/validate_llm_config.py
 
 # 4. Orphan detection
-python3 scripts/check_orphans.py
+python3 scripts/validation/check_orphans.py
+
+# 5. Engine accuracy
+python3 scripts/integration/validate_engine_accuracy.py
+```
+
+---
+
+## Quick Reference
+
+**Integration Testing:**
+```bash
+cd scripts/integration/
+python3 test_llm_providers.py
+python3 backtest_all_architectures.py
+```
+
+**Validation:**
+```bash
+cd scripts/validation/
+python3 check_orphans.py
+python3 validate_llm_config.py
+```
+
+**Data Generation:**
+```bash
+cd scripts/generation/
+python3 generate_ground_truth.py ../tests/data/architectures/your_arch.mmd
 ```
 
 ---
