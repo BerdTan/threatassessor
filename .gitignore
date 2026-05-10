@@ -38,3 +38,4 @@ test_results_*.json
 
 # Sample reports (keep in repo for reference)
 !report_samples/
+scripts/personal/

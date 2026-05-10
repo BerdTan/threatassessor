@@ -21,7 +21,8 @@ scripts/
 │   ├── generate_ground_truth.py
 │   ├── batch_generate_ground_truth.sh
 │   └── demo_mitre_advice.py
-└── sync_repos.sh         # Repository synchronization
+└── personal/             # Personal workflow utilities (gitignored)
+    └── sync_repos.sh
 ```
 
 ---
@@ -97,12 +98,14 @@ python3 scripts/generation/demo_mitre_advice.py
 
 ---
 
-## Workflow Utilities
+## Personal Utilities (`personal/`)
 
-**`sync_repos.sh`** - Repository synchronization
+**`sync_repos.sh`** - Repository synchronization (personal workflow)
 ```bash
-./scripts/sync_repos.sh
+./scripts/personal/sync_repos.sh
 ```
+
+*Note: This directory is gitignored for personal workflow scripts.*
 
 ---
 
@@ -115,7 +118,7 @@ python3 scripts/generation/demo_mitre_advice.py
 | **integration/** | Cross-module integration tests | LLM providers, architecture backtesting |
 | **validation/** | Quick validation checks | Orphan detection, config validation |
 | **generation/** | Data generation & demos | Ground truth generation, MITRE demos |
-| **Root** | Standalone utilities | Repository sync |
+| **personal/** | Personal workflow utilities (gitignored) | Repository sync |
 
 ### scripts/ vs tests/
 

@@ -6,16 +6,35 @@
 **Phase:** 2.2 Complete (84.9% accuracy validated)
 ---
 
+## Directory Structure
+
+```
+tests/
+├── unit/                 # Unit tests
+│   ├── test_mitre.py
+│   └── test_control_detection.py
+├── phase2/               # Phase 2 tests (semantic search)
+│   ├── test_semantic_search.py
+│   ├── test_phase2_semantic_search.py
+│   ├── test_scoring.py
+│   └── test_stage1_validation.py
+├── data/                 # Test data
+├── results/              # Test results
+├── conftest.py           # Pytest fixtures
+└── eval_utils.py         # Test utilities
+```
+
 ## Quick Start
 
 ```bash
 # Run all tests
 pytest tests/ -v
 
-# Run specific test suite
-pytest tests/test_semantic_search.py -v
-pytest tests/test_stage1_validation.py -v
-pytest tests/test_scoring.py -v
+# Run specific test suites
+pytest tests/unit/ -v                          # Unit tests only
+pytest tests/phase2/ -v                        # Phase 2 tests only
+pytest tests/unit/test_mitre.py -v             # Specific test file
+pytest tests/phase2/test_semantic_search.py -v # Phase 2 specific
 
 # Run self-test (quick 8-second validation)
 python3 -m chatbot.main --self-test
@@ -40,11 +59,19 @@ python3 -m chatbot.main --self-test
 
 ## Test Files
 
-### Production Test Suites
+### Unit Tests (`unit/`)
+
+| File | Purpose |
+|------|---------|
+| `test_mitre.py` | MITRE ATT&CK data loading and access |
+| `test_control_detection.py` | Security control detection accuracy |
+
+### Phase 2 Tests (`phase2/`)
 
 | File | Tests | Purpose |
 |------|-------|---------|
 | `test_semantic_search.py` | 11 | Semantic search accuracy, robustness, fallback |
+| `test_phase2_semantic_search.py` | - | Phase 2 semantic search validation |
 | `test_stage1_validation.py` | 4 | Tactic coverage, per-tactic accuracy, smoke tests |
 | `test_scoring.py` | 9 | 3D scoring rubric validation |
 
