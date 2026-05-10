@@ -18,7 +18,15 @@ from agentic.llm_client import (
 )
 
 # Legacy default model (for compatibility)
-DEFAULT_LLM_MODEL = "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+# NOTE: This is only for backward compatibility. New code should use
+# environment variables (OPENROUTER_ACTIVE_MODELS) to configure models.
+import os
+DEFAULT_LLM_MODEL = os.getenv(
+    "OPENROUTER_ACTIVE_MODELS",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+).split(",")[0].strip()  # Use first model from config
+if not DEFAULT_LLM_MODEL.startswith("openrouter/"):
+    DEFAULT_LLM_MODEL = f"openrouter/{DEFAULT_LLM_MODEL}"
 
 
 def generate_response(*args, **kwargs):

@@ -163,16 +163,22 @@
 
 ## Technology Stack
 
-**LLM Services (via OpenRouter):**
+**LLM Services (Multi-Provider via LiteLLM):**
 - **Embeddings:** nvidia/llama-nemotron-embed-vl-1b-v2:free
   - 2048 dimensions (validated)
   - ~1.2s per request
   - $0 cost (confirmed)
-- **Language Model:** google/gemma-4-26b-a4b-it:free
-  - ~3.8s response time
-  - $0 cost (confirmed)
-  - Good quality output (tested with MITRE scenarios)
-- **API Integration:** LiteLLM 1.73.6 (already in requirements.txt, validated)
+- **Primary Language Model (OpenRouter):** nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+  - ~3-5s response time
+  - $0 cost (free tier)
+  - Reliable reasoning capabilities (tested with MITRE scenarios)
+  - Configurable via `OPENROUTER_ACTIVE_MODELS` in .env
+- **Fallback Provider (AWS Bedrock):** us.anthropic.claude-sonnet-4-20250514-v1:0
+  - ~4-6s response time
+  - Paid tier (usage-based)
+  - High quality, production-ready
+  - Configurable via `BEDROCK_MODEL` in .env
+- **API Integration:** LiteLLM 1.73.6 (multi-provider abstraction layer)
 
 **MITRE ATT&CK Data:**
 - **Source:** Local `enterprise-attack.json` (~39MB, 823 techniques)
@@ -280,7 +286,10 @@
   - `generate_attack_path(user_input, techniques)` - Attack chain construction
   - `generate_mitigation_advice(user_input, techniques)` - Contextual mitigations
   - `analyze_scenario(user_input)` - Complete end-to-end analysis
-- **LLM Model:** google/gemma-4-26b-a4b-it:free via OpenRouter
+- **LLM Model:** Environment-driven (configured via .env)
+  - Default: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free via OpenRouter
+  - Fallback: AWS Bedrock Claude Sonnet 4
+  - Configurable: Set `LLM_PROVIDER` and `LLM_FALLBACK_PROVIDERS` in .env
 - **System Prompts:** Three specialized prompts for refinement, paths, mitigations
 
 #### `mitre_template.py` - Keyword Fallback ✅
@@ -305,23 +314,37 @@
 
 ### Agentic Modules (`agentic/`)
 
-#### `llm.py` - LLM Client ✅
-**Status:** Implemented (Phase 1)
-- **Functions:**
-  - `call_llm(prompt, model=None, system_prompt=None)` - Call OpenRouter via LiteLLM
-  - `call_llm_with_json(prompt, model=None)` - Force JSON output
+#### `llm_client.py` - Multi-Provider LLM Client ✅
+**Status:** Implemented (Phase 1, Enhanced Phase 3C)
+- **Class:** `LLMClient`
+- **Key Methods:**
+  - `generate(prompt, system_message, quality, ...)` - Main generation method
+  - `verify(analysis, architecture, ...)` - LLM as Judge verification
+  - `get_usage_stats()` - Cost tracking and metrics
 - **Features:**
-  - Error handling and retry logic via `@rate_limited`
-  - Model: google/gemma-4-26b-a4b-it:free (default)
-  - Supports custom system prompts
-  - JSON mode for structured outputs
+  - Environment-driven configuration (no hardcoded providers)
+  - Automatic provider fallback (OpenRouter → Bedrock)
+  - Cost tracking and usage statistics
+  - Quality tiers: default, high_quality, fast
+  - Model customization via `OPENROUTER_ACTIVE_MODELS` env var
+- **Supported Providers:** OpenRouter, AWS Bedrock, Anthropic, Azure, Vertex AI
+- **Configuration:** All settings via .env (see .env.example)
+
+#### `llm.py` - Legacy Wrapper (Deprecated)
+**Status:** Maintained for backward compatibility
+- Redirects to `llm_client.py` with deprecation warnings
+- All new code should use `LLMClient` directly
 
 #### `helper.py` - Utility Functions ✅
-**Status:** Enhanced (Phase 1)
+**Status:** Enhanced (Phase 3C)
 - **Environment Management:**
   - `load_env()` - Load .env via python-dotenv
   - `get_openai_api_key()` - Returns OPENAI_API_KEY
-  - `get_openrouter_api_key()` - Returns OPENROUTER_API_KEY ✅ Added
+  - `get_openrouter_api_key()` - Returns OPENROUTER_API_KEY
+  - `get_aws_bedrock_api_key()` - Returns AWS_BEDROCK_API_KEY
+  - `get_aws_region()` - Returns AWS_REGION (default: us-east-1)
+  - `get_llm_provider()` - Returns LLM_PROVIDER (default: openrouter)
+  - `get_llm_verifier_provider()` - Returns LLM_VERIFIER_PROVIDER (for LLM as Judge)
   - `get_neo4j_import_dir()` - Returns NEO4J_IMPORT_DIR
 - **Agent Support:**
   - `AgentCaller` class - Wrapper for ADK agent execution
@@ -373,22 +396,29 @@
 
 ## Key Design Decisions
 
-### 1. OpenRouter for Everything
+### 1. Environment-Driven Multi-Provider Architecture
 **Why:** 
-- Free tier for both embeddings and LLM
-- No local model storage (space-efficient)
-- Unified API via LiteLLM
-- Easy to swap models
+- Flexibility: Change providers via .env without code changes
+- Resilience: Automatic fallback (OpenRouter → Bedrock)
+- Cost efficiency: Try free tier first, fallback to paid
+- No hardcoded assumptions: Provider availability determined by credentials
+
+**Configuration Model:**
+- **Primary Provider:** Set via `LLM_PROVIDER` (default: openrouter)
+- **Fallback Chain:** Set via `LLM_FALLBACK_PROVIDERS` (e.g., bedrock)
+- **Model Selection:** Configurable via provider-specific env vars
+  - OpenRouter: `OPENROUTER_ACTIVE_MODELS`
+  - Bedrock: `BEDROCK_MODEL`
 
 **Trade-offs:**
-- Requires internet connection
-- API rate limits during embedding generation
-- Need fallback for offline scenarios
+- Requires proper .env configuration
+- Multiple API keys to manage (but only active ones needed)
 
-**Mitigation:**
-- Cache embeddings (only generate once)
-- Keyword search fallback
-- Retry logic with exponential backoff
+**Benefits:**
+- Free tier (OpenRouter) with production-quality fallback (Bedrock)
+- No local model storage (space-efficient)
+- Unified API via LiteLLM
+- Easy to add new providers
 
 ### 2. JSON for Embedding Cache
 **Why:**
@@ -490,10 +520,18 @@
    - **Future:** Extract platform from user input, filter accordingly
 
 ### LLM Limitations
-1. **Free Tier Rate Limits:** 20 requests/minute hard limit
+1. **Free Tier Rate Limits (OpenRouter):** 20 requests/minute hard limit
    - **Impact:** Cache generation takes 10-15 minutes instead of 3-5 minutes
-   - **Mitigation:** Rate limiter with automatic pacing and retry logic
-   - **One-time cost:** Only affects initial cache generation
+   - **Mitigation:** 
+     - Rate limiter with automatic pacing and retry logic
+     - Automatic fallback to Bedrock if rate-limited repeatedly
+     - One-time cost: Only affects initial cache generation
 2. **Model Hallucination:** LLM may invent technique IDs (mitigated by candidate list)
-3. **Context Length:** Limited to ~8K tokens for Gemma
+3. **Context Length:** 
+   - OpenRouter (Nemotron): ~30K tokens
+   - Bedrock (Claude Sonnet 4): ~200K tokens
 4. **Response Variability:** Same query may get slightly different results
+5. **Cost Management:** 
+   - OpenRouter free tier: $0 cost
+   - Bedrock fallback: Usage-based pricing (~$0.003/1K tokens)
+   - Cost tracking enabled by default

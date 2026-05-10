@@ -1,11 +1,11 @@
-# LLM Client Update - Active Providers & Fallback Configuration
+# LLM Client Update - Environment-Driven Multi-Provider Configuration
 
 **Date:** 2026-05-10  
-**Status:** ✅ Tested and Working
+**Status:** ✅ Production Ready
 
 ## Summary
 
-Updated `agentic/llm_client.py` to use **active/inactive provider configuration** and updated **OpenRouter free tier models** for better resilience.
+Refactored `agentic/llm_client.py` to use **fully environment-driven configuration**. All provider settings, model selection, and fallback chains are now configured via `.env` - no hardcoded provider lists in code.
 
 ## Changes Made
 
@@ -217,11 +217,11 @@ for provider, stats in stats.provider_stats.items():
 
 ## Recommendations
 
-1. **Primary Use:** Let OpenRouter try first (free), fallback to Bedrock automatically
-2. **Reliability:** Use Bedrock primary for critical operations
-3. **Cost Monitoring:** Enable `enable_cost_tracking=True` (default)
-4. **Quality:** Use `quality="default"` for best free models
-5. **Rate Limits:** Space out calls by 1-2 seconds if hitting limits
+1. **Environment-Driven:** All configuration in `.env` - change providers without code changes
+2. **Provider Selection:** Set `LLM_PROVIDER` for primary, `LLM_FALLBACK_PROVIDERS` for chain
+3. **Model Customization:** Use `OPENROUTER_ACTIVE_MODELS` to override default models
+4. **Cost Monitoring:** Enable `enable_cost_tracking=True` (default)
+5. **Credential Validation:** Providers without valid credentials are automatically skipped
 
 ## Testing
 
