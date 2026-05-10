@@ -10,19 +10,27 @@
 
 ```
 tests/
+├── conftest.py           # Pytest fixtures (MUST be at root for pytest discovery)
+├── eval_utils.py         # Shared test utilities (used by multiple test phases)
+├── __init__.py           # Package marker
 ├── unit/                 # Unit tests
+│   ├── __init__.py
 │   ├── test_mitre.py
 │   └── test_control_detection.py
 ├── phase2/               # Phase 2 tests (semantic search)
+│   ├── __init__.py
 │   ├── test_semantic_search.py
 │   ├── test_phase2_semantic_search.py
 │   ├── test_scoring.py
 │   └── test_stage1_validation.py
-├── data/                 # Test data
-├── results/              # Test results
-├── conftest.py           # Pytest fixtures
-└── eval_utils.py         # Test utilities
+├── data/                 # Test data (architectures, queries)
+└── results/              # Test results output
 ```
+
+**Key Files:**
+- **`conftest.py`** - Must stay at root per pytest convention; provides fixtures to all subdirectories
+- **`eval_utils.py`** - Generic test utilities (load_jsonl, evaluate_records); shared across test phases
+- **`__init__.py`** - Makes directories importable as Python packages
 
 ## Quick Start
 
