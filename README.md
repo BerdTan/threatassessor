@@ -32,45 +32,48 @@ cat 03_action_plan.md           # 8-week implementation roadmap
 ## What You Get
 
 ### Input (before.mmd)
-Your architecture diagram:
+Your vulnerable architecture:
 ```mermaid
 flowchart TB
     Internet((Internet))
-    Internet --> WebApp[Web Application]
-    WebApp --> Database[(Database)]
+    WebServer[Web Server]
+    Database[(Database)]
+
+    Internet --> WebServer
+    WebServer --> Database
 ```
+
+**Baseline:** 3 nodes, 0 security controls, direct internet exposure
 
 ### Output
 
-**1. Enhanced Architecture (after.mmd)**
+**1. Enhanced Architecture Diagram (after.mmd)**
 
-Diagram with recommended controls:
-```mermaid
-flowchart TB
-    Internet((Internet))
-    WAF[Web Application Firewall]
-    MFA[Multi-Factor Authentication]
-    IDS[Intrusion Detection System]
-    WebApp[Web Application]
-    EDR[Endpoint Detection & Response]
-    Database[(Database - Encrypted)]
-    SIEM[Security Monitoring]
-    
-    Internet --> WAF
-    WAF --> MFA
-    MFA --> WebApp
-    WebApp --> Database
-    
-    IDS -.monitor.-> Internet
-    EDR -.monitor.-> WebApp
-    SIEM -.monitor.-> Database
-    
-    style WAF fill:#90EE90
-    style MFA fill:#90EE90
-    style IDS fill:#87CEEB
-    style EDR fill:#87CEEB
-    style SIEM fill:#87CEEB
+The system generates a comprehensive diagram with:
+- **MITRE technique IDs** (T####) showing what attacks each control addresses
+- **MITRE mitigation IDs** (M####) showing control mappings
+- **Attack path indicators** (#1, #2, #3) showing which paths the control protects
+- **Control placement logic** based on attack path analysis
+- **Visual styling** with green controls (color:#000000 for readability)
+- **Connection types**: solid arrows (inline controls), dotted arrows (monitoring/applies-to-all)
+
+Example controls from actual output:
 ```
+NEW_MFA["Mfa<br/>MITRE: M1032<br/>Prevents: T1133, T1213, T1485<br/>Paths: #1"]
+NEW_WAF["Waf<br/>MITRE: M1037, M1050<br/>Prevents: T1190, T1203<br/>Paths: #1"]
+NEW_BACKUP[("Backup<br/>MITRE: M1053<br/>Recovers: T1485, T1486, T1490<br/>Paths: #1")]
+NEW_LOGGING[/"Logging<br/>MITRE: M1047<br/>Detects: T1059, T1213<br/>Paths: #1"/]
+```
+
+**Features:**
+- ✅ 15-17 recommended controls (stops at 100% technique coverage)
+- ✅ MITRE technique mapping per control
+- ✅ Attack path correlation
+- ✅ Prevention + Detection + Isolation + Response controls (DIR framework)
+- ✅ Path-based placement (MFA on all entry points, Backup at data layer, etc.)
+- ✅ Black text on green background (high contrast, readable)
+
+**See sample:** [report_samples/example_architecture/after.mmd](report_samples/example_architecture/after.mmd)
 
 **2. Business Reports**
 ```

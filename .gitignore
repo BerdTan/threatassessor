@@ -35,3 +35,6 @@ tests/data/ground_truth/*.md
 
 # Test results (can be regenerated)
 test_results_*.json
+
+# Sample reports (keep in repo for reference)
+!report_samples/
