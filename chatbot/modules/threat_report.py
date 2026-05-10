@@ -16,6 +16,14 @@ from datetime import datetime
 from pathlib import Path
 
 from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.report_formatter import (
+    format_section_header,
+    format_metric_dashboard,
+    format_before_after_comparison,
+    format_task_card,
+    format_callout,
+    remove_ascii_separators
+)
 
 
 def generate_executive_summary(ground_truth: Dict) -> str:
@@ -57,36 +65,81 @@ def generate_executive_summary(ground_truth: Dict) -> str:
     else:
         impact = "Limited exposure, manageable risk"
 
-    report = f"""
-{'='*80}
-EXECUTIVE THREAT ASSESSMENT SUMMARY
-{'='*80}
+    # Generate report with modern formatting
+    report = f"# 📊 Executive Threat Assessment\n\n"
+    report += f"**Architecture:** {arch_name} | **Date:** {datetime.now().strftime('%B %d, %Y')}\n\n"
 
-Architecture: {arch_name}
-Assessment Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
+    # Executive Dashboard
+    report += format_section_header("Executive Dashboard", "🎯", 2)
 
-═══════════════════════════════════════════════════════════════════════════════
-RISK OVERVIEW
-═══════════════════════════════════════════════════════════════════════════════
+    # Calculate ROI
+    breach_cost = 420  # Industry avg in $K
+    if risk >= 70:
+        impl_cost = 50
+    elif risk >= 40:
+        impl_cost = 30
+    else:
+        impl_cost = 15
+    roi = breach_cost / impl_cost if impl_cost > 0 else 0
 
-Overall Risk Level:      {risk_level} ({risk}/100)
-Defensibility Score:     {defensibility}/100
-Priority:                {urgency}
-Recommended Timeline:    {timeline}
+    # Risk reduction calculation (for dashboard)
+    residual_before = ground_truth.get("residual_risks_before", {})
+    residual_after = ground_truth.get("residual_risks_after", {})
+    before_score = residual_before.get("overall_residual", risk)
+    after_score = residual_after.get("overall_residual", risk * 0.1)
+    risk_reduction_pct = int((before_score - after_score) / before_score * 100) if before_score > 0 else 0
 
-═══════════════════════════════════════════════════════════════════════════════
-BUSINESS IMPACT
-═══════════════════════════════════════════════════════════════════════════════
+    metrics = {
+        "risk": {
+            "value": f"{risk}/100",
+            "label": "Risk Level",
+            "icon": risk_level.split()[0]  # Extract emoji
+        },
+        "defensibility": {
+            "value": f"{defensibility}/100",
+            "label": "Defensibility",
+            "icon": "❌" if defensibility < 30 else "⚠️" if defensibility < 60 else "✅"
+        },
+        "timeline": {
+            "value": timeline,
+            "label": "Timeline",
+            "icon": "⏰"
+        },
+        "investment": {
+            "value": f"${impl_cost}K",
+            "label": f"Investment ({roi:.1f}x ROI)",
+            "icon": "💰"
+        }
+    }
 
-Potential Impact:  {impact}
-Attack Paths:      {attack_paths} identified paths to critical assets
-Security Controls: {controls_present} implemented, {controls_missing} critical gaps
+    report += format_metric_dashboard(metrics)
 
-═══════════════════════════════════════════════════════════════════════════════
-KEY FINDINGS
-═══════════════════════════════════════════════════════════════════════════════
+    if risk >= 70:
+        report += format_callout(f"{urgency} - Architecture poses critical risk to operations", "danger")
+    elif risk >= 40:
+        report += format_callout(f"{urgency}", "warning")
 
-"""
+    # Business Impact
+    report += format_section_header("Business Impact", "💼", 2)
+    report += "| Impact Area | Current State | Risk |\n"
+    report += "|-------------|---------------|------|\n"
+
+    if risk >= 70:
+        report += f"| **Data Security** | Unprotected critical assets | Data breach: $1M+ in fines |\n"
+        report += f"| **Availability** | No DDoS/resilience | Service outage: $100K/hour |\n"
+        report += f"| **Compliance** | Missing audit controls | Regulatory penalties |\n\n"
+        report += f"**Bottom Line:** Without immediate action, organization is vulnerable to attacks with potential ${breach_cost}K impact.\n\n"
+    elif risk >= 40:
+        report += f"| **Data Security** | Partial protection | Data exposure: $100K-$1M |\n"
+        report += f"| **Compliance** | Gaps in audit trail | Potential compliance issues |\n\n"
+        report += f"**Bottom Line:** Architecture has security gaps that increase risk exposure.\n\n"
+    else:
+        report += f"| **Data Security** | Good baseline protection | Low residual risk |\n"
+        report += f"| **Compliance** | Adequate controls | Minor improvements needed |\n\n"
+        report += f"**Bottom Line:** Architecture has solid security foundation with room for improvement.\n\n"
+
+    # Key Findings
+    report += format_section_header("Key Findings", "🚨", 2)
 
     # RAPIDS assessment summary (Phase 3B-2: Filter metadata keys)
     rapids = ground_truth["rapids_assessment"]
@@ -104,78 +157,70 @@ KEY FINDINGS
             })
 
     if critical_threats:
-        report += "🚨 CRITICAL THREAT CATEGORIES:\n\n"
+        report += "### 🔥 Critical Threat Categories\n\n"
+        report += "| Rank | Category | Risk | Defensibility |\n"
+        report += "|------|----------|------|---------------|\n"
         for i, threat in enumerate(sorted(critical_threats, key=lambda x: x["risk"], reverse=True)[:3], 1):
-            report += f"{i}. {threat['category']:25s} Risk: {threat['risk']:3d}/100  Def: {threat['defensibility']:3d}/100\n"
+            risk_icon = "🔴" if threat['risk'] >= 80 else "🟠"
+            def_icon = "❌" if threat['defensibility'] < 30 else "⚠️"
+            report += f"| {i} | **{threat['category']}** | {risk_icon} {threat['risk']}/100 | {def_icon} {threat['defensibility']}/100 |\n"
+        report += "\n"
     else:
-        report += "✓ No critical threat categories identified (risk < 70)\n"
-
-    report += "\n"
+        report += "✅ No critical threat categories identified (all risks < 70)\n\n"
 
     # Top attack paths
     if attack_paths > 0:
-        report += "🎯 TOP ATTACK PATHS:\n\n"
+        report += "### 🎯 Top Attack Paths\n\n"
         for i, ap in enumerate(ground_truth["expected_attack_paths"][:3], 1):
             path_str = " → ".join([n.split()[0] for n in ap["path"][:4]])  # Shorten names
             if len(ap["path"]) > 4:
                 path_str += " → ..."
             tier = ap.get("criticality_tier", "UNKNOWN")
-            report += f"{i}. [{tier}] {path_str}\n"
-            report += f"   Entry: {ap['entry']:20s} Target: {ap['target']}\n"
+            tier_icon = "🔴" if "CRITICAL" in tier else "🟠" if "HIGH" in tier else "🟡"
+            report += f"{i}. **{tier_icon} {tier}:** {path_str}\n"
+            report += f"   - Entry: {ap['entry']} | Target: {ap['target']}\n\n"
     else:
-        report += "✓ No direct attack paths identified\n"
+        report += "✅ No direct attack paths identified\n\n"
 
     # Residual Risk Assessment (BEFORE and AFTER)
-    residual_before = ground_truth.get("residual_risks_before", {})
-    residual_after = ground_truth.get("residual_risks_after", {})
-
     if residual_before and residual_after:
         before_score = residual_before.get("overall_residual", 0)
         before_status = residual_before.get("overall_status", "UNKNOWN")
         after_score = residual_after.get("overall_residual", 0)
         after_status = residual_after.get("overall_status", "UNKNOWN")
 
-        status_emoji = {
-            "ACCEPT": "✅",
-            "MONITOR": "⚠️",
-            "MITIGATE": "❌"
-        }.get(after_status, "❓")
-
         # Calculate risk reduction
         risk_reduction = before_score - after_score
         risk_reduction_pct = (risk_reduction / before_score * 100) if before_score > 0 else 0
 
-        report += f"""
-═══════════════════════════════════════════════════════════════════════════════
-RESIDUAL RISK: BEFORE vs AFTER
-═══════════════════════════════════════════════════════════════════════════════
+        # Before/After comparison using formatter
+        before_data = {
+            "risk": f"{before_score:.1f}/100",
+            "status": before_status,
+            "controls": controls_present
+        }
+        after_data = {
+            "risk": f"{after_score:.1f}/100",
+            "status": after_status,
+            "controls": controls_present + controls_missing
+        }
 
-CURRENT STATE (Before Controls):
-  Risk Score: {before_score:.1f}/100 ({before_status})
-  Status: {"❌ HIGH - Urgent mitigation needed" if before_status == "MITIGATE" else "⚠️ MEDIUM - Active monitoring required" if before_status == "MONITOR" else "✅ LOW - Quarterly reviews"}
+        report += format_before_after_comparison(before_data, after_data, "Risk Transformation")
 
-TARGET STATE (After Implementing Recommendations):
-  Risk Score: {after_score:.1f}/100 ({after_status})
-  Status: {status_emoji} {after_status}
+        # Impact callout
+        report += f"> **Impact:** 📉 {risk_reduction_pct:.0f}% risk reduction ({risk_reduction:.1f} points) with ${impl_cost}K investment\n\n"
+        report += f"**ROI:** {roi:.1f}x return (prevented breach cost: ${breach_cost}K)\n\n"
 
-RISK REDUCTION: {risk_reduction:.1f} points ({risk_reduction_pct:.0f}% reduction)
+        report += "**Why Residual Risk Remains:**\n"
+        report += "- Zero-day exploits (no patch available)\n"
+        report += "- Advanced Persistent Threats (sophisticated attackers)\n"
+        report += "- Insider threats with privileged access\n"
+        report += "- Social engineering and human error\n\n"
 
-Even with ALL recommended controls, residual risk remains due to:
-• Zero-day exploits (no patch available)
-• Advanced Persistent Threats (APT with significant resources)
-• Insider threats with privileged access
-• Social engineering and human error
+        report += f"**Recommendation:** {residual_after.get('summary', 'Implement recommended controls and monitor quarterly')}\n\n"
 
-Recommendation: {residual_after.get('summary', 'Review residual risks')}
-
-"""
-
-    report += f"""
-═══════════════════════════════════════════════════════════════════════════════
-TOP 3 IMMEDIATE ACTIONS
-═══════════════════════════════════════════════════════════════════════════════
-
-"""
+    # Top 3 Immediate Actions
+    report += format_section_header("Top 3 Immediate Actions", "⚡", 2)
 
     # Priority recommendations
     missing_controls = ground_truth.get("controls_missing", [])[:3]
@@ -184,57 +229,60 @@ TOP 3 IMMEDIATE ACTIONS
         if control in ["mfa", "logging", "rate limiting"]:
             effort = "< 1 day"
             cost = "$2K"
+            impact = "-15 to -25 points"
         elif control in ["waf", "firewall", "backup"]:
             effort = "2-3 days"
             cost = "$5K"
+            impact = "-15 to -25 points"
         else:
             effort = "1-2 weeks"
             cost = "$10K+"
+            impact = "-15 to -25 points"
 
-        report += f"{i}. Implement {control.upper()}\n"
-        report += f"   Effort: {effort}  |  Cost: {cost}  |  Risk Reduction: -15 to -25 points\n\n"
+        task_data = {
+            "control": control.title(),
+            "owner": "Security Team",
+            "effort": effort,
+            "cost": cost,
+            "impact": impact,
+            "validation": "Security team testing"
+        }
 
-    report += f"""
-═══════════════════════════════════════════════════════════════════════════════
-RECOMMENDATION
-═══════════════════════════════════════════════════════════════════════════════
+        report += format_task_card(task_data, "Immediate Actions", i)
+        report += "\n"
 
-"""
+    # Recommendation
+    report += format_section_header("Recommendation", "✅", 2)
 
     if risk >= 70:
-        report += f"""
-{'URGENT' if risk >= 80 else 'HIGH PRIORITY'} - This architecture requires immediate security improvements.
-
-✗ Current state poses significant risk to business operations
-✓ Recommended actions can reduce risk by 40-50 points
-✓ Estimated implementation: {timeline}, budget: $15-25K
-✓ Expected ROI: 150x (prevented breach cost vs implementation cost)
-
-DECISION: APPROVE IMMEDIATELY
-"""
+        report += f"### {'🚨 URGENT' if risk >= 80 else '⚠️ HIGH PRIORITY'}\n\n"
+        report += "This architecture requires immediate security improvements.\n\n"
+        report += "| Assessment | Status |\n"
+        report += "|------------|--------|\n"
+        report += "| **Current Risk** | ❌ Poses significant risk to business operations |\n"
+        report += f"| **Risk Reduction** | ✅ {risk_reduction_pct:.0f}% reduction with recommended controls |\n"
+        report += f"| **Timeline** | ⏰ {timeline} |\n"
+        report += f"| **Budget** | 💰 ${impl_cost}K (ROI: {roi:.1f}x) |\n"
+        report += f"| **Decision** | 🚀 **APPROVE IMMEDIATELY** |\n\n"
     elif risk >= 40:
-        report += f"""
-MODERATE PRIORITY - This architecture has security gaps that should be addressed.
-
-✓ Current controls provide baseline protection
-✗ {controls_missing} critical gaps remain
-✓ Recommended improvements reduce risk to LOW level
-✓ Estimated implementation: {timeline}, budget: $10-15K
-
-DECISION: APPROVE FOR CURRENT SPRINT
-"""
+        report += f"### ⚠️ MODERATE PRIORITY\n\n"
+        report += "This architecture has security gaps that should be addressed.\n\n"
+        report += "| Assessment | Status |\n"
+        report += "|------------|--------|\n"
+        report += "| **Current Risk** | ⚠️ Baseline protection with notable gaps |\n"
+        report += f"| **Risk Reduction** | ✅ {risk_reduction_pct:.0f}% improvement possible |\n"
+        report += f"| **Timeline** | ⏰ {timeline} |\n"
+        report += f"| **Budget** | 💰 ${impl_cost}K |\n"
+        report += f"| **Decision** | ✅ Approve for next sprint |\n\n"
     else:
-        report += f"""
-LOW PRIORITY - This architecture has good baseline security.
-
-✓ Strong control coverage ({defensibility}/100 defensibility)
-✓ Continue monitoring and incremental improvements
-✓ Focus on: {', '.join(missing_controls[:2]) if missing_controls else 'maintaining current posture'}
-
-DECISION: APPROVE FOR NORMAL CYCLE
-"""
-
-    report += f"\n{'='*80}\n"
+        report += f"### ✅ LOW PRIORITY\n\n"
+        report += "This architecture has good baseline security.\n\n"
+        report += "| Assessment | Status |\n"
+        report += "|------------|--------|\n"
+        report += f"| **Current Risk** | ✅ Strong control coverage ({defensibility}/100) |\n"
+        report += "| **Focus** | Continue monitoring and incremental improvements |\n"
+        report += f"| **Priority Controls** | {', '.join(missing_controls[:2]) if missing_controls else 'Maintain current posture'} |\n"
+        report += f"| **Decision** | ✅ Approve for normal cycle |\n\n"
 
     return report
 
@@ -257,37 +305,31 @@ def generate_technical_report(ground_truth: Dict) -> str:
     except Exception as e:
         mitre = None  # Graceful fallback if MITRE data unavailable
 
-    report = f"""
-{'='*80}
-TECHNICAL THREAT ASSESSMENT REPORT
-{'='*80}
+    report = f"# 🔬 Technical Threat Assessment Report\n\n"
+    report += f"**Architecture:** {arch_name}  \n"
+    report += f"**Type:** {arch_type.replace('_', ' ').title()} | "
+    report += f"**Components:** {node_count} nodes, {edge_count} connections  \n"
+    report += f"**Generated:** {metadata.get('generated_by', 'parser')} | "
+    report += f"**Date:** {datetime.now().strftime('%B %d, %Y')}\n\n"
 
-Architecture: {arch_name}
-Type: {arch_type.replace('_', ' ').title()}
-Components: {node_count} nodes, {edge_count} connections
-Generated: {metadata.get('generated_by', 'parser')}
-Assessment Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
+    report += format_section_header("Summary Metrics", "📊", 2)
+    report += f"**Overall Risk Score:** {ground_truth['expected_risk_score']}/100 (higher = worse)  \n"
+    report += f"**Defensibility Score:** {ground_truth['expected_defensibility']}/100 (higher = better)  \n"
+    report += f"**Control Coverage:** {metadata.get('control_coverage', 0):.0%}  \n"
+    report += f"**Attack Paths Identified:** {len(ground_truth['expected_attack_paths'])}  \n\n"
 
-═══════════════════════════════════════════════════════════════════════════════
-SUMMARY METRICS
-═══════════════════════════════════════════════════════════════════════════════
+    report += f"**Controls Detected:** {len(ground_truth['controls_present'])}  \n"
+    if ground_truth['controls_present']:
+        report += f"  {', '.join(ground_truth['controls_present'])}  \n\n"
+    else:
+        report += "  None  \n\n"
 
-Overall Risk Score:      {ground_truth['expected_risk_score']}/100 (higher = worse)
-Defensibility Score:     {ground_truth['expected_defensibility']}/100 (higher = better)
-Control Coverage:        {metadata.get('control_coverage', 0):.0%}
-Attack Paths Identified: {len(ground_truth['expected_attack_paths'])}
+    report += f"**Critical Gaps:** {len(ground_truth['controls_missing'])}  \n"
+    if ground_truth['controls_missing']:
+        report += f"  {', '.join(ground_truth['controls_missing'][:5])}  \n\n"
 
-Controls Detected:       {len(ground_truth['controls_present'])}
-  {', '.join(ground_truth['controls_present']) if ground_truth['controls_present'] else 'None'}
-
-Critical Gaps:           {len(ground_truth['controls_missing'])}
-  {', '.join(ground_truth['controls_missing'][:5])}
-
-═══════════════════════════════════════════════════════════════════════════════
-ATTACK PATH ANALYSIS
-═══════════════════════════════════════════════════════════════════════════════
-
-"""
+    # Attack Path Analysis
+    report += format_section_header("Attack Path Analysis", "🛣️", 2)
 
     # Detailed attack paths
     for i, ap in enumerate(ground_truth["expected_attack_paths"], 1):
@@ -517,7 +559,8 @@ General Security Recommendations:
   • Incident response plan and runbooks
 """
 
-    report += f"\n{'='*80}\n"
+    # Clean up any remaining ASCII separators
+    report = remove_ascii_separators(report, remove_all=True)
 
     return report
 
@@ -705,8 +748,10 @@ NEXT STEPS
 [ ] Week 8: Final red team validation
 [ ] Week 9: Continuous monitoring begins
 
-{'='*80}
 """
+
+    # Clean up any remaining ASCII separators
+    report = remove_ascii_separators(report, remove_all=True)
 
     return report
 
