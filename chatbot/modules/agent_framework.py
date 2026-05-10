@@ -156,15 +156,21 @@ class CriticAgent:
             logger.warning(f"{self.role}: Output validation failed, using defaults")
 
         # 7. Convert to CritiqueScore
+        raw_roadmap = critique_data.get("improvement_roadmap", [])
+        current_score = critique_data.get("score", 0)
+
+        # Normalize roadmap to realistic target (85-95, not >100)
+        normalized_roadmap = self._normalize_roadmap(raw_roadmap, current_score)
+
         score = CritiqueScore(
             role=self.role,
-            score=critique_data.get("score", 0),
+            score=current_score,
             max_score=critique_data.get("max_score", 100),
             rating=critique_data.get("rating", "UNKNOWN"),
             breakdown=critique_data.get("breakdown", {}),
             gaps=critique_data.get("gaps", []),
             strengths=critique_data.get("strengths", []),
-            improvement_roadmap=critique_data.get("improvement_roadmap", [])
+            improvement_roadmap=normalized_roadmap
         )
 
         logger.info(f"{self.role}: Critique complete - Score: {score.score}/{score.max_score} ({score.rating})")
@@ -327,7 +333,35 @@ CRITICAL: The improvement_roadmap must show HOW TO INCREASE THE SCORE.
 - List improvements in priority order (priority: 1 = highest)
 - Each action should increase score by specific points_gained
 - Include verification_method so Tester agent can validate improvements
-- Sum of points_gained should bring score close to 100
+- Target realistic improvement (aim for 85-90, not perfection)
+
+VALUABLE IMPROVEMENTS (in priority order):
+1. MITRE Technique Quality & Accuracy (HIGH VALUE)
+   - More architecture-specific techniques (not generic)
+   - Accurate technique IDs mapped to actual attack paths
+   - Complete kill chains (initial access → execution → persistence → exfiltration)
+   - Example: "Replace generic T1059 with specific T1190.003 (SQL Injection) for web app"
+
+2. RAPIDS Risk Mitigation (HIGH VALUE)
+   - Controls that demonstrably reduce specific RAPIDS scores
+   - Example: "Add backup control → reduces Ransomware risk 70→30" (measurable)
+   - Map each control to RAPIDS categories it mitigates
+
+3. Attack Path Completeness (MEDIUM VALUE)
+   - Cover all entry points (web, API, admin, file upload)
+   - Show multi-stage attack progression
+   - Include lateral movement paths
+
+4. Defense-in-Depth Validation (MEDIUM VALUE)
+   - Multiple control layers per critical path
+   - Prevention + Detection + Isolation + Response coverage
+   - No single points of failure
+
+SCORING GUIDANCE:
+- 90-100: EXCELLENT (rare, near-perfect assessment)
+- 80-89: GOOD (strong assessment, minor gaps)
+- 70-79: FAIR (acceptable but notable gaps)
+- <70: POOR (significant improvements needed)
 """
         return prompt.strip()
 
@@ -455,6 +489,57 @@ CRITICAL: The improvement_roadmap must show HOW TO INCREASE THE SCORE.
                 })
 
         return results
+
+    def _normalize_roadmap(self, roadmap: List[Dict], current_score: int) -> List[Dict]:
+        """
+        Normalize improvement roadmap to realistic target (85-95, not >100).
+
+        Logic:
+        - Target realistic best: 90/100 (allows room for improvement)
+        - If current + sum(points) > 90, proportionally scale down
+        - Keep priority ordering and relative weights
+        - Ensure focus on RAPIDS mitigation improvements
+        """
+        if not roadmap:
+            return []
+
+        # Calculate realistic target based on current score
+        if current_score >= 85:
+            target = 95  # Near-perfect, small improvements
+        elif current_score >= 70:
+            target = 90  # Good, can reach excellent
+        elif current_score >= 50:
+            target = 85  # Fair, can reach good
+        else:
+            target = 75  # Poor, significant work needed
+
+        # Calculate total points and scaling factor
+        total_points = sum(item.get("points_gained", 0) for item in roadmap)
+        max_gain = target - current_score
+
+        if total_points == 0:
+            return roadmap
+
+        if total_points > max_gain:
+            # Need to scale down proportionally
+            scale_factor = max_gain / total_points
+            logger.info(f"{self.role}: Normalizing roadmap: {total_points} pts -> {max_gain} pts (scale={scale_factor:.2f})")
+
+            normalized = []
+            for item in roadmap:
+                original_points = item.get("points_gained", 0)
+                scaled_points = max(1, round(original_points * scale_factor))  # Min 1 point
+
+                normalized.append({
+                    **item,
+                    "points_gained": scaled_points,
+                    "original_points": original_points  # Keep for reference
+                })
+
+            return normalized
+        else:
+            # Points within range, no scaling needed
+            return roadmap
 
 
 # ============================================================================

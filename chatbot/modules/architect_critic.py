@@ -338,8 +338,28 @@ if __name__ == "__main__":
     print(f"{'='*70}")
     if score.improvement_roadmap:
         total_gain = sum(item.get('points_gained', 0) for item in score.improvement_roadmap)
-        target_score = score.score + total_gain
-        print(f"Current: {score.score}/100 → Target: {target_score}/100 (+{total_gain} points)\n")
+        target_score = min(score.score + total_gain, 100)
+
+        # Check if normalized
+        has_original = any('original_points' in item for item in score.improvement_roadmap)
+        if has_original:
+            original_total = sum(item.get('original_points', item.get('points_gained', 0))
+                               for item in score.improvement_roadmap)
+            print(f"Current: {score.score}/100 → Target: {target_score}/100 (+{total_gain} points)")
+            print(f"Note: Points normalized from {original_total} → {total_gain} (realistic target)")
+        else:
+            print(f"Current: {score.score}/100 → Target: {target_score}/100 (+{total_gain} points)")
+
+        # Determine rating at target
+        if target_score >= 90:
+            target_rating = "EXCELLENT"
+        elif target_score >= 80:
+            target_rating = "GOOD"
+        elif target_score >= 70:
+            target_rating = "FAIR"
+        else:
+            target_rating = "POOR"
+        print(f"Target Rating: {target_rating}\n")
 
         for item in score.improvement_roadmap:
             priority = item.get('priority', '?')
@@ -348,8 +368,15 @@ if __name__ == "__main__":
             effort = item.get('effort', 'N/A')
             verification = item.get('verification_method', 'N/A')
 
-            print(f"Priority {priority}: {action}")
-            print(f"  Points gained: +{points} | Effort: {effort}")
+            # Show if normalized
+            if 'original_points' in item:
+                original = item['original_points']
+                print(f"Priority {priority}: {action}")
+                print(f"  Points gained: +{points} (normalized from +{original}) | Effort: {effort}")
+            else:
+                print(f"Priority {priority}: {action}")
+                print(f"  Points gained: +{points} | Effort: {effort}")
+
             print(f"  Verification: {verification}")
             print()
     else:
