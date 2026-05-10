@@ -1,16 +1,13 @@
 
-================================================================================
+
 SECURITY ACTION PLAN
-================================================================================
 
 Architecture: 01_minimal_vulnerable.mmd
 Current Risk: 91/100
 Target Risk:  51/100 (after implementation)
 Timeline:     2-4 weeks
 
-═══════════════════════════════════════════════════════════════════════════════
 PHASE 1: IMMEDIATE (Week 1) - Quick Wins
-═══════════════════════════════════════════════════════════════════════════════
 
 Task 1: Implement RATE LIMITING
   Owner:    Security Operations Team
@@ -33,10 +30,7 @@ Task 3: Implement MFA
   Impact:   Risk reduction: -10 to -15 points
   Validate: Test with security team
 
-
-═══════════════════════════════════════════════════════════════════════════════
 PHASE 2: SHORT-TERM (Weeks 2-3) - Critical Controls
-═══════════════════════════════════════════════════════════════════════════════
 
 Task 1: Deploy BACKUP
   Owner:    Infrastructure / Security Architecture
@@ -52,10 +46,7 @@ Task 2: Deploy WAF
   Impact:   Risk reduction: -15 to -20 points
   Validate: Penetration testing
 
-
-═══════════════════════════════════════════════════════════════════════════════
 PHASE 3: LONG-TERM (Weeks 4-8) - Advanced Protection
-═══════════════════════════════════════════════════════════════════════════════
 
 Task 1: Implement EDR
   Owner:    Security Architecture (requires approval)
@@ -71,10 +62,7 @@ Task 2: Implement NETWORK SEGMENTATION
   Impact:   Risk reduction: -20 to -30 points
   Validate: Red team exercise
 
-
-═══════════════════════════════════════════════════════════════════════════════
 SUCCESS METRICS & VALIDATION
-═══════════════════════════════════════════════════════════════════════════════
 
 Target Metrics (Post-Implementation):
   • Risk Score:        < 40/100
@@ -94,9 +82,7 @@ Monitoring & Maintenance:
   • Quarterly: Residual risk assessment and threat landscape review
   • Annually: Full architecture security review and penetration testing
 
-═══════════════════════════════════════════════════════════════════════════════
 RESIDUAL RISK MONITORING PLAN
-═══════════════════════════════════════════════════════════════════════════════
 
 Post-Implementation Residual Risk: 3.0/100 (ACCEPT)
 
@@ -116,9 +102,7 @@ Risk Acceptance Requirement:
   • Quarterly: Re-run threat assessment
   • Annually: Architecture security review
 
-═══════════════════════════════════════════════════════════════════════════════
 RESOURCE REQUIREMENTS
-═══════════════════════════════════════════════════════════════════════════════
 
 Team Allocation:
   • Security Engineer:    100% (Weeks 1-4)
@@ -136,9 +120,7 @@ Expected ROI:
   • Implementation cost:    $50K
   • ROI:                    840% (8.4x return)
 
-═══════════════════════════════════════════════════════════════════════════════
 NEXT STEPS
-═══════════════════════════════════════════════════════════════════════════════
 
 [ ] Week 1: Executive approval & budget allocation
 [ ] Week 1: Begin Phase 1 implementation
@@ -149,4 +131,3 @@ NEXT STEPS
 [ ] Week 8: Final red team validation
 [ ] Week 9: Continuous monitoring begins
 
-{'='*80}

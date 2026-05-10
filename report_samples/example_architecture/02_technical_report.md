@@ -1,36 +1,26 @@
+# 🔬 Technical Threat Assessment Report
 
-================================================================================
-TECHNICAL THREAT ASSESSMENT REPORT
-================================================================================
+**Architecture:** 01_minimal_vulnerable.mmd  
+**Type:** Web App | **Components:** 3 nodes, 2 connections  
+**Generated:** parser | **Date:** May 10, 2026
 
-Architecture: 01_minimal_vulnerable.mmd
-Type: Web App
-Components: 3 nodes, 2 connections
-Generated: parser
-Assessment Date: 2026-05-10 08:26 UTC
+## 📊 Summary Metrics
 
-═══════════════════════════════════════════════════════════════════════════════
-SUMMARY METRICS
-═══════════════════════════════════════════════════════════════════════════════
+**Overall Risk Score:** 91/100 (higher = worse)  
+**Defensibility Score:** 16/100 (higher = better)  
+**Control Coverage:** 0%  
+**Attack Paths Identified:** 2  
 
-Overall Risk Score:      91/100 (higher = worse)
-Defensibility Score:     16/100 (higher = better)
-Control Coverage:        0%
-Attack Paths Identified: 2
+**Controls Detected:** 0  
+  None  
 
-Controls Detected:       0
-  None
+**Critical Gaps:** 17  
+  least privilege, rate limiting, logging, patching, user training  
 
-Critical Gaps:           17
-  least privilege, rate limiting, logging, patching, user training
-
-═══════════════════════════════════════════════════════════════════════════════
-ATTACK PATH ANALYSIS
-═══════════════════════════════════════════════════════════════════════════════
-
+## 🛣️ Attack Path Analysis
 
 [1] CRITICAL PRIORITY (Criticality: 0.96)
-────────────────────────────────────────────────────────────────────────────────
+
 Entry Point:  Internet
 Target:       Database
 Path:         Internet → WebServer → Database
@@ -59,7 +49,7 @@ MITRE ATT&CK:
 Rationale:    [CRITICAL] Internet → Web Server → Database: 2 hops, criticality score 0.96
 
 [2] CRITICAL PRIORITY (Criticality: 0.93)
-────────────────────────────────────────────────────────────────────────────────
+
 Entry Point:  WebServer
 Target:       Database
 Path:         WebServer → Database
@@ -79,11 +69,7 @@ MITRE ATT&CK:
     Adversaries may destroy data and files on specific systems or in large numbers on a network to interrupt availability to systems, services, and net...
 Rationale:    [CRITICAL] Web Server → Database: 1 hop, criticality score 0.93
 
-
-═══════════════════════════════════════════════════════════════════════════════
 RAPIDS THREAT ASSESSMENT
-═══════════════════════════════════════════════════════════════════════════════
-
 
 APPLICATION VULNS: 🔴 CRITICAL
   Risk:          80/100
@@ -115,10 +101,7 @@ INSIDER THREAT: 🟠 HIGH
   Defensibility: 20/100
   Assessment:    Audit logging: ✗, Least privilege: ✗
 
-
-═══════════════════════════════════════════════════════════════════════════════
 CONTROL GAP ANALYSIS (RAPIDS-Driven, MITRE-Validated)
-═══════════════════════════════════════════════════════════════════════════════
 
 PRIMARY: RAPIDS threat assessment identifies what threats exist
 VALIDATION: Attack paths + MITRE techniques confirm exploitability
@@ -227,16 +210,13 @@ Recommended Controls (with threat context and confidence):
    MITRE Mitigations: M1021
    MITRE Techniques: T1567
 
-
 Recommended Implementation Order:
   1. Perimeter defenses (WAF, Firewall, DDoS protection)
   2. Authentication (MFA, SSO, least privilege)
   3. Detection & Response (EDR, SIEM, logging)
   4. Data protection (Encryption, backup, DLP)
 
-═══════════════════════════════════════════════════════════════════════════════
 RESIDUAL RISK ASSESSMENT
-═══════════════════════════════════════════════════════════════════════════════
 
 Even with ALL recommended controls implemented, residual risk remains.
 No control is 100% effective - this is a realistic assessment for risk acceptance.
@@ -277,11 +257,7 @@ Continuous Improvement Recommendations:
   • Control effectiveness validation
   • Security awareness training (quarterly)
 
-
-═══════════════════════════════════════════════════════════════════════════════
 ARCHITECTURE-SPECIFIC RECOMMENDATIONS
-═══════════════════════════════════════════════════════════════════════════════
-
 
 Web Application Security:
   • Deploy Web Application Firewall (WAF)
@@ -290,5 +266,3 @@ Web Application Security:
   • Enable HTTPS/TLS encryption
   • Implement security headers (CSP, HSTS)
   • Add API authentication/authorization
-
-================================================================================

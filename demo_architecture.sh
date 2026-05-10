@@ -45,7 +45,7 @@ check_orphans() {
             1)
                 echo ""
                 echo "   How to fix orphan nodes:"
-                echo "   ────────────────────────────────────────────────────"
+                echo ""
                 echo "   Pattern 1: Add entry point (if node is external access)"
                 echo "     VPN((VPN Remote Access))"
                 echo "     VPN --> OrphanNode"
@@ -278,7 +278,7 @@ echo ""
 echo "🔬 COMPARISON SUMMARY"
 echo ""
 echo "                           Vulnerable    →    Defended"
-echo "────────────────────────────────────────────────────────────────────────"
+echo ""
 
 # Extract BEFORE risk scores from both reports
 if [ -f "report/01_minimal_vulnerable/ground_truth.json" ] && [ -f "report/02_minimal_defended/ground_truth.json" ]; then
