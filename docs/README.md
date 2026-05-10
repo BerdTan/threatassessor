@@ -1,8 +1,8 @@
 # Documentation Index
 
-**Version:** 1.0.0  
-**Status:** Production Ready 🚀  
-**Last Updated:** 2026-05-09
+**Version:** 1.0.1  
+**Status:** Production Ready 🚀 + Phase 3C MVP1 (Agent Framework)  
+**Last Updated:** 2026-05-10
 
 ---
 
@@ -21,39 +21,63 @@
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| **V1_FEATURES.md** | Complete v1.0 feature list, usage examples | All users |
-| **PREVENTION_VS_MITIGATION.md** | Prevention + DIR framework (40/30/20/10) | Security architects |
-| **CONFIDENCE_METHODOLOGY.md** | 5-factor confidence scoring explained | Developers |
-| **REFERENCE_ARCHITECTURES.md** | Validation benchmarks, test results | QA/validation |
+| **core/V1_FEATURES.md** | Complete v1.0 feature list, usage examples | All users |
+| **core/PREVENTION_VS_MITIGATION.md** | Prevention + DIR framework (40/30/20/10) | Security architects |
+| **core/CONFIDENCE_METHODOLOGY.md** | 5-factor confidence scoring explained | Developers |
+| **core/REFERENCE_ARCHITECTURES.md** | Validation benchmarks, test results | QA/validation |
 
 ### Operations & Architecture
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| **OPERATIONS.md** | Troubleshooting, maintenance, updates | DevOps, support |
-| **ARCHITECTURE.md** | System design, data flow, modules | Developers |
-| **LLM_PROVIDER_ARCHITECTURE.md** | Multi-provider LLM client design | Developers |
-| **LLM_TESTING_GUIDE.md** | LLM provider testing procedures | QA, DevOps |
-| **MIGRATION_LLM_CLIENT.md** | llm.py → llm_client.py migration guide | Developers |
+| **operations/OPERATIONS.md** | Troubleshooting, maintenance, updates | DevOps, support |
+| **operations/ARCHITECTURE_VALIDATION.md** | Orphan node detection & remediation | Developers, QA |
+| **development/ARCHITECTURE.md** | System design, data flow, modules | Developers |
+| **development/LLM_PROVIDER_ARCHITECTURE.md** | Multi-provider LLM client design | Developers |
+| **development/LLM_TESTING_GUIDE.md** | LLM provider testing procedures | QA, DevOps |
+
+### Phase 3C: Agent Framework (LLM as Judge/Critic)
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| **phases/PHASE3C_OVERVIEW.md** | 4-agent architecture design | Reference |
+| **phases/PHASE3C_MVP1_SUMMARY.md** | Architect agent implementation & validation | ✅ Complete |
+| **phases/PHASE3C_MVP1_CONFIDENCE_ANALYSIS.md** | Validation methodology & test results | ✅ Complete |
+| **phases/PHASE3C_MVP2_TESTER_SPEC.md** | Tester agent specification | 📋 Next (~2-3h) |
+| **phases/PHASE3C_AGENT_FRAMEWORK_COMPARISON.md** | Framework selection rationale | Reference |
 
 ### Future Roadmap
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| **PHASE3B_IMPROVEMENTS.md** | Optional polish (6 checks, budget) | Next (~4-6h) |
-| **PHASE3C_OVERVIEW.md** | LLM as Judge/Critic | Ready (~4h) |
 | **specs/MVP_SPECIFICATION.md** | Web UI requirements | Planned (~15-20h) |
 
 ---
 
 ## Subdirectories
 
-- **implementation/** - Implementation reports and verification docs
-  - **llm_client/** - Multi-provider LLM client implementation (2026-05-09)
-- **specs/** - Future specifications (Web UI, integrations)
-- **archive/** - Historical documents (completed plans, old designs)
-- **testing/** - Testing strategy and data management
-- **deployment/** - Deployment checklists and guides
+```
+docs/
+├── core/              # Core v1.0 features & methodologies
+├── operations/        # Troubleshooting & maintenance
+├── development/       # System design & architecture
+├── phases/            # Implementation phases (3A, 3B, 3B+, 3C)
+├── testing/           # Testing strategy & data management
+├── deployment/        # Deployment checklists & guides
+├── specs/             # Future specifications (Web UI, etc.)
+└── archive/           # Historical documents (completed plans)
+```
+
+**Active subdirectories:**
+- **core/** - V1 features, confidence methodology, Prevention+DIR framework
+- **operations/** - Operations guide, architecture validation (orphan nodes)
+- **development/** - System architecture, LLM client design, testing guides
+- **phases/** - Phase 3C agent framework (MVP1 complete, MVP2-5 planned)
+- **testing/** - Test data strategy, ground truth guide
+- **deployment/** - Deployment checklists
+
+**Archived:**
+- **archive/** - Completed implementation plans, superseded designs
 
 ---
 
@@ -115,11 +139,18 @@ ROOT/
 
 ## Recent Updates
 
+**2026-05-10:** Phase 3C MVP1 (Agent Framework) complete ✅
+- **New:** Architect critic agent for quality assessment
+- **New:** Improvement roadmap with verification methods for Tester
+- **New:** Agent test data framework (`tests/data/agent_test_cases/`)
+- **Docs:** 5 new Phase 3C documents (overview, summary, confidence analysis, tester spec, framework comparison)
+- **Status:** Tested on 3 architectures (good=78/100, flawed=23/100 catches all planted errors)
+- **Next:** MVP2 Tester agent (~2-3h)
+
 **2026-05-09:** Multi-provider LLM client implementation complete ✅
-- See: `implementation/llm_client/` for complete documentation
-- New: `LLM_PROVIDER_ARCHITECTURE.md`, `LLM_TESTING_GUIDE.md`, `MIGRATION_LLM_CLIENT.md`
+- See: `development/` for LLM architecture documentation
 - Status: 8/8 tests passing, all modules verified working
 
 ---
 
-*Docs Count: 12 active | 1 implementation report | 1 archived planning doc*
+*Docs Count: 4 core | 2 operations | 5 development | 7 phases | 5 testing | 3 deployment | 25 archived*

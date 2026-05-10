@@ -269,7 +269,8 @@ echo "OPENROUTER_API_KEY=sk-or-v1-xxxxx" > .env
 ### Phases
 - **[Phase 3B Improvements](docs/phases/PHASE3B_IMPROVEMENTS.md)** - Confidence to 99.1%
 - **[Phase 3B+ Diagram Placement](docs/phases/PHASE3B_DIAGRAM_PLACEMENT.md)** - Visual improvements
-- **[Phase 3C Overview](docs/phases/PHASE3C_OVERVIEW.md)** - Next: LLM as Judge (~4h)
+- **[Phase 3C Overview](docs/phases/PHASE3C_OVERVIEW.md)** - LLM as Judge/Critic (4-agent system)
+- **[Phase 3C MVP1 Summary](docs/phases/PHASE3C_MVP1_SUMMARY.md)** - Architect agent complete ✅
 
 ---
 
@@ -379,8 +380,9 @@ ls -lh chatbot/data/*.json
 | Phase 2A | ✅ Complete | Semantic search + LLM + Scoring |
 | Phase 3A | ✅ Complete | RAPIDS-driven threat modeling (81% confidence) |
 | Phase 3B | ✅ Complete | Prevention/DIR + Residual Risk (99.1% confidence) |
-| **Phase 3B+** | ✅ **Complete** | Intelligent control placement + Orphan detection (99.5% confidence) |
-| Phase 3C | 📋 Next | LLM as Judge/Critic (~4 hours) |
+| Phase 3B+ | ✅ Complete | Intelligent control placement + Orphan detection (99.5% confidence) |
+| **Phase 3C (MVP1)** | ✅ **Complete** | Agent framework + Architect critic (tested, 85% confidence) |
+| Phase 3C (MVP2-5) | 📋 Next | Tester + Red Teamer + Orchestrator (~6-8 hours) |
 | Phase 4 | 📦 Future | Web UI (15-20 hours) |
 
 **Current:** v1.0 Production Ready - Architecture threat assessment with 99.5% confidence 🚀
@@ -442,6 +444,6 @@ python3 -m chatbot.main --gen-random-arch --complexity medium --seed 42
 
 ---
 
-**Version:** 1.0 (Phase 3B+ Complete)  
+**Version:** 1.0 (Phase 3B+ Complete) + Phase 3C MVP1 (Agent Framework)  
 **Last Updated:** 2026-05-10  
 **Status:** ✅ Production Ready (99.5% confidence) 🚀
