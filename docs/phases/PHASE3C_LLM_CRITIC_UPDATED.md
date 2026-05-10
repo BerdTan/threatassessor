@@ -1,9 +1,10 @@
-# Phase 3C: LLM as Multi-Role Critic (Updated)
+# Phase 3C: LLM as Multi-Role Critic (Agent-Based)
 
 **Status:** Ready to Start - Phase 3B+ Complete (99.5% baseline)  
 **Prerequisites:** ✅ Phase 3B+ complete (99.5% confidence, 100% technique coverage, 0 orphans)  
-**Estimated Duration:** 4-6 hours  
-**Purpose:** Quantitative LLM critique with scoring rubrics and revised diagrams
+**Estimated Duration:** 7-11 hours (5 MVP increments)  
+**Purpose:** Agent-based LLM critique with scoring rubrics and revised diagrams  
+**Architecture:** 4-agent system (3 critics + 1 orchestrator)
 
 ---
 
@@ -22,12 +23,89 @@
 - ✅ Orphan detection (0 orphans)
 - ✅ 22/22 architectures validated
 
-**What LLM Adds:**
+**What LLM Agents Add:**
 - 🔍 Blind spot detection (edge cases deterministic rules miss)
 - 🎯 Architecture-specific nuances (AI/IoT/Financial context)
 - 🚨 Red team perspective (attacker mindset)
 - 📊 Quantitative scoring (not just binary pass/fail)
-- 🔄 Revised diagrams (after-llm.mmd with LLM suggestions)
+- 🔄 Revised diagrams (after-llm.mmd with improvements)
+- 🤖 Tool-augmented reasoning (agents can search MITRE, validate techniques)
+- 🔄 Self-correction (agents iterate on findings)
+
+---
+
+## Architecture: Agent-Based Design
+
+### Why Agents vs Prompts?
+
+**Old Approach (Prompt-Based):**
+- LLM receives static prompt with data
+- No tool use (can't verify claims)
+- No iteration (one-shot response)
+- Error handling in Python code
+
+**New Approach (Agent-Based):**
+- Agents use tools (search MITRE, validate techniques, check coverage)
+- Structured reasoning visible in thinking blocks
+- Can self-correct findings
+- Better error handling (agents retry with context)
+
+### 4-Agent System
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Phase 3B+ Output (99.5% Confidence Baseline)                │
+├─────────────────────────────────────────────────────────────┤
+│ • 6-check validation: PASS                                  │
+│ • Technique coverage: 100%                                  │
+│ • Orphan nodes: 0                                           │
+│ • Control placement: 95% visual clarity                     │
+│ • Residual risk: BEFORE → AFTER calculated                  │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+            ┌───────────────────────────────┐
+            │  ORCHESTRATOR AGENT           │
+            │  - Manages 3 critic agents    │
+            │  - Sequences execution        │
+            │  - Aggregates scores          │
+            │  - Resolves conflicts         │
+            └───────────┬───────────────────┘
+                        │
+        ┌───────────────┼───────────────┐
+        │               │               │
+        ▼               ▼               ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ ARCHITECT    │ │ TESTER       │ │ RED TEAMER   │
+│ AGENT        │ │ AGENT        │ │ AGENT        │
+├──────────────┤ ├──────────────┤ ├──────────────┤
+│ Reviews      │ │ Validates    │ │ Attacks      │
+│ design       │ │ assumptions  │ │ weakest path │
+│              │ │              │ │              │
+│ Tools:       │ │ Tools:       │ │ Tools:       │
+│ • Search     │ │ • Validate   │ │ • Search     │
+│   context    │ │   techniques │ │   bypasses   │
+│ • Check      │ │ • Check      │ │ • Identify   │
+│   controls   │ │   coverage   │ │   SPOF       │
+│              │ │              │ │              │
+│ Score: 0-100 │ │ Score: 0-100 │ │ Score: 0-100 │
+│ (HIGHER=     │ │ (HIGHER=     │ │ (LOWER=      │
+│  BETTER)     │ │  BETTER)     │ │  BETTER)     │
+└──────────────┘ └──────────────┘ └──────────────┘
+        │               │               │
+        └───────────────┴───────────────┘
+                        ↓
+┌─────────────────────────────────────────────────────────────┐
+│ LLM Critique Report (Orchestrator Output)                   │
+├─────────────────────────────────────────────────────────────┤
+│ • Architect Score: 92/100 (EXCELLENT)                       │
+│ • Tester Score: 88/100 (GOOD)                               │
+│ • Red Team Score: 15/100 (HIGH SECURITY - hard to breach)   │
+│ • Composite Confidence: 99.5% → 99.8% (+0.3%)               │
+│ • Gaps Found: 3 (2 MEDIUM, 1 LOW)                           │
+│ • Improvements: 5 actionable items                          │
+│ • Revised Diagram: after-llm.mmd (with improvements)        │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -84,9 +162,129 @@
 
 ---
 
-## Hat 1: Security Architect Rubric
+---
+
+## Agent Framework (Reusable Infrastructure)
+
+### Why Agent Framework?
+
+**Problem:** Building 3 agents from scratch = 500+ lines each = 1500 lines + high bug risk
+
+**Solution:** Abstract framework = 150 lines base + 3 configs = ~300 lines total
+
+### Core Framework Components
+
+```python
+# chatbot/modules/agent_framework.py
+
+from typing import Dict, List, Callable
+from dataclasses import dataclass
+
+@dataclass
+class AgentTool:
+    """Tool that agents can use"""
+    name: str
+    description: str
+    function: Callable
+    
+class CriticAgent:
+    """
+    Reusable agent for critique roles.
+    Each agent configured with: role, rubric, prompt, tools
+    """
+    
+    def __init__(
+        self,
+        role: str,
+        rubric: Dict,
+        system_prompt: str,
+        tools: List[AgentTool]
+    ):
+        self.role = role
+        self.rubric = rubric
+        self.system_prompt = system_prompt
+        self.tools = tools
+        self.llm_client = get_llm_client()
+        
+    def critique(self, ground_truth: Dict) -> CritiqueScore:
+        """
+        Execute agent critique loop:
+        1. Format prompt with explicit definitions
+        2. Agent reasons with tools
+        3. Extract structured output
+        4. Validate against rubric
+        """
+        # Standard agent loop (all agents reuse this)
+        pass
+        
+    def _validate_output(self, response: Dict) -> bool:
+        """Ensure response matches expected schema"""
+        pass
+
+class OrchestratorAgent:
+    """
+    Manages 3 critic agents in sequence.
+    Aggregates scores, resolves conflicts, generates report.
+    """
+    
+    def __init__(self, critic_agents: List[CriticAgent]):
+        self.critics = critic_agents
+        self.llm_client = get_llm_client()
+        
+    def run_critique(self, ground_truth: Dict) -> Dict:
+        """
+        Orchestrate critique workflow:
+        1. Run Architect → Tester → Red Teamer (sequential)
+        2. Aggregate scores
+        3. Resolve conflicts (if any)
+        4. Generate improvements
+        5. Return unified report
+        """
+        pass
+```
+
+### Agent Configuration Pattern
+
+```python
+# Architect agent config
+architect_config = {
+    "role": "Security Architect",
+    "rubric": {...},  # Scoring criteria
+    "system_prompt": """...""",  # Explicit instructions
+    "tools": [
+        AgentTool("search_control_context", "...", fn),
+        AgentTool("check_industry_standards", "...", fn)
+    ]
+}
+
+architect_agent = CriticAgent(**architect_config)
+```
+
+**Benefits:**
+- ✅ Single implementation of agent loop
+- ✅ Testing: Test framework once, configure agents
+- ✅ Reduces code from 1500 → 300 lines
+- ✅ Future agents trivial to add (just config)
+
+---
+
+## Hat 1: Security Architect Agent
 
 **Role:** Design reviewer checking if recommendations fit architecture context
+
+### Agent Configuration
+
+```python
+architect_agent = CriticAgent(
+    role="Security Architect",
+    rubric=architect_rubric,  # See below
+    system_prompt=architect_prompt,  # See below
+    tools=[
+        AgentTool("search_control_context", "Search for control best practices", ...),
+        AgentTool("check_architecture_type", "Identify architecture type/industry", ...)
+    ]
+)
+```
 
 ### Scoring Rubric (0-100)
 
@@ -115,26 +313,67 @@
 - 70-79: FAIR - Some architectural mismatches
 - <70: POOR - Significant architectural gaps
 
-### LLM Prompt Template
+### System Prompt Template (Explicit)
 
 ```
 You are a Senior Security Architect reviewing a threat assessment.
 
-ARCHITECTURE CONTEXT:
+IMPORTANT: This prompt uses explicit terminology to avoid ambiguity.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DEFINITIONS (spell out all terms)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RAPIDS: Six risk areas used for threat assessment
+- R: Ransomware (risk of ransomware/data encryption attacks)
+- A: Application vulnerabilities (web app, API, software flaws)
+- P: Phishing (social engineering, credential theft)
+- I: Insider threat (malicious or negligent insiders)
+- D: Denial of Service (DoS, resource exhaustion)
+- S: Supply chain risk (third-party, vendor, dependency risks)
+
+Each RAPIDS category scored 0-100 (higher = more risk)
+
+Residual Risk: Risk remaining AFTER controls are applied (0-100 scale)
+- 0-10: ACCEPT (low risk, acceptable)
+- 10-20: MONITOR (medium risk, watch closely)
+- 20+: MITIGATE (high risk, action required)
+
+MITRE Technique: Specific adversary behavior from MITRE ATT&CK framework
+- Format: T#### or T####.### (e.g., T1190 = Exploit Public-Facing Application)
+- Total: 703 techniques in MITRE ATT&CK v15
+
+Prevention + DIR Framework: Defense-in-Depth strategy
+- Prevention (40%): Stop attacks before they start (MFA, WAF, Input Validation)
+- Detect (30%): Identify attacks in progress (Logging, SIEM, IDS)
+- Isolate (20%): Contain breaches (Network Segmentation, Firewall)
+- Respond (10%): Recover from incidents (Backup, Incident Response)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARCHITECTURE CONTEXT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 - Type: {architecture_type}
 - Components: {component_list}
 - Entry Points: {entry_points}
 - Data Sensitivity: {sensitivity_level}
 - Industry: {industry}
 
-DETERMINISTIC ASSESSMENT (99.5% confidence):
-- RAPIDS Threats: {rapids_summary}
-- MITRE Techniques: {technique_count} mapped
-- Controls Recommended: {control_count}
-- Residual Risk: {before_risk} → {after_risk}
-- Validation: 6/6 checks PASS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DETERMINISTIC ASSESSMENT (99.5% confidence baseline)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-TASK: Score this assessment using the Architect Rubric (0-100)
+RAPIDS Threats (6 categories):
+{rapids_summary}
+
+MITRE Techniques Mapped: {technique_count}
+Controls Recommended: {control_count}
+Residual Risk: {before_risk} → {after_risk}
+Validation: 6/6 checks PASS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+YOUR TASK: Score using Architect Rubric (0-100)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 For each rubric category:
 1. Score (0-10 per item)
@@ -256,7 +495,136 @@ OUTPUT FORMAT:
 
 ---
 
-## Hat 3: Red Teamer Rubric
+## Orchestrator Agent (Meta-Role)
+
+**Role:** Manages 3 critic agents, aggregates scores, resolves conflicts
+
+### Why Orchestrator vs Simple Function Call?
+
+**Without Orchestrator (Python function):**
+```python
+# Rigid, no conflict resolution
+architect_score = architect_agent.critique(ground_truth)
+tester_score = tester_agent.critique(ground_truth)
+red_team_score = red_team_agent.critique(ground_truth)
+composite = (architect_score + tester_score + (100 - red_team_score)) / 3
+```
+
+**With Orchestrator (Agent):**
+```python
+# Intelligent aggregation
+orchestrator = OrchestratorAgent([architect_agent, tester_agent, red_team_agent])
+result = orchestrator.run_critique(ground_truth)
+# Orchestrator can:
+# - Detect conflicts (Architect says "good", Red Team finds weakness)
+# - Request clarification (ask Tester to re-validate disputed finding)
+# - Prioritize improvements (which gaps are most critical?)
+# - Generate coherent narrative (not just scores)
+```
+
+### Orchestrator Responsibilities
+
+**1. Sequencing Agents**
+```
+Architect → Tester → Red Teamer (sequential, not parallel)
+
+Why sequential?
+- Tester can validate Architect's assumptions
+- Red Teamer can attack Tester's validated paths
+- Order matters for conflict resolution
+```
+
+**2. Conflict Resolution**
+
+**Example Conflict:**
+- **Architect:** "MFA implementation is excellent (score: 95/100)"
+- **Red Teamer:** "MFA can be bypassed via social engineering (weakest path)"
+
+**Orchestrator Action:**
+```
+1. Detect conflict (high Architect score, Red Team found bypass)
+2. Ask Tester: "Validate MFA implementation - does it resist social engineering?"
+3. Tester responds: "MFA lacks fatigue detection"
+4. Orchestrator ruling:
+   - Architect correct: MFA technically implemented well
+   - Red Team correct: MFA bypassable without fatigue detection
+   - Improvement: Add MFA fatigue detection (priority HIGH)
+```
+
+**3. Score Aggregation**
+
+**Weighted Composite (not simple average):**
+```python
+composite = (
+    architect_score * 0.30 +  # Design quality
+    tester_score * 0.30 +     # Validation quality
+    (100 - red_team_score) * 0.40  # Defense strength (inverted, weighted highest)
+)
+```
+
+**Why Red Team weighted highest?**
+- Red Team represents reality (can attacker breach?)
+- Architect/Tester are analysis quality (important but secondary)
+- Defense that passes Red Team = confidence boost justified
+
+**4. Improvement Consolidation**
+
+**Input (from 3 agents):**
+- Architect: 3 gaps (2 MEDIUM, 1 LOW)
+- Tester: 2 validation failures (1 MEDIUM, 1 LOW)
+- Red Team: 3 weaknesses (1 HIGH, 2 MEDIUM)
+
+**Orchestrator Output:**
+```
+5 Actionable Improvements (prioritized):
+1. [HIGH] Implement User Training (Red Team weakness)
+2. [HIGH] Fix VPN technique mapping (Tester failure)
+3. [MEDIUM] Add AI Model Validation (Architect gap)
+4. [MEDIUM] Implement DLP (Red Team weakness)
+5. [LOW] Document GDPR compliance (Architect gap)
+```
+
+**De-duplication:** If multiple agents identify same gap, consolidate into 1 improvement
+
+**5. Narrative Generation**
+
+**Not just scores - coherent story:**
+```markdown
+## Summary
+
+The architecture demonstrates **strong overall security** (88/100 composite):
+
+- **Design Quality (Architect: 92/100):** Recommendations well-suited to 
+  architecture context. Controls align with data sensitivity and industry norms.
+  
+- **Validation Quality (Tester: 88/100):** Minor technique mapping edge case 
+  identified (VPN path). Otherwise, all paths validated and realistic.
+  
+- **Defense Strength (Red Team: 15/100 = 85 defense score):** Very hard to breach. 
+  Attacker would need advanced persistent threat (APT) capabilities. Weakest path 
+  requires multi-step social engineering (low probability).
+
+**Key Finding:** While technically sound, user training gap increases phishing 
+success rate. Priority: Implement phishing simulation + quarterly training.
+
+**Recommendation:** APPROVE with 5 improvements. Confidence boost: +0.1% 
+(99.5% → 99.6%).
+```
+
+### Orchestrator Tools
+
+```python
+orchestrator_tools = [
+    AgentTool("request_clarification", "Ask agent to re-evaluate finding", ...),
+    AgentTool("check_duplicate_gaps", "De-duplicate findings across agents", ...),
+    AgentTool("calculate_composite_score", "Weighted aggregation", ...),
+    AgentTool("prioritize_improvements", "Sort by severity + feasibility", ...)
+]
+```
+
+---
+
+## Hat 3: Red Teamer Agent
 
 **Role:** Adversary trying to find weakest path through defenses
 
@@ -666,45 +1034,204 @@ Database → Exfiltration
 
 ## Implementation Plan
 
-### Phase 3C Implementation Workflow
+### Phase 3C Implementation Workflow (MVP-Based)
 
+**Total Estimated Time:** 7-11 hours (5 MVP increments with checkpoints)
+
+---
+
+#### MVP 1: Agent Framework + Architect Agent (2-3 hours)
+
+**Goal:** Build reusable framework + first critic agent
+
+**Deliverables:**
 ```
-Step 1: Validation Framework (2-3 hours)
-├── Create blind spot test suite (5-10 architectures)
-│   ├── Business logic gaps
-│   ├── Cascading failures
-│   ├── Compliance gaps
-│   ├── Supply chain attack surfaces
-│   └── Insider threat scenarios
-├── Human expert validation (baseline)
-├── Historical incident reconstruction
-└── Edge case catalog
+chatbot/modules/agent_framework.py (NEW)
+├── CriticAgent class (reusable base)
+├── OrchestratorAgent class (stub for MVP4)
+├── AgentTool dataclass
+└── Standard agent loop (prompt → reasoning → tool use → output)
 
-Step 2: LLM Critique Module (2-3 hours)
-├── Implement llm_critique.py
-│   ├── Hat 1: Architect critique
-│   ├── Hat 2: Tester critique
-│   └── Hat 3: Red team critique
-├── Composite scoring calculation
-├── Report generation (04_llm_critique.md)
-└── Revised diagram generation (after-llm.mmd)
+chatbot/modules/architect_critic.py (NEW)
+├── Architect rubric (4 categories, 100 points)
+├── Explicit system prompt (with RAPIDS definition)
+├── Agent tools (search_control_context, check_industry_standards)
+└── Output validation (JSON schema)
 
-Step 3: Integration (1 hour)
-├── Add to ground_truth_generator.py
-│   ├── --llm-critique flag (optional, defaults OFF)
-│   ├── Run after Phase 3B+ validation
-│   └── Append to existing reports
-├── Add to demo_architecture.sh
-└── Update documentation
+tests/test_architect_agent.py (NEW)
+├── Test on 2-3 architectures
+├── Validate rubric scoring
+└── Check tool usage
+```
 
-Step 4: Validation Testing (1 hour)
+**Test Criteria:**
+- [ ] Agent completes critique without errors
+- [ ] Output matches JSON schema
+- [ ] Scores are within 0-100 range
+- [ ] Gaps identified are actionable (not vague)
+
+**Output:** `report/<arch>/04_architect_critique.md`
+
+**Checkpoint:** Review architect findings before MVP2
+
+---
+
+#### MVP 2: Add Tester Agent (1-2 hours)
+
+**Goal:** Reuse framework for validation role
+
+**Deliverables:**
+```
+chatbot/modules/tester_critic.py (NEW)
+├── Tester rubric (4 categories, 100 points)
+├── Explicit system prompt (with technique validation focus)
+├── Agent tools (validate_technique, check_coverage)
+└── Output validation
+
+tests/test_tester_agent.py (NEW)
+├── Test on same 2-3 architectures
+├── Validate technique checks
+└── Check false positive rate
+```
+
+**Test Criteria:**
+- [ ] Agent identifies validation failures (if any)
+- [ ] Edge cases documented
+- [ ] No false positives on valid mappings
+
+**Output:** `report/<arch>/04_tester_critique.md`
+
+**Checkpoint:** Review tester findings before MVP3
+
+---
+
+#### MVP 3: Add Red Teamer Agent (1-2 hours)
+
+**Goal:** Adversarial perspective with inverted scoring
+
+**Deliverables:**
+```
+chatbot/modules/red_team_critic.py (NEW)
+├── Red Team rubric (4 categories, 100 points, INVERTED)
+├── Explicit system prompt (attacker mindset)
+├── Agent tools (search_bypasses, identify_spof)
+└── Output validation
+
+tests/test_red_team_agent.py (NEW)
+├── Test on same 2-3 architectures
+├── Validate weakest path identification
+└── Check bypass strategies
+```
+
+**Test Criteria:**
+- [ ] Low score = hard to breach (EXCELLENT defense)
+- [ ] High score = easy to breach (POOR defense)
+- [ ] Attack narrative is realistic
+
+**Output:** `report/<arch>/04_red_team_critique.md`
+
+**Checkpoint:** Review red team findings before MVP4
+
+---
+
+#### MVP 4: Orchestrator + Aggregation (1-2 hours)
+
+**Goal:** Coordinate 3 agents, aggregate scores, generate unified report
+
+**Deliverables:**
+```
+chatbot/modules/llm_critique.py (NEW)
+├── OrchestratorAgent.run_critique()
+├── Composite scoring (weighted average)
+├── Conflict resolution (if agents disagree)
+├── Improvement consolidation (5 actionable items)
+└── Unified report generation
+
+tests/test_orchestrator.py (NEW)
+├── Test full 3-agent workflow
+├── Validate composite scoring
+└── Check report quality
+```
+
+**Test Criteria:**
+- [ ] Agents run sequentially (Architect → Tester → Red Team)
+- [ ] Composite score calculated correctly
+- [ ] Conflicts resolved (documented in report)
+- [ ] Improvements are actionable + prioritized
+
+**Output:** `report/<arch>/04_llm_critique.md` (unified report)
+
+**Checkpoint:** Review full critique workflow before MVP5
+
+---
+
+#### MVP 5: Integration + Validation (2-3 hours)
+
+**Goal:** CLI integration, blind spot validation, production-ready
+
+**Deliverables:**
+```
+chatbot/modules/ground_truth_generator.py (UPDATED)
+├── Add --llm-critique flag (optional, defaults OFF)
+├── Call run_critique() after Phase 3B+ validation
+└── Generate after-llm.mmd with improvements
+
+demo_architecture.sh (UPDATED)
+├── Add --llm-critique option
+└── Help text updated
+
+tests/data/architectures/blind_spots/ (NEW)
+├── bs01_business_logic_gap.mmd
+├── bs02_cascading_failure.mmd
+├── bs03_compliance_gap.mmd
+├── bs04_supply_chain.mmd
+└── bs05_insider_threat.mmd
+
+scripts/validate_llm_critique.py (NEW)
 ├── Run on blind spot test suite
-├── Calculate validation metrics
-│   ├── Detection rate (target: 70%+)
-│   ├── False positive rate (target: <20%)
-│   └── Unique value rate (target: 30%+)
-└── Tune prompts/rubrics if needed
+├── Calculate detection rate (target: ≥70%)
+├── Calculate false positive rate (target: ≤20%)
+└── Calculate unique value rate (target: ≥30%)
 ```
+
+**Test Criteria:**
+- [ ] Detection rate: ≥70% (blind spots caught)
+- [ ] False positive rate: ≤20% (valid findings)
+- [ ] Unique value rate: ≥30% (LLM adds value)
+- [ ] Confidence boost justified (composite scoring)
+
+**Output:** Phase 3C complete, ready for production use
+
+---
+
+### MVP Benefits
+
+**Risk Mitigation:**
+- 5 checkpoints vs 1 (catch issues early)
+- Test each agent independently (isolate bugs)
+- User can test MVP1 same day (fast feedback)
+
+**Token Budget Management:**
+- Validate agents on 2-3 architectures first (low cost)
+- Scale to full test suite only after validation (avoid waste)
+- Tune prompts incrementally (reduce retries)
+
+**Development Velocity:**
+- Small wins build confidence
+- Easier debugging (per-agent scope)
+- Parallel work possible (MVP2/MVP3 can share code)
+
+---
+
+### Original Workflow (For Reference, Now Replaced by MVP)
+
+~~Step 1: Validation Framework (2-3 hours)~~  
+~~Step 2: LLM Critique Module (2-3 hours)~~  
+~~Step 3: Integration (1 hour)~~  
+~~Step 4: Validation Testing (1 hour)~~
+
+**Problem with original:** All-or-nothing delivery (4-6 hours before first test)  
+**Solution:** MVP increments (2-3 hours to first working agent)
 
 ### Validation Strategy
 
@@ -1108,37 +1635,108 @@ def generate_ground_truth(architecture_path: str, llm_critique: bool = False):
 
 ---
 
-## Rollout Strategy
+## Rollout Strategy (Agent-Based MVP)
 
-### Phase 3C.1: Validation Framework (Week 1)
-- Create blind spot test suite
-- Human expert baseline
-- Historical incident reconstruction
-- Success: Validation suite ready
+### Phase 3C.1: Agent Framework + Architect (Day 1, 2-3 hours)
+**Focus:** Reusable framework + first critic agent
 
-### Phase 3C.2: Core Implementation (Week 1-2)
-- Implement llm_critique.py
-- Three rubrics + composite scoring
-- Report generation
-- Success: Module complete, unit tests pass
+**Tasks:**
+- [ ] Implement `agent_framework.py` (CriticAgent, OrchestratorAgent stub)
+- [ ] Implement `architect_critic.py` (rubric, prompt, tools)
+- [ ] Test on 2-3 architectures
+- [ ] Validate: Scores reasonable, gaps actionable
 
-### Phase 3C.3: Integration (Week 2)
-- Add to ground_truth_generator.py
-- CLI flags (--llm-critique)
-- Documentation updates
-- Success: End-to-end workflow works
+**Success Criteria:**
+- Agent completes critique without errors
+- Output matches JSON schema
+- Findings are architecture-specific (not generic)
 
-### Phase 3C.4: Validation Testing (Week 2)
-- Run on blind spot suite
-- Calculate metrics
-- Tune prompts/rubrics if needed
-- Success: All quality gates pass
+**Deliverable:** `04_architect_critique.md` per architecture
 
-### Phase 3C.5: Production Rollout (Week 3)
-- Document validation results
-- Update STATUS_AND_PLAN.md
-- Commit Phase 3C
-- Success: Available for production use
+---
+
+### Phase 3C.2: Add Tester Agent (Day 1-2, 1-2 hours)
+**Focus:** Reuse framework for validation role
+
+**Tasks:**
+- [ ] Implement `tester_critic.py` (rubric, prompt, tools)
+- [ ] Test on same 2-3 architectures
+- [ ] Validate: False positive rate <20%
+
+**Success Criteria:**
+- Agent identifies real validation failures
+- No false positives on valid mappings
+- Edge cases documented
+
+**Deliverable:** `04_tester_critique.md` per architecture
+
+---
+
+### Phase 3C.3: Add Red Teamer Agent (Day 2, 1-2 hours)
+**Focus:** Adversarial perspective with inverted scoring
+
+**Tasks:**
+- [ ] Implement `red_team_critic.py` (rubric, prompt, tools)
+- [ ] Test on same 2-3 architectures
+- [ ] Validate: Attack narratives realistic
+
+**Success Criteria:**
+- Low score = hard to breach (correct interpretation)
+- Weakest path identified correctly
+- Bypass strategies are feasible (not fantasy)
+
+**Deliverable:** `04_red_team_critique.md` per architecture
+
+---
+
+### Phase 3C.4: Orchestrator + Aggregation (Day 2-3, 1-2 hours)
+**Focus:** Coordinate agents, generate unified report
+
+**Tasks:**
+- [ ] Complete `OrchestratorAgent.run_critique()`
+- [ ] Implement composite scoring
+- [ ] Consolidate improvements (5 actionable items)
+- [ ] Generate unified `04_llm_critique.md`
+
+**Success Criteria:**
+- Agents run sequentially without conflicts
+- Composite score formula correct
+- Improvements prioritized (HIGH/MEDIUM/LOW)
+
+**Deliverable:** Unified LLM critique report
+
+---
+
+### Phase 3C.5: Integration + Validation (Day 3, 2-3 hours)
+**Focus:** CLI integration, blind spot validation
+
+**Tasks:**
+- [ ] Add `--llm-critique` flag to CLI
+- [ ] Create blind spot test suite (5 architectures)
+- [ ] Run validation metrics (detection/FP/unique value rate)
+- [ ] Tune prompts if needed (target: ≥70% detection, ≤20% FP)
+
+**Success Criteria:**
+- Detection rate: ≥70%
+- False positive rate: ≤20%
+- Unique value rate: ≥30% (LLM adds novel insights)
+- Confidence boost justified
+
+**Deliverable:** Phase 3C production-ready
+
+---
+
+### Timeline Summary
+
+| Phase | Duration | Cumulative | Checkpoint |
+|-------|----------|------------|------------|
+| 3C.1: Architect Agent | 2-3h | 2-3h | Review architect findings |
+| 3C.2: Tester Agent | 1-2h | 3-5h | Review tester findings |
+| 3C.3: Red Teamer Agent | 1-2h | 4-7h | Review red team findings |
+| 3C.4: Orchestrator | 1-2h | 5-9h | Review unified report |
+| 3C.5: Integration | 2-3h | 7-11h | Validation metrics pass |
+
+**Total:** 7-11 hours (5 checkpoints, 5 deliverables)
 
 ---
 
@@ -1163,9 +1761,38 @@ def generate_ground_truth(architecture_path: str, llm_critique: bool = False):
 
 ---
 
-**Document Version:** 3.0 (Added implementation plan & validation strategy)  
-**Date:** 2026-05-09  
-**Status:** Ready for implementation (plan complete, coding deferred)  
+---
+
+## Document Change Log
+
+### Version 4.0 (2026-05-10) - Agent-Based Architecture
+
+**Major Changes:**
+1. ✅ **Agent-based design** (4 agents: 3 critics + orchestrator)
+2. ✅ **Reusable agent framework** (reduces code 1500 → 300 lines)
+3. ✅ **MVP breakdown** (5 increments, 7-11 hours, 5 checkpoints)
+4. ✅ **Explicit system prompts** (RAPIDS spelled out, no assumed terms)
+5. ✅ **Tool-augmented agents** (can search MITRE, validate techniques)
+6. ✅ **Updated rollout strategy** (day-by-day timeline)
+7. ✅ **Risk mitigation** (5 checkpoints vs 1, test incrementally)
+
+**Rationale:**
+- User feedback: Agent-based architecture more robust
+- User feedback: MVP approach reduces risk, faster feedback
+- User feedback: Explicit prompts avoid ambiguity
+- User feedback: Reusable framework reduces code surge risk
+
+**Sync with Existing Docs:**
+- ✅ RAPIDS definition from `docs/core/CONFIDENCE_METHODOLOGY.md`
+- ✅ LLM client infrastructure from `docs/development/LLM_PROVIDER_ARCHITECTURE.md`
+- ✅ MVP pattern from `docs/specs/MVP_SPECIFICATION.md`
+
+**Status:** Ready for implementation (updated plan, coding next)
+
+---
+
+### Version 3.0 (2026-05-09) - Original Plan
+
 **Changes from v2.0:** 
 - Added validation strategy (human expert + historical incidents + edge cases)
 - Added implementation workflow (4-step, 4-6 hours total)
@@ -1175,3 +1802,12 @@ def generate_ground_truth(architecture_path: str, llm_critique: bool = False):
 - Added rollout strategy (5 phases over 2-3 weeks)
 - Added risks & mitigations
 - Clarified: LLM critique is OPTIONAL, deterministic system remains primary
+
+**Issue with v3.0:** All-or-nothing delivery (4-6 hours before first test)
+
+---
+
+**Document Version:** 4.0 (Agent-Based Architecture)  
+**Date:** 2026-05-10  
+**Status:** Ready for implementation (agent-based MVP plan complete)  
+**Next Review:** After MVP1 completion (Architect agent working)

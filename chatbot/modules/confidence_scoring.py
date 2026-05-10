@@ -184,6 +184,8 @@ def calculate_recommendation_confidence(
             rapids_conf = max(rapids_conf, 0.8)
         elif threat_type == "dos" and control_lower in ["ddos protection", "rate limiting", "cdn"]:
             rapids_conf = max(rapids_conf, 0.9)
+        elif threat_type == "supply_chain" and control_lower in ["container scanning", "code signing", "sbom", "vulnerability scanning", "secrets management"]:
+            rapids_conf = max(rapids_conf, 0.8)
 
     # Factor 5: Architecture context relevance
     context_conf = 0.7  # Default

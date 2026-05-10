@@ -97,15 +97,24 @@ Result: Final confidence score (0-100%)
 
 **Does high RAPIDS risk category support this recommendation?**
 
+**RAPIDS Categories:**
+- **R**ansomware
+- **A**pplication vulnerabilities
+- **P**hishing
+- **I**nsider threat
+- **D**enial of Service (DoS)
+- **S**upply chain risk
+
 | Threat Category | High-Risk Controls | Confidence Boost |
 |----------------|-------------------|------------------|
 | Ransomware (risk ≥ 60) | Backup, EDR, Network Segmentation | +0.9 |
 | Application Vulns | WAF, Input Validation, Rate Limiting | +0.9 |
-| Phishing | MFA, Email Gateway | +0.9 |
+| Phishing | MFA, Email Gateway, User Training | +0.9 |
 | Insider Threat | Logging, Least Privilege, DLP | +0.8 |
 | DoS | DDoS Protection, Rate Limiting, CDN | +0.9 |
+| Supply Chain | Container Scanning, Code Signing, SBOM, Vulnerability Scanning | +0.8 |
 
-**Why this matters**: If RAPIDS shows high ransomware risk (70/100) AND we recommend Backup, confidence increases because two independent analysis methods agree.
+**Why this matters**: If RAPIDS shows high ransomware risk (70/100) AND we recommend Backup, confidence increases because two independent analysis methods agree across threat categories.
 
 ---
 
