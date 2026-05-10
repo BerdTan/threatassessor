@@ -10,6 +10,8 @@ Design Philosophy:
 - No external dependencies (uses existing LiteLLM)
 - Tool-augmented reasoning
 - Structured output (JSON schema validation)
+
+VERSION: 1.1 - Fixed JSON parsing (markdown code blocks) + Unicode chars
 """
 
 import json
@@ -212,12 +214,12 @@ RAPIDS Threats (6 categories):
 
 MITRE Techniques Mapped: {technique_count}
 Controls Recommended: {control_count}
-Residual Risk: {before_risk} → {after_risk}
+Residual Risk: {before_risk} -> {after_risk}
 Validation: 6/6 checks PASS
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+============================================================
 YOUR TASK
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+============================================================
 
 Review this assessment using the {self.role} rubric and provide a score (0-100).
 
@@ -299,9 +301,9 @@ OUTPUT FORMAT (JSON):
 
         except Exception as e:
             logger.error(f"{self.role}: Failed to parse response: {e}")
-            # Log first 500 chars for debugging
+            # Log first 1000 chars for debugging
             if hasattr(response, 'content'):
-                logger.debug(f"Response content (first 500): {response.content[:500]}")
+                logger.warning(f"Response content (first 1000 chars): {response.content[:1000]}")
             return {}
 
     def _validate_output(self, critique_data: Dict) -> bool:
@@ -369,7 +371,7 @@ class OrchestratorAgent:
     Manages 3 critic agents in sequence.
 
     Workflow:
-    1. Run Architect → Tester → Red Teamer (sequential)
+    1. Run Architect -> Tester -> Red Teamer (sequential)
     2. Aggregate scores (weighted average)
     3. Resolve conflicts (if agents disagree)
     4. Consolidate improvements (de-duplicate, prioritize)
