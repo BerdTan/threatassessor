@@ -10,10 +10,13 @@
 ### For Users: How to Run Tests
 👉 **[../../tests/README.md](../../tests/README.md)** - Start here for running tests
 
-### For Developers: Testing Strategy
+### For Developers: Testing Documentation
 
 - **[TESTING_STRATEGY.md](TESTING_STRATEGY.md)** - Why we test this way (iterative validation)
 - **[DATA_STRATEGY.md](DATA_STRATEGY.md)** - How to generate test data
+- **[TEST_DATA_ASSESSMENT.md](TEST_DATA_ASSESSMENT.md)** - Coverage analysis and confidence assessment
+- **[FALLBACK_ANALYSIS.md](FALLBACK_ANALYSIS.md)** - Keyword fallback quality analysis
+- **[GROUND_TRUTH_GUIDE.md](GROUND_TRUTH_GUIDE.md)** - Ground truth generation methodology
 
 ---
 
@@ -23,18 +26,19 @@
 
 ```
 tests/                              User-facing: How to use tests
-├── README.md                       → Quick start, run commands, results
-├── TEST_DATA_ASSESSMENT.md         → Coverage analysis (17/703 techniques)
-└── FALLBACK_ANALYSIS.md            → Fallback algorithm quality (30% accuracy)
+└── README.md                       → Quick start, run commands, results
 
-docs/testing/                       Developer-facing: Testing philosophy
+docs/testing/                       Testing documentation (methodology & analysis)
 ├── TESTING_STRATEGY.md             → Why we test this way (stages 0-4)
-└── DATA_STRATEGY.md                → How to generate test queries
+├── DATA_STRATEGY.md                → How to generate test queries
+├── TEST_DATA_ASSESSMENT.md         → Coverage analysis (17/703 techniques)
+├── FALLBACK_ANALYSIS.md            → Fallback algorithm quality (30% accuracy)
+└── GROUND_TRUTH_GUIDE.md           → Ground truth generation methodology
 ```
 
 **Clear separation:**
 - `tests/` = Executable knowledge (run this, see results)
-- `docs/testing/` = Strategic knowledge (planning, methodology)
+- `docs/testing/` = Testing methodology, analysis, and strategy
 
 ---
 

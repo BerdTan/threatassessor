@@ -78,15 +78,15 @@ See [results/phase2.2/summary.md](results/phase2.2/summary.md) for complete resu
 
 ## Reference Documents
 
-### Testing Analysis
+### Testing Documentation
 
-- **[TEST_DATA_ASSESSMENT.md](TEST_DATA_ASSESSMENT.md)** - Coverage analysis, confidence assessment
-- **[FALLBACK_ANALYSIS.md](FALLBACK_ANALYSIS.md)** - Keyword fallback quality (30% accuracy, acceptable)
+All detailed testing documentation has been moved to `docs/testing/` for better organization:
 
-### Related Documentation
-
-- **[../docs/testing/](../docs/testing/)** - Testing strategy and methodology
-- **[../docs/SELF_TEST.md](../docs/SELF_TEST.md)** - Self-test feature documentation
+- **[docs/testing/TEST_DATA_ASSESSMENT.md](../docs/testing/TEST_DATA_ASSESSMENT.md)** - Coverage analysis, confidence assessment
+- **[docs/testing/FALLBACK_ANALYSIS.md](../docs/testing/FALLBACK_ANALYSIS.md)** - Keyword fallback quality (30% accuracy, acceptable)
+- **[docs/testing/GROUND_TRUTH_GUIDE.md](../docs/testing/GROUND_TRUTH_GUIDE.md)** - Ground truth generation methodology
+- **[docs/testing/TESTING_STRATEGY.md](../docs/testing/TESTING_STRATEGY.md)** - Overall testing strategy and methodology
+- **[docs/testing/DATA_STRATEGY.md](../docs/testing/DATA_STRATEGY.md)** - Test data strategy and generation
 
 ---
 
