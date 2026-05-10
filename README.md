@@ -65,15 +65,51 @@ NEW_BACKUP[("Backup<br/>MITRE: M1053<br/>Recovers: T1485, T1486, T1490<br/>Paths
 NEW_LOGGING[/"Logging<br/>MITRE: M1047<br/>Detects: T1059, T1213<br/>Paths: #1"/]
 ```
 
+**Generated diagram (after.mmd):**
+```mermaid
+flowchart TB
+    %% ORIGINAL ARCHITECTURE
+    Internet((Internet))
+    WebServer[Web Server]
+    Database[(Database)]
+
+    %% RECOMMENDED SECURITY CONTROLS (with MITRE mapping)
+    NEW_MFA["MFA<br/>MITRE: M1032<br/>Prevents: T1133, T1213, T1485<br/>Paths: #1, #2"]
+    NEW_WAF["WAF<br/>MITRE: M1037, M1050<br/>Prevents: T1190, T1203<br/>Paths: #1"]
+    NEW_BACKUP[("Backup<br/>MITRE: M1053<br/>Recovers: T1485, T1486, T1490<br/>Paths: #1, #2")]
+    NEW_EDR["EDR<br/>MITRE: M1040, M1049<br/>Prevents: T1059, T1486<br/>Paths: #1, #2"]
+    NEW_LOGGING[/"Logging<br/>MITRE: M1047<br/>Detects: T1059, T1213<br/>Paths: #1, #2"/]
+    
+    %% CONTROL PLACEMENT (based on attack paths)
+    Internet --> NEW_MFA
+    NEW_MFA --> WebServer
+    Internet --> NEW_WAF
+    NEW_WAF --> WebServer
+    Database -.->|protected by| NEW_BACKUP
+    WebServer -.->|logs to| NEW_LOGGING
+    WebServer -.->|protected by| NEW_EDR
+    
+    %% ORIGINAL EDGES
+    Internet --> WebServer
+    WebServer --> Database
+    
+    style NEW_MFA fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
+    style NEW_WAF fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
+    style NEW_BACKUP fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
+    style NEW_EDR fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
+    style NEW_LOGGING fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
+```
+
 **Features:**
-- ✅ 15-17 recommended controls (stops at 100% technique coverage)
-- ✅ MITRE technique mapping per control
-- ✅ Attack path correlation
-- ✅ Prevention + Detection + Isolation + Response controls (DIR framework)
-- ✅ Path-based placement (MFA on all entry points, Backup at data layer, etc.)
+- ✅ 16 recommended controls total (stops at 100% technique coverage)
+- ✅ MITRE technique mapping per control (T#### = attack types)
+- ✅ MITRE mitigation mapping (M#### = control standards)
+- ✅ Attack path correlation (#1, #2 = which paths protected)
+- ✅ Prevention + Detection + Isolation + Response (DIR framework)
+- ✅ Path-based placement (MFA at entry, Backup at data layer, EDR on endpoints)
 - ✅ Black text on green background (high contrast, readable)
 
-**See sample:** [report_samples/example_architecture/after.mmd](report_samples/example_architecture/after.mmd)
+**See full sample:** [report_samples/example_architecture/after.mmd](report_samples/example_architecture/after.mmd) (complete with 16 controls)
 
 **2. Business Reports**
 ```
