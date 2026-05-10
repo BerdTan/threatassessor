@@ -209,6 +209,34 @@ class CriticAgent:
         before_risk = residual.get("before", {}).get("overall_risk", "N/A")
         after_risk = residual.get("after", {}).get("overall_risk", "N/A")
 
+        # Get detailed data for critique
+        controls_present_list = ", ".join(controls_present[:10]) if controls_present else "None"
+        controls_missing_list = ", ".join(controls_missing[:10]) if controls_missing else "None"
+
+        # Top 3 control recommendations with details
+        control_details = []
+        for ctrl in controls[:3]:
+            control_details.append(
+                f"  - {ctrl.get('control', 'N/A')} (priority: {ctrl.get('priority', 'N/A')}, "
+                f"score: {ctrl.get('score', 0)}, threats: {', '.join(ctrl.get('rapids_threats', []))})"
+            )
+        control_summary = "\n".join(control_details) if control_details else "  (None)"
+
+        # Attack path summary
+        attack_path_summary = []
+        for i, path in enumerate(techniques[:3], 1):
+            techs = path.get('techniques', [])
+            attack_path_summary.append(f"  Path {i}: {len(techs)} techniques ({', '.join(techs[:3])}...)")
+        attack_paths = "\n".join(attack_path_summary) if attack_path_summary else "  (None)"
+
+        # RAPIDS rationale
+        rapids_rationale = []
+        for threat_type, data in rapids.items():
+            if threat_type != "_metadata":
+                rationale = data.get('rationale', 'N/A')[:80]
+                rapids_rationale.append(f"  - {threat_type}: {rationale}...")
+        rapids_reasoning = "\n".join(rapids_rationale[:3]) if rapids_rationale else "  (None)"
+
         # Format prompt
         prompt = f"""
 ARCHITECTURE TO REVIEW: {arch_name}
@@ -216,24 +244,40 @@ ARCHITECTURE TO REVIEW: {arch_name}
 ARCHITECTURE CONTEXT:
 - Type: {arch_type}
 - Description: {ground_truth.get('description', 'N/A')}
-- Controls Present: {len(controls_present)}
-- Controls Missing: {len(controls_missing)}
+- Controls Present ({len(controls_present)}): {controls_present_list}
+- Controls Missing ({len(controls_missing)}): {controls_missing_list}
 
 DETERMINISTIC ASSESSMENT (99.5% confidence baseline):
 
-RAPIDS Threats (6 categories):
+A. RAPIDS Threat Scores:
 {rapids_summary}
 
-MITRE Techniques Mapped: {technique_count}
-Controls Recommended: {control_count}
-Residual Risk: {before_risk} -> {after_risk}
-Validation: 6/6 checks PASS
+B. RAPIDS Rationale (top 3):
+{rapids_reasoning}
+
+C. MITRE Attack Paths ({len(techniques)} total):
+{attack_paths}
+
+D. Control Recommendations ({control_count} total, showing top 3):
+{control_summary}
+
+E. Residual Risk Calculation:
+- Before controls: {before_risk}
+- After controls: {after_risk}
+
+F. Validation: 6/6 checks PASS
 
 ============================================================
 YOUR TASK
 ============================================================
 
-Review this assessment using the {self.role} rubric and provide a score (0-100).
+Review this DETERMINISTIC assessment using the {self.role} rubric and provide a score (0-100).
+
+IMPORTANT: You are critiquing the QUALITY of the assessment above, NOT creating a new threat analysis.
+- Does the assessment cover all relevant threats for this architecture type?
+- Are the control recommendations appropriate and feasible?
+- Is the defense-in-depth strategy sufficient?
+- Does it consider architecture-specific context?
 
 For each rubric category:
 1. Score (0-10 or as specified)

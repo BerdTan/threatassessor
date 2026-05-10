@@ -1,0 +1,106 @@
+{
+  "architecture": "test_flawed_assessment.mmd",
+  "description": "Web App with deliberately flawed threat assessment for testing Tester agent",
+  "controls_present": ["waf", "mfa"],
+  "controls_missing": ["backup", "edr", "logging", "network segmentation"],
+  "control_recommendations": [
+    {
+      "control": "rate limiting",
+      "priority": "low",
+      "score": 5.0,
+      "rapids_threats": ["dos"],
+      "mitigations": ["M1037"]
+    },
+    {
+      "control": "least privilege",
+      "priority": "medium",
+      "score": 8.0,
+      "rapids_threats": ["insider_threat"],
+      "mitigations": ["M1026"]
+    }
+  ],
+  "expected_attack_paths": [
+    {
+      "path_name": "Web exploitation",
+      "techniques": ["T1190"]
+    }
+  ],
+  "expected_risk_score": 40,
+  "expected_defensibility": 60,
+  "rapids_assessment": {
+    "ransomware": {
+      "risk": 30,
+      "rationale": "Low risk - we have backups",
+      "_note": "FLAW: controls_missing shows NO backup, but rationale says we have it"
+    },
+    "application_vulns": {
+      "risk": 90,
+      "rationale": "WAF deployed, input validation missing",
+      "_note": "FLAW: High risk but only 1 technique mapped, should have more"
+    },
+    "phishing": {
+      "risk": 20,
+      "rationale": "MFA enabled",
+      "_note": "OK: MFA is in controls_present"
+    },
+    "insider_threat": {
+      "risk": 40,
+      "rationale": "Least privilege not enforced",
+      "_note": "OK: Matches control recommendations"
+    },
+    "dos": {
+      "risk": 80,
+      "rationale": "No rate limiting",
+      "_note": "FLAW: Rate limiting priority=low but DoS risk=80 (should be critical)"
+    },
+    "supply_chain": {
+      "risk": 50,
+      "rationale": "No code signing or vulnerability scanning",
+      "_note": "OK: Matches missing controls"
+    }
+  },
+  "rationale": "Moderate protection with significant gaps",
+  "metadata": {
+    "architecture_type": "web_app",
+    "created_date": "2026-05-10",
+    "purpose": "Test case for Tester agent validation"
+  },
+  "validation_report": {
+    "overall_valid": false,
+    "validations": [
+      {"check": "RAPIDS coverage", "passed": true, "confidence": 0.99},
+      {"check": "Control mapping", "passed": false, "confidence": 0.50, "issue": "Priority mismatch"},
+      {"check": "Risk consistency", "passed": false, "confidence": 0.40, "issue": "Ransomware rationale vs controls"},
+      {"check": "Technique coverage", "passed": false, "confidence": 0.30, "issue": "Only 1 technique for 90/100 app vuln risk"},
+      {"check": "Defense-in-depth", "passed": true, "confidence": 0.85},
+      {"check": "Context awareness", "passed": true, "confidence": 0.90}
+    ],
+    "confidence_adjustments": [],
+    "issues_found": [
+      "Control priority mismatch: rate limiting=low but DoS risk=80",
+      "Ransomware rationale mentions backup but backup is in controls_missing",
+      "Application vulns risk=90 but only 1 technique mapped (expected 5-10)"
+    ]
+  },
+  "residual_risks": {
+    "before": {},
+    "after": {}
+  },
+  "_test_expectations": {
+    "architect_should_catch": [
+      "Control priority mismatch (rate limiting)",
+      "Missing database security",
+      "Insufficient attack path coverage"
+    ],
+    "tester_should_catch": [
+      "Ransomware rationale contradicts controls_missing (backup claim)",
+      "Application vulns: only 1 technique for 90/100 risk",
+      "DoS risk=80 but control priority=low (inconsistent)",
+      "Validation checks failed (3/6 failed)"
+    ],
+    "red_teamer_should_catch": [
+      "Only 1 attack path - too easy to defend",
+      "Minimal attack surface coverage"
+    ]
+  }
+}
