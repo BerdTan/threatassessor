@@ -218,7 +218,7 @@ Why this change was made
 - Tests: [if applicable]
 - Breaking changes: [if any]
 
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+Co-Authored-By: Co-Buddy
 ```
 
 ### Types
