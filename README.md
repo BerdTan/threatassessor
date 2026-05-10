@@ -156,6 +156,24 @@ python3 -m chatbot.main --self-test
 # ✅ Validates 84.9% accuracy claim (8 seconds)
 ```
 
+### Generate Random Architectures
+```bash
+# Generate test architectures for experimentation
+python3 -m chatbot.main --gen-random-arch --complexity low
+python3 -m chatbot.main --gen-random-arch --complexity medium --orientation LR
+python3 -m chatbot.main --gen-random-arch --complexity high --seed 42
+
+# Options:
+# --complexity: low (4-6 nodes), medium (7-12 nodes), high (13-20 nodes)
+# --orientation: TB (top-bottom), LR (left-right)
+# --seed: Reproducible generation (same seed = same architecture)
+```
+
+**Use cases:**
+- Testing threat assessment on various architectures
+- Training and demonstrations
+- Reproducible test scenarios with `--seed`
+
 ---
 
 ## Key Features
@@ -409,6 +427,9 @@ python3 -m chatbot.modules.completeness_validator architecture_name
 
 # Self-test
 python3 -m chatbot.main --self-test
+
+# Generate random test architecture
+python3 -m chatbot.main --gen-random-arch --complexity medium --seed 42
 ```
 
 ---
