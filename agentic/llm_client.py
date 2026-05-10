@@ -50,18 +50,23 @@ class LLMProvider(str, Enum):
     VERTEX = "vertex"
 
 
+# Active/Inactive provider configuration
+ACTIVE_PROVIDERS = [LLMProvider.OPENROUTER, LLMProvider.BEDROCK]
+INACTIVE_PROVIDERS = [LLMProvider.ANTHROPIC, LLMProvider.AZURE, LLMProvider.VERTEX]
+
 # Model configurations per provider
 PROVIDER_MODELS = {
     LLMProvider.OPENROUTER: {
-        "default": "openrouter/google/gemma-4-26b-a4b-it:free",
-        "high_quality": "openrouter/anthropic/claude-sonnet-4",
-        "fast": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+        "default": "openrouter/google/gemma-4-31b-it:free",  # Best free model (updated)
+        "high_quality": "openrouter/anthropic/claude-sonnet-4",  # Paid tier
+        "fast": "openrouter/nvidia/nemotron-3-nano-30b-a3b:free"  # Fastest free (updated)
     },
     LLMProvider.BEDROCK: {
         "default": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0",
         "high_quality": "bedrock/us.anthropic.claude-opus-4-20250514-v1:0",
         "fast": "bedrock/us.anthropic.claude-haiku-4-20250514-v1:0"
     },
+    # INACTIVE PROVIDERS (kept for reference, not used by default)
     LLMProvider.ANTHROPIC: {
         "default": "anthropic/claude-sonnet-4-20250514",
         "high_quality": "anthropic/claude-opus-4-20250514",
@@ -79,10 +84,12 @@ PROVIDER_MODELS = {
     }
 }
 
-# OpenRouter free tier fallback chain (if primary rate-limited)
+# OpenRouter free tier fallback chain (ordered by quality, all free)
+# Strategy: Try best quality first, fallback to alternatives if rate-limited
 OPENROUTER_FALLBACK_MODELS = [
-    "openrouter/google/gemma-4-26b-a4b-it:free",       # Try first (best quality)
-    "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  # Fallback
+    "openrouter/google/gemma-4-31b-it:free",           # Primary (best quality, 31B params)
+    "openrouter/meta-llama/llama-3.3-70b-instruct:free",  # Fallback 1 (70B, very capable)
+    "openrouter/nvidia/nemotron-3-nano-30b-a3b:free",  # Fallback 2 (fastest, 30B)
 ]
 
 
@@ -237,20 +244,30 @@ class LLMClient:
         self.primary_provider = primary_provider
         self.primary_config = ProviderConfig.from_env(primary_provider)
 
-        # Load fallback providers
+        # Load fallback providers (default: active providers only, in sequence)
         if fallback_providers is None:
             import os
             fallback_str = os.getenv("LLM_FALLBACK_PROVIDERS", "")
-            fallback_providers = [
-                LLMProvider(p.strip())
-                for p in fallback_str.split(",")
-                if p.strip()
-            ]
+            if fallback_str:
+                # Use explicit fallback from env
+                fallback_providers = [
+                    LLMProvider(p.strip())
+                    for p in fallback_str.split(",")
+                    if p.strip()
+                ]
+            else:
+                # Default: Use active providers, exclude primary
+                # Sequence: OpenRouter → Bedrock
+                fallback_providers = [
+                    p for p in ACTIVE_PROVIDERS
+                    if p != primary_provider
+                ]
 
         self.fallback_providers = fallback_providers
         self.fallback_configs = {
             p: ProviderConfig.from_env(p)
             for p in fallback_providers
+            if p in ACTIVE_PROVIDERS  # Only load configs for active providers
         }
 
         # Load verifier provider (for LLM as Judge) using helper
@@ -272,12 +289,28 @@ class LLMClient:
                 f"Check environment variables."
             )
 
+        # Warn if using inactive provider
+        if primary_provider in INACTIVE_PROVIDERS:
+            logger.warning(
+                f"Using INACTIVE provider: {primary_provider}. "
+                f"Active providers are: {ACTIVE_PROVIDERS}"
+            )
+
+        # Validate fallback providers
+        for fb_provider in fallback_providers:
+            if fb_provider in INACTIVE_PROVIDERS:
+                logger.warning(
+                    f"Fallback provider {fb_provider} is INACTIVE. "
+                    f"Consider using active providers: {ACTIVE_PROVIDERS}"
+                )
+
         # Usage tracking
         self.enable_cost_tracking = enable_cost_tracking
         self.usage_stats = LLMUsageStats()
 
         logger.info(f"LLMClient initialized: primary={primary_provider}, "
                    f"fallbacks={fallback_providers}, verifier={verifier_provider}")
+        logger.info(f"Active providers: {ACTIVE_PROVIDERS}")
 
     def generate(
         self,
