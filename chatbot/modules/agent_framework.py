@@ -114,19 +114,24 @@ class CriticAgent:
         prompt = self._format_prompt(ground_truth)
 
         # 2. Convert tools to LiteLLM format
-        tool_schemas = [tool.to_litellm_schema() for tool in self.tools] if self.tools else None
+        # MVP1: Disable tools for now - LLM prefers to ask for tools rather than directly answer
+        # Full tool execution in MVP2+
+        tool_schemas = None  # [tool.to_litellm_schema() for tool in self.tools] if self.tools else None
 
-        # 3. Call LLM with tools
+        # 3. Call LLM without tools (MVP1 simplification)
         try:
             # If model is None, LLMClient uses .env defaults (LLM_PROVIDER, BEDROCK_MODEL, etc.)
+            logger.info(f"{self.role}: Calling LLM (model={self.model}, tools disabled for MVP1)")
             response = self.llm_client.generate(
                 prompt=prompt,
                 system_message=self.system_prompt,
                 model=self.model,  # None = use .env config
-                tools=tool_schemas,
+                # tools=tool_schemas,  # Disabled for MVP1
                 temperature=0.3,  # Lower for consistent scoring
                 max_tokens=4000
             )
+            logger.info(f"{self.role}: LLM call completed - Response type: {type(response)}")
+            logger.info(f"{self.role}: Response attributes: {dir(response)[:10]}...")  # First 10 to avoid spam
         except Exception as e:
             logger.error(f"{self.role}: LLM call failed: {e}")
             raise
@@ -141,7 +146,9 @@ class CriticAgent:
             logger.warning(f"{self.role}: Tool execution not yet implemented in MVP1")
 
         # 5. Extract and validate output
+        logger.info(f"{self.role}: Parsing response...")
         critique_data = self._parse_response(response)
+        logger.info(f"{self.role}: Parsed data keys: {list(critique_data.keys()) if critique_data else 'None'}")
 
         # 6. Validate against rubric
         if not self._validate_output(critique_data):
@@ -175,11 +182,14 @@ class CriticAgent:
         - {before_risk}
         - {after_risk}
         """
-        # Extract key data
-        arch_name = ground_truth.get("architecture_name", "Unknown")
+        # Extract key data (adapted to actual ground truth format)
+        arch_name = ground_truth.get("architecture", "Unknown")
         arch_type = ground_truth.get("metadata", {}).get("architecture_type", "Unknown")
-        nodes = ground_truth.get("parsed_nodes", {})
-        component_count = len(nodes)
+
+        # Component count from controls present + missing
+        controls_present = ground_truth.get("controls_present", [])
+        controls_missing = ground_truth.get("controls_missing", [])
+        component_count = len(controls_present) + len(controls_missing)
 
         rapids = ground_truth.get("rapids_assessment", {})
         rapids_summary = "\n".join([
@@ -194,7 +204,8 @@ class CriticAgent:
         controls = ground_truth.get("control_recommendations", [])
         control_count = len(controls)
 
-        residual = ground_truth.get("residual_risk_calculation", {})
+        # Residual risk from residual_risks dict
+        residual = ground_truth.get("residual_risks", {})
         before_risk = residual.get("before", {}).get("overall_risk", "N/A")
         after_risk = residual.get("after", {}).get("overall_risk", "N/A")
 
@@ -204,8 +215,9 @@ ARCHITECTURE TO REVIEW: {arch_name}
 
 ARCHITECTURE CONTEXT:
 - Type: {arch_type}
-- Components: {component_count} nodes
-- Entry Points: {nodes.get(list(nodes.keys())[0] if nodes else 'Unknown', {}).get('label', 'Unknown')}
+- Description: {ground_truth.get('description', 'N/A')}
+- Controls Present: {len(controls_present)}
+- Controls Missing: {len(controls_missing)}
 
 DETERMINISTIC ASSESSMENT (99.5% confidence baseline):
 
@@ -264,24 +276,38 @@ OUTPUT FORMAT (JSON):
         Supports markdown code blocks (```json...```) and raw JSON.
         """
         try:
+            # DEBUG: Log response type and structure
+            logger.info(f"{self.role}: Response type: {type(response)}")
+            logger.info(f"{self.role}: Response has content attr: {hasattr(response, 'content')}")
+
             # Try to extract JSON from response
             if hasattr(response, 'content'):
                 content = response.content
+                logger.info(f"{self.role}: Extracted content from response.content (length: {len(content)})")
             elif isinstance(response, dict):
                 content = response.get('content', str(response))
+                logger.info(f"{self.role}: Extracted content from dict (length: {len(content)})")
             else:
                 content = str(response)
+                logger.info(f"{self.role}: Converted response to string (length: {len(content)})")
+
+            # DEBUG: Log content preview
+            logger.info(f"{self.role}: Content preview (first 200 chars): {content[:200]}")
+            logger.info(f"{self.role}: Has '```json': {'```json' in content}")
+            logger.info(f"{self.role}: Has '{{': {'{' in content}")
 
             # Find JSON block (try markdown first, then raw)
             if '```json' in content:
                 # Markdown code block: ```json { ... } ```
                 json_str = content.split('```json')[1].split('```')[0].strip()
+                logger.info(f"{self.role}: Found ```json block (length: {len(json_str)})")
             elif '```' in content and '{' in content:
                 # Generic code block: ``` { ... } ```
                 parts = content.split('```')
                 for part in parts:
                     if '{' in part and '}' in part:
                         json_str = part.strip()
+                        logger.info(f"{self.role}: Found generic ``` block (length: {len(json_str)})")
                         break
                 else:
                     raise ValueError("No JSON in code blocks")
@@ -290,20 +316,26 @@ OUTPUT FORMAT (JSON):
                 start = content.index('{')
                 end = content.rindex('}') + 1
                 json_str = content[start:end]
+                logger.info(f"{self.role}: Found raw JSON (length: {len(json_str)})")
             else:
                 logger.warning(f"{self.role}: No JSON found in response, using defaults")
+                logger.warning(f"{self.role}: Full content: {content}")
                 return {}
 
             # Parse JSON
+            logger.info(f"{self.role}: Attempting to parse JSON string...")
             parsed = json.loads(json_str)
-            logger.info(f"{self.role}: Successfully parsed JSON response")
+            logger.info(f"{self.role}: Successfully parsed JSON response with keys: {list(parsed.keys())}")
             return parsed
 
         except Exception as e:
             logger.error(f"{self.role}: Failed to parse response: {e}")
+            logger.error(f"{self.role}: Exception type: {type(e)}")
             # Log first 1000 chars for debugging
             if hasattr(response, 'content'):
                 logger.warning(f"Response content (first 1000 chars): {response.content[:1000]}")
+            elif 'content' in locals():
+                logger.warning(f"Extracted content (first 1000 chars): {content[:1000]}")
             return {}
 
     def _validate_output(self, critique_data: Dict) -> bool:
