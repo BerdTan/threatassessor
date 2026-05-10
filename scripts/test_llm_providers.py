@@ -521,7 +521,11 @@ class LLMProviderTester:
             ]
         }
 
-        output_file = "test_results_llm_providers.json"
+        # Save to tests/results/ directory
+        output_dir = os.path.join(os.path.dirname(__file__), "..", "tests", "results")
+        os.makedirs(output_dir, exist_ok=True)
+        output_file = os.path.join(output_dir, "test_results_llm_providers.json")
+
         with open(output_file, "w") as f:
             json.dump(output, f, indent=2)
 
