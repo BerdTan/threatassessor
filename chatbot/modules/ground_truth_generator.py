@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from chatbot.parsers.mermaid_parser import parse_mermaid_file, MermaidParser
 from chatbot.modules.mitre import MitreHelper
-from tests.data.architectures.control_detection import (
+from chatbot.modules.control_detection import (
     detect_controls_in_architecture,
     identify_missing_controls,
     calculate_control_coverage,

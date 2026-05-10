@@ -15,7 +15,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from chatbot.parsers.mermaid_parser import parse_mermaid_file
-from tests.data.architectures.control_detection import (
+from chatbot.modules.control_detection import (
     detect_controls_in_architecture,
     identify_missing_controls,
     calculate_control_coverage,

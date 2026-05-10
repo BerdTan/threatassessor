@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from chatbot.parsers.mermaid_parser import parse_mermaid_file
-from tests.data.architectures.control_detection import detect_controls_in_architecture
+from chatbot.modules.control_detection import detect_controls_in_architecture
 from agentic.llm_client import LLMClient
 
 
