@@ -1,0 +1,14 @@
+%%  Random Architecture - Low Complexity
+%%  Orientation: TB, Nodes: 4, Edges: 3
+%%  Seed: 42 (use same seed for reproducibility)
+
+flowchart TB
+
+    Internet(("Internet"))
+    FunctionApp["Function App"]
+    Microservice["Microservice"]
+    DataWarehouse[("Data Warehouse")]
+
+    Internet --> FunctionApp
+    Internet --> Microservice
+    FunctionApp --> DataWarehouse

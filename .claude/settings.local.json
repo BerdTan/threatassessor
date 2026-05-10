@@ -11,7 +11,15 @@
       "Bash(grep -E \"-->|-.->|==>\")",
       "Bash(awk '{print $1}')",
       "Bash(./demo_architecture.sh --validate-orphan)",
-      "Bash(./demo_architecture.sh --validate-orphan tests/data/architectures/02_minimal_defended.mmd)"
+      "Bash(./demo_architecture.sh --validate-orphan tests/data/architectures/02_minimal_defended.mmd)",
+      "Bash(git rm *)",
+      "Bash(git restore *)",
+      "Bash(sed -i '/echo \".*═.*\"/d' /mnt/c/BACKUP/DEV-TEST/demo_architecture.sh)",
+      "Bash(sed -i '/echo \".*━.*\"/d' /mnt/c/BACKUP/DEV-TEST/demo_architecture.sh)",
+      "Bash(sed -i '/echo \".*╔.*\"/d' /mnt/c/BACKUP/DEV-TEST/demo_architecture.sh)",
+      "Bash(sed -i '/echo \".*╚.*\"/d' /mnt/c/BACKUP/DEV-TEST/demo_architecture.sh)",
+      "Bash(sed -n '46,52p' demo_architecture.sh)",
+      "Bash(sed -n '277,283p' demo_architecture.sh)"
     ]
   }
 }

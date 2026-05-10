@@ -57,9 +57,9 @@ INACTIVE_PROVIDERS = [LLMProvider.ANTHROPIC, LLMProvider.AZURE, LLMProvider.VERT
 # Model configurations per provider
 PROVIDER_MODELS = {
     LLMProvider.OPENROUTER: {
-        "default": "openrouter/google/gemma-4-31b-it:free",  # Best free model (updated)
+        "default": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  # Most reliable free
         "high_quality": "openrouter/anthropic/claude-sonnet-4",  # Paid tier
-        "fast": "openrouter/nvidia/nemotron-3-nano-30b-a3b:free"  # Fastest free (updated)
+        "fast": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"  # Same as default (fast & reliable)
     },
     LLMProvider.BEDROCK: {
         "default": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0",
@@ -84,12 +84,18 @@ PROVIDER_MODELS = {
     }
 }
 
-# OpenRouter free tier fallback chain (ordered by quality, all free)
-# Strategy: Try best quality first, fallback to alternatives if rate-limited
+# OpenRouter free tier fallback chain
+# Strategy: Use most reliable model first, then fallback if rate-limited
+# Configuration: Set OPENROUTER_ACTIVE_MODELS in .env to override (comma-separated)
+#
+# Available free models:
+#   - nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free (most reliable, reasoning capable)
+#   - google/gemma-4-31b-it:free (high quality, but often rate-limited)
+#   - meta-llama/llama-3.3-70b-instruct:free (70B params, often rate-limited)
+#
 OPENROUTER_FALLBACK_MODELS = [
-    "openrouter/google/gemma-4-31b-it:free",           # Primary (best quality, 31B params)
-    "openrouter/meta-llama/llama-3.3-70b-instruct:free",  # Fallback 1 (70B, very capable)
-    "openrouter/nvidia/nemotron-3-nano-30b-a3b:free",  # Fallback 2 (fastest, 30B)
+    "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  # Primary (most reliable)
+    # Add more models here or configure via .env OPENROUTER_ACTIVE_MODELS
 ]
 
 
@@ -352,7 +358,19 @@ class LLMClient:
         # Determine model(s) to try
         # Special case: OpenRouter free tier has model-level fallback
         if provider == LLMProvider.OPENROUTER and model is None:
-            models_to_try = OPENROUTER_FALLBACK_MODELS
+            # Check if user configured custom models in .env
+            import os
+            custom_models = os.getenv("OPENROUTER_ACTIVE_MODELS", "")
+            if custom_models:
+                # User specified models: "model1:free,model2:free"
+                models_to_try = [
+                    f"openrouter/{m.strip()}"
+                    for m in custom_models.split(",")
+                    if m.strip()
+                ]
+            else:
+                # Use default fallback chain
+                models_to_try = OPENROUTER_FALLBACK_MODELS
         else:
             if model is None:
                 model = PROVIDER_MODELS[provider][quality]
