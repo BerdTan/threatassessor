@@ -50,10 +50,6 @@ class LLMProvider(str, Enum):
     VERTEX = "vertex"
 
 
-# Active/Inactive provider configuration
-ACTIVE_PROVIDERS = [LLMProvider.OPENROUTER, LLMProvider.BEDROCK]
-INACTIVE_PROVIDERS = [LLMProvider.ANTHROPIC, LLMProvider.AZURE, LLMProvider.VERTEX]
-
 # Model configurations per provider
 PROVIDER_MODELS = {
     LLMProvider.OPENROUTER: {
@@ -250,7 +246,7 @@ class LLMClient:
         self.primary_provider = primary_provider
         self.primary_config = ProviderConfig.from_env(primary_provider)
 
-        # Load fallback providers (default: active providers only, in sequence)
+        # Load fallback providers from environment
         if fallback_providers is None:
             import os
             fallback_str = os.getenv("LLM_FALLBACK_PROVIDERS", "")
@@ -262,19 +258,22 @@ class LLMClient:
                     if p.strip()
                 ]
             else:
-                # Default: Use active providers, exclude primary
-                # Sequence: OpenRouter → Bedrock
-                fallback_providers = [
-                    p for p in ACTIVE_PROVIDERS
-                    if p != primary_provider
-                ]
+                # No fallback configured
+                fallback_providers = []
 
         self.fallback_providers = fallback_providers
-        self.fallback_configs = {
-            p: ProviderConfig.from_env(p)
-            for p in fallback_providers
-            if p in ACTIVE_PROVIDERS  # Only load configs for active providers
-        }
+
+        # Load configs for fallback providers (skip if no valid credentials)
+        self.fallback_configs = {}
+        for p in fallback_providers:
+            try:
+                config = ProviderConfig.from_env(p)
+                if config.validate():
+                    self.fallback_configs[p] = config
+                else:
+                    logger.warning(f"Fallback provider {p.value} has invalid configuration, skipping")
+            except Exception as e:
+                logger.warning(f"Failed to load fallback provider {p.value}: {e}")
 
         # Load verifier provider (for LLM as Judge) using helper
         if verifier_provider is None:
@@ -291,32 +290,23 @@ class LLMClient:
         # Validate configurations
         if not self.primary_config.validate():
             raise ValueError(
-                f"Primary provider {primary_provider} not configured. "
+                f"Primary provider {primary_provider.value} not configured. "
                 f"Check environment variables."
             )
-
-        # Warn if using inactive provider
-        if primary_provider in INACTIVE_PROVIDERS:
-            logger.warning(
-                f"Using INACTIVE provider: {primary_provider}. "
-                f"Active providers are: {ACTIVE_PROVIDERS}"
-            )
-
-        # Validate fallback providers
-        for fb_provider in fallback_providers:
-            if fb_provider in INACTIVE_PROVIDERS:
-                logger.warning(
-                    f"Fallback provider {fb_provider} is INACTIVE. "
-                    f"Consider using active providers: {ACTIVE_PROVIDERS}"
-                )
 
         # Usage tracking
         self.enable_cost_tracking = enable_cost_tracking
         self.usage_stats = LLMUsageStats()
 
-        logger.info(f"LLMClient initialized: primary={primary_provider}, "
-                   f"fallbacks={fallback_providers}, verifier={verifier_provider}")
-        logger.info(f"Active providers: {ACTIVE_PROVIDERS}")
+        # Log configuration
+        configured_providers = [primary_provider.value]
+        if self.fallback_configs:
+            configured_providers.extend([p.value for p in self.fallback_configs.keys()])
+
+        logger.info(f"LLMClient initialized: primary={primary_provider.value}, "
+                   f"fallbacks={[p.value for p in fallback_providers]}, "
+                   f"verifier={verifier_provider.value if verifier_provider else None}")
+        logger.info(f"Configured providers: {configured_providers}")
 
     def generate(
         self,

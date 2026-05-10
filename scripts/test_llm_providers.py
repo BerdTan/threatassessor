@@ -38,8 +38,6 @@ from agentic.llm_client import (
     LLMProvider,
     ProviderConfig,
     LLMResponse,
-    ACTIVE_PROVIDERS,
-    INACTIVE_PROVIDERS,
     OPENROUTER_FALLBACK_MODELS
 )
 from agentic.helper import load_env

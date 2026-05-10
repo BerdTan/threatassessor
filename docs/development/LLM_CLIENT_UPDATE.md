@@ -9,20 +9,22 @@ Updated `agentic/llm_client.py` to use **active/inactive provider configuration*
 
 ## Changes Made
 
-### 1. Active/Inactive Provider Configuration
+### 1. Environment-Driven Provider Configuration
 
-```python
-# Only these providers are actively maintained
-ACTIVE_PROVIDERS = [LLMProvider.OPENROUTER, LLMProvider.BEDROCK]
+**Configuration is now fully driven by `.env` - no hardcoded provider lists in code.**
 
-# These are kept for reference but not used by default
-INACTIVE_PROVIDERS = [LLMProvider.ANTHROPIC, LLMProvider.AZURE, LLMProvider.VERTEX]
+```bash
+# .env
+LLM_PROVIDER=openrouter                 # Primary provider
+LLM_FALLBACK_PROVIDERS=bedrock          # Fallback chain (comma-separated)
+LLM_VERIFIER_PROVIDER=bedrock           # Verifier for LLM as Judge
 ```
 
 **Benefits:**
-- Clear separation of maintained vs. reference providers
-- Warnings logged when using inactive providers
-- Automatic fallback only to active providers
+- Change providers by editing `.env` only (no code changes)
+- Clear separation of primary, fallback, and verifier roles
+- Automatic credential validation (providers without credentials are skipped)
+- Support for any provider (openrouter, bedrock, anthropic, azure, vertex)
 
 ### 2. Updated OpenRouter Free Tier Models
 
@@ -76,26 +78,32 @@ Bedrock: claude-sonnet-4 [✅ SUCCESS]
 
 ### `.env`
 ```bash
-# Primary provider (default)
+# Primary provider (for threat analysis)
 LLM_PROVIDER=openrouter
 
-# Fallback providers (only active ones)
+# Fallback providers (comma-separated, in priority order)
 LLM_FALLBACK_PROVIDERS=bedrock
-
-# Bedrock configuration (working!)
-AWS_BEDROCK_API_KEY=ABSKZ2Fy...
-BEDROCK_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
 
 # Verifier for LLM as Judge
 LLM_VERIFIER_PROVIDER=bedrock
+
+# OpenRouter configuration
+OPENROUTER_API_KEY=sk-or-v1-xxx
+OPENROUTER_ACTIVE_MODELS=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+
+# Bedrock configuration
+AWS_BEDROCK_API_KEY=ABSKZ2Fy...
+AWS_REGION=us-east-1
+BEDROCK_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
 ```
 
 ### `agentic/llm_client.py`
-- Added `ACTIVE_PROVIDERS` and `INACTIVE_PROVIDERS` constants
-- Updated `OPENROUTER_FALLBACK_MODELS` with 3 models
+- Removed hardcoded `ACTIVE_PROVIDERS` and `INACTIVE_PROVIDERS` lists
+- Configuration now fully driven by `.env` variables
+- Updated `OPENROUTER_FALLBACK_MODELS` to use nemotron as primary
+- Added `OPENROUTER_ACTIVE_MODELS` environment variable support
 - Updated `PROVIDER_MODELS` with new OpenRouter models
-- Added validation warnings for inactive providers
-- Improved fallback logic to only use active providers
+- Improved fallback logic to validate credentials and skip unavailable providers
 
 ## Test Results
 
