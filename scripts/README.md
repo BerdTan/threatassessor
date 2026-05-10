@@ -8,6 +8,9 @@ Integration tests, validation utilities, and data generation scripts organized b
 
 ```
 scripts/
+├── agent_testing/        # Phase 3C agent framework tests (NEW)
+│   ├── test_architect.sh
+│   └── README.md
 ├── integration/          # Integration tests (cross-module validation)
 │   ├── test_llm_providers.py
 │   ├── test_openrouter.py
@@ -24,6 +27,31 @@ scripts/
 └── personal/             # Personal workflow utilities (gitignored)
     └── sync_repos.sh
 ```
+
+---
+
+## Agent Framework Testing (Phase 3C)
+
+### test_architect.sh
+
+**Purpose:** Validate Architect critic agent on flawed assessment
+
+**Usage:**
+```bash
+./scripts/agent_testing/test_architect.sh
+```
+
+**What it tests:**
+- Agent catches logic contradictions (ransomware backup claim)
+- Agent catches risk-priority mismatches (DoS=80, priority=low)
+- Agent catches coverage gaps (risk=90, 1 technique)
+- Improvement roadmap provides verification methods
+
+**Expected Score:** 20-35/100 (POOR)
+
+**Test Data:** `tests/data/agent_test_cases/test_flawed_assessment.json`
+
+**See:** `scripts/agent_testing/README.md` for upcoming agent tests (Tester, Red Teamer, Orchestrator)
 
 ---
 

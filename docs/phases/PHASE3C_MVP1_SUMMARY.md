@@ -24,7 +24,7 @@
 - **305 lines**
 
 ### 3. Test Data
-- **test_flawed_assessment.json**: Deliberately flawed assessment with 3 planted errors
+- **tests/data/agent_test_cases/test_flawed_assessment.json**: Deliberately flawed assessment with 3 planted errors
 - **Tested on**: 02_minimal_defended (good), 03_aws_3tier (good), test_flawed_assessment (bad)
 
 ---
@@ -223,8 +223,9 @@ chatbot/modules/
   agent_framework.py (NEW, 502 lines)
   architect_critic.py (NEW, 370 lines)
 
-tests/data/architectures/
+tests/data/agent_test_cases/
   test_flawed_assessment.json (NEW, 106 lines)
+  README.md (NEW)
 
 docs/phases/
   PHASE3C_MVP1_CONFIDENCE_ANALYSIS.md (NEW, 187 lines)

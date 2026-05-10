@@ -107,7 +107,7 @@ ground_truth = {
 
 ### Q3: Is the response useful for Tester agent? Do we have test architectures with deliberate flaws?
 
-**Created Test Case:** `tests/data/architectures/test_flawed_assessment.json`
+**Created Test Case:** `tests/data/agent_test_cases/test_flawed_assessment.json`
 
 **Deliberate Flaws for Tester to Catch:**
 
