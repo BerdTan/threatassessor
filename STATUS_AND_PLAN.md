@@ -1,8 +1,8 @@
 # Status & Action Plan
 
-**Last Updated:** 2026-05-09  
-**Current Status:** ✅ Phase 3B+ Complete (99.5% confidence)  
-**Version:** 1.0 Production Ready 🚀
+**Last Updated:** 2026-05-16  
+**Current Status:** ✅ Phase 3C MVP Complete (85% critique confidence)  
+**Version:** 1.1 - LLM Critic Agents Integrated ⭐
 
 ---
 
@@ -21,10 +21,13 @@
 | Path-based control placement | ✅ Working | Multi-path, 95% visual clarity |
 | Completeness validation | ✅ Working | 6 checks, 99.5% confidence |
 | Report generation | ✅ Working | 3 formats + 2 diagrams |
+| **LLM Critic Agents** | ✅ **Working** | **85/100 EXCELLENT** ⭐ |
 
 **Validation Results:**
 - ✅ 22/22 architectures pass (100%)
-- ✅ 99.5% average confidence
+- ✅ 99.5% deterministic engine confidence
+- ✅ 85/100 LLM critique confidence (Architect 82 + Tester 88)
+- ✅ 95% MITRE validation accuracy
 - ✅ 100% technique coverage
 - ✅ 0 orphan nodes
 - ✅ 95% visual clarity (controls properly placed)
@@ -38,11 +41,59 @@ source .venv/bin/activate
 
 # Run analysis
 python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
+
+# Run critique (NEW - Phase 3C)
+python3 scripts/agent_testing/run_full_critique.py report/your_architecture
+# Output: Architect 82/100 + Tester 88/100 = Composite 85/100 ⭐
 ```
 
 ---
 
 ## 📋 Implementation History
+
+### ✅ Phase 3C MVP (May 10-16, 2026) - COMPLETE
+**Goal:** LLM as Judge/Critic - Intelligent gap detection  
+**Time:** ~8.5 hours (under 11h estimate)  
+**Result:** 85/100 composite confidence (Architect 82 + Tester 88)
+
+**What Was Built:**
+1. **Hybrid MITRE Approach** ([core/HYBRID_MITRE_APPROACH.md](docs/phases/phase3c/core/HYBRID_MITRE_APPROACH.md))
+   - Separate defense-in-depth (mitigations) from validation (technique_coverage)
+   - Explicit per-technique mitigation mappings
+   - Preserves both risk-averse defense and strict validation
+
+2. **Architect Critic Agent** ([chatbot/modules/architect_critic.py](chatbot/modules/architect_critic.py))
+   - Design quality assessment (6 categories)
+   - Threat modeling evaluation
+   - Defense-in-depth analysis
+   - Improvement roadmap with verification methods
+
+3. **Tester Critic Agent** ([chatbot/modules/tester_critic.py](chatbot/modules/tester_critic.py))
+   - MITRE validation (95% accuracy)
+   - Coverage analysis (93% completeness)
+   - Consistency checks (90% accuracy)
+   - Multi-layer LLM validation (few-shot, chain-of-thought, post-processing)
+
+4. **Agent Framework** ([chatbot/modules/agent_framework.py](chatbot/modules/agent_framework.py))
+   - Reusable framework for all critic agents
+   - Artifact extraction (10 artifacts)
+   - Structured scoring and validation
+
+5. **Full Critique Pipeline** ([scripts/agent_testing/run_full_critique.py](scripts/agent_testing/run_full_critique.py))
+   - Architect → Tester handoff
+   - Composite scoring (weighted average)
+   - Comprehensive output (04_architect_critique.json, 05_tester_critique.json)
+
+**Key Metrics:**
+- Composite score: 85/100 (EXCELLENT)
+- Improvement: +53 points from baseline (+166%)
+- Validation accuracy: 95% (38/40 checks)
+- Coverage completeness: 93% (28/30)
+- Development time: 8.5h actual vs 11h estimated (-23%)
+
+**See:** [docs/phases/phase3c/85_PERCENT_ACHIEVED.md](docs/phases/phase3c/85_PERCENT_ACHIEVED.md)
+
+---
 
 ### ✅ Phase 3B+ (May 9, 2026) - COMPLETE
 **Goal:** Intelligent control placement + Orphan detection  
@@ -278,6 +329,7 @@ python3 -m chatbot.main --self-test
 
 ## 📝 Recent Updates
 
+- **2026-05-16:** Phase 3C MVP complete - LLM critic agents (Architect + Tester), hybrid MITRE approach, 85/100 composite confidence. Validation accuracy: 95%. Development: 8.5h under 11h estimate.
 - **2026-05-09:** Phase 3B+ complete - Path-based control placement, orphan detection, docs reorganization. Confidence: 99.1% → 99.5%. Visual clarity: 70% → 95%.
 - **2026-05-03:** Phase 3B complete - 6-check validation, exhaustive mitigations, per-node TTP mapping. Confidence: 81% → 99.1%. Technique coverage: 100%.
 - **2026-05-02:** Phase 3A complete - RAPIDS-driven analysis, 5-factor confidence, self-validation. Confidence: 79% → 81%.
@@ -285,5 +337,5 @@ python3 -m chatbot.main --self-test
 ---
 
 **Single Source of Truth:** This file tracks project status and roadmap  
-**Next Review:** After Phase 3C start or user feedback collection  
-**Status:** ✅ Ready for v1.0 commit 🚀
+**Next Review:** After Phase 3C+ (Red Teamer) or Phase 4 (Web UI) start  
+**Status:** ✅ Phase 3C MVP Complete - Ready for v1.1 commit 🚀

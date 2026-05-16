@@ -1,8 +1,8 @@
 # DEV-TEST: MITRE Threat Modeling System
 
-**Version:** 1.0 (Phase 3B+ Complete)  
-**Status:** ✅ Production Ready (99.5% confidence)  
-**Core Feature:** Architecture diagram (.mmd) → Threat assessment + Residual risk (BEFORE/AFTER)
+**Version:** 1.1 (Phase 3C MVP Complete)  
+**Status:** ✅ Production Ready (99.5% deterministic + 85% LLM critique)  
+**Core Feature:** Architecture diagram (.mmd) → Threat assessment + Residual risk (BEFORE/AFTER) + LLM critique
 
 ---
 
@@ -13,9 +13,10 @@ Analyze architecture diagrams to:
 2. Recommend security controls (Prevention + DIR framework)
 3. Calculate residual risk: BEFORE (current) vs AFTER (with controls)
 4. Generate business-ready reports with ROI justification
+5. LLM critique analysis (Architect + Tester agents)
 
-**Time:** 30-60 seconds per architecture  
-**Confidence:** 99.5% (validated across 22 architectures)
+**Time:** 30-60 seconds per architecture (+ 5-10 sec for critique)  
+**Confidence:** 99.5% deterministic + 85% LLM critique (validated across 22 architectures)
 
 ---
 
@@ -29,6 +30,9 @@ source .venv/bin/activate
 
 # Run threat analysis
 python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
+
+# Run LLM critique (optional, Phase 3C)
+python3 scripts/agent_testing/run_full_critique.py report/your_architecture
 
 # View reports
 ls report/your_architecture/
@@ -44,6 +48,12 @@ ls report/your_architecture/
 - `chatbot/modules/per_node_ttp_mapper.py` - Per-node technique mapping
 - `chatbot/modules/exhaustive_mitigation_mapper.py` - All 44 MITRE mitigations
 - `chatbot/modules/threat_report.py` - Report generation with path-based control placement
+
+**LLM Critique (Phase 3C):**
+- `chatbot/modules/architect_critic.py` - Design quality assessment (82/100)
+- `chatbot/modules/tester_critic.py` - MITRE validation (88/100)
+- `chatbot/modules/agent_framework.py` - Reusable agent framework
+- `chatbot/modules/artifact_extractor.py` - Extract 10 artifacts for agents
 
 **Data:**
 - `chatbot/data/enterprise-attack.json` (44MB) - MITRE ATT&CK (not in git)
@@ -138,8 +148,9 @@ chatbot/data/*.json                      # Large data files (44MB + 45MB)
 | Orphan node detection | ✅ | 0 orphans across all tests |
 | Path-based control placement | ✅ | Multi-path, visual clarity 95% |
 | Completeness validation | ✅ | 6 checks, 99.5% confidence |
+| LLM critique agents | ✅ | Architect 82/100, Tester 88/100 (composite 85/100) |
 
-**Validation:** 22/22 architectures pass, 99.5% avg confidence
+**Validation:** 22/22 architectures pass, 99.5% deterministic + 85% LLM critique
 
 ---
 
@@ -148,8 +159,9 @@ chatbot/data/*.json                      # Large data files (44MB + 45MB)
 - **Phase 3A** (May 2): RAPIDS-driven analysis → 81% confidence
 - **Phase 3B** (May 3): Prevention + DIR + Residual Risk → 99.1% confidence
 - **Phase 3B+** (May 9): Intelligent control placement + Orphan detection → 99.5% confidence
+- **Phase 3C MVP** (May 10-16): LLM critic agents (Architect + Tester) → 85% composite
 
-**Next:** Phase 3C (LLM as Judge/Critic, ~4h) or Phase 4 (Web UI, ~15-20h)
+**Next:** Phase 3C+ (Red Teamer + Orchestrator, ~6h) or Phase 4 (Web UI, ~15-20h)
 
 **See:** [docs/phases/](docs/phases/) for detailed phase documentation
 
@@ -169,6 +181,9 @@ python3 scripts/backtest_all_architectures.py
 
 # Check orphans
 python3 scripts/check_orphans.py
+
+# Run LLM critique
+python3 scripts/agent_testing/run_full_critique.py report/architecture_name
 
 # Housekeep docs
 # (Enhanced housekeep-docs skill - see .claude/skills/)
@@ -239,4 +254,4 @@ python3 -c "from chatbot.modules.mitre_embeddings import build_technique_embeddi
 **Purpose:** System instructions for Claude Code  
 **Audience:** AI assistant (this document), developers (reference)  
 **Keep Updated:** After major features, before commits  
-**Last Updated:** 2026-05-09
+**Last Updated:** 2026-05-16

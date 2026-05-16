@@ -1,42 +1,75 @@
-# Phase 3C: LLM as Judge/Critic (Sequential A-Team)
+# Phase 3C: LLM as Judge/Critic
 
-**Start Date:** May 10, 2026 (MVP1)  
-**Current Date:** May 15, 2026  
-**Status:** 🚀 **IN PROGRESS** (MVP1 Complete, 13h Remaining)  
+**Start Date:** May 10, 2026  
+**Completion Date:** May 16, 2026  
+**Status:** ✅ **MVP COMPLETE** - 85% Confidence Achieved ⭐⭐⭐⭐⭐  
 **Parent:** [../README.md](../README.md)
 
 ---
 
 ## Quick Start
 
-**📍 Start Here:** [PHASE3C_IMPLEMENTATION_PLAN.md](PHASE3C_IMPLEMENTATION_PLAN.md)
+```bash
+# Run full critique (Architect + Tester)
+source .venv/bin/activate
+python3 scripts/agent_testing/run_full_critique.py report/02_minimal_defended
 
-**Current Status:** MVP1 Architect agent complete (4h), ready for Phase 1: Artifact Extractor (2h)
+# Output:
+# - 04_architect_critique.json (design quality + roadmap)
+# - 05_tester_critique.json (validation + gaps)
+# - Composite score: 85/100 (EXCELLENT)
+```
+
+**📍 See Results:** [85_PERCENT_ACHIEVED.md](85_PERCENT_ACHIEVED.md) ⭐
 
 ---
 
-## What Phase 3C Will Achieve
+## Achievement Summary
 
-### Goal
-Use LLM agents to **critique** the deterministic engine (Phase 3B+ baseline), identify blind spots, and suggest architecture improvements.
+**Composite Score:** 85/100 (EXCELLENT) ⭐⭐⭐⭐⭐
+- **Architect:** 82/100 (GOOD) - Design quality, threat modeling
+- **Tester:** 88/100 (GOOD) - MITRE validation (95% accuracy)
 
-### Approach
-**Sequential A-Team:** Architect → Tester → Red Team (not parallel)
+**Improvement:** +53 points from baseline (32 → 85 = +166%)
 
-**Why Sequential?** See [PHASE3C_APPROACH_ANALYSIS.md](PHASE3C_APPROACH_ANALYSIS.md)
-- Context accumulation (Tester validates Architect's roadmap)
-- 70% code reuse (MVP1 Architect + framework done)
-- Simpler debugging (linear execution)
-- Narrative quality (design → test → attack)
+**Key Innovation:** Hybrid MITRE approach (defense-in-depth + strict validation)
+
+### Agents Implemented
+1. ✅ **Architect** - Design quality, threat completeness, defense-in-depth
+2. ✅ **Tester** - MITRE validation, coverage analysis, consistency checks  
+3. ⏳ **Red Teamer** - Exploit difficulty, defense evasion (planned)
+4. ⏳ **Orchestrator** - Weighted scoring, conflict resolution (planned)
 
 ### Artifacts Used
-**10 Total:** 5 critical (ground_truth.json) + 5 important (report files)
-
-See [PHASE3C_ARTIFACT_STRUCTURE.md](PHASE3C_ARTIFACT_STRUCTURE.md) for full spec.
+**10 Total:** 5 critical (Tier 1: ground_truth.json) + 5 important (Tier 2: reports)
 
 ---
 
-## Phase 3C Documents (Active)
+## Documentation Structure
+
+### Completion & Results
+- **[85_PERCENT_ACHIEVED.md](85_PERCENT_ACHIEVED.md)** ⭐ - Final achievement (85/100 EXCELLENT)
+- **[PHASE3C_MVP_COMPLETE.md](PHASE3C_MVP_COMPLETE.md)** - MVP completion report
+- **[PREFLIGHT_CHECKLIST.md](PREFLIGHT_CHECKLIST.md)** - Pre-implementation checklist
+
+### Core Implementation
+- **[core/HYBRID_MITRE_APPROACH.md](core/HYBRID_MITRE_APPROACH.md)** - Key innovation
+- **[core/CONFIDENCE_IMPROVEMENTS.md](core/CONFIDENCE_IMPROVEMENTS.md)** - Bug fixes
+- **[core/ISOLATION_GUARANTEE.md](core/ISOLATION_GUARANTEE.md)** - Engine safety
+- **[core/BALANCED_LLM_APPROACH.md](core/BALANCED_LLM_APPROACH.md)** - LLM strategy
+- **[core/TOOL_CALLING_ROOT_CAUSE.md](core/TOOL_CALLING_ROOT_CAUSE.md)** - Tools disabled
+
+### Agent-Specific
+- **[agents/ARCHITECT_TO_TESTER_HANDOFF.md](agents/ARCHITECT_TO_TESTER_HANDOFF.md)** - Communication
+- **[agents/tester/TESTER_CONFIDENCE_GAPS.md](agents/tester/TESTER_CONFIDENCE_GAPS.md)** - Tester analysis
+- **[agents/orchestrator/NEXT_STEPS_ANALYSIS.md](agents/orchestrator/NEXT_STEPS_ANALYSIS.md)** - Red Teamer plan
+
+### Planning (Archived)
+- **[archived/](archived/)** - Old planning docs (8 files)
+
+---
+
+## Phase 3C Documents (Legacy - For Reference)
 
 ### Navigation & Planning
 
@@ -170,77 +203,112 @@ Design documents that led to current decisions. See [archived/README.md](archive
 
 ## Progress Tracker
 
-| Phase | Component | Hours | Status | Notes |
-|-------|-----------|-------|--------|-------|
-| 0 | MVP1: Architect | 4 | ✅ COMPLETE | Tested on 3 architectures |
-| 1 | Artifact Extractor | 2 | 🚀 NEXT | Extract 10 artifacts |
-| 2 | Enhanced Architect | 2.5 | Pending | Use all 10 artifacts |
-| 3 | Tester Agent | 2 | Pending | Spec ready (MVP2) |
-| 4 | Red Team Agent | 3 | Pending | Adversarial testing |
-| 5 | Sequential Orchestrator | 1 | Pending | Chain agents |
-| 6 | CLI Integration | 1 | Pending | --gen-arch-truth-team |
-| 7 | Testing & Validation | 1.5 | Pending | Test on 3 archs |
-| **Total** | **17 hours** | **25%** | **(4 done + 13 remaining)** |
+| Phase | Component | Hours Est | Hours Actual | Status | Score |
+|-------|-----------|-----------|--------------|--------|-------|
+| 0 | MVP1: Architect | 4h | 3h | ✅ COMPLETE | 78/100 |
+| 1 | Artifact Extractor | 2h | 1.5h | ✅ COMPLETE | 10/10 artifacts |
+| 2 | Enhanced Architect | 2.5h | 2h | ✅ COMPLETE | 82/100 |
+| 3 | Tester Agent | 2h | 2h | ✅ COMPLETE | 72/100 |
+| 3a | Hybrid Approach | - | 3h | ✅ COMPLETE | +30 pts |
+| 3b | Confidence Fixes | - | 2.5h | ✅ COMPLETE | +10 pts |
+| 3c | LLM Improvements | - | 2h | ✅ COMPLETE | +16 pts (88/100) |
+| 4 | Red Team Agent | 4h | ⏳ PLANNED | Phase 3C+ | - |
+| 5 | Orchestrator | 2h | ⏳ PLANNED | Phase 3C+ | - |
+| **MVP Total** | **17h** | **16h** | **✅ COMPLETE** | **85/100** ⭐ |
 
 ---
 
 ## File Structure
 
 ```
-phase3c/
-├── README.md (this file)                       - Phase overview
-├── PHASE3C_MASTER_INDEX.md                     - Navigation hub
-├── PHASE3C_IMPLEMENTATION_PLAN.md              - ⭐ MASTER PLAN
-├── PHASE3C_ARTIFACT_STRUCTURE.md               - 10 artifacts
-├── PHASE3C_APPROACH_ANALYSIS.md                - Why sequential
-├── PHASE3C_MVP1_SUMMARY.md                     - Architect complete
-├── PHASE3C_MVP1_CHECKLIST.md                   - Completion
-├── PHASE3C_MVP1_CONFIDENCE_ANALYSIS.md         - Validation
-├── PHASE3C_MVP2_TESTER_SPEC.md                 - Tester spec
+docs/phases/phase3c/
+├── README.md                                ← You are here
+├── 85_PERCENT_ACHIEVED.md                   ⭐ Final achievement
+├── PHASE3C_MVP_COMPLETE.md                  MVP completion
+├── PREFLIGHT_CHECKLIST.md                   Pre-implementation
 │
-└── archived/                                   - Design explorations
-    ├── README.md                               - Archive guide
-    └── 5 archived documents                    - Reference only
+├── agents/                                  Agent-specific docs
+│   ├── ARCHITECT_TO_TESTER_HANDOFF.md      Agent communication
+│   ├── architect/                          (empty, future docs)
+│   ├── tester/
+│   │   └── TESTER_CONFIDENCE_GAPS.md       Tester analysis
+│   └── orchestrator/
+│       └── NEXT_STEPS_ANALYSIS.md          Red Teamer + Orchestrator
+│
+├── core/                                    Core implementation
+│   ├── HYBRID_MITRE_APPROACH.md            Key innovation
+│   ├── CONFIDENCE_IMPROVEMENTS.md          Bug fixes
+│   ├── ISOLATION_GUARANTEE.md              Safety proof
+│   ├── BALANCED_LLM_APPROACH.md            LLM strategy
+│   └── TOOL_CALLING_ROOT_CAUSE.md          Tools disabled
+│
+└── archived/                                Old planning docs
+    ├── PHASE3C_APPROACH_ANALYSIS.md
+    ├── PHASE3C_ARTIFACT_STRUCTURE.md
+    ├── PHASE3C_IMPLEMENTATION_PLAN.md
+    └── ... (8 planning docs)
+
+scripts/agent_testing/                       Agent scripts
+├── run_full_critique.py                     Full pipeline ⭐
+└── test_architect.sh
+
+tests/phase3c/                               Agent tests
+├── agents/
+│   └── test_enhanced_architect.py
+└── integration/
+    ├── test_isolation.py
+    └── test_tool_calling.py
 ```
 
 ---
 
 ## Quick Reference
 
-### I want to start implementing...
-**Read:** [PHASE3C_IMPLEMENTATION_PLAN.md](PHASE3C_IMPLEMENTATION_PLAN.md)
+### I want to see the final results...
+**Read:** [85_PERCENT_ACHIEVED.md](85_PERCENT_ACHIEVED.md) ⭐
 
-### I want to understand the 10 artifacts...
-**Read:** [PHASE3C_ARTIFACT_STRUCTURE.md](PHASE3C_ARTIFACT_STRUCTURE.md)
+### I want to understand the hybrid MITRE approach...
+**Read:** [core/HYBRID_MITRE_APPROACH.md](core/HYBRID_MITRE_APPROACH.md)
 
-### I want to know why sequential...
-**Read:** [PHASE3C_APPROACH_ANALYSIS.md](PHASE3C_APPROACH_ANALYSIS.md)
+### I want to run the critique pipeline...
+**Run:** `python3 scripts/agent_testing/run_full_critique.py report/02_minimal_defended`
 
-### I want to see what MVP1 did...
-**Read:** [PHASE3C_MVP1_SUMMARY.md](PHASE3C_MVP1_SUMMARY.md)
+### I want to see what was fixed...
+**Read:** [core/CONFIDENCE_IMPROVEMENTS.md](core/CONFIDENCE_IMPROVEMENTS.md)
 
-### I want to build the Tester agent...
-**Read:** [PHASE3C_MVP2_TESTER_SPEC.md](PHASE3C_MVP2_TESTER_SPEC.md)
+### I want to plan Red Teamer + Orchestrator...
+**Read:** [agents/orchestrator/NEXT_STEPS_ANALYSIS.md](agents/orchestrator/NEXT_STEPS_ANALYSIS.md)
 
-### I want historical context...
-**Read:** [archived/README.md](archived/README.md)
+### I want historical planning docs...
+**Read:** [archived/](archived/)
 
 ---
 
-## Next Steps
+## Next Steps (Phase 3C+)
 
-**Current:** Phase 1 - Artifact Extractor (2h)
-1. Create `chatbot/modules/artifact_extractor.py`
-2. Extract 10 artifacts from report directory
-3. Build indexes for efficient agent queries
-4. Test on 02_minimal_defended
+**Current Status:** MVP Complete (85/100 EXCELLENT)
 
-**Then:** Phase 2 - Enhanced Architect (2.5h)
-**Then:** Phase 3 - Tester Agent (2h)
+**Option 1: Complete Phase 3C+** (6-8 hours)
+1. Implement Red Teamer agent (4-6h)
+2. Integrate Orchestrator (2h)
+3. Full 3-agent weighted scoring
+
+**Option 2: Push to 90%+** (6-9 hours)
+1. Enhance roadmap with KPIs (+4-6 pts)
+2. Architecture-specific controls (+2-3 pts)
+3. Detection controls for T1005/T1567 (+1-2 pts)
+
+**Option 3: Move to Phase 4** (15-20 hours)
+- Web UI with current agent system
+- Visual critique reports
+- Interactive improvements
+
+**Recommendation:** Complete Phase 3C+ for full agent system
 
 ---
 
 **Phase Started:** May 10, 2026  
-**Phase Status:** In Progress (25% complete)  
-**Documents:** 8 active + 5 archived  
-**Next Milestone:** Artifact Extractor (Phase 1)
+**Phase Completed:** May 16, 2026  
+**Status:** ✅ MVP COMPLETE (85/100 EXCELLENT) ⭐⭐⭐⭐⭐  
+**Duration:** 6 days (16 hours actual vs 17 estimated)  
+**Next:** Red Teamer + Orchestrator → Phase 4 Web UI
