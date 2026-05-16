@@ -464,6 +464,30 @@ VALIDATION RULES:
 ✅ VALID: Control implements M1016 AND it's applied only where MITRE says it's valid (T1190)
 ❌ INVALID: Control claims M1016 addresses T1059 (M1016 not in T1059's MITRE mitigation list)
 
+**COMMON MISTAKE TO AVOID:**
+❌ WRONG: "LEAST PRIVILEGE implements M1016, so it must claim M1016 for all techniques"
+✅ RIGHT: "LEAST PRIVILEGE shows T1059 ← M1026, M1042 (NOT M1016), so only validate M1026/M1042 for T1059"
+
+**HOW TO READ THE CONTROL FORMAT:**
+```
+Control: LEAST PRIVILEGE
+  Implements mitigations (defense-in-depth): M1016, M1018, M1026, M1042
+  Per-technique mappings (validate these against MITRE):
+    • T1059 ← mitigated by: M1026, M1042
+    • T1190 ← mitigated by: M1016, M1026
+    • T1213 ← mitigated by: M1018
+```
+
+WHAT TO VALIDATE:
+- T1059: Check if M1026 and M1042 are valid (YES, they are) ✅
+- T1190: Check if M1016 and M1026 are valid (YES, they are) ✅
+- T1213: Check if M1018 is valid (YES, it is) ✅
+
+WHAT NOT TO DO:
+- ❌ DON'T check if M1016 is valid for T1059 (it's not claimed for T1059!)
+- ❌ DON'T check if M1018 is valid for T1059 (it's not claimed for T1059!)
+- ❌ DON'T assume "Implements M1016" means it claims M1016 for ALL techniques
+
 1. VALIDATE MITRE MAPPINGS (USE HYBRID STRUCTURE - READ CAREFULLY):
    For each control, check:
    a) If control shows "Per-technique mappings (validate these against MITRE)":
@@ -478,6 +502,7 @@ VALIDATION RULES:
    c) Calculate actual coverage: valid_mappings / total_claimed_mappings
 
    CRITICAL: Read the per-technique mappings line by line. Do not infer mappings from the full mitigation list.
+   CRITICAL: The arrow "←" means "is mitigated by". Only validate what's after the arrow.
 
 2. CHECK INTERNAL CONSISTENCY:
    - Do rationales match control inventory?
