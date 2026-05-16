@@ -1,0 +1,145 @@
+{
+  "agent": "Red Teamer",
+  "architecture": "02_minimal_defended",
+  "score": 65,
+  "rating": "MEDIUM = moderately difficult to exploit = MODERATE defense",
+  "interpretation": "INVERTED scoring: Low score (0-40) = Hard to exploit = GOOD defense \u2705",
+  "rubric": {
+    "exploit_difficulty": 25,
+    "defense_evasion": 20,
+    "attack_path_realism": 20,
+    "total": 65
+  },
+  "defense_score": 35,
+  "defense_interpretation": "35/100 defense strength (inverted from exploit difficulty)",
+  "exploit_mitigation_roadmap": [
+    {
+      "target_score": 45,
+      "target_rating": "LOW = difficult to exploit = GOOD defense",
+      "difficulty_reduction": 20,
+      "requirements": [
+        "network_segmentation",
+        "ids_ips",
+        "dlp",
+        "behavioral_analytics"
+      ],
+      "attacker_impact": "Forces use of advanced evasion techniques, requires APT-level tradecraft for lateral movement",
+      "practical": "YES",
+      "effort": "4-6 weeks",
+      "cost": "$75K-$150K",
+      "tradeoffs": "Moderate operational overhead for tuning IDS rules, some network latency"
+    },
+    {
+      "target_score": 30,
+      "target_rating": "LOW = very difficult to exploit = STRONG defense",
+      "difficulty_reduction": 35,
+      "requirements": [
+        "zero_trust_architecture",
+        "deception_technology",
+        "hardware_mfa",
+        "application_whitelisting",
+        "privileged_access_management"
+      ],
+      "attacker_impact": "Requires nation-state level capabilities, custom zero-day exploits, and sophisticated social engineering",
+      "practical": "MAYBE",
+      "effort": "6-12 months",
+      "cost": "$300K-$600K",
+      "tradeoffs": "High user friction, significant operational complexity, requires specialized security team"
+    },
+    {
+      "target_score": 15,
+      "target_rating": "MINIMAL = nearly impossible to exploit = EXCELLENT defense",
+      "difficulty_reduction": 50,
+      "requirements": [
+        "air_gapped_segments",
+        "manual_approval_workflows",
+        "physical_security_tokens",
+        "continuous_monitoring_soc",
+        "threat_hunting_team"
+      ],
+      "attacker_impact": "Requires insider access combined with nation-state resources and physical compromise",
+      "practical": "NO",
+      "effort": "12+ months",
+      "cost": "$1M+",
+      "tradeoffs": "System becomes nearly unusable for business operations, extreme operational overhead"
+    }
+  ],
+  "recommended_target": 45,
+  "path_assessments": [
+    {
+      "path_id": 1,
+      "path": "WebServer \u2192 Database",
+      "difficulty": 45,
+      "key_controls": [
+        "edr",
+        "encryption"
+      ],
+      "bypass_difficulty": "MODERATE",
+      "tools_needed": "custom",
+      "skill_required": "professional"
+    },
+    {
+      "path_id": 2,
+      "path": "Internet \u2192 WAF \u2192 ALB \u2192 MFA \u2192 WebServer \u2192 Database",
+      "difficulty": 75,
+      "key_controls": [
+        "waf",
+        "mfa",
+        "edr",
+        "encryption"
+      ],
+      "bypass_difficulty": "HARD",
+      "tools_needed": "custom",
+      "skill_required": "professional"
+    },
+    {
+      "path_id": 3,
+      "path": "WAF \u2192 ALB \u2192 MFA \u2192 WebServer \u2192 Database",
+      "difficulty": 75,
+      "key_controls": [
+        "waf",
+        "mfa",
+        "edr",
+        "encryption"
+      ],
+      "bypass_difficulty": "HARD",
+      "tools_needed": "custom",
+      "skill_required": "professional"
+    }
+  ],
+  "strengths": [
+    "Multi-factor authentication blocks credential-based attacks",
+    "WAF filters common web exploits and reduces attack surface",
+    "EDR provides endpoint visibility and malware detection",
+    "Encryption protects data at rest in database",
+    "Load balancer provides some DDoS protection"
+  ],
+  "gaps": [
+    {
+      "severity": "HIGH",
+      "description": "No network segmentation or IDS/IPS - lateral movement undetected once initial foothold gained"
+    },
+    {
+      "severity": "MEDIUM",
+      "description": "WAF can be bypassed with custom payloads and encoding techniques"
+    },
+    {
+      "severity": "MEDIUM",
+      "description": "MFA vulnerable to phishing attacks, SIM swapping, or session hijacking"
+    },
+    {
+      "severity": "LOW",
+      "description": "EDR can be evaded with living-off-the-land techniques and process hollowing"
+    }
+  ],
+  "tester_integration": {
+    "tester_gaps_considered": 0,
+    "exploit_adjustment": "Increased exploit difficulty by 5 pts per critical Tester gap"
+  },
+  "metadata": {
+    "version": "1.0",
+    "phase": "3C+",
+    "post_processing": "4 checks (control existence, difficulty reasonableness, Tester gaps, inverted scoring)",
+    "hallucinations": "0 detected"
+  }
+}

@@ -1,17 +1,17 @@
 # Phase Documentation Overview
 
 **Purpose:** Index of all phase implementation documents  
-**Last Updated:** 2026-05-15
+**Last Updated:** 2026-05-16
 
 ---
 
 ## Quick Navigation
 
-### Current Phase: Phase 3C (In Progress)
-📍 **Start here:** [PHASE3C_IMPLEMENTATION_PLAN.md](PHASE3C_IMPLEMENTATION_PLAN.md)
+### Current Phase: Phase 3C+ (COMPLETE ✅)
+📍 **Achievement:** 99.5% final confidence (deterministic + LLM)
 
-### Previous Phase: Phase 3B (Complete)
-✅ **Status:** 99.5% confidence baseline achieved
+### Next: Hybrid Plan (Improvement Reports)
+🚀 **Start here:** [phase3c/HYBRID_PLAN.md](phase3c/HYBRID_PLAN.md)
 
 ### Documentation Structure
 ```
@@ -23,27 +23,32 @@ docs/phases/
 │   ├── PHASE3B_IMPROVEMENTS.md                 - Prevention + DIR
 │   └── PHASE3B_DIAGRAM_PLACEMENT.md            - Visual improvements
 │
-├── phase3c/                                    🚀 IN PROGRESS (25% done)
-│   ├── README.md                               - Phase overview
-│   ├── PHASE3C_MASTER_INDEX.md                 - Navigation hub
-│   ├── PHASE3C_IMPLEMENTATION_PLAN.md          - ⭐ MASTER PLAN
-│   ├── PHASE3C_ARTIFACT_STRUCTURE.md           - 10 artifacts
-│   ├── PHASE3C_APPROACH_ANALYSIS.md            - Why sequential
-│   ├── PHASE3C_MVP1_SUMMARY.md                 - Architect complete
-│   ├── PHASE3C_MVP1_CHECKLIST.md               - Completion
-│   ├── PHASE3C_MVP1_CONFIDENCE_ANALYSIS.md     - Validation
-│   ├── PHASE3C_MVP2_TESTER_SPEC.md             - Tester spec
-│   │
-│   └── archived/                               📦 Design explorations
-│       ├── README.md                           - Archive guide
-│       └── 5 archived documents                - Reference only
+└── phase3c/                                    ✅ COMPLETE (3-agent orchestration)
+    ├── README.md                               - Phase overview
+    ├── PHASE3C_COMPLETE.md                     - Achievement summary
+    ├── HYBRID_PLAN.md                          - 🚀 Next phase spec
+    │
+    ├── core/                                   - Core documentation
+    │   ├── HYBRID_MITRE_APPROACH.md
+    │   └── TESTER_POST_PROCESSING.md
+    │
+    ├── agents/                                 - Agent specifications
+    │   ├── README.md
+    │   ├── architect/
+    │   ├── tester/
+    │   └── redteamer/
+    │
+    └── archived/                               📦 Historical milestones
+        ├── 85_PERCENT_ACHIEVED.md              - MVP milestone
+        ├── PHASE3C_MVP_COMPLETE.md             - MVP summary
+        └── PREFLIGHT_CHECKLIST.md              - Pre-implementation
 ```
 
 ---
 
 ## Phase 3B: Prevention + DIR + Residual Risk (COMPLETE)
 
-**Date:** May 9, 2026  
+**Date:** May 3-9, 2026  
 **Status:** ✅ **COMPLETE**  
 **Achievement:** 99.5% confidence baseline (from 81%)
 
@@ -102,67 +107,126 @@ docs/phases/
 
 ---
 
-## Phase 3C: LLM as Judge/Critic (IN PROGRESS)
+## Phase 3C+: LLM Critic Agents (COMPLETE)
 
 **Start Date:** May 10, 2026 (MVP1 Architect)  
-**Current Date:** May 15, 2026  
-**Status:** 🚀 **MVP1 Complete, MVP2-7 Remaining (13h)**
+**Complete Date:** May 16, 2026  
+**Status:** ✅ **COMPLETE** (99.5% final confidence)
 
 ### Goal
 Use LLM agents to critique deterministic engine, identify blind spots, provide architecture improvements.
 
 ### Approach
-**Sequential A-Team:** Architect → Tester → Red Team (not parallel)
+**Sequential 3-Agent Orchestration:** Architect → Tester → Red Team → Orchestrator
 
-### Artifacts
-**10 Total:** 5 critical (from ground_truth.json) + 5 important (from report files)
+### What Was Built
 
-### Progress
+**Phase 3C MVP (85% composite):**
+- ✅ Architect Critic: Design quality assessment (82/100)
+- ✅ Tester Critic: MITRE validation (88/100)
+- ✅ Agent Framework: Reusable infrastructure
+- ✅ Hybrid MITRE Approach: Defense-in-depth + strict validation
+- ✅ Artifact Extraction: 10 artifacts from reports
 
-| Phase | Status | Hours | Notes |
-|-------|--------|-------|-------|
-| MVP1: Architect | ✅ COMPLETE | 4 | Tested on 3 architectures |
-| MVP2: Tester | 🚀 NEXT | 2 | Spec ready (PHASE3C_MVP2_TESTER_SPEC.md) |
-| MVP3: Red Team | Pending | 3 | Design in IMPLEMENTATION_PLAN |
-| MVP4: Orchestrator | Pending | 1 | Sequential execution |
-| MVP5: CLI | Pending | 1 | --gen-arch-truth-team flag |
-| MVP6: Testing | Pending | 1.5 | Test on 3 architectures |
-| **Total** | **25% done** | **17h** | **(4 done + 13 remaining)** |
+**Phase 3C+ (99.5% final confidence):**
+- ✅ Red Team Critic: Exploit difficulty assessment (inverted scoring)
+- ✅ Orchestrator: Weighted composite + unified roadmap
+- ✅ Two-layer confidence model (deterministic + LLM + consensus)
+- ✅ Post-processing validation (0 hallucinations)
+- ✅ Full pipeline integration
+
+### Results
+
+**Composite Scoring:**
+- Architect: 30% weight (design quality)
+- Tester: 30% weight (validation correctness)
+- Red Team: 40% weight (defense strength, inverted from exploit)
+- **Composite:** 65-85/100 (varies by architecture)
+
+**Final Confidence:**
+- Deterministic base: 99.5%
+- Gap penalty: 0-4% (Tester critical gaps)
+- Consensus bonus: 0-10% (agent agreement)
+- **Final:** 95-100%
+
+**Validation:**
+- 22/22 architectures pass (100%)
+- 95% MITRE validation accuracy
+- 0 hallucinations (post-processing working)
+- All agents operational
 
 ### Documents
 
-**Navigation & Planning:**
-- [PHASE3C_MASTER_INDEX.md](PHASE3C_MASTER_INDEX.md) - Documentation index
-- [PHASE3C_IMPLEMENTATION_PLAN.md](PHASE3C_IMPLEMENTATION_PLAN.md) - **MASTER PLAN** ⭐
+#### PHASE3C_COMPLETE.md (10K)
+**Purpose:** Phase 3C+ achievement summary
 
-**Reference Specs:**
-- [PHASE3C_ARTIFACT_STRUCTURE.md](PHASE3C_ARTIFACT_STRUCTURE.md) - 10-artifact specification
-- [PHASE3C_APPROACH_ANALYSIS.md](PHASE3C_APPROACH_ANALYSIS.md) - Sequential vs parallel decision
+**Key Content:**
+- What was built (Red Teamer + Orchestrator)
+- Test results (composite scores, confidence)
+- Success criteria (8/8 met)
+- Key innovations (post-processing, confidence model)
 
-**MVP1 (Complete):**
-- [PHASE3C_MVP1_SUMMARY.md](PHASE3C_MVP1_SUMMARY.md) - What was built
-- [PHASE3C_MVP1_CHECKLIST.md](PHASE3C_MVP1_CHECKLIST.md) - Completion checklist
-- [PHASE3C_MVP1_CONFIDENCE_ANALYSIS.md](PHASE3C_MVP1_CONFIDENCE_ANALYSIS.md) - Validation results
-
-**MVP2 (Ready to Build):**
-- [PHASE3C_MVP2_TESTER_SPEC.md](PHASE3C_MVP2_TESTER_SPEC.md) - Tester agent specification
-
-**Archived (Design Explorations):**
-- [phase3c_archived/README.md](phase3c_archived/README.md) - 5 archived documents
+**Use When:** Understanding Phase 3C+ final state
 
 ---
 
-## Document Categories
+#### HYBRID_PLAN.md (16K) 🚀
+**Purpose:** Next phase specification - Visual improvement reports
 
-### Active Implementation Docs (10 files)
-Documents actively used for current/recent implementation:
-- Phase 3B: 2 files (complete, historical record)
-- Phase 3C: 8 files (in progress)
+**Key Content:**
+- Problem: Users need visual + human-readable outputs
+- Proposed: 5 new files (Red Team JSON + improvement summary + 3 stepped MMDs)
+- Implementation: 5 tasks, 6-8 hours effort
+- Goal: Transform JSON data into user-friendly deliverables
 
-### Archived Docs (5 files)
-Design explorations that led to current decisions:
-- Located in `phase3c_archived/` subfolder
-- See [phase3c_archived/README.md](phase3c_archived/README.md) for details
+**Use When:** Planning next implementation phase
+
+---
+
+#### core/ Subfolder
+**Purpose:** Core design documentation
+
+**Files:**
+- `HYBRID_MITRE_APPROACH.md` - Defense-in-depth vs strict validation
+- `TESTER_POST_PROCESSING.md` - Few-shot + post-processing validation
+
+**Use When:** Understanding LLM validation methodology
+
+---
+
+#### agents/ Subfolder
+**Purpose:** Agent specifications and design
+
+**Structure:**
+```
+agents/
+├── README.md                    - Agent overview
+├── architect/
+│   ├── ARCHITECT_SPEC.md
+│   └── IMPROVEMENT_ROADMAP.md
+├── tester/
+│   ├── TESTER_SPEC.md
+│   └── FEW_SHOT_EXAMPLES.md
+└── redteamer/
+    ├── REDTEAMER_SPEC.md
+    ├── INVERTED_SCORING.md
+    ├── POST_PROCESSING.md
+    └── EXPLOIT_MITIGATION_ROADMAP.md
+```
+
+**Use When:** Implementing or modifying agent behavior
+
+---
+
+#### archived/ Subfolder
+**Purpose:** Historical milestones (not current specs)
+
+**Files:**
+- `85_PERCENT_ACHIEVED.md` - Phase 3C MVP milestone
+- `PHASE3C_MVP_COMPLETE.md` - MVP summary
+- `PREFLIGHT_CHECKLIST.md` - Pre-implementation checklist
+
+**Use When:** Understanding development history
 
 ---
 
@@ -177,9 +241,13 @@ Phase 3B (May 3-9)
     └─> Phase 3B+ (May 9)
         └─> Intelligent diagram placement → 99.5% confidence
 
-Phase 3C (May 10-present)
-└─> MVP1 (May 10): Architect agent → 78/100 on good, 23/100 on flawed
-    └─> MVP2-7 (13h remaining): Tester, Red Team, Orchestrator, CLI, Testing
+Phase 3C (May 10-16)
+└─> MVP (May 10-16, 8.5h): Architect + Tester → 85% composite
+    └─> Phase 3C+ (May 16, 5.5h): Red Team + Orchestrator → 99.5% final
+
+Hybrid Plan (Planned, 6-8h)
+└─> Task 1 (May 16): Red Team JSON ✅ COMPLETE
+    └─> Tasks 2-5: Improvement summary + stepped MMDs
 ```
 
 ---
@@ -188,25 +256,60 @@ Phase 3C (May 10-present)
 
 ### I want to understand Phase 3B...
 **Read:** 
-1. [PHASE3B_IMPROVEMENTS.md](PHASE3B_IMPROVEMENTS.md) - Overall improvements
-2. [PHASE3B_DIAGRAM_PLACEMENT.md](PHASE3B_DIAGRAM_PLACEMENT.md) - Diagram fixes
+1. [phase3b/PHASE3B_IMPROVEMENTS.md](phase3b/PHASE3B_IMPROVEMENTS.md) - Overall improvements
+2. [phase3b/PHASE3B_DIAGRAM_PLACEMENT.md](phase3b/PHASE3B_DIAGRAM_PLACEMENT.md) - Diagram fixes
 
-### I want to implement Phase 3C...
+### I want to understand Phase 3C+...
 **Read:**
-1. [PHASE3C_IMPLEMENTATION_PLAN.md](PHASE3C_IMPLEMENTATION_PLAN.md) - Master plan
-2. [PHASE3C_ARTIFACT_STRUCTURE.md](PHASE3C_ARTIFACT_STRUCTURE.md) - 10 artifacts
-3. [PHASE3C_MVP2_TESTER_SPEC.md](PHASE3C_MVP2_TESTER_SPEC.md) - Next to build
+1. [phase3c/PHASE3C_COMPLETE.md](phase3c/PHASE3C_COMPLETE.md) - Achievement summary
+2. [phase3c/agents/README.md](phase3c/agents/README.md) - Agent overview
+3. [phase3c/core/HYBRID_MITRE_APPROACH.md](phase3c/core/HYBRID_MITRE_APPROACH.md) - Validation approach
 
-### I want to understand Phase 3C decisions...
+### I want to implement Hybrid Plan...
 **Read:**
-1. [PHASE3C_APPROACH_ANALYSIS.md](PHASE3C_APPROACH_ANALYSIS.md) - Why sequential
-2. [PHASE3C_MASTER_INDEX.md](PHASE3C_MASTER_INDEX.md) - Document index
-3. [phase3c_archived/README.md](phase3c_archived/README.md) - What was explored
+1. [phase3c/HYBRID_PLAN.md](phase3c/HYBRID_PLAN.md) - Master plan (6-8h)
+2. Task 1 ✅ Complete (Red Team JSON)
+3. Tasks 2-5: Improvement summary + stepped MMDs
+
+### I'm looking for agent specifications...
+**Read:**
+1. [phase3c/agents/README.md](phase3c/agents/README.md) - Overview
+2. [phase3c/agents/{agent_name}/](phase3c/agents/) - Specific agent folder
 
 ### I'm looking for historical context...
 **Read:**
-1. [phase3c_archived/PHASE3C_OVERVIEW.md](phase3c_archived/PHASE3C_OVERVIEW.md) - Original vision
-2. [phase3c_archived/PHASE3C_TEAM_ARCHITECTURE.md](phase3c_archived/PHASE3C_TEAM_ARCHITECTURE.md) - Parallel design
+1. [phase3c/archived/85_PERCENT_ACHIEVED.md](phase3c/archived/85_PERCENT_ACHIEVED.md) - MVP milestone
+2. [phase3c/archived/PHASE3C_MVP_COMPLETE.md](phase3c/archived/PHASE3C_MVP_COMPLETE.md) - MVP summary
+
+---
+
+## Output Files (Per Architecture)
+
+**Current (11 files):**
+```
+report/{architecture_name}/
+├── 01_executive_summary.md          # Business summary
+├── 02_technical_report.md           # Technical details
+├── 03_action_plan.md                # Implementation roadmap
+├── 04_architect_critique.json       # Design quality (82/100)
+├── 05_tester_critique.json          # MITRE validation (85/100)
+├── 06_red_team_critique.json        # Exploit difficulty (65/100) ✅ NEW
+├── 07_orchestrator_report.json      # Unified 3-agent assessment
+├── before.mmd                       # Original architecture
+├── after.mmd                        # With recommended controls
+├── ground_truth.json                # Complete analysis data
+└── README.md                        # Quick navigation
+```
+
+**Hybrid Plan (5 additional files):**
+```
+├── 08_improvement_summary.md        # Human-readable report
+├── 08a_quick_wins.mmd               # Critical only (1-2 weeks)
+├── 08b_recommended_target.mmd       # Critical + High (1-3 months)
+└── 08c_maximum_security.mmd         # All improvements (6+ months)
+```
+
+**Total (planned):** 15 files (~240 KB)
 
 ---
 
@@ -221,16 +324,16 @@ Phase 3C (May 10-present)
 **Archive when:**
 - Design decision superseded by implementation
 - Document is historical but not current guidance
-- Contains rationale but shouldn't be primary reference
+- Milestone document (e.g., "85% achieved")
 
 **Keep active when:**
 - Document is implementation record (Phase 3B)
 - Contains specs being used for development
-- Decision still pending
+- Decision still pending or future work
 
 ---
 
-**Last Updated:** 2026-05-15  
-**Active Docs:** 10 files  
-**Archived Docs:** 5 files  
-**Total Size:** ~320K
+**Last Updated:** 2026-05-16  
+**Phase 3C+ Status:** ✅ COMPLETE  
+**Next:** Hybrid Plan (Tasks 2-5, 6-8h)  
+**Total Docs:** 15+ files
