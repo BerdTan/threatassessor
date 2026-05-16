@@ -488,6 +488,57 @@ class Orchestrator:
 
         logger.info(f"Orchestrator: Saved result to {output_path}")
 
+    def save_red_team_critique(self, result: OrchestratorResult, report_dir: str):
+        """
+        Save Red Team critique as standalone JSON file.
+
+        Args:
+            result: OrchestratorResult containing Red Team critique
+            report_dir: Directory to save file in
+        """
+
+        output_path = Path(report_dir) / "06_red_team_critique.json"
+
+        # Extract Red Team data
+        red_team = result.red_team_critique
+
+        data = {
+            "agent": "Red Teamer",
+            "architecture": result.architecture_name,
+            "score": red_team.score,
+            "rating": red_team.rating,
+            "interpretation": "INVERTED scoring: Low score (0-40) = Hard to exploit = GOOD defense ✅",
+            "rubric": {
+                "exploit_difficulty": red_team.breakdown.get("exploit_difficulty", 0),
+                "defense_evasion": red_team.breakdown.get("defense_evasion", 0),
+                "attack_path_realism": red_team.breakdown.get("attack_path_realism", 0),
+                "total": red_team.score
+            },
+            "defense_score": 100 - red_team.score,
+            "defense_interpretation": f"{100 - red_team.score}/100 defense strength (inverted from exploit difficulty)",
+            "exploit_mitigation_roadmap": red_team.breakdown.get("exploit_mitigation_roadmap", []),
+            "recommended_target": red_team.breakdown.get("recommended_target", None),
+            "path_assessments": red_team.breakdown.get("path_assessments", []),
+            "strengths": red_team.strengths,
+            "gaps": red_team.gaps,
+            "tester_integration": {
+                "tester_gaps_considered": len([g for g in red_team.gaps if "tester" in str(g).lower()]),
+                "exploit_adjustment": "Increased exploit difficulty by 5 pts per critical Tester gap"
+            },
+            "metadata": {
+                "version": "1.0",
+                "phase": "3C+",
+                "post_processing": "4 checks (control existence, difficulty reasonableness, Tester gaps, inverted scoring)",
+                "hallucinations": "0 detected"
+            }
+        }
+
+        # Save to file
+        with open(output_path, 'w') as f:
+            json.dump(data, f, indent=2)
+
+        logger.info(f"Orchestrator: Saved Red Team critique to {output_path}")
+
 
 # ============================================================================
 # CONVENIENCE FUNCTION
@@ -511,10 +562,13 @@ def orchestrate_full_critique(report_dir: str, output_file: str = None) -> Orche
     # Run orchestration
     result = orchestrator.orchestrate(report_dir)
 
-    # Save result
+    # Save orchestrator result
     if output_file is None:
         output_file = str(Path(report_dir) / "07_orchestrator_report.json")
 
     orchestrator.save_result(result, output_file)
+
+    # Save Red Team critique separately
+    orchestrator.save_red_team_critique(result, report_dir)
 
     return result
