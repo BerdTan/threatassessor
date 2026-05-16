@@ -244,11 +244,19 @@ def format_controls_summary(controls: List[Dict]) -> str:
         score = control.get("score", 0)
 
         lines.append(f"  {idx}. {name.upper()} [{priority}] (score: {score:.1f})")
-        lines.append(f"     Implements mitigations (defense-in-depth): {', '.join(mits)}")
+
+        # Check for coverage note (explains why no techniques)
+        coverage_note = control.get("coverage_note")
+        if coverage_note:
+            lines.append(f"     Note: {coverage_note}")
+            lines.append(f"     No MITRE validation needed (preventive control, not runtime mitigation)")
+            continue  # Skip to next control
+
+        lines.append(f"     Implements mitigations (defense-in-depth): {', '.join(mits) if mits else '(none)'}")
 
         # HYBRID: Show per-technique coverage if available
         technique_coverage = control.get("technique_coverage", {})
-        if technique_coverage:
+        if len(techs) > 0 and technique_coverage is not None:
             lines.append(f"     Per-technique mappings (validate these against MITRE):")
             # Show first 5 techniques with their valid mitigations
             for tech_id in list(techs)[:5]:
@@ -260,6 +268,8 @@ def format_controls_summary(controls: List[Dict]) -> str:
             if len(techs) > 5:
                 lines.append(f"       ... +{len(techs) - 5} more techniques")
             lines.append(f"     IMPORTANT: Only validate the per-technique mappings above, NOT the full mitigation list")
+        elif len(techs) == 0:
+            lines.append(f"     No techniques mapped (preventive/detective control)")
         else:
             # Fallback: Old format (claims all mitigations for all techniques)
             lines.append(f"     Claims ALL mitigations apply to ALL techniques: {', '.join(techs)}")

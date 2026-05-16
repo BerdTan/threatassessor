@@ -277,21 +277,40 @@ class ArtifactExtractor:
         after_risks = gt.get("residual_risks_after", {})
 
         # Overall risk score
+        # BEFORE: Uses expected_risk_score (RAPIDS-driven, before controls)
+        # AFTER: Uses overall_residual (calculated residual after controls)
         before_score = gt.get("expected_risk_score", 0)
-        after_score = after_risks.get("overall_risk", before_score)  # Fallback to before if not present
+
+        # Try multiple field names for robustness
+        after_score = (
+            after_risks.get("overall_residual") or  # Correct field name
+            after_risks.get("overall_risk") or      # Fallback for compatibility
+            before_risks.get("overall_residual") or # Use before if after missing
+            before_score                             # Last resort: assume no change
+        )
 
         reduction = before_score - after_score
         reduction_pct = (reduction / before_score * 100) if before_score > 0 else 0
 
+        # Defensibility: percentage of threats in acceptable range
+        # Before: from RAPIDS assessment
+        # After: from residual risk calculation
+        before_defensibility = gt.get("expected_defensibility", 0)
+        after_defensibility = (
+            after_risks.get("overall_defensibility") or
+            after_risks.get("defensibility_pct") or
+            before_defensibility  # Fallback
+        )
+
         return {
             "before": {
                 "score": before_score,
-                "defensibility": gt.get("expected_defensibility", 0),
+                "defensibility": before_defensibility,
                 "risks": before_risks
             },
             "after": {
                 "score": after_score,
-                "defensibility": after_risks.get("overall_defensibility", 0),
+                "defensibility": after_defensibility,
                 "risks": after_risks
             },
             "reduction": {
