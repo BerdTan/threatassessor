@@ -2,8 +2,8 @@
 
 Production-ready CLI that analyzes architecture diagrams and generates comprehensive threat assessments with MITRE ATT&CK mapping.
 
-**Status:** ✅ v1.0 Production Ready (99.5% confidence)  
-**Core Feature:** Architecture diagram → Attack paths + Control recommendations + Residual risk (BEFORE/AFTER)
+**Status:** ✅ v1.1 Production Ready (99.5% deterministic + 85% LLM critique)  
+**Core Feature:** Architecture diagram → Attack paths + Control recommendations + Residual risk + LLM critique
 
 ---
 
@@ -12,17 +12,30 @@ Production-ready CLI that analyzes architecture diagrams and generates comprehen
 ```bash
 source .venv/bin/activate
 
-# 1. Validate architecture (checks for orphan nodes)
+# Interactive guided demo (recommended for first-time users)
+./demo_step_by_step.sh
+
+# Or try individual demos:
+./demo_architecture.sh          # Compare vulnerable vs defended architectures
+./demo_llm_critique.sh          # Deep-dive into LLM critic agents
+
+# For your own architecture:
+# 1. Validate (checks for orphan nodes)
 ./demo_architecture.sh --validate-orphan your_architecture.mmd
 
 # 2. Run threat analysis
 python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
 
-# 3. View reports
+# 3. Run LLM critique (optional, Phase 3C)
+python3 scripts/agent_testing/run_full_critique.py report/your_architecture
+
+# 4. View reports
 cd report/your_architecture/
 cat 01_executive_summary.md     # Business summary with ROI
 cat 02_technical_report.md      # MITRE mapping + attack paths
 cat 03_action_plan.md           # 8-week implementation roadmap
+cat 04_architect_critique.json  # Design quality assessment
+cat 05_tester_critique.json     # MITRE validation results
 ```
 
 **Output:** 3 reports + 2 diagrams (before/after) in `report/<architecture_name>/`
