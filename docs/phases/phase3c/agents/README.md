@@ -24,11 +24,21 @@ Documentation for the Tester critic agent.
 
 **Key Doc:** [tester/TESTER_CONFIDENCE_GAPS.md](tester/TESTER_CONFIDENCE_GAPS.md)
 
+### redteamer/
+Documentation for the Red Teamer critic agent.
+- Exploit difficulty assessment
+- Defense evasion analysis
+- Attack path realism validation
+
+**Status:** ⏳ Planned (Phase 3C+)
+
+**Key Doc:** [redteamer/REDTEAMER_IMPLEMENTATION_PLAN.md](redteamer/REDTEAMER_IMPLEMENTATION_PLAN.md)
+
 ### orchestrator/
-Documentation for the Orchestrator and Red Teamer.
-- Weighted scoring strategy
+Documentation for the Orchestrator agent.
+- Weighted scoring strategy (Architect 30% + Tester 30% + Red Team 40%)
 - Conflict resolution
-- Red Teamer specifications
+- 3-agent integration
 
 **Status:** ⏳ Planned (Phase 3C+)
 
