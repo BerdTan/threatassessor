@@ -1,0 +1,2997 @@
+{
+  "architecture": "01_minimal_vulnerable.mmd",
+  "description": "Web App architecture",
+  "controls_present": [],
+  "controls_missing": [
+    "least privilege",
+    "rate limiting",
+    "logging",
+    "patching",
+    "user training",
+    "backup",
+    "edr",
+    "waf",
+    "input validation",
+    "mfa",
+    "code signing",
+    "vulnerability scanning",
+    "network segmentation",
+    "audit log",
+    "behavioral analysis",
+    "dlp",
+    "web content filtering"
+  ],
+  "control_recommendations": [
+    {
+      "control": "least privilege",
+      "priority": "critical",
+      "score": 22.0,
+      "rapids_threats": [
+        "ransomware",
+        "phishing",
+        "insider_threat"
+      ],
+      "rapids_risk_score": 180,
+      "mitigations": [
+        "M1016",
+        "M1018",
+        "M1026",
+        "M1042"
+      ],
+      "techniques": [
+        "T1059",
+        "T1133",
+        "T1190",
+        "T1213",
+        "T1485",
+        "T1490"
+      ],
+      "attack_paths": [
+        0,
+        1
+      ],
+      "rationale": "RAPIDS: Ransomware, Phishing, Insider Threat | Confirmed by attack path(s) #1, #2",
+      "detailed_rationale": [
+        "Ransomware (risk=70/100): Reduce attack surface for privilege escalation",
+        "Phishing (risk=60/100): Limit damage from compromised accounts",
+        "Insider Threat (risk=50/100): Limit insider damage potential",
+        "Depth: MITIGATION:ISOLATE at data layer (At Database hop)"
+      ],
+      "dir_category": "isolate",
+      "layer": "data",
+      "placement": "At Database hop",
+      "control_type": "MITIGATION:ISOLATE",
+      "confidence": {
+        "score": 0.7911666666666667,
+        "level": "MEDIUM",
+        "breakdown": {
+          "overall": 0.74,
+          "technique_mapping": 0.84,
+          "mitigation_control_mapping": 0.57,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.5,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "2/2",
+            "mitigations_count": 4,
+            "techniques_count": 6
+          }
+        },
+        "validation_adjustment": 0.04666666666666667
+      },
+      "enhanced_rationale": "Mitigates T1059 in path(s) #1, T1133 in path(s) #1",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "rate limiting",
+      "priority": "critical",
+      "score": 17.0,
+      "rapids_threats": [
+        "application_vulns",
+        "dos"
+      ],
+      "rapids_risk_score": 150,
+      "mitigations": [
+        "M1033",
+        "M1035",
+        "M1037"
+      ],
+      "techniques": [
+        "T1059",
+        "T1133",
+        "T1190"
+      ],
+      "attack_paths": [
+        0
+      ],
+      "rationale": "RAPIDS: Application Vulns, Dos | Confirmed by attack path(s) #1",
+      "detailed_rationale": [
+        "Application Vulns (risk=80/100): Prevent brute force and enumeration",
+        "Dos (risk=70/100): Prevent resource exhaustion",
+        "Depth: PREVENTION at device layer (At Web Server hop)",
+        "Depth: PREVENTION at data layer (At Database hop)"
+      ],
+      "dir_category": "prevention",
+      "layer": "device",
+      "placement": "At Web Server hop",
+      "control_type": "PREVENTION",
+      "confidence": {
+        "score": 0.8666666666666666,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.82,
+          "technique_mapping": 0.9,
+          "mitigation_control_mapping": 0.57,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.9,
+          "architecture_relevance": 0.9,
+          "factors": {
+            "paths_addressed": "1/2",
+            "mitigations_count": 3,
+            "techniques_count": 3
+          }
+        },
+        "validation_adjustment": 0.04666666666666667
+      },
+      "enhanced_rationale": "Mitigates T1059 in path(s) #1, T1133 in path(s) #1",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "logging",
+      "priority": "critical",
+      "score": 15.0,
+      "rapids_threats": [
+        "phishing",
+        "insider_threat"
+      ],
+      "rapids_risk_score": 110,
+      "mitigations": [
+        "M1047"
+      ],
+      "techniques": [
+        "T1059",
+        "T1213"
+      ],
+      "attack_paths": [
+        0,
+        1
+      ],
+      "rationale": "RAPIDS: Phishing, Insider Threat | Confirmed by attack path(s) #1, #2",
+      "detailed_rationale": [
+        "Phishing (risk=60/100): Detect anomalous authentication patterns",
+        "Insider Threat (risk=50/100): Audit trail for forensics and detection"
+      ],
+      "dir_category": "detect",
+      "confidence": {
+        "score": 0.842,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.81,
+          "technique_mapping": 0.84,
+          "mitigation_control_mapping": 0.8,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.5,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "2/2",
+            "mitigations_count": 1,
+            "techniques_count": 2
+          }
+        },
+        "validation_adjustment": 0.03
+      },
+      "enhanced_rationale": "Mitigates T1059 in path(s) #1, T1213 in path(s) #1, #2",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "patching",
+      "priority": "high",
+      "score": 12.0,
+      "rapids_threats": [
+        "application_vulns"
+      ],
+      "rapids_risk_score": 80,
+      "mitigations": [
+        "M1017",
+        "M1051",
+        "M1054"
+      ],
+      "techniques": [
+        "T1190",
+        "T1203",
+        "T1213"
+      ],
+      "attack_paths": [
+        0,
+        1
+      ],
+      "rationale": "RAPIDS: Application Vulns | Confirmed by attack path(s) #1, #2",
+      "detailed_rationale": [
+        "Application Vulns (risk=80/100): Fix known CVEs in application stack"
+      ],
+      "dir_category": "prevention",
+      "confidence": {
+        "score": 0.8053333333333335,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.74,
+          "technique_mapping": 0.84,
+          "mitigation_control_mapping": 0.57,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.5,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "2/2",
+            "mitigations_count": 3,
+            "techniques_count": 3
+          }
+        },
+        "validation_adjustment": 0.06333333333333334
+      },
+      "enhanced_rationale": "Mitigates T1190 in path(s) #1, T1203 in path(s) #1",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "user training",
+      "priority": "high",
+      "score": 11.0,
+      "rapids_threats": [
+        "phishing",
+        "insider_threat"
+      ],
+      "rapids_risk_score": 110,
+      "mitigations": [],
+      "techniques": [],
+      "attack_paths": [],
+      "rationale": "RAPIDS: Phishing, Insider Threat",
+      "detailed_rationale": [
+        "Phishing (risk=60/100): Build human firewall",
+        "Insider Threat (risk=50/100): Awareness of insider threat indicators"
+      ],
+      "dir_category": "prevention",
+      "confidence": {
+        "score": 0.46,
+        "level": "LOW",
+        "breakdown": {
+          "overall": 0.46,
+          "technique_mapping": 0.5,
+          "mitigation_control_mapping": 0.5,
+          "attack_path_coverage": 0.0,
+          "rapids_validation": 0.9,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "0/2",
+            "mitigations_count": 0,
+            "techniques_count": 0
+          }
+        }
+      },
+      "enhanced_rationale": "Mitigates ",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "backup",
+      "priority": "high",
+      "score": 11.0,
+      "rapids_threats": [
+        "ransomware"
+      ],
+      "rapids_risk_score": 70,
+      "mitigations": [
+        "M1053"
+      ],
+      "techniques": [
+        "T1485",
+        "T1486",
+        "T1490"
+      ],
+      "attack_paths": [
+        0,
+        1
+      ],
+      "rationale": "RAPIDS: Ransomware | Confirmed by attack path(s) #1, #2",
+      "detailed_rationale": [
+        "Ransomware (risk=70/100): Data recovery is MANDATORY for ransomware resilience"
+      ],
+      "dir_category": "respond",
+      "confidence": {
+        "score": 1.0,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.91,
+          "technique_mapping": 0.84,
+          "mitigation_control_mapping": 1.0,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.9,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "2/2",
+            "mitigations_count": 1,
+            "techniques_count": 3
+          }
+        },
+        "validation_adjustment": 0.10333333333333333
+      },
+      "enhanced_rationale": "Mitigates T1485 in path(s) #1, #2, T1486 in path(s) #1, #2",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "edr",
+      "priority": "high",
+      "score": 11.0,
+      "rapids_threats": [
+        "ransomware"
+      ],
+      "rapids_risk_score": 70,
+      "mitigations": [
+        "M1040",
+        "M1049"
+      ],
+      "techniques": [
+        "T1059",
+        "T1486"
+      ],
+      "attack_paths": [
+        0,
+        1
+      ],
+      "rationale": "RAPIDS: Ransomware | Confirmed by attack path(s) #1, #2",
+      "detailed_rationale": [
+        "Ransomware (risk=70/100): Detect ransomware behavior before encryption",
+        "Depth: PREVENTION at device layer (At Web Server hop)",
+        "Depth: MITIGATION:DETECT at device layer (At Web Server hop)"
+      ],
+      "dir_category": "prevention",
+      "layer": "device",
+      "placement": "At Web Server hop",
+      "control_type": "PREVENTION",
+      "confidence": {
+        "score": 0.9269999999999999,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.84,
+          "technique_mapping": 0.84,
+          "mitigation_control_mapping": 0.75,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.9,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "2/2",
+            "mitigations_count": 2,
+            "techniques_count": 2
+          }
+        },
+        "validation_adjustment": 0.09
+      },
+      "enhanced_rationale": "Mitigates T1059 in path(s) #1, T1486 in path(s) #1, #2",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "waf",
+      "priority": "high",
+      "score": 10.0,
+      "rapids_threats": [
+        "application_vulns"
+      ],
+      "rapids_risk_score": 80,
+      "mitigations": [
+        "M1037",
+        "M1050"
+      ],
+      "techniques": [
+        "T1190",
+        "T1203"
+      ],
+      "attack_paths": [
+        0
+      ],
+      "rationale": "RAPIDS: Application Vulns | Confirmed by attack path(s) #1",
+      "detailed_rationale": [
+        "Application Vulns (risk=80/100): Block OWASP Top 10 attacks at perimeter"
+      ],
+      "dir_category": "prevention",
+      "confidence": {
+        "score": 0.9999999999999999,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.92,
+          "technique_mapping": 0.9,
+          "mitigation_control_mapping": 0.9,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.9,
+          "architecture_relevance": 0.9,
+          "factors": {
+            "paths_addressed": "1/2",
+            "mitigations_count": 2,
+            "techniques_count": 2
+          }
+        },
+        "validation_adjustment": 0.08
+      },
+      "enhanced_rationale": "Mitigates T1190 in path(s) #1, T1203 in path(s) #1",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "input validation",
+      "priority": "high",
+      "score": 10.0,
+      "rapids_threats": [
+        "application_vulns"
+      ],
+      "rapids_risk_score": 80,
+      "mitigations": [
+        "M1050"
+      ],
+      "techniques": [
+        "T1190",
+        "T1203"
+      ],
+      "attack_paths": [
+        0
+      ],
+      "rationale": "RAPIDS: Application Vulns | Confirmed by attack path(s) #1",
+      "detailed_rationale": [
+        "Application Vulns (risk=80/100): Prevent injection attacks"
+      ],
+      "dir_category": "prevention",
+      "confidence": {
+        "score": 0.975,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.92,
+          "technique_mapping": 0.9,
+          "mitigation_control_mapping": 0.9,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.9,
+          "architecture_relevance": 0.9,
+          "factors": {
+            "paths_addressed": "1/2",
+            "mitigations_count": 1,
+            "techniques_count": 2
+          }
+        },
+        "validation_adjustment": 0.055
+      },
+      "enhanced_rationale": "Mitigates T1190 in path(s) #1, T1203 in path(s) #1",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "mfa",
+      "priority": "high",
+      "score": 10.0,
+      "rapids_threats": [
+        "phishing"
+      ],
+      "rapids_risk_score": 60,
+      "mitigations": [
+        "M1032"
+      ],
+      "techniques": [
+        "T1133",
+        "T1213",
+        "T1485"
+      ],
+      "attack_paths": [
+        0,
+        1
+      ],
+      "rationale": "RAPIDS: Phishing | Confirmed by attack path(s) #1, #2",
+      "detailed_rationale": [
+        "Phishing (risk=60/100): Mitigate stolen credential impact"
+      ],
+      "dir_category": "prevention",
+      "confidence": {
+        "score": 0.9586666666666666,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.91,
+          "technique_mapping": 0.84,
+          "mitigation_control_mapping": 1.0,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.9,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "2/2",
+            "mitigations_count": 1,
+            "techniques_count": 3
+          }
+        },
+        "validation_adjustment": 0.04666666666666667
+      },
+      "enhanced_rationale": "Mitigates T1133 in path(s) #1, T1213 in path(s) #1, #2",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "code signing",
+      "priority": "high",
+      "score": 10.0,
+      "rapids_threats": [
+        "supply_chain"
+      ],
+      "rapids_risk_score": 60,
+      "mitigations": [
+        "M1038",
+        "M1045"
+      ],
+      "techniques": [
+        "T1059",
+        "T1490"
+      ],
+      "attack_paths": [
+        0,
+        1
+      ],
+      "rationale": "RAPIDS: Supply Chain | Confirmed by attack path(s) #1, #2",
+      "detailed_rationale": [
+        "Supply Chain (risk=60/100): Verify code provenance"
+      ],
+      "dir_category": "prevention",
+      "confidence": {
+        "score": 0.8070000000000002,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.75,
+          "technique_mapping": 0.84,
+          "mitigation_control_mapping": 0.5,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.8,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "2/2",
+            "mitigations_count": 2,
+            "techniques_count": 2
+          }
+        },
+        "validation_adjustment": 0.055
+      },
+      "enhanced_rationale": "Mitigates T1059 in path(s) #1, T1490 in path(s) #1, #2",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "vulnerability scanning",
+      "priority": "high",
+      "score": 10.0,
+      "rapids_threats": [
+        "supply_chain"
+      ],
+      "rapids_risk_score": 60,
+      "mitigations": [
+        "M1017"
+      ],
+      "techniques": [
+        "T1213"
+      ],
+      "attack_paths": [
+        0,
+        1
+      ],
+      "rationale": "RAPIDS: Supply Chain | Confirmed by attack path(s) #1, #2",
+      "detailed_rationale": [
+        "Supply Chain (risk=60/100): Continuous dependency monitoring"
+      ],
+      "dir_category": "detect",
+      "confidence": {
+        "score": 0.7520000000000001,
+        "level": "MEDIUM",
+        "breakdown": {
+          "overall": 0.72,
+          "technique_mapping": 0.84,
+          "mitigation_control_mapping": 0.4,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.8,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "2/2",
+            "mitigations_count": 1,
+            "techniques_count": 1
+          }
+        },
+        "validation_adjustment": 0.03
+      },
+      "enhanced_rationale": "Mitigates T1213 in path(s) #1, #2",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "network segmentation",
+      "priority": "high",
+      "score": 9.0,
+      "rapids_threats": [
+        "ransomware"
+      ],
+      "rapids_risk_score": 70,
+      "mitigations": [
+        "M1030"
+      ],
+      "techniques": [
+        "T1133",
+        "T1190"
+      ],
+      "attack_paths": [
+        0
+      ],
+      "rationale": "RAPIDS: Ransomware | Confirmed by attack path(s) #1",
+      "detailed_rationale": [
+        "Ransomware (risk=70/100): Limit ransomware spread across systems",
+        "Depth: MITIGATION:ISOLATE at device layer (At Web Server hop)"
+      ],
+      "dir_category": "isolate",
+      "layer": "device",
+      "placement": "At Web Server hop",
+      "control_type": "MITIGATION:ISOLATE",
+      "confidence": {
+        "score": 0.96,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.93,
+          "technique_mapping": 0.9,
+          "mitigation_control_mapping": 1.0,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.9,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "1/2",
+            "mitigations_count": 1,
+            "techniques_count": 2
+          }
+        },
+        "validation_adjustment": 0.03
+      },
+      "enhanced_rationale": "Mitigates T1133 in path(s) #1, T1190 in path(s) #1",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "audit log",
+      "priority": "high",
+      "score": 9.0,
+      "rapids_threats": [
+        "insider_threat"
+      ],
+      "rapids_risk_score": 50,
+      "mitigations": [
+        "M1047"
+      ],
+      "techniques": [
+        "T1059",
+        "T1213"
+      ],
+      "attack_paths": [
+        0,
+        1
+      ],
+      "rationale": "RAPIDS: Insider Threat | Confirmed by attack path(s) #1, #2",
+      "detailed_rationale": [
+        "Insider Threat (risk=50/100): Track privileged actions"
+      ],
+      "dir_category": "detect",
+      "confidence": {
+        "score": 0.842,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.81,
+          "technique_mapping": 0.84,
+          "mitigation_control_mapping": 0.8,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.5,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "2/2",
+            "mitigations_count": 1,
+            "techniques_count": 2
+          }
+        },
+        "validation_adjustment": 0.03
+      },
+      "enhanced_rationale": "Mitigates T1059 in path(s) #1, T1213 in path(s) #1, #2",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "behavioral analysis",
+      "priority": "high",
+      "score": 9.0,
+      "rapids_threats": [
+        "insider_threat"
+      ],
+      "rapids_risk_score": 50,
+      "mitigations": [
+        "M1040"
+      ],
+      "techniques": [
+        "T1059",
+        "T1486"
+      ],
+      "attack_paths": [
+        0,
+        1
+      ],
+      "rationale": "RAPIDS: Insider Threat | Confirmed by attack path(s) #1, #2",
+      "detailed_rationale": [
+        "Insider Threat (risk=50/100): Detect anomalous user behavior"
+      ],
+      "dir_category": "detect",
+      "confidence": {
+        "score": 0.812,
+        "level": "HIGH",
+        "breakdown": {
+          "overall": 0.72,
+          "technique_mapping": 0.84,
+          "mitigation_control_mapping": 0.5,
+          "attack_path_coverage": 1.0,
+          "rapids_validation": 0.5,
+          "architecture_relevance": 0.7,
+          "factors": {
+            "paths_addressed": "2/2",
+            "mitigations_count": 1,
+            "techniques_count": 2
+          }
+        },
+        "validation_adjustment": 0.09
+      },
+      "enhanced_rationale": "Mitigates T1059 in path(s) #1, T1486 in path(s) #1, #2",
+      "_layered_defense": {
+        "hop_analysis": [
+          {
+            "path_id": 0,
+            "hop_id": 0,
+            "source_id": "Internet",
+            "target_id": "WebServer",
+            "source_label": "Internet",
+            "target_label": "Web Server",
+            "layer": "device",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": true
+          },
+          {
+            "path_id": 0,
+            "hop_id": 1,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          },
+          {
+            "path_id": 1,
+            "hop_id": 0,
+            "source_id": "WebServer",
+            "target_id": "Database",
+            "source_label": "Web Server",
+            "target_label": "Database",
+            "layer": "data",
+            "security_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "resilience_coverage": {
+              "prevention": false,
+              "detect": false,
+              "isolate": false,
+              "respond": false
+            },
+            "is_critical": true,
+            "is_spof": false
+          }
+        ],
+        "spofs": [
+          {
+            "node_id": "WebServer",
+            "label": "Web Server",
+            "reason": "Bottleneck (single input, multiple outputs)",
+            "in_degree": 1,
+            "out_degree": 2,
+            "mitigation": "Load Balancer in front of Web Server, 2+ instances, health checks"
+          }
+        ]
+      }
+    },
+    {
+      "control": "dlp",
+      "name": "dlp",
+      "mitre_mitigation_id": "M1057",
+      "mitre_mitigation_name": "Data Loss Prevention",
+      "techniques": [
+        "T1567",
+        "T1005"
+      ],
+      "techniques_addressed": [
+        "T1567",
+        "T1005"
+      ],
+      "mitigations": [
+        "M1057"
+      ],
+      "frequency": 2,
+      "priority_score": 2.6,
+      "priority": "medium",
+      "score": 2.6,
+      "rationale": "Addresses 2 technique(s): T1567, T1005",
+      "confidence": {
+        "score": 0.9,
+        "level": "HIGH",
+        "factors": [
+          "Exhaustive MITRE mitigation query",
+          "Gap-filling control"
+        ],
+        "validation_adjustment": 0.15
+      },
+      "rapids_threats": [],
+      "attack_paths": [],
+      "dir_category": "isolate"
+    },
+    {
+      "control": "web content filtering",
+      "name": "web content filtering",
+      "mitre_mitigation_id": "M1021",
+      "mitre_mitigation_name": "Restrict Web-Based Content",
+      "techniques": [
+        "T1567"
+      ],
+      "techniques_addressed": [
+        "T1567"
+      ],
+      "mitigations": [
+        "M1021"
+      ],
+      "frequency": 1,
+      "priority_score": 1.3,
+      "priority": "medium",
+      "score": 1.3,
+      "rationale": "Addresses 1 technique(s): T1567",
+      "confidence": {
+        "score": 0.9,
+        "level": "HIGH",
+        "factors": [
+          "Exhaustive MITRE mitigation query",
+          "Gap-filling control"
+        ],
+        "validation_adjustment": 0.15
+      },
+      "rapids_threats": [],
+      "attack_paths": [],
+      "dir_category": "prevention"
+    }
+  ],
+  "expected_attack_paths": [
+    {
+      "id": "AP-1",
+      "entry": "Internet",
+      "target": "Database",
+      "path": [
+        "Internet",
+        "WebServer",
+        "Database"
+      ],
+      "hop_count": 2,
+      "criticality": 0.963,
+      "criticality_tier": "CRITICAL",
+      "rationale": "[CRITICAL] Internet \u2192 Web Server \u2192 Database: 2 hops, criticality score 0.96",
+      "per_node_techniques": {
+        "Internet": [
+          "T1190",
+          "T1133"
+        ],
+        "WebServer": [
+          "T1059",
+          "T1203"
+        ],
+        "Database": [
+          "T1213",
+          "T1005",
+          "T1567",
+          "T1486",
+          "T1490",
+          "T1485"
+        ]
+      },
+      "techniques": [
+        "T1190",
+        "T1133",
+        "T1059",
+        "T1203",
+        "T1213",
+        "T1005",
+        "T1567",
+        "T1486",
+        "T1490",
+        "T1485"
+      ]
+    },
+    {
+      "id": "AP-2",
+      "entry": "WebServer",
+      "target": "Database",
+      "path": [
+        "WebServer",
+        "Database"
+      ],
+      "hop_count": 1,
+      "criticality": 0.925,
+      "criticality_tier": "CRITICAL",
+      "rationale": "[CRITICAL] Web Server \u2192 Database: 1 hop, criticality score 0.93",
+      "per_node_techniques": {
+        "WebServer": [],
+        "Database": [
+          "T1213",
+          "T1005",
+          "T1567",
+          "T1486",
+          "T1490",
+          "T1485"
+        ]
+      },
+      "techniques": [
+        "T1213",
+        "T1005",
+        "T1567",
+        "T1486",
+        "T1490",
+        "T1485"
+      ]
+    }
+  ],
+  "expected_risk_score": 91,
+  "expected_defensibility": 16,
+  "rapids_assessment": {
+    "ransomware": {
+      "risk": 70,
+      "defensibility": 20,
+      "rationale": "Backup: \u2717, EDR: \u2717, Segmentation: \u2717"
+    },
+    "application_vulns": {
+      "risk": 80,
+      "defensibility": 10,
+      "rationale": "WAF: \u2717, Input validation: \u2717, Rate limiting: \u2717"
+    },
+    "phishing": {
+      "risk": 60,
+      "defensibility": 10,
+      "rationale": "MFA: \u2717, Email gateway: \u2717"
+    },
+    "insider_threat": {
+      "risk": 50,
+      "defensibility": 20,
+      "rationale": "Audit logging: \u2717, Least privilege: \u2717"
+    },
+    "dos": {
+      "risk": 70,
+      "defensibility": 10,
+      "rationale": "Load balancer: \u2717, DDoS protection: \u2717"
+    },
+    "supply_chain": {
+      "risk": 60,
+      "defensibility": 30,
+      "rationale": "Requires manual assessment of dependencies and third-party integrations"
+    },
+    "_metadata": {
+      "exposure": "external",
+      "entry_label": "Internet",
+      "is_ambiguous": false
+    }
+  },
+  "rationale": "No security controls detected - highly vulnerable. 2 attack paths identified. Control coverage: 0%.",
+  "metadata": {
+    "generated_by": "parser",
+    "architecture_type": "web_app",
+    "node_count": 3,
+    "edge_count": 2,
+    "control_coverage": 0.0,
+    "parsed_nodes": {
+      "Internet": {
+        "label": "Internet",
+        "shape": "circle",
+        "subgraph": null
+      },
+      "WebServer": {
+        "label": "Web Server",
+        "shape": "rectangle",
+        "subgraph": null
+      },
+      "Database": {
+        "label": "Database",
+        "shape": "cylinder",
+        "subgraph": null
+      }
+    },
+    "parsed_edges": [
+      {
+        "source": "Internet",
+        "target": "WebServer",
+        "label": null,
+        "bidirectional": false
+      },
+      {
+        "source": "WebServer",
+        "target": "Database",
+        "label": null,
+        "bidirectional": false
+      }
+    ]
+  },
+  "validation_report": {
+    "overall_valid": false,
+    "validations": {
+      "technique_relevance": [
+        {
+          "path_index": 0,
+          "technique": "T1190",
+          "valid": true,
+          "adjustment": 0.1,
+          "reason": "Clear public-facing entry with web components"
+        },
+        {
+          "path_index": 0,
+          "technique": "T1133",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 0,
+          "technique": "T1059",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Execution environment present"
+        },
+        {
+          "path_index": 0,
+          "technique": "T1203",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 0,
+          "technique": "T1213",
+          "valid": true,
+          "adjustment": 0.1,
+          "reason": "Data repository target confirmed"
+        },
+        {
+          "path_index": 0,
+          "technique": "T1005",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 0,
+          "technique": "T1567",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 0,
+          "technique": "T1486",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 0,
+          "technique": "T1490",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 0,
+          "technique": "T1485",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 1,
+          "technique": "T1213",
+          "valid": true,
+          "adjustment": 0.1,
+          "reason": "Data repository target confirmed"
+        },
+        {
+          "path_index": 1,
+          "technique": "T1005",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 1,
+          "technique": "T1567",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 1,
+          "technique": "T1486",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 1,
+          "technique": "T1490",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        },
+        {
+          "path_index": 1,
+          "technique": "T1485",
+          "valid": false,
+          "adjustment": 0.0,
+          "reason": "Generic technique, no specific validation"
+        }
+      ],
+      "rapids_alignment": {
+        "valid": true,
+        "issues": []
+      },
+      "control_technique_mapping": [
+        {
+          "control": "least privilege",
+          "technique": "T1059",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 2/9 official mitigations"
+        },
+        {
+          "control": "least privilege",
+          "technique": "T1133",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/5 official mitigations"
+        },
+        {
+          "control": "least privilege",
+          "technique": "T1190",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 2/8 official mitigations"
+        },
+        {
+          "control": "rate limiting",
+          "technique": "T1059",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/9 official mitigations"
+        },
+        {
+          "control": "rate limiting",
+          "technique": "T1133",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/5 official mitigations"
+        },
+        {
+          "control": "rate limiting",
+          "technique": "T1190",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 2/8 official mitigations"
+        },
+        {
+          "control": "logging",
+          "technique": "T1059",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/9 official mitigations"
+        },
+        {
+          "control": "logging",
+          "technique": "T1213",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/7 official mitigations"
+        },
+        {
+          "control": "patching",
+          "technique": "T1190",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/8 official mitigations"
+        },
+        {
+          "control": "patching",
+          "technique": "T1203",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 1/3 official mitigations"
+        },
+        {
+          "control": "patching",
+          "technique": "T1213",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 2/7 official mitigations"
+        },
+        {
+          "control": "backup",
+          "technique": "T1485",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 1/3 official mitigations"
+        },
+        {
+          "control": "backup",
+          "technique": "T1486",
+          "valid": true,
+          "adjustment": 0.15,
+          "reason": "Strong alignment: 1/2 official mitigations"
+        },
+        {
+          "control": "backup",
+          "technique": "T1490",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 1/4 official mitigations"
+        },
+        {
+          "control": "edr",
+          "technique": "T1059",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 2/9 official mitigations"
+        },
+        {
+          "control": "edr",
+          "technique": "T1486",
+          "valid": true,
+          "adjustment": 0.15,
+          "reason": "Strong alignment: 1/2 official mitigations"
+        },
+        {
+          "control": "waf",
+          "technique": "T1190",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 2/8 official mitigations"
+        },
+        {
+          "control": "waf",
+          "technique": "T1203",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 1/3 official mitigations"
+        },
+        {
+          "control": "input validation",
+          "technique": "T1190",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/8 official mitigations"
+        },
+        {
+          "control": "input validation",
+          "technique": "T1203",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 1/3 official mitigations"
+        },
+        {
+          "control": "mfa",
+          "technique": "T1133",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/5 official mitigations"
+        },
+        {
+          "control": "mfa",
+          "technique": "T1213",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/7 official mitigations"
+        },
+        {
+          "control": "mfa",
+          "technique": "T1485",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 1/3 official mitigations"
+        },
+        {
+          "control": "code signing",
+          "technique": "T1059",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 2/9 official mitigations"
+        },
+        {
+          "control": "code signing",
+          "technique": "T1490",
+          "valid": true,
+          "adjustment": 0.08,
+          "reason": "Good alignment: 1/4 official mitigations"
+        },
+        {
+          "control": "vulnerability scanning",
+          "technique": "T1213",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/7 official mitigations"
+        },
+        {
+          "control": "network segmentation",
+          "technique": "T1133",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/5 official mitigations"
+        },
+        {
+          "control": "network segmentation",
+          "technique": "T1190",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/8 official mitigations"
+        },
+        {
+          "control": "audit log",
+          "technique": "T1059",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/9 official mitigations"
+        },
+        {
+          "control": "audit log",
+          "technique": "T1213",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/7 official mitigations"
+        },
+        {
+          "control": "behavioral analysis",
+          "technique": "T1059",
+          "valid": true,
+          "adjustment": 0.03,
+          "reason": "Weak alignment: 1/9 official mitigations"
+        },
+        {
+          "control": "behavioral analysis",
+          "technique": "T1486",
+          "valid": true,
+          "adjustment": 0.15,
+          "reason": "Strong alignment: 1/2 official mitigations"
+        },
+        {
+          "control": "dlp",
+          "technique": "T1567",
+          "valid": true,
+          "adjustment": 0.15,
+          "reason": "Strong alignment: 1/2 official mitigations"
+        },
+        {
+          "control": "dlp",
+          "technique": "T1005",
+          "valid": true,
+          "adjustment": 0.15,
+          "reason": "Strong alignment: 1/1 official mitigations"
+        },
+        {
+          "control": "web content filtering",
+          "technique": "T1567",
+          "valid": true,
+          "adjustment": 0.15,
+          "reason": "Strong alignment: 1/2 official mitigations"
+        }
+      ]
+    },
+    "confidence_adjustments": {
+      "least privilege": 0.04666666666666667,
+      "rate limiting": 0.04666666666666667,
+      "logging": 0.03,
+      "patching": 0.06333333333333334,
+      "backup": 0.10333333333333333,
+      "edr": 0.09,
+      "waf": 0.08,
+      "input validation": 0.055,
+      "mfa": 0.04666666666666667,
+      "code signing": 0.055,
+      "vulnerability scanning": 0.03,
+      "network segmentation": 0.03,
+      "audit log": 0.03,
+      "behavioral analysis": 0.09,
+      "dlp": 0.15,
+      "web content filtering": 0.15
+    },
+    "issues_found": [
+      "Path #1: T1133 - Generic technique, no specific validation",
+      "Path #1: T1203 - Generic technique, no specific validation",
+      "Path #1: T1005 - Generic technique, no specific validation",
+      "Path #1: T1567 - Generic technique, no specific validation",
+      "Path #1: T1486 - Generic technique, no specific validation",
+      "Path #1: T1490 - Generic technique, no specific validation",
+      "Path #1: T1485 - Generic technique, no specific validation",
+      "Path #2: T1005 - Generic technique, no specific validation",
+      "Path #2: T1567 - Generic technique, no specific validation",
+      "Path #2: T1486 - Generic technique, no specific validation",
+      "Path #2: T1490 - Generic technique, no specific validation",
+      "Path #2: T1485 - Generic technique, no specific validation"
+    ]
+  },
+  "residual_risks_before": {
+    "per_threat": {
+      "ransomware": {
+        "threat": "ransomware",
+        "initial_risk": 70,
+        "controls": [],
+        "combined_effectiveness": 0.0,
+        "residual_risk": 70,
+        "status": "MITIGATE",
+        "rationale": "No controls implemented"
+      },
+      "application_vulns": {
+        "threat": "application_vulns",
+        "initial_risk": 80,
+        "controls": [],
+        "combined_effectiveness": 0.0,
+        "residual_risk": 80,
+        "status": "MITIGATE",
+        "rationale": "No controls implemented"
+      },
+      "phishing": {
+        "threat": "phishing",
+        "initial_risk": 60,
+        "controls": [],
+        "combined_effectiveness": 0.0,
+        "residual_risk": 60,
+        "status": "MITIGATE",
+        "rationale": "No controls implemented"
+      },
+      "insider_threat": {
+        "threat": "insider_threat",
+        "initial_risk": 50,
+        "controls": [],
+        "combined_effectiveness": 0.0,
+        "residual_risk": 50,
+        "status": "MITIGATE",
+        "rationale": "No controls implemented"
+      },
+      "dos": {
+        "threat": "dos",
+        "initial_risk": 70,
+        "controls": [],
+        "combined_effectiveness": 0.0,
+        "residual_risk": 70,
+        "status": "MITIGATE",
+        "rationale": "No controls implemented"
+      },
+      "supply_chain": {
+        "threat": "supply_chain",
+        "initial_risk": 60,
+        "controls": [],
+        "combined_effectiveness": 0.0,
+        "residual_risk": 60,
+        "status": "MITIGATE",
+        "rationale": "No controls implemented"
+      }
+    },
+    "overall_residual": 65.0,
+    "overall_status": "MITIGATE",
+    "summary": "Overall residual risk is HIGH - additional controls strongly recommended",
+    "thresholds": {
+      "accept": "< 10 (low risk)",
+      "monitor": "10-20 (medium risk)",
+      "mitigate": "> 20 (high risk)"
+    }
+  },
+  "residual_risks_after": {
+    "per_threat": {
+      "ransomware": {
+        "threat": "ransomware",
+        "initial_risk": 70,
+        "controls": [
+          {
+            "name": "least privilege",
+            "effectiveness": 0.7,
+            "type": "isolate"
+          },
+          {
+            "name": "backup",
+            "effectiveness": 0.85,
+            "type": "respond"
+          },
+          {
+            "name": "edr",
+            "effectiveness": 0.85,
+            "type": "prevention"
+          },
+          {
+            "name": "network segmentation",
+            "effectiveness": 0.65,
+            "type": "isolate"
+          }
+        ],
+        "combined_effectiveness": 0.998,
+        "residual_risk": 0,
+        "status": "ACCEPT",
+        "rationale": "Low residual risk - acceptable with quarterly monitoring"
+      },
+      "application_vulns": {
+        "threat": "application_vulns",
+        "initial_risk": 80,
+        "controls": [
+          {
+            "name": "rate limiting",
+            "effectiveness": 0.8,
+            "type": "prevention"
+          },
+          {
+            "name": "patching",
+            "effectiveness": 0.7,
+            "type": "prevention"
+          },
+          {
+            "name": "waf",
+            "effectiveness": 0.7,
+            "type": "prevention"
+          },
+          {
+            "name": "input validation",
+            "effectiveness": 0.8,
+            "type": "prevention"
+          }
+        ],
+        "combined_effectiveness": 0.996,
+        "residual_risk": 0,
+        "status": "ACCEPT",
+        "rationale": "Low residual risk - acceptable with quarterly monitoring"
+      },
+      "phishing": {
+        "threat": "phishing",
+        "initial_risk": 60,
+        "controls": [
+          {
+            "name": "least privilege",
+            "effectiveness": 0.7,
+            "type": "isolate"
+          },
+          {
+            "name": "logging",
+            "effectiveness": 0.6,
+            "type": "detect"
+          },
+          {
+            "name": "user training",
+            "effectiveness": 0.7,
+            "type": "prevention"
+          },
+          {
+            "name": "mfa",
+            "effectiveness": 0.85,
+            "type": "prevention"
+          }
+        ],
+        "combined_effectiveness": 0.995,
+        "residual_risk": 0,
+        "status": "ACCEPT",
+        "rationale": "Low residual risk - acceptable with quarterly monitoring"
+      },
+      "insider_threat": {
+        "threat": "insider_threat",
+        "initial_risk": 50,
+        "controls": [
+          {
+            "name": "least privilege",
+            "effectiveness": 0.7,
+            "type": "isolate"
+          },
+          {
+            "name": "logging",
+            "effectiveness": 0.6,
+            "type": "detect"
+          },
+          {
+            "name": "user training",
+            "effectiveness": 0.7,
+            "type": "prevention"
+          },
+          {
+            "name": "audit log",
+            "effectiveness": 0.65,
+            "type": "detect"
+          },
+          {
+            "name": "behavioral analysis",
+            "effectiveness": 0.7,
+            "type": "detect"
+          }
+        ],
+        "combined_effectiveness": 0.996,
+        "residual_risk": 0,
+        "status": "ACCEPT",
+        "rationale": "Low residual risk - acceptable with quarterly monitoring"
+      },
+      "dos": {
+        "threat": "dos",
+        "initial_risk": 70,
+        "controls": [
+          {
+            "name": "rate limiting",
+            "effectiveness": 0.8,
+            "type": "prevention"
+          }
+        ],
+        "combined_effectiveness": 0.8,
+        "residual_risk": 13,
+        "status": "MONITOR",
+        "rationale": "Medium residual risk - requires active monitoring and quarterly review"
+      },
+      "supply_chain": {
+        "threat": "supply_chain",
+        "initial_risk": 60,
+        "controls": [
+          {
+            "name": "code signing",
+            "effectiveness": 0.7,
+            "type": "prevention"
+          },
+          {
+            "name": "vulnerability scanning",
+            "effectiveness": 0.7,
+            "type": "detect"
+          }
+        ],
+        "combined_effectiveness": 0.91,
+        "residual_risk": 5,
+        "status": "ACCEPT",
+        "rationale": "Low residual risk - acceptable with quarterly monitoring"
+      }
+    },
+    "overall_residual": 3.0,
+    "overall_status": "ACCEPT",
+    "summary": "Overall residual risk is LOW - acceptable for production with quarterly monitoring",
+    "thresholds": {
+      "accept": "< 10 (low risk)",
+      "monitor": "10-20 (medium risk)",
+      "mitigate": "> 20 (high risk)"
+    }
+  },
+  "residual_risks": {
+    "per_threat": {
+      "ransomware": {
+        "threat": "ransomware",
+        "initial_risk": 70,
+        "controls": [
+          {
+            "name": "least privilege",
+            "effectiveness": 0.7,
+            "type": "isolate"
+          },
+          {
+            "name": "backup",
+            "effectiveness": 0.85,
+            "type": "respond"
+          },
+          {
+            "name": "edr",
+            "effectiveness": 0.85,
+            "type": "prevention"
+          },
+          {
+            "name": "network segmentation",
+            "effectiveness": 0.65,
+            "type": "isolate"
+          }
+        ],
+        "combined_effectiveness": 0.998,
+        "residual_risk": 0,
+        "status": "ACCEPT",
+        "rationale": "Low residual risk - acceptable with quarterly monitoring"
+      },
+      "application_vulns": {
+        "threat": "application_vulns",
+        "initial_risk": 80,
+        "controls": [
+          {
+            "name": "rate limiting",
+            "effectiveness": 0.8,
+            "type": "prevention"
+          },
+          {
+            "name": "patching",
+            "effectiveness": 0.7,
+            "type": "prevention"
+          },
+          {
+            "name": "waf",
+            "effectiveness": 0.7,
+            "type": "prevention"
+          },
+          {
+            "name": "input validation",
+            "effectiveness": 0.8,
+            "type": "prevention"
+          }
+        ],
+        "combined_effectiveness": 0.996,
+        "residual_risk": 0,
+        "status": "ACCEPT",
+        "rationale": "Low residual risk - acceptable with quarterly monitoring"
+      },
+      "phishing": {
+        "threat": "phishing",
+        "initial_risk": 60,
+        "controls": [
+          {
+            "name": "least privilege",
+            "effectiveness": 0.7,
+            "type": "isolate"
+          },
+          {
+            "name": "logging",
+            "effectiveness": 0.6,
+            "type": "detect"
+          },
+          {
+            "name": "user training",
+            "effectiveness": 0.7,
+            "type": "prevention"
+          },
+          {
+            "name": "mfa",
+            "effectiveness": 0.85,
+            "type": "prevention"
+          }
+        ],
+        "combined_effectiveness": 0.995,
+        "residual_risk": 0,
+        "status": "ACCEPT",
+        "rationale": "Low residual risk - acceptable with quarterly monitoring"
+      },
+      "insider_threat": {
+        "threat": "insider_threat",
+        "initial_risk": 50,
+        "controls": [
+          {
+            "name": "least privilege",
+            "effectiveness": 0.7,
+            "type": "isolate"
+          },
+          {
+            "name": "logging",
+            "effectiveness": 0.6,
+            "type": "detect"
+          },
+          {
+            "name": "user training",
+            "effectiveness": 0.7,
+            "type": "prevention"
+          },
+          {
+            "name": "audit log",
+            "effectiveness": 0.65,
+            "type": "detect"
+          },
+          {
+            "name": "behavioral analysis",
+            "effectiveness": 0.7,
+            "type": "detect"
+          }
+        ],
+        "combined_effectiveness": 0.996,
+        "residual_risk": 0,
+        "status": "ACCEPT",
+        "rationale": "Low residual risk - acceptable with quarterly monitoring"
+      },
+      "dos": {
+        "threat": "dos",
+        "initial_risk": 70,
+        "controls": [
+          {
+            "name": "rate limiting",
+            "effectiveness": 0.8,
+            "type": "prevention"
+          }
+        ],
+        "combined_effectiveness": 0.8,
+        "residual_risk": 13,
+        "status": "MONITOR",
+        "rationale": "Medium residual risk - requires active monitoring and quarterly review"
+      },
+      "supply_chain": {
+        "threat": "supply_chain",
+        "initial_risk": 60,
+        "controls": [
+          {
+            "name": "code signing",
+            "effectiveness": 0.7,
+            "type": "prevention"
+          },
+          {
+            "name": "vulnerability scanning",
+            "effectiveness": 0.7,
+            "type": "detect"
+          }
+        ],
+        "combined_effectiveness": 0.91,
+        "residual_risk": 5,
+        "status": "ACCEPT",
+        "rationale": "Low residual risk - acceptable with quarterly monitoring"
+      }
+    },
+    "overall_residual": 3.0,
+    "overall_status": "ACCEPT",
+    "summary": "Overall residual risk is LOW - acceptable for production with quarterly monitoring",
+    "thresholds": {
+      "accept": "< 10 (low risk)",
+      "monitor": "10-20 (medium risk)",
+      "mitigate": "> 20 (high risk)"
+    }
+  }
+}

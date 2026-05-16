@@ -4,16 +4,23 @@ Architect Critic Agent for Phase 3C
 Role: Security Architect reviewing threat assessment design quality
 
 Rubric (100 points):
-- Threat Model Completeness (40 points)
-- Control Appropriateness (30 points)
-- Defense-in-Depth (20 points)
-- Context Awareness (10 points)
+- Tier 1 (80 points): Critical artifacts from ground_truth.json
+  - Threat Model Completeness (30 points)
+  - Control Appropriateness (25 points)
+  - Defense-in-Depth (15 points)
+  - RAPIDS Alignment (10 points)
+- Tier 2 (20 points): Important artifacts from report files
+  - Diagram Completeness (10 points) - after.mmd validation
+  - Report Quality (10 points) - technical + executive + action plan
+
+VERSION: 2.0 - Enhanced for 10-artifact structure
 """
 
 import logging
 from typing import Dict, List, Optional
 
 from chatbot.modules.agent_framework import CriticAgent, AgentTool
+from chatbot.modules.artifact_extractor import ArtifactSet
 
 logger = logging.getLogger(__name__)
 
@@ -88,35 +95,58 @@ def check_architecture_type(components: List[str]) -> str:
 # ============================================================================
 
 ARCHITECT_RUBRIC = {
+    # TIER 1: Critical artifacts (80 points)
     "threat_completeness": {
-        "max": 40,
+        "max": 30,
+        "tier": 1,
         "criteria": {
-            "entry_points": {"points": 10, "description": "All entry points identified"},
-            "data_flows": {"points": 10, "description": "All data flows mapped"},
-            "arch_specific_threats": {"points": 10, "description": "Architecture-specific threats considered"},
-            "trust_boundaries": {"points": 10, "description": "Trust boundaries clearly defined"}
+            "entry_points": {"points": 8, "description": "All entry points identified"},
+            "data_flows": {"points": 7, "description": "All data flows mapped"},
+            "arch_specific_threats": {"points": 8, "description": "Architecture-specific threats considered"},
+            "trust_boundaries": {"points": 7, "description": "Trust boundaries clearly defined"}
         }
     },
     "control_appropriateness": {
-        "max": 30,
+        "max": 25,
+        "tier": 1,
         "criteria": {
-            "complexity_match": {"points": 10, "description": "Controls match architecture complexity"},
-            "sensitivity_alignment": {"points": 10, "description": "Controls aligned with data sensitivity"},
-            "feasibility": {"points": 10, "description": "Controls feasible for architecture type"}
+            "complexity_match": {"points": 8, "description": "Controls match architecture complexity"},
+            "sensitivity_alignment": {"points": 9, "description": "Controls aligned with data sensitivity"},
+            "feasibility": {"points": 8, "description": "Controls feasible for architecture type"}
         }
     },
     "defense_in_depth": {
-        "max": 20,
+        "max": 15,
+        "tier": 1,
         "criteria": {
-            "multiple_layers": {"points": 10, "description": "Multiple control layers per path"},
-            "no_spof": {"points": 10, "description": "No single points of failure unmitigated"}
+            "multiple_layers": {"points": 8, "description": "Multiple control layers per path"},
+            "no_spof": {"points": 7, "description": "No single points of failure unmitigated"}
         }
     },
-    "context_awareness": {
+    "rapids_alignment": {
         "max": 10,
+        "tier": 1,
         "criteria": {
-            "industry_specific": {"points": 5, "description": "Industry-specific considerations"},
-            "regulatory": {"points": 5, "description": "Regulatory requirements addressed"}
+            "threat_coverage": {"points": 5, "description": "All 6 RAPIDS categories addressed"},
+            "risk_prioritization": {"points": 5, "description": "Controls prioritized by risk score"}
+        }
+    },
+    # TIER 2: Important artifacts (20 points)
+    "diagram_completeness": {
+        "max": 10,
+        "tier": 2,
+        "criteria": {
+            "after_mmd_controls": {"points": 7, "description": "All controls visualized in after.mmd"},
+            "visual_clarity": {"points": 3, "description": "Diagram is clear and readable"}
+        }
+    },
+    "report_quality": {
+        "max": 10,
+        "tier": 2,
+        "criteria": {
+            "technical_depth": {"points": 4, "description": "Technical report has sufficient detail"},
+            "executive_clarity": {"points": 3, "description": "Executive summary is business-friendly"},
+            "action_plan_feasibility": {"points": 3, "description": "Action plan is realistic and phased"}
         }
     }
 }
@@ -160,27 +190,44 @@ Prevention + DIR Framework: Defense-in-Depth strategy
 - Respond (10%): Recover from incidents (Backup, Incident Response)
 
 ============================================================
-SCORING RUBRIC (Security Architect)
+SCORING RUBRIC (Security Architect) - 100 Points
 ============================================================
 
-A. Threat Model Completeness (40 points)
-   - All entry points identified (10 pts)
-   - All data flows mapped (10 pts)
-   - Architecture-specific threats considered (10 pts)
-   - Trust boundaries clearly defined (10 pts)
+TIER 1: CRITICAL ARTIFACTS (80 points) - from ground_truth.json
 
-B. Control Appropriateness (30 points)
-   - Controls match architecture complexity (10 pts)
-   - Controls aligned with data sensitivity (10 pts)
-   - Controls feasible for architecture type (10 pts)
+A. Threat Model Completeness (30 points)
+   - All entry points identified (8 pts)
+   - All data flows mapped (7 pts)
+   - Architecture-specific threats considered (8 pts)
+   - Trust boundaries clearly defined (7 pts)
 
-C. Defense-in-Depth (20 points)
-   - Multiple control layers per path (10 pts)
-   - No single points of failure unmitigated (10 pts)
+B. Control Appropriateness (25 points)
+   - Controls match architecture complexity (8 pts)
+   - Controls aligned with data sensitivity (9 pts)
+   - Controls feasible for architecture type (8 pts)
 
-D. Context Awareness (10 points)
-   - Industry-specific considerations (5 pts)
-   - Regulatory requirements addressed (5 pts)
+C. Defense-in-Depth (15 points)
+   - Multiple control layers per path (8 pts)
+   - No single points of failure unmitigated (7 pts)
+
+D. RAPIDS Alignment (10 points)
+   - All 6 RAPIDS categories addressed (5 pts)
+   - Controls prioritized by risk score (5 pts)
+
+TIER 2: IMPORTANT ARTIFACTS (20 points) - from report files
+
+E. Diagram Completeness (10 points)
+   - All controls visualized in after.mmd (7 pts) **CRITICAL CHECK**
+   - Diagram is clear and readable (3 pts)
+
+F. Report Quality (10 points)
+   - Technical report has sufficient detail (4 pts)
+   - Executive summary is business-friendly (3 pts)
+   - Action plan is realistic and phased (3 pts)
+
+**CRITICAL: after.mmd Validation**
+Count "NEW_*" nodes in after.mmd and compare with control_recommendations count.
+If mismatch (±2 tolerance), flag as HIGH severity gap in diagram_completeness.
 
 SCORING BANDS:
 - 90-100: EXCELLENT - Architecture-aware recommendations
@@ -213,6 +260,284 @@ OUTPUT REQUIREMENTS:
 
 Be critical but constructive. Your goal is to improve the assessment quality.
 """
+
+
+# ============================================================================
+# ENHANCED ARCHITECT CRITIC (Phase 3C v2.0)
+# ============================================================================
+
+class EnhancedArchitectCritic:
+    """
+    Enhanced Architect Critic that critiques all 10 artifacts.
+
+    Uses ArtifactExtractor output to access both Tier 1 and Tier 2 artifacts.
+    """
+
+    def __init__(self, model: Optional[str] = None):
+        self.agent = create_architect_agent(model)
+        self.model = model
+
+    def critique(self, artifacts: ArtifactSet) -> 'CritiqueScore':
+        """
+        Critique assessment using all 10 artifacts.
+
+        Args:
+            artifacts: ArtifactSet from ArtifactExtractor
+
+        Returns:
+            CritiqueScore with breakdown and improvement roadmap
+        """
+        from chatbot.modules.agent_framework import CritiqueScore
+
+        # Format prompt with all 10 artifacts
+        prompt = self._format_prompt(artifacts)
+
+        # Use base agent to generate critique
+        # Note: We pass a minimal ground_truth dict for compatibility
+        # The real critique happens via the enhanced prompt
+        minimal_gt = {
+            "architecture": "enhanced_critique",
+            "expected_attack_paths": artifacts.tier1_critical["artifact_1_attack_paths"]["paths"],
+            "control_recommendations": artifacts.tier1_critical["artifact_2_controls"]["controls"]
+        }
+
+        # Override the agent's prompt formatter
+        original_formatter = self.agent._format_prompt
+        self.agent._format_prompt = lambda gt: prompt
+
+        try:
+            score = self.agent.critique(minimal_gt)
+            return score
+        finally:
+            # Restore original formatter
+            self.agent._format_prompt = original_formatter
+
+    def _format_prompt(self, artifacts: ArtifactSet) -> str:
+        """
+        Format comprehensive prompt with all 10 artifacts.
+        """
+        tier1 = artifacts.tier1_critical
+        tier2 = artifacts.tier2_important
+        indexes = artifacts.indexes
+
+        # Extract key counts
+        path_count = tier1["artifact_1_attack_paths"]["count"]
+        control_count = tier1["artifact_2_controls"]["count"]
+        after_mmd_controls = indexes["after_mmd_controls"]
+
+        # Check after.mmd completeness (CRITICAL)
+        control_gap = abs(after_mmd_controls - control_count)
+        control_status = "✅ COMPLETE" if control_gap <= 2 else f"❌ GAP: {control_gap} controls missing"
+
+        prompt = f"""You are reviewing a threat assessment with 10 artifacts (5 critical + 5 important).
+
+{'='*70}
+TIER 1: CRITICAL ARTIFACTS (80 points weight)
+{'='*70}
+
+ARTIFACT 1: ATTACK PATHS ({path_count} paths)
+{self._format_attack_paths(tier1["artifact_1_attack_paths"])}
+
+ARTIFACT 2: CONTROL RECOMMENDATIONS ({control_count} controls)
+{self._format_controls(tier1["artifact_2_controls"])}
+
+ARTIFACT 3: RESIDUAL RISK (BEFORE → AFTER)
+{self._format_residual_risk(tier1["artifact_3_residual_risk"])}
+
+ARTIFACT 4: VALIDATION RESULTS
+{self._format_validation(tier1["artifact_4_validation"])}
+
+ARTIFACT 5: RAPIDS ASSESSMENT (6 threat categories)
+{self._format_rapids(tier1["artifact_5_rapids"])}
+
+{'='*70}
+TIER 2: IMPORTANT ARTIFACTS (20 points weight)
+{'='*70}
+
+ARTIFACT 6: ORIGINAL ARCHITECTURE (before.mmd)
+{self._format_diagram(tier2.get("artifact_6_before_mmd"), "Before")}
+
+ARTIFACT 7: IMPROVED ARCHITECTURE (after.mmd) **CRITICAL VALIDATION**
+{self._format_diagram(tier2.get("artifact_7_after_mmd"), "After")}
+
+**CRITICAL CHECK - after.mmd Completeness:**
+- Expected controls: {control_count}
+- Controls in after.mmd: {after_mmd_controls} NEW_* nodes
+- Status: {control_status}
+
+{'→ ' if control_gap > 2 else ''}{'FLAG THIS AS HIGH SEVERITY GAP if mismatch > 2' if control_gap > 2 else ''}
+
+ARTIFACT 8: TECHNICAL REPORT
+{self._format_report(tier2.get("artifact_8_technical_report"), "Technical", max_lines=30)}
+
+ARTIFACT 9: EXECUTIVE SUMMARY
+{self._format_report(tier2.get("artifact_9_executive_summary"), "Executive", max_lines=20)}
+
+ARTIFACT 10: ACTION PLAN
+{self._format_report(tier2.get("artifact_10_action_plan"), "Action Plan", max_lines=20)}
+
+{'='*70}
+YOUR CRITIQUE
+{'='*70}
+
+Score each category (100 points total):
+- Tier 1 (Critical): 80 points (Artifacts 1-5)
+- Tier 2 (Important): 20 points (Artifacts 6-10)
+
+Focus on:
+1. **after.mmd completeness** (most critical Tier 2 check)
+2. Attack path completeness and realism
+3. Control appropriateness for architecture
+4. Defense-in-depth coverage
+5. RAPIDS threat alignment
+
+{'='*70}
+OUTPUT FORMAT (JSON REQUIRED)
+{'='*70}
+
+You MUST respond with valid JSON in this exact format:
+
+```json
+{{
+  "score": 85,
+  "max_score": 100,
+  "rating": "GOOD",
+  "breakdown": {{
+    "threat_completeness": {{"score": 25, "max": 30, "reasoning": "..."}},
+    "control_appropriateness": {{"score": 22, "max": 25, "reasoning": "..."}},
+    "defense_in_depth": {{"score": 13, "max": 15, "reasoning": "..."}},
+    "rapids_alignment": {{"score": 8, "max": 10, "reasoning": "..."}},
+    "diagram_completeness": {{"score": 8, "max": 10, "reasoning": "..."}},
+    "report_quality": {{"score": 9, "max": 10, "reasoning": "..."}}
+  }},
+  "gaps": [
+    {{
+      "category": "diagram_completeness",
+      "severity": "HIGH",
+      "description": "after.mmd has {control_count} controls but {after_mmd_controls} NEW_* nodes",
+      "recommendation": "Reconcile diagram with control list",
+      "affected_components": ["Artifact 7 (after.mmd)"]
+    }}
+  ],
+  "strengths": [
+    "All 10 artifacts present",
+    "Comprehensive control coverage"
+  ],
+  "improvement_roadmap": [
+    {{
+      "priority": 1,
+      "action": "Fix after.mmd diagram completeness gap",
+      "category": "diagram_completeness",
+      "points_gained": 2,
+      "effort": "LOW",
+      "verification_method": "Count NEW_* nodes in after.mmd, must equal control_recommendations count ±2",
+      "expected_outcome": "Diagram reflects all recommended controls"
+    }}
+  ]
+}}
+```
+
+**CRITICAL REQUIREMENTS:**
+1. Response MUST be valid JSON (use ```json code block)
+2. Include ALL 6 rubric categories in breakdown
+3. gaps array must have severity (HIGH/MEDIUM/LOW)
+4. improvement_roadmap must include verification_method for Tester
+5. Be specific: cite artifact numbers, control names, path IDs
+"""
+
+        return prompt
+
+    def _format_attack_paths(self, artifact: Dict) -> str:
+        """Format attack paths artifact."""
+        paths = artifact["paths"]
+        lines = []
+        for idx, path in enumerate(paths):
+            path_name = path.get("path_name", f"Path #{idx+1}")
+            techniques = path.get("techniques", [])
+            hop_count = path.get("hop_count", len(path.get("path", [])))
+            criticality = path.get("criticality", "UNKNOWN")
+
+            lines.append(f"  Path #{idx+1}: {path_name}")
+            lines.append(f"    Hops: {hop_count} | Criticality: {criticality}")
+            lines.append(f"    Techniques: {', '.join(techniques[:5])}{' ...' if len(techniques) > 5 else ''}")
+
+        return "\n".join(lines)
+
+    def _format_controls(self, artifact: Dict) -> str:
+        """Format controls artifact."""
+        controls = artifact["controls"]
+        lines = []
+        for idx, control in enumerate(controls[:10]):  # Show first 10
+            name = control.get("control", "Unknown")
+            priority = control.get("priority", "unknown")
+            score = control.get("score", 0)
+            paths = control.get("attack_paths", [])
+
+            lines.append(f"  {idx+1}. {name.upper()} [{priority}] (score: {score:.1f})")
+            lines.append(f"     Affects paths: {paths}")
+
+        if len(controls) > 10:
+            lines.append(f"  ... +{len(controls) - 10} more controls")
+
+        return "\n".join(lines)
+
+    def _format_residual_risk(self, artifact: Dict) -> str:
+        """Format residual risk artifact."""
+        before = artifact["before"]
+        after = artifact["after"]
+        reduction = artifact["reduction"]
+
+        return f"""  Before: {before['score']}/100 (Defensibility: {before.get('defensibility', 'N/A')})
+  After:  {after['score']}/100 (Defensibility: {after.get('defensibility', 'N/A')})
+  Reduction: {reduction['absolute']} points ({reduction['percentage']:.1f}%)"""
+
+    def _format_validation(self, artifact: Dict) -> str:
+        """Format validation artifact."""
+        overall = "✅ VALID" if artifact["overall_valid"] else "❌ INVALID"
+        confidence = artifact["confidence_baseline"]
+        issues = artifact["issues"]
+
+        return f"""  Overall: {overall}
+  Confidence: {confidence:.1%}
+  Issues found: {len(issues)}"""
+
+    def _format_rapids(self, artifact: Dict) -> str:
+        """Format RAPIDS artifact."""
+        categories = artifact["categories"]
+        lines = []
+        for name, data in categories.items():
+            risk = data.get("risk", 0)
+            defensibility = data.get("defensibility", 0)
+            lines.append(f"  {name.upper()}: Risk={risk}/100, Defensibility={defensibility}%")
+
+        return "\n".join(lines)
+
+    def _format_diagram(self, content: Optional[str], label: str) -> str:
+        """Format diagram artifact."""
+        if not content:
+            return f"  ❌ {label} diagram missing"
+
+        # Count nodes
+        node_count = content.count("[") + content.count("((") + content.count("[(")
+        new_control_count = content.count("NEW_")
+
+        return f"""  ✅ {label} diagram present
+  Nodes: ~{node_count} | NEW controls: {new_control_count}
+  (First 3 lines: {content.split(chr(10))[:3]})"""
+
+    def _format_report(self, content: Optional[str], label: str, max_lines: int = 20) -> str:
+        """Format report artifact."""
+        if not content:
+            return f"  ❌ {label} report missing"
+
+        lines = content.split("\n")
+        preview = "\n".join(lines[:max_lines])
+        total_lines = len(lines)
+
+        return f"""  ✅ {label} report present ({total_lines} lines)
+  Preview (first {max_lines} lines):
+{preview}
+  ... ({total_lines - max_lines} more lines)"""
 
 
 # ============================================================================
