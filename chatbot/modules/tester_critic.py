@@ -522,6 +522,106 @@ WHAT NOT TO DO:
    - Do point estimates make sense?
 
 {'='*70}
+VALIDATION METHODOLOGY (CHAIN-OF-THOUGHT)
+{'='*70}
+
+For each control, follow this exact process:
+
+STEP 1: Read the control format
+  Example:
+  ```
+  Control: LEAST PRIVILEGE
+    Implements mitigations (defense-in-depth): M1016, M1018, M1026, M1042
+    Per-technique mappings (validate these against MITRE):
+      • T1059 ← mitigated by: M1026, M1042
+      • T1190 ← mitigated by: M1016, M1026
+  ```
+
+STEP 2: For each technique in "Per-technique mappings", extract ONLY what's after the arrow
+  T1059: [M1026, M1042]
+  T1190: [M1016, M1026]
+
+STEP 3: Check each extracted mitigation against MITRE reference
+  T1059 vs M1026: Is M1026 in T1059's MITRE list? (YES → ✅)
+  T1059 vs M1042: Is M1042 in T1059's MITRE list? (YES → ✅)
+  T1190 vs M1016: Is M1016 in T1190's MITRE list? (YES → ✅)
+  T1190 vs M1026: Is M1026 in T1190's MITRE list? (YES → ✅)
+
+STEP 4: Record results
+  ✅ All 4 mappings are valid
+  ❌ No invalid mappings found
+
+STEP 5: DO NOT check mitigations that aren't listed after the arrow
+  ❌ WRONG: "Is M1016 valid for T1059?" (M1016 NOT claimed for T1059)
+  ❌ WRONG: "Is M1018 valid for T1059?" (M1018 NOT claimed for T1059)
+
+{'='*70}
+FEW-SHOT EXAMPLES
+{'='*70}
+
+EXAMPLE 1: Valid Mapping ✅
+```
+Control: RATE LIMITING
+  Implements mitigations: M1033, M1035, M1037
+  Per-technique mappings:
+    • T1059 ← mitigated by: M1033
+    • T1133 ← mitigated by: M1035
+    • T1190 ← mitigated by: M1037, M1035
+
+MITRE Reference:
+  T1059: [M1033, M1045, M1042, M1038, ...]  ← M1033 is here ✅
+  T1133: [M1021, M1030, M1042, M1035, ...]  ← M1035 is here ✅
+  T1190: [M1048, M1037, M1030, M1016, M1026, M1050, M1035, ...]  ← M1037, M1035 both here ✅
+
+VALIDATION:
+  T1059 → M1033: ✅ VALID (M1033 in T1059's MITRE list)
+  T1133 → M1035: ✅ VALID (M1035 in T1133's MITRE list)
+  T1190 → M1037: ✅ VALID (M1037 in T1190's MITRE list)
+  T1190 → M1035: ✅ VALID (M1035 in T1190's MITRE list)
+
+RESULT: All mappings valid ✅ No gap to report.
+```
+
+EXAMPLE 2: Invalid Mapping (Hypothetical) ❌
+```
+Control: HYPOTHETICAL CONTROL
+  Implements mitigations: M1016, M1026
+  Per-technique mappings:
+    • T1059 ← mitigated by: M1016
+    • T1190 ← mitigated by: M1026
+
+MITRE Reference:
+  T1059: [M1033, M1045, M1042, M1038, ...]  ← M1016 NOT here ❌
+  T1190: [M1048, M1037, M1030, M1016, M1026, ...]  ← M1026 is here ✅
+
+VALIDATION:
+  T1059 → M1016: ❌ INVALID (M1016 NOT in T1059's MITRE list)
+  T1190 → M1026: ✅ VALID (M1026 in T1190's MITRE list)
+
+RESULT: 1 invalid mapping found ❌
+GAP: "HYPOTHETICAL CONTROL claims M1016 mitigates T1059, but M1016 not in T1059's MITRE mitigation list. Valid T1059 mitigations include: M1033, M1045, M1042, M1038, ..."
+```
+
+EXAMPLE 3: Common Mistake to Avoid ❌
+```
+Control: LEAST PRIVILEGE
+  Implements mitigations: M1016, M1018, M1026, M1042
+  Per-technique mappings:
+    • T1059 ← mitigated by: M1026, M1042
+
+WRONG VALIDATION ❌:
+  "Control implements M1016, so I should check if M1016 is valid for T1059"
+  → NO! M1016 is NOT claimed for T1059 (only M1026, M1042 are)
+
+CORRECT VALIDATION ✅:
+  T1059 → M1026: Check MITRE (YES → ✅)
+  T1059 → M1042: Check MITRE (YES → ✅)
+  Don't check M1016 or M1018 for T1059 (not claimed)
+
+RESULT: All mappings valid ✅ No gap to report.
+```
+
+{'='*70}
 OUTPUT REQUIREMENTS
 {'='*70}
 
@@ -529,12 +629,59 @@ Return JSON with:
 - score (0-100, be critical but fair - hybrid approach deserves credit for defense-in-depth)
 - breakdown (4 categories, with reasoning)
 - gaps (specific issues with severity, affected components, cite specific technique-mitigation pairs)
+  - ONLY report gaps for mappings that are actually claimed (after the arrow ←)
+  - DO NOT report gaps for mitigations that aren't claimed for that technique
 - strengths (what works well, acknowledge valid defense-in-depth strategy)
 - improvement_roadmap (how to fix invalid mappings while preserving defense-in-depth)
 
 BE SPECIFIC: Cite control names, technique IDs, mitigation IDs, use MITRE data.
 BE FAIR: Defense-in-depth is valid; flag only where mitigations claimed for wrong techniques.
 BE CONSTRUCTIVE: Provide actionable recommendations that preserve risk-averse approach.
+BE ACCURATE: Follow the chain-of-thought methodology above. Show your work if uncertain.
+
+{'='*70}
+JSON OUTPUT SCHEMA
+{'='*70}
+
+Respond with ONLY valid JSON matching this schema:
+
+{{
+  "score": <integer 0-100>,
+  "rating": "<EXCELLENT|GOOD|FAIR|POOR>",
+  "breakdown": {{
+    "validation_checks": {{"score": <int>, "max": 40, "reasoning": "<string>"}},
+    "coverage_metrics": {{"score": <int>, "max": 30, "reasoning": "<string>"}},
+    "internal_consistency": {{"score": <int>, "max": 20, "reasoning": "<string>"}},
+    "roadmap_validation": {{"score": <int>, "max": 10, "reasoning": "<string>"}}
+  }},
+  "gaps": [
+    {{
+      "severity": "<CRITICAL|HIGH|MEDIUM|LOW>",
+      "category": "<validation|coverage|consistency|roadmap>",
+      "description": "<specific issue with control name, technique ID, mitigation ID>",
+      "recommendation": "<how to fix>"
+    }}
+  ],
+  "strengths": [
+    "<what works well>"
+  ],
+  "improvement_roadmap": [
+    {{
+      "priority": <1-10>,
+      "action": "<what to do>",
+      "category": "<validation|coverage|consistency>",
+      "impact": "<expected improvement>",
+      "verification_method": "<how to verify fix>"
+    }}
+  ]
+}}
+
+VALIDATION CHECKS: Before reporting a gap in "validation_checks", double-check:
+1. Is this mitigation actually claimed for this technique in the per-technique mappings?
+2. Did I read what's after the arrow (←) correctly?
+3. Am I confusing "Implements mitigations" with "Per-technique mappings"?
+
+If unsure, DO NOT report the gap. It's better to miss a real issue than report a false positive.
 """
 
     return prompt
@@ -617,10 +764,136 @@ class TesterCritic:
 
         try:
             score = self.agent.critique(minimal_gt)
+
+            # Post-process: Validate gaps to catch false positives
+            score = self._validate_gaps(score, artifacts)
+
             return score
         finally:
             # Restore original formatter
             self.agent._format_prompt = original_formatter
+
+    def _validate_gaps(self, score: 'CritiqueScore', artifacts: ArtifactSet) -> 'CritiqueScore':
+        """
+        Post-process gaps to remove false positives (LLM hallucinations).
+
+        Checks if gap claims invalid mappings that are actually valid.
+        """
+        from chatbot.modules.mitre import MitreHelper
+
+        controls = artifacts.tier1_critical["artifact_2_controls"]["controls"]
+        mitre = MitreHelper(use_local=True)
+
+        validated_gaps = []
+        false_positives = []
+
+        for gap in score.gaps:
+            # Check if this is a validation gap about MITRE mappings
+            desc = gap.get("description", "").lower()
+
+            if "claims" in desc and ("mitigation" in desc or "technique" in desc):
+                # Extract control name, technique, mitigation from description
+                # e.g., "LEAST PRIVILEGE claims M1016 for T1213"
+                is_false_positive = self._check_if_false_positive(gap, controls, mitre)
+
+                if is_false_positive:
+                    false_positives.append(gap)
+                    logger.warning(f"Tester: Removed false positive gap: {gap['description'][:100]}...")
+                else:
+                    validated_gaps.append(gap)
+            else:
+                # Non-validation gap, keep as-is
+                validated_gaps.append(gap)
+
+        if false_positives:
+            logger.info(f"Tester: Removed {len(false_positives)} false positive gaps")
+            logger.info(f"Tester: Validated gaps: {len(validated_gaps)}/{len(score.gaps)}")
+
+            # Update score - add points back for removed false positives
+            # Each false positive in validation_checks costs ~2-3 points
+            points_recovered = min(len(false_positives) * 2, 12)  # Cap at 12 points
+            score.score = min(100, score.score + points_recovered)
+
+            # Update breakdown
+            if "validation_checks" in score.breakdown:
+                val_check = score.breakdown["validation_checks"]
+                val_check["score"] = min(40, val_check["score"] + points_recovered)
+                val_check["reasoning"] += f"\n\nNote: {len(false_positives)} false positive(s) removed via post-validation."
+
+            # Update rating
+            if score.score >= 85:
+                score.rating = "EXCELLENT"
+            elif score.score >= 70:
+                score.rating = "GOOD"
+            elif score.score >= 50:
+                score.rating = "FAIR"
+            else:
+                score.rating = "POOR"
+
+        score.gaps = validated_gaps
+        return score
+
+    def _check_if_false_positive(self, gap: Dict, controls: List[Dict], mitre: MitreHelper) -> bool:
+        """
+        Check if a validation gap is a false positive.
+
+        Returns True if the gap claims invalid mapping but mapping is actually valid.
+        """
+        desc = gap.get("description", "")
+
+        # Try to extract control name, technique ID, mitigation ID
+        # Simple heuristic: look for patterns like "CONTROL claims M#### for T####"
+        import re
+
+        # Pattern: "CONTROL_NAME claims M#### for T####"
+        pattern = r"([A-Z\s]+)\s+(?:control\s+)?claims?\s+(M\d+).*?(?:for|addresses?)\s+(T\d+)"
+        match = re.search(pattern, desc, re.IGNORECASE)
+
+        if not match:
+            # Can't parse, assume it's valid
+            return False
+
+        control_name = match.group(1).strip().lower()
+        mitigation_id = match.group(2).upper()
+        technique_id = match.group(3).upper()
+
+        # Find the control in data
+        control = None
+        for ctrl in controls:
+            if ctrl["control"].lower() == control_name:
+                control = ctrl
+                break
+
+        if not control:
+            # Control not found, can't validate
+            return False
+
+        # Check if control actually claims this mitigation for this technique
+        technique_coverage = control.get("technique_coverage", {})
+
+        if technique_id not in technique_coverage:
+            # Technique not covered by control, gap might be valid
+            return False
+
+        claimed_mits = technique_coverage[technique_id]
+
+        if mitigation_id not in claimed_mits:
+            # Mitigation NOT claimed for this technique → gap is FALSE POSITIVE
+            logger.info(f"False positive: {control_name} does NOT claim {mitigation_id} for {technique_id}")
+            logger.info(f"  Actual coverage for {technique_id}: {claimed_mits}")
+            return True
+
+        # Mitigation IS claimed, check if it's valid
+        official_mits = mitre.get_technique_mitigations(technique_id)
+        official_ids = [m["mitigation_id"] for m in official_mits]
+
+        if mitigation_id in official_ids:
+            # Mapping is valid but gap claims it's invalid → FALSE POSITIVE
+            logger.info(f"False positive: {mitigation_id} IS valid for {technique_id} per MITRE")
+            return True
+
+        # Mapping is truly invalid, gap is correct
+        return False
 
 
 # ============================================================================
