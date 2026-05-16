@@ -227,19 +227,43 @@ def format_mitre_reference(reference: Dict) -> str:
 
 
 def format_controls_summary(controls: List[Dict]) -> str:
-    """Format controls for prompt."""
+    """
+    Format controls for prompt (HYBRID APPROACH).
+
+    Shows both:
+    - Defense-in-depth: All mitigations the control implements
+    - Validation: Per-technique coverage map (which mitigation addresses which technique)
+    """
     lines = []
 
     for idx, control in enumerate(controls[:15], 1):  # Limit to 15 for token economy
         name = control.get("control", "Unknown")
-        mits = ", ".join(control.get("mitigations", []))
-        techs = ", ".join(control.get("techniques", []))
+        mits = control.get("mitigations", [])
+        techs = control.get("techniques", [])
         priority = control.get("priority", "unknown")
         score = control.get("score", 0)
 
         lines.append(f"  {idx}. {name.upper()} [{priority}] (score: {score:.1f})")
-        lines.append(f"     Claims mitigations: {mits}")
-        lines.append(f"     Claims techniques: {techs}")
+        lines.append(f"     Implements mitigations (defense-in-depth): {', '.join(mits)}")
+
+        # HYBRID: Show per-technique coverage if available
+        technique_coverage = control.get("technique_coverage", {})
+        if technique_coverage:
+            lines.append(f"     Per-technique mappings (validate these against MITRE):")
+            # Show first 5 techniques with their valid mitigations
+            for tech_id in list(techs)[:5]:
+                valid_mits = technique_coverage.get(tech_id, [])
+                if valid_mits:
+                    lines.append(f"       • {tech_id} ← mitigated by: {', '.join(valid_mits)}")
+                else:
+                    lines.append(f"       • {tech_id} ← (NO valid mitigations from this control)")
+            if len(techs) > 5:
+                lines.append(f"       ... +{len(techs) - 5} more techniques")
+            lines.append(f"     IMPORTANT: Only validate the per-technique mappings above, NOT the full mitigation list")
+        else:
+            # Fallback: Old format (claims all mitigations for all techniques)
+            lines.append(f"     Claims ALL mitigations apply to ALL techniques: {', '.join(techs)}")
+            lines.append(f"     WARNING: Old format - validate each mitigation against each technique")
 
     if len(controls) > 15:
         lines.append(f"  ... +{len(controls) - 15} more controls")
@@ -414,21 +438,48 @@ Improvement Roadmap:
 YOUR VALIDATION TASK
 {'='*70}
 
-1. VALIDATE MITRE MAPPINGS:
+HYBRID VALIDATION APPROACH:
+Controls use a defense-in-depth strategy where a single control may implement multiple
+MITRE mitigations, but each mitigation only applies to specific techniques per MITRE ATT&CK.
+
+EXAMPLE:
+  Control: LEAST PRIVILEGE
+  Implements mitigations: [M1016, M1018, M1026, M1042]  ← Defense-in-depth
+  Addresses techniques via:
+    T1059: M1026, M1042  ← Only these mitigations valid for T1059 per MITRE
+    T1190: M1016, M1026  ← M1016 valid for T1190
+    T1213: M1018         ← Only M1018 valid for T1213
+
+VALIDATION RULES:
+✅ VALID: Control implements M1016 AND it's applied only where MITRE says it's valid (T1190)
+❌ INVALID: Control claims M1016 addresses T1059 (M1016 not in T1059's MITRE mitigation list)
+
+1. VALIDATE MITRE MAPPINGS (USE HYBRID STRUCTURE - READ CAREFULLY):
    For each control, check:
-   - Are claimed mitigations valid?
-   - Do mitigations actually address claimed techniques? (use MITRE reference above)
-   - Calculate actual coverage: techniques_mitigated / total_techniques
+   a) If control shows "Per-technique mappings (validate these against MITRE)":
+      - ONLY validate the per-technique mappings listed (e.g., "T1059 ← mitigated by: M1026, M1042")
+      - DO NOT assume all mitigations apply to all techniques
+      - DO NOT flag M1016 for T1059 if T1059's mapping doesn't list M1016
+      - Example: If control shows "T1059 ← M1026, M1042" then ONLY check M1026 and M1042 for T1059
+      - The "Implements mitigations" list is defense-in-depth, not per-technique
+   b) If control shows "Claims ALL mitigations apply to ALL techniques":
+      - This is old format - check if ALL mitigations are valid for ALL techniques
+      - Flag over-claiming (mitigation doesn't apply to that technique per MITRE)
+   c) Calculate actual coverage: valid_mappings / total_claimed_mappings
+
+   CRITICAL: Read the per-technique mappings line by line. Do not infer mappings from the full mitigation list.
 
 2. CHECK INTERNAL CONSISTENCY:
    - Do rationales match control inventory?
    - Are priorities aligned to RAPIDS risk scores?
    - Does after.mmd have all {len(controls)} controls visualized?
+   - Does risk reduction make sense given valid mitigations?
 
 3. VERIFY COVERAGE:
    - Are all 6 RAPIDS categories addressed?
    - Do high-risk categories (≥70) have multiple controls?
    - Are critical paths covered by 3+ controls?
+   - Are techniques with minimal valid mitigations flagged?
 
 4. VALIDATE ARCHITECT ROADMAP (if provided):
    - Do roadmap items address real gaps?
@@ -440,15 +491,15 @@ OUTPUT REQUIREMENTS
 {'='*70}
 
 Return JSON with:
-- score (0-100, be critical)
+- score (0-100, be critical but fair - hybrid approach deserves credit for defense-in-depth)
 - breakdown (4 categories, with reasoning)
-- gaps (specific issues with severity, affected components)
-- strengths (what works well)
-- improvement_roadmap (how to fix issues)
+- gaps (specific issues with severity, affected components, cite specific technique-mitigation pairs)
+- strengths (what works well, acknowledge valid defense-in-depth strategy)
+- improvement_roadmap (how to fix invalid mappings while preserving defense-in-depth)
 
-BE SPECIFIC: Cite control names, technique IDs, use MITRE data.
-BE CRITICAL: Flag issues even if assessment looks "good enough".
-BE CONSTRUCTIVE: Provide actionable recommendations.
+BE SPECIFIC: Cite control names, technique IDs, mitigation IDs, use MITRE data.
+BE FAIR: Defense-in-depth is valid; flag only where mitigations claimed for wrong techniques.
+BE CONSTRUCTIVE: Provide actionable recommendations that preserve risk-averse approach.
 """
 
     return prompt

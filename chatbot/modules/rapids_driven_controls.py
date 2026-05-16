@@ -330,6 +330,18 @@ def generate_rapids_driven_controls(
         # Infer DIR category if not already set
         dir_category = infer_dir_category(control)
 
+        # Build technique_coverage map (HYBRID APPROACH - Phase 3C)
+        # Map each technique to the specific mitigations that address it
+        technique_coverage = {}
+        for tech_id in data["techniques"]:
+            # Get MITRE official mitigations for this technique
+            tech_mits = mitre.get_technique_mitigations(tech_id)
+            official_mit_ids = {m["mitigation_id"] for m in tech_mits}
+
+            # Find which of our control's mitigations are valid for this technique
+            valid_mits = [m for m in data["mitigations"] if m in official_mit_ids]
+            technique_coverage[tech_id] = valid_mits
+
         results.append({
             "control": control,
             "priority": priority,
@@ -338,6 +350,7 @@ def generate_rapids_driven_controls(
             "rapids_risk_score": data["rapids_risk_score"],
             "mitigations": sorted(list(data["mitigations"])),
             "techniques": sorted(list(data["techniques"])),
+            "technique_coverage": technique_coverage,  # NEW: Hybrid approach
             "attack_paths": sorted(set(data["attack_path_evidence"])),
             "rationale": rationale,
             "detailed_rationale": data["rationale"],

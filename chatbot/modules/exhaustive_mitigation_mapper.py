@@ -247,6 +247,36 @@ def rank_mitigations_by_priority(
     return ranked
 
 
+def build_technique_coverage_map(
+    mitigation_map: Dict[str, Dict]
+) -> Dict[str, List[str]]:
+    """
+    Build reverse mapping: technique_id → [mitigation_ids that address it].
+
+    This creates the explicit coverage map for the hybrid approach.
+
+    Args:
+        mitigation_map: Output from get_all_mitigations_for_techniques()
+
+    Returns:
+        Dict mapping technique_id → list of valid mitigation_ids
+
+    Example:
+        {
+            "T1059": ["M1026", "M1042", "M1033", ...],
+            "T1190": ["M1016", "M1026", "M1030", ...],
+            ...
+        }
+    """
+    technique_coverage = defaultdict(list)
+
+    for mit_id, mit_data in mitigation_map.items():
+        for tech_id in mit_data["techniques"]:
+            technique_coverage[tech_id].append(mit_id)
+
+    return dict(technique_coverage)
+
+
 def map_mitigations_to_controls(
     ranked_mitigations: List[Tuple[str, Dict, float]],
     controls_present: Set[str],
@@ -254,6 +284,11 @@ def map_mitigations_to_controls(
 ) -> List[Dict]:
     """
     Map ranked MITRE mitigations to implementable controls.
+
+    HYBRID APPROACH (Phase 3C Enhancement):
+    - Groups multiple MITRE mitigations into unified controls
+    - Builds per-technique coverage map (explicit validation)
+    - Maintains defense-in-depth (all mitigations listed)
 
     Args:
         ranked_mitigations: Output from rank_mitigations_by_priority()
@@ -264,69 +299,102 @@ def map_mitigations_to_controls(
         List of control dicts:
         [
             {
-                "name": "least privilege",
-                "mitre_mitigation_id": "M1026",
-                "mitre_mitigation_name": "Privileged Account Management",
-                "techniques_addressed": ["T1190", "T1078"],
-                "frequency": 2,
-                "priority_score": 4.2,
-                "rationale": "Addresses 2 techniques (T1190, T1078)"
+                "control": "least privilege",
+                "mitigations": ["M1016", "M1018", "M1026"],  # All mitigations this control implements
+                "techniques": ["T1059", "T1190", ...],  # All techniques addressed
+                "technique_coverage": {  # NEW: Explicit per-technique mapping
+                    "T1059": ["M1026", "M1042"],  # Only valid mitigations for T1059
+                    "T1190": ["M1016", "M1026"],  # M1016 valid for T1190
+                    ...
+                },
+                "frequency": 6,
+                "priority_score": 8.4,
+                "rationale": "Addresses 6 techniques via 3 mitigations"
             },
             ...
         ]
     """
     controls_lower = {c.lower() for c in controls_present}
     recommended = []
-    seen_controls = set()
+
+    # Group mitigations by control name
+    control_groups = defaultdict(lambda: {
+        "mitigations": [],
+        "techniques": set(),
+        "priority_scores": [],
+        "mitigation_data": {}  # Store mitigation data for coverage map
+    })
 
     for mit_id, mit_data, priority_score in ranked_mitigations:
         control_name = mit_data["control_name"]
 
         # Skip if already present
         if control_name and control_name.lower() in controls_lower:
-            logger.debug(f"Skipping {control_name} (already present)")
             continue
 
-        # Skip duplicates (same control from different mitigations)
-        if control_name in seen_controls:
-            continue
+        # Group by control name
+        control_groups[control_name]["mitigations"].append(mit_id)
+        control_groups[control_name]["techniques"].update(mit_data["techniques"])
+        control_groups[control_name]["priority_scores"].append(priority_score)
+        control_groups[control_name]["mitigation_data"][mit_id] = mit_data
 
-        seen_controls.add(control_name)
+    # Build recommendations from grouped controls
+    for control_name, group_data in control_groups.items():
+        mitigations = group_data["mitigations"]
+        techniques = sorted(list(group_data["techniques"]))
+        avg_priority = sum(group_data["priority_scores"]) / len(group_data["priority_scores"])
 
-        # Build recommendation
-        techniques_addressed = mit_data["techniques"]
-        frequency = mit_data["frequency"]
+        # Build per-technique coverage map (HYBRID APPROACH)
+        technique_coverage = {}
+        for tech_id in techniques:
+            # Find which mitigations from this control are valid for this technique
+            valid_mitigations = []
+            for mit_id, mit_data in group_data["mitigation_data"].items():
+                if tech_id in mit_data["techniques"]:
+                    valid_mitigations.append(mit_id)
 
-        technique_list = ", ".join(techniques_addressed)
-        rationale = f"Addresses {frequency} technique(s): {technique_list}"
+            technique_coverage[tech_id] = valid_mitigations
+
+        # Build rationale
+        frequency = len(techniques)
+        technique_list = ", ".join(techniques[:5])  # First 5 for brevity
+        if len(techniques) > 5:
+            technique_list += f", ... ({len(techniques) - 5} more)"
+
+        rationale = f"Addresses {frequency} technique(s) via {len(mitigations)} mitigation(s): {technique_list}"
 
         recommended.append({
-            "control": control_name,  # Renamed from "name" to match RAPIDS schema
+            "control": control_name,
             "name": control_name,  # Keep for backwards compat
-            "mitre_mitigation_id": mit_id,
-            "mitre_mitigation_name": mit_data["name"],
-            "techniques": techniques_addressed,  # Renamed from "techniques_addressed"
-            "techniques_addressed": techniques_addressed,  # Keep for backwards compat
-            "mitigations": [mit_id],  # Add mitigation IDs list
+            "mitigations": mitigations,  # Defense-in-depth: all mitigations
+            "techniques": techniques,  # All techniques addressed
+            "technique_coverage": technique_coverage,  # NEW: Explicit per-technique mapping
             "frequency": frequency,
-            "priority_score": priority_score,
-            "priority": "high" if priority_score > 5 else "medium",  # Add priority label
-            "score": priority_score,  # Add score for sorting
+            "priority_score": avg_priority,
+            "priority": "high" if avg_priority > 5 else "medium",
+            "score": avg_priority,
             "rationale": rationale,
-            "confidence": {  # Add confidence for self_validation compatibility
-                "score": 0.75,  # Medium confidence (gap-filling, less context than RAPIDS)
-                "level": "MEDIUM",
-                "factors": ["Exhaustive MITRE mitigation query", "Gap-filling control"]
+            "confidence": {
+                "score": 0.85,  # Higher confidence with explicit coverage map
+                "level": "HIGH",
+                "factors": [
+                    "Exhaustive MITRE mitigation query",
+                    "Explicit per-technique validation",
+                    "Defense-in-depth grouping"
+                ]
             },
             "rapids_threats": [],  # Not RAPIDS-driven, purely technique-based
             "attack_paths": [],  # Will be populated if we match attack path techniques
-            "dir_category": _infer_dir_category(control_name)  # Infer from control name
+            "dir_category": _infer_dir_category(control_name)
         })
 
-        logger.info(f"Recommended: {control_name} (priority={priority_score:.1f}, addresses {frequency} techniques)")
+        logger.info(f"Recommended: {control_name} (priority={avg_priority:.1f}, {len(mitigations)} mitigations, {frequency} techniques)")
 
         if len(recommended) >= max_recommendations:
             break
+
+    # Sort by priority
+    recommended.sort(key=lambda x: x["priority_score"], reverse=True)
 
     return recommended
 
