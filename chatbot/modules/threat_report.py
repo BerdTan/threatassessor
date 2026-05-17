@@ -832,7 +832,11 @@ def generate_before_after_diagrams(
 
     # Add recommended control nodes WITH MITRE CONTEXT
     after_lines.append("")
-    after_lines.append("    %% RECOMMENDED SECURITY CONTROLS (GREEN)")
+    after_lines.append("    %% RECOMMENDED SECURITY CONTROLS (COLOR-CODED BY PRIORITY)")
+    after_lines.append("    %% 🔴 CRITICAL = Breaks primary attack paths (implement first)")
+    after_lines.append("    %% 🟡 HIGH = Closes validation gaps (implement within 3 months)")
+    after_lines.append("    %% 🔵 MEDIUM = Defense-in-depth (implement within 6 months)")
+    after_lines.append("    %% 🟢 BASELINE = Security hygiene (ongoing program)")
     after_lines.append("    %% Format: Control Name<br/>MITRE: M####<br/>Addresses: T####")
 
     control_nodes = {}
@@ -853,8 +857,9 @@ def generate_before_after_diagrams(
             techniques = rec.get("techniques", [])[:3]     # Top 3 techniques (increased from 2)
             attack_paths = rec.get("attack_paths", [])     # ALL paths (removed [:3] limit)
             dir_category = rec.get("dir_category", "prevention")  # Get DIR category
+            priority = rec.get("priority", "medium")  # Phase 3B++: Get priority for color coding
 
-            logger.debug(f"Control {control}: mits={mitigations}, techs={techniques}, paths={len(attack_paths)} paths, dir={dir_category}")
+            logger.debug(f"Control {control}: mits={mitigations}, techs={techniques}, paths={len(attack_paths)} paths, dir={dir_category}, priority={priority}")
 
             if mitigations:
                 control_label += f"<br/>MITRE: {', '.join(mitigations)}"
@@ -888,7 +893,20 @@ def generate_before_after_diagrams(
             # Rectangle for general controls
             after_lines.append(f"    {control_id}[\"{control_label}\"]")
 
-        styling_declarations.append(f"    style {control_id} fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000")
+        # Phase 3B++: Priority-based color coding for visual prioritization
+        # Color scheme aligned with Phase 3C+ HYBRID_PLAN for consistency
+        PRIORITY_COLORS = {
+            "critical": "fill:#ff6b6b,stroke:#c92a2a",    # RED - breaks attack paths
+            "high": "fill:#ffd43b,stroke:#fab005",         # YELLOW - closes gaps
+            "medium": "fill:#74c0fc,stroke:#339af0",       # BLUE - defense-in-depth
+            "low": "fill:#90EE90,stroke:#006400"           # GREEN - baseline hygiene
+        }
+
+        # Get priority from recommendation (default to medium if not specified)
+        control_priority = rec.get("priority", "medium") if isinstance(rec, dict) else "medium"
+        control_color = PRIORITY_COLORS.get(control_priority, PRIORITY_COLORS["medium"])
+
+        styling_declarations.append(f"    style {control_id} {control_color},stroke-width:3px,color:#000000")
         control_nodes[control] = control_id
 
     # Add edges with strategic control placement
