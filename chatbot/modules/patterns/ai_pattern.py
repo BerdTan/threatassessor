@@ -197,28 +197,421 @@ class AIPattern(ThreatPattern):
 
     def assess_threat(self, node: str, context: Dict) -> Dict:
         """
-        STUB: Assess AI/ML-specific threats for node.
+        Assess AI/ML-specific threats for node using ARC Framework.
 
-        Future implementation will:
-        1. Detect AI/ML components (LLM API, training pipeline, model endpoint)
-        2. Assess prompt injection risk (if LLM API)
-        3. Assess model poisoning risk (if training pipeline)
-        4. Assess data leakage risk (if trained on sensitive data)
-        5. Map to MITRE AML techniques
-        6. Calculate risk scores based on controls present
+        Implementation:
+        1. Detect AI/ML component type (LLM API, Vector DB, Agent, etc.)
+        2. Assess 9 ARC risk categories (0-100 each)
+        3. Map to MITRE ATLAS techniques
+        4. Return threat assessment
 
         Args:
-            node: Node name (e.g., "LLM API", "Training Pipeline")
-            context: Architecture context with node type, controls, etc.
+            node: Node name (e.g., "OpenAI API", "Vector Database")
+            context: Architecture context:
+                - controls_present: List[str] (security controls deployed)
+                - neighbors: List[str] (connected nodes)
+                - architecture_type: str (should be "ai_system")
+                - node_type: str (optional, inferred type)
 
         Returns:
-            Empty dict (stub implementation)
+            Dict with ARC risk assessment:
+                {
+                    "integrity": {"risk": 85, "rationale": "...", "techniques": [...]},
+                    "safety": {"risk": 75, ...},
+                    ...
+                }
         """
-        logger.debug(f"{self.name}: assess_threat() called for node '{node}' (STUB)")
+        logger.debug(f"{self.name}: assess_threat() for node '{node}'")
 
-        # STUB: Return empty assessment
-        # Future: Detect AI components and assess threats
-        return {}
+        # Step 1: Detect AI component type
+        component_type = self._detect_component_type(node)
+
+        if component_type == "unknown":
+            # Not an AI component, skip
+            return {}
+
+        logger.info(f"{self.name}: Detected {component_type} component: {node}")
+
+        # Step 2: Get controls present (from context)
+        controls_present = context.get("controls_present", [])
+        controls_present_lower = [c.lower() for c in controls_present]
+
+        # Step 3: Assess 9 ARC risk categories
+        threats = {}
+
+        # INTEGRITY (Hallucination, Prompt Injection, Bias)
+        integrity_risk, integrity_rationale, integrity_techniques = self._assess_integrity_risk(
+            component_type, node, controls_present_lower
+        )
+        if integrity_risk > 0:
+            threats["integrity"] = {
+                "risk": integrity_risk,
+                "rationale": integrity_rationale,
+                "techniques": integrity_techniques,
+                "affected_nodes": [node]
+            }
+
+        # SAFETY (Harmful Content, Dangerous Capabilities)
+        safety_risk, safety_rationale, safety_techniques = self._assess_safety_risk(
+            component_type, node, controls_present_lower
+        )
+        if safety_risk > 0:
+            threats["safety"] = {
+                "risk": safety_risk,
+                "rationale": safety_rationale,
+                "techniques": safety_techniques,
+                "affected_nodes": [node]
+            }
+
+        # SECURITY (API Exposure, Data Breach, Access Control)
+        security_risk, security_rationale, security_techniques = self._assess_security_risk(
+            component_type, node, controls_present_lower
+        )
+        if security_risk > 0:
+            threats["security"] = {
+                "risk": security_risk,
+                "rationale": security_rationale,
+                "techniques": security_techniques,
+                "affected_nodes": [node]
+            }
+
+        # PRIVACY (PII Leakage, Data Extraction)
+        privacy_risk, privacy_rationale, privacy_techniques = self._assess_privacy_risk(
+            component_type, node, controls_present_lower
+        )
+        if privacy_risk > 0:
+            threats["privacy"] = {
+                "risk": privacy_risk,
+                "rationale": privacy_rationale,
+                "techniques": privacy_techniques,
+                "affected_nodes": [node]
+            }
+
+        # Other categories (lower risk for MVP, default scores)
+        # TRANSPARENCY
+        transparency_risk = 60 if "logging" not in controls_present_lower else 30
+        threats["transparency"] = {
+            "risk": transparency_risk,
+            "rationale": "Logging present" if transparency_risk == 30 else "No logging detected",
+            "techniques": [],
+            "affected_nodes": [node]
+        }
+
+        # ACCOUNTABILITY
+        accountability_risk = 70 if "human_oversight" not in controls_present_lower else 40
+        threats["accountability"] = {
+            "risk": accountability_risk,
+            "rationale": "Human oversight present" if accountability_risk == 40 else "No human oversight",
+            "techniques": [],
+            "affected_nodes": [node]
+        }
+
+        # FAIRNESS (default medium risk)
+        threats["fairness"] = {
+            "risk": 50,
+            "rationale": "Fairness controls unknown (default risk)",
+            "techniques": [],
+            "affected_nodes": [node]
+        }
+
+        # RESILIENCE
+        resilience_risk = 50 if "monitoring" in controls_present_lower else 60
+        threats["resilience"] = {
+            "risk": resilience_risk,
+            "rationale": "Monitoring present" if resilience_risk == 50 else "No monitoring",
+            "techniques": [],
+            "affected_nodes": [node]
+        }
+
+        # SOCIETAL IMPACT (low risk by default)
+        threats["societal_impact"] = {
+            "risk": 30,
+            "rationale": "Standard AI deployment (moderate societal impact)",
+            "techniques": [],
+            "affected_nodes": [node]
+        }
+
+        return threats
+
+    # ========================================================================
+    # Component Detection (Rule-Based, Deterministic)
+    # ========================================================================
+
+    def _detect_component_type(self, node: str) -> str:
+        """
+        Detect AI component type from node name (rule-based).
+
+        Returns:
+            Component type: llm_api, vector_db, agent_orchestrator,
+                           embedding_service, code_execution, unknown
+        """
+        node_lower = node.lower()
+
+        # LLM API
+        llm_keywords = ["llm", "gpt", "openai", "anthropic", "claude", "gemini",
+                       "api gateway", "language model", "chat api"]
+        if any(kw in node_lower for kw in llm_keywords):
+            return "llm_api"
+
+        # Vector Database
+        vector_keywords = ["vector", "embedding", "pinecone", "weaviate", "chroma",
+                          "faiss", "milvus", "qdrant"]
+        if any(kw in node_lower for kw in vector_keywords):
+            return "vector_db"
+
+        # Agent Orchestrator
+        agent_keywords = ["agent", "orchestrator", "coordinator", "workflow"]
+        if any(kw in node_lower for kw in agent_keywords):
+            return "agent_orchestrator"
+
+        # Embedding Service
+        embed_keywords = ["embedding service", "embedder", "vectorizer"]
+        if any(kw in node_lower for kw in embed_keywords):
+            return "embedding_service"
+
+        # Code Execution
+        code_keywords = ["code execution", "sandbox", "interpreter", "jupyter"]
+        if any(kw in node_lower for kw in code_keywords):
+            return "code_execution"
+
+        # Prompt Manager
+        prompt_keywords = ["prompt", "template", "prompt manager"]
+        if any(kw in node_lower for kw in prompt_keywords):
+            return "prompt_manager"
+
+        # Tool Registry
+        tool_keywords = ["tool registry", "tool", "function calling"]
+        if any(kw in node_lower for kw in tool_keywords):
+            return "tool_registry"
+
+        return "unknown"
+
+    # ========================================================================
+    # ARC Risk Assessment Methods
+    # ========================================================================
+
+    def _assess_integrity_risk(self, component_type: str, node: str, controls: List[str]) -> tuple:
+        """
+        Assess INTEGRITY risk (ARC Category 1): Hallucination, Prompt Injection, Bias
+
+        High risk if:
+        - No input validation (prompt injection)
+        - No output filtering (hallucination)
+        - No grounding/RAG (factual inaccuracy)
+
+        Returns: (risk_score, rationale, techniques)
+        """
+        risk = 50  # Default medium risk
+        rationale = []
+        techniques = []
+
+        if component_type == "llm_api":
+            # LLM API has high integrity risk by default
+            risk = 85
+
+            if "input_validation" not in controls and "prompt_filtering" not in controls:
+                risk = max(risk, 90)
+                rationale.append("No input validation (prompt injection risk)")
+                techniques.append("AML.T0051.001")  # Direct prompt injection
+
+            if "output_filtering" not in controls and "content_validation" not in controls:
+                risk = max(risk, 85)
+                rationale.append("No output filtering (hallucination risk)")
+
+            if "rag" not in controls and "grounding" not in controls:
+                risk = max(risk, 80)
+                rationale.append("No RAG/grounding (factual inaccuracy)")
+
+            # Controls present reduce risk
+            if "input_validation" in controls:
+                risk -= 20
+                rationale.append("Input validation present (reduces prompt injection)")
+
+            if "output_filtering" in controls:
+                risk -= 15
+                rationale.append("Output filtering present (reduces hallucination)")
+
+        elif component_type == "prompt_manager":
+            risk = 70
+            if "prompt_injection_defense" not in controls:
+                rationale.append("Prompt manager without injection defense")
+                techniques.append("AML.T0051.002")  # Indirect prompt injection
+            else:
+                risk -= 30
+
+        elif component_type == "agent_orchestrator":
+            risk = 75
+            rationale.append("Agent orchestrator can amplify integrity risks")
+
+        return (max(0, min(100, risk)), " | ".join(rationale) if rationale else f"Default {component_type} integrity risk", techniques)
+
+    def _assess_safety_risk(self, component_type: str, node: str, controls: List[str]) -> tuple:
+        """
+        Assess SAFETY risk (ARC Category 2): Harmful Content, Dangerous Capabilities
+
+        High risk if:
+        - No content moderation
+        - Autonomous actions enabled
+        - Tool use unrestricted
+
+        Returns: (risk_score, rationale, techniques)
+        """
+        risk = 40  # Default lower risk
+        rationale = []
+        techniques = []
+
+        if component_type == "llm_api":
+            risk = 75
+
+            if "content_moderation" not in controls:
+                risk = max(risk, 85)
+                rationale.append("No content moderation (harmful content risk)")
+                techniques.append("SAF-001")  # ARC: Harmful content generation
+
+            if "capability_restrictions" not in controls:
+                risk = max(risk, 70)
+                rationale.append("No capability restrictions")
+
+            # Controls reduce risk
+            if "content_moderation" in controls:
+                risk -= 30
+                rationale.append("Content moderation present")
+
+        elif component_type == "code_execution":
+            risk = 90  # Code execution is inherently high risk
+            if "sandbox" not in controls:
+                risk = 95
+                rationale.append("Code execution without sandbox (critical safety risk)")
+                techniques.append("SAF-007")  # ARC: Unsafe tool use
+            else:
+                risk -= 40
+                rationale.append("Sandbox present (reduces risk)")
+
+        elif component_type == "agent_orchestrator":
+            risk = 80
+            if "human_oversight" not in controls and "human_in_loop" not in controls:
+                risk = 85
+                rationale.append("Autonomous agent without human oversight")
+                techniques.append("SAF-006")  # ARC: Autonomous harmful actions
+            else:
+                risk -= 25
+
+        elif component_type == "tool_registry":
+            risk = 70
+            if "tool_allowlist" not in controls:
+                rationale.append("Tool registry without allowlist")
+            else:
+                risk -= 20
+
+        return (max(0, min(100, risk)), " | ".join(rationale) if rationale else f"Default {component_type} safety risk", techniques)
+
+    def _assess_security_risk(self, component_type: str, node: str, controls: List[str]) -> tuple:
+        """
+        Assess SECURITY risk (ARC Category 3): API Exposure, Data Breach, Access Control
+
+        High risk if:
+        - No API key protection
+        - No rate limiting
+        - No access control
+
+        Returns: (risk_score, rationale, techniques)
+        """
+        risk = 60  # Default medium risk
+        rationale = []
+        techniques = []
+
+        if component_type == "llm_api":
+            risk = 70
+
+            if "api_key_rotation" not in controls and "secrets_management" not in controls:
+                risk = max(risk, 90)
+                rationale.append("No API key protection (exposure risk)")
+                techniques.append("SEC-003")  # ARC: API key exposure
+
+            if "rate_limiting" not in controls:
+                risk = max(risk, 75)
+                rationale.append("No rate limiting (DoS risk)")
+                techniques.append("SEC-009")  # ARC: Denial of service
+            else:
+                risk -= 20
+                rationale.append("Rate limiting present")
+
+            if "access_control" not in controls and "authentication" not in controls:
+                risk = max(risk, 80)
+                rationale.append("No access control")
+                techniques.append("SEC-001")  # ARC: Unauthorized access
+            else:
+                risk -= 15
+
+            if "encryption" in controls:
+                risk -= 10
+                rationale.append("Encryption present")
+
+        elif component_type == "vector_db":
+            risk = 70
+            if "access_control" not in controls:
+                risk = 85
+                rationale.append("Vector DB without access control (data breach risk)")
+                techniques.append("SEC-002")  # ARC: Data breach
+            else:
+                risk -= 25
+
+        elif component_type == "code_execution":
+            risk = 95  # Extremely high security risk
+            rationale.append("Code execution is high security risk")
+            techniques.append("SEC-007")  # ARC: Adversarial evasion
+
+        return (max(0, min(100, risk)), " | ".join(rationale) if rationale else f"Default {component_type} security risk", techniques)
+
+    def _assess_privacy_risk(self, component_type: str, node: str, controls: List[str]) -> tuple:
+        """
+        Assess PRIVACY risk (ARC Category 4): PII Leakage, Data Extraction
+
+        High risk if:
+        - No PII detection
+        - Chat history stored
+        - Training data contains PII
+
+        Returns: (risk_score, rationale, techniques)
+        """
+        risk = 50  # Default medium risk
+        rationale = []
+        techniques = []
+
+        if component_type == "llm_api":
+            risk = 75
+
+            if "pii_detection" not in controls and "data_loss_prevention" not in controls:
+                risk = max(risk, 85)
+                rationale.append("No PII detection (leakage risk)")
+                techniques.append("PRIV-001")  # ARC: PII leakage
+            else:
+                risk -= 25
+                rationale.append("PII detection present")
+
+            if "data_minimization" not in controls:
+                risk = max(risk, 70)
+                rationale.append("No data minimization")
+
+            if "differential_privacy" in controls:
+                risk -= 20
+                rationale.append("Differential privacy present")
+
+        elif component_type == "vector_db":
+            risk = 80
+            rationale.append("Vector DB stores embeddings (potential data extraction)")
+            techniques.append("PRIV-002")  # ARC: Training data extraction
+
+            if "encryption" in controls:
+                risk -= 20
+            if "access_control" in controls:
+                risk -= 15
+
+        elif component_type == "embedding_service":
+            risk = 65
+            rationale.append("Embedding service processes sensitive data")
+
+        return (max(0, min(100, risk)), " | ".join(rationale) if rationale else f"Default {component_type} privacy risk", techniques)
 
     def recommend_controls(self, threats: Dict, context: Dict) -> List[str]:
         """
