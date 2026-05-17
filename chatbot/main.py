@@ -567,7 +567,7 @@ Examples:
     # Handle ground truth generation mode
     if args.gen_arch_truth or args.gen_arch_truth_llm:
         from pathlib import Path
-        from chatbot.modules.ground_truth_generator import generate_ground_truth
+        from chatbot.modules.threat_analyst import ThreatAnalyst
         from chatbot.modules.threat_report import (
             generate_report_package,
             generate_executive_summary,
@@ -595,8 +595,10 @@ Examples:
                 print("   Mode: Deterministic parser (fast, reproducible)")
             print()
 
-            # Generate ground truth
-            truth = generate_ground_truth(mmd_file, use_llm=use_llm)
+            # Generate ground truth using ThreatAnalyst (includes AI pattern detection)
+            analyst = ThreatAnalyst()
+            result = analyst.execute({"architecture_path": mmd_file})
+            truth = result.data
 
             # Determine output directory
             if args.output:
