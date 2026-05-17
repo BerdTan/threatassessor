@@ -1,7 +1,7 @@
 # Documentation Index
 
-**Version:** 1.3  
-**Status:** Production Ready 🚀 + Phase 3B++/3C+ Complete  
+**Version:** 1.3 (Phase 3D in progress)  
+**Status:** Phase 3C+ Complete (with issues) → Phase 3D (MoE) approved  
 **Last Updated:** 2026-05-17
 
 ---
@@ -49,10 +49,18 @@
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| **phases/phase3c/ROADMAP.md** | 3-phase roadmap (3B++ / 3C+ / MoE) | ✅ Complete |
+| **phases/phase3c/ROADMAP.md** | 3-phase roadmap (3B++/3C+/3D) **UPDATED** | ✅ Phase 2 complete, Phase 3D approved |
 | **phases/phase3c/HYBRID_PLAN.md** | Orchestrator consensus design | ✅ Complete |
 | **phases/phase3c/PHASE3C_COMPLETE.md** | Agent framework completion summary | ✅ Complete |
+| **phases/phase3c/PHASE3C_IMPROVEMENTS_NEEDED.md** | **NEW** - Critical issues found | 🔴 3 issues blocking production |
 | **phases/phase3c/README.md** | Phase 3C overview | Reference |
+
+### Phase 3D: MoE Architecture (ThreatAssessor v1.3)
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| **refactoring/MOE_ARCHITECTURE_DESIGN.md** | **NEW** - MoE sequential validation design | 📋 Approved (36h, 4 weeks) |
+| **planning/CLEANUP_TESTS_SCRIPTS.md** | Tests/scripts cleanup plan | ✅ Executed |
 
 ### Future Roadmap
 
@@ -68,18 +76,21 @@
 docs/
 ├── core/              # Core v1.0 features & methodologies (4 files)
 ├── operations/        # Troubleshooting & maintenance (2 files)
-├── development/       # System design & architecture (3 files)
-├── phases/            # Implementation phases (3B, 3B++, 3C+)
+├── development/       # System design & architecture (2 files)
+├── phases/            # Implementation phases (3B, 3B++, 3C+, 3D)
 │   ├── phase3b/       # Phase 3B: Diagram placement (3 files)
 │   ├── phase3b_plus/  # Phase 3B++: Visual prioritization (4 files)
-│   └── phase3c/       # Phase 3C+: Orchestrator (46 files)
+│   └── phase3c/       # Phase 3C+: Orchestrator + Phase 3D planning (5 files)
 ├── patterns/          # Threat patterns (AI/ML) (3 files)
 ├── testing/           # Testing strategy & data management (6 files)
-├── deployment/        # Deployment checklists & guides (3 files)
-├── refactoring/       # Future MoE architecture (3 files)
+├── deployment/        # Deployment checklists & guides (4 files)
+├── refactoring/       # MoE architecture design (1 file)
+├── planning/          # Cleanup & improvement plans (1 file)
 ├── specs/             # Future specifications (Web UI, etc.) (1 file)
-└── archive/           # Historical documents (26 files)
-    └── development/   # Completed implementation docs (2 files)
+└── archive/           # Historical documents (28 files)
+    ├── development/   # Completed implementation docs (2 files)
+    ├── tests/         # Obsolete test files
+    └── scripts/       # Obsolete scripts
 ```
 
 **Active subdirectories:**
@@ -153,16 +164,17 @@ ROOT/
 
 ## Recent Updates
 
-**2026-05-17:** Phase 3B++/3C+ Complete ✅ (v1.3)
-- **Phase 3B++:** Priority-based color coding (red/yellow/blue/green)
-- **Phase 3B++:** RAPIDS framework consistency (threat category + DIR labels)
-- **Phase 3B++:** Intelligent priority refinement (attack path coverage + hygiene classification)
-- **Phase 3C+:** Improvement summary generator (human-readable reports)
-- **Phase 3C+:** Stepped MMD diagrams (08a/08b/08c - quick/recommended/maximum)
-- **Phase 3C+:** Orchestrator integration (auto-generates all files)
-- **Output:** 15 files per architecture (up from 11)
-- **Time Invested:** 6 hours total (Phase 3B++: 3h, Phase 3C+: 3h)
-- **Next:** Optional Phase 3 MoE refactor (8-12h) or other priorities
+**2026-05-17:** Phase 3C+ Complete (with issues) → Phase 3D (MoE) Approved
+- **Phase 3B++:** ✅ Priority color coding, RAPIDS consistency, priority refinement (3h)
+- **Phase 3C+:** ✅ Orchestrator, improvement summaries, stepped MMDs (6h)
+- **Output:** 15 files per architecture (tested on AI architectures)
+- **Issues Found:** 🔴 Report coherence, 🟡 Missing files, 🔴 Non-deterministic
+- **Phase 3D:** 📋 MoE architecture approved (36h over 4 weeks)
+  - Sequential expert chain (Deterministic → Architect → Tester → Red Team)
+  - Fail-fast validation (missing prerequisite = abort)
+  - Unified CISO report (00_executive_dashboard.md)
+  - Rebrand to **ThreatAssessor**
+- **Next:** Start Phase 3D Week 1 (Foundation, 8h)
 
 **2026-05-10:** Phase 3C MVP (Agent Framework) complete ✅
 - **New:** 3-agent critique (Architect, Tester, Red Team)
