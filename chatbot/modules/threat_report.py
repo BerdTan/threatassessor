@@ -837,7 +837,7 @@ def generate_before_after_diagrams(
     after_lines.append("    %% 🟡 HIGH = Closes validation gaps (implement within 3 months)")
     after_lines.append("    %% 🔵 MEDIUM = Defense-in-depth (implement within 6 months)")
     after_lines.append("    %% 🟢 BASELINE = Security hygiene (ongoing program)")
-    after_lines.append("    %% Format: Control Name<br/>MITRE: M####<br/>Addresses: T####")
+    after_lines.append("    %% Format: MITRE controls show M####/T####, RAPIDS controls show threat category")
 
     control_nodes = {}
     for rec in control_recommendations:
@@ -858,9 +858,13 @@ def generate_before_after_diagrams(
             attack_paths = rec.get("attack_paths", [])     # ALL paths (removed [:3] limit)
             dir_category = rec.get("dir_category", "prevention")  # Get DIR category
             priority = rec.get("priority", "medium")  # Phase 3B++: Get priority for color coding
+            rapids_threats = rec.get("rapids_threats", [])  # RAPIDS threat categories
 
-            logger.debug(f"Control {control}: mits={mitigations}, techs={techniques}, paths={len(attack_paths)} paths, dir={dir_category}, priority={priority}")
+            logger.debug(f"Control {control}: mits={mitigations}, techs={techniques}, paths={len(attack_paths)} paths, dir={dir_category}, priority={priority}, rapids={rapids_threats}")
 
+            # Phase 3B++: Show framework-specific context
+            # MITRE controls: Show M####, T####, Paths
+            # RAPIDS-only controls: Show RAPIDS category, DIR action
             if mitigations:
                 control_label += f"<br/>MITRE: {', '.join(mitigations)}"
             if techniques:
@@ -873,6 +877,16 @@ def generate_before_after_diagrams(
                 }.get(dir_category, "Addresses")  # Default fallback
 
                 control_label += f"<br/>{action_verb}: {', '.join(techniques)}"
+            elif rapids_threats and not mitigations:
+                # RAPIDS-only control (no MITRE mapping)
+                # Show: RAPIDS category + DIR action for consistency
+                rapids_categories = [t.replace('_', ' ').title() for t in rapids_threats[:2]]
+                control_label += f"<br/>RAPIDS: {', '.join(rapids_categories)}"
+
+                # Show DIR category as action for consistency with MITRE controls
+                dir_action = dir_category.title()  # Prevention, Detect, Isolate, Respond
+                control_label += f"<br/>{dir_action}"
+
             if attack_paths:
                 path_nums = ', '.join([f"#{p+1}" for p in attack_paths])
                 control_label += f"<br/>Paths: {path_nums}"
