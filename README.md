@@ -30,7 +30,7 @@ source .venv/bin/activate
 # 2. Run full analysis (deterministic + MoE validation)
 python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
 
-# 3. Run MoE orchestrator (generates 17 files) - NEW in Phase 3D
+# 3. Run MoE orchestrator (generates 15 files) - NEW in Phase 3D
 python3 -c "
 from chatbot.modules.agents import run_moe_pipeline
 result = run_moe_pipeline('report/your_architecture')
@@ -49,7 +49,7 @@ cat 08_improvement_summary.md   # Human-readable improvement plan
 open 08b_recommended_target.mmd # View recommended security roadmap ⭐
 ```
 
-**Output:** 17 files per architecture (reports + critiques + MoE consensus + improvement roadmaps + diagrams)
+**Output:** 15 files per architecture (reports + critiques + MoE consensus + improvement roadmaps + diagrams)
 
 ---
 
@@ -144,7 +144,7 @@ flowchart TB
 
 **See full sample:** [report_samples/example_architecture/after.mmd](report_samples/example_architecture/after.mmd) (complete with priority-colored controls)
 
-**2. Complete Report Package (17 Files)**
+**2. Complete Report Package (15 Files)**
 ```
 report/your_architecture/
 ├── ground_truth.json           # Deterministic analysis (99.5% base)
@@ -164,11 +164,10 @@ report/your_architecture/
 ├── after.mmd                   # With all controls (priority color-coded)
 ├── 08a_quick_wins.mmd          # Quick wins (CRITICAL, 1-2 weeks)
 ├── 08b_recommended_target.mmd  # Recommended (CRITICAL+HIGH, 1-3 months) ⭐
-├── 08c_maximum_security.mmd    # Maximum (all controls, 6+ months)
-│
-├── README.md                   # Report guide
-└── CURRENT_OUTPUT.md           # Output format documentation
+└── 08c_maximum_security.mmd    # Maximum (all controls, 6+ months)
 ```
+
+**Sample:** See [report_samples/example_architecture/](report_samples/example_architecture/) for complete example (15 files)
 
 **Key Metrics:**
 - **BEFORE Risk:** Current risk with present controls (e.g., 65/100 MITIGATE)
@@ -441,7 +440,7 @@ ls -lh chatbot/data/*.json
 | Phase 3B++ | ✅ Complete | Priority color coding (red/yellow/blue/green) |
 | Phase 3C+ | ✅ Complete | Orchestrator + Improvement roadmaps (15 files generated) |
 | v1.3 (AI/ML) | ✅ Complete | AI/ML threat pattern with ARC Framework + MITRE ATLAS |
-| **Phase 3D Week 1** | ✅ **Complete** | **MoE agent architecture + sequential validation (17 files)** |
+| **Phase 3D Week 1** | ✅ **Complete** | **MoE agent architecture + sequential validation (15 files)** |
 | Phase 3D Week 2-4 | 🚧 In Progress | Expert refactoring + unified orchestration (3 weeks) |
 | Phase 4 | 📦 Future | Web UI (15-20 hours) |
 
@@ -450,7 +449,7 @@ ls -lh chatbot/data/*.json
 **New in Phase 3D:**
 - ✅ Clean agent structure (critics/analysts/orchestrators)
 - ✅ Sequential validation with fail-fast
-- ✅ MoE consensus (17 files including MoE orchestrator)
+- ✅ MoE consensus (15 files including MoE orchestrator)
 - ✅ 93-96% final confidence (99.5% base ± expert adjustments)
 
 **Next:** Phase 3D Week 2 - Expert refactoring (validation-only, not parallel recommendations)
