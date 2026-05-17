@@ -1,9 +1,12 @@
-# MITRE ATT&CK Threat Assessment System
+# ThreatAssessor (formerly MITRE ATT&CK Threat Assessment System)
 
 Production-ready CLI that analyzes architecture diagrams and generates comprehensive threat assessments with MITRE ATT&CK mapping and AI/ML threat analysis.
 
-**Status:** ✅ v1.3 Production Ready (99.5% deterministic + 85% LLM critique + AI/ML patterns)  
-**Core Feature:** Architecture diagram → Attack paths + AI/ML analysis + Control recommendations + Residual risk + LLM critique
+**Status:** ✅ v1.3 Production Ready (99.5% deterministic + AI/ML patterns)  
+**Phase 3C+ Complete:** Orchestrator with improvement roadmaps (15 files generated)  
+**Phase 3D (MoE) Approved:** Sequential validation architecture (4 weeks)
+
+**Core Feature:** Architecture diagram → Attack paths + AI/ML analysis + Priority-coded controls + Improvement roadmaps + Residual risk
 
 ---
 
@@ -23,22 +26,22 @@ source .venv/bin/activate
 # 1. Validate (checks for orphan nodes)
 ./demo_architecture.sh --validate-orphan your_architecture.mmd
 
-# 2. Run threat analysis
+# 2. Run full analysis (deterministic + orchestrator)
 python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
 
-# 3. Run LLM critique (optional, Phase 3C)
-python3 scripts/agent_testing/run_full_critique.py report/your_architecture
+# 3. Run orchestrator (generates 15 files)
+./demo_orchestrator.sh your_architecture  # Or use run_full_critique.py
 
 # 4. View reports
 cd report/your_architecture/
 cat 01_executive_summary.md     # Business summary with ROI
 cat 02_technical_report.md      # MITRE mapping + attack paths
 cat 03_action_plan.md           # 8-week implementation roadmap
-cat 04_architect_critique.json  # Design quality assessment
-cat 05_tester_critique.json     # MITRE validation results
+cat 08_improvement_summary.md   # Human-readable improvement plan
+open 08b_recommended_target.mmd # View recommended security roadmap ⭐
 ```
 
-**Output:** 3 reports + 2 diagrams (before/after) in `report/<architecture_name>/`
+**Output:** 15 files per architecture (reports + critiques + improvement roadmaps + diagrams)
 
 ---
 
@@ -60,25 +63,31 @@ flowchart TB
 
 ### Output
 
-**1. Enhanced Architecture Diagram (after.mmd)**
+**1. Enhanced Architecture Diagram (after.mmd) with Priority Color Coding**
 
 The system generates a comprehensive diagram with:
+- **Priority color coding** (Phase 3B++): 🔴 Critical (red), 🟡 High (yellow), 🔵 Medium (blue), 🟢 Baseline (green)
 - **MITRE technique IDs** (T####) showing what attacks each control addresses
 - **MITRE mitigation IDs** (M####) showing control mappings
 - **Attack path indicators** (#1, #2, #3) showing which paths the control protects
+- **DIR category labels** (Prevention, Detection, Isolation, Response)
 - **Control placement logic** based on attack path analysis
-- **Visual styling** with green controls (color:#000000 for readability)
 - **Connection types**: solid arrows (inline controls), dotted arrows (monitoring/applies-to-all)
 
-Example controls from actual output:
+Example controls from actual output (priority color-coded):
 ```
-NEW_MFA["Mfa<br/>MITRE: M1032<br/>Prevents: T1133, T1213, T1485<br/>Paths: #1"]
-NEW_WAF["Waf<br/>MITRE: M1037, M1050<br/>Prevents: T1190, T1203<br/>Paths: #1"]
-NEW_BACKUP[("Backup<br/>MITRE: M1053<br/>Recovers: T1485, T1486, T1490<br/>Paths: #1")]
-NEW_LOGGING[/"Logging<br/>MITRE: M1047<br/>Detects: T1059, T1213<br/>Paths: #1"/]
+NEW_MFA["Mfa<br/>MITRE: M1032<br/>Prevents: T1133, T1213, T1485<br/>Phishing, Insider Threat, Ransomware<br/>Prevention"]
+NEW_WAF["Waf<br/>MITRE: M1037, M1050<br/>Prevents: T1190, T1203<br/>Application Vulns<br/>Prevention"]
+NEW_BACKUP[("Backup<br/>MITRE: M1053<br/>Recovers: T1485, T1486, T1490<br/>Ransomware<br/>Response")]
+NEW_LOGGING[/"Logging<br/>MITRE: M1047<br/>Detects: T1059, T1213<br/>Insider Threat<br/>Detection"/]
+
+style NEW_MFA fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px,color:#000000      # 🔴 CRITICAL
+style NEW_WAF fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px,color:#000000      # 🔴 CRITICAL  
+style NEW_BACKUP fill:#ffd43b,stroke:#fab005,stroke-width:3px,color:#000000   # 🟡 HIGH
+style NEW_LOGGING fill:#74c0fc,stroke:#339af0,stroke-width:3px,color:#000000  # 🔵 MEDIUM
 ```
 
-**Generated diagram (simplified example showing 5 of 17 controls):**
+**Generated diagram (simplified example showing 5 of 17 controls with priority colors):**
 ```mermaid
 flowchart TB
     %% ORIGINAL ARCHITECTURE
@@ -86,12 +95,13 @@ flowchart TB
     WebServer[Web Server]
     Database[(Database)]
 
-    %% RECOMMENDED SECURITY CONTROLS (showing 5 of 17)
-    NEW_MFA["MFA<br/>MITRE: M1032<br/>Prevents: T1133, T1213<br/>Paths: #1, #2"]
-    NEW_WAF["WAF<br/>MITRE: M1037, M1050<br/>Prevents: T1190, T1203<br/>Paths: #1"]
-    NEW_BACKUP[("Backup<br/>MITRE: M1053<br/>Recovers: T1485, T1486<br/>Paths: #1, #2")]
-    NEW_EDR["EDR<br/>MITRE: M1040, M1049<br/>Prevents: T1059, T1486<br/>Paths: #1, #2"]
-    NEW_LOGGING[/"Logging<br/>MITRE: M1047<br/>Detects: T1059, T1213<br/>Paths: #1, #2"/]
+    %% RECOMMENDED SECURITY CONTROLS (Priority Color-Coded)
+    %% 🔴 CRITICAL (Red) | 🟡 HIGH (Yellow) | 🔵 MEDIUM (Blue) | 🟢 BASELINE (Green)
+    NEW_MFA["MFA<br/>MITRE: M1032<br/>Prevents: T1133, T1213<br/>Phishing, Insider Threat<br/>Prevention"]
+    NEW_WAF["WAF<br/>MITRE: M1037, M1050<br/>Prevents: T1190, T1203<br/>Application Vulns<br/>Prevention"]
+    NEW_BACKUP[("Backup<br/>MITRE: M1053<br/>Recovers: T1485, T1486<br/>Ransomware<br/>Response")]
+    NEW_EDR["EDR<br/>MITRE: M1040, M1049<br/>Prevents: T1059, T1486<br/>Ransomware<br/>Prevention"]
+    NEW_LOGGING[/"Logging<br/>MITRE: M1047<br/>Detects: T1059, T1213<br/>Insider Threat<br/>Detection"/]
     
     %% CONTROL PLACEMENT (inline and monitoring)
     Internet --> NEW_MFA
@@ -106,34 +116,44 @@ flowchart TB
     Internet --> WebServer
     WebServer --> Database
     
-    style NEW_MFA fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
-    style NEW_WAF fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
-    style NEW_BACKUP fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
-    style NEW_EDR fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
-    style NEW_LOGGING fill:#90EE90,stroke:#006400,stroke-width:3px,color:#000000
+    style NEW_MFA fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px,color:#000000
+    style NEW_WAF fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px,color:#000000
+    style NEW_BACKUP fill:#ffd43b,stroke:#fab005,stroke-width:3px,color:#000000
+    style NEW_EDR fill:#ffd43b,stroke:#fab005,stroke-width:3px,color:#000000
+    style NEW_LOGGING fill:#74c0fc,stroke:#339af0,stroke-width:3px,color:#000000
 ```
-*Note: This shows 5 key controls for clarity. The actual output includes all 17 controls with complete MITRE mappings.*
+*Note: This shows 5 key controls for clarity. The actual output includes all 17 controls with complete MITRE mappings and priority color coding.*
 
 **Features:**
-- ✅ 17 recommended controls total (stops at 100% technique coverage)
+- ✅ Priority color coding: 🔴 Critical (red), 🟡 High (yellow), 🔵 Medium (blue), 🟢 Baseline (green)
+- ✅ 15-37 recommended controls (RAPIDS + AI/ML, stops at 100% technique coverage)
 - ✅ MITRE technique mapping per control (T#### = attack types)
 - ✅ MITRE mitigation mapping (M#### = control standards)
-- ✅ Attack path correlation (#1, #2 = which paths protected)
-- ✅ Prevention + Detection + Isolation + Response (DIR framework)
+- ✅ RAPIDS threat categories (Phishing, Ransomware, Insider Threat, etc.)
+- ✅ DIR framework labels (Prevention, Detection, Isolation, Response)
 - ✅ Path-based placement (MFA at entry, Backup at data layer, EDR on endpoints)
-- ✅ Black text on green background (high contrast, readable)
+- ✅ Black text on colored backgrounds (high contrast, readable)
 
-**See full sample:** [report_samples/example_architecture/after.mmd](report_samples/example_architecture/after.mmd) (complete with 17 controls)
+**See full sample:** [report_samples/example_architecture/after.mmd](report_samples/example_architecture/after.mmd) (complete with priority-colored controls)
 
-**2. Business Reports**
+**2. Complete Report Package (15 Files)**
 ```
 report/your_architecture/
-├── 01_executive_summary.md    # BEFORE: 65/100 → AFTER: 9.5/100 (85% risk reduction)
-├── 02_technical_report.md     # RAPIDS threats + MITRE techniques + attack paths
-├── 03_action_plan.md          # 8-week roadmap with cost estimates
-├── ground_truth.json          # Complete analysis data
-├── before.mmd                 # Current architecture (input)
-└── after.mmd                  # With recommended controls (visual output)
+├── 01_executive_summary.md     # Business summary with ROI
+├── 02_technical_report.md      # MITRE mapping + attack paths
+├── 03_action_plan.md           # 8-week implementation roadmap
+├── 04_architect_critique.json  # Design quality (72-85/100)
+├── 05_tester_critique.json     # MITRE validation (85-90/100)
+├── 06_red_team_critique.json   # Exploit difficulty (40-60/100)
+├── 07_orchestrator_report.json # Unified 3-agent assessment
+├── 08_improvement_summary.md   # Human-readable improvement plan
+├── 08a_quick_wins.mmd          # Quick wins (CRITICAL, 1-2 weeks)
+├── 08b_recommended_target.mmd  # Recommended (CRITICAL+HIGH, 1-3 months) ⭐
+├── 08c_maximum_security.mmd    # Maximum (all controls, 6+ months)
+├── before.mmd                  # Current architecture (input)
+├── after.mmd                   # With all controls (priority color-coded)
+├── ground_truth.json           # Complete analysis data
+└── README.md                   # Report guide
 ```
 
 **Key Metrics:**
@@ -403,12 +423,16 @@ ls -lh chatbot/data/*.json
 | Phase 3A | ✅ Complete | RAPIDS-driven threat modeling (81% confidence) |
 | Phase 3B | ✅ Complete | Prevention/DIR + Residual Risk (99.1% confidence) |
 | Phase 3B+ | ✅ Complete | Intelligent control placement + Orphan detection (99.5% confidence) |
-| **Phase 3C MVP** | ✅ **Complete** | LLM critic agents: Architect + Tester (85% composite confidence) |
+| **Phase 3B++** | ✅ **Complete** | Priority color coding (red/yellow/blue/green) |
+| **Phase 3C+** | ✅ **Complete** | Orchestrator + Improvement roadmaps (15 files generated) |
 | **v1.3 (AI/ML)** | ✅ **Complete** | AI/ML threat pattern with ARC Framework + MITRE ATLAS |
-| Phase 3C+ | 📋 Next | Red Teamer + Orchestrator (~6 hours) |
+| Phase 3D (MoE) | 📋 Approved | Sequential validation architecture (36h, 4 weeks) |
 | Phase 4 | 📦 Future | Web UI (15-20 hours) |
 
-**Current:** v1.3 Production Ready - Architecture threat assessment with 99.5% confidence + AI/ML analysis 🚀
+**Current:** v1.3 Production Ready - 99.5% confidence + AI/ML analysis + Priority-coded roadmaps 🚀
+
+**Known Issues (Phase 3C+):** Report coherence, non-deterministic scoring  
+**Next:** Phase 3D (MoE) - Robust sequential validation with fail-fast (see [docs/phases/phase3d/](docs/phases/phase3d/))
 
 **See:** [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) for detailed roadmap
 
