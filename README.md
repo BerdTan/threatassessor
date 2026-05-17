@@ -1,9 +1,9 @@
 # MITRE ATT&CK Threat Assessment System
 
-Production-ready CLI that analyzes architecture diagrams and generates comprehensive threat assessments with MITRE ATT&CK mapping.
+Production-ready CLI that analyzes architecture diagrams and generates comprehensive threat assessments with MITRE ATT&CK mapping and AI/ML threat analysis.
 
-**Status:** ✅ v1.1 Production Ready (99.5% deterministic + 85% LLM critique)  
-**Core Feature:** Architecture diagram → Attack paths + Control recommendations + Residual risk + LLM critique
+**Status:** ✅ v1.3 Production Ready (99.5% deterministic + 85% LLM critique + AI/ML patterns)  
+**Core Feature:** Architecture diagram → Attack paths + AI/ML analysis + Control recommendations + Residual risk + LLM critique
 
 ---
 
@@ -193,6 +193,7 @@ python3 -m chatbot.main --gen-random-arch --complexity high --seed 42
 
 ### 🏗️ Architecture Threat Assessment
 - **RAPIDS-driven:** 6 threat categories (Ransomware, App Vulns, Phishing, Insider, DoS, Supply Chain)
+- **AI/ML threat analysis:** ARC Framework (88 controls, 9 risk categories) + MITRE ATLAS (170 techniques, 35 mitigations)
 - **Attack path analysis:** Per-node technique mapping with MITRE IDs
 - **Residual risk:** BEFORE/AFTER calculation with business thresholds
 - **Prevention + DIR:** Defense-in-depth (Prevention 40%, Detect 30%, Isolate 20%, Respond 10%)
@@ -224,7 +225,8 @@ python3 -m chatbot.main --gen-random-arch --complexity high --seed 42
 | Validation pass rate | 100% (22/22 architectures) |
 | Technique coverage | 100% (all RAPIDS threats mapped) |
 | Orphan detection | 0 orphans in all test cases |
-| Control recommendations | 15-17 per architecture (dynamic, stops at 100% coverage) |
+| Control recommendations | 15-37 per architecture (17 RAPIDS + up to 20 AI/ML controls) |
+| AI/ML architectures supported | ✅ LLM, agents, vector DB, embeddings, code execution |
 
 ---
 
@@ -270,6 +272,11 @@ echo "OPENROUTER_API_KEY=sk-or-v1-xxxxx" > .env
 - **[Confidence Methodology](docs/core/CONFIDENCE_METHODOLOGY.md)** - 6-factor validation
 - **[Prevention + DIR Framework](docs/core/PREVENTION_VS_MITIGATION.md)** - Defense-in-depth
 - **[Reference Architectures](docs/core/REFERENCE_ARCHITECTURES.md)** - Validation benchmarks
+
+### Pattern Documentation
+- **[Threat Patterns Overview](docs/patterns/README.md)** - Pattern catalog and development guidelines
+- **[AI/ML Pattern Status](docs/patterns/AI_PATTERN_STATUS.md)** - ARC Framework + MITRE ATLAS integration
+- **[AI/ML Pattern Verification](docs/patterns/AI_PATTERN_VERIFICATION.md)** - Integration test results
 
 ### Operations
 - **[Operations Guide](docs/operations/OPERATIONS.md)** - Troubleshooting and maintenance
@@ -383,6 +390,8 @@ ls -lh chatbot/data/*.json
 | LLM (optional) | nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free |
 | API Router | LiteLLM 1.73.6 |
 | Data Source | MITRE ATT&CK v16 (835 techniques, 268 mitigations) |
+| AI/ML Data | MITRE ATLAS (170 techniques, 35 mitigations) |
+| AI/ML Framework | ARC Framework (88 controls, 9 risk categories) |
 
 ---
 
@@ -394,11 +403,12 @@ ls -lh chatbot/data/*.json
 | Phase 3A | ✅ Complete | RAPIDS-driven threat modeling (81% confidence) |
 | Phase 3B | ✅ Complete | Prevention/DIR + Residual Risk (99.1% confidence) |
 | Phase 3B+ | ✅ Complete | Intelligent control placement + Orphan detection (99.5% confidence) |
-| **Phase 3C (MVP1)** | ✅ **Complete** | Agent framework + Architect critic (tested, 85% confidence) |
-| Phase 3C (MVP2-5) | 📋 Next | Tester + Red Teamer + Orchestrator (~6-8 hours) |
+| **Phase 3C MVP** | ✅ **Complete** | LLM critic agents: Architect + Tester (85% composite confidence) |
+| **v1.3 (AI/ML)** | ✅ **Complete** | AI/ML threat pattern with ARC Framework + MITRE ATLAS |
+| Phase 3C+ | 📋 Next | Red Teamer + Orchestrator (~6 hours) |
 | Phase 4 | 📦 Future | Web UI (15-20 hours) |
 
-**Current:** v1.0 Production Ready - Architecture threat assessment with 99.5% confidence 🚀
+**Current:** v1.3 Production Ready - Architecture threat assessment with 99.5% confidence + AI/ML analysis 🚀
 
 **See:** [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) for detailed roadmap
 
@@ -451,12 +461,17 @@ python3 -m chatbot.main --gen-random-arch --complexity medium --seed 42
 
 ## Acknowledgments
 
-- **MITRE ATT&CK Framework** - https://attack.mitre.org
+### Threat Frameworks
+- **MITRE ATT&CK Framework** - https://attack.mitre.org - Enterprise threat intelligence
+- **MITRE ATLAS** - https://atlas.mitre.org - Adversarial Threat Landscape for AI Systems (170 techniques, 35 mitigations)
+- **ARC Framework** - https://govtech-responsibleai.github.io/agentic-risk-capability-framework/ - Agentic Risk & Capability Framework by GovTech ResponsibleAI (88 controls, 9 risk categories)
+
+### Technology
 - **OpenRouter API** - https://openrouter.ai
 - **LiteLLM** - https://github.com/BerriAI/litellm
 
 ---
 
-**Version:** 1.0 (Phase 3B+ Complete) + Phase 3C MVP1 (Agent Framework)  
-**Last Updated:** 2026-05-10  
-**Status:** ✅ Production Ready (99.5% confidence) 🚀
+**Version:** 1.3 (AI/ML Pattern Complete)  
+**Last Updated:** 2026-05-17  
+**Status:** ✅ Production Ready (99.5% confidence + AI/ML analysis) 🚀
