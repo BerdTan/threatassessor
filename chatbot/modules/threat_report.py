@@ -533,9 +533,48 @@ def generate_technical_report(ground_truth: Dict) -> str:
 
     report += format_section_header("Architecture-Specific Recommendations", "🏗️", 2)
 
+    # ARC Framework Benchmark (if AI system)
+    arc_gaps = ground_truth.get("arc_control_gaps")
+    if arc_gaps and arch_type == "ai_system":
+        report += format_section_header("ARC Framework Control Benchmark", "🤖", 2)
+        report += "\n**AI/ML Control Coverage (ARC Framework - 88 Controls):**\n\n"
+
+        overall_cov = arc_gaps.get("overall_coverage", 0)
+        deployed = arc_gaps.get("deployed_arc_controls", 0)
+        total = arc_gaps.get("total_arc_controls", 0)
+
+        report += f"**Overall Coverage:** {overall_cov:.1f}% ({deployed}/{total} controls deployed)  \n\n"
+
+        # Coverage by category
+        report += "| Category | Coverage | Status |\n"
+        report += "|----------|----------|--------|\n"
+
+        coverage_by_cat = arc_gaps.get("coverage_by_category", {})
+        for cat in ["integrity", "safety", "security", "privacy", "transparency", "accountability", "fairness", "resilience", "societal_impact"]:
+            cov = coverage_by_cat.get(cat, 0)
+            status = "✅ Good" if cov >= 50 else ("⚠️ Partial" if cov >= 20 else "❌ Critical")
+            report += f"| {cat.capitalize():20s} | {cov:5.1f}% | {status} |\n"
+
+        report += "\n"
+
+        # Critical gaps
+        critical_gaps = arc_gaps.get("critical_gaps", [])
+        if critical_gaps:
+            report += "**Critical Gaps (High Risk + Low Coverage):**\n\n"
+            for gap in critical_gaps:
+                cat = gap["category"]
+                risk = gap["risk"]
+                cov = gap["coverage"]
+                missing = gap["missing_controls"]
+
+                report += f"- **{cat.capitalize()}** (Risk: {risk}/100, Coverage: {cov:.1f}%)\n"
+                report += f"  Missing controls: {', '.join(missing[:5])}\n\n"
+
+        report += "\n"
+
     # Type-specific guidance
     if arch_type == "ai_system":
-        report += "\n**AI/LLM System Security:**\n\n"
+        report += "**AI/LLM System Security Priorities:**\n\n"
         report += "- Implement prompt injection filtering (CRITICAL)\n"
         report += "- Add output filtering for PII/sensitive data\n"
         report += "- Enforce rate limiting on API endpoints\n"

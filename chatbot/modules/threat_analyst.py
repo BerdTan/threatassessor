@@ -147,19 +147,23 @@ class ThreatAnalyst(AnalystAgent):
                     ai_assessment = ai_results["AI/ML (ARC)"]
                     pattern_sources.append("AI/ML (ARC)")
 
-                    # Add AI-specific controls to recommendations
+                    # Enrich AI controls with attack path and placement data
                     ai_controls = ai_assessment.controls_recommended
-                    for ctrl in ai_controls:
-                        if ctrl not in [c.get("control") for c in control_recommendations]:
-                            control_recommendations.append({
-                                "control": ctrl,
-                                "priority": "HIGH" if ai_assessment.threats.get("integrity", {}).get("risk", 0) > 75 else "MEDIUM",
-                                "score": 80,
-                                "rapids_threats": ["AI/ML Risk"],
-                                "rationale": f"AI/ML control from ARC Framework"
-                            })
+                    enriched_ai_controls = self._enrich_ai_controls(
+                        ai_controls,
+                        ai_assessment.threats,
+                        attack_paths,
+                        nodes,
+                        controls_present
+                    )
 
-                    logger.info(f"{self.role}: AI pattern added {len(ai_controls)} controls")
+                    # Add enriched AI controls to recommendations
+                    for enriched_ctrl in enriched_ai_controls:
+                        ctrl_name = enriched_ctrl["control"]
+                        if ctrl_name not in [c.get("control") for c in control_recommendations]:
+                            control_recommendations.append(enriched_ctrl)
+
+                    logger.info(f"{self.role}: AI pattern added {len(ai_controls)} controls (enriched with paths/placement)")
 
             except Exception as e:
                 logger.warning(f"{self.role}: AI pattern failed: {e}")
@@ -186,6 +190,23 @@ class ThreatAnalyst(AnalystAgent):
         if ai_assessment:
             result.data["ai_ml_assessment"] = ai_assessment.threats
             result.data["ai_controls_recommended"] = ai_assessment.controls_recommended
+
+            # Calculate ARC control gaps (benchmark)
+            try:
+                from chatbot.modules.patterns.ai_pattern import AIPattern
+                ai_pattern = AIPattern()
+                arc_gaps = ai_pattern.get_arc_control_gaps(
+                    controls_present,
+                    ai_assessment.threats
+                )
+                result.data["arc_control_gaps"] = arc_gaps
+                logger.info(
+                    f"{self.role}: ARC benchmark - {arc_gaps['overall_coverage']:.1f}% coverage "
+                    f"({arc_gaps['deployed_arc_controls']}/{arc_gaps['total_arc_controls']} controls), "
+                    f"{len(arc_gaps['critical_gaps'])} critical gaps"
+                )
+            except Exception as e:
+                logger.warning(f"{self.role}: Failed to calculate ARC gaps: {e}")
 
         logger.info(
             f"{self.role}: Assessment complete - "
@@ -229,6 +250,202 @@ class ThreatAnalyst(AnalystAgent):
         """
         self.pattern_registry = registry
         logger.info(f"{self.role}: Pattern registry updated with {len(registry.patterns)} patterns")
+
+    def _enrich_ai_controls(
+        self,
+        ai_controls: List[str],
+        ai_threats: Dict,
+        attack_paths: List[Dict],
+        nodes: List[str],
+        controls_present: List[str]
+    ) -> List[Dict]:
+        """
+        Enrich AI controls with attack path, placement, and DIR classification.
+
+        Follows the same structure as RAPIDS controls:
+        - Maps controls to attack paths they address
+        - Determines DIR category (prevention/detect/isolate/respond)
+        - Places controls at specific nodes
+        - Adds detailed rationale per-node
+
+        Args:
+            ai_controls: List of AI control names
+            ai_threats: AI threat assessment (9 ARC categories)
+            attack_paths: Attack paths from ground truth
+            nodes: Nodes detected in architecture
+            controls_present: Already-deployed controls
+
+        Returns:
+            List of enriched control dicts with full RAPIDS-style structure
+        """
+        from chatbot.modules.rapids_driven_controls import infer_dir_category
+
+        enriched = []
+
+        # Map AI controls to ARC categories they address
+        control_to_categories = self._map_ai_controls_to_categories()
+
+        for ctrl_name in ai_controls:
+            # Get ARC categories this control addresses
+            categories = control_to_categories.get(ctrl_name, [])
+
+            # Calculate priority based on highest risk category
+            max_risk = 0
+            risk_rationales = []
+            for cat in categories:
+                if cat in ai_threats:
+                    risk = ai_threats[cat].get("risk", 0)
+                    if risk > max_risk:
+                        max_risk = risk
+                    rationale = ai_threats[cat].get("rationale", "")
+                    if rationale:
+                        risk_rationales.append(f"{cat.capitalize()} (risk={risk}/100): {rationale}")
+
+            # Determine priority
+            if max_risk >= 80:
+                priority = "critical"
+            elif max_risk >= 70:
+                priority = "high"
+            else:
+                priority = "medium"
+
+            # Infer DIR category
+            dir_category = infer_dir_category(ctrl_name)
+
+            # Determine layer
+            layer = self._infer_ai_control_layer(ctrl_name)
+
+            # Find attack paths where this control would help
+            # AI controls generally apply to all paths that touch AI components
+            relevant_paths = []
+            for i, path in enumerate(attack_paths):
+                path_nodes = path.get("path", [])
+                # Check if path touches any AI nodes
+                if any(node in path_nodes for node in nodes):
+                    relevant_paths.append(i)
+
+            # Get affected nodes (AI components)
+            affected_nodes = []
+            for cat in categories:
+                if cat in ai_threats:
+                    affected_nodes.extend(ai_threats[cat].get("affected_nodes", []))
+            affected_nodes = list(set(affected_nodes))  # Unique
+
+            # Build placement string
+            if affected_nodes:
+                placement = f"At {affected_nodes[0]} hop"
+            else:
+                placement = "At AI/ML components"
+
+            # Build detailed rationale
+            detailed_rationale = []
+            for rat in risk_rationales[:3]:  # Top 3
+                detailed_rationale.append(rat)
+
+            detailed_rationale.append(f"Depth: {dir_category.upper()} at {layer} layer ({placement})")
+
+            # Build enriched control dict (matches RAPIDS structure)
+            enriched_ctrl = {
+                "control": ctrl_name,
+                "priority": priority,
+                "score": max_risk,  # Use risk as score
+                "rapids_threats": [f"AI/ML:{cat}" for cat in categories],
+                "attack_paths": relevant_paths,
+                "rationale": f"AI/ML (ARC): {', '.join([c.capitalize() for c in categories])} | Attack path(s) #{', #'.join([str(i+1) for i in relevant_paths[:5]])}",
+                "detailed_rationale": detailed_rationale,
+                "dir_category": dir_category,
+                "layer": layer,
+                "placement": placement,
+                "control_type": dir_category.upper(),
+                "confidence": {
+                    "score": 0.85,  # AI pattern confidence
+                    "level": "HIGH",
+                    "breakdown": {
+                        "overall": 0.85,
+                        "arc_validation": 0.85,
+                        "attack_path_coverage": 1.0 if relevant_paths else 0.5,
+                        "factors": {
+                            "paths_addressed": f"{len(relevant_paths)}/{len(attack_paths)}",
+                            "arc_categories": len(categories),
+                            "max_risk": max_risk
+                        }
+                    }
+                }
+            }
+
+            enriched.append(enriched_ctrl)
+
+        return enriched
+
+    def _map_ai_controls_to_categories(self) -> Dict[str, List[str]]:
+        """
+        Map AI controls to ARC categories they address.
+
+        Returns:
+            Dict mapping control name to list of ARC categories
+        """
+        return {
+            # Integrity controls
+            "input_validation": ["integrity", "security"],
+            "prompt_filtering": ["integrity", "safety"],
+            "output_filtering": ["integrity", "safety"],
+            "context_grounding": ["integrity"],
+            "rag_verification": ["integrity"],
+
+            # Safety controls
+            "content_moderation": ["safety", "societal_impact"],
+            "sandbox": ["safety", "security"],
+            "human_in_loop": ["safety", "accountability"],
+            "capability_restrictions": ["safety"],
+            "tool_allowlist": ["safety", "security"],
+
+            # Security controls
+            "api_key_rotation": ["security"],
+            "secrets_management": ["security", "privacy"],
+            "rate_limiting": ["security", "resilience"],
+            "access_control": ["security", "privacy"],
+            "encryption": ["security", "privacy"],
+            "authentication": ["security"],
+            "monitoring": ["security", "transparency", "resilience"],
+
+            # Privacy controls
+            "pii_detection": ["privacy"],
+            "data_loss_prevention": ["privacy", "security"],
+            "differential_privacy": ["privacy", "fairness"],
+            "data_minimization": ["privacy"],
+            "anonymization": ["privacy", "fairness"],
+
+            # Transparency controls
+            "logging": ["transparency", "accountability"],
+            "audit_trails": ["transparency", "accountability"],
+
+            # Accountability controls
+            "human_oversight": ["accountability", "safety"],
+            "incident_response": ["accountability", "resilience"],
+
+            # Resilience controls
+            "robustness_testing": ["resilience"]
+        }
+
+    def _infer_ai_control_layer(self, control_name: str) -> str:
+        """
+        Infer which layer an AI control operates at.
+
+        Returns: "application", "data", "network", or "identity"
+        """
+        control_lower = control_name.lower()
+
+        if any(kw in control_lower for kw in ["api_key", "authentication", "access_control", "secrets"]):
+            return "identity"
+
+        if any(kw in control_lower for kw in ["encryption", "pii", "data_loss", "data_minimization", "anonymization"]):
+            return "data"
+
+        if any(kw in control_lower for kw in ["rate_limiting", "monitoring"]):
+            return "network"
+
+        # Default to application layer (most AI controls)
+        return "application"
 
     def _is_ai_architecture(self, architecture_path: str, ground_truth: Dict) -> bool:
         """

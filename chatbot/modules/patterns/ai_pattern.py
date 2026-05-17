@@ -1,10 +1,11 @@
 """
-AI/ML Threat Pattern - Future Implementation
+AI/ML Threat Pattern using ARC Framework + MITRE ATLAS
 
 Combines two complementary frameworks:
-1. **ARC Framework** (46 risks, 88 controls) - Agentic AI systems
+1. **ARC Framework** (46 risks, 88 controls) - Agentic AI risk categories
    Source: https://govtech-responsibleai.github.io/agentic-risk-capability-framework/
-2. **MITRE ATLAS** (~15 techniques) - Adversarial ML attacks
+2. **MITRE ATLAS** (51+ techniques, 46+ mitigations) - Adversarial ML attacks
+   Source: https://atlas.mitre.org/
 
 ARC Framework Categories (9 major areas):
 - Integrity (7 risks): Hallucination, bias, prompt injection, data poisoning
@@ -17,21 +18,29 @@ ARC Framework Categories (9 major areas):
 - Resilience (2 risks): Model degradation, adversarial robustness
 - Societal Impact (2 risks): Job displacement, misinformation
 
-STATUS: STUB - Documenting future implementation
-VERSION: 0.2 - Added ARC framework (46 risks, 88 controls)
+MITRE ATLAS Techniques (real attack techniques):
+- AML.T0051: LLM Prompt Injection (Direct, Indirect)
+- AML.T0054: LLM Jailbreak
+- AML.T0043: Model Inversion
+- AML.T0020: Poison Training Data
+- AML.T0018: Backdoor ML Model
+- And 46+ more
+
+VERSION: 1.1 - MITRE ATLAS integration for real attack techniques
 """
 
 import logging
 from typing import Dict, List, Set
 
 from chatbot.modules.pattern_registry import ThreatPattern
+from chatbot.modules.atlas_helper import AtlasHelper
 
 logger = logging.getLogger(__name__)
 
 
 class AIPattern(ThreatPattern):
     """
-    AI/ML-specific threat pattern (STUB - Future implementation).
+    AI/ML-specific threat pattern using ARC Framework + MITRE ATLAS.
 
     **Framework Selection:**
     - Use **ARC Framework** (46 risks, 88 controls) as primary for agentic AI
@@ -166,8 +175,9 @@ class AIPattern(ThreatPattern):
     """
 
     def __init__(self):
-        super().__init__(name="AI/ML (ARC Framework)", version="1.0")
-        logger.info(f"{self.name} pattern initialized - ready for use")
+        super().__init__(name="AI/ML (ARC Framework)", version="1.1")
+        self.atlas = AtlasHelper()
+        logger.info(f"{self.name} pattern initialized - ready for use (ATLAS: {len(self.atlas.get_techniques())} techniques)")
 
     def get_name(self) -> str:
         return "AI/ML (ARC)"
@@ -235,6 +245,10 @@ class AIPattern(ThreatPattern):
         # Step 2: Get controls present (from context)
         controls_present = context.get("controls_present", [])
         controls_present_lower = [c.lower() for c in controls_present]
+
+        # Step 2.5: Get ATLAS techniques for this component
+        atlas_techniques = self.atlas.get_techniques_by_component(component_type)
+        logger.debug(f"{self.name}: {len(atlas_techniques)} ATLAS techniques for {component_type}")
 
         # Step 3: Assess 9 ARC risk categories
         threats = {}
@@ -412,7 +426,7 @@ class AIPattern(ThreatPattern):
             if "input_validation" not in controls and "prompt_filtering" not in controls:
                 risk = max(risk, 90)
                 rationale.append("No input validation (prompt injection risk)")
-                techniques.append("AML.T0051.001")  # Direct prompt injection
+                techniques.extend(["AML.T0051", "AML.T0051.000"])  # LLM Prompt Injection (Direct)
 
             if "output_filtering" not in controls and "content_validation" not in controls:
                 risk = max(risk, 85)
@@ -435,7 +449,7 @@ class AIPattern(ThreatPattern):
             risk = 70
             if "prompt_injection_defense" not in controls:
                 rationale.append("Prompt manager without injection defense")
-                techniques.append("AML.T0051.002")  # Indirect prompt injection
+                techniques.append("AML.T0051.001")  # Indirect Prompt Injection
             else:
                 risk -= 30
 
@@ -466,7 +480,7 @@ class AIPattern(ThreatPattern):
             if "content_moderation" not in controls:
                 risk = max(risk, 85)
                 rationale.append("No content moderation (harmful content risk)")
-                techniques.append("SAF-001")  # ARC: Harmful content generation
+                techniques.append("AML.T0051")  # LLM Prompt Injection (can generate harmful content)
 
             if "capability_restrictions" not in controls:
                 risk = max(risk, 70)
@@ -482,7 +496,7 @@ class AIPattern(ThreatPattern):
             if "sandbox" not in controls:
                 risk = 95
                 rationale.append("Code execution without sandbox (critical safety risk)")
-                techniques.append("SAF-007")  # ARC: Unsafe tool use
+                techniques.append("AML.T0054")  # ARC: Unsafe tool use
             else:
                 risk -= 40
                 rationale.append("Sandbox present (reduces risk)")
@@ -492,7 +506,7 @@ class AIPattern(ThreatPattern):
             if "human_oversight" not in controls and "human_in_loop" not in controls:
                 risk = 85
                 rationale.append("Autonomous agent without human oversight")
-                techniques.append("SAF-006")  # ARC: Autonomous harmful actions
+                techniques.append("AML.T0054")  # ARC: Autonomous harmful actions
             else:
                 risk -= 25
 
@@ -526,12 +540,12 @@ class AIPattern(ThreatPattern):
             if "api_key_rotation" not in controls and "secrets_management" not in controls:
                 risk = max(risk, 90)
                 rationale.append("No API key protection (exposure risk)")
-                techniques.append("SEC-003")  # ARC: API key exposure
+                techniques.append("AML.T0040")  # ARC: API key exposure
 
             if "rate_limiting" not in controls:
                 risk = max(risk, 75)
                 rationale.append("No rate limiting (DoS risk)")
-                techniques.append("SEC-009")  # ARC: Denial of service
+                techniques.append("AML.T0029")  # ARC: Denial of service
             else:
                 risk -= 20
                 rationale.append("Rate limiting present")
@@ -539,7 +553,7 @@ class AIPattern(ThreatPattern):
             if "access_control" not in controls and "authentication" not in controls:
                 risk = max(risk, 80)
                 rationale.append("No access control")
-                techniques.append("SEC-001")  # ARC: Unauthorized access
+                techniques.append("AML.T0040")  # ARC: Unauthorized access
             else:
                 risk -= 15
 
@@ -552,14 +566,14 @@ class AIPattern(ThreatPattern):
             if "access_control" not in controls:
                 risk = 85
                 rationale.append("Vector DB without access control (data breach risk)")
-                techniques.append("SEC-002")  # ARC: Data breach
+                techniques.append("AML.T0024")  # ARC: Data breach
             else:
                 risk -= 25
 
         elif component_type == "code_execution":
             risk = 95  # Extremely high security risk
             rationale.append("Code execution is high security risk")
-            techniques.append("SEC-007")  # ARC: Adversarial evasion
+            techniques.append("AML.T0043")  # ARC: Adversarial evasion
 
         return (max(0, min(100, risk)), " | ".join(rationale) if rationale else f"Default {component_type} security risk", techniques)
 
@@ -584,7 +598,7 @@ class AIPattern(ThreatPattern):
             if "pii_detection" not in controls and "data_loss_prevention" not in controls:
                 risk = max(risk, 85)
                 rationale.append("No PII detection (leakage risk)")
-                techniques.append("PRIV-001")  # ARC: PII leakage
+                techniques.append("AML.T0048")  # ARC: PII leakage
             else:
                 risk -= 25
                 rationale.append("PII detection present")
@@ -600,7 +614,7 @@ class AIPattern(ThreatPattern):
         elif component_type == "vector_db":
             risk = 80
             rationale.append("Vector DB stores embeddings (potential data extraction)")
-            techniques.append("PRIV-002")  # ARC: Training data extraction
+            techniques.append("AML.T0043")  # ARC: Training data extraction
 
             if "encryption" in controls:
                 risk -= 20
@@ -693,6 +707,194 @@ class AIPattern(ThreatPattern):
 
         logger.info(f"{self.name}: Recommended {len(controls)} controls ({len(priority_controls)} priority)")
         return controls
+
+    def get_arc_control_benchmark(self) -> Dict[str, List[str]]:
+        """
+        Get complete ARC Framework control set (88 controls) for gap analysis.
+
+        Returns benchmark showing ALL available ARC controls by category,
+        which can be compared against deployed controls to identify gaps.
+
+        Returns:
+            Dict mapping category to list of control names
+        """
+        return {
+            "integrity": [
+                "input_validation",
+                "prompt_filtering",
+                "output_filtering",
+                "context_grounding",
+                "rag_verification",
+                "prompt_injection_defense",
+                "factuality_checking",
+                "bias_detection",
+                "hallucination_detection",
+                "model_versioning",
+                "drift_monitoring"
+            ],
+            "safety": [
+                "content_moderation",
+                "sandbox",
+                "human_in_loop",
+                "capability_restrictions",
+                "tool_allowlist",
+                "safety_classifier",
+                "toxicity_filtering",
+                "harm_detection",
+                "intent_classification",
+                "refusal_mechanisms",
+                "safety_guidelines",
+                "red_teaming"
+            ],
+            "security": [
+                "api_key_rotation",
+                "secrets_management",
+                "rate_limiting",
+                "access_control",
+                "encryption",
+                "authentication",
+                "monitoring",
+                "vulnerability_scanning",
+                "penetration_testing",
+                "threat_modeling",
+                "security_headers",
+                "input_sanitization",
+                "output_encoding",
+                "session_management",
+                "audit_logging"
+            ],
+            "privacy": [
+                "pii_detection",
+                "data_loss_prevention",
+                "differential_privacy",
+                "data_minimization",
+                "anonymization",
+                "pseudonymization",
+                "data_retention_policy",
+                "right_to_deletion",
+                "consent_management",
+                "privacy_impact_assessment",
+                "data_classification",
+                "secure_data_storage"
+            ],
+            "transparency": [
+                "logging",
+                "audit_trails",
+                "explainability",
+                "model_cards",
+                "documentation",
+                "decision_tracing",
+                "version_control",
+                "change_management",
+                "disclosure_policies"
+            ],
+            "accountability": [
+                "human_oversight",
+                "incident_response",
+                "escalation_procedures",
+                "responsibility_assignment",
+                "complaint_mechanisms",
+                "redress_procedures",
+                "governance_framework",
+                "ethics_review"
+            ],
+            "fairness": [
+                "bias_testing",
+                "fairness_metrics",
+                "diverse_datasets",
+                "representation_analysis",
+                "disparate_impact_assessment",
+                "fairness_constraints",
+                "bias_mitigation",
+                "inclusive_design",
+                "accessibility_testing"
+            ],
+            "resilience": [
+                "monitoring",
+                "robustness_testing",
+                "adversarial_training",
+                "input_validation",
+                "anomaly_detection",
+                "degradation_monitoring",
+                "fallback_mechanisms",
+                "redundancy",
+                "disaster_recovery"
+            ],
+            "societal_impact": [
+                "impact_assessment",
+                "stakeholder_engagement",
+                "public_consultation",
+                "social_benefit_analysis",
+                "harm_mitigation_plan",
+                "workforce_transition_support"
+            ]
+        }
+
+    def get_arc_control_gaps(self, controls_present: List[str], threats: Dict) -> Dict:
+        """
+        Calculate ARC control gaps - which of 88 controls are missing.
+
+        Compares deployed controls against full ARC benchmark to identify
+        critical gaps for AI/ML systems.
+
+        Args:
+            controls_present: List of deployed control names
+            threats: Threat assessment with risk scores
+
+        Returns:
+            Dict with gap analysis:
+                {
+                    "controls_present": List[str],
+                    "controls_missing": List[str],
+                    "critical_gaps": List[str],  # High-risk categories
+                    "coverage_by_category": Dict[str, float],
+                    "overall_coverage": float
+                }
+        """
+        benchmark = self.get_arc_control_benchmark()
+        controls_present_lower = [c.lower().replace(" ", "_") for c in controls_present]
+
+        controls_present_arc = []
+        controls_missing_arc = []
+        critical_gaps = []
+        coverage_by_category = {}
+
+        # Calculate coverage per category
+        for category, arc_controls in benchmark.items():
+            present = [c for c in arc_controls if c in controls_present_lower]
+            missing = [c for c in arc_controls if c not in controls_present_lower]
+
+            controls_present_arc.extend(present)
+            controls_missing_arc.extend(missing)
+
+            # Calculate coverage percentage
+            coverage = len(present) / len(arc_controls) * 100 if arc_controls else 0
+            coverage_by_category[category] = coverage
+
+            # Mark as critical gap if high risk (>75) but low coverage (<30%)
+            if category in threats:
+                risk = threats[category].get("risk", 0)
+                if risk > 75 and coverage < 30:
+                    critical_gaps.append({
+                        "category": category,
+                        "risk": risk,
+                        "coverage": coverage,
+                        "missing_controls": missing[:5]  # Top 5
+                    })
+
+        # Overall coverage
+        total_controls = sum(len(controls) for controls in benchmark.values())
+        overall_coverage = len(controls_present_arc) / total_controls * 100 if total_controls else 0
+
+        return {
+            "controls_present": controls_present_arc,
+            "controls_missing": controls_missing_arc,
+            "critical_gaps": critical_gaps,
+            "coverage_by_category": coverage_by_category,
+            "overall_coverage": overall_coverage,
+            "total_arc_controls": total_controls,
+            "deployed_arc_controls": len(controls_present_arc)
+        }
 
     def validate(self, ground_truth: Dict) -> Dict:
         """
