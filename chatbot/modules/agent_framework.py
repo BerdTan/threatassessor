@@ -11,7 +11,7 @@ Design Philosophy:
 - Tool-augmented reasoning
 - Structured output (JSON schema validation)
 
-VERSION: 1.1 - Fixed JSON parsing (markdown code blocks) + Unicode chars
+VERSION: 1.2 - Refactored to use BaseAgent hierarchy
 """
 
 import json
@@ -19,6 +19,7 @@ import logging
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Callable, Optional, Any
 
+from chatbot.modules.base_agent import BaseAgent, AgentResult
 from agentic.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class CritiqueScore:
 # CRITIC AGENT (Reusable for all 3 roles)
 # ============================================================================
 
-class CriticAgent:
+class CriticAgent(BaseAgent):
     """
     Reusable agent for critique roles.
 
@@ -94,14 +95,28 @@ class CriticAgent:
         tools: Optional[List[AgentTool]] = None,
         model: Optional[str] = None
     ):
-        self.role = role
+        super().__init__(role=role, model=model)
         self.rubric = rubric
         self.system_prompt = system_prompt
         self.tools = tools or []
-        self.model = model  # If None, LLMClient uses .env defaults
-        self.llm_client = LLMClient()
 
-        logger.info(f"Initialized {role} agent with {len(self.tools)} tools")
+        logger.info(f"Initialized {role} critic agent with {len(self.tools)} tools")
+
+    def execute(self, context: Dict) -> CritiqueScore:
+        """
+        Execute critique workflow (implements BaseAgent.execute()).
+
+        Args:
+            context: Must contain "ground_truth" key
+
+        Returns:
+            CritiqueScore with structured findings
+        """
+        return self.critique(context.get("ground_truth", context))
+
+    def get_capabilities(self) -> List[str]:
+        """Return critic capabilities."""
+        return ["critique", "score", "identify_gaps", "recommend_improvements"]
 
     def critique(self, ground_truth: Dict) -> CritiqueScore:
         """
@@ -366,74 +381,8 @@ SCORING GUIDANCE:
         return prompt.strip()
 
     def _parse_response(self, response: Any) -> Dict:
-        """
-        Parse LLM response into structured data.
-
-        Handles both raw text and structured JSON responses.
-        Supports markdown code blocks (```json...```) and raw JSON.
-        """
-        try:
-            # DEBUG: Log response type and structure
-            logger.info(f"{self.role}: Response type: {type(response)}")
-            logger.info(f"{self.role}: Response has content attr: {hasattr(response, 'content')}")
-
-            # Try to extract JSON from response
-            if hasattr(response, 'content'):
-                content = response.content
-                logger.info(f"{self.role}: Extracted content from response.content (length: {len(content)})")
-            elif isinstance(response, dict):
-                content = response.get('content', str(response))
-                logger.info(f"{self.role}: Extracted content from dict (length: {len(content)})")
-            else:
-                content = str(response)
-                logger.info(f"{self.role}: Converted response to string (length: {len(content)})")
-
-            # DEBUG: Log content preview
-            logger.info(f"{self.role}: Content preview (first 200 chars): {content[:200]}")
-            logger.info(f"{self.role}: Has '```json': {'```json' in content}")
-            logger.info(f"{self.role}: Has '{{': {'{' in content}")
-
-            # Find JSON block (try markdown first, then raw)
-            if '```json' in content:
-                # Markdown code block: ```json { ... } ```
-                json_str = content.split('```json')[1].split('```')[0].strip()
-                logger.info(f"{self.role}: Found ```json block (length: {len(json_str)})")
-            elif '```' in content and '{' in content:
-                # Generic code block: ``` { ... } ```
-                parts = content.split('```')
-                for part in parts:
-                    if '{' in part and '}' in part:
-                        json_str = part.strip()
-                        logger.info(f"{self.role}: Found generic ``` block (length: {len(json_str)})")
-                        break
-                else:
-                    raise ValueError("No JSON in code blocks")
-            elif '{' in content and '}' in content:
-                # Raw JSON (no code block)
-                start = content.index('{')
-                end = content.rindex('}') + 1
-                json_str = content[start:end]
-                logger.info(f"{self.role}: Found raw JSON (length: {len(json_str)})")
-            else:
-                logger.warning(f"{self.role}: No JSON found in response, using defaults")
-                logger.warning(f"{self.role}: Full content: {content}")
-                return {}
-
-            # Parse JSON
-            logger.info(f"{self.role}: Attempting to parse JSON string...")
-            parsed = json.loads(json_str)
-            logger.info(f"{self.role}: Successfully parsed JSON response with keys: {list(parsed.keys())}")
-            return parsed
-
-        except Exception as e:
-            logger.error(f"{self.role}: Failed to parse response: {e}")
-            logger.error(f"{self.role}: Exception type: {type(e)}")
-            # Log first 1000 chars for debugging
-            if hasattr(response, 'content'):
-                logger.warning(f"Response content (first 1000 chars): {response.content[:1000]}")
-            elif 'content' in locals():
-                logger.warning(f"Extracted content (first 1000 chars): {content[:1000]}")
-            return {}
+        """Parse LLM response (delegates to BaseAgent._parse_llm_response)."""
+        return self._parse_llm_response(response)
 
     def _validate_output(self, critique_data: Dict) -> bool:
         """
@@ -445,17 +394,11 @@ SCORING GUIDANCE:
         - Breakdown matches rubric categories
         """
         required_fields = ["score", "rating", "breakdown", "gaps"]
-        for field in required_fields:
-            if field not in critique_data:
-                logger.warning(f"{self.role}: Missing required field: {field}")
-                return False
-
-        score = critique_data.get("score", -1)
-        if not (0 <= score <= 100):
-            logger.warning(f"{self.role}: Invalid score: {score}")
+        if not self._validate_dict_fields(critique_data, required_fields):
             return False
 
-        return True
+        score = critique_data.get("score", -1)
+        return self._validate_score_range(score, 0, 100)
 
     def _execute_tools(self, tool_calls: List) -> List[Dict]:
         """
@@ -546,27 +489,48 @@ SCORING GUIDANCE:
 # ORCHESTRATOR AGENT (Manages 3 critics)
 # ============================================================================
 
-class OrchestratorAgent:
+class OrchestratorAgent(BaseAgent):
     """
-    Manages 3 critic agents in sequence.
+    Manages critic agents in sequence.
 
     Workflow:
-    1. Run Architect -> Tester -> Red Teamer (sequential)
+    1. Run critics sequentially (Architect -> Tester -> Red Teamer)
     2. Aggregate scores (weighted average)
     3. Resolve conflicts (if agents disagree)
     4. Consolidate improvements (de-duplicate, prioritize)
     5. Generate unified report
 
-    Note: MVP1 focuses on sequential execution and basic aggregation.
-    Conflict resolution and advanced features in MVP4.
+    Note: MVP1 focuses on sequential execution with 3 critics.
+    Future: Support variable agent count and parallel execution.
     """
 
-    def __init__(self, critic_agents: List[CriticAgent]):
+    def __init__(self, critic_agents: List[BaseAgent], workflow: str = "sequential"):
+        super().__init__(role="Orchestrator")
+
+        # For now, require exactly 3 critics (backward compatibility)
+        # Future: Support any number of agents
         if len(critic_agents) != 3:
-            raise ValueError("OrchestratorAgent requires exactly 3 critic agents")
+            raise ValueError("OrchestratorAgent currently requires exactly 3 critic agents")
 
         self.critics = critic_agents
+        self.workflow = workflow  # "sequential" only for now
         logger.info(f"Initialized Orchestrator with {len(critic_agents)} critics")
+
+    def execute(self, context: Dict) -> Dict:
+        """
+        Execute orchestration workflow (implements BaseAgent.execute()).
+
+        Args:
+            context: Must contain "ground_truth" key
+
+        Returns:
+            Unified critique report with aggregated scores
+        """
+        return self.run_critique(context.get("ground_truth", context))
+
+    def get_capabilities(self) -> List[str]:
+        """Return orchestrator capabilities."""
+        return ["orchestrate", "aggregate_scores", "consolidate_improvements"]
 
     def run_critique(self, ground_truth: Dict) -> Dict:
         """

@@ -21,7 +21,7 @@ Confidence Model:
 - Layer 2: Gap penalty (2% per critical gap)
 - Layer 3: Consensus bonus (agents agree → +5-10%)
 
-VERSION: 1.0 - Full 3-agent integration
+VERSION: 1.1 - Pluggable agent support (backward compatible)
 """
 
 import json
@@ -76,24 +76,40 @@ class OrchestratorResult:
 
 class Orchestrator:
     """
-    Orchestrates 3 critic agents and produces unified assessment.
+    Orchestrates critic agents and produces unified assessment.
+
+    Supports both legacy (default 3 agents) and pluggable (custom agents) modes.
     """
 
-    def __init__(self, model: str = None):
+    def __init__(
+        self,
+        model: str = None,
+        agents: Optional[List] = None
+    ):
         """
-        Initialize orchestrator with 3 agents.
+        Initialize orchestrator with agents.
 
         Args:
-            model: Optional model override for all agents
+            model: Optional model override for default agents
+            agents: Optional list of [architect, tester, red_team] agents
+                   If None, creates default agents (backward compatible)
         """
         self.model = model
 
-        # Initialize agents
-        self.architect = EnhancedArchitectCritic(model=model)
-        self.tester = TesterCritic(model=model)
-        self.red_team = RedTeamerCritic(model=model)
-
-        logger.info("Orchestrator initialized with 3 agents")
+        # Backward compatible: Create default agents if not provided
+        if agents is None:
+            self.architect = EnhancedArchitectCritic(model=model)
+            self.tester = TesterCritic(model=model)
+            self.red_team = RedTeamerCritic(model=model)
+            logger.info("Orchestrator initialized with default 3 agents")
+        else:
+            # Pluggable mode: Use provided agents
+            if len(agents) != 3:
+                raise ValueError("Orchestrator requires exactly 3 agents: [architect, tester, red_team]")
+            self.architect = agents[0]
+            self.tester = agents[1]
+            self.red_team = agents[2]
+            logger.info(f"Orchestrator initialized with custom agents: {[a.role for a in agents]}")
 
     def orchestrate(
         self,

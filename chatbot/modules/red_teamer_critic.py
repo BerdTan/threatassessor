@@ -18,7 +18,7 @@ Approach: Prompt-based with post-processing validation (4 checks)
 - Check 3: Tester gap integration (adjust for invalid mappings)
 - Check 4: Inverted scoring validation (auto-correct if forgotten)
 
-VERSION: 1.0 - Full implementation with post-processing
+VERSION: 2.0 - Refactored to inherit from CriticAgent
 """
 
 import json
@@ -32,7 +32,7 @@ from chatbot.modules.artifact_extractor import ArtifactSet
 logger = logging.getLogger(__name__)
 
 
-class RedTeamerCritic:
+class RedTeamerCritic(CriticAgent):
     """
     Red Team critic assessing exploit difficulty.
 
@@ -51,15 +51,17 @@ class RedTeamerCritic:
         Args:
             model: Optional model override (uses .env if None)
         """
-        self.role = "Red Teamer"
-        self.model = model
-        self.system_prompt = self._create_system_prompt()
-        self.prompt_template = self._create_prompt_template()
-        self.rubric = self._create_rubric()
+        # Initialize parent CriticAgent
+        super().__init__(
+            role="Red Teamer",
+            rubric=self._create_rubric(),
+            system_prompt=self._create_system_prompt(),
+            tools=[],  # No tools for Red Teamer MVP
+            model=model
+        )
 
-        # Import LLM client
-        from agentic.llm_client import LLMClient
-        self.llm_client = LLMClient()
+        # Red Teamer specific state
+        self.prompt_template = self._create_prompt_template()
 
         logger.info(f"Initialized {self.role} critic agent")
 
@@ -333,6 +335,11 @@ REMEMBER: Low score = hard to exploit = GOOD defense (we want this!)
         """
         Execute Red Team critique with post-processing validation.
 
+        Overrides parent critique() to add Red Team-specific logic:
+        - Custom prompt building (attack paths, controls)
+        - Post-processing validation (4 checks)
+        - Tester gap integration
+
         Args:
             artifacts: Extracted artifacts from report
             ground_truth: Ground truth data (for controls_present)
@@ -343,10 +350,10 @@ REMEMBER: Low score = hard to exploit = GOOD defense (we want this!)
         """
         logger.info(f"{self.role}: Starting critique")
 
-        # Format prompt
+        # Format prompt (Red Team specific)
         prompt = self._build_prompt(artifacts, ground_truth, tester_critique)
 
-        # Call LLM
+        # Call LLM (inherited from CriticAgent/BaseAgent via llm_client)
         logger.info(f"{self.role}: Calling LLM for exploit assessment")
         response = self.llm_client.generate(
             prompt=prompt,
@@ -356,10 +363,10 @@ REMEMBER: Low score = hard to exploit = GOOD defense (we want this!)
             max_tokens=3000
         )
 
-        # Parse response
-        raw_score = self._parse_response(response)
+        # Parse response (uses parent _parse_llm_response via _parse_response_wrapper)
+        raw_score = self._parse_response_wrapper(response)
 
-        # POST-PROCESSING VALIDATION (4 checks)
+        # POST-PROCESSING VALIDATION (4 checks) - Red Team specific
         logger.info(f"{self.role}: Starting post-processing validation")
         validated_score = self._validate_and_adjust(raw_score, ground_truth, tester_critique)
 
@@ -425,24 +432,19 @@ Adjust your difficulty score accordingly (increase score = easier to exploit).
 
         return prompt
 
-    def _parse_response(self, response) -> CritiqueScore:
-        """Parse LLM response into CritiqueScore."""
+    def _parse_response_wrapper(self, response) -> CritiqueScore:
+        """
+        Parse LLM response into CritiqueScore.
 
-        content = response.content.strip()
+        Uses parent's _parse_llm_response() for JSON extraction,
+        then adds Red Team-specific fields.
+        """
+        # Use parent's JSON parsing (handles markdown blocks, etc.)
+        data = self._parse_llm_response(response)
 
-        # Extract JSON from markdown code blocks
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-
-        # Parse JSON
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError as e:
-            logger.error(f"{self.role}: Failed to parse JSON: {e}")
-            logger.error(f"{self.role}: Response content: {content[:500]}")
-            # Return default score
+        if not data:
+            # Return default score if parsing failed
+            logger.warning(f"{self.role}: Using default score due to parse failure")
             return CritiqueScore(
                 role=self.role,
                 score=50,
@@ -457,7 +459,7 @@ Adjust your difficulty score accordingly (increase score = easier to exploit).
         # Build CritiqueScore with full data in breakdown
         breakdown = data.get("breakdown", {})
 
-        # Add roadmap and path assessments to breakdown
+        # Add roadmap and path assessments to breakdown (Red Team specific)
         if "exploit_mitigation_roadmap" in data:
             breakdown["exploit_mitigation_roadmap"] = data["exploit_mitigation_roadmap"]
             breakdown["recommended_target"] = data.get("recommended_target")
