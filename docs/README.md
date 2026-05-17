@@ -49,7 +49,7 @@
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| **phases/phase3c/ROADMAP.md** | 3-phase roadmap (3B++/3C+/3D) **UPDATED** | ✅ Phase 2 complete, Phase 3D approved |
+| **phases/phase3d/ROADMAP.md** | 3-phase roadmap (3B++/3C+/3D) **MOVED** | ✅ Phase 2 complete, Phase 3D approved |
 | **phases/phase3c/HYBRID_PLAN.md** | Orchestrator consensus design | ✅ Complete |
 | **phases/phase3c/PHASE3C_COMPLETE.md** | Agent framework completion summary | ✅ Complete |
 | **phases/phase3c/PHASE3C_IMPROVEMENTS_NEEDED.md** | **NEW** - Critical issues found | 🔴 3 issues blocking production |

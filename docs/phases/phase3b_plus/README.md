@@ -363,7 +363,7 @@ style NEW_SBOM fill:#74c0fc,stroke:#339af0
 - Red Team: "No remote access, MFA = MEDIUM"
 - Orchestrator: **Final = MEDIUM** (consensus override)
 
-**See:** [../phase3c/ROADMAP.md](../phase3c/ROADMAP.md)
+**See:** [../phase3d/ROADMAP.md](../phase3d/ROADMAP.md)
 
 ---
 
@@ -375,7 +375,7 @@ style NEW_SBOM fill:#74c0fc,stroke:#339af0
 - [README.md](README.md) - This overview
 
 **Next Phase (3C+):**
-- [../phase3c/ROADMAP.md](../phase3c/ROADMAP.md) - 3-phase roadmap
+- [../phase3d/ROADMAP.md](../phase3d/ROADMAP.md) - 3-phase roadmap
 - [../phase3c/HYBRID_PLAN.md](../phase3c/HYBRID_PLAN.md) - Orchestrator design
 - [../phase3c/PHASE3C_OVERVIEW.md](../phase3c/PHASE3C_OVERVIEW.md) - Context
 

@@ -387,7 +387,7 @@ HYGIENE_CONTROLS = {
 - [PRIORITY_COLOR_CODING.md](PRIORITY_COLOR_CODING.md) - Visual color scheme
 - [RAPIDS_CONSISTENCY.md](RAPIDS_CONSISTENCY.md) - Framework consistency
 - [README.md](README.md) - Phase 3B++ overview
-- [../phase3c/ROADMAP.md](../phase3c/ROADMAP.md) - Next phase plan
+- [../phase3d/ROADMAP.md](../phase3d/ROADMAP.md) - Next phase plan
 
 ---
 
