@@ -522,7 +522,8 @@ class ThreatAnalyst(AnalystAgent):
         Detection methods:
         1. Architecture type in metadata
         2. AI keywords in architecture name
-        3. AI components in ground truth
+        3. AI components in description
+        4. AI components in node names (NEW - prevents blind spots)
 
         Args:
             architecture_path: Path to architecture file
@@ -531,21 +532,41 @@ class ThreatAnalyst(AnalystAgent):
         Returns:
             True if AI architecture detected
         """
+        ai_keywords = ["ai", "ml", "llm", "agent", "gpt", "embedding", "vector",
+                       "model", "inference", "training", "transformer", "openai",
+                       "anthropic", "claude", "gemini", "mistral", "huggingface",
+                       "pytorch", "tensorflow", "keras", "scikit"]
+
         # Method 1: Check metadata
         arch_type = ground_truth.get("metadata", {}).get("architecture_type", "")
         if arch_type in ["ai_system", "ml_pipeline", "llm_application"]:
+            logger.info("AI architecture detected via metadata")
             return True
 
         # Method 2: Check filename
         arch_name = Path(architecture_path).stem.lower()
-        ai_keywords = ["ai", "ml", "llm", "agent", "gpt", "embedding", "vector"]
         if any(kw in arch_name for kw in ai_keywords):
+            logger.info(f"AI architecture detected via filename: {arch_name}")
             return True
 
-        # Method 3: Check for AI components in architecture
+        # Method 3: Check for AI components in description
         description = ground_truth.get("description", "").lower()
         if any(kw in description for kw in ai_keywords):
+            logger.info("AI architecture detected via description")
             return True
+
+        # Method 4: Check actual node names in attack paths (prevents blind spots)
+        attack_paths = ground_truth.get("expected_attack_paths", [])
+        all_nodes = []
+        for path in attack_paths:
+            all_nodes.extend(path.get("path", []))
+
+        # Check node names for AI components
+        for node in all_nodes:
+            node_lower = node.lower()
+            if any(kw in node_lower for kw in ai_keywords):
+                logger.info(f"AI architecture detected via node name: {node}")
+                return True
 
         return False
 

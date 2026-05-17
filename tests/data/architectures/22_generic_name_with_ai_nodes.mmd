@@ -1,0 +1,12 @@
+flowchart TB
+    Internet((Internet))
+    API[API Gateway]
+    LLM[LLM Service]
+    VectorDB[(Vector Database)]
+    App[Application Server]
+
+    Internet --> API
+    API --> App
+    App --> LLM
+    App --> VectorDB
+    LLM --> VectorDB
