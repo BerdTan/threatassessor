@@ -1,8 +1,8 @@
 # DEV-TEST: MITRE Threat Modeling System
 
-**Version:** 1.1 (Phase 3C MVP Complete)  
-**Status:** ✅ Production Ready (99.5% deterministic + 85% LLM critique)  
-**Core Feature:** Architecture diagram (.mmd) → Threat assessment + Residual risk (BEFORE/AFTER) + LLM critique
+**Version:** 1.2 (AI/ML Pattern Complete)  
+**Status:** ✅ Production Ready (99.5% deterministic + 85% LLM critique + AI/ML analysis)  
+**Core Feature:** Architecture diagram (.mmd) → Threat assessment + AI/ML analysis + Residual risk (BEFORE/AFTER) + LLM critique
 
 ---
 
@@ -10,10 +10,11 @@
 
 Analyze architecture diagrams to:
 1. Identify attack paths and RAPIDS threats (6 categories)
-2. Recommend security controls (Prevention + DIR framework)
-3. Calculate residual risk: BEFORE (current) vs AFTER (with controls)
-4. Generate business-ready reports with ROI justification
-5. LLM critique analysis (Architect + Tester agents)
+2. **NEW:** AI/ML threat analysis (ARC Framework + MITRE ATLAS)
+3. Recommend security controls (Prevention + DIR framework)
+4. Calculate residual risk: BEFORE (current) vs AFTER (with controls)
+5. Generate business-ready reports with ROI justification
+6. LLM critique analysis (Architect + Tester agents)
 
 **Time:** 30-60 seconds per architecture (+ 5-10 sec for critique)  
 **Confidence:** 99.5% deterministic + 85% LLM critique (validated across 22 architectures)
@@ -44,10 +45,16 @@ ls report/your_architecture/
 
 **Core Analysis:**
 - `chatbot/modules/ground_truth_generator.py` - Main analysis engine
+- `chatbot/modules/threat_analyst.py` - Threat analyst agent (wraps deterministic engine + patterns)
 - `chatbot/modules/completeness_validator.py` - 6-check validation (99.5% confidence)
 - `chatbot/modules/per_node_ttp_mapper.py` - Per-node technique mapping
 - `chatbot/modules/exhaustive_mitigation_mapper.py` - All 44 MITRE mitigations
 - `chatbot/modules/threat_report.py` - Report generation with path-based control placement
+
+**AI/ML Pattern (NEW):**
+- `chatbot/modules/patterns/ai_pattern.py` - ARC Framework + MITRE ATLAS integration
+- `chatbot/modules/pattern_registry.py` - Pattern registration system
+- `chatbot/modules/atlas_helper.py` - MITRE ATLAS data loader (170 techniques, 35 mitigations)
 
 **LLM Critique (Phase 3C):**
 - `chatbot/modules/architect_critic.py` - Design quality assessment (82/100)
@@ -58,6 +65,7 @@ ls report/your_architecture/
 **Data:**
 - `chatbot/data/enterprise-attack.json` (44MB) - MITRE ATT&CK (not in git)
 - `chatbot/data/technique_embeddings.json` (45MB) - Embeddings cache (not in git)
+- `chatbot/data/atlas/*.yaml` (230KB) - MITRE ATLAS for AI/ML threats
 - `.env` - API key (optional, not in git)
 
 **See:** [docs/core/V1_FEATURES.md](docs/core/V1_FEATURES.md) for complete feature documentation
@@ -82,7 +90,8 @@ DEV-TEST/
 └── archive/                                    # Historical (gitignored)
 ```
 
-**Documentation Map:** See [docs/README.md](docs/README.md)
+**Documentation Map:** See [docs/README.md](docs/README.md)  
+**AI/ML Pattern:** See [docs/patterns/](docs/patterns/) for threat pattern documentation
 
 ---
 
@@ -136,21 +145,30 @@ chatbot/data/*.json                      # Large data files (44MB + 45MB)
 
 ---
 
-## Current Capabilities (v1.0)
+## Current Capabilities (v1.2)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Architecture parsing | ✅ | 22 test architectures |
 | RAPIDS threat assessment | ✅ | 6 categories, 100% coverage |
+| **AI/ML threat analysis** | ✅ | **ARC Framework (88 controls) + MITRE ATLAS (170 techniques)** |
 | Attack path analysis | ✅ | Per-node technique mapping |
-| Control recommendations | ✅ | 15-17 controls per arch (100% coverage) |
+| Control recommendations | ✅ | 15-37 controls per arch (RAPIDS + AI) |
 | Residual risk (BEFORE/AFTER) | ✅ | Business thresholds + ROI |
 | Orphan node detection | ✅ | 0 orphans across all tests |
-| Path-based control placement | ✅ | Multi-path, visual clarity 95% |
+| Path-based control placement | ✅ | Multi-path, visual clarity 95%, MMD diagrams |
 | Completeness validation | ✅ | 6 checks, 99.5% confidence |
 | LLM critique agents | ✅ | Architect 82/100, Tester 88/100 (composite 85/100) |
 
 **Validation:** 22/22 architectures pass, 99.5% deterministic + 85% LLM critique
+
+**AI/ML Pattern:**
+- Auto-detects AI architectures (LLM, agents, vector DB, etc.)
+- 9 ARC risk categories scored 0-100
+- 20 AI-specific controls recommended
+- ARC control gap benchmarking (shows % coverage)
+- MITRE ATLAS techniques mapped (AML.T####)
+- Consistent structure with RAPIDS controls
 
 ---
 
