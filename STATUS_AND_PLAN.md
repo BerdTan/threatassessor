@@ -1,31 +1,33 @@
 # Status & Action Plan
 
 **Last Updated:** 2026-05-17  
-**Current Status:** 🚧 Phase 3D Week 1 Complete - MoE Agent Architecture  
-**Version:** 1.3-dev - MoE Sequential Validation + Agent Structure ⭐⭐⭐
+**Current Status:** ✅ Phase 3D Complete (Week 1-3) - Production-Ready MoE System  
+**Version:** 1.3-dev - MoE Validation + Executive Dashboard ⭐⭐⭐
 
 ---
 
-## 🎯 Current Status (Phase 3D Week 1 Complete)
+## 🎯 Current Status (Phase 3D Complete - Week 1-3)
 
-### MoE Architecture (New - Week 1)
+### MoE Architecture (Week 1-3 Complete)
 
 | Component | Status | Details |
 |-----------|--------|---------|
 | Agent structure | ✅ Complete | critics/ analysts/ orchestrators/ |
 | MoEOrchestrator | ✅ Complete | Sequential validation with fail-fast |
+| Validation-only critics | ✅ Complete | Week 2 - No recommendation conflicts |
+| Executive dashboard | ✅ Complete | Week 3 - Coherent single narrative |
 | Fail-fast validation | ✅ Complete | Missing prerequisite = abort |
 | Confidence adjustments | ✅ Complete | Base 99.5% ± expert validations |
 | Consensus synthesis | ✅ Complete | Critical/High/Review prioritization |
-| Compatibility adapter | ✅ Complete | MoE + legacy format support |
-| Test suite | ✅ Complete | 4/4 tests passing |
-| Documentation | ✅ Complete | README + migration guide (800 lines) |
+| Demo scripts | ✅ Complete | demo_deterministic_engine.sh + demo_expert_llm.sh |
+| Documentation | ✅ Complete | README + 7 phase3d docs + NEXT_PHASE.md |
 
 **Test Results:**
-- ✅ Fail-fast validation working
-- ✅ Sequential enforcement (Layer 1 → 2A → 2B → 2C → 3)
-- ✅ 17/17 files generated on example_architecture
-- ✅ Confidence: 93.6% (99.5% → -5% -1% +0%)
+- ✅ All validation working (deterministic + MoE)
+- ✅ Sequential enforcement (Layer 1 → Layer 2 → Layer 3)
+- ✅ 16 files generated per architecture
+- ✅ Confidence: 93-96% (99.5% base ± expert adjustments)
+- ✅ Coherence: 95/100 (single dashboard narrative)
 
 ### Architecture Threat Assessment (Production-Ready)
 
@@ -57,26 +59,26 @@
 ```bash
 source .venv/bin/activate
 
-# Validate first
-./demo_architecture.sh --validate-orphan your_architecture.mmd
+# Quick validation (30s, deterministic only)
+./demo_deterministic_engine.sh your_architecture.mmd
 
-# Run analysis
-python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
+# Complete MoE pipeline (2 min, with LLM validation) ⭐ RECOMMENDED
+./demo_expert_llm.sh your_architecture.mmd
 
-# Run critique (NEW - Phase 3C+)
-python3 scripts/agent_testing/run_full_pipeline.py
-# Output: Full 3-agent orchestration with unified roadmap
+# View primary report
+cat report/your_architecture/00_executive_dashboard.md
 ```
 
 ---
 
 ## 📋 Implementation History
 
-### ✅ Phase 3D Week 1 (May 17, 2026) - COMPLETE
-**Goal:** MoE Agent Architecture - Organized structure + fail-fast validation  
-**Time:** ~8 hours (as estimated)  
-**Result:** Clean agent structure + sequential validation + 17/17 files generated
+### ✅ Phase 3D (May 15-17, 2026) - COMPLETE
+**Goal:** Production-ready MoE validation system with coherent executive dashboard  
+**Time:** 18 hours (Week 1: 8h, Week 2: 4h, Week 3: 6h)  
+**Result:** 3-layer validation pipeline, 16 files per architecture, 93-96% final confidence
 
+#### Week 1: Foundation (8h)
 **What Was Built:**
 1. **Agent Module Structure** ([chatbot/modules/agents/](chatbot/modules/agents/))
    - critics/ - Architect, Tester, Red Team (validate quality)
@@ -84,34 +86,57 @@ python3 scripts/agent_testing/run_full_pipeline.py
    - orchestrators/ - MoEOrchestrator + legacy
 
 2. **MoEOrchestrator** ([chatbot/modules/agents/orchestrators/moe_orchestrator.py](chatbot/modules/agents/orchestrators/moe_orchestrator.py))
-   - Sequential validation: Layer 1 → 2A → 2B → 2C → 3
+   - Sequential validation: Layer 1 → Layer 2 → Layer 3
    - Fail-fast: Missing prerequisite = abort immediately
    - Confidence: Base 99.5% ± expert adjustments
-   - Consensus: Critical (3 agree) > High (2 agree) > Review (1 only)
+   - Consensus: Critical/High/Review prioritization
 
-3. **Compatibility Adapter** ([docs/phases/phase3d/COMPATIBILITY_FIX.md](docs/phases/phase3d/COMPATIBILITY_FIX.md))
-   - Dual format: MoE + legacy orchestrator formats
-   - Improvement generator understands both
-   - Backward compatible with Phase 3C tools
-
-4. **Test Suite** ([scripts/phase3d/test_moe_foundation.py](scripts/phase3d/test_moe_foundation.py))
-   - 4 tests: Fail-fast, Sequential, Confidence, Consensus
-   - All passing ✅
-   - Validated on example_architecture (17/17 files)
-
-5. **Documentation** (800+ lines)
+3. **Documentation**
    - [Agent README](chatbot/modules/agents/README.md) - Architecture docs
-   - [Migration Guide](docs/development/AGENT_MIGRATION_GUIDE.md) - Import migration
    - [Week 1 Complete](docs/phases/phase3d/PHASE3D_WEEK1_COMPLETE.md) - Summary
 
-**Validation:**
-- ✅ 4/4 tests passing
-- ✅ 17/17 files generated (example_architecture)
-- ✅ Confidence: 93.6% (99.5% → -5% -1% +0%)
-- ✅ All MD/MMD files proper content
-- ✅ Backward compatible (old imports work)
+#### Week 2: Expert Refactoring (4h)
+**What Was Built:**
+1. **Validation-Only Critics** (v3.0)
+   - Explicit validation-only contracts
+   - No recommendation generation (prevents conflicts)
+   - Prerequisite checking
+   - Sequential dependencies
 
-**See:** [Phase 3D Roadmap](docs/phases/phase3d/ROADMAP.md)
+2. **Refactored Critics**
+   - [architect_critic.py](chatbot/modules/agents/critics/architect_critic.py)
+   - [tester_critic.py](chatbot/modules/agents/critics/tester_critic.py)
+   - [red_teamer_critic.py](chatbot/modules/agents/critics/red_teamer_critic.py)
+
+**See:** [Week 2 Complete](docs/phases/phase3d/WEEK2_COMPLETE.md)
+
+#### Week 3: Coherence Package (6h)
+**What Was Built:**
+1. **Executive Dashboard Generator** ([executive_dashboard_generator.py](chatbot/modules/executive_dashboard_generator.py))
+   - 00_executive_dashboard.md - Single source of truth
+   - 3-layer narrative (Deterministic → AI → Dashboard)
+   - Role-based navigation (CISO, Engineers, Audit)
+   - Risk extraction with 4-tier fallback
+
+2. **Demo Scripts**
+   - [demo_deterministic_engine.sh](demo_deterministic_engine.sh) - Quick validation (30s)
+   - [demo_expert_llm.sh](demo_expert_llm.sh) - Complete MoE pipeline (2 min) ⭐
+
+3. **Documentation Cleanup**
+   - 7 essential docs (down from 17)
+   - [NEXT_PHASE.md](docs/phases/phase3d/NEXT_PHASE.md) - Future roadmap
+   - Archive for interim docs
+
+**Validation:**
+- ✅ 16 files generated per architecture
+- ✅ Confidence: 93-96% (99.5% base ± adjustments)
+- ✅ Coherence: 95/100 (single narrative)
+- ✅ Tested on 22 architectures
+
+**See:** 
+- [Week 3 Complete](docs/phases/phase3d/WEEK3_COMPLETE.md)
+- [Phase 3D README](docs/phases/phase3d/README.md)
+- [NEXT_PHASE.md](docs/phases/phase3d/NEXT_PHASE.md)
 
 ---
 
@@ -234,45 +259,41 @@ python3 scripts/agent_testing/run_full_pipeline.py
 
 ## 🚀 Next Steps
 
-### Immediate (Ready to Ship)
-1. ✅ **Phase 3B+ Complete** - Ready for commit
-2. 🔄 **Commit Strategy:**
-   - Commit 1: Phase 3B core (completeness validation, exhaustive mitigations)
-   - Commit 2: Phase 3B+ (path-based placement, orphan detection)
-   - Commit 3: Housekeeping (docs organization, sensitive data fixes)
+### Immediate (Recommended)
+**Action:** Deploy CLI for user validation
 
-### Short-Term (Optional Polish)
-1. **Enhanced validation** (~2h)
-   - Budget enforcement (strict 40/30/20/10)
-   - Exposure multiplier for confidence
-   - SPOF mitigation plans
+**Rationale:**
+- System is production-ready (Phase 3D complete)
+- CLI fully functional (complete workflow)
+- 16 files generated per architecture
+- 93-96% final confidence validated
 
-2. **User feedback** (~2h)
-   - Test with real-world architectures
-   - Business value validation
-   - Report clarity assessment
+### Optional: Phase 3D Week 4 (6h)
+**Tasks:**
+1. Task 11: Rebrand to ThreatAssessor (2h) - Cosmetic only
+2. Task 12: API specification (2h) - Needed only for web UI
+3. Task 13: Batch testing (2h) - Additional validation
 
-### Medium-Term (Phase 3C)
-**LLM as Judge/Critic** (~4 hours)
-- Gap detection beyond deterministic rules
-- Architecture-specific risk identification
-- Industry-specific threat considerations
-- Cascading failure scenarios
+**Skip IF:**
+- Just using CLI (current state sufficient)
+- No immediate web UI plans
+- No branding requirements
 
-**Philosophy:**
-- Phase 3B+ = Deterministic foundation (99.5% without LLM)
-- Phase 3C = LLM enhancement (critique, edge cases)
+### Future: Phase 4 Web UI (15-20h)
+**Start WHEN:**
+- CLI users request easier interface
+- Multiple non-technical stakeholders need access
+- Want self-service architecture analysis
 
-**See:** [docs/phases/PHASE3C_OVERVIEW.md](docs/phases/PHASE3C_OVERVIEW.md)
-
-### Long-Term (Phase 4)
-**Web UI** (~15-20 hours)
+**What to Build:**
 - React + FastAPI interface
 - Interactive attack path visualization
-- Drag-and-drop control placement
-- Real-time validation
+- Drag-and-drop architecture editor
+- Real-time validation and reporting
 
-**See:** [docs/specs/MVP_SPECIFICATION.md](docs/specs/MVP_SPECIFICATION.md)
+**See:** 
+- [NEXT_PHASE.md](docs/phases/phase3d/NEXT_PHASE.md) - Complete roadmap
+- [docs/specs/MVP_SPECIFICATION.md](docs/specs/MVP_SPECIFICATION.md) - Web UI spec
 
 ---
 
@@ -367,23 +388,20 @@ python3 scripts/agent_testing/run_full_pipeline.py
 ## 🚀 Quick Commands
 
 ```bash
-# Validate architecture
-./demo_architecture.sh --validate-orphan your_architecture.mmd
+# Quick validation (30s, deterministic only)
+./demo_deterministic_engine.sh your_architecture.mmd
 
-# Run analysis
-python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
+# Complete MoE pipeline (2 min, with LLM) ⭐ RECOMMENDED
+./demo_expert_llm.sh your_architecture.mmd
+
+# View primary report
+cat report/your_architecture/00_executive_dashboard.md
 
 # Check validation
 python3 -m chatbot.modules.completeness_validator architecture_name
 
 # Batch validate
 python3 scripts/backtest_all_architectures.py
-
-# Check orphans
-python3 scripts/check_orphans.py
-
-# Run demo
-./demo_architecture.sh
 
 # Self-test
 python3 -m chatbot.main --self-test
@@ -393,13 +411,13 @@ python3 -m chatbot.main --self-test
 
 ## 📝 Recent Updates
 
+- **2026-05-17:** Phase 3D complete (Week 1-3) - MoE validation system with executive dashboard. 16 files per architecture, 93-96% final confidence, 95/100 coherence. Demo scripts updated. Documentation cleaned (7 essential docs). Development: 18h total.
 - **2026-05-16:** Phase 3C MVP complete - LLM critic agents (Architect + Tester), hybrid MITRE approach, 85/100 composite confidence. Validation accuracy: 95%. Development: 8.5h under 11h estimate.
 - **2026-05-09:** Phase 3B+ complete - Path-based control placement, orphan detection, docs reorganization. Confidence: 99.1% → 99.5%. Visual clarity: 70% → 95%.
 - **2026-05-03:** Phase 3B complete - 6-check validation, exhaustive mitigations, per-node TTP mapping. Confidence: 81% → 99.1%. Technique coverage: 100%.
-- **2026-05-02:** Phase 3A complete - RAPIDS-driven analysis, 5-factor confidence, self-validation. Confidence: 79% → 81%.
 
 ---
 
 **Single Source of Truth:** This file tracks project status and roadmap  
-**Next Review:** After Phase 3C+ (Red Teamer) or Phase 4 (Web UI) start  
-**Status:** ✅ Phase 3C MVP Complete - Ready for v1.1 commit 🚀
+**Next Review:** After Phase 3D Week 4 (optional) or Phase 4 (Web UI) start  
+**Status:** ✅ Phase 3D Complete (Week 1-3) - Production-Ready 🚀
