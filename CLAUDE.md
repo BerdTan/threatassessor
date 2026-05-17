@@ -1,8 +1,8 @@
-# DEV-TEST: MITRE Threat Modeling System
+# DEV-TEST: ThreatAssessor (MITRE Threat Modeling System)
 
-**Version:** 1.2 (AI/ML Pattern Complete)  
-**Status:** ✅ Production Ready (99.5% deterministic + 85% LLM critique + AI/ML analysis)  
-**Core Feature:** Architecture diagram (.mmd) → Threat assessment + AI/ML analysis + Residual risk (BEFORE/AFTER) + LLM critique
+**Version:** 1.3-dev (MoE Architecture - Week 1 Complete)  
+**Status:** 🚧 In Development - Phase 3D Week 1 ✅ Complete  
+**Core Feature:** Architecture diagram (.mmd) → Threat assessment + AI/ML analysis + MoE validation + Residual risk
 
 ---
 
@@ -38,6 +38,25 @@ python3 scripts/agent_testing/run_full_critique.py report/your_architecture
 # View reports
 ls report/your_architecture/
 ```
+
+---
+
+## Agent Architecture (Phase 3D - NEW)
+
+**MoE Structure:**
+- `chatbot/modules/agents/critics/` - Architect, Tester, Red Team (validate quality)
+- `chatbot/modules/agents/analysts/` - ThreatAnalyst + patterns (MITRE+RAPIDS, ATLAS+ARC)
+- `chatbot/modules/agents/orchestrators/` - MoEOrchestrator (sequential validation)
+
+**Usage:**
+```python
+from chatbot.modules.agents import run_moe_pipeline
+
+result = run_moe_pipeline("report/architecture_name")
+print(f"Confidence: {result.final_confidence:.1f}%")  # 93.6%
+```
+
+**See:** [Agent README](chatbot/modules/agents/README.md) for complete documentation
 
 ---
 

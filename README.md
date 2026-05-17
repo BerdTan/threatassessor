@@ -2,9 +2,10 @@
 
 Production-ready CLI that analyzes architecture diagrams and generates comprehensive threat assessments with MITRE ATT&CK mapping and AI/ML threat analysis.
 
-**Status:** ✅ v1.3 Production Ready (99.5% deterministic + AI/ML patterns)  
-**Phase 3C+ Complete:** Orchestrator with improvement roadmaps (15 files generated)  
-**Phase 3D (MoE) Approved:** Sequential validation architecture (4 weeks)
+**Status:** 🚧 v1.3-dev In Development - Phase 3D Week 1 ✅ Complete  
+**Phase 3C+:** Orchestrator with improvement roadmaps (15 files generated) ✅  
+**Phase 3D Week 1:** MoE agent architecture + sequential validation ✅ Complete  
+**Phase 3D Week 2-4:** Expert refactoring + unified orchestration (3 weeks remaining)
 
 **Core Feature:** Architecture diagram → Attack paths + AI/ML analysis + Priority-coded controls + Improvement roadmaps + Residual risk
 

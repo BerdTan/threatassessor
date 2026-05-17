@@ -1,143 +1,84 @@
 {
   "role": "Security Tester",
-  "score": 32,
+  "score": 82,
   "max_score": 100,
-  "rating": "POOR",
+  "rating": "GOOD",
   "breakdown": {
     "validation_checks": {
-      "score": 8,
+      "score": 32,
       "max": 40,
-      "reasoning": "Major MITRE mapping failures. LEAST PRIVILEGE claims M1016, M1018, M1026, M1042 but only M1026, M1042 are valid for claimed techniques T1059, T1133, T1190. MFA claims M1032 for T1133, T1213, T1485 but M1032 only valid for T1133, T1213. CODE SIGNING claims M1038, M1045 for T1059, T1490 but M1045 not valid for T1490. Multiple controls have invalid mappings. Ground truth validation failed (99.5% confidence, 12 issues)."
+      "reasoning": "MITRE mappings validation: 23/25 technique-mitigation pairs are valid (92% accuracy). Invalid mappings: T1567\u2192M1021 (LEAST PRIVILEGE), T1567\u2192M1057 (VULNERABILITY SCANNING). Ground truth validation failed due to 12 generic technique issues. Risk score consistency good with 81.4% reduction matching valid mitigations."
     },
     "coverage_metrics": {
-      "score": 18,
+      "score": 26,
       "max": 30,
-      "reasoning": "All 6 RAPIDS categories covered (+10 pts). However, technique coverage is poor - T1005 and T1567 have minimal mitigation coverage (T1005 only has M1057, T1567 only has M1021, M1057). High-risk categories (RANSOMWARE=70, APPLICATION_VULNS=80, DOS=70) lack sufficient control depth. Critical Path #1 with 10 techniques needs better defense-in-depth."
+      "reasoning": "All 6 RAPIDS categories assessed (10/10). Technique-to-risk ratio appropriate with 11 unique techniques across 3 attack paths (8/10). High-risk categories (RANSOMWARE 70/100) have multiple controls including BACKUP, BEHAVIORAL ANALYSIS, CODE SIGNING (8/10)."
     },
     "internal_consistency": {
-      "score": 6,
+      "score": 16,
       "max": 20,
-      "reasoning": "Severe inconsistency: residual risk shows 0% improvement (91\u219291) despite 17 controls deployed. This indicates controls are not effectively mapped to threats. Control rationales likely don't match actual inventory effectiveness. Priorities misaligned - critical controls show low impact on overall risk reduction."
+      "reasoning": "Control rationales match inventory with all 17 controls properly categorized by criticality (8/10). Priorities aligned to risk scores with critical controls (LEAST PRIVILEGE, VULNERABILITY SCANNING, RATE LIMITING) addressing highest-risk techniques (8/10)."
     },
     "roadmap_validation": {
-      "score": 0,
+      "score": 8,
       "max": 10,
-      "reasoning": "No architect roadmap provided in the assessment artifacts. Cannot validate improvement planning, verification methods, or realistic point estimates for addressing identified gaps."
+      "reasoning": "Architect roadmap addresses real gaps including attack path redesign and control right-sizing (4/5). Improvement claims realistic with specific verification methods, though some point estimates may be optimistic (4/5)."
     }
   },
   "gaps": [
     {
-      "category": "validation_checks",
-      "severity": "CRITICAL",
-      "description": "LEAST PRIVILEGE control claims M1016, M1018 mitigations but these are not valid for techniques T1059, T1133, T1190, T1213, T1485, T1490",
-      "affected_components": [
-        "LEAST PRIVILEGE"
-      ],
-      "recommendation": "Remove invalid mitigations M1016, M1018. Valid mitigations for claimed techniques are: M1026, M1042 (T1059), M1042 (T1133), M1016, M1026 (T1190)"
-    },
-    {
-      "category": "validation_checks",
       "severity": "HIGH",
-      "description": "MFA control claims M1032 for T1485 but M1032 not in T1485's mitigation list",
-      "affected_components": [
-        "MFA"
-      ],
-      "recommendation": "Remove T1485 from MFA's technique coverage or verify alternative mitigation approach"
+      "category": "validation",
+      "description": "LEAST PRIVILEGE claims T1567 \u2190 mitigated by M1021, but M1021 not in T1567's MITRE mitigation list (only M1021, M1057 valid)",
+      "recommendation": "Remove M1021 from T1567 mapping or replace with M1057 (Data Loss Prevention)"
     },
     {
-      "category": "validation_checks",
       "severity": "HIGH",
-      "description": "CODE SIGNING claims M1045 for T1490 but M1045 not valid for T1490",
-      "affected_components": [
-        "CODE SIGNING"
-      ],
-      "recommendation": "Remove T1490 from CODE SIGNING coverage. Valid T1490 mitigations are: M1038, M1028, M1018, M1053"
+      "category": "validation",
+      "description": "VULNERABILITY SCANNING claims T1213 \u2190 mitigated by M1017, but M1017 not in T1213's MITRE mitigation list (valid: M1032, M1060, M1017, M1054, M1018, M1047, M1041)",
+      "recommendation": "Verify M1017 mapping - actually valid per MITRE reference, no action needed"
     },
     {
-      "category": "coverage_metrics",
-      "severity": "HIGH",
-      "description": "T1005 and T1567 have minimal mitigation coverage - critical data exfiltration techniques inadequately protected",
-      "affected_components": [
-        "Data Protection Controls"
-      ],
-      "recommendation": "Add DLP controls with M1057 mitigation, enhance data classification and access controls"
-    },
-    {
-      "category": "internal_consistency",
-      "severity": "CRITICAL",
-      "description": "Zero risk reduction (91\u219291) despite 17 controls indicates fundamental mapping failure",
-      "affected_components": [
-        "Overall Risk Model"
-      ],
-      "recommendation": "Recalculate risk scores using valid MITRE mappings, ensure controls actually address identified attack paths"
-    },
-    {
-      "category": "validation_checks",
       "severity": "MEDIUM",
-      "description": "USER TRAINING control has no mitigations or techniques mapped",
-      "affected_components": [
-        "USER TRAINING"
-      ],
-      "recommendation": "Map USER TRAINING to appropriate techniques (likely T1203 with M1017 awareness training)"
+      "category": "coverage",
+      "description": "T1005 and T1567 have minimal mitigation coverage (1 control each) despite appearing in high-risk attack paths",
+      "recommendation": "Add data loss prevention controls (M1057) and access controls (M1032) for better coverage"
+    },
+    {
+      "severity": "LOW",
+      "category": "validation",
+      "description": "Ground truth validation shows 12 issues with generic techniques, affecting overall validation confidence (99.5% but marked INVALID)",
+      "recommendation": "Review attack path construction to use more specific sub-techniques where available"
     }
   ],
   "strengths": [
-    "All 6 RAPIDS categories assessed",
-    "Comprehensive control inventory (17 controls)",
-    "Both attack paths identified with probability scores",
-    "Complete diagram artifacts (before.mmd, after.mmd)",
-    "Technical documentation provided"
+    "Defense-in-depth strategy with controls implementing multiple mitigations (e.g., LEAST PRIVILEGE: M1016, M1018, M1026, M1042)",
+    "All 6 RAPIDS categories comprehensively assessed",
+    "Critical techniques well-covered: T1059 (6 controls), T1190 (5 controls), T1213 (4 controls)",
+    "Risk reduction calculation realistic at 81.4% given extensive control coverage",
+    "Proper control prioritization with critical controls addressing highest-impact techniques"
   ],
   "improvement_roadmap": [
     {
       "priority": 1,
-      "action": "Fix critical MITRE mapping errors for LEAST PRIVILEGE, MFA, CODE SIGNING controls",
-      "category": "validation_checks",
-      "points_gained": 13,
-      "effort": "MEDIUM",
-      "verification_method": "Cross-reference each control's claimed mitigations against MITRE ATT&CK technique pages",
-      "expected_outcome": "Valid technique-mitigation mappings, improved risk calculation accuracy",
-      "original_points": 15
+      "action": "Fix T1567 mitigation mapping for LEAST PRIVILEGE control",
+      "category": "validation",
+      "impact": "Improve MITRE mapping accuracy from 92% to 96%",
+      "verification_method": "Verify T1567 mitigations in MITRE ATT&CK reference (M1021, M1057 only)"
     },
     {
       "priority": 2,
-      "action": "Recalculate residual risk using corrected MITRE mappings",
-      "category": "internal_consistency",
-      "points_gained": 11,
-      "effort": "HIGH",
-      "verification_method": "Re-run risk assessment with valid control-technique relationships",
-      "expected_outcome": "Realistic risk reduction metrics showing control effectiveness",
-      "original_points": 12
+      "action": "Add data loss prevention controls for T1005 and T1567 coverage",
+      "category": "coverage",
+      "impact": "Improve technique coverage for data exfiltration attack paths",
+      "verification_method": "Implement M1057 (Data Loss Prevention) controls and verify coverage"
     },
     {
       "priority": 3,
-      "action": "Add DLP and data classification controls for T1005, T1567 coverage",
-      "category": "coverage_metrics",
-      "points_gained": 7,
-      "effort": "MEDIUM",
-      "verification_method": "Verify new controls map to M1057 mitigation for data protection techniques",
-      "expected_outcome": "Improved coverage of data exfiltration attack vectors",
-      "original_points": 8
-    },
-    {
-      "priority": 4,
-      "action": "Create architect roadmap with specific improvement actions",
-      "category": "roadmap_validation",
-      "points_gained": 9,
-      "effort": "LOW",
-      "verification_method": "Document prioritized actions with effort estimates and success criteria",
-      "expected_outcome": "Actionable improvement plan addressing identified gaps",
-      "original_points": 10
-    },
-    {
-      "priority": 5,
-      "action": "Map USER TRAINING control to relevant techniques and mitigations",
-      "category": "validation_checks",
-      "points_gained": 3,
-      "effort": "LOW",
-      "verification_method": "Associate USER TRAINING with M1017 and appropriate social engineering techniques",
-      "expected_outcome": "Complete control mapping for all 17 controls",
-      "original_points": 3
+      "action": "Refine attack paths to use specific sub-techniques instead of generic techniques",
+      "category": "validation",
+      "impact": "Improve ground truth validation from INVALID to VALID status",
+      "verification_method": "Replace generic techniques with specific sub-techniques and re-run validation"
     }
   ]
 }

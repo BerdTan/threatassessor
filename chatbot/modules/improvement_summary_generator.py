@@ -45,20 +45,38 @@ def generate_summary(report_dir: str, orchestrator_result: Optional[Dict] = None
         with open(gt_file, 'r') as f:
             ground_truth = json.load(f)
 
-    # Extract key metrics
+    # Extract key metrics (supports both MoE and legacy formats)
     arch_name = orchestrator_result.get("architecture", "Unknown")
-    composite = orchestrator_result.get("composite", {})
-    composite_score = composite.get("score", 0)
-    composite_rating = composite.get("rating", "UNKNOWN")
 
-    individual_scores = orchestrator_result.get("individual_scores", {})
-    arch_score = individual_scores.get("architect", {}).get("score", 0)
-    test_score = individual_scores.get("tester", {}).get("score", 0)
-    red_team = individual_scores.get("red_team", {})
-    red_exploit = red_team.get("exploit_score", 0)
-    red_defense = red_team.get("defense_score", 0)
+    # Check if MoE format (Phase 3D)
+    if "expert_validations" in orchestrator_result:
+        # MoE format: Use confidence and extract scores from expert_validations
+        confidence_data = orchestrator_result.get("confidence", {})
+        confidence = confidence_data.get("final", 0)
 
-    confidence = orchestrator_result.get("confidence", {}).get("final", 0)
+        expert_validations = orchestrator_result.get("expert_validations", {})
+        arch_score = expert_validations.get("architect", {}).get("original_score", 0)
+        test_score = expert_validations.get("tester", {}).get("original_score", 0)
+        red_exploit = expert_validations.get("red_team", {}).get("original_score", 0)
+        red_defense = 100 - red_exploit
+
+        # Use confidence as composite equivalent
+        composite_score = int(confidence)
+        composite_rating = confidence_data.get("interpretation", "GOOD").split(" - ")[0]
+    else:
+        # Legacy format (Phase 3C): Use composite scores
+        composite = orchestrator_result.get("composite", {})
+        composite_score = composite.get("score", 0)
+        composite_rating = composite.get("rating", "UNKNOWN")
+
+        individual_scores = orchestrator_result.get("individual_scores", {})
+        arch_score = individual_scores.get("architect", {}).get("score", 0)
+        test_score = individual_scores.get("tester", {}).get("score", 0)
+        red_team = individual_scores.get("red_team", {})
+        red_exploit = red_team.get("exploit_score", 0)
+        red_defense = red_team.get("defense_score", 0)
+
+        confidence = orchestrator_result.get("confidence", {}).get("final", 0)
 
     # Get roadmap items
     unified_roadmap = orchestrator_result.get("unified_roadmap", [])
