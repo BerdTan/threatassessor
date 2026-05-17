@@ -1,9 +1,9 @@
-# Agent Refactoring Summary - Phase 1 Complete
+# Agent Refactoring Summary - Complete
 
 **Date:** 2026-05-17  
-**Status:** ✅ PHASE 1 COMPLETE  
-**Time:** ~3 hours  
-**Lines Changed:** ~200 lines added, ~60 lines removed (net +140)
+**Status:** ✅ COMPLETE (Phase 1 + 1A)  
+**Time:** ~5 hours total  
+**Lines Changed:** ~450 lines added, ~60 lines removed (net +390)
 
 ---
 
@@ -109,20 +109,25 @@ orchestrator.py
 └── Orchestrator (hardcoded 3 agents) ❌
 ```
 
-### After (Phase 1 Refactoring)
+### After (Complete Refactoring)
 ```
 base_agent.py (new)
 └── BaseAgent (abstract)
     │
-    ├── CriticAgent
+    ├── CriticAgent (evaluates assessments)
     │   ├── Architect ✅
     │   ├── Tester ✅
     │   └── RedTeamer ✅ Now inherits!
     │
-    └── OrchestratorAgent ✅ Inherits BaseAgent
-
-orchestrator.py
-└── Orchestrator (pluggable agents) ✅ Backward compatible
+    ├── AnalystAgent (generates assessments) ✅ NEW
+    │   └── ThreatAnalyst ✅ Wraps deterministic engine
+    │       - ground_truth_generator
+    │       - Ready for PatternRegistry
+    │
+    └── Orchestrator (coordinates agents) ✅ Inherits BaseAgent
+        - orchestrator.py
+        - Pluggable agents
+        - Backward compatible
 ```
 
 ---

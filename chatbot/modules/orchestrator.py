@@ -21,7 +21,7 @@ Confidence Model:
 - Layer 2: Gap penalty (2% per critical gap)
 - Layer 3: Consensus bonus (agents agree → +5-10%)
 
-VERSION: 1.1 - Pluggable agent support (backward compatible)
+VERSION: 1.2 - Inherits from BaseAgent (unified agent hierarchy)
 """
 
 import json
@@ -30,6 +30,7 @@ from typing import Dict, List, Optional
 from pathlib import Path
 from dataclasses import dataclass, asdict
 
+from chatbot.modules.base_agent import BaseAgent
 from chatbot.modules.architect_critic import EnhancedArchitectCritic
 from chatbot.modules.tester_critic import TesterCritic
 from chatbot.modules.red_teamer_critic import RedTeamerCritic
@@ -74,10 +75,11 @@ class OrchestratorResult:
     agent_agreement: str  # HIGH/MEDIUM/LOW
 
 
-class Orchestrator:
+class Orchestrator(BaseAgent):
     """
     Orchestrates critic agents and produces unified assessment.
 
+    Inherits from BaseAgent for consistency with agent hierarchy.
     Supports both legacy (default 3 agents) and pluggable (custom agents) modes.
     """
 
@@ -94,7 +96,7 @@ class Orchestrator:
             agents: Optional list of [architect, tester, red_team] agents
                    If None, creates default agents (backward compatible)
         """
-        self.model = model
+        super().__init__(role="Orchestrator", model=model)
 
         # Backward compatible: Create default agents if not provided
         if agents is None:
@@ -199,6 +201,36 @@ class Orchestrator:
                    f"Confidence {confidence_breakdown['final']:.1f}%")
 
         return result
+
+    def execute(self, context: Dict) -> OrchestratorResult:
+        """
+        Execute orchestration (implements BaseAgent.execute()).
+
+        Args:
+            context: Must contain:
+                - "report_dir": Path to report directory with artifacts
+                - "deterministic_confidence" (optional): Base confidence (default: 99.5)
+
+        Returns:
+            OrchestratorResult with unified assessment
+        """
+        report_dir = context.get("report_dir")
+        if not report_dir:
+            raise ValueError("Orchestrator.execute() requires 'report_dir' in context")
+
+        deterministic_confidence = context.get("deterministic_confidence", 99.5)
+
+        return self.orchestrate(report_dir, deterministic_confidence)
+
+    def get_capabilities(self) -> List[str]:
+        """Return orchestrator capabilities."""
+        return [
+            "orchestrate",
+            "coordinate_agents",
+            "aggregate_scores",
+            "calculate_confidence",
+            "synthesize_roadmap"
+        ]
 
     def _calculate_composite(
         self,

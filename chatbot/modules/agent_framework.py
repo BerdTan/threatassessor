@@ -488,6 +488,9 @@ SCORING GUIDANCE:
 # ============================================================================
 # ORCHESTRATOR AGENT (Manages 3 critics)
 # ============================================================================
+# NOTE: This class is deprecated in favor of Orchestrator in orchestrator.py
+# Kept for potential future use in simplified orchestration scenarios
+# ============================================================================
 
 class OrchestratorAgent(BaseAgent):
     """
