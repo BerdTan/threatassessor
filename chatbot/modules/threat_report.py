@@ -1133,20 +1133,72 @@ def generate_before_after_diagrams(
                 after_lines.append(f"    {control_id} -.->|filters email to| {all_app_nodes[0]}")
             controls_placed.add(control)
 
-    # 13. AI-specific controls: Connected to LLM/AI components
-    for control in ['prompt filtering', 'output filtering', 'sandbox']:
-        if control in control_nodes:
-            control_id = control_nodes[control]
-            # Look for AI-related nodes
+    # 13. AI-specific controls: Use placement data from enrichment
+    # Check for AI/ML controls with placement information
+    ai_control_keywords = [
+        'output_filtering', 'content_moderation', 'sandbox', 'pii_detection',
+        'prompt_filtering', 'input_validation', 'context_grounding', 'rag_verification',
+        'human_in_loop', 'tool_allowlist', 'differential_privacy', 'anonymization',
+        'data_minimization', 'capability_restrictions', 'api_key_rotation',
+        'secrets_management', 'model_monitoring'
+    ]
+
+    for control_kw in ai_control_keywords:
+        if control_kw not in control_nodes:
+            continue
+
+        control_id = control_nodes[control_kw]
+        control_rec = next((r for r in control_recommendations
+                           if r.get('control') == control_kw and 'AI/ML' in r.get('rationale', '')), None)
+
+        if not control_rec:
+            continue
+
+        # Get placement from enriched control data
+        placement = control_rec.get('placement', '')
+
+        # Extract node name from placement (e.g., "At AgentOrchestrator hop" -> "AgentOrchestrator")
+        placed_at_node = None
+        if placement and 'At ' in placement and ' hop' in placement:
+            # Extract node name between "At " and " hop"
+            node_part = placement.split('At ')[1].split(' hop')[0].strip()
+            # Try to find matching node ID (case-insensitive, handle spaces)
+            node_part_normalized = node_part.replace(' ', '').lower()
+
+            # Search for matching node in structure
+            for node_line in structure_lines:
+                for part in node_line.split():
+                    if any(c in part for c in ['(', '[', '{']):
+                        node_id = part.split('(')[0].split('[')[0].split('{')[0]
+                        if node_id.lower().replace('_', '') == node_part_normalized:
+                            placed_at_node = node_id
+                            break
+                if placed_at_node:
+                    break
+
+        # Connect control to its placement node
+        if placed_at_node:
+            dir_category = control_rec.get('dir_category', 'prevention')
+            if dir_category == 'prevention':
+                after_lines.append(f"    {control_id} --> {placed_at_node}")
+            else:
+                after_lines.append(f"    {placed_at_node} -.->|{dir_category}| {control_id}")
+            controls_placed.add(control_kw)
+            logger.info(f"Placed AI control {control_kw} at {placed_at_node} ({dir_category})")
+        else:
+            # Fallback: Look for AI-related nodes
             ai_nodes = [n for n in all_app_nodes if any(kw in structure_lines[i].lower()
                        for i, line in enumerate(structure_lines)
-                       for kw in ['llm', 'agent', 'prompt', 'ai', 'model']
+                       for kw in ['llm', 'agent', 'prompt', 'ai', 'model', 'vector', 'orchestrat', 'tool']
                        if n in line)]
             if ai_nodes:
                 after_lines.append(f"    {control_id} --> {ai_nodes[0]}")
+                controls_placed.add(control_kw)
+                logger.info(f"Placed AI control {control_kw} at fallback node {ai_nodes[0]}")
             elif all_app_nodes:
                 after_lines.append(f"    {control_id} --> {all_app_nodes[0]}")
-            controls_placed.add(control)
+                controls_placed.add(control_kw)
+                logger.info(f"Placed AI control {control_kw} at fallback node {all_app_nodes[0]}")
 
     # 14. Network segmentation/Zero Trust: Shown as protecting perimeter or data layer
     for control in ['network segmentation', 'zero trust', 'micro-segmentation']:
