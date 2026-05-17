@@ -616,7 +616,25 @@ def orchestrate_full_critique(report_dir: str, output_file: str = None) -> Orche
 
     orchestrator.save_result(result, output_file)
 
-    # Save Red Team critique separately
+    # Save Red Team critique separately (Phase 3C Task 1)
     orchestrator.save_red_team_critique(result, report_dir)
+
+    # Phase 3C+ Task 2: Generate improvement summary
+    try:
+        from chatbot.modules.improvement_summary_generator import generate_summary
+        # Pass None to let generator read from file
+        summary_file = generate_summary(report_dir, orchestrator_result=None)
+        logger.info(f"Generated improvement summary: {summary_file}")
+    except Exception as e:
+        logger.warning(f"Failed to generate improvement summary: {e}")
+
+    # Phase 3C+ Task 3: Generate stepped improvement MMDs
+    try:
+        from chatbot.modules.mmd_improvement_generator import generate_improvement_mmds
+        # Pass None to let generator read from files
+        mmd_files = generate_improvement_mmds(report_dir, orchestrator_result=None)
+        logger.info(f"Generated {len(mmd_files)} stepped improvement diagrams")
+    except Exception as e:
+        logger.warning(f"Failed to generate improvement MMDs: {e}")
 
     return result

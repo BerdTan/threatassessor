@@ -48,6 +48,15 @@ def generate_improvement_mmds(report_dir: str, orchestrator_result: Dict = None)
     with open(before_file, 'r') as f:
         original_mmd = f.read()
 
+    # Load after.mmd for control connections
+    after_file = report_path / "after.mmd"
+    after_mmd = None
+    if after_file.exists():
+        with open(after_file, 'r') as f:
+            after_mmd = f.read()
+    else:
+        logger.warning(f"After diagram not found: {after_file}. Will generate without control connections.")
+
     # Get control recommendations with priorities
     control_recommendations = ground_truth.get("control_recommendations", [])
 
@@ -66,7 +75,8 @@ def generate_improvement_mmds(report_dir: str, orchestrator_result: Dict = None)
         critical_controls,
         report_path / "08a_quick_wins.mmd",
         "CRITICAL",
-        "Quick Wins (1-2 weeks) - Critical controls only"
+        "Quick Wins (1-2 weeks) - Critical controls only",
+        after_mmd
     )
     if quick_file:
         generated_files.append(quick_file)
@@ -77,7 +87,8 @@ def generate_improvement_mmds(report_dir: str, orchestrator_result: Dict = None)
         critical_controls + high_controls,
         report_path / "08b_recommended_target.mmd",
         "CRITICAL + HIGH",
-        "Recommended Target (1-3 months) - Critical and High priority controls"
+        "Recommended Target (1-3 months) - Critical and High priority controls",
+        after_mmd
     )
     if recommended_file:
         generated_files.append(recommended_file)
@@ -88,7 +99,8 @@ def generate_improvement_mmds(report_dir: str, orchestrator_result: Dict = None)
         critical_controls + high_controls + medium_controls,
         report_path / "08c_maximum_security.mmd",
         "ALL",
-        "Maximum Security (6+ months) - All recommended controls"
+        "Maximum Security (6+ months) - All recommended controls",
+        after_mmd
     )
     if maximum_file:
         generated_files.append(maximum_file)
@@ -102,7 +114,8 @@ def _generate_stepped_mmd(
     controls: List[Dict],
     output_path: Path,
     priority_level: str,
-    description: str
+    description: str,
+    after_mmd: str = None
 ) -> str:
     """
     Generate single stepped MMD diagram with specified controls.
@@ -113,6 +126,7 @@ def _generate_stepped_mmd(
         output_path: Path to output MMD file
         priority_level: Priority level label (CRITICAL, CRITICAL + HIGH, ALL)
         description: Description line for diagram
+        after_mmd: Optional after.mmd content to extract control connections
 
     Returns:
         Path to generated file
@@ -215,15 +229,18 @@ def _generate_stepped_mmd(
     # Add connections section
     mmd_lines.append("")
     mmd_lines.append("    %% CONNECTIONS (with integrated controls)")
-    mmd_lines.append("    %% Note: Simplified placement - full path-based placement in after.mmd")
 
-    # Add simplified control connections
-    # Just show that controls are protecting the architecture
-    if control_nodes:
-        mmd_lines.append("")
-        mmd_lines.append("    %% Controls protect architecture components")
-        # We'll just add a comment - actual connections would require full path analysis
-        mmd_lines.append("    %% (See after.mmd for detailed control placement)")
+    # Extract control connections from after.mmd if available
+    control_connections = []
+    if after_mmd and control_nodes:
+        control_connections = _extract_control_connections(after_mmd, control_nodes)
+
+    if control_connections:
+        for conn in control_connections:
+            mmd_lines.append(f"    {conn}")
+    else:
+        mmd_lines.append("    %% Note: Control connections not available (after.mmd not found)")
+        mmd_lines.append("    %% Controls are recommended but placement requires full analysis")
 
     # Add original edges
     mmd_lines.append("")
@@ -243,3 +260,30 @@ def _generate_stepped_mmd(
 
     logger.info(f"Generated {output_path.name} with {len(controls)} controls")
     return str(output_path)
+
+
+def _extract_control_connections(after_mmd: str, control_nodes: Dict[str, str]) -> List[str]:
+    """
+    Extract control connections from after.mmd that match the controls we're including.
+
+    Args:
+        after_mmd: Content of after.mmd
+        control_nodes: Dict mapping control names to control IDs
+
+    Returns:
+        List of connection lines to include
+    """
+    connections = []
+    control_ids = set(control_nodes.values())
+
+    # Parse after.mmd for connection lines
+    for line in after_mmd.split('\n'):
+        stripped = line.strip()
+
+        # Check if this is a connection line involving our controls
+        if ('-->' in stripped or '---' in stripped or '<-->' in stripped or '.->' in stripped):
+            # Check if any of our control IDs are in this line
+            if any(control_id in stripped for control_id in control_ids):
+                connections.append(line)
+
+    return connections
