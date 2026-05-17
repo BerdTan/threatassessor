@@ -109,9 +109,64 @@ class ThreatAnalyst(AnalystAgent):
         residual_risk_before = residual_risk.get("before", {})
         residual_risk_after = residual_risk.get("after", {})
 
-        # Build AnalysisResult
+        # Check if AI architecture and run AI pattern if available
+        pattern_sources = ["RAPIDS"]  # Default
+        ai_assessment = {}
+
+        if self._is_ai_architecture(architecture_path, ground_truth):
+            logger.info(f"{self.role}: AI architecture detected, running AI pattern")
+
+            try:
+                from chatbot.modules.patterns.ai_pattern import AIPattern
+                from chatbot.modules.pattern_registry import PatternRegistry
+
+                # Create registry with AI pattern if not already set
+                if not hasattr(self, 'pattern_registry'):
+                    self.pattern_registry = PatternRegistry()
+                    self.pattern_registry.register(AIPattern())
+                    logger.info(f"{self.role}: Auto-initialized PatternRegistry with AI pattern")
+
+                # Run AI pattern assessment
+                # Extract node names from ground truth
+                nodes = []
+                for path in attack_paths:
+                    nodes.extend(path.get("path", []))
+                nodes = list(set(nodes))  # Unique nodes
+
+                logger.info(f"{self.role}: Extracted {len(nodes)} unique nodes for AI assessment")
+
+                context = {
+                    "architecture_type": "ai_system",
+                    "controls_present": controls_present,
+                    "ground_truth": ground_truth
+                }
+
+                ai_results = self.pattern_registry.assess_all(nodes, context)
+
+                if "AI/ML (ARC)" in ai_results:
+                    ai_assessment = ai_results["AI/ML (ARC)"]
+                    pattern_sources.append("AI/ML (ARC)")
+
+                    # Add AI-specific controls to recommendations
+                    ai_controls = ai_assessment.controls_recommended
+                    for ctrl in ai_controls:
+                        if ctrl not in [c.get("control") for c in control_recommendations]:
+                            control_recommendations.append({
+                                "control": ctrl,
+                                "priority": "HIGH" if ai_assessment.threats.get("integrity", {}).get("risk", 0) > 75 else "MEDIUM",
+                                "score": 80,
+                                "rapids_threats": ["AI/ML Risk"],
+                                "rationale": f"AI/ML control from ARC Framework"
+                            })
+
+                    logger.info(f"{self.role}: AI pattern added {len(ai_controls)} controls")
+
+            except Exception as e:
+                logger.warning(f"{self.role}: AI pattern failed: {e}")
+
+        # Build AnalysisResult (AnalysisResult is a dataclass, not using AgentResult pattern)
+        # Note: AnalysisResult doesn't inherit from AgentResult, it's standalone
         result = AnalysisResult(
-            agent_name=self.role,
             data=ground_truth,  # Full ground truth for backward compatibility
             architecture_name=architecture_name,
             threats=threats,
@@ -124,13 +179,18 @@ class ThreatAnalyst(AnalystAgent):
             residual_risk_after=residual_risk_after,
             confidence=confidence,
             validation_checks=checks_passed,
-            pattern_sources=["RAPIDS"]  # Currently only RAPIDS, future: Cloud, ICS, etc.
+            pattern_sources=pattern_sources
         )
+
+        # Add AI assessment to result data if present
+        if ai_assessment:
+            result.data["ai_ml_assessment"] = ai_assessment.threats
+            result.data["ai_controls_recommended"] = ai_assessment.controls_recommended
 
         logger.info(
             f"{self.role}: Assessment complete - "
             f"{len(techniques)} techniques, {len(control_recommendations)} controls, "
-            f"confidence={confidence:.1%}"
+            f"patterns={pattern_sources}, confidence={confidence:.1%}"
         )
 
         return result
@@ -152,22 +212,57 @@ class ThreatAnalyst(AnalystAgent):
         return sorted(list(techniques))
 
     # ========================================================================
-    # Future: PatternRegistry integration
+    # PatternRegistry Integration
     # ========================================================================
 
     def set_pattern_registry(self, registry):
         """
         Set pattern registry for multi-pattern analysis.
 
-        Future enhancement for Phase 2:
-        - Currently: Only RAPIDS pattern
-        - Future: RAPIDS + Cloud + ICS + Mobile patterns
+        Enables multi-pattern threat detection:
+        - RAPIDS: Ransomware, Application, Phishing, Insider, DDoS, Supply chain
+        - AI/ML (ARC): 46 risks across 9 categories for AI systems
+        - Future: Cloud, ICS, Mobile patterns
 
         Args:
             registry: PatternRegistry with registered patterns
         """
         self.pattern_registry = registry
         logger.info(f"{self.role}: Pattern registry updated with {len(registry.patterns)} patterns")
+
+    def _is_ai_architecture(self, architecture_path: str, ground_truth: Dict) -> bool:
+        """
+        Detect if architecture is AI/ML system.
+
+        Detection methods:
+        1. Architecture type in metadata
+        2. AI keywords in architecture name
+        3. AI components in ground truth
+
+        Args:
+            architecture_path: Path to architecture file
+            ground_truth: Ground truth data
+
+        Returns:
+            True if AI architecture detected
+        """
+        # Method 1: Check metadata
+        arch_type = ground_truth.get("metadata", {}).get("architecture_type", "")
+        if arch_type in ["ai_system", "ml_pipeline", "llm_application"]:
+            return True
+
+        # Method 2: Check filename
+        arch_name = Path(architecture_path).stem.lower()
+        ai_keywords = ["ai", "ml", "llm", "agent", "gpt", "embedding", "vector"]
+        if any(kw in arch_name for kw in ai_keywords):
+            return True
+
+        # Method 3: Check for AI components in architecture
+        description = ground_truth.get("description", "").lower()
+        if any(kw in description for kw in ai_keywords):
+            return True
+
+        return False
 
 
 # Convenience function for backward compatibility

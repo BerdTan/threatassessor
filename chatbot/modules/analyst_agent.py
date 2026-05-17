@@ -18,13 +18,13 @@ from abc import abstractmethod
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 
-from chatbot.modules.base_agent import BaseAgent, AgentResult
+from chatbot.modules.base_agent import BaseAgent
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class AnalysisResult(AgentResult):
+class AnalysisResult:
     """
     Result from threat analysis agent.
 
@@ -33,6 +33,8 @@ class AnalysisResult(AgentResult):
     - Control recommendations (what to deploy)
     - Residual risk (before/after)
     - Validation metadata (confidence, checks passed)
+
+    Note: Does not inherit from AgentResult (dataclass incompatibility)
     """
 
     # Core analysis
@@ -54,10 +56,15 @@ class AnalysisResult(AgentResult):
     confidence: float  # 0.0-1.0
     validation_checks: Dict  # Which checks passed
     pattern_sources: List[str]  # Which patterns used (RAPIDS, Cloud, ICS, etc.)
+    data: Dict = None  # Full ground truth for backward compatibility
 
     def to_dict(self) -> Dict:
         """Convert to dictionary (ground_truth.json format)."""
-        return asdict(self)
+        result = asdict(self)
+        # If data is present, merge it (for backward compatibility)
+        if self.data:
+            result.update(self.data)
+        return result
 
 
 class AnalystAgent(BaseAgent):

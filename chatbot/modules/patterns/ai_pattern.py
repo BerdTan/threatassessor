@@ -166,8 +166,8 @@ class AIPattern(ThreatPattern):
     """
 
     def __init__(self):
-        super().__init__(name="AI/ML (ARC Framework)", version="0.2")
-        logger.warning(f"{self.name} pattern is a STUB - not yet implemented")
+        super().__init__(name="AI/ML (ARC Framework)", version="1.0")
+        logger.info(f"{self.name} pattern initialized - ready for use")
 
     def get_name(self) -> str:
         return "AI/ML (ARC)"
@@ -615,54 +615,170 @@ class AIPattern(ThreatPattern):
 
     def recommend_controls(self, threats: Dict, context: Dict) -> List[str]:
         """
-        STUB: Recommend AI/ML-specific controls.
+        Recommend AI/ML-specific controls based on ARC Framework (88 controls).
 
-        Future controls:
-        - prompt_filtering: Input sanitization for LLMs
-        - output_validation: PII detection, harmful content filtering
-        - rate_limiting: Abuse prevention
-        - model_monitoring: Drift detection, anomaly detection
-        - data_governance: Training data lineage, provenance
-        - differential_privacy: Membership inference protection
-        - adversarial_training: Robustness against adversarial examples
-        - model_watermarking: Intellectual property protection
+        Maps high-risk areas to specific controls:
+        - Integrity → input_validation, output_filtering, rag_verification
+        - Safety → content_moderation, human_in_loop, sandbox
+        - Security → api_key_rotation, rate_limiting, access_control
+        - Privacy → pii_detection, differential_privacy, data_minimization
 
         Args:
-            threats: Threat assessment
+            threats: Threat assessment from assess_threat()
             context: Architecture context
 
         Returns:
-            Empty list (stub implementation)
+            List of recommended control names (prioritized)
         """
-        logger.debug(f"{self.name}: recommend_controls() called (STUB)")
+        logger.debug(f"{self.name}: recommend_controls() for {len(threats)} threat categories")
 
-        # STUB: Return empty list
-        # Future: Recommend based on detected AI components
-        return []
+        controls = []
+        priority_controls = []  # High priority (risk > 75)
+        medium_controls = []    # Medium priority (risk 50-75)
+
+        # INTEGRITY controls
+        if "integrity" in threats and threats["integrity"]["risk"] > 50:
+            risk = threats["integrity"]["risk"]
+            if risk >= 80:
+                priority_controls.extend(["input_validation", "prompt_filtering"])
+            if risk >= 75:
+                priority_controls.append("output_filtering")
+            if risk >= 70:
+                medium_controls.extend(["context_grounding", "rag_verification"])
+
+        # SAFETY controls
+        if "safety" in threats and threats["safety"]["risk"] > 50:
+            risk = threats["safety"]["risk"]
+            if risk >= 85:
+                priority_controls.extend(["content_moderation", "sandbox"])
+            if risk >= 75:
+                priority_controls.append("human_in_loop")
+            if risk >= 70:
+                medium_controls.extend(["capability_restrictions", "tool_allowlist"])
+
+        # SECURITY controls
+        if "security" in threats and threats["security"]["risk"] > 50:
+            risk = threats["security"]["risk"]
+            if risk >= 85:
+                priority_controls.extend(["api_key_rotation", "secrets_management"])
+            if risk >= 70:
+                priority_controls.extend(["rate_limiting", "access_control"])
+            if risk >= 60:
+                medium_controls.extend(["encryption", "authentication", "monitoring"])
+
+        # PRIVACY controls
+        if "privacy" in threats and threats["privacy"]["risk"] > 50:
+            risk = threats["privacy"]["risk"]
+            if risk >= 80:
+                priority_controls.extend(["pii_detection", "data_loss_prevention"])
+            if risk >= 70:
+                medium_controls.extend(["differential_privacy", "data_minimization"])
+            if risk >= 60:
+                medium_controls.append("anonymization")
+
+        # TRANSPARENCY controls (if risk > 60)
+        if "transparency" in threats and threats["transparency"]["risk"] > 60:
+            medium_controls.extend(["logging", "audit_trails"])
+
+        # ACCOUNTABILITY controls (if risk > 70)
+        if "accountability" in threats and threats["accountability"]["risk"] > 70:
+            medium_controls.extend(["human_oversight", "incident_response"])
+
+        # RESILIENCE controls (if risk > 60)
+        if "resilience" in threats and threats["resilience"]["risk"] > 60:
+            medium_controls.extend(["monitoring", "robustness_testing"])
+
+        # Combine: priority first, then medium, deduplicate
+        controls = list(dict.fromkeys(priority_controls + medium_controls))
+
+        logger.info(f"{self.name}: Recommended {len(controls)} controls ({len(priority_controls)} priority)")
+        return controls
 
     def validate(self, ground_truth: Dict) -> Dict:
         """
-        STUB: Validate AI/ML threat assessment completeness.
+        Validate AI/ML threat assessment completeness.
 
-        Future validation:
-        - Check all AI components analyzed
-        - Check MITRE AML techniques mapped correctly
-        - Check control recommendations are AI-specific
-        - Verify data leakage risks assessed
+        Checks:
+        1. AI components detected (at least 1)
+        2. All 9 ARC categories assessed
+        3. Controls recommended for high-risk areas
+        4. Techniques mapped where applicable
 
         Args:
-            ground_truth: Complete assessment
+            ground_truth: Complete assessment with AI pattern results
 
         Returns:
-            Stub validation result
+            Validation result:
+                {
+                    "passed": bool,
+                    "confidence": float (0.0-1.0),
+                    "checks": Dict[str, bool],
+                    "issues": List[str]
+                }
         """
-        logger.debug(f"{self.name}: validate() called (STUB)")
+        logger.debug(f"{self.name}: validate() called")
+
+        checks = {}
+        issues = []
+
+        # Check 1: AI components detected
+        ai_threats = ground_truth.get("ai_ml_assessment", {})
+        if not ai_threats:
+            # Look for AI pattern in alternative locations
+            ai_threats = ground_truth.get("pattern_assessments", {}).get("AI/ML (ARC)", {})
+
+        ai_components_found = len(ai_threats) > 0
+        checks["ai_components_detected"] = ai_components_found
+        if not ai_components_found:
+            issues.append("No AI components detected in architecture")
+
+        # Check 2: 9 ARC categories assessed
+        expected_categories = ["integrity", "safety", "security", "privacy",
+                              "transparency", "accountability", "fairness",
+                              "resilience", "societal_impact"]
+        categories_present = []
+        for cat in expected_categories:
+            if cat in ai_threats:
+                categories_present.append(cat)
+
+        checks["arc_categories_complete"] = len(categories_present) == 9
+        if len(categories_present) < 9:
+            missing = set(expected_categories) - set(categories_present)
+            issues.append(f"Missing ARC categories: {', '.join(missing)}")
+
+        # Check 3: High-risk areas have controls recommended
+        controls_recommended = ground_truth.get("ai_controls_recommended", [])
+        high_risk_categories = [cat for cat, data in ai_threats.items()
+                               if isinstance(data, dict) and data.get("risk", 0) > 75]
+
+        checks["controls_for_high_risk"] = len(controls_recommended) > 0 if high_risk_categories else True
+        if high_risk_categories and not controls_recommended:
+            issues.append(f"High-risk categories but no controls recommended: {high_risk_categories}")
+
+        # Check 4: Techniques mapped for critical risks
+        techniques_mapped = any(
+            isinstance(data, dict) and data.get("techniques", [])
+            for data in ai_threats.values()
+        )
+        checks["techniques_mapped"] = techniques_mapped
+        if not techniques_mapped:
+            issues.append("No MITRE ATLAS techniques mapped")
+
+        # Calculate confidence
+        passed_checks = sum(1 for v in checks.values() if v)
+        total_checks = len(checks)
+        confidence = passed_checks / total_checks if total_checks > 0 else 0.0
+
+        passed = confidence >= 0.75  # 3/4 checks must pass
+
+        logger.info(f"{self.name}: Validation {'PASSED' if passed else 'FAILED'} - "
+                   f"{passed_checks}/{total_checks} checks passed, confidence={confidence:.1%}")
 
         return {
-            "passed": False,
-            "confidence": 0.0,
-            "checks": {"stub_pattern": False},
-            "issues": ["AI/ML pattern not yet implemented"]
+            "passed": passed,
+            "confidence": confidence,
+            "checks": checks,
+            "issues": issues
         }
 
 
