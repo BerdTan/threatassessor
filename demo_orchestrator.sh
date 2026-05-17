@@ -8,16 +8,23 @@
 #   3. Red Team Critic → Exploit difficulty assessment
 #   4. Orchestrator → Unified assessment + roadmap
 #
-# Output: 7 files in report/{architecture_name}/
+# Output: 15 files in report/{architecture_name}/
 #   01_executive_summary.md     - Business stakeholders
 #   02_technical_report.md      - Technical teams
 #   03_action_plan.md           - Implementation roadmap
-#   04_architect_critique.json  - Design quality (82/100)
-#   05_tester_critique.json     - MITRE validation (85/100)
+#   04_architect_critique.json  - Design quality (72-85/100)
+#   05_tester_critique.json     - MITRE validation (85-90/100)
+#   06_red_team_critique.json   - Exploit difficulty (40-60/100, LOW=hard to exploit)
 #   07_orchestrator_report.json - Unified 3-agent assessment
-#   ground_truth.json          - Complete analysis data
+#   08_improvement_summary.md   - Human-readable improvement plan
+#   08a_quick_wins.mmd          - Quick wins (CRITICAL controls, 1-2 weeks)
+#   08b_recommended_target.mmd  - Recommended (CRITICAL+HIGH, 1-3 months) ⭐
+#   08c_maximum_security.mmd    - Maximum security (all controls, 6+ months)
+#   before.mmd                  - Current architecture
+#   after.mmd                   - With all recommended controls
+#   ground_truth.json           - Complete analysis data
 #
-# Status: Phase 3C+ Complete (99.5% confidence)
+# Status: Phase 3C+ Complete (with issues - Phase 3D MoE in progress)
 ################################################################################
 
 set -e
@@ -68,9 +75,15 @@ echo "  3. ${GREEN}Red Team Critic${NC} - Evaluates exploit difficulty (inverted
 echo "  4. ${GREEN}Orchestrator${NC} - Synthesizes unified assessment + roadmap"
 echo ""
 echo "Expected Output:"
-echo "  - Composite Score: 65-85/100 (weighted: Arch 30% + Test 30% + RedTeam 40%)"
-echo "  - Final Confidence: 95-100% (deterministic base + LLM validation)"
-echo "  - Unified Roadmap: Critical → High → Medium priority recommendations"
+echo "  - Composite Score: 53-85/100 (weighted: Arch 30% + Test 30% + RedTeam 40%)"
+echo "  - Final Confidence: 99.5% (deterministic base)"
+echo "  - 15 files generated (reports, critiques, improvement roadmaps)"
+echo "  - 3 stepped MMD diagrams (quick wins / recommended / maximum)"
+echo ""
+echo "Known Issues (Phase 3C+):"
+echo "  - Report coherence (different scoring systems)"
+echo "  - Non-deterministic (±11 point variance)"
+echo "  - See: docs/phases/phase3c/PHASE3C_IMPROVEMENTS_NEEDED.md"
 echo ""
 
 # Architecture selection
