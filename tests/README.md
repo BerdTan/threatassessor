@@ -55,16 +55,16 @@ python3 -m chatbot.main --self-test
 
 ## Test Coverage
 
-### Overall Metrics (Phase 2.2)
+### Overall Metrics (Phase 3C+ / v1.3)
 
 | Metric | Result |
 |--------|--------|
-| **Overall accuracy** | **84.9%** (146 queries) |
-| **Tactic coverage** | **14/14** (100%) |
-| **Min per-tactic** | **75%** (lateral-movement) |
-| **Stage 1 smoke** | **100%** (8/8 new techniques) |
-| **Robustness** | **100%** (24/24 mutations) |
-| **Confidence** | **79%** (production-ready) |
+| **Deterministic confidence** | **99.5%** (6-check validation) |
+| **LLM critique confidence** | **85%** (composite score) |
+| **Architecture coverage** | **22/22** (100% pass) |
+| **Orphan nodes** | **0** (all architectures) |
+| **LLM provider tests** | **4/4** (100% pass) |
+| **Agent framework** | **3 agents** (Architect, Tester, Red Teamer) |
 
 ---
 
@@ -109,14 +109,15 @@ See `scripts/agent_testing/` for agent test execution scripts.
 
 ## Test Results
 
-### Latest: Phase 2.2
+### Latest: Phase 3C+ (v1.3)
 
-See [results/phase2.2/summary.md](results/phase2.2/summary.md) for complete results.
+**Current Test Results:**
+- LLM provider tests: `results/test_results_llm_providers.json` (4/4 passed)
+- Agent framework tests: See `scripts/agent_testing/` for agent validation
+- Architecture validation: 22/22 architectures pass (99.5% confidence)
 
-**Highlights:**
-- 84.9% overall accuracy (exceeded 60% target by 41%)
-- All 14 tactics validated (no blind spots)
-- 100% on robustness and Stage 1 smoke tests
+**Archived:**
+- Phase 2.2 results → `archive/tests/results/phase2.2/` (obsolete)
 
 ---
 
