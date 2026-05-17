@@ -1147,6 +1147,10 @@ def generate_before_after_diagrams(
         if control_kw not in control_nodes:
             continue
 
+        # Skip if already placed by hardcoded sections
+        if control_kw in controls_placed:
+            continue
+
         control_id = control_nodes[control_kw]
         control_rec = next((r for r in control_recommendations
                            if r.get('control') == control_kw and 'AI/ML' in r.get('rationale', '')), None)
@@ -1229,6 +1233,70 @@ def generate_before_after_diagrams(
             elif db_like:
                 after_lines.append(f"    {control_id} -.->|applies to all| {db_like[0]}")
             controls_placed.add(control)
+
+    # 15. Fallback: Place any remaining controls using their placement data
+    all_control_names = [rec.get("control") if isinstance(rec, dict) else rec for rec in control_recommendations]
+    unplaced_controls = [name for name in all_control_names if name in control_nodes and name not in controls_placed]
+
+    for control_name in unplaced_controls:
+        control_id = control_nodes[control_name]
+        control_rec = next((r for r in control_recommendations if r.get('control') == control_name), None)
+
+        if not control_rec:
+            continue
+
+        # Try to use placement data
+        placement = control_rec.get('placement', '')
+        placed = False
+
+        if placement and 'At ' in placement and ' hop' in placement:
+            # Extract node name
+            node_part = placement.split('At ')[1].split(' hop')[0].strip()
+            node_part_normalized = node_part.replace(' ', '').replace('/', '').lower()
+
+            # Find matching node
+            for node_line in structure_lines:
+                for part in node_line.split():
+                    if any(c in part for c in ['(', '[', '{']):
+                        node_id = part.split('(')[0].split('[')[0].split('{')[0]
+                        node_normalized = node_id.lower().replace('_', '').replace('/', '')
+                        # More flexible matching
+                        if node_normalized in node_part_normalized or node_part_normalized in node_normalized:
+                            dir_category = control_rec.get('dir_category', 'prevention')
+                            if dir_category == 'prevention':
+                                after_lines.append(f"    {control_id} --> {node_id}")
+                            else:
+                                after_lines.append(f"    {node_id} -.->|{dir_category}| {control_id}")
+                            controls_placed.add(control_name)
+                            placed = True
+                            logger.info(f"Fallback placed {control_name} at {node_id}")
+                            break
+                if placed:
+                    break
+
+        # If still not placed, use generic fallback
+        if not placed:
+            dir_category = control_rec.get('dir_category', 'prevention')
+            layer = control_rec.get('layer', 'application')
+
+            # Choose target based on layer
+            if layer == 'data' and db_like:
+                target = db_like[0]
+            elif layer == 'identity' and web_like:
+                target = web_like[0]
+            elif web_like:
+                target = web_like[0]
+            elif all_app_nodes:
+                target = all_app_nodes[0]
+            else:
+                continue  # Can't place
+
+            if dir_category == 'prevention':
+                after_lines.append(f"    {control_id} --> {target}")
+            else:
+                after_lines.append(f"    {target} -.->|{dir_category}| {control_id}")
+            controls_placed.add(control_name)
+            logger.info(f"Generic fallback placed {control_name} at {target} ({layer} layer)")
 
     # 9. Add original architecture edges (after control placements)
     after_lines.append("")
