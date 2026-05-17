@@ -3,8 +3,8 @@
 Production-ready CLI that analyzes architecture diagrams and generates comprehensive threat assessments with MITRE ATT&CK mapping and AI/ML threat analysis.
 
 **Status:** 🚧 v1.3-dev In Development - Phase 3D Week 1 ✅ Complete  
-**Phase 3C+:** Orchestrator with improvement roadmaps (15 files generated) ✅  
-**Phase 3D Week 1:** MoE agent architecture + sequential validation ✅ Complete  
+**Phase 3C+:** Orchestrator with improvement roadmaps (16 files generated) ✅  
+**Phase 3D Week 1:** Mixture of Experts (MoE) agent architecture + sequential validation ✅ Complete  
 **Phase 3D Week 2-4:** Expert refactoring + unified orchestration (3 weeks remaining)
 
 **Core Feature:** Architecture diagram → Attack paths + AI/ML analysis + Priority-coded controls + Improvement roadmaps + Residual risk
@@ -19,7 +19,7 @@ source .venv/bin/activate
 # Option 1: Quick deterministic analysis (no LLM, ~30s)
 ./demo_deterministic_engine.sh          # Validates architecture + shows deterministic engine
 
-# Option 2: Complete MoE pipeline (with LLM validation, ~2 min) ⭐ RECOMMENDED
+# Option 2: Complete Mixture of Experts (MoE) pipeline (with LLM validation, ~2 min) ⭐ RECOMMENDED
 ./demo_expert_llm.sh          # Full 3-layer validation + coherent dashboard
 
 # For your own architecture:
@@ -49,7 +49,7 @@ cat 08_improvement_summary.md   # Human-readable improvement plan
 open 08b_recommended_target.mmd # View recommended security roadmap
 ```
 
-**Output:** 16 files per architecture (dashboard + reports + critiques + MoE consensus + improvement roadmaps + diagrams)
+**Output:** 16 files per architecture (dashboard + reports + critiques + MoE consensus + improvement roadmaps + diagrams)  
 **Time:** ~2 minutes (30s deterministic + 45s MoE + 5s dashboard + 30s diagram generation)
 
 ---
@@ -145,9 +145,10 @@ flowchart TB
 
 **See full sample:** Run `./demo_expert_llm.sh` to generate complete example in `report/01_minimal_vulnerable/` (16 files with priority-colored controls)
 
-**2. Complete Report Package (15 Files)**
+**2. Complete Report Package (16 Files)**
 ```
 report/your_architecture/
+├── 00_executive_dashboard.md   # Executive dashboard (NEW - Phase 3D Week 3)
 ├── ground_truth.json           # Deterministic analysis (99.5% base)
 │
 ├── 04_architect_critique.json  # Architect validation (72-85/100)
@@ -208,7 +209,7 @@ report/your_architecture/
 
 **Shows:** (~2 minutes, requires LLM API key)
 - Layer 1: Deterministic analysis (99.5% confidence)
-- Layer 2: MoE validation (3 expert critics)
+- Layer 2: Mixture of Experts (MoE) validation (3 expert critics)
 - Layer 3: Executive dashboard (coherent narrative)
 - 16 files generated (dashboard + reports + critiques + diagrams)
 - Automatic coherence validation
@@ -480,9 +481,9 @@ ls -lh chatbot/data/*.json
 | Phase 3B | ✅ Complete | Prevention/DIR + Residual Risk (99.1% confidence) |
 | Phase 3B+ | ✅ Complete | Intelligent control placement + Orphan detection (99.5% confidence) |
 | Phase 3B++ | ✅ Complete | Priority color coding (red/yellow/blue/green) |
-| Phase 3C+ | ✅ Complete | Orchestrator + Improvement roadmaps (15 files generated) |
+| Phase 3C+ | ✅ Complete | Orchestrator + Improvement roadmaps (16 files generated) |
 | v1.3 (AI/ML) | ✅ Complete | AI/ML threat pattern with ARC Framework + MITRE ATLAS |
-| **Phase 3D Week 1** | ✅ **Complete** | **MoE agent architecture + sequential validation (15 files)** |
+| **Phase 3D Week 1** | ✅ **Complete** | **Mixture of Experts (MoE) agent architecture + sequential validation (16 files)** |
 | Phase 3D Week 2-4 | 🚧 In Progress | Expert refactoring + unified orchestration (3 weeks) |
 | Phase 4 | 📦 Future | Web UI (15-20 hours) |
 
@@ -491,7 +492,7 @@ ls -lh chatbot/data/*.json
 **New in Phase 3D:**
 - ✅ Clean agent structure (critics/analysts/orchestrators)
 - ✅ Sequential validation with fail-fast
-- ✅ MoE consensus (15 files including MoE orchestrator)
+- ✅ Mixture of Experts (MoE) consensus (16 files including executive dashboard)
 - ✅ 93-96% final confidence (99.5% base ± expert adjustments)
 
 **Next:** Phase 3D Week 2 - Expert refactoring (validation-only, not parallel recommendations)
@@ -558,6 +559,6 @@ python3 -m chatbot.main --gen-random-arch --complexity medium --seed 42
 
 ---
 
-**Version:** 1.3-dev (MoE Architecture - Phase 3D Week 1 Complete)  
-**Last Updated:** 2026-05-17  
+**Version:** 1.3-dev (Mixture of Experts Architecture - Phase 3D Week 1 Complete)  
+**Last Updated:** 2026-05-18  
 **Status:** 🚧 In Development - MoE sequential validation + agent structure ✅

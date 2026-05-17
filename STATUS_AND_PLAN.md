@@ -1,19 +1,19 @@
-# Status & Action Plan
+# ThreatAssessor Status & Action Plan
 
-**Last Updated:** 2026-05-17  
-**Current Status:** ✅ Phase 3D Complete (Week 1-3) - Production-Ready MoE System  
+**Last Updated:** 2026-05-18  
+**Current Status:** ✅ Phase 3D Complete (Week 1-3) - Production-Ready Mixture of Experts (MoE) System  
 **Version:** 1.3-dev - MoE Validation + Executive Dashboard ⭐⭐⭐
 
 ---
 
 ## 🎯 Current Status (Phase 3D Complete - Week 1-3)
 
-### MoE Architecture (Week 1-3 Complete)
+### Mixture of Experts (MoE) Architecture (Week 1-3 Complete)
 
 | Component | Status | Details |
 |-----------|--------|---------|
 | Agent structure | ✅ Complete | critics/ analysts/ orchestrators/ |
-| MoEOrchestrator | ✅ Complete | Sequential validation with fail-fast |
+| MoE Orchestrator | ✅ Complete | Sequential validation with fail-fast |
 | Validation-only critics | ✅ Complete | Week 2 - No recommendation conflicts |
 | Executive dashboard | ✅ Complete | Week 3 - Coherent single narrative |
 | Fail-fast validation | ✅ Complete | Missing prerequisite = abort |
@@ -62,7 +62,7 @@ source .venv/bin/activate
 # Quick validation (30s, deterministic only)
 ./demo_deterministic_engine.sh your_architecture.mmd
 
-# Complete MoE pipeline (2 min, with LLM validation) ⭐ RECOMMENDED
+# Complete Mixture of Experts (MoE) pipeline (2 min, with LLM validation) ⭐ RECOMMENDED
 ./demo_expert_llm.sh your_architecture.mmd
 
 # View primary report
@@ -74,9 +74,9 @@ cat report/your_architecture/00_executive_dashboard.md
 ## 📋 Implementation History
 
 ### ✅ Phase 3D (May 15-17, 2026) - COMPLETE
-**Goal:** Production-ready MoE validation system with coherent executive dashboard  
+**Goal:** Production-ready Mixture of Experts (MoE) validation system with coherent executive dashboard  
 **Time:** 18 hours (Week 1: 8h, Week 2: 4h, Week 3: 6h)  
-**Result:** 3-layer validation pipeline, 16 files per architecture, 93-96% final confidence
+**Result:** 3-layer validation pipeline with 16 files per architecture and 93-96% final confidence
 
 #### Week 1: Foundation (8h)
 **What Was Built:**
@@ -85,7 +85,7 @@ cat report/your_architecture/00_executive_dashboard.md
    - analysts/ - ThreatAnalyst + patterns (MITRE+RAPIDS, ATLAS+ARC)
    - orchestrators/ - MoEOrchestrator + legacy
 
-2. **MoEOrchestrator** ([chatbot/modules/agents/orchestrators/moe_orchestrator.py](chatbot/modules/agents/orchestrators/moe_orchestrator.py))
+2. **Mixture of Experts (MoE) Orchestrator** ([chatbot/modules/agents/orchestrators/moe_orchestrator.py](chatbot/modules/agents/orchestrators/moe_orchestrator.py))
    - Sequential validation: Layer 1 → Layer 2 → Layer 3
    - Fail-fast: Missing prerequisite = abort immediately
    - Confidence: Base 99.5% ± expert adjustments
@@ -143,7 +143,7 @@ cat report/your_architecture/00_executive_dashboard.md
 ### ✅ Phase 3C MVP (May 10-16, 2026) - COMPLETE
 **Goal:** LLM as Judge/Critic - Intelligent gap detection  
 **Time:** ~8.5 hours (under 11h estimate)  
-**Result:** 85/100 composite confidence (Architect 82 + Tester 88)
+**Result:** 85/100 composite confidence with Architect 82 and Tester 88 scores
 
 **What Was Built:**
 1. **Hybrid MITRE Approach** ([core/HYBRID_MITRE_APPROACH.md](docs/phases/phase3c/core/HYBRID_MITRE_APPROACH.md))
@@ -187,7 +187,7 @@ cat report/your_architecture/00_executive_dashboard.md
 ### ✅ Phase 3B+ (May 9, 2026) - COMPLETE
 **Goal:** Intelligent control placement + Orphan detection  
 **Time:** ~6 hours  
-**Result:** 99.1% → 99.5% confidence
+**Result:** Confidence improved from 99.1% to 99.5%
 
 **What Was Built:**
 1. **Path-Based Control Placement** ([threat_report.py](chatbot/modules/threat_report.py))
@@ -224,7 +224,7 @@ cat report/your_architecture/00_executive_dashboard.md
 ### ✅ Phase 3B (May 3, 2026) - COMPLETE
 **Goal:** Prevention + DIR Framework + Residual Risk  
 **Time:** ~8 hours  
-**Result:** 81% → 99.1% confidence
+**Result:** Confidence improved from 81% to 99.1%
 
 **What Was Built:**
 1. Per-node TTP mapping with Impact techniques
@@ -245,7 +245,7 @@ cat report/your_architecture/00_executive_dashboard.md
 
 ### ✅ Phase 3A (May 2, 2026) - COMPLETE
 **Goal:** RAPIDS-driven threat modeling  
-**Result:** 79% → 81% confidence
+**Result:** Confidence improved from 79% to 81%
 
 **What Was Built:**
 1. RAPIDS-driven control recommendations
@@ -411,7 +411,7 @@ python3 -m chatbot.main --self-test
 
 ## 📝 Recent Updates
 
-- **2026-05-17:** Phase 3D complete (Week 1-3) - MoE validation system with executive dashboard. 16 files per architecture, 93-96% final confidence, 95/100 coherence. Demo scripts updated. Documentation cleaned (7 essential docs). Development: 18h total.
+- **2026-05-17:** Phase 3D complete (Week 1-3) - Mixture of Experts (MoE) validation system with executive dashboard. Generates 16 files per architecture with 93-96% final confidence and 95/100 coherence. Demo scripts updated. Documentation cleaned (7 essential docs). Development: 18h total.
 - **2026-05-16:** Phase 3C MVP complete - LLM critic agents (Architect + Tester), hybrid MITRE approach, 85/100 composite confidence. Validation accuracy: 95%. Development: 8.5h under 11h estimate.
 - **2026-05-09:** Phase 3B+ complete - Path-based control placement, orphan detection, docs reorganization. Confidence: 99.1% → 99.5%. Visual clarity: 70% → 95%.
 - **2026-05-03:** Phase 3B complete - 6-check validation, exhaustive mitigations, per-node TTP mapping. Confidence: 81% → 99.1%. Technique coverage: 100%.
