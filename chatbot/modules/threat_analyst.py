@@ -337,12 +337,28 @@ class ThreatAnalyst(AnalystAgent):
             else:
                 placement = "At AI/ML components"
 
+            # Get ATLAS techniques from threat categories
+            atlas_techniques = []
+            for cat in categories:
+                if cat in ai_threats:
+                    cat_techniques = ai_threats[cat].get("techniques", [])
+                    atlas_techniques.extend(cat_techniques)
+            atlas_techniques = list(set(atlas_techniques))  # Unique
+
+            # Map control to ATLAS mitigations
+            atlas_mitigations = self._get_atlas_mitigations_for_control(ctrl_name)
+
             # Build detailed rationale
             detailed_rationale = []
             for rat in risk_rationales[:3]:  # Top 3
                 detailed_rationale.append(rat)
 
             detailed_rationale.append(f"Depth: {dir_category.upper()} at {layer} layer ({placement})")
+
+            # Add ATLAS technique mitigation info if available
+            if atlas_techniques:
+                tech_str = ", ".join(atlas_techniques[:3])
+                detailed_rationale.append(f"ATLAS: Mitigates {tech_str}")
 
             # Build enriched control dict (matches RAPIDS structure)
             enriched_ctrl = {
@@ -357,6 +373,8 @@ class ThreatAnalyst(AnalystAgent):
                 "layer": layer,
                 "placement": placement,
                 "control_type": dir_category.upper(),
+                "techniques": atlas_techniques,  # ATLAS technique IDs
+                "mitigations": atlas_mitigations,  # ATLAS mitigation IDs
                 "confidence": {
                     "score": 0.85,  # AI pattern confidence
                     "level": "HIGH",
@@ -426,6 +444,56 @@ class ThreatAnalyst(AnalystAgent):
             # Resilience controls
             "robustness_testing": ["resilience"]
         }
+
+    def _get_atlas_mitigations_for_control(self, control_name: str) -> List[str]:
+        """
+        Map AI control to ATLAS mitigation IDs.
+
+        Returns:
+            List of ATLAS mitigation IDs (e.g., ['AML.M0000', 'AML.M0015'])
+        """
+        # Map common AI controls to ATLAS mitigations
+        control_to_mitigations = {
+            # Input/Output controls
+            "input_validation": ["AML.M0015"],  # Adversarial Input Detection
+            "output_filtering": ["AML.M0015"],  # Adversarial Input Detection
+            "prompt_filtering": ["AML.M0015"],  # Adversarial Input Detection
+
+            # Access & Auth controls
+            "access_control": ["AML.M0013", "AML.M0005"],  # Code Signing, Control Access to ML Models
+            "authentication": ["AML.M0013"],  # Code Signing
+            "api_key_rotation": ["AML.M0005"],  # Control Access to ML Models
+
+            # Monitoring & Detection
+            "monitoring": ["AML.M0016", "AML.M0004"],  # Vulnerability Scanning, Restrict Number of ML Model Queries
+            "pii_detection": ["AML.M0017"],  # Model Distribution Methods
+            "anomaly_detection": ["AML.M0016"],  # Vulnerability Scanning
+
+            # Data Protection
+            "encryption": ["AML.M0012"],  # Encrypt Sensitive Information
+            "data_minimization": ["AML.M0017"],  # Model Distribution Methods
+            "differential_privacy": ["AML.M0017", "AML.M0012"],  # Model Distribution Methods, Encrypt
+            "anonymization": ["AML.M0012"],  # Encrypt Sensitive Information
+
+            # Safety & Content
+            "content_moderation": ["AML.M0015"],  # Adversarial Input Detection
+            "sandbox": ["AML.M0014"],  # Limit Hardware & Software
+            "human_in_loop": ["AML.M0007"],  # Sanitize Training Data (human oversight)
+
+            # Rate limiting & Resilience
+            "rate_limiting": ["AML.M0004"],  # Restrict Number of ML Model Queries
+            "capability_restrictions": ["AML.M0014"],  # Limit Hardware & Software
+
+            # Supply chain & Integrity
+            "model_signing": ["AML.M0013"],  # Code Signing
+            "secrets_management": ["AML.M0012"],  # Encrypt Sensitive Information
+
+            # Training & Development
+            "data_validation": ["AML.M0007"],  # Sanitize Training Data
+            "adversarial_training": ["AML.M0002"],  # Passive ML Output Obfuscation
+        }
+
+        return control_to_mitigations.get(control_name, [])
 
     def _infer_ai_control_layer(self, control_name: str) -> str:
         """
