@@ -20,12 +20,10 @@ scripts/
 ├── validation/           # Quick validation utilities
 │   ├── check_orphans.py
 │   └── validate_llm_config.py
-├── generation/           # Data generation & demo utilities
-│   ├── generate_ground_truth.py
-│   ├── batch_generate_ground_truth.sh
-│   └── demo_mitre_advice.py
-└── personal/             # Personal workflow utilities (gitignored)
-    └── sync_repos.sh
+└── generation/           # Data generation & demo utilities
+    ├── generate_ground_truth.py
+    ├── batch_generate_ground_truth.sh
+    └── demo_mitre_advice.py
 ```
 
 ---
@@ -126,17 +124,6 @@ python3 scripts/generation/demo_mitre_advice.py
 
 ---
 
-## Personal Utilities (`personal/`)
-
-**`sync_repos.sh`** - Repository synchronization (personal workflow)
-```bash
-./scripts/personal/sync_repos.sh
-```
-
-*Note: This directory is gitignored for personal workflow scripts.*
-
----
-
 ## Organization Principles
 
 ### Directory Purpose
@@ -146,7 +133,6 @@ python3 scripts/generation/demo_mitre_advice.py
 | **integration/** | Cross-module integration tests | LLM providers, architecture backtesting |
 | **validation/** | Quick validation checks | Orphan detection, config validation |
 | **generation/** | Data generation & demos | Ground truth generation, MITRE demos |
-| **personal/** | Personal workflow utilities (gitignored) | Repository sync |
 
 ### scripts/ vs tests/
 

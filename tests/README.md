@@ -1,9 +1,9 @@
 # Test Suite Documentation
 
 ---
-**Last Updated:** 2026-05-02  
+**Last Updated:** 2026-05-17  
 **Status:** Current  
-**Phase:** 2.2 Complete (84.9% accuracy validated)
+**Phase:** 3C+ Complete (v1.3, orchestrator + improvement roadmaps)
 ---
 
 ## Directory Structure
@@ -17,13 +17,16 @@ tests/
 │   ├── __init__.py
 │   ├── test_mitre.py
 │   └── test_control_detection.py
-├── phase2/               # Phase 2 tests (semantic search)
+├── phase2/               # Phase 2 tests (scoring, semantic search - still active)
 │   ├── __init__.py
 │   ├── test_semantic_search.py
-│   ├── test_phase2_semantic_search.py
 │   ├── test_scoring.py
-│   └── test_stage1_validation.py
-├── data/                 # Test data (architectures, queries)
+│   └── (2 obsolete tests archived to archive/tests/phase2/)
+├── phase3c/              # Phase 3C agent tests
+│   └── (agent test files)
+├── data/                 # Test data
+│   ├── architectures/    # 22 .mmd test files
+│   └── agent_test_cases/ # Agent test cases
 └── results/              # Test results output
 ```
 
@@ -79,9 +82,15 @@ python3 -m chatbot.main --self-test
 | File | Tests | Purpose |
 |------|-------|---------|
 | `test_semantic_search.py` | 11 | Semantic search accuracy, robustness, fallback |
-| `test_phase2_semantic_search.py` | - | Phase 2 semantic search validation |
-| `test_stage1_validation.py` | 4 | Tactic coverage, per-tactic accuracy, smoke tests |
-| `test_scoring.py` | 9 | 3D scoring rubric validation |
+| `test_scoring.py` | 9 | 3D scoring rubric validation (still used in Phase 3C+) |
+
+**Archived:** `test_phase2_semantic_search.py`, `test_stage1_validation.py` (obsolete Phase 2 tests → archive/tests/phase2/)
+
+### Phase 3C Tests (`phase3c/`)
+
+Agent framework tests (Architect, Tester, Red Teamer critics).
+
+See `scripts/agent_testing/` for agent test execution scripts.
 
 ### Test Infrastructure
 
