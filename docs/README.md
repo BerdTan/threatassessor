@@ -1,8 +1,8 @@
 # Documentation Index
 
-**Version:** 1.0.1  
-**Status:** Production Ready 🚀 + Phase 3C MVP1 (Agent Framework)  
-**Last Updated:** 2026-05-10
+**Version:** 1.3  
+**Status:** Production Ready 🚀 + Phase 3B++/3C+ Complete  
+**Last Updated:** 2026-05-17
 
 ---
 
@@ -36,15 +36,23 @@
 | **development/LLM_PROVIDER_ARCHITECTURE.md** | Multi-provider LLM client design | Developers |
 | **development/LLM_TESTING_GUIDE.md** | LLM provider testing procedures | QA, DevOps |
 
-### Phase 3C: Agent Framework (LLM as Judge/Critic)
+### Phase 3B++: Visual Prioritization (v1.2.1)
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| **phases/PHASE3C_OVERVIEW.md** | 4-agent architecture design | Reference |
-| **phases/PHASE3C_MVP1_SUMMARY.md** | Architect agent implementation & validation | ✅ Complete |
-| **phases/PHASE3C_MVP1_CONFIDENCE_ANALYSIS.md** | Validation methodology & test results | ✅ Complete |
-| **phases/PHASE3C_MVP2_TESTER_SPEC.md** | Tester agent specification | 📋 Next (~2-3h) |
-| **phases/PHASE3C_AGENT_FRAMEWORK_COMPARISON.md** | Framework selection rationale | Reference |
+| **phases/phase3b_plus/README.md** | Phase 3B++ overview | ✅ Complete |
+| **phases/phase3b_plus/PRIORITY_COLOR_CODING.md** | Red/yellow/blue/green priority colors | ✅ Complete |
+| **phases/phase3b_plus/RAPIDS_CONSISTENCY.md** | RAPIDS framework label consistency | ✅ Complete |
+| **phases/phase3b_plus/PRIORITY_REFINEMENT.md** | Attack path coverage + hygiene classification | ✅ Complete |
+
+### Phase 3C+: Orchestrator & Improvement Roadmaps (v1.3)
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| **phases/phase3c/ROADMAP.md** | 3-phase roadmap (3B++ / 3C+ / MoE) | ✅ Complete |
+| **phases/phase3c/HYBRID_PLAN.md** | Orchestrator consensus design | ✅ Complete |
+| **phases/phase3c/PHASE3C_COMPLETE.md** | Agent framework completion summary | ✅ Complete |
+| **phases/phase3c/README.md** | Phase 3C overview | Reference |
 
 ### Future Roadmap
 
@@ -58,14 +66,20 @@
 
 ```
 docs/
-├── core/              # Core v1.0 features & methodologies
-├── operations/        # Troubleshooting & maintenance
-├── development/       # System design & architecture
-├── phases/            # Implementation phases (3A, 3B, 3B+, 3C)
-├── testing/           # Testing strategy & data management
-├── deployment/        # Deployment checklists & guides
-├── specs/             # Future specifications (Web UI, etc.)
-└── archive/           # Historical documents (completed plans)
+├── core/              # Core v1.0 features & methodologies (4 files)
+├── operations/        # Troubleshooting & maintenance (2 files)
+├── development/       # System design & architecture (3 files)
+├── phases/            # Implementation phases (3B, 3B++, 3C+)
+│   ├── phase3b/       # Phase 3B: Diagram placement (3 files)
+│   ├── phase3b_plus/  # Phase 3B++: Visual prioritization (4 files)
+│   └── phase3c/       # Phase 3C+: Orchestrator (46 files)
+├── patterns/          # Threat patterns (AI/ML) (3 files)
+├── testing/           # Testing strategy & data management (6 files)
+├── deployment/        # Deployment checklists & guides (3 files)
+├── refactoring/       # Future MoE architecture (3 files)
+├── specs/             # Future specifications (Web UI, etc.) (1 file)
+└── archive/           # Historical documents (26 files)
+    └── development/   # Completed implementation docs (2 files)
 ```
 
 **Active subdirectories:**
@@ -139,18 +153,28 @@ ROOT/
 
 ## Recent Updates
 
-**2026-05-10:** Phase 3C MVP1 (Agent Framework) complete ✅
-- **New:** Architect critic agent for quality assessment
-- **New:** Improvement roadmap with verification methods for Tester
-- **New:** Agent test data framework (`tests/data/agent_test_cases/`)
-- **Docs:** 5 new Phase 3C documents (overview, summary, confidence analysis, tester spec, framework comparison)
-- **Status:** Tested on 3 architectures (good=78/100, flawed=23/100 catches all planted errors)
-- **Next:** MVP2 Tester agent (~2-3h)
+**2026-05-17:** Phase 3B++/3C+ Complete ✅ (v1.3)
+- **Phase 3B++:** Priority-based color coding (red/yellow/blue/green)
+- **Phase 3B++:** RAPIDS framework consistency (threat category + DIR labels)
+- **Phase 3B++:** Intelligent priority refinement (attack path coverage + hygiene classification)
+- **Phase 3C+:** Improvement summary generator (human-readable reports)
+- **Phase 3C+:** Stepped MMD diagrams (08a/08b/08c - quick/recommended/maximum)
+- **Phase 3C+:** Orchestrator integration (auto-generates all files)
+- **Output:** 15 files per architecture (up from 11)
+- **Time Invested:** 6 hours total (Phase 3B++: 3h, Phase 3C+: 3h)
+- **Next:** Optional Phase 3 MoE refactor (8-12h) or other priorities
 
-**2026-05-09:** Multi-provider LLM client implementation complete ✅
-- See: `development/` for LLM architecture documentation
-- Status: 8/8 tests passing, all modules verified working
+**2026-05-10:** Phase 3C MVP (Agent Framework) complete ✅
+- **New:** 3-agent critique (Architect, Tester, Red Team)
+- **New:** Orchestrator consensus (composite scoring)
+- **Status:** Tested on 22 architectures, 85% composite confidence
+- **Docs:** Phase 3C documentation (HYBRID_PLAN, ROADMAP, agent docs)
+
+**2026-05-17:** Documentation cleanup
+- **Archived:** 2 completed implementation docs (LLM client, report formatting)
+- **Structure:** Added `archive/development/` subfolder
+- **Organization:** Updated docs/README.md with Phase 3B++/3C+ completion
 
 ---
 
-*Docs Count: 4 core | 2 operations | 5 development | 7 phases | 5 testing | 3 deployment | 25 archived*
+*Docs Count: 4 core | 2 operations | 3 development | 11 phases (4 new phase3b_plus) | 3 patterns | 6 testing | 3 deployment | 3 refactoring | 1 spec | 26 archived (2 new)*
