@@ -1,4 +1,4 @@
-# ThreatAssessor (formerly MITRE ATT&CK Threat Assessment System)
+# ThreatAssessor
 
 Production-ready CLI that analyzes architecture diagrams and generates comprehensive threat assessments with MITRE ATT&CK mapping and AI/ML threat analysis.
 
