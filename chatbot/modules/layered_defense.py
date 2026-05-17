@@ -30,6 +30,35 @@ LAYER_KEYWORDS = {
     "data": ["database", "storage", "file", "s3", "blob", "vector", "cache", "db", "redis", "postgres"]
 }
 
+# ============================================================================
+# HYGIENE CONTROLS: Security best practices that reduce vulnerability surface
+# ============================================================================
+# These controls are important but don't actively block attacks in real-time.
+# Instead, they reduce the likelihood of vulnerabilities existing.
+#
+# Examples:
+# - Patching: Removes known vulnerabilities (but doesn't block exploit attempts)
+# - Vulnerability Scanning: Identifies weaknesses (but doesn't prevent exploitation)
+# - SBOM: Tracks dependencies (but doesn't stop supply chain attacks)
+#
+# Priority: HIGH (important baseline) but not CRITICAL (less immediately effective)
+HYGIENE_CONTROLS = {
+    "patching",
+    "vulnerability scanning",
+    "code signing",
+    "sbom",
+    "container scanning",
+    "secrets management",
+    "penetration testing",
+    "security audit",
+    "compliance checks",
+    "dependency scanning",
+    "static analysis",
+    "dynamic analysis",
+    "security training",  # User training is hygiene (reduces likelihood, doesn't block)
+    "user training"
+}
+
 
 def categorize_hop_layer(node_label: str) -> str:
     """

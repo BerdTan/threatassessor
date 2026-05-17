@@ -938,6 +938,138 @@ def calculate_overall_defensibility(
     return min(int(overall_def), 100)
 
 
+def refine_control_priorities(
+    control_recommendations: List[Dict],
+    attack_paths: List[Dict]
+) -> List[Dict]:
+    """
+    Refine control priorities based on attack path coverage and hygiene classification.
+
+    Phase 3B++: Enhanced priority logic considering:
+    1. Attack path coverage (controls affecting more paths get higher priority)
+    2. Hygiene classification (patching/scanning are HIGH but not CRITICAL)
+    3. DIR category (prevention > detection > response)
+
+    Priority Logic:
+    - CRITICAL:
+      * Direct prevention at entry/target (existing logic from layered_defense)
+      * Direct prevention covering >= 66% of attack paths
+      * Any control covering 100% of paths (even detection)
+    - HIGH:
+      * Hygiene controls (patching, scanning) even if covering all paths
+      * Detection/Response covering >= 50% of paths
+      * Direct prevention covering < 66% of paths
+    - MEDIUM:
+      * Everything else
+
+    Args:
+        control_recommendations: List of control recommendation dicts
+        attack_paths: List of attack path dicts
+
+    Returns:
+        Updated control recommendations with refined priorities
+    """
+    # Hygiene controls (reduce vulnerability surface, not active blocking)
+    HYGIENE_CONTROLS = {
+        "patching", "vulnerability scanning", "code signing",
+        "sbom", "container scanning", "secrets management",
+        "penetration testing", "security audit", "compliance checks",
+        "dependency scanning", "static analysis", "dynamic analysis",
+        "security training", "user training"
+    }
+
+    total_paths = len(attack_paths)
+    if total_paths == 0:
+        # No paths to analyze, keep existing priorities
+        return control_recommendations
+
+    refined = []
+    for rec in control_recommendations:
+        control_name = rec.get("control", "").lower()
+        dir_category = rec.get("dir_category", "prevention")
+        current_priority = rec.get("priority", "medium")
+        control_attack_paths = rec.get("attack_paths", [])
+        num_paths = len(control_attack_paths)
+
+        # Calculate path coverage
+        path_coverage = num_paths / total_paths if total_paths > 0 else 0
+
+        # Check if hygiene control
+        is_hygiene = control_name in HYGIENE_CONTROLS
+
+        # Determine refined priority
+        new_priority = current_priority  # Default: keep existing
+
+        if is_hygiene:
+            # Hygiene controls: Always HIGH (important baseline, but not immediately effective)
+            new_priority = "high"
+            reason = "hygiene control (reduces vulnerability surface)"
+
+        elif dir_category == "prevention":
+            # Direct prevention controls
+            if path_coverage >= 0.66:
+                # Covers >= 66% of paths → CRITICAL
+                new_priority = "critical"
+                reason = f"prevention covering {num_paths}/{total_paths} paths ({int(path_coverage*100)}%)"
+            elif current_priority == "critical":
+                # Keep CRITICAL if already set (entry/target hop logic from layered_defense)
+                new_priority = "critical"
+                reason = "prevention at critical hop (entry/target)"
+            else:
+                # Prevention but low coverage → HIGH
+                new_priority = "high"
+                reason = f"prevention covering {num_paths}/{total_paths} paths ({int(path_coverage*100)}%)"
+
+        elif path_coverage >= 1.0:
+            # Non-prevention but covers ALL paths → CRITICAL
+            new_priority = "critical"
+            reason = f"{dir_category} covering all {total_paths} paths"
+
+        elif path_coverage >= 0.5:
+            # Detection/Response covering >= 50% → HIGH
+            new_priority = "high"
+            reason = f"{dir_category} covering {num_paths}/{total_paths} paths ({int(path_coverage*100)}%)"
+
+        else:
+            # Low coverage → keep current or downgrade to MEDIUM
+            if current_priority not in ["critical", "high"]:
+                new_priority = "medium"
+                reason = f"{dir_category} covering {num_paths}/{total_paths} paths ({int(path_coverage*100)}%)"
+            else:
+                # Keep HIGH if already set
+                new_priority = "high"
+                reason = f"{dir_category} with moderate coverage"
+
+        # Update recommendation
+        rec["priority"] = new_priority
+
+        # Add priority refinement metadata for transparency
+        if "priority_refinement" not in rec:
+            rec["priority_refinement"] = {
+                "original": current_priority,
+                "refined": new_priority,
+                "reason": reason,
+                "path_coverage": round(path_coverage, 2),
+                "is_hygiene": is_hygiene
+            }
+
+        refined.append(rec)
+
+    # Log priority changes
+    priority_changes = [
+        (r["control"], r["priority_refinement"]["original"], r["priority_refinement"]["refined"])
+        for r in refined
+        if r.get("priority_refinement", {}).get("original") != r.get("priority_refinement", {}).get("refined")
+    ]
+
+    if priority_changes:
+        logger.info(f"Priority refinement: {len(priority_changes)} controls adjusted")
+        for control, old, new in priority_changes[:5]:  # Show first 5
+            logger.info(f"  {control}: {old} → {new}")
+
+    return refined
+
+
 # ============================================================================
 # MAIN GENERATION FUNCTION
 # ============================================================================
@@ -1182,6 +1314,13 @@ def generate_ground_truth(
         control_recommendations,
         validation_report
     )
+
+    # Phase 3B++: Refine priorities based on attack path coverage and hygiene classification
+    adjusted_recommendations = refine_control_priorities(
+        adjusted_recommendations,
+        attack_paths
+    )
+
     ground_truth["control_recommendations"] = adjusted_recommendations
     ground_truth["validation_report"] = validation_report
 
