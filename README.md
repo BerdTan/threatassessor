@@ -16,40 +16,41 @@ Production-ready CLI that analyzes architecture diagrams and generates comprehen
 ```bash
 source .venv/bin/activate
 
-# Interactive guided demo (recommended for first-time users)
-./demo_step_by_step.sh
+# Option 1: Quick deterministic analysis (no LLM, ~30s)
+./demo_deterministic_engine.sh          # Validates architecture + shows deterministic engine
 
-# Or try individual demos:
-./demo_architecture.sh          # Compare vulnerable vs defended architectures
-./demo_llm_critique.sh          # Deep-dive into LLM critic agents
+# Option 2: Complete MoE pipeline (with LLM validation, ~2 min) ⭐ RECOMMENDED
+./demo_expert_llm.sh          # Full 3-layer validation + coherent dashboard
 
 # For your own architecture:
+# Option 1: One-command demo (easiest)
+./demo_expert_llm.sh your_architecture.mmd
+
+# Option 2: Step-by-step (for debugging)
 # 1. Validate (checks for orphan nodes)
-./demo_architecture.sh --validate-orphan your_architecture.mmd
+./demo_deterministic_engine.sh --validate-orphan your_architecture.mmd
 
-# 2. Run full analysis (deterministic + MoE validation)
+# 2. Run full analysis (deterministic + MoE validation + dashboard)
 python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
-
-# 3. Run MoE orchestrator (generates 15 files) - NEW in Phase 3D
 python3 -c "
 from chatbot.modules.agents import run_moe_pipeline
 result = run_moe_pipeline('report/your_architecture')
 print(f'Final confidence: {result.final_confidence:.1f}%')
 "
+python3 -m chatbot.modules.executive_dashboard_generator report/your_architecture
 
-# Or use legacy orchestrator (15 files)
-./demo_orchestrator.sh your_architecture  # Phase 3C+ format
-
-# 4. View reports
+# 3. View reports (start with dashboard)
 cd report/your_architecture/
+cat 00_executive_dashboard.md   # ⭐ PRIMARY - Start here (CISO report)
 cat 01_executive_summary.md     # Business summary with ROI
 cat 02_technical_report.md      # MITRE mapping + attack paths
 cat 03_action_plan.md           # 8-week implementation roadmap
 cat 08_improvement_summary.md   # Human-readable improvement plan
-open 08b_recommended_target.mmd # View recommended security roadmap ⭐
+open 08b_recommended_target.mmd # View recommended security roadmap
 ```
 
-**Output:** 15 files per architecture (reports + critiques + MoE consensus + improvement roadmaps + diagrams)
+**Output:** 16 files per architecture (dashboard + reports + critiques + MoE consensus + improvement roadmaps + diagrams)
+**Time:** ~2 minutes (30s deterministic + 45s MoE + 5s dashboard + 30s diagram generation)
 
 ---
 
@@ -142,7 +143,7 @@ flowchart TB
 - ✅ Path-based placement (MFA at entry, Backup at data layer, EDR on endpoints)
 - ✅ Black text on colored backgrounds (high contrast, readable)
 
-**See full sample:** [report_samples/example_architecture/after.mmd](report_samples/example_architecture/after.mmd) (complete with priority-colored controls)
+**See full sample:** Run `./demo_expert_llm.sh` to generate complete example in `report/01_minimal_vulnerable/` (16 files with priority-colored controls)
 
 **2. Complete Report Package (15 Files)**
 ```
@@ -167,7 +168,7 @@ report/your_architecture/
 └── 08c_maximum_security.mmd    # Maximum (all controls, 6+ months)
 ```
 
-**Sample:** See [report_samples/example_architecture/](report_samples/example_architecture/) for complete example (15 files)
+**Sample:** Run `./demo_expert_llm.sh` to generate complete example in `report/01_minimal_vulnerable/` (16 files)
 
 **Key Metrics:**
 - **BEFORE Risk:** Current risk with present controls (e.g., 65/100 MITIGATE)
@@ -180,22 +181,37 @@ report/your_architecture/
 
 ## Demonstrations
 
-### Architecture Analysis Demo
+### Demo 1: Quick Validation (Deterministic Only)
 ```bash
-# Run demo comparison (vulnerable vs defended)
-./demo_architecture.sh
+# Validates architecture and shows deterministic threat analysis
+./demo_deterministic_engine.sh
 
-# Validate your own architecture first
-./demo_architecture.sh --validate-orphan your_architecture.mmd
+# Validate your own architecture (checks for orphan nodes)
+./demo_deterministic_engine.sh --validate-orphan your_architecture.mmd
 ```
 
-**Shows:**
-- Pre-analysis orphan node validation
-- Side-by-side comparison (vulnerable vs defended)
+**Shows:** (~30 seconds, no LLM required)
+- Orphan node detection
 - RAPIDS threat assessment (6 categories)
 - Residual risk calculation (BEFORE/AFTER)
 - Prevention + DIR control recommendations
-- ~2 minutes runtime
+- 7 files generated (ground_truth + reports + diagrams)
+
+### Demo 2: Complete MoE Pipeline (Recommended) ⭐
+```bash
+# Complete 3-layer validation with coherent dashboard
+./demo_expert_llm.sh
+
+# Use your own architecture
+./demo_expert_llm.sh your_architecture.mmd
+```
+
+**Shows:** (~2 minutes, requires LLM API key)
+- Layer 1: Deterministic analysis (99.5% confidence)
+- Layer 2: MoE validation (3 expert critics)
+- Layer 3: Executive dashboard (coherent narrative)
+- 16 files generated (dashboard + reports + critiques + diagrams)
+- Automatic coherence validation
 
 ### Self-Test
 ```bash
@@ -328,6 +344,32 @@ echo "OPENROUTER_API_KEY=sk-or-v1-xxxxx" > .env
 
 ---
 
+## Advanced Options
+
+### Debugging and CI/CD
+
+```bash
+# Debug mode - shows detailed logging
+python3 -m chatbot.main --gen-arch-truth architecture.mmd --verbose
+
+# Silent self-test - returns exit code 0 (pass) or 1 (fail)
+python3 -m chatbot.main --self-test-quiet
+# Useful for CI/CD pipelines
+```
+
+### Legacy Features (Phase 2A)
+
+```bash
+# Direct semantic search (requires API key, predates architecture analysis)
+python3 -m chatbot.main --query "PowerShell attack" --format executive
+# Formats: technical, action-plan, executive, all
+# Note: This is legacy functionality. Use --gen-arch-truth for architecture analysis.
+```
+
+**Note:** Most users should use the primary commands shown in Quick Start. For LLM validation, use `./demo_expert_llm.sh` which runs the complete MoE pipeline.
+
+---
+
 ## Common Usage Patterns
 
 ### Architecture Assessment Workflow
@@ -336,7 +378,7 @@ echo "OPENROUTER_API_KEY=sk-or-v1-xxxxx" > .env
 vi my_architecture.mmd
 
 # 2. Validate for orphan nodes
-./demo_architecture.sh --validate-orphan my_architecture.mmd
+./demo_deterministic_engine.sh --validate-orphan my_architecture.mmd
 
 # 3. Fix any orphans (if found)
 # Add entry points or connections
@@ -355,7 +397,7 @@ cat 01_executive_summary.md
 python3 scripts/backtest_all_architectures.py
 
 # Check for orphan nodes
-python3 scripts/check_orphans.py
+python3 scripts/validation/check_orphans.py
 
 # Validate specific architecture
 python3 -m chatbot.modules.completeness_validator architecture_name
@@ -371,7 +413,7 @@ python3 -m chatbot.modules.completeness_validator architecture_name
 **Solution:**
 ```bash
 # Check which nodes are orphans
-python3 scripts/check_orphans.py architecture_name
+python3 scripts/validation/check_orphans.py architecture_name
 
 # Fix patterns:
 # 1. Add entry point: VPN((VPN)) --> OrphanNode
@@ -471,7 +513,7 @@ ls -lh chatbot/data/*.json
 python3 scripts/backtest_all_architectures.py
 
 # Check orphans
-python3 scripts/check_orphans.py
+python3 scripts/validation/check_orphans.py
 
 # Validate architecture
 python3 -m chatbot.modules.completeness_validator architecture_name
@@ -483,7 +525,7 @@ python3 -m chatbot.modules.completeness_validator architecture_name
 
 ```bash
 # Validate architecture
-./demo_architecture.sh --validate-orphan architecture.mmd
+./demo_deterministic_engine.sh --validate-orphan architecture.mmd
 
 # Run analysis
 python3 -m chatbot.main --gen-arch-truth architecture.mmd
@@ -492,7 +534,7 @@ python3 -m chatbot.main --gen-arch-truth architecture.mmd
 python3 -m chatbot.modules.completeness_validator architecture_name
 
 # Run demo
-./demo_architecture.sh
+./demo_deterministic_engine.sh
 
 # Self-test
 python3 -m chatbot.main --self-test

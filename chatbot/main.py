@@ -442,8 +442,7 @@ Display Formats:
   all          Show all three formats
 
 Ground Truth Generation:
-  --gen-arch-truth FILE.mmd       Generate ground truth (parser only, no LLM)
-  --gen-arch-truth-llm FILE.mmd   Generate with LLM enhancement
+  --gen-arch-truth FILE.mmd       Generate ground truth (deterministic analysis)
   --output PATH                   Custom output path for ground truth
   --gen-random-arch               Generate random architecture for testing
   --orientation TB|LR             Diagram orientation (default: TB)
@@ -457,7 +456,6 @@ Examples:
   python3 -m chatbot.main --format all --query "PowerShell attack"
   python3 -m chatbot.main --self-test  # Validate system before use
   python3 -m chatbot.main --gen-arch-truth tests/data/architectures/01_minimal.mmd
-  python3 -m chatbot.main --gen-arch-truth-llm file.mmd --output custom/path.json
   python3 -m chatbot.main --gen-random-arch --complexity high --orientation LR
         """
     )
@@ -492,12 +490,6 @@ Examples:
         type=str,
         metavar='MMD_FILE',
         help='Generate ground truth from architecture diagram (parser only, no LLM)'
-    )
-    parser.add_argument(
-        '--gen-arch-truth-llm',
-        type=str,
-        metavar='MMD_FILE',
-        help='Generate ground truth with LLM enhancement'
     )
     parser.add_argument(
         '--output', '-o',
@@ -565,7 +557,7 @@ Examples:
         return
 
     # Handle ground truth generation mode
-    if args.gen_arch_truth or args.gen_arch_truth_llm:
+    if args.gen_arch_truth:
         from pathlib import Path
         from chatbot.modules.threat_analyst import ThreatAnalyst
         from chatbot.modules.threat_report import (
@@ -575,8 +567,7 @@ Examples:
             generate_action_plan
         )
 
-        mmd_file = args.gen_arch_truth or args.gen_arch_truth_llm
-        use_llm = bool(args.gen_arch_truth_llm)
+        mmd_file = args.gen_arch_truth
 
         # Configure logging
         if args.verbose:
@@ -585,14 +576,12 @@ Examples:
             logging.getLogger().setLevel(logging.INFO)
 
         print(f"\n## 📊 Ground Truth Generator\n")
-        print(f"**Mode:** {'Parser + LLM (enhanced)' if use_llm else 'Parser Only (deterministic)'}\n")
+        print(f"**Mode:** Deterministic analysis (for LLM validation, use demo_expert_llm.sh)\n")
 
         try:
             print(f"📊 Analyzing architecture: {mmd_file}")
-            if use_llm:
-                print("   Mode: LLM-enhanced (may take 30-60 seconds)")
-            else:
-                print("   Mode: Deterministic parser (fast, reproducible)")
+            print("   Mode: Deterministic parser (fast, reproducible)")
+            print("   For LLM validation: Run ./demo_expert_llm.sh after this completes")
             print()
 
             # Generate ground truth using ThreatAnalyst (includes AI pattern detection)

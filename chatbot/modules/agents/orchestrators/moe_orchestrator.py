@@ -30,9 +30,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 
-from chatbot.modules.architect_critic import EnhancedArchitectCritic
-from chatbot.modules.tester_critic import TesterCritic
-from chatbot.modules.red_teamer_critic import RedTeamerCritic
+from chatbot.modules.agents.critics.architect_critic import EnhancedArchitectCritic
+from chatbot.modules.agents.critics.tester_critic import TesterCritic
+from chatbot.modules.agents.critics.red_teamer_critic import RedTeamerCritic
 from chatbot.modules.artifact_extractor import extract_artifacts, ArtifactSet
 from chatbot.modules.agent_framework import CritiqueScore
 
@@ -359,8 +359,16 @@ class MoEOrchestrator:
 
         logger.info(f"MoE Pipeline: ✓ Layer 3 complete - saved to {orch_path} (+ legacy format)")
 
-        # ===== GENERATE ADDITIONAL ARTIFACTS (Phase 3C+ compatibility) =====
-        logger.info("MoE Pipeline: Generating improvement artifacts...")
+        # ===== GENERATE ADDITIONAL ARTIFACTS (Phase 3D Week 3) =====
+        logger.info("MoE Pipeline: Generating CISO artifacts...")
+
+        # Generate executive dashboard (00_executive_dashboard.md) - NEW in Week 3
+        try:
+            from chatbot.modules.executive_dashboard_generator import generate_executive_dashboard
+            dashboard_file = generate_executive_dashboard(report_dir)
+            logger.info(f"MoE Pipeline: ✓ Generated executive dashboard: {dashboard_file}")
+        except Exception as e:
+            logger.warning(f"MoE Pipeline: Failed to generate executive dashboard: {e}")
 
         # Generate improvement summary (08_improvement_summary.md)
         try:
@@ -379,7 +387,7 @@ class MoEOrchestrator:
             logger.warning(f"MoE Pipeline: Failed to generate improvement MMDs: {e}")
 
         logger.info(f"MoE Pipeline: COMPLETE - {final_confidence:.1f}% confidence")
-        logger.info(f"MoE Pipeline: Generated 15/15 files (ground_truth + 6 JSON + 4 MD + 4 MMD)")
+        logger.info(f"MoE Pipeline: Generated 16/16 files (ground_truth + 1 dashboard + 6 JSON + 4 MD + 4 MMD)")
 
         return result
 
@@ -614,10 +622,52 @@ class MoEOrchestrator:
         }
 
     def _extract_risk_transformation(self, ground_truth: Dict) -> Dict:
-        """Extract risk transformation from ground truth."""
+        """
+        Extract risk transformation from ground truth.
+
+        Tries multiple data sources for robustness:
+        1. residual_risk (newest format, Phase 3B+)
+        2. residual_risks_before/after (Phase 3B format with overall_residual)
+        3. risk_analysis (older format, Phase 3A)
+        4. expected_risk_score (original format, Phase 1-2)
+        """
         residual = ground_truth.get("residual_risk", {})
-        before = residual.get("before", {}).get("score", 0)
-        after = residual.get("after", {}).get("score", 0)
+        before = residual.get("before", {}).get("score")
+        after = residual.get("after", {}).get("score")
+
+        # Fallback 1: residual_risks_before/after (Phase 3B format)
+        if before is None:
+            residual_before = ground_truth.get("residual_risks_before", {})
+            residual_after = ground_truth.get("residual_risks_after", {})
+            before = residual_before.get("overall_residual")
+            after = residual_after.get("overall_residual")
+
+        # Fallback 2: risk_analysis (older format)
+        if before is None:
+            risk_analysis = ground_truth.get("risk_analysis", {})
+            before = risk_analysis.get("overall_risk_score")
+            after = risk_analysis.get("overall_risk_score_with_controls")
+
+        # Fallback 3: expected_risk_score (original format)
+        if before is None:
+            before = ground_truth.get("expected_risk_score")
+            # Estimate "after" risk based on controls
+            if after is None:
+                controls_count = len(ground_truth.get("control_recommendations", []))
+                if controls_count > 0:
+                    # Rough estimate: each control reduces ~2-3 risk points
+                    estimated_reduction = min(controls_count * 2.5, before * 0.6)
+                    after = max(0, int(before - estimated_reduction))
+                else:
+                    after = before  # No controls = no reduction
+
+            logger.info(
+                f"Risk data from expected_risk_score: {before} → {after} "
+                f"({controls_count} controls, {int(before - after if after else 0)} point reduction)"
+            )
+
+        before = before or 0
+        after = after or 0
         reduction = int(((before - after) / before * 100) if before > 0 else 0)
 
         return {

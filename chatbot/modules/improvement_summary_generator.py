@@ -1,9 +1,17 @@
 """
-Improvement Summary Generator
+Improvement Summary Generator - Phase 3D Week 3
 
-Phase 3C+: Generates human-readable improvement summaries from orchestrator consensus.
+Generates human-readable improvement summaries from MoE orchestrator consensus.
+
+Updates (Week 3):
+- Remove cryptic dict strings (fixes Phase 2 Issue #3)
+- Cross-reference 00_executive_dashboard.md (single source of truth)
+- Integrate confidence scores from dashboard
+- Professional business-friendly output
 
 Outputs: 08_improvement_summary.md
+
+Version: 2.0 (Phase 3D Week 3 - Enhanced for dashboard integration)
 """
 
 import json
@@ -86,26 +94,32 @@ def generate_summary(report_dir: str, orchestrator_result: Optional[Dict] = None
     controls_present = ground_truth.get("controls_present", [])
     control_recommendations = ground_truth.get("control_recommendations", [])
 
-    # Build summary content
-    content = f"""# Architecture Improvement Plan: {arch_name}
+    # Get improvement options
+    improvement_options = orchestrator_result.get("improvement_options", {})
+    consensus_recs = orchestrator_result.get("consensus_recommendations", {})
 
+    # Build summary content (Week 3 enhanced format)
+    content = f"""# Technical Implementation Guide
+
+**Architecture:** {arch_name}
 **Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
-**Current Composite:** {composite_score}/100 ({composite_rating})
-**Final Confidence:** {confidence}%
+**Analysis Confidence:** {confidence:.1f}%
+
+> 📊 **For executive summary, see:** [`00_executive_dashboard.md`](00_executive_dashboard.md)
 
 ---
 
-## Executive Summary
+## Quick Reference
 
-Your architecture scored **{composite_score}/100** across 3 evaluation dimensions:
-
+**Overall Assessment:**
+- **Final Confidence:** {confidence:.1f}% — {composite_rating}
 - **Design Quality (Architect):** {arch_score}/100
 - **MITRE Validation (Tester):** {test_score}/100
-- **Exploit Difficulty (Red Team):** {red_exploit}/100 exploit → **{red_defense}/100 defense strength**
+- **Defense Strength (Red Team):** {red_defense}/100 (exploit difficulty: {red_exploit}/100)
 
-**Overall Assessment:** {composite_rating}
+**Key Insight:** {_generate_key_finding(composite_score, arch_score, test_score, red_defense)}
 
-**Key Finding:** {_generate_key_finding(composite_score, arch_score, test_score, red_defense)}
+**Recommended Next Step:** Review [{len(consensus_recs.get('critical', []))} critical items](00_executive_dashboard.md#-critical-all-3-experts-agree--high-confidence) in executive dashboard
 
 ---
 

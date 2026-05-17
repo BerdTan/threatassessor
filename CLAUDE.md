@@ -27,7 +27,7 @@ Analyze architecture diagrams to:
 source .venv/bin/activate
 
 # Validate for orphan nodes first (recommended)
-./demo_architecture.sh --validate-orphan your_architecture.mmd
+./demo_deterministic_engine.sh --validate-orphan your_architecture.mmd
 
 # Run threat analysis
 python3 -m chatbot.main --gen-arch-truth your_architecture.mmd
@@ -130,7 +130,7 @@ Before code changes: **Ask clarifying questions** â†’ **Research thoroughly** â†
 ### Testing
 ```bash
 # Validate architecture for orphan nodes
-./demo_architecture.sh --validate-orphan tests/data/architectures/02_minimal_defended.mmd
+./demo_deterministic_engine.sh --validate-orphan tests/data/architectures/02_minimal_defended.mmd
 
 # Run full analysis
 python3 -m chatbot.main --gen-arch-truth tests/data/architectures/02_minimal_defended.mmd
@@ -211,13 +211,13 @@ chatbot/data/*.json                      # Large data files (44MB + 45MB)
 python3 -m chatbot.main --gen-arch-truth architecture.mmd
 
 # Validate for orphan nodes
-./demo_architecture.sh --validate-orphan architecture.mmd
+./demo_deterministic_engine.sh --validate-orphan architecture.mmd
 
 # Check all architectures
 python3 scripts/backtest_all_architectures.py
 
 # Check orphans
-python3 scripts/check_orphans.py
+python3 scripts/validation/check_orphans.py
 
 # Run LLM critique
 python3 scripts/agent_testing/run_full_critique.py report/architecture_name
@@ -233,7 +233,7 @@ python3 scripts/agent_testing/run_full_critique.py report/architecture_name
 **Orphan nodes detected:**
 ```bash
 # Shows which nodes are unreachable
-python3 scripts/check_orphans.py architecture_name
+python3 scripts/validation/check_orphans.py architecture_name
 
 # See remediation patterns
 cat docs/operations/ARCHITECTURE_VALIDATION.md

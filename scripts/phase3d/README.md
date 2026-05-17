@@ -1,109 +1,81 @@
 # Phase 3D Scripts - MoE Architecture
 
 **Phase:** 3D (Mixture of Experts)  
-**Date:** 2025-05-17  
-**Status:** Week 1 Complete
+**Date:** 2026-05-17  
+**Status:** ✅ Week 1-3 Complete
 
 ---
 
-## Available Scripts
+## Active Scripts
 
-### Test Scripts
+**None** - Foundation testing complete. Use production modules directly.
 
-#### `test_moe_foundation.py`
-Tests MoE foundation (Week 1).
+### Archived Scripts
 
-**Usage:**
-```bash
-source .venv/bin/activate
-python3 scripts/phase3d/test_moe_foundation.py
-```
+**Location:** `archive/phase3d_test_data/`
 
-**Tests:**
-1. Fail-Fast Validation
-2. Sequential Enforcement
-3. Confidence Adjustments
-4. Consensus Synthesis
-
-**Expected:** 4/4 tests passing
+- `test_moe_foundation.py` - Week 1 foundation validation (archived, no longer needed)
 
 ---
 
-## Quick Commands
+## Production Usage
 
 ### Run Full MoE Pipeline
 ```bash
-source .venv/bin/activate
-python3 -c "
-from chatbot.modules.agents import run_moe_pipeline
-result = run_moe_pipeline('report_samples/example_architecture')
-print(f'Confidence: {result.final_confidence:.1f}%')
-"
+# Generate deterministic analysis
+python3 -m chatbot.main --gen-arch-truth architecture.mmd
+
+# Run MoE validation
+python3 -m chatbot.modules.agents report/architecture_name
+
+# Generate executive dashboard
+python3 -m chatbot.modules.executive_dashboard_generator report/architecture_name
+
+# View primary report
+cat report/architecture_name/00_executive_dashboard.md
 ```
 
-### Test on Specific Architecture
-```bash
-source .venv/bin/activate
-python3 -c "
+### Programmatic Usage
+```python
 from chatbot.modules.agents import run_moe_pipeline
-result = run_moe_pipeline('report/YOUR_ARCHITECTURE')
-print(f'Final: {result.final_confidence:.1f}%')
-print(f'Critical: {len(result.critical_recommendations)}')
-print(f'High: {len(result.high_recommendations)}')
-"
+
+# Run MoE validation
+result = run_moe_pipeline('report/architecture_name')
+
+print(f'Confidence: {result.final_confidence:.1f}%')
+print(f'Status: {result.validation_status}')
+print(f'Critical: {len(result.consensus.critical)}')
 ```
 
 ### Check Generated Files
 ```bash
-ls -1 report/YOUR_ARCHITECTURE/ | grep -E "^\d|^(before|after|ground)"
-# Should show 15 files
+ls -1 report/architecture_name/ | wc -l
+# Should show 16 files (00-08 + diagrams + ground_truth)
 ```
 
 ---
 
-## Integration with Other Scripts
+## Week 4 Scripts (Planned)
 
-### Agent Testing (Phase 3C)
-- `scripts/agent_testing/run_full_critique.py` - Legacy composite scoring
-- Use `run_moe_pipeline()` instead for Phase 3D
+### batch_test_moe.py (TODO - Task 13)
 
-### Generation
-- `scripts/generation/generate_ground_truth.py` - Still used (Layer 1)
-- MoE orchestrator auto-calls this
+**Purpose:** Validate MoE pipeline across 10 architectures
 
-### Validation
-- `scripts/validation/check_orphans.py` - Still valid
-- Run before MoE pipeline
+**Tests:**
+- All architectures generate successfully
+- Coherence across 16 files
+- Confidence scores 84-95%
+- No risk extraction failures
 
----
-
-## Troubleshooting
-
-### Missing Files
-```bash
-# Check which files are missing
-python3 -c "
-from pathlib import Path
-report_dir = Path('report/YOUR_ARCHITECTURE')
-expected = ['ground_truth.json', '04_architect_critique.json', 
-            '05_tester_critique.json', '06_red_team_critique.json',
-            '07_moe_orchestrator.json', '08_improvement_summary.md',
-            'before.mmd', 'after.mmd', '08a_quick_wins.mmd',
-            '08b_recommended_target.mmd', '08c_maximum_security.mmd']
-for f in expected:
-    exists = '✅' if (report_dir / f).exists() else '❌'
-    print(f'{exists} {f}')
-"
+**Expected Output:**
 ```
-
-### Test Failures
-```bash
-# Run with verbose logging
-python3 scripts/phase3d/test_moe_foundation.py 2>&1 | tee test_output.log
+✅ 10/10 architectures passed
+- Average confidence: 91.2%
+- Coherence issues: 0
 ```
 
 ---
 
-**Status:** Week 1 ✅ Complete  
-**Next:** Week 2 scripts (expert refactoring)  
-**Author:** ThreatAssessor Development Team
+**Status:** Week 1-3 ✅ Complete  
+**Next:** Week 4 (Branding + Batch Testing + API docs)  
+**Last Updated:** 2026-05-17

@@ -1,33 +1,37 @@
 """
-Red Teamer Critic Agent for Phase 3C+
+Red Teamer Critic Agent - LEGACY LOCATION (Deprecated)
 
-Role: Offensive Security Assessor evaluating exploit difficulty
+⚠️ DEPRECATION WARNING:
+This module is deprecated as of Phase 3D Week 2.
+Please import from: chatbot.modules.agents.critics.red_teamer_critic
 
-Focus:
-- Exploit difficulty (can attacker actually breach?)
-- Defense evasion (can attacker bypass controls?)
-- Attack path realism (is progression realistic?)
+Legacy path (deprecated):
+    from chatbot.modules.red_teamer_critic import RedTeamerCritic
 
-Scoring: INVERTED (0-100)
-- Low score (0-40) = Hard to exploit = GOOD defense
-- High score (60-100) = Easy to exploit = BAD defense
+New path (recommended):
+    from chatbot.modules.agents.critics import RedTeamerCritic
 
-Approach: Prompt-based with post-processing validation (4 checks)
-- Check 1: Control existence (no hallucinated controls)
-- Check 2: Difficulty reasonableness (score matches control count)
-- Check 3: Tester gap integration (adjust for invalid mappings)
-- Check 4: Inverted scoring validation (auto-correct if forgotten)
+This file is kept for backward compatibility but will be removed in v1.4.
 
-VERSION: 2.0 - Refactored to inherit from CriticAgent
+VERSION: 2.0 - Refactored to inherit from CriticAgent (LEGACY)
 """
 
 import json
 import logging
+import warnings
 from typing import Dict, List, Optional
 from pathlib import Path
 
 from chatbot.modules.agent_framework import CriticAgent, CritiqueScore
 from chatbot.modules.artifact_extractor import ArtifactSet
+
+# Emit deprecation warning on import
+warnings.warn(
+    "chatbot.modules.red_teamer_critic is deprecated. "
+    "Use chatbot.modules.agents.critics.red_teamer_critic instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 logger = logging.getLogger(__name__)
 

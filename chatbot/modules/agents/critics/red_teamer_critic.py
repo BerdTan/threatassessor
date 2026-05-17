@@ -1,16 +1,30 @@
 """
-Red Teamer Critic Agent for Phase 3C+
+Red Teamer Critic Agent - Validation-Only Mode (Phase 3D)
 
-Role: Offensive Security Assessor evaluating exploit difficulty
+Role: Offensive Security Assessor validating control effectiveness
 
-Focus:
-- Exploit difficulty (can attacker actually breach?)
-- Defense evasion (can attacker bypass controls?)
-- Attack path realism (is progression realistic?)
+VALIDATION-ONLY CONTRACT:
+- Does NOT generate new threats or controls
+- Does NOT override deterministic analysis, Architect, or Tester findings
+- VALIDATES control effectiveness from attacker perspective (exploit difficulty)
+- Returns confidence adjustment (-0% to -10%) based on exploit difficulty
+- Focus: "Can an attacker actually bypass these controls?" NOT "What controls should exist?"
+
+Prerequisites (fail-fast):
+- ground_truth.json MUST exist (from deterministic analysis)
+- 04_architect_critique.json MUST exist (from Architect validation)
+- 05_tester_critique.json MUST exist (from Tester validation)
+- All 10 artifacts MUST be present (enforced by MoEOrchestrator)
+
+Sequential Dependencies:
+- Validates Tester's assessment (are MITRE mappings actually effective?)
+- Validates control effectiveness (can attacker bypass recommended controls?)
+- Validates attack path difficulty (is progression realistic given controls?)
 
 Scoring: INVERTED (0-100)
-- Low score (0-40) = Hard to exploit = GOOD defense
-- High score (60-100) = Easy to exploit = BAD defense
+- Low score (0-40) = Hard to exploit = GOOD defense → confidence adjustment: 0%
+- Medium score (40-70) = Moderate difficulty = OK defense → confidence adjustment: -3% to -6%
+- High score (70-100) = Easy to exploit = BAD defense → confidence adjustment: -10%
 
 Approach: Prompt-based with post-processing validation (4 checks)
 - Check 1: Control existence (no hallucinated controls)
@@ -18,7 +32,9 @@ Approach: Prompt-based with post-processing validation (4 checks)
 - Check 3: Tester gap integration (adjust for invalid mappings)
 - Check 4: Inverted scoring validation (auto-correct if forgotten)
 
-VERSION: 2.0 - Refactored to inherit from CriticAgent
+Output: CritiqueScore with bypass scenarios and confidence adjustment
+
+VERSION: 3.0 - Phase 3D Week 2 (Validation-only refactor)
 """
 
 import json
@@ -34,19 +50,36 @@ logger = logging.getLogger(__name__)
 
 class RedTeamerCritic(CriticAgent):
     """
-    Red Team critic assessing exploit difficulty.
+    Red Teamer Critic - VALIDATION-ONLY Mode (Phase 3D)
+
+    Validates control effectiveness from offensive security perspective.
+    Does NOT generate new controls - validates if existing controls can be bypassed.
+
+    Contract:
+    - Input: ArtifactSet + ground_truth.json + Tester critique
+    - Output: CritiqueScore (exploit difficulty + confidence adjustment)
+    - Confidence: -0% (hard to exploit) to -10% (easy to exploit)
+    - Prerequisites: All 10 artifacts + 04/05 critiques (enforced by caller)
 
     Rubric (100 points, INVERTED):
-    - Exploit Difficulty: 40 points
-    - Defense Evasion: 30 points
-    - Attack Path Realism: 30 points
+    - Exploit Difficulty: 40 points (higher = easier to exploit)
+    - Defense Evasion: 30 points (can attacker bypass controls?)
+    - Attack Path Realism: 30 points (is attack progression realistic?)
 
-    INVERTED: Low score = hard to exploit = GOOD defense
+    INVERTED SCORING:
+    - Low score (0-40) = Hard to exploit = GOOD defense → confidence: 99.5%
+    - Medium score (40-70) = Moderate difficulty → confidence: 93-96%
+    - High score (70-100) = Easy to exploit = BAD defense → confidence: 89%
+
+    Usage:
+        red_team = RedTeamerCritic()
+        score = red_team.critique(artifacts, ground_truth, tester_critique)
+        confidence_adjustment = -0.10 if score.score > 70 else 0.0
     """
 
     def __init__(self, model: str = None):
         """
-        Initialize Red Teamer critic.
+        Initialize Red Teamer critic (validation-only mode).
 
         Args:
             model: Optional model override (uses .env if None)
@@ -63,7 +96,7 @@ class RedTeamerCritic(CriticAgent):
         # Red Teamer specific state
         self.prompt_template = self._create_prompt_template()
 
-        logger.info(f"Initialized {self.role} critic agent")
+        logger.info(f"RedTeamerCritic initialized (validation-only mode, inverted scoring)")
 
     def _create_system_prompt(self) -> str:
         """System prompt defining Red Teamer role."""
@@ -333,22 +366,45 @@ REMEMBER: Low score = hard to exploit = GOOD defense (we want this!)
         tester_critique: Optional[CritiqueScore] = None
     ) -> CritiqueScore:
         """
-        Execute Red Team critique with post-processing validation.
+        Validate control effectiveness from offensive security perspective (VALIDATION-ONLY).
+
+        Does NOT generate new controls - validates if existing controls can be bypassed.
 
         Overrides parent critique() to add Red Team-specific logic:
         - Custom prompt building (attack paths, controls)
         - Post-processing validation (4 checks)
-        - Tester gap integration
+        - Tester gap integration (adjust for invalid MITRE mappings)
+
+        Prerequisites (enforced by MoEOrchestrator):
+        - ground_truth.json exists (deterministic analysis)
+        - 04_architect_critique.json exists (Architect validation)
+        - 05_tester_critique.json exists (Tester validation)
+        - All 10 artifacts present in ArtifactSet
 
         Args:
             artifacts: Extracted artifacts from report
-            ground_truth: Ground truth data (for controls_present)
-            tester_critique: Optional Tester critique (for gap integration)
+            ground_truth: Ground truth data (controls_present, attack_paths)
+            tester_critique: Tester critique (optional, for gap integration)
 
         Returns:
-            CritiqueScore with exploit difficulty assessment (INVERTED)
+            CritiqueScore with:
+            - score: 0-100 INVERTED (lower = harder to exploit = better)
+            - gaps: Bypass scenarios found
+            - strengths: Controls that are effective
+            - improvement_roadmap: How to reduce exploit difficulty
+
+        Raises:
+            ValueError: If artifacts incomplete (should not happen if MoE used correctly)
         """
-        logger.info(f"{self.role}: Starting critique")
+        # Validate prerequisites (defensive check - MoE should ensure this)
+        completeness = artifacts.completeness['overall']
+        if completeness['present'] < 10:
+            logger.warning(
+                f"Red Team: Incomplete artifacts ({completeness['present']}/10). "
+                f"Quality may be degraded."
+            )
+
+        logger.info(f"Red Team: Validating control effectiveness (exploit difficulty) - {completeness['present']}/10 artifacts")
 
         # Format prompt (Red Team specific)
         prompt = self._build_prompt(artifacts, ground_truth, tester_critique)

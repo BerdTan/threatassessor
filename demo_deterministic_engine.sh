@@ -16,7 +16,7 @@ check_orphans() {
     fi
 
     # Run orphan detection
-    python3 scripts/check_orphans.py "$arch_name" 2>/dev/null | grep -q "No orphans"
+    python3 scripts/validation/check_orphans.py "$arch_name" 2>/dev/null | grep -q "No orphans"
 
     if [ $? -eq 0 ]; then
         echo "   ✅ No orphan nodes found"
@@ -25,7 +25,7 @@ check_orphans() {
         echo ""
         echo "   ⚠️  ORPHAN NODES DETECTED!"
         echo ""
-        python3 scripts/check_orphans.py "$arch_name" 2>/dev/null | grep -A 20 "ARCHITECTURES WITH ORPHANS"
+        python3 scripts/validation/check_orphans.py "$arch_name" 2>/dev/null | grep -A 20 "ARCHITECTURES WITH ORPHANS"
         echo ""
         echo "   Orphan nodes are components that:"
         echo "   • Have outbound connections (can attack other components)"
@@ -312,7 +312,7 @@ echo "   └── after.mmd                  # With recommended controls"
 echo ""
 echo "🚀 Try with your own architecture:"
 echo "   # Check for orphan nodes first (recommended)"
-echo "   ./demo_architecture.sh --validate-orphan your_architecture.mmd"
+echo "   ./demo_deterministic_engine.sh --validate-orphan your_architecture.mmd"
 echo ""
 echo "   # Run full analysis"
 echo "   python3 -m chatbot.main --gen-arch-truth your_architecture.mmd"

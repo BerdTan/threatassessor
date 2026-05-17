@@ -1,28 +1,37 @@
 """
-Architect Critic Agent for Phase 3C
+Architect Critic Agent - LEGACY LOCATION (Deprecated)
 
-Role: Security Architect reviewing threat assessment design quality
+⚠️ DEPRECATION WARNING:
+This module is deprecated as of Phase 3D Week 2.
+Please import from: chatbot.modules.agents.critics.architect_critic
 
-Rubric (100 points):
-- Tier 1 (80 points): Critical artifacts from ground_truth.json
-  - Threat Model Completeness (30 points)
-  - Control Appropriateness (25 points)
-  - Defense-in-Depth (15 points)
-  - RAPIDS Alignment (10 points)
-- Tier 2 (20 points): Important artifacts from report files
-  - Diagram Completeness (10 points) - after.mmd validation
-  - Report Quality (10 points) - technical + executive + action plan
+Legacy path (deprecated):
+    from chatbot.modules.architect_critic import EnhancedArchitectCritic
 
-VERSION: 2.0 - Enhanced for 10-artifact structure
+New path (recommended):
+    from chatbot.modules.agents.critics import EnhancedArchitectCritic
+
+This file is kept for backward compatibility but will be removed in v1.4.
+
+VERSION: 2.0 - Enhanced for 10-artifact structure (LEGACY)
 """
 
 import logging
+import warnings
 from typing import Dict, List, Optional
 
 from chatbot.modules.agent_framework import CriticAgent, AgentTool
 from chatbot.modules.artifact_extractor import ArtifactSet
 
 logger = logging.getLogger(__name__)
+
+# Emit deprecation warning on import
+warnings.warn(
+    "chatbot.modules.architect_critic is deprecated. "
+    "Use chatbot.modules.agents.critics.architect_critic instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 # ============================================================================

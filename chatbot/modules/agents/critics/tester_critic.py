@@ -1,19 +1,34 @@
 """
-Tester Critic Agent for Phase 3C
+Tester Critic Agent - Validation-Only Mode (Phase 3D)
 
 Role: Quality Assurance Tester validating threat assessment quality
 
-Focus: Internal consistency, validation checks, coverage metrics, MITRE correctness
+VALIDATION-ONLY CONTRACT:
+- Does NOT generate new threats or controls
+- Does NOT override deterministic analysis or Architect findings
+- VALIDATES MITRE mappings, internal consistency, and Architect's assessment
+- Returns confidence adjustment (-0% to -5%) based on validation quality
+- Focus: "Is the analysis technically correct?" NOT "What should we analyze?"
+
+Prerequisites (fail-fast):
+- ground_truth.json MUST exist (from deterministic analysis)
+- 04_architect_critique.json MUST exist (from Architect validation)
+- All 10 artifacts MUST be present (enforced by MoEOrchestrator)
+
+Sequential Dependencies:
+- Validates Architect's assessment (are their gaps real?)
+- Validates MITRE technique-mitigation mappings (embedded MITRE data)
+- Validates internal consistency (do rationales match reality?)
 
 Approach: Prompt-based (no tool calling) with embedded MITRE data
 - LLM receives comprehensive MITRE reference in prompt
 - Validates technique-mitigation mappings
-- Scores control effectiveness
-- Cross-checks rationales with inventory
+- Cross-checks Architect roadmap items
+- Validates control effectiveness claims
 
-Confidence Target: 75-80% (without tools, using embedded data)
+Output: CritiqueScore with validation results and confidence adjustment
 
-VERSION: 1.0 - Prompt-based implementation (MVP)
+VERSION: 3.0 - Phase 3D Week 2 (Validation-only refactor)
 """
 
 import json
@@ -715,18 +730,33 @@ def create_tester_agent(model: Optional[str] = None) -> CriticAgent:
 
 class TesterCritic:
     """
-    Enhanced Tester Critic with prompt-based validation.
+    Tester Critic - VALIDATION-ONLY Mode (Phase 3D)
 
-    Uses embedded MITRE data in prompts (no tool calling required).
+    Validates technical correctness of threat assessment + Architect's findings.
+    Does NOT generate new recommendations - validates existing analysis quality.
+
+    Contract:
+    - Input: ArtifactSet + Architect critique (optional)
+    - Output: CritiqueScore (validation gaps + confidence adjustment)
+    - Confidence: -0% (excellent) to -5% (major gaps)
+    - Prerequisites: All 10 artifacts + 04_architect_critique.json (enforced by caller)
+
+    Validation Focus:
+    - MITRE technique-mitigation mappings (against embedded MITRE data)
+    - Internal consistency (rationales match inventory)
+    - Coverage metrics (all RAPIDS categories addressed)
+    - Architect roadmap validation (are improvement claims realistic?)
 
     Usage:
         tester = TesterCritic()
         score = tester.critique(artifacts, architect_critique)
+        confidence_adjustment = -0.05 if score.score < 65 else 0.0
     """
 
     def __init__(self, model: Optional[str] = None):
         self.agent = create_tester_agent(model)
         self.model = model
+        logger.info("TesterCritic initialized (validation-only mode)")
 
     def critique(
         self,
@@ -734,18 +764,40 @@ class TesterCritic:
         architect_critique: Optional['CritiqueScore'] = None
     ) -> 'CritiqueScore':
         """
-        Critique threat assessment quality.
+        Validate threat assessment technical quality (VALIDATION-ONLY).
+
+        Does NOT generate new recommendations - validates existing analysis quality.
+
+        Prerequisites (enforced by MoEOrchestrator):
+        - ground_truth.json exists
+        - 04_architect_critique.json exists
+        - All 10 artifacts present in ArtifactSet
 
         Args:
-            artifacts: ArtifactSet from artifact_extractor
-            architect_critique: Optional Architect critique to validate
+            artifacts: ArtifactSet with 10 artifacts from deterministic analysis
+            architect_critique: Architect's critique to validate (optional but recommended)
 
         Returns:
-            CritiqueScore with validation results
+            CritiqueScore with:
+            - score: 0-100 (validation quality)
+            - gaps: List of validation issues found
+            - strengths: What the analysis did well
+            - improvement_roadmap: How to fix validation gaps
+
+        Raises:
+            ValueError: If artifacts incomplete (should not happen if MoE used correctly)
         """
         from chatbot.modules.agent_framework import CritiqueScore
 
-        logger.info("Tester: Starting validation critique")
+        # Validate prerequisites (defensive check - MoE should ensure this)
+        completeness = artifacts.completeness['overall']
+        if completeness['present'] < 10:
+            logger.warning(
+                f"Tester: Incomplete artifacts ({completeness['present']}/10). "
+                f"Quality may be degraded."
+            )
+
+        logger.info(f"Tester: Validating MITRE mappings + Architect assessment ({completeness['present']}/10 artifacts)")
 
         # Build comprehensive prompt with MITRE data
         prompt = create_tester_prompt(artifacts, architect_critique)

@@ -69,6 +69,11 @@ def generate_executive_summary(ground_truth: Dict) -> str:
     report = f"# 📊 Executive Threat Assessment\n\n"
     report += f"**Architecture:** {arch_name} | **Date:** {datetime.now().strftime('%B %d, %Y')}\n\n"
 
+    # Dashboard reference (Phase 3D)
+    report += "> 📊 **Primary Report:** See [`00_executive_dashboard.md`](00_executive_dashboard.md) for AI-validated analysis with confidence scoring.\n"
+    report += "> This file provides deterministic threat assessment details.\n\n"
+    report += "---\n\n"
+
     # Executive Dashboard
     report += format_section_header("Executive Dashboard", "🎯", 2)
 
@@ -311,6 +316,11 @@ def generate_technical_report(ground_truth: Dict) -> str:
     report += f"**Components:** {node_count} nodes, {edge_count} connections  \n"
     report += f"**Generated:** {metadata.get('generated_by', 'parser')} | "
     report += f"**Date:** {datetime.now().strftime('%B %d, %Y')}\n\n"
+
+    # Dashboard reference (Phase 3D)
+    report += "> 📊 **Primary Report:** See [`00_executive_dashboard.md`](00_executive_dashboard.md) for validated analysis.\n"
+    report += "> This file provides detailed technical findings from deterministic analysis.\n\n"
+    report += "---\n\n"
 
     report += format_section_header("Summary Metrics", "📊", 2)
     report += f"**Overall Risk Score:** {ground_truth['expected_risk_score']}/100 (higher = worse)  \n"
@@ -624,6 +634,11 @@ def generate_action_plan(ground_truth: Dict) -> str:
     report += f"**Current Risk:** {risk}/100  \n"
     report += f"**Target Risk:** {max(20, risk - 40)}/100 (after implementation)  \n"
     report += f"**Timeline:** {'2-4 weeks' if risk >= 60 else '4-8 weeks'}\n\n"
+
+    # Dashboard reference (Phase 3D)
+    report += "> 📊 **Primary Report:** See [`00_executive_dashboard.md`](00_executive_dashboard.md) for validated recommendations.\n"
+    report += "> This file provides implementation roadmap from deterministic analysis.\n\n"
+    report += "---\n\n"
 
     report += format_section_header("Phase 1: Immediate (Week 1) - Quick Wins", "⚡", 2)
 

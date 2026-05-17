@@ -1,23 +1,24 @@
 """
-Tester Critic Agent for Phase 3C
+Tester Critic Agent - LEGACY LOCATION (Deprecated)
 
-Role: Quality Assurance Tester validating threat assessment quality
+⚠️ DEPRECATION WARNING:
+This module is deprecated as of Phase 3D Week 2.
+Please import from: chatbot.modules.agents.critics.tester_critic
 
-Focus: Internal consistency, validation checks, coverage metrics, MITRE correctness
+Legacy path (deprecated):
+    from chatbot.modules.tester_critic import TesterCritic
 
-Approach: Prompt-based (no tool calling) with embedded MITRE data
-- LLM receives comprehensive MITRE reference in prompt
-- Validates technique-mitigation mappings
-- Scores control effectiveness
-- Cross-checks rationales with inventory
+New path (recommended):
+    from chatbot.modules.agents.critics import TesterCritic
 
-Confidence Target: 75-80% (without tools, using embedded data)
+This file is kept for backward compatibility but will be removed in v1.4.
 
-VERSION: 1.0 - Prompt-based implementation (MVP)
+VERSION: 1.0 - Prompt-based implementation (LEGACY)
 """
 
 import json
 import logging
+import warnings
 from typing import Dict, List, Optional
 
 from chatbot.modules.agent_framework import CriticAgent
@@ -25,6 +26,14 @@ from chatbot.modules.artifact_extractor import ArtifactSet
 from chatbot.modules.mitre import MitreHelper
 
 logger = logging.getLogger(__name__)
+
+# Emit deprecation warning on import
+warnings.warn(
+    "chatbot.modules.tester_critic is deprecated. "
+    "Use chatbot.modules.agents.critics.tester_critic instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 # ============================================================================
