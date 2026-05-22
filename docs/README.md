@@ -7,22 +7,42 @@
 
 ## 🎯 Quick Navigation
 
+**Understanding Documentation Structure?**
+👉 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) - Documentation hub and navigation guide
+
 **New to This Project?**
-👉 [START_HERE.md](START_HERE.md) - Entry point for all users
+👉 [START_HERE.md](START_HERE.md) - Entry point for all users  
+👉 [../html/index.html](../html/index.html) - Interactive user guide (HTML)
 
 **Returning to Continue Work?**
 👉 [NEXT_STEPS.md](NEXT_STEPS.md) - Stage 2 Phase 2B (FastAPI Router)
+
+**Checking Project Status?**
+👉 [../html/status.html](../html/status.html) - Project dashboard with metrics (HTML)  
+👉 [../STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md) - Detailed status (Markdown)
+
+**Planning Future Phases?**
+👉 [../html/roadmap.html](../html/roadmap.html) - Strategic roadmap (HTML)
 
 ---
 
 ## Quick Start
 
 **Essential Guides:**
-1. [START_HERE.md](START_HERE.md) - New/returning users entry point
-2. [NEXT_STEPS.md](NEXT_STEPS.md) - Next phase implementation guide
-3. [ROOT_OVERVIEW.md](ROOT_OVERVIEW.md) - Directory structure + demo scripts
-4. [../README.md](../README.md) - User quick start guide
-5. [../CLAUDE.md](../CLAUDE.md) - Developer quick reference
+1. [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) - **START HERE** for documentation navigation
+2. [HTML_DOCUMENTATION.md](HTML_DOCUMENTATION.md) - HTML system guide (regeneration, features, troubleshooting)
+3. [START_HERE.md](START_HERE.md) - New/returning users entry point
+4. [NEXT_STEPS.md](NEXT_STEPS.md) - Next phase implementation guide
+5. [ROOT_OVERVIEW.md](ROOT_OVERVIEW.md) - Directory structure + demo scripts
+6. [../html/index.html](../html/index.html) - Interactive user guide (HTML with copy buttons)
+7. [../html/status.html](../html/status.html) - Project status dashboard (HTML with charts)
+8. [../html/roadmap.html](../html/roadmap.html) - Product roadmap (HTML with sidebar nav)
+
+**Markdown Sources (CLI-friendly):**
+- [../README.md](../README.md) - User quick start guide (source for index.html)
+- [../STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md) - Project status (source for status.html)
+- [../CLAUDE.md](../CLAUDE.md) - Developer quick reference
+- [specs/MVP_SPECIFICATION.md](specs/MVP_SPECIFICATION.md) - Roadmap source (generates PRODUCT_ROADMAP.html)
 
 **Architecture Validation:**
 - [operations/ARCHITECTURE_VALIDATION.md](operations/ARCHITECTURE_VALIDATION.md) - Orphan node detection

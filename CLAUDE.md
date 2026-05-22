@@ -112,15 +112,22 @@ python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.
 
 ## Documentation Map
 
-**Start here:**
-- [README.md](README.md) - User quick start
-- [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Project status & roadmap
-- [docs/README.md](docs/README.md) - Full documentation index
+**Navigation:**
+- [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) - Start here for doc overview
+- [index.html](index.html) - Interactive user guide (HTML)
+- [status.html](status.html) - Project status dashboard (HTML)
+- [docs/specs/PRODUCT_ROADMAP.html](docs/specs/PRODUCT_ROADMAP.html) - Full Stage 2 roadmap (HTML)
+
+**Quick Reference:**
+- Markdown sources: [README.md](README.md), [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) (git-tracked, CLI-friendly)
+- HTML views: `index.html`, `status.html` (generated, better UX for browsers)
+- Tactical guide: [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md) - Current phase (Stage 2 Phase 2B)
 
 **Core references:**
 - [docs/core/V1_FEATURES.md](docs/core/V1_FEATURES.md) - Feature list
 - [docs/operations/OPERATIONS.md](docs/operations/OPERATIONS.md) - Troubleshooting
 - [docs/phases/phase3d/](docs/phases/phase3d/) - MoE architecture details
+- [docs/README.md](docs/README.md) - Full documentation index
 
 ---
 

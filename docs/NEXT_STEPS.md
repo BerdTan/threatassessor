@@ -6,6 +6,14 @@
 
 ---
 
+## 📍 You Are Here
+
+**Tactical Guide:** This document covers **Phase 2B implementation** (2 hours)  
+**Strategic Context:** See [PRODUCT_ROADMAP.html](specs/PRODUCT_ROADMAP.html) for full Stage 2 vision  
+**Current Status:** See [STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md) for overall project progress
+
+---
+
 ## Quick Context: Where We Are
 
 ✅ **Completed:**
@@ -301,31 +309,14 @@ class HealthResponse(BaseModel):
 
 ## After Phase 2B: Next Phases
 
-### Phase 2C: API Testing (2h)
-- Create `tests/test_api_endpoints.py`
-- Test concurrent requests
-- Test error scenarios
-- Test validation edge cases
+See [PRODUCT_ROADMAP.html](specs/PRODUCT_ROADMAP.html#stage-2-phases) for complete Stage 2 roadmap:
 
-### Phase 2D: Docker Compose (2h)
-- Create `Dockerfile`
-- Create `docker-compose.yml`
-- Add volume mounts for data
-- Test containerized deployment
+- **Phase 2C:** API Testing (2h) - Endpoint tests, concurrent requests, error scenarios
+- **Phase 2D:** Docker Compose (2h) - Containerization, volume mounts, deployment testing
+- **Phase 2E:** API Documentation (2h) - OpenAPI descriptions, example requests, user guide
+- **Phase 2F:** Integration Testing (2h) - End-to-end workflows, load testing, benchmarks
 
-### Phase 2E: API Documentation (2h)
-- Add OpenAPI descriptions
-- Create example requests
-- Document authentication (future)
-- Create API user guide
-
-### Phase 2F: Integration Testing (2h)
-- End-to-end workflow tests
-- Load testing (multiple architectures)
-- Performance benchmarks
-- Production readiness checklist
-
-**Total Remaining:** 10 hours (5 phases × 2h)
+**Total Stage 2 Remaining:** 8 hours (4 phases × 2h after Phase 2B)
 
 ---
 

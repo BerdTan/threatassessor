@@ -5,8 +5,29 @@
 
 ---
 
+## 📚 Documentation Quick Links
+
+**Understanding the docs?** Start with [docs/PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) to understand the documentation structure
+
+**User guide?** See [index.html](index.html) for interactive quick start (HTML with copy buttons)
+
+**Current status?** Check [status.html](status.html) for project dashboard (HTML with charts)
+
+**Implementing?** Go to [docs/NEXT_STEPS.md](NEXT_STEPS.md) for Stage 2 Phase 2B guide (FastAPI Router)
+
+**Planning?** See [../html/roadmap.html](../html/roadmap.html) for strategic roadmap
+
+---
+
 ## 🎯 I'm New Here
 
+### Web Interface (Recommended)
+Open these in your browser for the best experience:
+1. [index.html](index.html) - Interactive user guide with demos
+2. [status.html](status.html) - Project status dashboard
+3. [../html/roadmap.html](../html/roadmap.html) - Product roadmap
+
+### Command Line (Alternative)
 Read these in order:
 1. [README.md](README.md) - Quick start + demo scripts
 2. [docs/ROOT_OVERVIEW.md](docs/ROOT_OVERVIEW.md) - Directory structure
@@ -16,19 +37,29 @@ Read these in order:
 
 ## 🔄 I'm Returning to This Project
 
+### Quick Status Check
 ```bash
-# 1. Read next steps
+# Option 1: View HTML dashboard (opens in browser)
+open status.html
+
+# Option 2: CLI status check
+cat STATUS_AND_PLAN.md | head -50
+```
+
+### Next Implementation Phase
+```bash
+# 1. Read next steps (Stage 2 Phase 2B - FastAPI Router, 2h)
 cat docs/NEXT_STEPS.md
 
-# 2. Check status
-cat STATUS_AND_PLAN.md | head -50
+# 2. View strategic roadmap (opens in browser)
+open ../html/roadmap.html
 
 # 3. Test everything works
 ./test_demos.sh
 ```
 
 **Next Phase:** Stage 2 Phase 2B - FastAPI Router (2h)  
-**Details:** See [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)
+**Details:** [docs/NEXT_STEPS.md](NEXT_STEPS.md) (tactical) | [../html/roadmap.html](../html/roadmap.html) (strategic)
 
 ---
 
