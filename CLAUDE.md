@@ -1,8 +1,8 @@
-# DEV-TEST: ThreatAssessor (MITRE Threat Modeling System)
+# ThreatAssessor - Developer Quick Reference
 
-**Version:** 1.3-dev (MoE Architecture Complete)  
-**Status:** ✅ Production-Ready - Phase 3D Complete  
-**Core Feature:** Architecture diagram → Threat assessment + AI/ML analysis + MoE validation
+**Version:** 1.3-dev  
+**Status:** ✅ Production-Ready - Bug Fix + Hardening Phase Complete  
+**Core Feature:** Architecture diagram → Threat assessment + AI/ML analysis + MoE validation + Hardening controls
 
 ---
 
@@ -28,7 +28,8 @@
 - `chatbot/modules/ground_truth_generator.py` - Main analysis engine
 - `chatbot/modules/threat_analyst.py` - RAPIDS + AI/ML pattern detection
 - `chatbot/modules/completeness_validator.py` - 6-check validation
-- `chatbot/modules/threat_report.py` - Report generation with path-based control placement
+- `chatbot/modules/threat_report.py` - Report generation with path-based + hardening controls
+- `chatbot/modules/exhaustive_mitigation_mapper.py` - Gap-filling controls (100% coverage)
 
 **Agent Architecture (MoE):**
 - `chatbot/modules/agents/critics/` - Architect, Tester, Red Team

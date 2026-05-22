@@ -179,7 +179,8 @@ def _generate_stepped_mmd(
         "critical": ("fill:#ff6b6b,stroke:#c92a2a", "🔴"),
         "high": ("fill:#ffd43b,stroke:#fab005", "🟡"),
         "medium": ("fill:#74c0fc,stroke:#339af0", "🔵"),
-        "low": ("fill:#90EE90,stroke:#006400", "🟢")
+        "low": ("fill:#90EE90,stroke:#006400", "🟢"),
+        "hardening": ("fill:#dda0dd,stroke:#9370db", "🟣")
     }
 
     for rec in controls:
@@ -211,6 +212,10 @@ def _generate_stepped_mmd(
             control_label += f"<br/>RAPIDS: {', '.join(rapids_categories)}"
             control_label += f"<br/>{dir_category.title()}"
 
+        # Add Hardening label for gap-filling controls (no attack paths)
+        if not rec.get("attack_paths", []):
+            control_label += f"<br/>Hardening"
+
         # Choose shape based on control type
         if control in ['waf', 'firewall', 'ids/ips', 'ddos protection']:
             mmd_lines.append(f"    {control_id}[\"{control_label}\"]")
@@ -221,8 +226,10 @@ def _generate_stepped_mmd(
         else:
             mmd_lines.append(f"    {control_id}[\"{control_label}\"]")
 
-        # Store styling
-        color, emoji = PRIORITY_COLORS.get(priority, PRIORITY_COLORS["medium"])
+        # Store styling (override to hardening if gap-filling control)
+        is_gap_filling = not rec.get("attack_paths", [])
+        effective_priority = "hardening" if is_gap_filling else priority
+        color, emoji = PRIORITY_COLORS.get(effective_priority, PRIORITY_COLORS["medium"])
         styling_lines.append(f"    style {control_id} {color},stroke-width:3px,color:#000000")
         control_nodes[control] = control_id
 

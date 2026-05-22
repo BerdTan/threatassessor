@@ -1,13 +1,21 @@
-# ThreatAssessor
+# ThreatAssessor - User Guide
 
-Production-ready CLI that analyzes architecture diagrams and generates comprehensive threat assessments with MITRE ATT&CK mapping and AI/ML threat analysis.
+**Version:** 1.3-dev  
+**Status:** ✅ Production-Ready - Bug Fix + Hardening Phase Complete
 
-**Status:** 🚧 v1.3-dev In Development - Phase 3D Week 1 ✅ Complete  
-**Phase 3C+:** Orchestrator with improvement roadmaps (16 files generated) ✅  
-**Phase 3D Week 1:** Mixture of Experts (MoE) agent architecture + sequential validation ✅ Complete  
-**Phase 3D Week 2-4:** Expert refactoring + unified orchestration (3 weeks remaining)
+Production-ready CLI that analyzes architecture diagrams and generates comprehensive threat assessments with MITRE ATT&CK mapping and AI/ML threat analysis.  
+**Phase 3D:** Mixture of Experts (MoE) validation ✅ Complete  
+**Bug Fix Phase:** Database coverage + validator fixes ✅ Complete  
+**Hardening Phase:** Gap-filling controls with visual distinction ✅ Complete  
+**Next:** Stage 2 Phase 2B (FastAPI Router)
 
 **Core Feature:** Architecture diagram → Attack paths + AI/ML analysis + Priority-coded controls + Improvement roadmaps + Residual risk
+
+---
+
+## 🎯 New Here?
+
+👉 See [docs/START_HERE.md](docs/START_HERE.md) for project overview and quick navigation.
 
 ---
 
@@ -16,17 +24,15 @@ Production-ready CLI that analyzes architecture diagrams and generates comprehen
 ```bash
 source .venv/bin/activate
 
-# Option 1: Quick deterministic analysis (no LLM, ~30s)
-./demo_deterministic_engine.sh          # Validates architecture + shows deterministic engine
+# Option 1: Deterministic engine only (no LLM, fast ~30s)
+./demo_deterministic_engine.sh your_architecture.mmd
+# → Ground truth + attack paths + control recommendations
 
-# Option 2: Complete Mixture of Experts (MoE) pipeline (with LLM validation, ~2 min) ⭐ RECOMMENDED
-./demo_expert_llm.sh          # Full 3-layer validation + coherent dashboard
-
-# For your own architecture:
-# Option 1: One-command demo (easiest)
+# Option 2: Full MoE pipeline with LLM critics (~2 min) ⭐ RECOMMENDED
 ./demo_expert_llm.sh your_architecture.mmd
+# → 16 files: deterministic + 3 critics + dashboard + phased roadmaps
 
-# Option 2: Step-by-step (for debugging)
+# Alternative: Step-by-step (for debugging)
 # 1. Validate (checks for orphan nodes)
 ./demo_deterministic_engine.sh --validate-orphan your_architecture.mmd
 
@@ -75,7 +81,8 @@ flowchart TB
 **1. Enhanced Architecture Diagram (after.mmd) with Priority Color Coding**
 
 The system generates a comprehensive diagram with:
-- **Priority color coding** (Phase 3B++): 🔴 Critical (red), 🟡 High (yellow), 🔵 Medium (blue), 🟢 Baseline (green)
+- **Priority color coding**: 🔴 Critical (red), 🟡 High (yellow), 🔵 Medium (blue), 🟢 Baseline (green), 🟣 **Hardening (purple)**
+- **Hardening controls** (NEW): Gap-filling controls that raise baseline security posture
 - **MITRE technique IDs** (T####) showing what attacks each control addresses
 - **MITRE mitigation IDs** (M####) showing control mappings
 - **Attack path indicators** (#1, #2, #3) showing which paths the control protects

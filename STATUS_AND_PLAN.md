@@ -1,12 +1,34 @@
-# ThreatAssessor Status & Action Plan
+# ThreatAssessor - Status & Action Plan
 
-**Last Updated:** 2026-05-18  
-**Current Status:** ✅ Phase 3D Complete (Week 1-3) - Production-Ready Mixture of Experts (MoE) System  
-**Version:** 1.3-dev - MoE Validation + Executive Dashboard ⭐⭐⭐
+**Version:** 1.3-dev  
+**Last Updated:** 2026-05-22  
+**Current Status:** ✅ Bug Fix + Hardening Phase Complete - Ready for Stage 2 Phase 2B (API)
 
 ---
 
-## 🎯 Current Status (Phase 3D Complete - Week 1-3)
+## 🎯 Current Status (Bug Fix + Hardening Phase Complete)
+
+### Latest Updates (May 22, 2026)
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| Database control coverage | ✅ Fixed | All databases now protected (100% coverage) |
+| Validator type error | ✅ Fixed | Confidence restored to 99.5% |
+| Hardening controls | ✅ Enhanced | Purple visual distinction for gap-filling controls |
+| Phased diagrams | ✅ Fixed | Regeneration working correctly |
+| AI/ML pattern detection | ✅ Tested | 22/37 controls for agentic AI (ATLAS + ARC) |
+| Service layer foundation | ✅ Complete | Thread-safe, 6/6 tests passing |
+
+**Documentation:**
+- ✅ [BUGFIX_COMPLETE.md](docs/BUGFIX_COMPLETE.md) - Bug fix phase summary (3 bugs fixed)
+- ✅ [GAP_FILLING_CONTROLS.md](docs/GAP_FILLING_CONTROLS.md) - Hardening controls explanation
+- ✅ [PHASE_BUGFIX_HARDENING_COMPLETE.md](docs/PHASE_BUGFIX_HARDENING_COMPLETE.md) - Phase summary
+
+**Next:** Stage 2 Phase 2B (FastAPI Router) - 2h estimated
+
+---
+
+## 🎯 Phase 3D Status (Week 1-3 Complete)
 
 ### Mixture of Experts (MoE) Architecture (Week 1-3 Complete)
 
@@ -41,6 +63,7 @@
 | Residual risk (BEFORE/AFTER) | ✅ Working | Business thresholds + ROI |
 | Orphan node detection | ✅ Working | 0 orphans across all tests |
 | Path-based control placement | ✅ Working | Multi-path, 95% visual clarity, 0 dangling |
+| **Hardening controls** | ✅ **Working** | **Purple visual distinction for gap-filling** ⭐ |
 | Completeness validation | ✅ Working | 6 checks, 99.5% confidence |
 | Report generation | ✅ Working | 3 formats + 2 diagrams + ARC benchmarking |
 | **LLM Critic Agents** | ✅ **Working** | **3 agents integrated** ⭐⭐ |
@@ -54,6 +77,7 @@
 - ✅ 100% technique coverage
 - ✅ 0 orphan nodes
 - ✅ 95% visual clarity (controls properly placed)
+- ✅ Color-coded priorities: 🔴 Critical, 🟡 High, 🔵 Medium, 🟢 Low, 🟣 Hardening
 
 **Run it:**
 ```bash

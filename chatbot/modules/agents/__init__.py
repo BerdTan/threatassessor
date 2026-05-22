@@ -33,6 +33,8 @@ Date: 2025-05-17
 
 # Base classes
 from chatbot.modules.base_agent import BaseAgent, AgentResult
+from chatbot.modules.base_agent import BaseAgent, AgentResult
+# Note: AnalystAgent kept in old location for backward compatibility with ThreatAnalyst
 from chatbot.modules.analyst_agent import AnalystAgent, AnalysisResult
 from chatbot.modules.agent_framework import CriticAgent, CritiqueScore
 

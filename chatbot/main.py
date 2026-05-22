@@ -559,7 +559,7 @@ Examples:
     # Handle ground truth generation mode
     if args.gen_arch_truth:
         from pathlib import Path
-        from chatbot.modules.threat_analyst import ThreatAnalyst
+        from chatbot.modules.agents.analysts.threat_analyst import ThreatAnalyst
         from chatbot.modules.threat_report import (
             generate_report_package,
             generate_executive_summary,

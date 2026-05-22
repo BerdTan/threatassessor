@@ -86,10 +86,12 @@ class ThreatAnalyst(AnalystAgent):
 
         # Validate completeness (6 checks)
         try:
-            # Extract architecture name for validator
-            arch_name = Path(architecture_path).stem
-            validation_result = self.validator_module.validate_completeness(arch_name)
-            confidence = validation_result.get("confidence", 0.995)
+            # Pass ground_truth dict to validator (not arch_name string)
+            validation_result = self.validator_module.validate_completeness(ground_truth)
+            # Calculate confidence from validation adjustment
+            base_confidence = 0.995  # Deterministic engine baseline
+            adjustment = validation_result.get("confidence_adjustment", 1.0)  # 0.0-1.0 scale
+            confidence = base_confidence * adjustment
             checks_passed = validation_result.get("checks", {})
         except Exception as e:
             logger.warning(f"{self.role}: Validation failed: {e}")

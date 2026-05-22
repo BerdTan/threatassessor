@@ -11,8 +11,7 @@ import json
 from pathlib import Path
 
 from chatbot.modules.artifact_extractor import extract_artifacts
-from chatbot.modules.architect_critic import EnhancedArchitectCritic
-from chatbot.modules.tester_critic import TesterCritic
+from chatbot.modules.agents.critics import EnhancedArchitectCritic, TesterCritic
 
 
 def run_full_critique(report_dir: str):

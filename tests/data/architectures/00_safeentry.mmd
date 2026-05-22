@@ -1,0 +1,59 @@
+flowchart LR
+    %% SafeEntry: Physical Access Control System
+
+    Users((Visitors/Employees))
+    MobileApp[Mobile App]
+
+    subgraph Edge_Gateway[Edge Layer]
+        APIGateway[API Gateway with WAF]
+        LoadBalancer[Load Balancer]
+    end
+
+    subgraph Application_Layer[Application Layer]
+        AuthService[Authentication Service]
+        AccessControlAPI[Access Control API]
+        NotificationService[Notification Service]
+    end
+
+    subgraph Database_Layer[Database Layer]
+        UserDB[(User Database)]
+        AccessLogDB[(Access Log Database)]
+        Cache[(Redis Cache)]
+    end
+
+    subgraph IoT_Layer[IoT Devices]
+        DoorController[Door Controller]
+        CardReader[RFID Card Reader]
+        Biometric[Biometric Scanner]
+    end
+
+    subgraph Monitoring[Monitoring & Logging]
+        SIEM[SIEM System]
+        VideoSurveillance[Video Surveillance]
+    end
+
+    %% User flows
+    Users --> MobileApp
+    MobileApp --> APIGateway
+
+    %% API flows
+    APIGateway --> LoadBalancer
+    LoadBalancer --> AuthService
+    LoadBalancer --> AccessControlAPI
+    LoadBalancer --> NotificationService
+
+    %% Database connections
+    AuthService --> UserDB
+    AuthService --> Cache
+    AccessControlAPI --> AccessLogDB
+    AccessControlAPI --> UserDB
+
+    %% IoT connections
+    AccessControlAPI --> DoorController
+    DoorController --> CardReader
+    DoorController --> Biometric
+
+    %% Monitoring
+    AccessControlAPI --> SIEM
+    DoorController --> VideoSurveillance
+    AccessLogDB --> SIEM

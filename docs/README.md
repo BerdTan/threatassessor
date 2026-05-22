@@ -1,192 +1,214 @@
-# Documentation Index
+# ThreatAssessor Documentation
 
-**Version:** 1.3 (Phase 3D in progress)  
-**Status:** Phase 3C+ Complete (with issues) → Phase 3D (MoE) approved  
-**Last Updated:** 2026-05-17
+**Last Updated:** 2026-05-22  
+**Version:** 1.3-dev
+
+---
+
+## 🎯 Quick Navigation
+
+**New to This Project?**
+👉 [START_HERE.md](START_HERE.md) - Entry point for all users
+
+**Returning to Continue Work?**
+👉 [NEXT_STEPS.md](NEXT_STEPS.md) - Stage 2 Phase 2B (FastAPI Router)
 
 ---
 
 ## Quick Start
 
-**New to the project?** Start here:
-1. `../README.md` - Project overview and quick start
-2. `V1_FEATURES.md` - Complete v1.0 feature documentation
-3. `../CLAUDE.md` - Developer guidelines (concise)
+**Essential Guides:**
+1. [START_HERE.md](START_HERE.md) - New/returning users entry point
+2. [NEXT_STEPS.md](NEXT_STEPS.md) - Next phase implementation guide
+3. [ROOT_OVERVIEW.md](ROOT_OVERVIEW.md) - Directory structure + demo scripts
+4. [../README.md](../README.md) - User quick start guide
+5. [../CLAUDE.md](../CLAUDE.md) - Developer quick reference
+
+**Architecture Validation:**
+- [operations/ARCHITECTURE_VALIDATION.md](operations/ARCHITECTURE_VALIDATION.md) - Orphan node detection
 
 ---
 
-## Active Documentation
+## Latest Updates (May 22, 2026)
 
-### Core Features (v1.0)
+### Bug Fix + Hardening Phase ✅ Complete
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **core/V1_FEATURES.md** | Complete v1.0 feature list, usage examples | All users |
-| **core/PREVENTION_VS_MITIGATION.md** | Prevention + DIR framework (40/30/20/10) | Security architects |
-| **core/CONFIDENCE_METHODOLOGY.md** | 5-factor confidence scoring explained | Developers |
-| **core/REFERENCE_ARCHITECTURES.md** | Validation benchmarks, test results | QA/validation |
+**Summary Documents:**
+- [completed/bugfix_phase/BUGFIX_COMPLETE.md](completed/bugfix_phase/BUGFIX_COMPLETE.md) - Bug fix phase summary (3 bugs fixed)
+- [completed/bugfix_phase/GAP_FILLING_CONTROLS.md](completed/bugfix_phase/GAP_FILLING_CONTROLS.md) - Hardening controls explanation
+- [completed/bugfix_phase/PHASE_BUGFIX_HARDENING_COMPLETE.md](completed/bugfix_phase/PHASE_BUGFIX_HARDENING_COMPLETE.md) - Complete phase summary
 
-### Operations & Architecture
+**Key Changes:**
+1. ✅ Fixed database control coverage (30% → 100%)
+2. ✅ Fixed validator type error (confidence 95% → 99.5%)
+3. ✅ Enhanced gap-filling controls with purple visual distinction
+4. ✅ Tested agentic AI architecture (22/37 AI-specific controls)
+5. ✅ Service layer foundation complete (thread-safe, 6/6 tests)
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **operations/OPERATIONS.md** | Troubleshooting, maintenance, updates | DevOps, support |
-| **operations/ARCHITECTURE_VALIDATION.md** | Orphan node detection & remediation | Developers, QA |
-| **development/ARCHITECTURE.md** | System design, data flow, modules | Developers |
-| **development/LLM_PROVIDER_ARCHITECTURE.md** | Multi-provider LLM client design | Developers |
-| **development/LLM_TESTING_GUIDE.md** | LLM provider testing procedures | QA, DevOps |
-
-### Phase 3B++: Visual Prioritization (v1.2.1)
-
-| Document | Purpose | Status |
-|----------|---------|--------|
-| **phases/phase3b_plus/README.md** | Phase 3B++ overview | ✅ Complete |
-| **phases/phase3b_plus/PRIORITY_COLOR_CODING.md** | Red/yellow/blue/green priority colors | ✅ Complete |
-| **phases/phase3b_plus/RAPIDS_CONSISTENCY.md** | RAPIDS framework label consistency | ✅ Complete |
-| **phases/phase3b_plus/PRIORITY_REFINEMENT.md** | Attack path coverage + hygiene classification | ✅ Complete |
-
-### Phase 3C+: Orchestrator & Improvement Roadmaps (v1.3)
-
-| Document | Purpose | Status |
-|----------|---------|--------|
-| **phases/phase3d/ROADMAP.md** | 3-phase roadmap (3B++/3C+/3D) **MOVED** | ✅ Phase 2 complete, Phase 3D approved |
-| **phases/phase3c/HYBRID_PLAN.md** | Orchestrator consensus design | ✅ Complete |
-| **phases/phase3c/PHASE3C_COMPLETE.md** | Agent framework completion summary | ✅ Complete |
-| **phases/phase3c/PHASE3C_IMPROVEMENTS_NEEDED.md** | **NEW** - Critical issues found | 🔴 3 issues blocking production |
-| **phases/phase3c/README.md** | Phase 3C overview | Reference |
-
-### Phase 3D: MoE Architecture (ThreatAssessor v1.3)
-
-| Document | Purpose | Status |
-|----------|---------|--------|
-| **refactoring/MOE_ARCHITECTURE_DESIGN.md** | **NEW** - MoE sequential validation design | 📋 Approved (36h, 4 weeks) |
-| **planning/CLEANUP_TESTS_SCRIPTS.md** | Tests/scripts cleanup plan | ✅ Executed |
-
-### Future Roadmap
-
-| Document | Purpose | Status |
-|----------|---------|--------|
-| **specs/MVP_SPECIFICATION.md** | Web UI requirements | Planned (~15-20h) |
+**Investigation Details:**
+- [investigation/BUG1_ROOT_CAUSE.md](investigation/BUG1_ROOT_CAUSE.md) - Database coverage deep-dive
+- [investigation/BUG2_NOT_A_BUG.md](investigation/BUG2_NOT_A_BUG.md) - Encryption controls analysis
 
 ---
 
-## Subdirectories
+## Core Documentation
 
-```
-docs/
-├── core/              # Core v1.0 features & methodologies (4 files)
-├── operations/        # Troubleshooting & maintenance (2 files)
-├── development/       # System design & architecture (2 files)
-├── phases/            # Implementation phases (3B, 3B++, 3C+, 3D)
-│   ├── phase3b/       # Phase 3B: Diagram placement (3 files)
-│   ├── phase3b_plus/  # Phase 3B++: Visual prioritization (4 files)
-│   └── phase3c/       # Phase 3C+: Orchestrator + Phase 3D planning (5 files)
-├── patterns/          # Threat patterns (AI/ML) (3 files)
-├── testing/           # Testing strategy & data management (6 files)
-├── deployment/        # Deployment checklists & guides (4 files)
-├── refactoring/       # MoE architecture design (1 file)
-├── planning/          # Cleanup & improvement plans (1 file)
-├── specs/             # Future specifications (Web UI, etc.) (1 file)
-└── archive/           # Historical documents (28 files)
-    ├── development/   # Completed implementation docs (2 files)
-    ├── tests/         # Obsolete test files
-    └── scripts/       # Obsolete scripts
-```
+### User Guides
+- [../README.md](../README.md) - Quick start + demo scripts
+- [../STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md) - Current status + roadmap
+- [core/V1_FEATURES.md](core/V1_FEATURES.md) - Feature list with examples
 
-**Active subdirectories:**
-- **core/** - V1 features, confidence methodology, Prevention+DIR framework
-- **operations/** - Operations guide, architecture validation (orphan nodes)
-- **development/** - System architecture, LLM client design, testing guides
-- **phases/** - Phase 3C agent framework (MVP1 complete, MVP2-5 planned)
-- **testing/** - Test data strategy, ground truth guide
-- **deployment/** - Deployment checklists
-
-**Archived:**
-- **archive/** - Completed implementation plans, superseded designs
+### Developer Guides
+- [../CLAUDE.md](../CLAUDE.md) - AI assistant context + module paths
+- [operations/OPERATIONS.md](operations/OPERATIONS.md) - Troubleshooting guide
+- [operations/ARCHITECTURE_VALIDATION.md](operations/ARCHITECTURE_VALIDATION.md) - Validation workflow
 
 ---
 
-## Document Lifecycle
+## Phase Documentation
 
-**Active docs** (in this directory):
-- Relevant to current v1.0 release
-- Updated regularly
-- Referenced by README.md or CLAUDE.md
+### Phase 3D: Mixture of Experts (MoE) ✅ Complete
+**Location:** [phases/phase3d/](phases/phase3d/)
 
-**Archived docs** (in archive/):
-- Completed implementation plans
-- Superseded designs
-- Historical session notes
-- Dated with filename suffix (e.g., `PHASE3B_PLAN_2026-05-03.md`)
+**Key Documents:**
+- [PHASE3D_WEEK1_COMPLETE.md](phases/phase3d/PHASE3D_WEEK1_COMPLETE.md) - MoE foundation
+- [PHASE3D_WEEK2_COMPLETE.md](phases/phase3d/PHASE3D_WEEK2_COMPLETE.md) - Expert refactoring
+- [PHASE3D_WEEK3_COMPLETE.md](phases/phase3d/PHASE3D_WEEK3_COMPLETE.md) - Executive dashboard
+- [PHASE3D_TECHNICAL_NOTES.md](phases/phase3d/PHASE3D_TECHNICAL_NOTES.md) - Implementation details
 
-**Spec docs** (in specs/):
-- Future feature specifications
-- Not yet implemented
-- Updated when work begins
+**Result:** 16 files per architecture, 93-96% confidence, coherent dashboard
 
----
+### Bug Fix + Hardening Phase ✅ Complete
+**Date:** May 22, 2026  
+**Location:** [completed/bugfix_phase/](completed/bugfix_phase/)
 
-## Documentation Map
+**Summary:**
+- [BUGFIX_COMPLETE.md](completed/bugfix_phase/BUGFIX_COMPLETE.md) - Bug fixes (database, validator, phased diagrams)
+- [GAP_FILLING_CONTROLS.md](completed/bugfix_phase/GAP_FILLING_CONTROLS.md) - Hardening controls enhancement
+- [PHASE_BUGFIX_HARDENING_COMPLETE.md](completed/bugfix_phase/PHASE_BUGFIX_HARDENING_COMPLETE.md) - Complete phase summary
 
-```
-ROOT/
-├── README.md                        # Start here (project overview)
-├── CLAUDE.md                        # Developer quick reference
-├── STATUS_AND_PLAN.md              # Implementation roadmap
-│
-└── docs/
-    ├── README.md                    # This file (documentation index)
-    │
-    ├── V1_FEATURES.md               # ⭐ v1.0 complete feature list
-    ├── PREVENTION_VS_MITIGATION.md  # ⭐ Core framework
-    ├── CONFIDENCE_METHODOLOGY.md    # How confidence is calculated
-    ├── REFERENCE_ARCHITECTURES.md   # Validation benchmarks
-    │
-    ├── OPERATIONS.md                # Troubleshooting & maintenance
-    ├── ARCHITECTURE.md              # System design details
-    │
-    ├── PHASE3B_IMPROVEMENTS.md      # Optional polish (next)
-    ├── PHASE3C_OVERVIEW.md          # LLM as Critic (ready)
-    │
-    ├── implementation/              # Implementation reports
-    │   └── llm_client/              # LLM client (2026-05-09) ✅
-    │
-    ├── specs/                       # Future specifications
-    ├── archive/                     # Historical documents
-    │   └── planning/                # Completed planning docs
-    ├── testing/                     # Testing strategy
-    └── deployment/                  # Deployment guides
-```
+**Files Changed:**
+- `chatbot/modules/threat_report.py` - Hardening labels + purple color
+- `chatbot/modules/mmd_improvement_generator.py` - Hardening in phased diagrams
+- `chatbot/modules/agents/analysts/threat_analyst.py` - Validator fix
+
+**Result:** 100% database coverage, 99.5% confidence, visual hardening distinction
+
+### Stage 2: API Transformation 🚧 In Progress
+**Next Phase:** Phase 2B (FastAPI Router) - 2h estimated
+
+**Service Layer (Phase 2A) ✅ Complete:**
+- `chatbot/services/base_service.py` - Thread-safe foundation
+- `chatbot/services/threat_analysis_service.py` - Team 1 wrapper
+- `chatbot/services/validation_service.py` - Team 2+3 wrapper
+- Tests: 6/6 passing (concurrent, isolation, error handling)
 
 ---
 
+## Feature Documentation
+
+### Control Recommendations
+
+**Priority System:**
+- 🔴 **Critical** (red) - Breaks primary attack paths
+- 🟡 **High** (yellow) - Closes validation gaps
+- 🔵 **Medium** (blue) - Defense-in-depth
+- 🟢 **Low** (green) - Baseline hygiene
+- 🟣 **Hardening** (purple) - Gap-filling controls (NEW)
+
+**Documentation:**
+- [completed/bugfix_phase/GAP_FILLING_CONTROLS.md](completed/bugfix_phase/GAP_FILLING_CONTROLS.md) - Hardening controls explanation
+- [core/V1_FEATURES.md](core/V1_FEATURES.md) - Control placement details
+
+### AI/ML Threat Analysis
+
+**Frameworks:**
+- MITRE ATLAS (AML.T####, AML.M####)
+- ARC Framework (Privacy, Safety, Security, etc.)
+
+**Pattern Detection:**
+- `chatbot/modules/patterns/ai_pattern.py` - AI/ML pattern implementation
+- `chatbot/modules/pattern_registry.py` - Pattern registration
+
+**Testing:**
+- `tests/data/architectures/21_agentic_ai_system.mmd` - Agentic AI test case
+- Result: 22/37 controls AI-specific, ATLAS techniques detected
+
+### Validation System
+
+**Completeness Validator:**
+- `chatbot/modules/completeness_validator.py` - 6-check validation
+- Base confidence: 99.5%
+- Adjustment: 0.0-1.0 scale (100% = 1.0)
+
+**MoE Validation:**
+- Layer 1: Architect (structure quality)
+- Layer 2: Tester (technique coverage)
+- Layer 3: Red Team (attack simulation)
+- Sequential with fail-fast enforcement
+
 ---
 
-## Recent Updates
+## Investigation Archives
 
-**2026-05-17:** Phase 3C+ Complete (with issues) → Phase 3D (MoE) Approved
-- **Phase 3B++:** ✅ Priority color coding, RAPIDS consistency, priority refinement (3h)
-- **Phase 3C+:** ✅ Orchestrator, improvement summaries, stepped MMDs (6h)
-- **Output:** 15 files per architecture (tested on AI architectures)
-- **Issues Found:** 🔴 Report coherence, 🟡 Missing files, 🔴 Non-deterministic
-- **Phase 3D:** 📋 MoE architecture approved (36h over 4 weeks)
-  - Sequential expert chain (Deterministic → Architect → Tester → Red Team)
-  - Fail-fast validation (missing prerequisite = abort)
-  - Unified CISO report (00_executive_dashboard.md)
-  - Rebrand to **ThreatAssessor**
-- **Next:** Start Phase 3D Week 1 (Foundation, 8h)
+**Location:** [investigation/](investigation/)
 
-**2026-05-10:** Phase 3C MVP (Agent Framework) complete ✅
-- **New:** 3-agent critique (Architect, Tester, Red Team)
-- **New:** Orchestrator consensus (composite scoring)
-- **Status:** Tested on 22 architectures, 85% composite confidence
-- **Docs:** Phase 3C documentation (HYBRID_PLAN, ROADMAP, agent docs)
+**Bug Analysis:**
+- [BUG1_ROOT_CAUSE.md](investigation/BUG1_ROOT_CAUSE.md) - Database control coverage
+- [BUG2_NOT_A_BUG.md](investigation/BUG2_NOT_A_BUG.md) - Encryption controls
 
-**2026-05-17:** Documentation cleanup
-- **Archived:** 2 completed implementation docs (LLM client, report formatting)
-- **Structure:** Added `archive/development/` subfolder
-- **Organization:** Updated docs/README.md with Phase 3B++/3C+ completion
+**Status Reports:**
+- [DECISION_SUMMARY.md](investigation/DECISION_SUMMARY.md) - Fix vs API decision
+- [STATUS_CORRECTED.md](investigation/STATUS_CORRECTED.md) - Corrected status analysis
+- [PROGRESS_VISUAL.md](investigation/PROGRESS_VISUAL.md) - Visual progress map
 
 ---
 
-*Docs Count: 4 core | 2 operations | 3 development | 11 phases (4 new phase3b_plus) | 3 patterns | 6 testing | 3 deployment | 3 refactoring | 1 spec | 26 archived (2 new)*
+## Operations Guides
+
+**Location:** [operations/](operations/)
+
+**Validation:**
+- [ARCHITECTURE_VALIDATION.md](operations/ARCHITECTURE_VALIDATION.md) - Orphan detection workflow
+- Scripts: `scripts/validation/check_orphans.py`
+
+**Troubleshooting:**
+- [OPERATIONS.md](operations/OPERATIONS.md) - Common issues + fixes
+- Update MITRE data: Quarterly refresh recommended
+
+**Testing:**
+- `tests/diagnostic_regression.py` - 5 tests (ground truth, validator, service layer)
+- `tests/test_services_concurrent.py` - 6 tests (thread safety, isolation)
+- `tests/test_database_coverage.py` - Database control validation
+
+---
+
+## Next Steps
+
+**Stage 2 Phase 2B: FastAPI Router (2h estimated)**
+
+**Files to Create:**
+- `chatbot/api/app.py` - FastAPI factory
+- `chatbot/api/routes/analysis.py` - POST /api/v1/analyze
+- `chatbot/api/routes/critique.py` - POST /api/v1/critique
+- `chatbot/api/routes/orchestration.py` - POST /api/v1/orchestrate
+- `chatbot/api/routes/health.py` - GET /api/v1/health
+- `chatbot/api/models/requests.py` - Pydantic schemas
+- `chatbot/api/models/responses.py` - Response models
+
+**Prerequisites:** ✅ All met (service layer complete, bugs fixed, validation working)
+
+---
+
+## Document Status
+
+| Category | Count | Status |
+|----------|-------|--------|
+| Core documentation | 5 | ✅ Current |
+| Phase 3D docs | 7 | ✅ Complete |
+| Bug fix docs | 3 | ✅ Complete |
+| Operations guides | 2 | ✅ Current |
+| Investigation archives | 6 | 📦 Archived |
+| **Total** | **23** | **✅ Organized** |
+
+**Last Audit:** 2026-05-22

@@ -31,9 +31,11 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 
 from chatbot.modules.base_agent import BaseAgent
-from chatbot.modules.architect_critic import EnhancedArchitectCritic
-from chatbot.modules.tester_critic import TesterCritic
-from chatbot.modules.red_teamer_critic import RedTeamerCritic
+from chatbot.modules.agents.critics import (
+    EnhancedArchitectCritic,
+    TesterCritic,
+    RedTeamerCritic
+)
 from chatbot.modules.artifact_extractor import extract_artifacts, ArtifactSet
 from chatbot.modules.agent_framework import CritiqueScore
 

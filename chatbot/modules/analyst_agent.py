@@ -1,5 +1,12 @@
 """
-Analyst Agent for MITRE Threat Modeling System
+Analyst Agent for MITRE Threat Modeling System - DEPRECATED MODULE
+
+⚠️ DEPRECATION WARNING:
+This module location is deprecated. New code should use:
+- chatbot.modules.agents.analysts.ThreatAnalyst (for threat analysis)
+- chatbot.modules.base_agent.BaseAgent (for base functionality)
+
+This file is kept for backward compatibility. Will be removed in v2.0.
 
 Abstract base class for agents that generate threat assessments.
 
@@ -8,11 +15,17 @@ vs CriticAgent evaluates assessments (is the analysis good?)
 
 Implementations:
 - ThreatAnalyst: Wraps deterministic engine (ground_truth_generator)
-- HybridThreatAnalyst: Deterministic + LLM enhancement (future, Phase 6)
-
-VERSION: 1.0 - Initial implementation for agent hierarchy completion
 """
 
+import warnings
+warnings.warn(
+    "chatbot.modules.analyst_agent is deprecated. "
+    "Use chatbot.modules.agents.analysts.ThreatAnalyst or chatbot.modules.base_agent.BaseAgent instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
+# Original implementation for backward compatibility
 import logging
 from abc import abstractmethod
 from typing import Dict, List, Optional
