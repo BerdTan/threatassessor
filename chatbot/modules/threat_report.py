@@ -1071,8 +1071,12 @@ def generate_before_after_diagrams(
     for control in ['backup', 'database replication', 'encryption at rest']:
         if control in control_nodes and db_like:
             control_id = control_nodes[control]
-            # Connect to first database
-            after_lines.append(f"    {db_like[0]} -.->|protected by| {control_id}")
+            # Connect to ALL persistent databases (not volatile caches)
+            for db_node in db_like:
+                # Skip volatile caches for backup/replication
+                if control in ['backup', 'database replication'] and 'cache' in db_node.lower():
+                    continue
+                after_lines.append(f"    {db_node} -.->|protected by| {control_id}")
             controls_placed.add(control)
 
     # 4. Logging/SIEM/Monitoring: Connected to multiple components (detection layer)
@@ -1082,8 +1086,9 @@ def generate_before_after_diagrams(
             # Connect to key components (prefer app layer first, then data layer)
             if all_app_nodes:
                 after_lines.append(f"    {all_app_nodes[0]} -.->|logs to| {control_id}")
-            if db_like:
-                after_lines.append(f"    {db_like[0]} -.->|audits to| {control_id}")
+            # Connect to ALL databases for audit logging
+            for db_node in db_like:
+                after_lines.append(f"    {db_node} -.->|audits to| {control_id}")
             controls_placed.add(control)
             break  # Only add one monitoring control
 
@@ -1159,10 +1164,9 @@ def generate_before_after_diagrams(
     for control in ['dlp', 'data loss prevention']:
         if control in control_nodes and db_like:
             control_id = control_nodes[control]
-            # DLP monitors data access and exfiltration
-            after_lines.append(f"    {db_like[0]} -.->|monitored by| {control_id}")
-            if len(db_like) > 1:
-                after_lines.append(f"    {db_like[1]} -.->|monitored by| {control_id}")
+            # DLP monitors ALL databases for data access and exfiltration
+            for db_node in db_like:
+                after_lines.append(f"    {db_node} -.->|monitored by| {control_id}")
             controls_placed.add(control)
 
     # 11. Web Content Filtering: At application/web layer
@@ -1327,23 +1331,26 @@ def generate_before_after_diagrams(
             layer = control_rec.get('layer', 'application')
 
             # Choose target based on layer
+            targets = []
             if layer == 'data' and db_like:
-                target = db_like[0]
+                # For data layer controls, place on ALL databases
+                targets = db_like
             elif layer == 'identity' and web_like:
-                target = web_like[0]
+                targets = [web_like[0]]
             elif web_like:
-                target = web_like[0]
+                targets = [web_like[0]]
             elif all_app_nodes:
-                target = all_app_nodes[0]
+                targets = [all_app_nodes[0]]
             else:
                 continue  # Can't place
 
-            if dir_category == 'prevention':
-                after_lines.append(f"    {control_id} --> {target}")
-            else:
-                after_lines.append(f"    {target} -.->|{dir_category}| {control_id}")
+            for target in targets:
+                if dir_category == 'prevention':
+                    after_lines.append(f"    {control_id} --> {target}")
+                else:
+                    after_lines.append(f"    {target} -.->|{dir_category}| {control_id}")
             controls_placed.add(control_name)
-            logger.info(f"Generic fallback placed {control_name} at {target} ({layer} layer)")
+            logger.info(f"Generic fallback placed {control_name} at {len(targets)} node(s) ({layer} layer)")
 
     # 9. Add original architecture edges (after control placements)
     after_lines.append("")
