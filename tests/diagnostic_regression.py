@@ -50,10 +50,13 @@ try:
         print(f"\n  Attack paths: {len(attack_paths)}")
         if attack_paths:
             path = attack_paths[0]
-            steps = path.get('steps', [])
-            print(f"    Path #1: {len(steps)} steps")
-            if steps:
-                print(f"      Step 1: {steps[0].get('technique_id')} at {steps[0].get('node', '?')}")
+            path_nodes = path.get('path', [])  # Correct field: 'path' not 'steps'
+            print(f"    Path #1: {len(path_nodes)} nodes ({path.get('hop_count', 0)} hops)")
+            if path_nodes:
+                print(f"      Path: {' → '.join(path_nodes)}")
+                per_node = path.get('per_node_techniques', {})
+                if per_node:
+                    print(f"      Per-node techniques: {len(per_node)} nodes mapped")
 
         # Check node mapping
         metadata = ground_truth.get('metadata', {})
@@ -62,7 +65,7 @@ try:
         for node_id in list(parsed_nodes.keys())[:5]:
             print(f"    - {node_id}")
 
-        TEST1_PASS = len(attack_paths) > 0 and len(steps) > 0
+        TEST1_PASS = len(attack_paths) > 0 and len(path_nodes) >= 3  # Should have 3+ nodes in path
         if TEST1_PASS:
             print("\n✅ TEST 1 PASSED: Ground truth generation intact")
         else:
@@ -119,19 +122,23 @@ print("-" * 80)
 try:
     from chatbot.modules.completeness_validator import validate_completeness
 
-    # Generate fresh ground truth first
-    from chatbot.modules import ground_truth_generator
-    ground_truth_generator.generate_ground_truth("tests/data/architectures/03_aws_3tier.mmd")
+    # Load existing ground truth (already generated in TEST 1)
+    import json
+    with open("report/03_aws_3tier/ground_truth.json") as f:
+        ground_truth = json.load(f)
 
-    result = validate_completeness("03_aws_3tier")
+    result = validate_completeness(ground_truth)  # Pass dict, not string
     print(f"✓ Validation complete")
     print(f"  Type: {type(result)}")
 
     if isinstance(result, dict):
-        print(f"  Confidence adjustment: {result.get('confidence_adjustment', 'N/A')}%")
+        # confidence_adjustment is 0.0-1.0 scale (100% = 1.0)
+        adjustment = result.get('confidence_adjustment', 0)
+        print(f"  Confidence adjustment: {adjustment * 100:.1f}%")
         print(f"  Issues: {result.get('total_issues', 'N/A')}")
+        print(f"  Validation passed: {result.get('validation_passed', False)}")
 
-        TEST3_PASS = result.get('confidence_adjustment', 0) >= 90
+        TEST3_PASS = adjustment >= 0.90  # 90% or higher (0.90 on 0-1 scale)
         if TEST3_PASS:
             print("\n✅ TEST 3 PASSED: Validator intact")
         else:
@@ -206,20 +213,19 @@ try:
 
         if attack_paths:
             path = attack_paths[0]
-            steps = path.get('steps', [])
-
-            nodes_in_path = set()
-            for step in steps:
-                node = step.get('node', '')
-                if node:
-                    nodes_in_path.add(node)
+            path_nodes = path.get('path', [])  # Correct field
+            per_node = path.get('per_node_techniques', {})
 
             print(f"✓ Attack path analysis:")
-            print(f"  Total steps: {len(steps)}")
-            print(f"  Unique nodes: {len(nodes_in_path)}")
-            print(f"  Nodes: {list(nodes_in_path)[:5]}")
+            print(f"  Path nodes: {len(path_nodes)}")
+            print(f"  Nodes: {' → '.join(path_nodes)}")
+            print(f"  Per-node techniques: {len(per_node)} nodes mapped")
 
-            TEST5_PASS = len(nodes_in_path) >= 3  # Should have multiple nodes in path
+            # Check if techniques mapped to nodes
+            total_techniques = sum(len(techs) for techs in per_node.values())
+            print(f"  Total techniques mapped: {total_techniques}")
+
+            TEST5_PASS = len(per_node) >= 3 and total_techniques >= 6  # Should have 3+ nodes with 6+ techniques
             if TEST5_PASS:
                 print("\n✅ TEST 5 PASSED: Nodes mapped in attack paths")
             else:
