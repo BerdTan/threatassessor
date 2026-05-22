@@ -852,6 +852,7 @@ def generate_before_after_diagrams(
     after_lines.append("    %% 🟡 HIGH = Closes validation gaps (implement within 3 months)")
     after_lines.append("    %% 🔵 MEDIUM = Defense-in-depth (implement within 6 months)")
     after_lines.append("    %% 🟢 BASELINE = Security hygiene (ongoing program)")
+    after_lines.append("    %% 🟣 HARDENING = Gap-filling controls (baseline security posture)")
     after_lines.append("    %% Format: MITRE controls show M####/T####, RAPIDS controls show threat category")
 
     control_nodes = {}
@@ -905,6 +906,9 @@ def generate_before_after_diagrams(
             if attack_paths:
                 path_nums = ', '.join([f"#{p+1}" for p in attack_paths])
                 control_label += f"<br/>Paths: {path_nums}"
+            else:
+                # Gap-filling control with no specific attack path
+                control_label += f"<br/>Hardening"
 
             logger.debug(f"Final label: {control_label}")
 
@@ -928,11 +932,18 @@ def generate_before_after_diagrams(
             "critical": "fill:#ff6b6b,stroke:#c92a2a",    # RED - breaks attack paths
             "high": "fill:#ffd43b,stroke:#fab005",         # YELLOW - closes gaps
             "medium": "fill:#74c0fc,stroke:#339af0",       # BLUE - defense-in-depth
-            "low": "fill:#90EE90,stroke:#006400"           # GREEN - baseline hygiene
+            "low": "fill:#90EE90,stroke:#006400",          # GREEN - baseline hygiene
+            "hardening": "fill:#dda0dd,stroke:#9370db"     # PURPLE - gap-filling controls
         }
 
         # Get priority from recommendation (default to medium if not specified)
         control_priority = rec.get("priority", "medium") if isinstance(rec, dict) else "medium"
+
+        # Override priority to "hardening" if this is a gap-filling control (no attack paths)
+        is_gap_filling = isinstance(rec, dict) and not rec.get("attack_paths", [])
+        if is_gap_filling:
+            control_priority = "hardening"
+
         control_color = PRIORITY_COLORS.get(control_priority, PRIORITY_COLORS["medium"])
 
         styling_declarations.append(f"    style {control_id} {control_color},stroke-width:3px,color:#000000")
