@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from chatbot.modules.red_teamer_critic import RedTeamerCritic, critique_red_team
+from chatbot.modules.agents.critics.red_teamer_critic import RedTeamerCritic, critique_red_team
 from chatbot.modules.artifact_extractor import extract_artifacts
 
 
