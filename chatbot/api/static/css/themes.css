@@ -1,0 +1,73 @@
+/* ThreatAssessor Theme Styles */
+
+/* Dark Theme (Default) */
+body.dark-theme {
+    --primary-color: #3498db;
+    --primary-hover: #2980b9;
+    --text-color: #ecf0f1;
+    --text-secondary: #bdc3c7;
+    --text-tertiary: #7f8c8d;
+    --bg-color: #1a1a1a;
+    --header-bg: #2c3e50;
+    --sidebar-bg: #34495e;
+    --main-bg: #1a1a1a;
+    --footer-bg: #2c3e50;
+    --card-bg: #2c3e50;
+    --border-color: #34495e;
+    --nav-hover-bg: #3d566e;
+    --nav-active-bg: #2c3e50;
+    --nav-active-color: #3498db;
+    --drop-zone-hover-bg: rgba(52, 152, 219, 0.1);
+    --list-hover-bg: rgba(52, 152, 219, 0.1);
+    --list-active-bg: rgba(52, 152, 219, 0.2);
+    --icon-hover-bg: rgba(255, 255, 255, 0.1);
+    --badge-disabled-bg: #7f8c8d;
+    --badge-disabled-color: #ecf0f1;
+    --progress-bg: #34495e;
+    --code-bg: #1e1e1e;
+}
+
+/* Light Theme */
+body.light-theme {
+    --primary-color: #3498db;
+    --primary-hover: #2980b9;
+    --text-color: #2c3e50;
+    --text-secondary: #7f8c8d;
+    --text-tertiary: #95a5a6;
+    --bg-color: #ffffff;
+    --header-bg: #f8f9fa;
+    --sidebar-bg: #f1f3f5;
+    --main-bg: #ffffff;
+    --footer-bg: #f8f9fa;
+    --card-bg: #ffffff;
+    --border-color: #dee2e6;
+    --nav-hover-bg: #e9ecef;
+    --nav-active-bg: #e7f3ff;
+    --nav-active-color: #2980b9;
+    --drop-zone-hover-bg: rgba(52, 152, 219, 0.05);
+    --list-hover-bg: rgba(52, 152, 219, 0.05);
+    --list-active-bg: rgba(52, 152, 219, 0.1);
+    --icon-hover-bg: rgba(0, 0, 0, 0.05);
+    --badge-disabled-bg: #dee2e6;
+    --badge-disabled-color: #6c757d;
+    --progress-bg: #e9ecef;
+    --code-bg: #f8f9fa;
+}
+
+/* Theme-specific adjustments */
+body.dark-theme .card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+body.dark-theme .pattern-card {
+    background: #34495e;
+}
+
+body.light-theme .pattern-card {
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}

@@ -8,11 +8,14 @@
 
 ## Quick Start (5 Minutes)
 
-### 1. Get API Key
+### 1. Generate API Key
 ```bash
-# API key is in .env file
+# Generate a secure API key (first time setup)
+echo "API_KEY=$(openssl rand -hex 32)" >> .env
+
+# View your API key
 grep "^API_KEY=" .env
-# Output: API_KEY=05e5b65b88cfa5c30bcbba1b416c5c523da6d8253df66e7848af4c75648f22d2
+# Output: API_KEY=<your-generated-key>
 ```
 
 ### 2. Test Health Endpoint
@@ -232,9 +235,13 @@ class ThreatAssessorClient:
 
 
 # Usage
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 client = ThreatAssessorClient(
     base_url="http://localhost:8000",
-    api_key="05e5b65b88cfa5c30bcbba1b416c5c523da6d8253df66e7848af4c75648f22d2"
+    api_key=os.getenv("API_KEY")
 )
 
 # Health check
@@ -291,8 +298,11 @@ POST /orchestrate → analyze + validate + synthesis (93-96% confidence)
 
 ### Authentication
 - Method: API key via `TM-API-KEY` header
-- Storage: `.env` file (never commit to git)
+- Generation: `openssl rand -hex 32` (32-byte hex string)
+- Storage: `.env` file (**never commit to git**)
 - Rotation: Manual (no auto-rotation in MVP)
+
+**Important**: Always load API key from environment variables or secure vault, never hardcode in source files.
 
 ### Input Validation
 - File extension: Must be `.mmd`

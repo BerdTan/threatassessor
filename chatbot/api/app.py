@@ -11,7 +11,8 @@ import os
 from pathlib import Path
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from chatbot.services import ThreatAnalysisService
 from chatbot.api.dependencies import verify_api_key
@@ -257,6 +258,38 @@ Run deterministic threat analysis (Team 1: ThreatAnalysisService).
                 Path(tmp_path).unlink(missing_ok=True)
             except Exception:
                 pass  # Best effort cleanup
+
+    # Mount static files
+    static_dir = Path(__file__).parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # Dashboard endpoint
+    @app.get("/dashboard", response_class=HTMLResponse, tags=["dashboard"])
+    async def dashboard():
+        """Serve the ThreatAssessor dashboard UI."""
+        index_path = static_dir / "index.html"
+        if index_path.exists():
+            return index_path.read_text()
+        return "<h1>Dashboard not found</h1><p>Static files may not be properly configured.</p>"
+
+    @app.get("/", response_class=HTMLResponse, tags=["dashboard"])
+    async def root():
+        """Redirect root to dashboard."""
+        return """
+        <html>
+            <head>
+                <meta http-equiv="refresh" content="0; url=/dashboard">
+            </head>
+            <body>
+                <p>Redirecting to <a href="/dashboard">dashboard</a>...</p>
+            </body>
+        </html>
+        """
+
+    # Include routers
+    from chatbot.api.routes import streaming_router
+    app.include_router(streaming_router)
 
     return app
 

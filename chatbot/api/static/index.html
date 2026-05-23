@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThreatAssessor Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/themes.css">
+</head>
+<body class="dark-theme">
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <h1>🛡️ ThreatAssessor Dashboard</h1>
+        </div>
+        <div class="header-right">
+            <div class="pattern-badges" id="pattern-badges">
+                <span class="badge badge-disabled">No analysis yet</span>
+            </div>
+            <button id="theme-toggle" class="btn-icon" title="Toggle theme">
+                <span class="icon-theme">🌙</span>
+            </button>
+            <button id="upload-btn" class="btn-primary">📤 Upload Architecture</button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <nav class="sidebar-nav">
+                <button class="nav-tab active" data-tab="overview">📊 Overview</button>
+                <button class="nav-tab" data-tab="patterns">🧩 Patterns</button>
+                <button class="nav-tab" data-tab="attacks">🎯 Attacks</button>
+                <button class="nav-tab" data-tab="controls">🛡️ Controls</button>
+                <button class="nav-tab" data-tab="mitre">📋 MITRE</button>
+                <button class="nav-tab" data-tab="ai-ml" style="display: none;">🤖 AI/ML</button>
+                <button class="nav-tab" data-tab="reports">📄 Reports</button>
+                <button class="nav-tab" data-tab="raw-data">💾 Raw Data</button>
+            </nav>
+        </aside>
+
+        <!-- Center Pane -->
+        <main class="main-pane">
+            <!-- Upload Form (initial state) -->
+            <div id="upload-form-container" class="upload-container">
+                <h2>Upload Architecture Diagram</h2>
+                <form id="upload-form" class="upload-form">
+                    <div class="file-drop-zone" id="drop-zone">
+                        <p>Drag & drop .mmd file here or click to browse</p>
+                        <input type="file" id="file-input" accept=".mmd" required>
+                    </div>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="include-validation" checked>
+                        <span>Run completeness validation (6 checks)</span>
+                    </label>
+                    <button type="submit" class="btn-primary btn-large">Analyze Architecture</button>
+                </form>
+            </div>
+
+            <!-- Tab Content (hidden until analysis starts) -->
+            <div id="tab-content" class="tab-content" style="display: none;">
+                <!-- Overview Tab -->
+                <div class="tab-pane active" data-tab="overview">
+                    <h2>Threat Overview</h2>
+                    <div class="overview-grid">
+                        <div class="card">
+                            <h3>Threat Heat Map (RAPIDS)</h3>
+                            <canvas id="threat-chart"></canvas>
+                        </div>
+                        <div class="card">
+                            <h3>Architecture Diagram</h3>
+                            <div id="arch-diagram" class="diagram-container">
+                                <p class="placeholder">Architecture will be displayed here</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Patterns Tab -->
+                <div class="tab-pane" data-tab="patterns">
+                    <h2>Threat Patterns Applied</h2>
+                    <div id="patterns-list" class="patterns-list">
+                        <p class="placeholder">Pattern information loading...</p>
+                    </div>
+                </div>
+
+                <!-- Attacks Tab -->
+                <div class="tab-pane" data-tab="attacks">
+                    <h2>Attack Paths</h2>
+                    <div class="split-view">
+                        <div class="split-left">
+                            <div id="attack-paths-list" class="list-container">
+                                <p class="placeholder">Attack paths loading...</p>
+                            </div>
+                        </div>
+                        <div class="split-right">
+                            <div id="attack-path-detail" class="detail-container">
+                                <p class="placeholder">Select an attack path to view details</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Controls Tab -->
+                <div class="tab-pane" data-tab="controls">
+                    <h2>Security Controls</h2>
+                    <div class="split-view">
+                        <div class="split-left">
+                            <div id="controls-table" class="table-container">
+                                <p class="placeholder">Control analysis loading...</p>
+                            </div>
+                        </div>
+                        <div class="split-right">
+                            <div id="control-detail" class="detail-container">
+                                <p class="placeholder">Select a control to view recommendations</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MITRE Tab -->
+                <div class="tab-pane" data-tab="mitre">
+                    <h2>MITRE ATT&CK Technique Coverage</h2>
+                    <div id="mitre-matrix" class="mitre-matrix">
+                        <p class="placeholder">MITRE technique matrix loading...</p>
+                    </div>
+                </div>
+
+                <!-- AI/ML Tab (conditional) -->
+                <div class="tab-pane" data-tab="ai-ml">
+                    <h2>AI/ML Risk Analysis</h2>
+                    <div class="split-view">
+                        <div class="split-left">
+                            <h3>AI/ML Risk Categories (ARC Framework)</h3>
+                            <canvas id="ai-risk-chart"></canvas>
+                        </div>
+                        <div class="split-right">
+                            <h3>AI-Specific Controls</h3>
+                            <div id="ai-controls" class="list-container">
+                                <p class="placeholder">AI/ML control recommendations loading...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reports Tab -->
+                <div class="tab-pane" data-tab="reports">
+                    <h2>Generated Reports</h2>
+                    <div class="split-view">
+                        <div class="split-left">
+                            <div id="reports-list" class="list-container">
+                                <p class="placeholder">Reports loading...</p>
+                            </div>
+                        </div>
+                        <div class="split-right">
+                            <div id="report-preview" class="detail-container">
+                                <p class="placeholder">Select a report to preview</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Raw Data Tab -->
+                <div class="tab-pane" data-tab="raw-data">
+                    <h2>Raw Data & Artifacts</h2>
+                    <div class="split-view">
+                        <div class="split-left">
+                            <div id="artifacts-list" class="list-container">
+                                <p class="placeholder">Artifacts loading...</p>
+                            </div>
+                        </div>
+                        <div class="split-right">
+                            <div id="artifact-viewer" class="detail-container code-viewer">
+                                <p class="placeholder">Select an artifact to view contents</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Pane -->
+        <aside class="right-pane">
+            <div id="right-pane-content" class="right-pane-content">
+                <h3>Details</h3>
+                <p class="placeholder">Additional details will appear here</p>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Footer: Progress Bar + Status Bar -->
+    <footer class="footer">
+        <div class="progress-container">
+            <div class="progress-label">Progress Bar:</div>
+            <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill" style="width: 0%;"></div>
+                <div id="progress-text" class="progress-text">0%</div>
+            </div>
+        </div>
+        <div class="status-container">
+            <div class="status-label">Status Bar:</div>
+            <div id="status-message" class="status-message">Ready to analyze architecture</div>
+        </div>
+        <div class="stages-container">
+            <div class="status-label">Stage:</div>
+            <div id="stages" class="stages">
+                <span class="stage" data-stage="parsing">⚪ Parsing</span>
+                <span class="stage-arrow">→</span>
+                <span class="stage" data-stage="mitre">⚪ MITRE</span>
+                <span class="stage-arrow">→</span>
+                <span class="stage" data-stage="rapids">⚪ RAPIDS</span>
+                <span class="stage-arrow" id="ai-ml-arrow" style="display: none;">→</span>
+                <span class="stage" data-stage="ai_ml" id="ai-ml-stage" style="display: none;">⚪ AI/ML</span>
+                <span class="stage-arrow">→</span>
+                <span class="stage" data-stage="validation">⚪ Validation</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/sse-client.js"></script>
+    <script src="/static/js/visualizations.js"></script>
+    <script src="/static/js/artifact-viewer.js"></script>
+    <script src="/static/js/theme-toggle.js"></script>
+</body>
+</html>

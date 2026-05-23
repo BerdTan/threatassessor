@@ -154,16 +154,21 @@ class ThreatAnalysisService(BaseService):
                     self.logger.warning(f"Validation failed: {e}")
                     result_data["validation"] = {"error": str(e)}
 
+            # Detect which patterns were applied
+            patterns_applied = self._detect_patterns(result_data)
+
             # Store in context
             context.results["analysis"] = result_data
             context.metadata["architecture_name"] = arch_name
+            context.metadata["patterns_applied"] = patterns_applied
 
             return ServiceResult(
                 success=True,
                 data={
                     "architecture_name": arch_name,
                     "analysis": result_data,
-                    "confidence": result_data.get("confidence", 0.995)
+                    "confidence": result_data.get("confidence", 0.995),
+                    "patterns_applied": patterns_applied
                 }
             )
 
@@ -174,6 +179,75 @@ class ThreatAnalysisService(BaseService):
                 f"Threat analysis failed: {str(e)}",
                 details={"architecture_name": arch_name if 'arch_name' in locals() else "unknown"}
             )
+
+    def _detect_patterns(self, result_data: Dict) -> list:
+        """
+        Detect which threat patterns were applied based on analysis result.
+
+        Args:
+            result_data: Analysis result dictionary
+
+        Returns:
+            List of pattern metadata dicts
+        """
+        patterns = []
+
+        # RAPIDS pattern (always applied - universal)
+        patterns.append({
+            "pattern_id": "rapids",
+            "name": "MITRE ATT&CK + RAPIDS",
+            "scope": "universal",
+            "description": "6 threat categories: Ransomware, Application, Phishing, Insider, DoS, Supply Chain",
+            "technique_source": "MITRE Enterprise ATT&CK (14 tactics)",
+            "status": "applied"
+        })
+
+        # AI/ML pattern (conditional - check for AI/ML specific data)
+        ai_ml_data = result_data.get("ai_ml_risks") or result_data.get("arc_risks")
+        if ai_ml_data:
+            # Extract trigger info from architecture
+            ai_services = []
+            components = result_data.get("components", [])
+            for comp in components:
+                comp_type = comp.get("type", "").lower()
+                if any(keyword in comp_type for keyword in ["lambda", "sagemaker", "ml", "ai", "inference"]):
+                    ai_services.append(comp.get("name", comp_type))
+
+            patterns.append({
+                "pattern_id": "ai_ml_arc",
+                "name": "MITRE ATLAS + ARC Framework",
+                "scope": "conditional",
+                "description": "AI/ML threat detection: 46 risks, 88 controls",
+                "technique_source": "MITRE ATLAS (14 tactics, 146 techniques)",
+                "trigger": f"Detected AI/ML services: {', '.join(ai_services[:3])}" if ai_services else "AI/ML components detected",
+                "status": "applied"
+            })
+
+        # Cloud pattern (partial implementation - note limitations)
+        cloud_services = []
+        components = result_data.get("components", [])
+        for comp in components:
+            comp_type = comp.get("type", "").lower()
+            if any(keyword in comp_type for keyword in ["s3", "ec2", "lambda", "iam", "vpc", "azure", "gcp"]):
+                cloud_services.append(comp.get("name", comp_type))
+
+        if cloud_services:
+            patterns.append({
+                "pattern_id": "cloud_generic",
+                "name": "Cloud Generic (MITRE Enterprise)",
+                "scope": "conditional",
+                "description": "Generic cloud threat detection using MITRE Enterprise",
+                "technique_source": "MITRE Enterprise ATT&CK (not cloud-specific)",
+                "trigger": f"Detected cloud services: {', '.join(cloud_services[:3])}",
+                "status": "partial",
+                "limitations": [
+                    "No AWS/Azure/GCP-specific threat models",
+                    "No cloud-native misconfiguration detection",
+                    "No serverless-specific attack patterns"
+                ]
+            })
+
+        return patterns
 
     def list_patterns(self, context: ServiceContext) -> ServiceResult:
         """
