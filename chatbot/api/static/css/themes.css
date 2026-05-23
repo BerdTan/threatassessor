@@ -1,73 +1,142 @@
-/* ThreatAssessor Theme Styles */
+/* ThreatAssessor Theme Styles - Redesigned for Professional Look */
 
-/* Dark Theme (Default) */
+/* Dark Theme (Default) - True Black Background */
 body.dark-theme {
-    --primary-color: #3498db;
-    --primary-hover: #2980b9;
-    --text-color: #ecf0f1;
-    --text-secondary: #bdc3c7;
-    --text-tertiary: #7f8c8d;
-    --bg-color: #1a1a1a;
-    --header-bg: #2c3e50;
-    --sidebar-bg: #34495e;
-    --main-bg: #1a1a1a;
-    --footer-bg: #2c3e50;
-    --card-bg: #2c3e50;
-    --border-color: #34495e;
-    --nav-hover-bg: #3d566e;
-    --nav-active-bg: #2c3e50;
-    --nav-active-color: #3498db;
-    --drop-zone-hover-bg: rgba(52, 152, 219, 0.1);
-    --list-hover-bg: rgba(52, 152, 219, 0.1);
-    --list-active-bg: rgba(52, 152, 219, 0.2);
-    --icon-hover-bg: rgba(255, 255, 255, 0.1);
-    --badge-disabled-bg: #7f8c8d;
-    --badge-disabled-color: #ecf0f1;
-    --progress-bg: #34495e;
-    --code-bg: #1e1e1e;
+    --primary-color: #00d4ff;
+    --primary-hover: #00b8e6;
+    --secondary-color: #00ff88;
+    --accent-color: #ff00ff;
+    --warning-color: #ffaa00;
+    --danger-color: #ff3366;
+
+    /* High contrast text colors */
+    --text-color: #ffffff;
+    --text-secondary: #b0b0b0;
+    --text-tertiary: #808080;
+
+    /* True black backgrounds with subtle gradients */
+    --bg-color: #000000;
+    --header-bg: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    --sidebar-bg: #0a0a0a;
+    --main-bg: #000000;
+    --footer-bg: #0a0a0a;
+    --card-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    --border-color: #00d4ff33;
+
+    /* Interactive states */
+    --nav-hover-bg: #1a1a2e;
+    --nav-active-bg: #16213e;
+    --nav-active-color: #00d4ff;
+    --drop-zone-hover-bg: rgba(0, 212, 255, 0.1);
+    --list-hover-bg: rgba(0, 212, 255, 0.08);
+    --list-active-bg: rgba(0, 212, 255, 0.15);
+    --icon-hover-bg: rgba(0, 212, 255, 0.2);
+
+    /* Badges */
+    --badge-disabled-bg: #2a2a2a;
+    --badge-disabled-color: #808080;
+    --progress-bg: #1a1a1a;
+    --code-bg: #0a0a0a;
+
+    /* Glow effects */
+    --glow-primary: 0 0 20px rgba(0, 212, 255, 0.5);
+    --glow-secondary: 0 0 20px rgba(0, 255, 136, 0.5);
 }
 
-/* Light Theme */
+/* Light Theme - High Contrast */
 body.light-theme {
-    --primary-color: #3498db;
-    --primary-hover: #2980b9;
-    --text-color: #2c3e50;
-    --text-secondary: #7f8c8d;
-    --text-tertiary: #95a5a6;
+    --primary-color: #0066cc;
+    --primary-hover: #0052a3;
+    --secondary-color: #00aa55;
+    --accent-color: #cc00cc;
+    --warning-color: #ff8800;
+    --danger-color: #cc0033;
+
+    /* High contrast text colors */
+    --text-color: #000000;
+    --text-secondary: #4a4a4a;
+    --text-tertiary: #6a6a6a;
+
+    /* Clean white backgrounds */
     --bg-color: #ffffff;
-    --header-bg: #f8f9fa;
-    --sidebar-bg: #f1f3f5;
+    --header-bg: linear-gradient(135deg, #f0f4f8 0%, #ffffff 100%);
+    --sidebar-bg: #f5f7fa;
     --main-bg: #ffffff;
-    --footer-bg: #f8f9fa;
-    --card-bg: #ffffff;
-    --border-color: #dee2e6;
-    --nav-hover-bg: #e9ecef;
-    --nav-active-bg: #e7f3ff;
-    --nav-active-color: #2980b9;
-    --drop-zone-hover-bg: rgba(52, 152, 219, 0.05);
-    --list-hover-bg: rgba(52, 152, 219, 0.05);
-    --list-active-bg: rgba(52, 152, 219, 0.1);
-    --icon-hover-bg: rgba(0, 0, 0, 0.05);
-    --badge-disabled-bg: #dee2e6;
-    --badge-disabled-color: #6c757d;
-    --progress-bg: #e9ecef;
-    --code-bg: #f8f9fa;
+    --footer-bg: #f5f7fa;
+    --card-bg: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    --border-color: #d0d7de;
+
+    /* Interactive states */
+    --nav-hover-bg: #e8edf2;
+    --nav-active-bg: #d8e7f5;
+    --nav-active-color: #0066cc;
+    --drop-zone-hover-bg: rgba(0, 102, 204, 0.05);
+    --list-hover-bg: rgba(0, 102, 204, 0.05);
+    --list-active-bg: rgba(0, 102, 204, 0.1);
+    --icon-hover-bg: rgba(0, 102, 204, 0.1);
+
+    /* Badges */
+    --badge-disabled-bg: #e8edf2;
+    --badge-disabled-color: #6a6a6a;
+    --progress-bg: #e8edf2;
+    --code-bg: #f5f7fa;
+
+    /* Subtle shadows */
+    --glow-primary: 0 2px 8px rgba(0, 102, 204, 0.2);
+    --glow-secondary: 0 2px 8px rgba(0, 170, 85, 0.2);
 }
 
 /* Theme-specific adjustments */
 body.dark-theme .card {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 16px rgba(0, 212, 255, 0.1), 0 0 2px rgba(0, 212, 255, 0.3);
+    border: 1px solid rgba(0, 212, 255, 0.2);
 }
 
 body.light-theme .card {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid #d0d7de;
 }
 
 body.dark-theme .pattern-card {
-    background: #34495e;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    box-shadow: 0 4px 16px rgba(0, 212, 255, 0.1);
 }
 
 body.light-theme .pattern-card {
-    background: #ffffff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Futuristic accents for dark theme */
+body.dark-theme .header {
+    border-bottom: 2px solid rgba(0, 212, 255, 0.3);
+    box-shadow: 0 4px 12px rgba(0, 212, 255, 0.1);
+}
+
+body.dark-theme .sidebar {
+    border-right: 2px solid rgba(0, 212, 255, 0.2);
+}
+
+body.dark-theme .nav-tab.active {
+    border-left: 3px solid #00d4ff;
+    box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.2);
+}
+
+body.dark-theme .progress-fill {
+    background: linear-gradient(90deg, #00d4ff, #00ff88);
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+}
+
+body.light-theme .progress-fill {
+    background: linear-gradient(90deg, #0066cc, #00aa55);
+}
+
+/* Animated glow for active elements */
+@keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(0, 212, 255, 0.3); }
+    50% { box-shadow: 0 0 20px rgba(0, 212, 255, 0.6); }
+}
+
+body.dark-theme .stage.active {
+    animation: glow-pulse 2s ease-in-out infinite;
 }

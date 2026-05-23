@@ -94,11 +94,6 @@
                                 <p class="placeholder">Attack paths loading...</p>
                             </div>
                         </div>
-                        <div class="split-right">
-                            <div id="attack-path-detail" class="detail-container">
-                                <p class="placeholder">Select an attack path to view details</p>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -109,11 +104,6 @@
                         <div class="split-left">
                             <div id="controls-table" class="table-container">
                                 <p class="placeholder">Control analysis loading...</p>
-                            </div>
-                        </div>
-                        <div class="split-right">
-                            <div id="control-detail" class="detail-container">
-                                <p class="placeholder">Select a control to view recommendations</p>
                             </div>
                         </div>
                     </div>
@@ -153,11 +143,6 @@
                                 <p class="placeholder">Reports loading...</p>
                             </div>
                         </div>
-                        <div class="split-right">
-                            <div id="report-preview" class="detail-container">
-                                <p class="placeholder">Select a report to preview</p>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -170,51 +155,42 @@
                                 <p class="placeholder">Artifacts loading...</p>
                             </div>
                         </div>
-                        <div class="split-right">
-                            <div id="artifact-viewer" class="detail-container code-viewer">
-                                <p class="placeholder">Select an artifact to view contents</p>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
         </main>
 
-        <!-- Right Pane -->
-        <aside class="right-pane">
+        <!-- Right Pane (Hidden by default, shows on click) -->
+        <aside class="right-pane" id="right-pane">
+            <button class="right-pane-close" id="right-pane-close">&times;</button>
             <div id="right-pane-content" class="right-pane-content">
                 <h3>Details</h3>
-                <p class="placeholder">Additional details will appear here</p>
+                <p class="placeholder">Click on an item to view details</p>
             </div>
         </aside>
     </div>
 
-    <!-- Footer: Progress Bar + Status Bar -->
+    <!-- Footer: Compact Combined Progress -->
     <footer class="footer">
         <div class="progress-container">
-            <div class="progress-label">Progress Bar:</div>
             <div class="progress-bar">
                 <div id="progress-fill" class="progress-fill" style="width: 0%;"></div>
                 <div id="progress-text" class="progress-text">0%</div>
             </div>
         </div>
         <div class="status-container">
-            <div class="status-label">Status Bar:</div>
             <div id="status-message" class="status-message">Ready to analyze architecture</div>
         </div>
-        <div class="stages-container">
-            <div class="status-label">Stage:</div>
-            <div id="stages" class="stages">
-                <span class="stage" data-stage="parsing">⚪ Parsing</span>
-                <span class="stage-arrow">→</span>
-                <span class="stage" data-stage="mitre">⚪ MITRE</span>
-                <span class="stage-arrow">→</span>
-                <span class="stage" data-stage="rapids">⚪ RAPIDS</span>
-                <span class="stage-arrow" id="ai-ml-arrow" style="display: none;">→</span>
-                <span class="stage" data-stage="ai_ml" id="ai-ml-stage" style="display: none;">⚪ AI/ML</span>
-                <span class="stage-arrow">→</span>
-                <span class="stage" data-stage="validation">⚪ Validation</span>
-            </div>
+        <div id="stages" class="stages">
+            <span class="stage" data-stage="parsing">Parsing</span>
+            <span class="stage-arrow">→</span>
+            <span class="stage" data-stage="mitre">MITRE</span>
+            <span class="stage-arrow">→</span>
+            <span class="stage" data-stage="rapids">RAPIDS</span>
+            <span class="stage-arrow" id="ai-ml-arrow" style="display: none;">→</span>
+            <span class="stage" data-stage="ai_ml" id="ai-ml-stage" style="display: none;">AI/ML</span>
+            <span class="stage-arrow">→</span>
+            <span class="stage" data-stage="validation">Done</span>
         </div>
     </footer>
 

@@ -16,9 +16,36 @@ class Dashboard {
         // Initialize upload form
         this.initUpload();
 
+        // Initialize right pane
+        this.initRightPane();
+
         // Load theme preference
         const savedTheme = localStorage.getItem('theme') || 'dark';
         document.body.className = `${savedTheme}-theme`;
+    }
+
+    initRightPane() {
+        const closeBtn = document.getElementById('right-pane-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.hideRightPane());
+        }
+    }
+
+    showRightPane(title, content) {
+        const rightPane = document.getElementById('right-pane');
+        const rightPaneContent = document.getElementById('right-pane-content');
+
+        rightPaneContent.innerHTML = `
+            <h3>${title}</h3>
+            ${content}
+        `;
+
+        rightPane.classList.add('visible');
+    }
+
+    hideRightPane() {
+        const rightPane = document.getElementById('right-pane');
+        rightPane.classList.remove('visible');
     }
 
     initTabs() {
@@ -235,19 +262,16 @@ class Dashboard {
             const stageIndex = stageOrder.indexOf(stageName);
             const currentIndex = stageOrder.indexOf(currentStage);
 
-            if (stageIndex < currentIndex) {
+            if (stageIndex < currentIndex || currentStage === 'complete') {
                 // Completed
-                stageEl.textContent = stageEl.textContent.replace('⚪', '✅');
                 stageEl.classList.add('complete');
                 stageEl.classList.remove('active');
             } else if (stageName === currentStage) {
                 // Active
-                stageEl.textContent = stageEl.textContent.replace('⚪', '●');
                 stageEl.classList.add('active');
                 stageEl.classList.remove('complete');
             } else {
                 // Pending
-                stageEl.textContent = stageEl.textContent.replace(/[●✅]/, '⚪');
                 stageEl.classList.remove('active', 'complete');
             }
         });
@@ -376,31 +400,115 @@ class Dashboard {
         if (!this.attackPaths || !this.analysisData) return;
 
         const listContainer = document.getElementById('attack-paths-list');
-        listContainer.innerHTML = '<h4>Attack Paths</h4>';
 
-        this.attackPaths.forEach((path, index) => {
+        // Sort attack paths by ID numerically
+        const sortedPaths = [...this.attackPaths].sort((a, b) => {
+            const numA = parseInt(a.id.replace('AP-', ''));
+            const numB = parseInt(b.id.replace('AP-', ''));
+            return numA - numB;
+        });
+
+        listContainer.innerHTML = `
+            <h4>Attack Paths Discovered: ${sortedPaths.length}</h4>
+            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+                Click on a path to see detailed traversal through the architecture
+            </p>
+        `;
+
+        sortedPaths.forEach((path, index) => {
             const item = document.createElement('div');
             item.className = 'list-item';
+
+            const criticalityColor =
+                path.criticality_tier === 'HIGH' ? 'var(--danger-color)' :
+                path.criticality_tier === 'MEDIUM' ? 'var(--warning-color)' :
+                'var(--secondary-color)';
+
             item.innerHTML = `
-                <strong>${path.id}</strong>: ${path.entry} → ${path.target}<br>
-                <small>${path.hop_count} hops, ${path.techniques?.length || 0} techniques</small>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong style="font-size: 1.125rem;">${path.id}</strong>
+                        <div style="color: var(--text-secondary); margin-top: 0.25rem;">
+                            ${path.entry} → ${path.target}
+                        </div>
+                        <div style="font-size: 0.875rem; color: var(--text-tertiary); margin-top: 0.25rem;">
+                            ${path.hop_count} hops · ${path.techniques?.length || 0} techniques
+                        </div>
+                    </div>
+                    <div style="padding: 0.25rem 0.75rem; background: ${criticalityColor}22; color: ${criticalityColor}; border-radius: 8px; font-weight: 700; font-size: 0.75rem;">
+                        ${path.criticality_tier || 'MEDIUM'}
+                    </div>
+                </div>
             `;
-            item.addEventListener('click', () => this.showAttackPathDetail(path));
+            item.addEventListener('click', () => {
+                // Remove active class from all items
+                listContainer.querySelectorAll('.list-item').forEach(el => el.classList.remove('active'));
+                item.classList.add('active');
+                this.showAttackPathDetail(path);
+            });
             listContainer.appendChild(item);
         });
     }
 
     showAttackPathDetail(path) {
-        const detailContainer = document.getElementById('attack-path-detail');
-        detailContainer.innerHTML = `
-            <h4>${path.id}: ${path.entry} → ${path.target}</h4>
-            <p><strong>Criticality:</strong> ${path.criticality_tier || 'MEDIUM'}</p>
-            <p><strong>Path:</strong> ${path.path.join(' → ')}</p>
-            <h5>Techniques (${path.techniques?.length || 0}):</h5>
-            <ul>
-                ${(path.techniques || []).map(t => `<li>${t}</li>`).join('')}
-            </ul>
+        // Show in right pane
+        const pathHtml = `
+            <div style="margin-bottom: 1.5rem;">
+                <div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">${path.id}</div>
+                <div style="padding: 0.5rem 1rem; background: ${
+                    path.criticality_tier === 'HIGH' ? 'var(--danger-color)22' :
+                    path.criticality_tier === 'MEDIUM' ? 'var(--warning-color)22' :
+                    'var(--secondary-color)22'
+                }; border-left: 4px solid ${
+                    path.criticality_tier === 'HIGH' ? 'var(--danger-color)' :
+                    path.criticality_tier === 'MEDIUM' ? 'var(--warning-color)' :
+                    'var(--secondary-color)'
+                }; border-radius: 4px;">
+                    <strong>Criticality:</strong> ${path.criticality_tier || 'MEDIUM'}
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+                <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">Attack Path Traversal</h4>
+                <div style="padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                    ${path.path.map((node, idx) => `
+                        <div style="display: flex; align-items: center; margin-bottom: ${idx < path.path.length - 1 ? '0.75rem' : '0'};">
+                            <div style="background: var(--primary-color); color: black; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.875rem; margin-right: 0.75rem;">
+                                ${idx + 1}
+                            </div>
+                            <div style="flex: 1; padding: 0.5rem 1rem; background: ${idx === 0 ? 'var(--danger-color)22' : idx === path.path.length - 1 ? 'var(--warning-color)22' : 'var(--nav-hover-bg)'}; border-radius: 6px;">
+                                <strong>${node}</strong>
+                                ${idx === 0 ? ' <span style="color: var(--danger-color);">(Entry)</span>' : ''}
+                                ${idx === path.path.length - 1 ? ' <span style="color: var(--warning-color);">(Target)</span>' : ''}
+                            </div>
+                        </div>
+                        ${idx < path.path.length - 1 ? '<div style="margin-left: 14px; width: 2px; height: 20px; background: var(--border-color);"></div>' : ''}
+                    `).join('')}
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+                <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">MITRE ATT&CK Techniques (${path.techniques?.length || 0})</h4>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    ${(path.techniques || []).map(t => `
+                        <span style="padding: 0.375rem 0.75rem; background: var(--nav-active-bg); border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.875rem; font-family: monospace;">
+                            ${t}
+                        </span>
+                    `).join('')}
+                </div>
+            </div>
+
+            ${path.rationale ? `
+                <div style="margin-bottom: 1.5rem;">
+                    <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">Analysis</h4>
+                    <div style="padding: 1rem; background: var(--code-bg); border-radius: 8px; border-left: 4px solid var(--primary-color); font-size: 0.875rem; line-height: 1.6;">
+                        ${path.rationale}
+                    </div>
+                </div>
+            ` : ''}
         `;
+
+        this.showRightPane(`Attack Path: ${path.entry} → ${path.target}`, pathHtml);
     }
 
     loadControlsTab() {
@@ -451,11 +559,28 @@ class Dashboard {
     }
 
     showArtifact(artifact) {
-        const viewer = document.getElementById('artifact-viewer');
-        viewer.innerHTML = `<pre><code class="language-json">${JSON.stringify(artifact.data, null, 2)}</code></pre>`;
+        const jsonStr = JSON.stringify(artifact.data, null, 2);
+        const content = `
+            <div style="padding: 1rem; background: var(--code-bg); border-radius: 8px; border: 1px solid var(--border-color); overflow-x: auto;">
+                <pre style="margin: 0;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>
+            </div>
+        `;
+        this.showRightPane(artifact.name, content);
+
+        // Apply syntax highlighting
         if (window.hljs) {
-            hljs.highlightElement(viewer.querySelector('code'));
+            const rightPane = document.getElementById('right-pane-content');
+            const codeBlock = rightPane.querySelector('code');
+            if (codeBlock) {
+                hljs.highlightElement(codeBlock);
+            }
         }
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     getPatternClass(patternId) {
