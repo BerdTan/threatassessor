@@ -37,24 +37,47 @@ async def analyze_with_progress(
 
     try:
         # Stage 1: Parsing (0-10%)
+        progress = tracker.get_progress("parsing", 0.0)
         yield await SSEStream.send_progress(
             stage="parsing",
-            progress=tracker.get_progress("parsing", 0.0),
-            message="Parsing architecture diagram...",
-            eta_seconds=tracker.get_eta(5)
+            progress=progress,
+            message=f"[PARSING] {progress}% - Analyzing architecture diagram structure...",
+            eta_seconds=tracker.get_eta(progress)
         )
 
-        await asyncio.sleep(0.1)  # Allow event to be sent
+        await asyncio.sleep(0.1)
+
+        # Parsing progress updates
+        progress = tracker.get_progress("parsing", 0.5)
+        yield await SSEStream.send_progress(
+            stage="parsing",
+            progress=progress,
+            message=f"[PARSING] {progress}% - Validating Mermaid syntax...",
+            eta_seconds=tracker.get_eta(progress)
+        )
+
+        await asyncio.sleep(0.1)
 
         # Start analysis
         service = ThreatAnalysisService()
 
         # Stage 2: MITRE Cache (10-20%)
+        progress = tracker.get_progress("mitre", 0.0)
         yield await SSEStream.send_progress(
             stage="mitre",
-            progress=tracker.get_progress("mitre", 0.0),
-            message="Loading MITRE ATT&CK cache (44MB)...",
-            eta_seconds=tracker.get_eta(15)
+            progress=progress,
+            message=f"[MITRE] {progress}% - Loading MITRE ATT&CK cache (44MB)...",
+            eta_seconds=tracker.get_eta(progress)
+        )
+
+        await asyncio.sleep(0.1)
+
+        progress = tracker.get_progress("mitre", 0.5)
+        yield await SSEStream.send_progress(
+            stage="mitre",
+            progress=progress,
+            message=f"[MITRE] {progress}% - Indexing 14 tactics, 196 techniques...",
+            eta_seconds=tracker.get_eta(progress)
         )
 
         await asyncio.sleep(0.1)
@@ -90,11 +113,34 @@ async def analyze_with_progress(
             await asyncio.sleep(0.1)
 
         # Stage 4: RAPIDS Analysis (20-60%)
+        progress = tracker.get_progress("rapids", 0.0)
         yield await SSEStream.send_progress(
             stage="rapids",
-            progress=tracker.get_progress("rapids", 0.5),
-            message="Running RAPIDS threat assessment (6 categories)...",
-            eta_seconds=tracker.get_eta(40),
+            progress=progress,
+            message=f"[RAPIDS] {progress}% - Analyzing 6 threat categories...",
+            eta_seconds=tracker.get_eta(progress),
+            patterns_active=["rapids"]
+        )
+
+        await asyncio.sleep(0.1)
+
+        progress = tracker.get_progress("rapids", 0.3)
+        yield await SSEStream.send_progress(
+            stage="rapids",
+            progress=progress,
+            message=f"[RAPIDS] {progress}% - Mapping MITRE techniques to components...",
+            eta_seconds=tracker.get_eta(progress),
+            patterns_active=["rapids"]
+        )
+
+        await asyncio.sleep(0.1)
+
+        progress = tracker.get_progress("rapids", 0.7)
+        yield await SSEStream.send_progress(
+            stage="rapids",
+            progress=progress,
+            message=f"[RAPIDS] {progress}% - Computing attack paths and defensibility...",
+            eta_seconds=tracker.get_eta(progress),
             patterns_active=["rapids"]
         )
 
@@ -119,11 +165,22 @@ async def analyze_with_progress(
 
         # Stage 5: AI/ML Analysis (60-80%) - only if applicable
         if has_ai_ml:
+            progress = tracker.get_progress("ai_ml", 0.0)
             yield await SSEStream.send_progress(
                 stage="ai_ml",
-                progress=tracker.get_progress("ai_ml", 0.5),
-                message="Analyzing AI/ML risks (ATLAS + ARC Framework)...",
-                eta_seconds=tracker.get_eta(70),
+                progress=progress,
+                message=f"[AI/ML] {progress}% - Detecting AI/ML components...",
+                eta_seconds=tracker.get_eta(progress),
+                patterns_active=["rapids", "ai_ml_arc"]
+            )
+            await asyncio.sleep(0.1)
+
+            progress = tracker.get_progress("ai_ml", 0.5)
+            yield await SSEStream.send_progress(
+                stage="ai_ml",
+                progress=progress,
+                message=f"[AI/ML] {progress}% - Analyzing ATLAS techniques + ARC risks...",
+                eta_seconds=tracker.get_eta(progress),
                 patterns_active=["rapids", "ai_ml_arc"]
             )
             await asyncio.sleep(0.1)
@@ -136,11 +193,22 @@ async def analyze_with_progress(
 
         # Stage 7: Validation (80-100%)
         if include_validation:
+            progress = tracker.get_progress("validation", 0.0)
             yield await SSEStream.send_progress(
                 stage="validation",
-                progress=tracker.get_progress("validation", 0.5),
-                message="Running completeness validation (6 checks)...",
-                eta_seconds=tracker.get_eta(90),
+                progress=progress,
+                message=f"[VALIDATION] {progress}% - Running 6-check completeness validation...",
+                eta_seconds=tracker.get_eta(progress),
+                patterns_active=["rapids"] + (["ai_ml_arc"] if has_ai_ml else [])
+            )
+            await asyncio.sleep(0.1)
+
+            progress = tracker.get_progress("validation", 0.5)
+            yield await SSEStream.send_progress(
+                stage="validation",
+                progress=progress,
+                message=f"[VALIDATION] {progress}% - Verifying technique coverage and orphan nodes...",
+                eta_seconds=tracker.get_eta(progress),
                 patterns_active=["rapids"] + (["ai_ml_arc"] if has_ai_ml else [])
             )
             await asyncio.sleep(0.1)
@@ -149,7 +217,7 @@ async def analyze_with_progress(
         yield await SSEStream.send_progress(
             stage="complete",
             progress=100,
-            message="Analysis complete!",
+            message="✅ Analysis complete! All reports generated.",
             eta_seconds=0
         )
 

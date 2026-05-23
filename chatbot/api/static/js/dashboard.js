@@ -5,6 +5,7 @@ class Dashboard {
         this.analysisData = null;
         this.currentTab = 'overview';
         this.sseClient = null;
+        this.uploadedFile = null;
 
         this.init();
     }
@@ -18,6 +19,16 @@ class Dashboard {
 
         // Initialize right pane
         this.initRightPane();
+
+        // Initialize Mermaid
+        if (window.mermaid) {
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: document.body.classList.contains('dark-theme') ? 'dark' : 'default',
+                securityLevel: 'loose',
+                flowchart: { useMaxWidth: false }
+            });
+        }
 
         // Load theme preference
         const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -134,6 +145,9 @@ class Dashboard {
             alert('Please select a .mmd file');
             return;
         }
+
+        // Store uploaded file for diagram rendering
+        this.uploadedFile = file;
 
         // Hide upload form, show analysis view
         document.getElementById('upload-form-container').style.display = 'none';
@@ -306,9 +320,65 @@ class Dashboard {
         }
     }
 
-    loadOverviewTab() {
+    async loadOverviewTab() {
         this.renderThreatChart();
-        // Architecture diagram rendering would go here (requires Mermaid.js)
+        await this.renderArchitectureDiagram();
+    }
+
+    async renderArchitectureDiagram() {
+        const container = document.getElementById('arch-diagram');
+        if (!container || !this.uploadedFile) return;
+
+        try {
+            // Read uploaded file
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const mmdContent = e.target.result;
+
+                // Create container for mermaid
+                container.innerHTML = `
+                    <div style="text-align: center; margin-bottom: 0.5rem;">
+                        <button id="zoom-in" class="btn-icon" style="margin: 0 0.25rem;">🔍+</button>
+                        <button id="zoom-out" class="btn-icon" style="margin: 0 0.25rem;">🔍−</button>
+                        <button id="zoom-reset" class="btn-icon" style="margin: 0 0.25rem;">↺</button>
+                    </div>
+                    <div id="mermaid-container" style="overflow: auto; max-height: calc(100vh - 280px); padding: 1rem; background: var(--code-bg); border-radius: 8px;">
+                        <div class="mermaid">${mmdContent}</div>
+                    </div>
+                `;
+
+                // Render mermaid
+                if (window.mermaid) {
+                    await mermaid.run({
+                        querySelector: '#mermaid-container .mermaid'
+                    });
+
+                    // Add zoom controls
+                    let scale = 1;
+                    const mermaidContainer = document.getElementById('mermaid-container');
+
+                    document.getElementById('zoom-in').addEventListener('click', () => {
+                        scale = Math.min(scale + 0.2, 3);
+                        mermaidContainer.querySelector('.mermaid').style.transform = `scale(${scale})`;
+                    });
+
+                    document.getElementById('zoom-out').addEventListener('click', () => {
+                        scale = Math.max(scale - 0.2, 0.5);
+                        mermaidContainer.querySelector('.mermaid').style.transform = `scale(${scale})`;
+                    });
+
+                    document.getElementById('zoom-reset').addEventListener('click', () => {
+                        scale = 1;
+                        mermaidContainer.querySelector('.mermaid').style.transform = `scale(1)`;
+                    });
+                }
+            };
+
+            reader.readAsText(this.uploadedFile);
+        } catch (error) {
+            console.error('Error rendering architecture diagram:', error);
+            container.innerHTML = '<p class="placeholder">Failed to render architecture diagram</p>';
+        }
     }
 
     renderThreatChart() {
@@ -324,6 +394,8 @@ class Dashboard {
         if (window.threatChartInstance) {
             window.threatChartInstance.destroy();
         }
+
+        const isDark = document.body.classList.contains('dark-theme');
 
         window.threatChartInstance = new Chart(canvas, {
             type: 'bar',
@@ -341,13 +413,49 @@ class Dashboard {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { display: false }
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            color: isDark ? '#ffffff' : '#000000',
+                            generateLabels: () => [
+                                { text: 'High Risk (70-100)', fillStyle: '#e74c3c', strokeStyle: '#e74c3c' },
+                                { text: 'Medium Risk (50-69)', fillStyle: '#f39c12', strokeStyle: '#f39c12' },
+                                { text: 'Low Risk (0-49)', fillStyle: '#3498db', strokeStyle: '#3498db' }
+                            ]
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
+                        titleColor: isDark ? '#ffffff' : '#000000',
+                        bodyColor: isDark ? '#ffffff' : '#000000',
+                        borderColor: isDark ? '#00d4ff' : '#0066cc',
+                        borderWidth: 1
+                    }
                 },
                 scales: {
                     y: {
                         beginAtZero: true,
                         max: 100,
-                        title: { display: true, text: 'Risk Score' }
+                        title: {
+                            display: true,
+                            text: 'Risk Score',
+                            color: isDark ? '#ffffff' : '#000000'
+                        },
+                        ticks: {
+                            color: isDark ? '#b0b0b0' : '#4a4a4a'
+                        },
+                        grid: {
+                            color: isDark ? '#333333' : '#e0e0e0'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: isDark ? '#b0b0b0' : '#4a4a4a'
+                        },
+                        grid: {
+                            color: isDark ? '#333333' : '#e0e0e0'
+                        }
                     }
                 }
             }

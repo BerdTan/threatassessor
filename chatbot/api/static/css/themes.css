@@ -1,18 +1,18 @@
 /* ThreatAssessor Theme Styles - Redesigned for Professional Look */
 
-/* Dark Theme (Default) - True Black Background */
+/* Dark Theme (Default) - True Black Background, Softer Colors */
 body.dark-theme {
-    --primary-color: #00d4ff;
-    --primary-hover: #00b8e6;
-    --secondary-color: #00ff88;
-    --accent-color: #ff00ff;
-    --warning-color: #ffaa00;
-    --danger-color: #ff3366;
+    --primary-color: #4da6ff;
+    --primary-hover: #3d8ed9;
+    --secondary-color: #5fd49c;
+    --accent-color: #b366ff;
+    --warning-color: #ffb84d;
+    --danger-color: #ff6b8a;
 
     /* High contrast text colors */
-    --text-color: #ffffff;
-    --text-secondary: #b0b0b0;
-    --text-tertiary: #808080;
+    --text-color: #e8e8e8;
+    --text-secondary: #a0a0a0;
+    --text-tertiary: #707070;
 
     /* True black backgrounds with subtle gradients */
     --bg-color: #000000;
@@ -20,8 +20,8 @@ body.dark-theme {
     --sidebar-bg: #0a0a0a;
     --main-bg: #000000;
     --footer-bg: #0a0a0a;
-    --card-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    --border-color: #00d4ff33;
+    --card-bg: linear-gradient(135deg, #1a1a28 0%, #16202e 100%);
+    --border-color: #4da6ff33;
 
     /* Interactive states */
     --nav-hover-bg: #1a1a2e;
@@ -38,9 +38,9 @@ body.dark-theme {
     --progress-bg: #1a1a1a;
     --code-bg: #0a0a0a;
 
-    /* Glow effects */
-    --glow-primary: 0 0 20px rgba(0, 212, 255, 0.5);
-    --glow-secondary: 0 0 20px rgba(0, 255, 136, 0.5);
+    /* Glow effects - softer */
+    --glow-primary: 0 0 15px rgba(77, 166, 255, 0.3);
+    --glow-secondary: 0 0 15px rgba(95, 212, 156, 0.3);
 }
 
 /* Light Theme - High Contrast */
@@ -107,34 +107,34 @@ body.light-theme .pattern-card {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-/* Futuristic accents for dark theme */
+/* Futuristic accents for dark theme - softer */
 body.dark-theme .header {
-    border-bottom: 2px solid rgba(0, 212, 255, 0.3);
-    box-shadow: 0 4px 12px rgba(0, 212, 255, 0.1);
+    border-bottom: 2px solid rgba(77, 166, 255, 0.2);
+    box-shadow: 0 4px 12px rgba(77, 166, 255, 0.08);
 }
 
 body.dark-theme .sidebar {
-    border-right: 2px solid rgba(0, 212, 255, 0.2);
+    border-right: 2px solid rgba(77, 166, 255, 0.15);
 }
 
 body.dark-theme .nav-tab.active {
-    border-left: 3px solid #00d4ff;
-    box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.2);
+    border-left: 3px solid #4da6ff;
+    box-shadow: inset 0 0 15px rgba(77, 166, 255, 0.15);
 }
 
 body.dark-theme .progress-fill {
-    background: linear-gradient(90deg, #00d4ff, #00ff88);
-    box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+    background: linear-gradient(90deg, #4da6ff, #5fd49c);
+    box-shadow: 0 0 15px rgba(77, 166, 255, 0.3);
 }
 
 body.light-theme .progress-fill {
     background: linear-gradient(90deg, #0066cc, #00aa55);
 }
 
-/* Animated glow for active elements */
+/* Animated glow for active elements - softer */
 @keyframes glow-pulse {
-    0%, 100% { box-shadow: 0 0 10px rgba(0, 212, 255, 0.3); }
-    50% { box-shadow: 0 0 20px rgba(0, 212, 255, 0.6); }
+    0%, 100% { box-shadow: 0 0 8px rgba(77, 166, 255, 0.2); }
+    50% { box-shadow: 0 0 15px rgba(77, 166, 255, 0.4); }
 }
 
 body.dark-theme .stage.active {
