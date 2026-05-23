@@ -9,6 +9,9 @@ body.dark-theme {
     --warning-color: #ffb84d;
     --danger-color: #ff6b8a;
 
+    /* Button text color (black for dark theme bright buttons) */
+    --button-text-color: #000000;
+
     /* High contrast text colors */
     --text-color: #e8e8e8;
     --text-secondary: #a0a0a0;
@@ -51,6 +54,9 @@ body.light-theme {
     --accent-color: #cc00cc;
     --warning-color: #ff8800;
     --danger-color: #cc0033;
+
+    /* Button text color (override for light theme) */
+    --button-text-color: #ffffff;
 
     /* High contrast text colors */
     --text-color: #000000;

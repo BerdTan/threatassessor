@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/v1", tags=["streaming"])
 
 async def analyze_with_progress(
     architecture_path: str,
+    filename: str,
     include_validation: bool = True
 ) -> AsyncGenerator[str, None]:
     """
@@ -28,6 +29,7 @@ async def analyze_with_progress(
 
     Args:
         architecture_path: Path to architecture file
+        filename: Original uploaded filename
         include_validation: Run 6-check validation
 
     Yields:
@@ -41,7 +43,7 @@ async def analyze_with_progress(
         yield await SSEStream.send_progress(
             stage="parsing",
             progress=progress,
-            message=f"[PARSING] {progress}% - Analyzing architecture diagram structure...",
+            message=f"[PARSING] {progress}% - {filename} - Analyzing architecture diagram structure...",
             eta_seconds=tracker.get_eta(progress)
         )
 
@@ -52,7 +54,7 @@ async def analyze_with_progress(
         yield await SSEStream.send_progress(
             stage="parsing",
             progress=progress,
-            message=f"[PARSING] {progress}% - Validating Mermaid syntax...",
+            message=f"[PARSING] {progress}% - {filename} - Validating Mermaid syntax...",
             eta_seconds=tracker.get_eta(progress)
         )
 
@@ -61,26 +63,41 @@ async def analyze_with_progress(
         # Start analysis
         service = ThreatAnalysisService()
 
-        # Stage 2: MITRE Cache (10-20%)
+        # Stage 2: MITRE Cache (10-20%) - with incremental updates for large 44MB load
         progress = tracker.get_progress("mitre", 0.0)
         yield await SSEStream.send_progress(
             stage="mitre",
             progress=progress,
-            message=f"[MITRE] {progress}% - Loading MITRE ATT&CK cache (44MB)...",
+            message=f"[MITRE] {progress}% - {filename} - Loading MITRE ATT&CK cache (44MB)...",
             eta_seconds=tracker.get_eta(progress)
         )
 
         await asyncio.sleep(0.1)
 
-        progress = tracker.get_progress("mitre", 0.5)
+        # Incremental updates during cache load
+        for i in range(1, 5):
+            progress = tracker.get_progress("mitre", i * 0.2)
+            yield await SSEStream.send_progress(
+                stage="mitre",
+                progress=progress,
+                message=f"[MITRE] {progress}% - {filename} - Loading cache... ({i*25}% complete)",
+                eta_seconds=tracker.get_eta(progress)
+            )
+            await asyncio.sleep(0.05)
+
+        progress = tracker.get_progress("mitre", 0.9)
         yield await SSEStream.send_progress(
             stage="mitre",
             progress=progress,
-            message=f"[MITRE] {progress}% - Indexing 14 tactics, 196 techniques...",
+            message=f"[MITRE] {progress}% - {filename} - Indexing 14 tactics, 196 techniques...",
             eta_seconds=tracker.get_eta(progress)
         )
 
         await asyncio.sleep(0.1)
+
+        # Extract clean architecture name from uploaded filename
+        # Remove .mmd extension and sanitize
+        clean_arch_name = filename.replace('.mmd', '').replace('.', '_').replace(' ', '_')
 
         # Run analysis in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
@@ -88,6 +105,7 @@ async def analyze_with_progress(
             None,
             lambda: service.safe_execute(
                 architecture_path=architecture_path,
+                architecture_name=clean_arch_name,
                 include_validation=include_validation
             )
         )
@@ -98,6 +116,46 @@ async def analyze_with_progress(
                 detail=result.error
             )
             return
+
+        # Generate markdown reports (Executive, Technical, Action Plan)
+        yield await SSEStream.send_progress(
+            stage="reports",
+            progress=15,
+            message=f"📝 Generating markdown reports for {filename}...",
+            eta_seconds=5
+        )
+        await asyncio.sleep(0.1)
+
+        try:
+            from chatbot.modules.threat_report import generate_report_package
+
+            # Generate all reports (executive, technical, action plan, diagrams)
+            ground_truth = result.data.get("analysis", {})
+            report_paths = await loop.run_in_executor(
+                None,
+                lambda: generate_report_package(
+                    original_mmd_path=architecture_path,
+                    ground_truth=ground_truth,
+                    output_dir="report"
+                )
+            )
+
+            # Add report paths to result data
+            result.data["report_paths"] = report_paths
+
+            yield await SSEStream.send_progress(
+                stage="reports",
+                progress=18,
+                message=f"✅ Reports generated: Executive, Technical, Action Plan",
+                eta_seconds=3
+            )
+            await asyncio.sleep(0.1)
+
+        except Exception as e:
+            logger.warning(f"Report generation failed: {e}")
+            # Continue anyway - reports are supplementary
+            result.data["report_paths"] = None
+            result.data["report_error"] = str(e)
 
         # Extract pattern information
         patterns_applied = result.data.get("patterns_applied", [])
@@ -117,7 +175,7 @@ async def analyze_with_progress(
         yield await SSEStream.send_progress(
             stage="rapids",
             progress=progress,
-            message=f"[RAPIDS] {progress}% - Analyzing 6 threat categories...",
+            message=f"[RAPIDS] {progress}% - {filename} - Analyzing 6 threat categories...",
             eta_seconds=tracker.get_eta(progress),
             patterns_active=["rapids"]
         )
@@ -128,7 +186,7 @@ async def analyze_with_progress(
         yield await SSEStream.send_progress(
             stage="rapids",
             progress=progress,
-            message=f"[RAPIDS] {progress}% - Mapping MITRE techniques to components...",
+            message=f"[RAPIDS] {progress}% - {filename} - Mapping MITRE techniques to components...",
             eta_seconds=tracker.get_eta(progress),
             patterns_active=["rapids"]
         )
@@ -139,7 +197,7 @@ async def analyze_with_progress(
         yield await SSEStream.send_progress(
             stage="rapids",
             progress=progress,
-            message=f"[RAPIDS] {progress}% - Computing attack paths and defensibility...",
+            message=f"[RAPIDS] {progress}% - {filename} - Computing attack paths and defensibility...",
             eta_seconds=tracker.get_eta(progress),
             patterns_active=["rapids"]
         )
@@ -169,7 +227,7 @@ async def analyze_with_progress(
             yield await SSEStream.send_progress(
                 stage="ai_ml",
                 progress=progress,
-                message=f"[AI/ML] {progress}% - Detecting AI/ML components...",
+                message=f"[AI/ML] {progress}% - {filename} - Detecting AI/ML components...",
                 eta_seconds=tracker.get_eta(progress),
                 patterns_active=["rapids", "ai_ml_arc"]
             )
@@ -179,7 +237,7 @@ async def analyze_with_progress(
             yield await SSEStream.send_progress(
                 stage="ai_ml",
                 progress=progress,
-                message=f"[AI/ML] {progress}% - Analyzing ATLAS techniques + ARC risks...",
+                message=f"[AI/ML] {progress}% - {filename} - Analyzing ATLAS techniques + ARC risks...",
                 eta_seconds=tracker.get_eta(progress),
                 patterns_active=["rapids", "ai_ml_arc"]
             )
@@ -197,7 +255,7 @@ async def analyze_with_progress(
             yield await SSEStream.send_progress(
                 stage="validation",
                 progress=progress,
-                message=f"[VALIDATION] {progress}% - Running 6-check completeness validation...",
+                message=f"[VALIDATION] {progress}% - {filename} - Running 6-check completeness validation...",
                 eta_seconds=tracker.get_eta(progress),
                 patterns_active=["rapids"] + (["ai_ml_arc"] if has_ai_ml else [])
             )
@@ -207,7 +265,7 @@ async def analyze_with_progress(
             yield await SSEStream.send_progress(
                 stage="validation",
                 progress=progress,
-                message=f"[VALIDATION] {progress}% - Verifying technique coverage and orphan nodes...",
+                message=f"[VALIDATION] {progress}% - {filename} - Verifying technique coverage and orphan nodes...",
                 eta_seconds=tracker.get_eta(progress),
                 patterns_active=["rapids"] + (["ai_ml_arc"] if has_ai_ml else [])
             )
@@ -217,7 +275,7 @@ async def analyze_with_progress(
         yield await SSEStream.send_progress(
             stage="complete",
             progress=100,
-            message="✅ Analysis complete! All reports generated.",
+            message=f"✅ {filename} - Analysis complete! All reports generated.",
             eta_seconds=0
         )
 
@@ -320,7 +378,7 @@ async def analyze_architecture_stream(
 
     try:
         return StreamingResponse(
-            analyze_with_progress(tmp_path, include_validation),
+            analyze_with_progress(tmp_path, architecture_file.filename, include_validation),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

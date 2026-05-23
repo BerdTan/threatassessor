@@ -5,11 +5,22 @@ Endpoints for accessing generated analysis reports.
 """
 
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Query
 from fastapi.responses import FileResponse, JSONResponse
 from typing import List, Dict
+from chatbot.modules.mitre import MitreHelper
 
 router = APIRouter(prefix="/api/v1", tags=["reports"])
+
+# Cache MITRE helper instance
+_mitre_helper = None
+
+def get_mitre_helper() -> MitreHelper:
+    """Get cached MITRE helper instance."""
+    global _mitre_helper
+    if _mitre_helper is None:
+        _mitre_helper = MitreHelper()
+    return _mitre_helper
 
 
 def get_report_dir() -> Path:
@@ -109,6 +120,7 @@ async def list_reports(architecture_name: str):
         if file.is_file():
             file_type = "json" if file.suffix == ".json" else \
                        "markdown" if file.suffix == ".md" else \
+                       "mermaid" if file.suffix == ".mmd" else \
                        "text"
 
             reports.append({
@@ -228,3 +240,57 @@ async def get_report_summary(architecture_name: str):
     )
 
     return summary
+
+
+@router.get("/techniques")
+async def get_technique_names(technique_ids: str = Query(..., description="Comma-separated technique IDs (e.g., T1566,T1078,T1059)")):
+    """
+    Get MITRE ATT&CK technique names for given IDs.
+
+    This reduces API calls and keeps users on dashboard instead of clicking to MITRE site.
+
+    Args:
+        technique_ids: Comma-separated technique IDs
+
+    Returns:
+        Dictionary mapping technique IDs to names
+
+    Example:
+        GET /api/v1/techniques?technique_ids=T1566,T1078,T1059
+
+        Response:
+        ```json
+        {
+          "techniques": {
+            "T1566": "Phishing",
+            "T1078": "Valid Accounts",
+            "T1059": "Command and Scripting Interpreter"
+          }
+        }
+        ```
+    """
+    mitre = get_mitre_helper()
+
+    ids = [tid.strip() for tid in technique_ids.split(',') if tid.strip()]
+
+    if not ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No technique IDs provided"
+        )
+
+    if len(ids) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Too many technique IDs (max 100)"
+        )
+
+    result = {}
+    for tid in ids:
+        tech = mitre.find_technique(tid)
+        if tech:
+            result[tid] = tech.get('name', 'Unknown')
+        else:
+            result[tid] = f"Unknown ({tid})"
+
+    return {"techniques": result}

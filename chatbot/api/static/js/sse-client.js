@@ -23,15 +23,35 @@ class SSEClient {
 
     async connect() {
         // Get API key from localStorage or prompt user
-        const apiKey = localStorage.getItem('tm_api_key') || prompt('Enter TM-API-KEY:');
+        let apiKey = localStorage.getItem('tm_api_key');
+
         if (!apiKey) {
-            alert('API key is required');
-            return;
+            // Show better prompt
+            apiKey = prompt(
+                '🔑 API Key Required\n\n' +
+                'Please enter your TM-API-KEY.\n\n' +
+                'You can find this in your .env file:\n' +
+                'API_KEY=your-key-here'
+            );
+
+            if (!apiKey) {
+                const error = {
+                    message: 'API key is required',
+                    detail: 'Please provide a valid API key to use the ThreatAssessor API'
+                };
+                this.emit('error', error);
+                return;
+            }
+
+            // Save for future requests
+            localStorage.setItem('tm_api_key', apiKey);
+            console.log('✅ API key saved to localStorage');
         }
-        localStorage.setItem('tm_api_key', apiKey);
 
         // Upload file and get streaming response
         try {
+            console.log(`[SSE] Connecting to ${this.endpoint} with API key...`);
+
             const response = await fetch(this.endpoint, {
                 method: 'POST',
                 headers: {
@@ -41,9 +61,27 @@ class SSEClient {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Request failed');
+                // Handle different error types
+                let errorDetail = 'Request failed';
+
+                try {
+                    const error = await response.json();
+                    errorDetail = error.detail || error.message || 'Request failed';
+                } catch (e) {
+                    errorDetail = `HTTP ${response.status}: ${response.statusText}`;
+                }
+
+                // If 401 Unauthorized, clear saved API key
+                if (response.status === 401) {
+                    console.error('❌ API key is invalid or missing');
+                    localStorage.removeItem('tm_api_key');
+                    errorDetail += '\n\nYour API key is invalid. Please check your .env file and try again.';
+                }
+
+                throw new Error(errorDetail);
             }
+
+            console.log('✅ SSE connection established');
 
             // Read SSE stream
             const reader = response.body.getReader();

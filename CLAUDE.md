@@ -8,8 +8,18 @@
 
 ## Primary Commands
 
+**Web Dashboard (Recommended):**
 ```bash
-# Comprehensive analysis with MoE validation (recommended)
+# Start API server
+./scripts/api_start.sh
+
+# Access dashboard: http://localhost:8000/dashboard
+# API docs: http://localhost:8000/docs
+```
+
+**CLI Analysis:**
+```bash
+# Comprehensive analysis with MoE validation
 ./demo_expert_llm.sh your_architecture.mmd
 
 # Quick deterministic validation (no LLM)
@@ -91,6 +101,21 @@ chatbot/data/*.json          # Large data files (44MB + 45MB)
 
 ## Quick Troubleshooting
 
+**API Management:**
+```bash
+# Check API status
+./scripts/api_status.sh
+
+# Stop API (graceful or force kill)
+./scripts/api_stop.sh
+
+# Restart API
+./scripts/api_restart.sh
+
+# View logs
+tail -f logs/api.log
+```
+
 **Orphan nodes detected:**
 ```bash
 python3 scripts/validation/check_orphans.py architecture_name
@@ -132,4 +157,4 @@ python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.
 ---
 
 **Purpose:** AI assistant context + developer quick reference  
-**Last Updated:** 2026-05-21
+**Last Updated:** 2026-05-23

@@ -10,13 +10,19 @@ import tempfile
 import os
 from pathlib import Path
 from datetime import datetime
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status
-from fastapi.responses import JSONResponse, HTMLResponse
+from dotenv import load_dotenv
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status, Request
+from fastapi.responses import JSONResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from chatbot.services import ThreatAnalysisService
 from chatbot.api.dependencies import verify_api_key
 from chatbot.api.models.responses import AnalyzeResponse, HealthResponse, ErrorResponse
+
+# Load environment variables
+load_dotenv()
 
 
 def create_app() -> FastAPI:
@@ -26,6 +32,12 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI app
     """
+    # Preload MITRE cache at startup (avoid first-request delay)
+    from chatbot.modules.mitre import MitreHelper
+    print("🔄 Preloading MITRE ATT&CK cache (44MB)...")
+    _preload_cache = MitreHelper()
+    print(f"✅ MITRE cache loaded: {len(_preload_cache.techniques)} techniques, {len(_preload_cache.tactics)} tactics")
+
     app = FastAPI(
         title="ThreatAssessor API",
         version="1.3.0",
@@ -259,18 +271,83 @@ Run deterministic threat analysis (Team 1: ThreatAnalysisService).
             except Exception:
                 pass  # Best effort cleanup
 
-    # Mount static files
+    # Mount static files with cache control
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
-        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+        app.mount("/static", StaticFiles(directory=str(static_dir), html=False), name="static")
 
-    # Dashboard endpoint
+    # Add cache control middleware for static files
+    @app.middleware("http")
+    async def add_cache_control_headers(request, call_next):
+        """Add cache control headers to prevent stale JS/CSS."""
+        response = await call_next(request)
+
+        # Static files should not be cached during development (allow Ctrl+F5)
+        if request.url.path.startswith("/static/"):
+            # Allow caching but require revalidation (Ctrl+F5 will refresh)
+            response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
+            response.headers["ETag"] = f'"{hash(request.url.path)}"'
+
+        return response
+
+    # Custom 404 handler for static files (prevent HTML being served as JS/CSS)
+    @app.exception_handler(404)
+    async def custom_404_handler(request: Request, exc: StarletteHTTPException):
+        """Return proper 404 response based on request type."""
+        # If requesting static file, return plain text (not HTML)
+        if request.url.path.startswith("/static/"):
+            return PlainTextResponse(
+                content=f"Static file not found: {request.url.path}",
+                status_code=404
+            )
+
+        # For API requests, return JSON
+        if request.url.path.startswith("/api/"):
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "type": "https://api.threatassessor.example.com/errors/not-found",
+                    "title": "Not Found",
+                    "status": 404,
+                    "detail": f"The requested endpoint does not exist: {request.url.path}",
+                    "instance": request.url.path
+                }
+            )
+
+        # For dashboard requests, return HTML
+        return HTMLResponse(
+            content=f"<h1>404 Not Found</h1><p>Page not found: {request.url.path}</p>",
+            status_code=404
+        )
+
+    # Dashboard endpoint with cache busting
+    _startup_time = str(int(datetime.utcnow().timestamp()))
+
     @app.get("/dashboard", response_class=HTMLResponse, tags=["dashboard"])
     async def dashboard():
-        """Serve the ThreatAssessor dashboard UI."""
+        """Serve the ThreatAssessor dashboard UI with cache busting."""
         index_path = static_dir / "index.html"
         if index_path.exists():
-            return index_path.read_text()
+            html_content = index_path.read_text()
+
+            # Add cache-busting version parameter to static file URLs
+            # This changes on every server restart, forcing Ctrl+F5 to work
+            import re
+            # Replace all static file references with version parameter
+            html_content = re.sub(
+                r'(src|href)="(/static/[^"]+)"',
+                rf'\1="\2?v={_startup_time}"',
+                html_content
+            )
+
+            return HTMLResponse(
+                content=html_content,
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
         return "<h1>Dashboard not found</h1><p>Static files may not be properly configured.</p>"
 
     @app.get("/", response_class=HTMLResponse, tags=["dashboard"])

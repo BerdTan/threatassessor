@@ -38,7 +38,8 @@ ENTRY_TECHNIQUES = {
         "with_mfa": ["T1621"],  # Multi-Factor Authentication Request Generation
     },
     "mobile": {
-        "default": ["T1476", "T1078"],  # Malicious Apps, Valid Accounts
+        "default": ["T1566", "T1078"],  # Phishing (mobile), Valid Accounts
+        "note": "T1566.002 (Spearphishing Link) and T1078 for compromised mobile credentials"
     },
     "partner": {
         "default": ["T1199", "T1078"],  # Trusted Relationship, Valid Accounts
@@ -354,7 +355,6 @@ def get_technique_tactic(technique_id: str) -> str:
         "T1133": "Initial Access",
         "T1566": "Initial Access",
         "T1078": "Initial Access",
-        "T1476": "Initial Access",
         "T1199": "Initial Access",
         "T1195": "Initial Access",
         "T1621": "Credential Access",
