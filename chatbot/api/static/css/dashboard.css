@@ -56,19 +56,22 @@ body {
 
 .badge-primary {
     background: linear-gradient(135deg, #00d4ff, #0088ff);
-    color: white;
+    color: #000000;
+    font-weight: 700;
     box-shadow: 0 2px 8px rgba(0, 212, 255, 0.4);
 }
 
 .badge-ai {
     background: linear-gradient(135deg, #00ff88, #00cc66);
-    color: black;
+    color: #000000;
+    font-weight: 700;
     box-shadow: 0 2px 8px rgba(0, 255, 136, 0.4);
 }
 
 .badge-cloud {
     background: linear-gradient(135deg, #ff00ff, #cc00cc);
-    color: white;
+    color: #ffffff;
+    font-weight: 700;
     box-shadow: 0 2px 8px rgba(255, 0, 255, 0.4);
 }
 
@@ -339,13 +342,13 @@ body {
 /* Buttons */
 .btn-primary {
     background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-    color: white;
+    color: #000000;  /* Always black text for readability on bright gradient */
     border: none;
     padding: 0.625rem 1.25rem;
     border-radius: 8px;
     cursor: pointer;
     font-size: 0.875rem;
-    font-weight: 600;
+    font-weight: 700;
     transition: all 0.2s;
     box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3);
 }
@@ -363,6 +366,7 @@ body {
 .btn-icon {
     background: transparent;
     border: 1px solid var(--border-color);
+    color: var(--text-color);  /* Use theme text color */
     padding: 0.5rem 0.75rem;
     border-radius: 8px;
     cursor: pointer;
@@ -374,6 +378,7 @@ body {
     background: var(--icon-hover-bg);
     border-color: var(--primary-color);
     box-shadow: var(--glow-primary);
+    color: var(--primary-color);
 }
 
 /* Cards */

@@ -534,10 +534,178 @@ class Dashboard {
         // Render AI/ML risk chart (similar to threat chart)
     }
 
-    loadReportsTab() {
-        // Reports list - simplified for now
+    async loadReportsTab() {
+        if (!this.analysisData) return;
+
+        const archName = this.analysisData.architecture_name;
         const listContainer = document.getElementById('reports-list');
-        listContainer.innerHTML = '<p>Generated reports will be listed here</p>';
+
+        listContainer.innerHTML = '<p class="placeholder">Loading reports...</p>';
+
+        try {
+            const response = await fetch(`/api/v1/reports/${archName}`);
+            if (!response.ok) {
+                throw new Error('Failed to load reports');
+            }
+
+            const data = await response.json();
+            this.renderReportsList(data);
+        } catch (error) {
+            console.error('Error loading reports:', error);
+            listContainer.innerHTML = `
+                <p class="placeholder" style="color: var(--danger-color);">
+                    Failed to load reports: ${error.message}
+                </p>
+            `;
+        }
+    }
+
+    renderReportsList(data) {
+        const listContainer = document.getElementById('reports-list');
+
+        if (!data.reports || data.reports.length === 0) {
+            listContainer.innerHTML = '<p class="placeholder">No reports generated yet</p>';
+            return;
+        }
+
+        listContainer.innerHTML = `
+            <h4>Generated Reports (${data.count})</h4>
+            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+                Click on a report to view contents
+            </p>
+        `;
+
+        // Group reports by type
+        const mdReports = data.reports.filter(r => r.type === 'markdown');
+        const jsonFiles = data.reports.filter(r => r.type === 'json');
+        const otherFiles = data.reports.filter(r => r.type === 'text');
+
+        // Render markdown reports
+        if (mdReports.length > 0) {
+            const section = document.createElement('div');
+            section.style.marginBottom = '1.5rem';
+            section.innerHTML = '<h5 style="margin-bottom: 0.75rem; color: var(--primary-color);">📄 Analysis Reports</h5>';
+
+            mdReports.forEach(report => {
+                const item = this.createReportItem(report, data.architecture);
+                section.appendChild(item);
+            });
+
+            listContainer.appendChild(section);
+        }
+
+        // Render JSON files
+        if (jsonFiles.length > 0) {
+            const section = document.createElement('div');
+            section.style.marginBottom = '1.5rem';
+            section.innerHTML = '<h5 style="margin-bottom: 0.75rem; color: var(--primary-color);">📊 Data Files</h5>';
+
+            jsonFiles.forEach(report => {
+                const item = this.createReportItem(report, data.architecture);
+                section.appendChild(item);
+            });
+
+            listContainer.appendChild(section);
+        }
+    }
+
+    createReportItem(report, archName) {
+        const item = document.createElement('div');
+        item.className = 'list-item';
+
+        const sizeKB = (report.size / 1024).toFixed(1);
+        const icon = report.type === 'markdown' ? '📝' :
+                    report.type === 'json' ? '📊' : '📄';
+
+        item.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 600;">${icon} ${report.filename}</div>
+                    <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                        ${sizeKB} KB · ${report.type}
+                    </div>
+                </div>
+                <button class="btn-icon" style="padding: 0.25rem 0.5rem;" title="Download">
+                    ⬇
+                </button>
+            </div>
+        `;
+
+        item.addEventListener('click', async (e) => {
+            // Remove active from all items
+            document.querySelectorAll('#reports-list .list-item').forEach(el => el.classList.remove('active'));
+            item.classList.add('active');
+
+            await this.loadReportContent(archName, report);
+        });
+
+        // Download button
+        const downloadBtn = item.querySelector('.btn-icon');
+        downloadBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.open(report.url, '_blank');
+        });
+
+        return item;
+    }
+
+    async loadReportContent(archName, report) {
+        try {
+            const response = await fetch(`/api/v1/reports/${archName}/files/${report.filename}`);
+            if (!response.ok) {
+                throw new Error('Failed to load report content');
+            }
+
+            if (report.type === 'json') {
+                const data = await response.json();
+                const jsonStr = JSON.stringify(data, null, 2);
+                const content = `
+                    <div style="margin-bottom: 1rem;">
+                        <a href="${report.url}" target="_blank" class="btn-primary" style="display: inline-block; text-decoration: none;">
+                            ⬇ Download JSON
+                        </a>
+                    </div>
+                    <div style="padding: 1rem; background: var(--code-bg); border-radius: 8px; border: 1px solid var(--border-color); overflow-x: auto; max-height: 70vh; overflow-y: auto;">
+                        <pre style="margin: 0;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>
+                    </div>
+                `;
+                this.showRightPane(report.filename, content);
+
+                // Apply syntax highlighting
+                if (window.hljs) {
+                    const rightPane = document.getElementById('right-pane-content');
+                    const codeBlock = rightPane.querySelector('code');
+                    if (codeBlock) {
+                        hljs.highlightElement(codeBlock);
+                    }
+                }
+            } else {
+                // Markdown
+                const text = await response.text();
+                let content = `
+                    <div style="margin-bottom: 1rem;">
+                        <a href="${report.url}" target="_blank" class="btn-primary" style="display: inline-block; text-decoration: none;">
+                            ⬇ Download Report
+                        </a>
+                    </div>
+                    <div style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); max-height: 70vh; overflow-y: auto;">
+                `;
+
+                // Render markdown as HTML
+                if (window.marked) {
+                    content += marked.parse(text);
+                } else {
+                    content += `<pre style="white-space: pre-wrap; word-wrap: break-word;">${this.escapeHtml(text)}</pre>`;
+                }
+
+                content += '</div>';
+
+                this.showRightPane(report.filename, content);
+            }
+        } catch (error) {
+            console.error('Error loading report content:', error);
+            this.showRightPane('Error', `<p style="color: var(--danger-color);">Failed to load report: ${error.message}</p>`);
+        }
     }
 
     loadRawDataTab() {

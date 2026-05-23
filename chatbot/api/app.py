@@ -288,8 +288,9 @@ Run deterministic threat analysis (Team 1: ThreatAnalysisService).
         """
 
     # Include routers
-    from chatbot.api.routes import streaming_router
+    from chatbot.api.routes import streaming_router, reports_router
     app.include_router(streaming_router)
+    app.include_router(reports_router)
 
     return app
 
