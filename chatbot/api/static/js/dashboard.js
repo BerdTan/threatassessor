@@ -519,22 +519,26 @@ class Dashboard {
         listContainer.innerHTML = `
             <h4>Attack Paths Discovered: ${sortedPaths.length}</h4>
             <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
-                Click on a path to see detailed traversal through the architecture
+                Click on a path to see summary. Click steps in detail pane to see techniques.
             </p>
         `;
 
         sortedPaths.forEach((path, index) => {
             const item = document.createElement('div');
             item.className = 'list-item';
+            item.dataset.pathId = path.id;
 
             const criticalityColor =
                 path.criticality_tier === 'HIGH' ? 'var(--danger-color)' :
                 path.criticality_tier === 'MEDIUM' ? 'var(--warning-color)' :
                 'var(--secondary-color)';
 
+            // Create summary section (collapsed by default)
+            const summaryId = `summary-${path.id}`;
+
             item.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
+                <div class="path-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
+                    <div style="flex: 1;">
                         <strong style="font-size: 1.125rem;">${path.id}</strong>
                         <div style="color: var(--text-secondary); margin-top: 0.25rem;">
                             ${path.entry} → ${path.target}
@@ -543,27 +547,127 @@ class Dashboard {
                             ${path.hop_count} hops · ${path.techniques?.length || 0} techniques
                         </div>
                     </div>
-                    <div style="padding: 0.25rem 0.75rem; background: ${criticalityColor}22; color: ${criticalityColor}; border-radius: 8px; font-weight: 700; font-size: 0.75rem;">
-                        ${path.criticality_tier || 'MEDIUM'}
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <div style="padding: 0.25rem 0.75rem; background: ${criticalityColor}22; color: ${criticalityColor}; border-radius: 8px; font-weight: 700; font-size: 0.75rem;">
+                            ${path.criticality_tier || 'MEDIUM'}
+                        </div>
+                        <span class="expand-icon" style="font-size: 1.25rem; transition: transform 0.2s;">▼</span>
                     </div>
                 </div>
+                <div id="${summaryId}" class="path-summary" style="display: none; margin-top: 1rem; padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px; border-left: 4px solid ${criticalityColor};">
+                    <h5 style="margin-bottom: 0.75rem; color: var(--primary-color);">Path Summary</h5>
+                    <div style="margin-bottom: 0.75rem;">
+                        <strong>Route:</strong> ${path.path.join(' → ')}
+                    </div>
+                    ${path.rationale ? `
+                        <div style="margin-bottom: 0.75rem;">
+                            <strong>Analysis:</strong><br>
+                            <span style="color: var(--text-secondary); font-size: 0.875rem;">${path.rationale}</span>
+                        </div>
+                    ` : ''}
+                    <button class="btn-primary" style="margin-top: 0.5rem; font-size: 0.875rem;">
+                        View Step-by-Step Details →
+                    </button>
+                </div>
             `;
-            item.addEventListener('click', () => {
+
+            // Toggle summary on header click
+            const header = item.querySelector('.path-header');
+            const summary = item.querySelector('.path-summary');
+            const expandIcon = item.querySelector('.expand-icon');
+
+            header.addEventListener('click', (e) => {
+                if (e.target.closest('.btn-primary')) return; // Don't toggle if clicking button
+
+                const isExpanded = summary.style.display === 'block';
+                summary.style.display = isExpanded ? 'none' : 'block';
+                expandIcon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';
+            });
+
+            // Show details on button click
+            const detailBtn = item.querySelector('.btn-primary');
+            detailBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+
                 // Remove active class from all items
                 listContainer.querySelectorAll('.list-item').forEach(el => el.classList.remove('active'));
                 item.classList.add('active');
+
                 this.showAttackPathDetail(path);
             });
+
             listContainer.appendChild(item);
         });
     }
 
     showAttackPathDetail(path) {
-        // Show in right pane
+        // Get per-node techniques
+        const perNodeTechniques = path.per_node_techniques || {};
+
+        // Build step-by-step HTML with clickable steps
+        const stepsHtml = path.path.map((node, idx) => {
+            const stepTechniques = perNodeTechniques[node] || [];
+            const stepId = `step-${path.id}-${idx}`;
+
+            return `
+                <div class="attack-step" data-step="${idx}" style="margin-bottom: 0.75rem;">
+                    <div class="step-header" style="display: flex; align-items: center; cursor: pointer; padding: 0.75rem; background: ${
+                        idx === 0 ? 'var(--danger-color)15' :
+                        idx === path.path.length - 1 ? 'var(--warning-color)15' :
+                        'var(--nav-hover-bg)'
+                    }; border-radius: 8px; border-left: 4px solid ${
+                        idx === 0 ? 'var(--danger-color)' :
+                        idx === path.path.length - 1 ? 'var(--warning-color)' :
+                        'var(--primary-color)'
+                    }; transition: all 0.2s;" onmouseover="this.style.background='var(--list-hover-bg)'" onmouseout="this.style.background='${
+                        idx === 0 ? 'var(--danger-color)15' :
+                        idx === path.path.length - 1 ? 'var(--warning-color)15' :
+                        'var(--nav-hover-bg)'
+                    }'">
+                        <div style="background: var(--primary-color); color: black; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1rem; margin-right: 0.75rem; flex-shrink: 0;">
+                            ${idx + 1}
+                        </div>
+                        <div style="flex: 1;">
+                            <strong style="font-size: 1rem;">${node}</strong>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                ${stepTechniques.length} technique${stepTechniques.length !== 1 ? 's' : ''}
+                                ${idx === 0 ? ' · <span style="color: var(--danger-color);">Entry Point</span>' : ''}
+                                ${idx === path.path.length - 1 ? ' · <span style="color: var(--warning-color);">Target</span>' : ''}
+                            </div>
+                        </div>
+                        <span class="expand-arrow" style="font-size: 1.25rem; color: var(--primary-color); transition: transform 0.2s;">▶</span>
+                    </div>
+                    <div id="${stepId}" class="step-details" style="display: none; margin-top: 0.5rem; padding: 1rem; background: var(--code-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                        ${stepTechniques.length > 0 ? `
+                            <h5 style="margin-bottom: 0.75rem; color: var(--primary-color); font-size: 0.9375rem;">Techniques Used at This Step:</h5>
+                            ${stepTechniques.map(tech => `
+                                <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; border-left: 3px solid var(--primary-color);">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <code style="font-weight: 700; color: var(--primary-color); font-size: 0.875rem;">${tech}</code>
+                                        <a href="https://attack.mitre.org/techniques/${tech}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none;">
+                                            🔗 MITRE
+                                        </a>
+                                    </div>
+                                    <div style="font-size: 0.875rem; color: var(--text-secondary);">
+                                        Click "MITRE" link to view full technique details on MITRE ATT&CK website
+                                    </div>
+                                </div>
+                            `).join('')}
+                        ` : `
+                            <p style="color: var(--text-tertiary); font-style: italic; font-size: 0.875rem;">
+                                No specific techniques mapped to this step
+                            </p>
+                        `}
+                    </div>
+                </div>
+                ${idx < path.path.length - 1 ? '<div style="margin-left: 16px; width: 2px; height: 16px; background: var(--border-color);"></div>' : ''}
+            `;
+        }).join('');
+
         const pathHtml = `
             <div style="margin-bottom: 1.5rem;">
                 <div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">${path.id}</div>
-                <div style="padding: 0.5rem 1rem; background: ${
+                <div style="padding: 0.75rem 1rem; background: ${
                     path.criticality_tier === 'HIGH' ? 'var(--danger-color)22' :
                     path.criticality_tier === 'MEDIUM' ? 'var(--warning-color)22' :
                     'var(--secondary-color)22'
@@ -571,32 +675,30 @@ class Dashboard {
                     path.criticality_tier === 'HIGH' ? 'var(--danger-color)' :
                     path.criticality_tier === 'MEDIUM' ? 'var(--warning-color)' :
                     'var(--secondary-color)'
-                }; border-radius: 4px;">
+                }; border-radius: 6px;">
                     <strong>Criticality:</strong> ${path.criticality_tier || 'MEDIUM'}
                 </div>
             </div>
 
-            <div style="margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">Attack Path Traversal</h4>
-                <div style="padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
-                    ${path.path.map((node, idx) => `
-                        <div style="display: flex; align-items: center; margin-bottom: ${idx < path.path.length - 1 ? '0.75rem' : '0'};">
-                            <div style="background: var(--primary-color); color: black; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.875rem; margin-right: 0.75rem;">
-                                ${idx + 1}
-                            </div>
-                            <div style="flex: 1; padding: 0.5rem 1rem; background: ${idx === 0 ? 'var(--danger-color)22' : idx === path.path.length - 1 ? 'var(--warning-color)22' : 'var(--nav-hover-bg)'}; border-radius: 6px;">
-                                <strong>${node}</strong>
-                                ${idx === 0 ? ' <span style="color: var(--danger-color);">(Entry)</span>' : ''}
-                                ${idx === path.path.length - 1 ? ' <span style="color: var(--warning-color);">(Target)</span>' : ''}
-                            </div>
-                        </div>
-                        ${idx < path.path.length - 1 ? '<div style="margin-left: 14px; width: 2px; height: 20px; background: var(--border-color);"></div>' : ''}
-                    `).join('')}
+            ${path.rationale ? `
+                <div style="margin-bottom: 1.5rem;">
+                    <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">Overall Analysis</h4>
+                    <div style="padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px; border-left: 4px solid var(--primary-color); font-size: 0.875rem; line-height: 1.6;">
+                        ${path.rationale}
+                    </div>
                 </div>
+            ` : ''}
+
+            <div style="margin-bottom: 1.5rem;">
+                <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">Step-by-Step Traversal</h4>
+                <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                    Click on each step to see the techniques used
+                </p>
+                ${stepsHtml}
             </div>
 
             <div style="margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">MITRE ATT&CK Techniques (${path.techniques?.length || 0})</h4>
+                <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">All Techniques (${path.techniques?.length || 0})</h4>
                 <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
                     ${(path.techniques || []).map(t => `
                         <span style="padding: 0.375rem 0.75rem; background: var(--nav-active-bg); border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.875rem; font-family: monospace;">
@@ -605,18 +707,25 @@ class Dashboard {
                     `).join('')}
                 </div>
             </div>
-
-            ${path.rationale ? `
-                <div style="margin-bottom: 1.5rem;">
-                    <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">Analysis</h4>
-                    <div style="padding: 1rem; background: var(--code-bg); border-radius: 8px; border-left: 4px solid var(--primary-color); font-size: 0.875rem; line-height: 1.6;">
-                        ${path.rationale}
-                    </div>
-                </div>
-            ` : ''}
         `;
 
         this.showRightPane(`Attack Path: ${path.entry} → ${path.target}`, pathHtml);
+
+        // Add click handlers for steps
+        setTimeout(() => {
+            const steps = document.querySelectorAll('.attack-step');
+            steps.forEach(step => {
+                const header = step.querySelector('.step-header');
+                const details = step.querySelector('.step-details');
+                const arrow = step.querySelector('.expand-arrow');
+
+                header.addEventListener('click', () => {
+                    const isExpanded = details.style.display === 'block';
+                    details.style.display = isExpanded ? 'none' : 'block';
+                    arrow.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(90deg)';
+                });
+            });
+        }, 100);
     }
 
     loadControlsTab() {
