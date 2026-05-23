@@ -650,57 +650,79 @@ class Dashboard {
     }
 
     async loadReportContent(archName, report) {
+        // Determine if file is large (needs streaming)
+        const isLarge = report.size > 50000; // 50KB threshold
+        const sizeKB = (report.size / 1024).toFixed(1);
+
         try {
+            // Show right pane with loading state first
+            const loadingContent = `
+                <div style="margin-bottom: 1rem;">
+                    <a href="${report.url}" target="_blank" class="btn-primary" style="display: inline-block; text-decoration: none;">
+                        ⬇ Download ${report.type === 'json' ? 'JSON' : 'Report'}
+                    </a>
+                    <span style="margin-left: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                        ${sizeKB} KB ${isLarge ? '(Streaming...)' : ''}
+                    </span>
+                </div>
+                <div id="streaming-container" style="
+                    padding: 1rem;
+                    background: var(--code-bg);
+                    border-radius: 8px;
+                    border: 1px solid var(--border-color);
+                    max-height: 70vh;
+                    overflow-y: auto;
+                ">
+                </div>
+            `;
+
+            this.showRightPane(report.filename, loadingContent);
+
+            // Fetch content
             const response = await fetch(`/api/v1/reports/${archName}/files/${report.filename}`);
             if (!response.ok) {
                 throw new Error('Failed to load report content');
             }
 
+            // Initialize streaming renderer
+            const renderer = new StreamingRenderer('streaming-container');
+
             if (report.type === 'json') {
                 const data = await response.json();
-                const jsonStr = JSON.stringify(data, null, 2);
-                const content = `
-                    <div style="margin-bottom: 1rem;">
-                        <a href="${report.url}" target="_blank" class="btn-primary" style="display: inline-block; text-decoration: none;">
-                            ⬇ Download JSON
-                        </a>
-                    </div>
-                    <div style="padding: 1rem; background: var(--code-bg); border-radius: 8px; border: 1px solid var(--border-color); overflow-x: auto; max-height: 70vh; overflow-y: auto;">
-                        <pre style="margin: 0;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>
-                    </div>
-                `;
-                this.showRightPane(report.filename, content);
 
-                // Apply syntax highlighting
-                if (window.hljs) {
-                    const rightPane = document.getElementById('right-pane-content');
-                    const codeBlock = rightPane.querySelector('code');
-                    if (codeBlock) {
-                        hljs.highlightElement(codeBlock);
+                if (isLarge) {
+                    // Stream large JSON line-by-line
+                    await renderer.streamJSON(data, 5);
+                } else {
+                    // Render small JSON immediately
+                    const jsonStr = JSON.stringify(data, null, 2);
+                    const container = document.getElementById('streaming-container');
+                    container.innerHTML = `<pre style="margin: 0;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>`;
+
+                    if (window.hljs) {
+                        const codeBlock = container.querySelector('code');
+                        if (codeBlock) hljs.highlightElement(codeBlock);
                     }
                 }
             } else {
                 // Markdown
                 const text = await response.text();
-                let content = `
-                    <div style="margin-bottom: 1rem;">
-                        <a href="${report.url}" target="_blank" class="btn-primary" style="display: inline-block; text-decoration: none;">
-                            ⬇ Download Report
-                        </a>
-                    </div>
-                    <div style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); max-height: 70vh; overflow-y: auto;">
-                `;
 
-                // Render markdown as HTML
-                if (window.marked) {
-                    content += marked.parse(text);
+                if (isLarge) {
+                    // Stream large markdown
+                    await renderer.streamMarkdown(text, true);
                 } else {
-                    content += `<pre style="white-space: pre-wrap; word-wrap: break-word;">${this.escapeHtml(text)}</pre>`;
+                    // Render small markdown immediately
+                    const container = document.getElementById('streaming-container');
+                    container.style.padding = '1.5rem';
+                    container.style.background = 'var(--card-bg)';
+
+                    if (window.marked) {
+                        container.innerHTML = marked.parse(text);
+                    } else {
+                        container.innerHTML = `<pre style="white-space: pre-wrap; word-wrap: break-word;">${this.escapeHtml(text)}</pre>`;
+                    }
                 }
-
-                content += '</div>';
-
-                this.showRightPane(report.filename, content);
             }
         } catch (error) {
             console.error('Error loading report content:', error);
@@ -726,21 +748,45 @@ class Dashboard {
         });
     }
 
-    showArtifact(artifact) {
+    async showArtifact(artifact) {
         const jsonStr = JSON.stringify(artifact.data, null, 2);
+        const sizeKB = (jsonStr.length / 1024).toFixed(1);
+        const isLarge = jsonStr.length > 50000;
+
+        // Show right pane with container
         const content = `
-            <div style="padding: 1rem; background: var(--code-bg); border-radius: 8px; border: 1px solid var(--border-color); overflow-x: auto;">
-                <pre style="margin: 0;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>
+            <div style="margin-bottom: 1rem;">
+                <span style="color: var(--text-secondary); font-size: 0.875rem;">
+                    ${sizeKB} KB ${isLarge ? '(Streaming...)' : ''}
+                </span>
+            </div>
+            <div id="streaming-container" style="
+                padding: 1rem;
+                background: var(--code-bg);
+                border-radius: 8px;
+                border: 1px solid var(--border-color);
+                overflow-x: auto;
+                max-height: 70vh;
+                overflow-y: auto;
+            ">
             </div>
         `;
         this.showRightPane(artifact.name, content);
 
-        // Apply syntax highlighting
-        if (window.hljs) {
-            const rightPane = document.getElementById('right-pane-content');
-            const codeBlock = rightPane.querySelector('code');
-            if (codeBlock) {
-                hljs.highlightElement(codeBlock);
+        // Initialize streaming renderer
+        const renderer = new StreamingRenderer('streaming-container');
+
+        if (isLarge) {
+            // Stream large JSON
+            await renderer.streamJSON(artifact.data, 5);
+        } else {
+            // Render small JSON immediately
+            const container = document.getElementById('streaming-container');
+            container.innerHTML = `<pre style="margin: 0;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>`;
+
+            if (window.hljs) {
+                const codeBlock = container.querySelector('code');
+                if (codeBlock) hljs.highlightElement(codeBlock);
             }
         }
     }
