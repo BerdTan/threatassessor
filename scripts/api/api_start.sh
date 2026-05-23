@@ -19,7 +19,7 @@ LOG_FILE="$LOG_DIR/api.log"
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 cd "$PROJECT_ROOT"
 
@@ -70,7 +70,7 @@ echo -e "${GREEN}   Port: $API_PORT${NC}"
 echo -e "${GREEN}   Log:  $LOG_FILE${NC}"
 
 # Start API server in background
-nohup python3 -m uvicorn chatbot.api.app:app \
+nohup .venv/bin/python -m uvicorn chatbot.api.app:app \
     --host "$API_HOST" \
     --port "$API_PORT" \
     --reload \
