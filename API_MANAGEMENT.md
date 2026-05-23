@@ -17,12 +17,12 @@ Starts the FastAPI server in the background with proper configuration.
 
 **Usage:**
 ```bash
-./scripts/api_start.sh
+./scripts/api/api_start.sh
 ```
 
 **Environment Variables (optional):**
 ```bash
-API_HOST=0.0.0.0 API_PORT=8000 ./scripts/api_start.sh
+API_HOST=0.0.0.0 API_PORT=8000 ./scripts/api/api_start.sh
 ```
 
 **Output:**
@@ -52,7 +52,7 @@ Gracefully stops the API server or forcefully kills if needed.
 
 **Usage:**
 ```bash
-./scripts/api_stop.sh
+./scripts/api/api_stop.sh
 ```
 
 **Stopping Process:**
@@ -80,7 +80,7 @@ Stops and restarts the API server in one command.
 
 **Usage:**
 ```bash
-./scripts/api_restart.sh
+./scripts/api/api_restart.sh
 ```
 
 **What it does:**
@@ -96,7 +96,7 @@ Shows comprehensive status of the API server.
 
 **Usage:**
 ```bash
-./scripts/api_status.sh
+./scripts/api/api_status.sh
 ```
 
 **Information Displayed:**
@@ -171,10 +171,10 @@ cp .env.example .env
 ### API crashed or hung
 ```bash
 # Stop all processes (force kill if needed)
-./scripts/api_stop.sh
+./scripts/api/api_stop.sh
 
 # Check nothing is running
-./scripts/api_status.sh
+./scripts/api/api_status.sh
 
 # Start fresh
 ./scripts/api_start.sh
@@ -186,7 +186,7 @@ cp .env.example .env
 lsof -i :8000
 
 # Kill all processes on port 8000
-./scripts/api_stop.sh
+./scripts/api/api_stop.sh
 
 # Or use different port
 API_PORT=8001 ./scripts/api_start.sh
@@ -201,7 +201,7 @@ tail -f logs/api.log
 ### Check if API is healthy
 ```bash
 # Quick check
-./scripts/api_status.sh
+./scripts/api/api_status.sh
 
 # Or use curl directly
 curl http://localhost:8000/health
@@ -216,7 +216,7 @@ curl http://localhost:8000/health
 
 **Solution:**
 ```bash
-./scripts/api_stop.sh  # Cleans up stale PID file
+./scripts/api/api_stop.sh  # Cleans up stale PID file
 ./scripts/api_start.sh
 ```
 
@@ -250,7 +250,7 @@ cat logs/api.log | tail -50
 # 4. Python module import error
 
 # Fix issue then restart
-./scripts/api_restart.sh
+./scripts/api/api_restart.sh
 ```
 
 ### Dashboard shows "Uncaught SyntaxError" after restart
@@ -259,7 +259,7 @@ cat logs/api.log | tail -50
 **Solution:**
 ```bash
 # Restart API (changes version parameters)
-./scripts/api_restart.sh
+./scripts/api/api_restart.sh
 
 # Then in browser:
 # - Press Ctrl+F5 (Windows/Linux) or Cmd+Shift+R (Mac)
@@ -271,7 +271,7 @@ cat logs/api.log | tail -50
 - Server restart timing - browser requests file before ready, gets HTML 404 page
 - Cache-busting solution automatically changes file URLs on restart
 
-**See:** [Cache Busting Documentation](../docs/operations/CACHE_BUSTING.md)
+**See:** [Cache Busting Documentation](docs/operations/CACHE_BUSTING.md)
 
 ### Multiple API instances running
 **Problem:** Started API multiple times or didn't stop properly
@@ -279,7 +279,7 @@ cat logs/api.log | tail -50
 **Solution:**
 ```bash
 # Kill all instances
-./scripts/api_stop.sh
+./scripts/api/api_stop.sh
 
 # Verify all stopped
 ps aux | grep uvicorn
@@ -315,7 +315,7 @@ All scripts respect these environment variables:
 # Backup and clear logs
 mv logs/api.log logs/api.log.$(date +%Y%m%d)
 touch logs/api.log
-./scripts/api_restart.sh
+./scripts/api/api_restart.sh
 ```
 
 ---
@@ -382,6 +382,7 @@ pm2 save
 
 ## See Also
 
-- [API Specification](../docs/API_SPECIFICATION.md) - API endpoints and usage
-- [Operations Guide](../docs/operations/OPERATIONS.md) - Troubleshooting
-- [CLAUDE.md](../CLAUDE.md) - Developer quick reference
+- [API Specification](docs/api/API_SPECIFICATION.md) - API endpoints and usage
+- [Operations Guide](docs/operations/OPERATIONS.md) - Troubleshooting
+- [Cache Busting](docs/operations/CACHE_BUSTING.md) - Browser cache issues
+- [CLAUDE.md](CLAUDE.md) - Developer quick reference

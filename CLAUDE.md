@@ -11,10 +11,11 @@
 **Web Dashboard (Recommended):**
 ```bash
 # Start API server
-./scripts/api_start.sh
+./scripts/api/api_start.sh
 
 # Access dashboard: http://localhost:8000/dashboard
 # API docs: http://localhost:8000/docs
+# See: API_MANAGEMENT.md for full details
 ```
 
 **CLI Analysis:**
@@ -101,19 +102,12 @@ chatbot/data/*.json          # Large data files (44MB + 45MB)
 
 ## Quick Troubleshooting
 
-**API Management:**
+**API Management (see [API_MANAGEMENT.md](API_MANAGEMENT.md) for full guide):**
 ```bash
-# Check API status
-./scripts/api_status.sh
-
-# Stop API (graceful or force kill)
-./scripts/api_stop.sh
-
-# Restart API
-./scripts/api_restart.sh
-
-# View logs
-tail -f logs/api.log
+./scripts/api/api_status.sh    # Check status
+./scripts/api/api_stop.sh      # Stop API
+./scripts/api/api_restart.sh   # Restart API
+tail -f logs/api.log            # View logs
 ```
 
 **Orphan nodes detected:**
@@ -146,7 +140,8 @@ python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.
 **Quick Reference:**
 - Markdown sources: [README.md](README.md), [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) (git-tracked, CLI-friendly)
 - HTML views: `index.html`, `status.html` (generated, better UX for browsers)
-- Tactical guide: [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md) - Current phase (Stage 2 Phase 2B)
+- Tactical guide: [docs/development/NEXT_STEPS.md](docs/development/NEXT_STEPS.md) - Current phase (Stage 2 Phase 2B)
+- API management: [API_MANAGEMENT.md](API_MANAGEMENT.md) - Server lifecycle scripts
 
 **Core references:**
 - [docs/core/V1_FEATURES.md](docs/core/V1_FEATURES.md) - Feature list
