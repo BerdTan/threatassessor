@@ -675,33 +675,32 @@ class Dashboard {
                 const pctCurrentGain  = initialRisk > 0 ? Math.round((1 - currentResidual / initialRisk) * 100) : 100;
                 const pctTargetGain   = initialRisk > 0 ? Math.round((1 - targetResidual  / initialRisk) * 100) : 100;
 
+                // Plain-English summary line
+                let summaryLine;
+                if (targetResidual === 0 && currentResidual === 0) {
+                    summaryLine = `Starting exposure <strong>${initialRisk}</strong> — fully covered by existing controls`;
+                } else if (targetResidual === 0) {
+                    summaryLine = `Starting exposure <strong>${initialRisk}</strong> → current controls reduce to <strong style="color:${currentSegColor};">${currentResidual}</strong> → applying recommendations eliminates the rest`;
+                } else {
+                    summaryLine = `Starting exposure <strong>${initialRisk}</strong> → current controls reduce to <strong style="color:${currentSegColor};">${currentResidual}</strong>${pGain > 0 ? ` → recommendations reduce to <strong style="color:${targetSegColor};">${targetResidual}</strong>` : ''} — <strong style="color:${targetSegColor};">${targetResidual} remaining</strong> (${statusDesc[targetStatus]})`;
+                }
+
                 return `
             <div style="padding:0.625rem 0; border-bottom:1px solid var(--border-color);">
-                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
                     <div style="width:126px; font-size:0.8125rem; color:var(--text-color); flex-shrink:0; font-weight:500;">${threatLabels[key] || key}</div>
-                    <!-- Stacked bar: full = initialRisk -->
+                    <!-- Stacked bar left→right: handled | recs close | residual remaining | unused scale -->
                     <div style="flex:1; display:flex; border-radius:4px; height:10px; overflow:hidden; background:var(--nav-hover-bg);">
-                        <!-- Accepted residual (target status colour) -->
-                        <div style="width:${pTarget}%; background:${targetSegColor}; flex-shrink:0; transition:width 0.6s;" title="Accepted residual: ${targetResidual}"></div>
-                        <!-- Gain from recommendations (green) -->
-                        <div style="width:${pGain}%; background:var(--secondary-color); opacity:0.75; flex-shrink:0; transition:width 0.6s;" title="Closed by recommendations: ${Math.round(currentResidual - targetResidual)}"></div>
-                        <!-- Already handled by current controls (muted green) -->
-                        <div style="width:${pHandled}%; background:var(--secondary-color); opacity:0.35; flex-shrink:0; transition:width 0.6s;" title="Already handled by existing controls: ${Math.round(initialRisk - currentResidual)}"></div>
-                        <!-- Unused scale space -->
+                        <div style="width:${pHandled}%; background:var(--secondary-color); opacity:0.35; flex-shrink:0; transition:width 0.6s;" title="Existing controls: −${Math.round(initialRisk - currentResidual)}"></div>
+                        <div style="width:${pGain}%; background:var(--secondary-color); opacity:0.8; flex-shrink:0; transition:width 0.6s;" title="Recommendations close: −${Math.round(currentResidual - targetResidual)}"></div>
+                        <div style="width:${pTarget}%; background:${targetSegColor}; flex-shrink:0; transition:width 0.6s;" title="Remaining: ${targetResidual}"></div>
                         <div style="flex:1;"></div>
                     </div>
                     <div style="width:86px; flex-shrink:0; text-align:right;">
                         <span style="display:inline-block; padding:0.125rem 0.375rem; border-radius:4px; font-size:0.72rem; font-weight:700; background:${pillBg}; color:${targetSegColor};">${statusIcon[targetStatus] || ''} ${statusLabel[targetStatus] || targetStatus}</span>
                     </div>
                 </div>
-                <div style="display:flex; gap:0.75rem; padding-left:130px; font-size:0.7rem; color:var(--text-tertiary); flex-wrap:wrap;">
-                    <span>Unmitigated: <strong style="color:var(--text-color);">${initialRisk}</strong></span>
-                    <span>→ Now: <strong style="color:${currentSegColor};">${currentResidual}</strong> (${pctCurrentGain}% handled)</span>
-                    ${pGain > 0 ? `<span>→ With recs: <strong style="color:${targetSegColor};">${targetResidual}</strong> (${pctTargetGain}% handled)</span>` : `<span style="color:var(--secondary-color);">✓ Fully addressed</span>`}
-                </div>
-                ${targetResidual > 0 || currentStatus !== 'ACCEPT' ? `
-                <div style="padding-left:130px; margin-top:0.25rem; font-size:0.7rem; color:var(--text-tertiary); font-style:italic;">${statusDesc[targetStatus] || ''}</div>
-                ` : ''}
+                <div style="padding-left:130px; font-size:0.7rem; color:var(--text-tertiary); line-height:1.5;">${summaryLine}</div>
             </div>`;
             }).join('');
 
@@ -775,11 +774,11 @@ class Dashboard {
                     <span style="color:var(--secondary-color); font-weight:600;">${riskReductionPct}% reduction</span>
                     <span style="color:var(--text-tertiary); font-size:0.7rem; margin-left:auto;">Risk Score: ${risk}/100 · Defensibility: ${def}/100</span>
                 </div>
-                <!-- Bar legend -->
-                <div style="display:flex; gap:0.75rem; font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.875rem; flex-wrap:wrap;">
-                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--secondary-color); opacity:0.35; border-radius:2px;"></span> Existing controls handle</span>
-                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--secondary-color); opacity:0.75; border-radius:2px;"></span> Recommendations close</span>
-                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--warning-color); border-radius:2px;"></span> Accepted residual</span>
+                <!-- Bar legend: left to right mirrors the bar segments -->
+                <div style="display:flex; gap:0.875rem; font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.875rem; flex-wrap:wrap; align-items:center;">
+                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:18px; height:8px; background:var(--secondary-color); opacity:0.35; border-radius:2px;"></span> Covered by existing controls</span>
+                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:18px; height:8px; background:var(--secondary-color); opacity:0.8; border-radius:2px;"></span> Closed by recommendations</span>
+                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:18px; height:8px; background:var(--danger-color); border-radius:2px;"></span> Remaining exposure (act / monitor / accept)</span>
                 </div>
                 ${residualRows || '<div style="color:var(--text-tertiary); font-size:0.875rem; padding:0.5rem 0;">Run analysis to see residual risk breakdown</div>'}
             </div>
