@@ -741,7 +741,8 @@ def augment_with_exhaustive_mitigations(
     controls_present: List[str],
     rapids_assessment: Dict,
     mitre: 'MitreHelper',
-    max_total_recommendations: Optional[int] = None
+    max_total_recommendations: Optional[int] = None,
+    attack_paths: Optional[List[Dict]] = None
 ) -> List[Dict]:
     """
     Augment existing control recommendations with gap-filling controls from exhaustive MITRE analysis.
@@ -817,6 +818,21 @@ def augment_with_exhaustive_mitigations(
                 techniques_str += f" +{len(techniques) - 3} more"
             control_name = ctrl.get('name', ctrl.get('control', 'unknown'))
             logger.info(f"   • {control_name} (covers {techniques_str})")
+
+    # Populate attack_paths for gap controls using technique overlap with attack paths
+    if attack_paths and gap_controls:
+        technique_to_path_indices = {}
+        for idx, path in enumerate(attack_paths):
+            for tech in path.get('techniques', []):
+                technique_to_path_indices.setdefault(tech, []).append(idx)
+
+        for ctrl in gap_controls:
+            matched = set()
+            for tech in ctrl.get('techniques', []):
+                matched.update(technique_to_path_indices.get(tech, []))
+            ctrl['attack_paths'] = sorted(matched)
+            if matched:
+                logger.info(f"Gap control '{ctrl.get('control')}' mapped to paths {sorted(matched)} via technique overlap")
 
     # Merge and re-sort by priority
     all_controls = control_recommendations + gap_controls

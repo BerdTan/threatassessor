@@ -402,8 +402,8 @@ def rank_and_deduplicate_paths(
             "LOW"
         )
 
-    # Sort by criticality (descending)
-    sorted_paths = sorted(attack_paths, key=lambda x: x["criticality"], reverse=True)
+    # Sort by criticality descending; tie-break on entry+target for determinism across runs
+    sorted_paths = sorted(attack_paths, key=lambda x: (-x["criticality"], x["entry"], x["target"]))
 
     # Deduplicate by pattern (same entry→target with similar hop count)
     unique_paths = []
@@ -420,6 +420,10 @@ def rank_and_deduplicate_paths(
 
         if len(unique_paths) >= top_n:
             break
+
+    # Reassign sequential IDs so AP-1..N always match array positions 0..N-1
+    for i, ap in enumerate(unique_paths, 1):
+        ap["id"] = f"AP-{i}"
 
     logger.info(f"Ranked paths: {len(attack_paths)} total → {len(unique_paths)} unique top-{top_n}")
 
@@ -1276,7 +1280,8 @@ def generate_ground_truth(
         controls_present=controls_present,
         rapids_assessment=rapids_assessment,
         mitre=mitre,
-        max_total_recommendations=None  # No hard limit - add all controls needed for 100% coverage
+        max_total_recommendations=None,  # No hard limit - add all controls needed for 100% coverage
+        attack_paths=attack_paths
     )
     controls_missing_names = extract_control_names(control_recommendations)
     logger.info(f"Final recommendations (with gap filling): {controls_missing_names}")
