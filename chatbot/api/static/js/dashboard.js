@@ -3380,33 +3380,39 @@ class Dashboard {
                     + cards + '</div>';
             }
 
-            // Build contradictions HTML — includes self-reflection root cause when present
+            // Build contradictions HTML — summary cards with right-pane detail on click
             const rootCauseLabel = {
                 SCOPE_MISMATCH: '🔭 Scope mismatch',
                 DATA_REFERENCE_ERROR: '🗂️ Data reference error',
                 CONFIDENCE_DIFFERENCE: '🎲 Confidence difference',
                 GENUINE_DISAGREEMENT: '⚔️ Genuine disagreement',
             };
+            // Stash contradiction data for right-pane access from onclick
+            window._erContradictions = contradictions;
+
             let contradictionsHtml = '';
             if (contradictions.length > 0) {
                 let cards = '';
-                for (const c of contradictions) {
+                for (let ci = 0; ci < contradictions.length; ci++) {
+                    const c = contradictions[ci];
                     const causeKey = c.disagreement_root_cause || '';
                     const causeTag = causeKey
                         ? '<span style="font-size:0.7rem; font-weight:700; color:var(--primary-color); background:var(--primary-color)18; border:1px solid var(--primary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">' + (rootCauseLabel[causeKey] || causeKey) + '</span>'
                         : '';
+                    const hasDetail = !!(c.root_cause_explanation || c.human_action);
                     cards += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--warning-color);">'
-                        + '<div style="font-size: 0.875rem; font-weight:600; color: var(--text-color); margin-bottom:0.5rem; display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (c.topic || '') + causeTag + '</div>'
+                        + '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem; margin-bottom:0.4rem;">'
+                        + '<div style="font-size: 0.875rem; font-weight:600; color: var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (c.topic || '') + causeTag + '</div>'
+                        + (hasDetail ? '<button onclick="window.dashboard._showContradictionDetail(' + ci + ')" style="flex-shrink:0; font-size:0.75rem; color:var(--primary-color); background:transparent; border:1px solid var(--primary-color)44; border-radius:6px; padding:2px 8px; cursor:pointer; white-space:nowrap;">View analysis →</button>' : '')
+                        + '</div>'
                         + '<div style="font-size:0.8125rem; color:var(--text-secondary);">🏛️ Architect/Tester: ' + (c.architect_view || '') + '</div>'
                         + '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.2rem;">🎯 Red Team: ' + (c.tester_or_redteam_view || '') + '</div>'
-                        + (c.root_cause_explanation ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.35rem; padding:0.4rem 0.6rem; background:var(--card-bg); border-radius:4px;">Why: ' + c.root_cause_explanation + '</div>' : '')
-                        + (c.human_action ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-top:0.25rem;">→ Human action: ' + c.human_action + '</div>' : '')
                         + '<div style="font-size:0.8125rem; color:var(--warning-color); margin-top:0.35rem; font-style:italic;">' + (c.resolution || 'UNSURE — human review needed') + '</div>'
                         + '</div>';
                 }
                 contradictionsHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
                     + '<h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">⚠️ Expert Disagreements</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Where critics contradict each other — root cause analysis shown. Human judgment required.</p>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Where critics contradict each other. Click <em>View analysis →</em> for root cause and recommended human action.</p>'
                     + cards + '</div>';
             }
 
@@ -3485,15 +3491,18 @@ class Dashboard {
                 'UNKNOWN': 'Status unavailable',
             };
             const severityColor = {
-                'CRITICAL': 'var(--danger-color)', 'HIGH': 'var(--danger-color)',
-                'MEDIUM': 'var(--warning-color)', 'MINOR': 'var(--warning-color)',
-                'LOW': 'var(--text-tertiary)',
+                'CRITICAL': 'var(--danger-color)',
+                'HIGH':     'var(--danger-color)',
+                'MEDIUM':   'var(--warning-color)',
+                'MINOR':    'var(--primary-color)',  // blue = slight concern, investigate
+                'LOW':      'var(--text-tertiary)',
             };
             const severityLegend = '<div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.75rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px;">'
                 + '<span style="font-size:0.7rem; color:var(--text-tertiary); margin-right:0.25rem; align-self:center;">Severity:</span>'
-                + '<span style="font-size:0.7rem; color:var(--danger-color);">● CRITICAL — exploitable, immediate</span>'
+                + '<span style="font-size:0.7rem; color:var(--danger-color);">● CRITICAL — exploitable, act now</span>'
                 + '<span style="font-size:0.7rem; color:var(--danger-color); margin-left:0.5rem;">● HIGH — significant risk</span>'
-                + '<span style="font-size:0.7rem; color:var(--warning-color); margin-left:0.5rem;">● MEDIUM/MINOR — moderate concern</span>'
+                + '<span style="font-size:0.7rem; color:var(--warning-color); margin-left:0.5rem;">● MEDIUM — moderate concern</span>'
+                + '<span style="font-size:0.7rem; color:var(--primary-color); margin-left:0.5rem;">● MINOR — slight concern, investigate</span>'
                 + '<span style="font-size:0.7rem; color:var(--text-tertiary); margin-left:0.5rem;">● LOW — informational</span>'
                 + '</div>';
 
@@ -3515,8 +3524,8 @@ class Dashboard {
                     + '</div>';
             }
 
-            // Build expert panel cards
-            let expertPanels = '';
+            // Build expert panel cards — collapsible, expanded by default
+            let expertPanelCards = '';
             for (const e of expertDefs) {
                 const v = expertValidations[e.key];
                 if (!v) continue;
@@ -3538,26 +3547,38 @@ class Dashboard {
                         + (g.recommendation ? '<div style="font-size: 0.8125rem; color: var(--secondary-color);">→ ' + g.recommendation + '</div>' : '')
                         + '</div>';
                 }
-                expertPanels += '<div style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">'
-                    + '<div style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color);">'
+                const bodyHtml = gaps.length > 0
+                    ? '<div class="er-panel-body" style="padding: 1rem 1.25rem;">'
+                        + '<div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">' + gaps.length + ' finding' + (gaps.length > 1 ? 's' : '') + '</div>'
+                        + severityLegend
+                        + '<div style="margin-top:0.75rem;">' + gapItems + '</div>'
+                        + '</div>'
+                    : '<div class="er-panel-body" style="padding: 0.75rem 1.25rem; font-size:0.8125rem; color:var(--text-tertiary);">No findings — criteria passed.</div>';
+
+                expertPanelCards += '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">'
+                    + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select:none;">'
                     + '<div style="display: flex; align-items: center; gap: 0.75rem;">'
                     + '<span style="font-size: 1.5rem;">' + e.icon + '</span>'
                     + '<div><div style="font-weight: 700; color: var(--text-color);">' + e.label + '</div>'
                     + '<div style="font-size: 0.8125rem; color: var(--text-secondary);">' + e.role + '</div></div>'
                     + '</div>'
+                    + '<div style="display:flex; align-items:center; gap:1rem;">'
                     + '<div style="text-align: right;">'
                     + '<div style="font-size: 1.125rem; font-weight: 700; color: var(--warning-color);">' + sign + adj + '%</div>'
                     + '<div style="font-size: 0.75rem; font-weight: 600; color: ' + color + ';" title="' + statusExplain + '">' + statusText + '</div>'
+                    + '</div>'
+                    + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div></div>'
-                    + (gaps.length > 0
-                        ? '<div style="padding: 1rem 1.25rem;">'
-                            + '<div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">' + gaps.length + ' finding' + (gaps.length > 1 ? 's' : '') + '</div>'
-                            + severityLegend
-                            + '<div style="margin-top:0.75rem;">' + gapItems + '</div>'
-                            + '</div>'
-                        : '')
+                    + bodyHtml
                     + '</div>';
             }
+
+            // Collapse-all/expand-all toggle
+            const expertPanels = '<div style="display:flex; justify-content:flex-end; margin-bottom:0.5rem;">'
+                + '<button id="er-collapse-all-btn" onclick="(function(btn){var panels=document.querySelectorAll(\'.er-panel-body\');var chevrons=document.querySelectorAll(\'.er-chevron\');var allOpen=[].every.call(panels,function(p){return p.style.display!==\'none\';});panels.forEach(function(p,i){p.style.display=allOpen?\'none\':\'block\';chevrons[i].textContent=allOpen?\'›\':\' ⌄\';});btn.textContent=allOpen?\'Expand all\':\'Collapse all\';})(this)" '
+                + 'style="font-size:0.8125rem; color:var(--text-tertiary); background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:0.25rem 0.75rem; cursor:pointer;">Collapse all</button>'
+                + '</div>'
+                + '<div style="display: flex; flex-direction: column; gap: 1rem;">' + expertPanelCards + '</div>';
 
             // Helper: derive KNOWN/UNSURE from item data (source with '+' = multi-critic = KNOWN)
             function isKnown(r) {
@@ -3634,7 +3655,7 @@ class Dashboard {
                 + '</div></div>'
                 + (interp ? '<p style="margin: 0.75rem 0 0; font-size: 0.875rem; color: var(--text-secondary);">' + interp + '</p>' : '')
                 + '</div>'
-                + '<div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">' + expertPanels + '</div>'
+                + '<div style="margin-bottom: 1.5rem;">' + expertPanels + '</div>'
                 + consensusHtml
                 + blindspotsHtml
                 + contradictionsHtml
@@ -3643,6 +3664,47 @@ class Dashboard {
         } catch (err) {
             container.innerHTML = `<p class="placeholder">Error loading expert review: ${err.message}</p>`;
         }
+    }
+
+    _showContradictionDetail(idx) {
+        const c = (window._erContradictions || [])[idx];
+        if (!c) return;
+
+        const rootCauseLabel = {
+            SCOPE_MISMATCH:        '🔭 Scope mismatch',
+            DATA_REFERENCE_ERROR:  '🗂️ Data reference error',
+            CONFIDENCE_DIFFERENCE: '🎲 Confidence difference',
+            GENUINE_DISAGREEMENT:  '⚔️ Genuine disagreement',
+        };
+        const causeKey = c.disagreement_root_cause || '';
+        const causeLabel = rootCauseLabel[causeKey] || causeKey;
+
+        const content = ''
+            + '<div style="margin-bottom:1.25rem;">'
+            + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.35rem;">Architect / Tester view</div>'
+            + '<div style="font-size:0.875rem; color:var(--text-color); padding:0.6rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid var(--primary-color);">🏛️ ' + (c.architect_view || '') + '</div>'
+            + '</div>'
+            + '<div style="margin-bottom:1.25rem;">'
+            + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.35rem;">Red Team view</div>'
+            + '<div style="font-size:0.875rem; color:var(--text-color); padding:0.6rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid var(--warning-color);">🎯 ' + (c.tester_or_redteam_view || '') + '</div>'
+            + '</div>'
+            + (causeKey ? '<div style="margin-bottom:1.25rem;">'
+                + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.35rem;">Root cause</div>'
+                + '<div style="font-size:0.875rem; font-weight:600; color:var(--primary-color);">' + causeLabel + '</div>'
+                + '</div>' : '')
+            + (c.root_cause_explanation ? '<div style="margin-bottom:1.25rem;">'
+                + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.35rem;">Why they disagree</div>'
+                + '<div style="font-size:0.875rem; color:var(--text-color); line-height:1.6;">' + c.root_cause_explanation + '</div>'
+                + '</div>' : '')
+            + (c.human_action ? '<div style="margin-bottom:1.25rem; padding:0.75rem; background:var(--secondary-color)12; border:1px solid var(--secondary-color)44; border-radius:8px;">'
+                + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--secondary-color); margin-bottom:0.35rem;">Recommended human action</div>'
+                + '<div style="font-size:0.875rem; color:var(--text-color);">→ ' + c.human_action + '</div>'
+                + '</div>' : '')
+            + '<div style="padding:0.5rem 0.75rem; background:var(--warning-color)12; border-radius:6px;">'
+            + '<div style="font-size:0.8125rem; color:var(--warning-color); font-style:italic;">' + (c.resolution || 'UNSURE — human review needed') + '</div>'
+            + '</div>';
+
+        this.showRightPane('⚠️ ' + (c.topic || 'Disagreement'), content);
     }
 
     runExpertReview(archName) {
