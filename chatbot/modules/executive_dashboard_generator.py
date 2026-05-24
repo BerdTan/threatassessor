@@ -198,17 +198,20 @@ Our analysis was validated by three independent AI security experts:
 
 Our experts agree on the following priority actions:
 
-### 🔴 Critical (All 3 Experts Agree) — **High Confidence**
+### 🔴 Critical — **KNOWN (≥2 experts independently agree)**
 
 {_format_consensus_items(consensus.get('critical', []), 'critical')}
 
-### 🟡 High Priority (2 Experts Agree) — **Medium Confidence**
+### 🟡 High Priority — **KNOWN or UNSURE (see per-item label)**
 
 {_format_consensus_items(consensus.get('high', []), 'high')}
 
-### 🔵 Review (1 Expert Only) — **Low Confidence, May Be False Positive**
+### 🔵 For Review — **UNSURE (single expert, needs human verification)**
 
 {_format_consensus_items(consensus.get('review', []), 'review')}
+
+{_format_blindspots(consensus.get('blindspots', []))}
+{_format_contradictions(consensus.get('contradictions', []))}
 
 ---
 
@@ -369,12 +372,16 @@ def _format_consensus_items(items: list, priority: str) -> str:
     lines = []
     for idx, item in enumerate(items, 1):
         desc = item.get('description', 'No description')
-        source = item.get('source', 'Unknown')
-        confidence_pct = item.get('confidence', 0)
+        source = item.get('source', '')
+        label = item.get('confidence_label', 'UNSURE')
+        evidence = item.get('evidence', '')
 
         lines.append(f"{idx}. **{desc}**")
-        lines.append(f"   - *Source:* {source}")
-        lines.append(f"   - *Confidence:* {confidence_pct}%")
+        if source:
+            lines.append(f"   - *Source:* {source}")
+        lines.append(f"   - *Confidence:* {label}")
+        if evidence:
+            lines.append(f"   - *Evidence:* {evidence}")
         lines.append("")
 
     return "\n".join(lines)
@@ -385,13 +392,56 @@ def _format_improvement_option(option: Dict) -> str:
     if not option:
         return "*Option not available.*\n"
 
+    items = option.get('items', [])
+    item_list = '\n'.join(f"  - {i}" for i in items) if items else "  *No items listed.*"
+    residual = option.get('residual', '')
+    practical = option.get('practical_verdict', '')
+
     return f"""
-- **Timeline:** {option.get('timeline', 'Unknown')}
-- **Estimated Cost:** {option.get('cost', 'Unknown')}
-- **Items:** {option.get('items', 0)} recommendations
-- **Risk Reduction:** {option.get('risk_reduction', 'Unknown')}
-- **Focus:** {option.get('focus', 'Unknown')}
+- **Effort:** {option.get('effort', 'Not estimated')}
+- **Estimated Cost:** {option.get('cost', 'cost not estimated')}
+- **Risk Reduction:** {option.get('risk_reduction', 'Not estimated')}
+{f'- **Practical:** {practical}' if practical else ''}
+- **Items:**
+{item_list}
+{f'- **Residual risk:** {residual}' if residual else ''}
 """
+
+
+def _format_blindspots(blindspots: list) -> str:
+    """Format blindspots section — gaps all three critics structurally missed."""
+    if not blindspots:
+        return ""
+
+    lines = ["### 🔍 Blindspots — Gaps All Experts Missed\n"]
+    lines.append("*These are areas no critic could see due to rubric scope — highest priority for human review.*\n")
+    for idx, b in enumerate(blindspots, 1):
+        lines.append(f"{idx}. **{b.get('description', '')}**")
+        if b.get('why_missed'):
+            lines.append(f"   - *Why missed:* {b['why_missed']}")
+        if b.get('recommendation'):
+            lines.append(f"   - *Action:* {b['recommendation']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _format_contradictions(contradictions: list) -> str:
+    """Format contradictions section — where experts disagree."""
+    if not contradictions:
+        return ""
+
+    lines = ["### ⚠️ Expert Disagreements — Human Judgment Required\n"]
+    for idx, c in enumerate(contradictions, 1):
+        lines.append(f"{idx}. **{c.get('topic', '')}**")
+        lines.append(f"   - 🏛️ Architect/Tester: {c.get('architect_view', '')}")
+        lines.append(f"   - 🎯 Red Team: {c.get('tester_or_redteam_view', '')}")
+        if c.get('root_cause_explanation'):
+            lines.append(f"   - *Root cause:* {c['root_cause_explanation']}")
+        if c.get('human_action'):
+            lines.append(f"   - *Human action:* {c['human_action']}")
+        lines.append(f"   - *Resolution:* {c.get('resolution', 'UNSURE — human review needed')}")
+        lines.append("")
+    return "\n".join(lines)
 
 
 # ============================================================================
