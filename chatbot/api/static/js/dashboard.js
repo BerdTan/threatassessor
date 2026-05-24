@@ -324,9 +324,10 @@ class Dashboard {
         // Store threat scores for visualization
         this.threatScores = data;
 
-        // If on overview tab, update chart immediately
+        // If on overview tab, update chart and dashboard immediately
         if (this.currentTab === 'overview') {
             this.renderThreatChart();
+            this.renderOverviewDashboard();
         }
     }
 
@@ -556,9 +557,186 @@ class Dashboard {
 
     async loadOverviewTab() {
         this.renderThreatChart();
-        // Don't render architecture diagram immediately - it's in a hidden tab
-        // Will render on first click to Architecture Diagram subtab
         this.diagramRendered = false;
+        this.renderOverviewDashboard();
+    }
+
+    async renderOverviewDashboard() {
+        const container = document.getElementById('overview-dashboard');
+        if (!container) return;
+
+        if (!this.analysisData) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const analysis = this.analysisData.analysis || {};
+        const risk = analysis.expected_risk_score ?? this.analysisData.expected_risk_score ?? 0;
+        const def  = analysis.expected_defensibility ?? this.analysisData.expected_defensibility ?? 0;
+        const archName = this.analysisData.architecture_name || this.analysisData.architecture || '';
+        const attackPaths = analysis.expected_attack_paths || [];
+        const controlRecs = analysis.control_recommendations || [];
+        const controlsPresent = analysis.controls_present || [];
+        const residualRisks = analysis.residual_risks || {};
+        const perThreat = residualRisks.per_threat || {};
+        const residualBefore = analysis.residual_risks_before || {};
+        const residualAfter  = analysis.residual_risks_after  || {};
+        const beforeScore = residualBefore.overall_residual ?? risk;
+        const afterScore  = residualAfter.overall_residual  ?? (risk * 0.1);
+        const riskReductionPct = beforeScore > 0 ? Math.round((beforeScore - afterScore) / beforeScore * 100) : 0;
+
+        // ROI calculation matching threat_report.py logic
+        const BREACH_COST = 420;
+        const implCost = risk >= 70 ? 50 : risk >= 40 ? 30 : 15;
+        const roi = implCost > 0 ? (BREACH_COST / implCost).toFixed(1) : 0;
+
+        // Risk colour
+        const riskColor = risk >= 70 ? 'var(--danger-color)' : risk >= 40 ? 'var(--warning-color)' : 'var(--secondary-color)';
+        const defColor  = def  >= 60 ? 'var(--secondary-color)' : def >= 30 ? 'var(--warning-color)' : 'var(--danger-color)';
+
+        // Confidence (try MoE, fall back to foundation)
+        const foundationConf = (this.analysisData.confidence ?? 0.995) * 100;
+        let validatedConf = null;
+        let moeInterp = '';
+        try {
+            const moeResp = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
+            if (moeResp.ok) {
+                const moe = await moeResp.json();
+                validatedConf = (moe.confidence?.final ?? null);
+                moeInterp = moe.confidence?.interpretation ?? '';
+            }
+        } catch (_) {}
+
+        // Top 3 immediate actions: critical first, then high
+        const priority = { critical: 0, high: 1, medium: 2, low: 3 };
+        const top3 = [...controlRecs]
+            .filter(c => c.attack_paths && c.attack_paths.length > 0)
+            .sort((a, b) => (priority[a.priority?.toLowerCase()] ?? 9) - (priority[b.priority?.toLowerCase()] ?? 9))
+            .slice(0, 3);
+
+        // Residual risk rows
+        const threatLabels = {
+            ransomware: 'Ransomware', application_vulns: 'App Vulnerabilities',
+            phishing: 'Phishing', insider_threat: 'Insider Threat',
+            dos: 'DoS / Availability', supply_chain: 'Supply Chain'
+        };
+        const statusIcon = { ACCEPT: '✅', MONITOR: '👁', MITIGATE: '🔴' };
+        const statusColor = { ACCEPT: 'var(--secondary-color)', MONITOR: 'var(--warning-color)', MITIGATE: 'var(--danger-color)' };
+
+        const residualRows = Object.entries(perThreat).map(([key, t]) => {
+            const icon  = statusIcon[t.status]  || '❓';
+            const color = statusColor[t.status] || 'var(--text-secondary)';
+            const bar   = Math.round((1 - (t.residual_risk / (t.initial_risk || 1))) * 100);
+            return `
+            <div style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem 0; border-bottom:1px solid var(--border-color);">
+                <div style="width:130px; font-size:0.8125rem; color:var(--text-color); flex-shrink:0;">${threatLabels[key] || key}</div>
+                <div style="flex:1; background:var(--nav-hover-bg); border-radius:4px; height:8px; overflow:hidden;">
+                    <div style="height:100%; width:${bar}%; background:var(--secondary-color); border-radius:4px; transition:width 0.6s;"></div>
+                </div>
+                <div style="width:60px; font-size:0.75rem; color:var(--text-secondary); text-align:right;">${t.initial_risk}→${t.residual_risk}</div>
+                <div style="width:80px; font-size:0.8125rem; font-weight:600; color:${color}; text-align:right;">${icon} ${t.status}</div>
+            </div>`;
+        }).join('');
+
+        // Improvement tier cards — active if MoE run, locked otherwise
+        const hasMoe = validatedConf !== null;
+        const tiers = [
+            { icon: '⚡', label: 'Quick Wins',     timeline: '1–2 weeks',   cost: '$10K–$50K',    delta: '+10',  file: '08a_quick_wins.mmd' },
+            { icon: '⭐', label: 'Recommended',    timeline: '1–3 months',  cost: '$75K–$200K',   delta: '+20',  file: '08b_recommended_target.mmd', recommended: true },
+            { icon: '🔒', label: 'Maximum',        timeline: '6–12 months', cost: '$300K–$600K',  delta: 'Full', file: '08c_maximum_security.mmd' },
+        ];
+        const tierCards = tiers.map(t => {
+            const border = t.recommended ? '2px solid var(--secondary-color)' : '1px solid var(--border-color)';
+            const bg     = t.recommended ? 'var(--card-bg)' : 'var(--card-bg)';
+            return `
+            <div style="flex:1; min-width:160px; background:${bg}; border:${border}; border-radius:10px; padding:1rem; position:relative;">
+                ${t.recommended ? `<div style="position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:var(--secondary-color); color:#000; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:10px;">RECOMMENDED</div>` : ''}
+                <div style="font-size:1.5rem; margin-bottom:0.5rem;">${t.icon}</div>
+                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">${t.label}</div>
+                <div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.25rem;">${t.timeline}</div>
+                <div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.75rem;">${t.cost}</div>
+                ${hasMoe
+                    ? `<button class="btn-secondary tier-diagram-btn" data-file="${t.file}" style="width:100%; padding:0.375rem; font-size:0.8125rem; cursor:pointer;">View Diagram →</button>`
+                    : `<div style="font-size:0.75rem; color:var(--text-tertiary); font-style:italic;">Run Expert Review to unlock roadmap</div>`
+                }
+            </div>`;
+        }).join('');
+
+        container.innerHTML = `
+        <!-- Confidence + Scores Row -->
+        <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
+            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Risk Score</div>
+                <div style="font-size:2rem; font-weight:700; color:${riskColor};">${risk}<span style="font-size:1rem; color:var(--text-secondary);">/100</span></div>
+                <div style="font-size:0.75rem; color:var(--text-tertiary);">lower is better</div>
+            </div>
+            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Defensibility</div>
+                <div style="font-size:2rem; font-weight:700; color:${defColor};">${def}<span style="font-size:1rem; color:var(--text-secondary);">/100</span></div>
+                <div style="font-size:0.75rem; color:var(--text-tertiary);">higher is better</div>
+            </div>
+            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Threat Paths</div>
+                <div style="font-size:2rem; font-weight:700; color:var(--text-color);">${attackPaths.length}</div>
+                <div style="font-size:0.75rem; color:var(--text-tertiary);">${controlsPresent.length} controls active</div>
+            </div>
+            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Foundation Score</div>
+                <div style="font-size:2rem; font-weight:700; color:var(--secondary-color);">${foundationConf.toFixed(1)}<span style="font-size:1rem;">%</span></div>
+                ${validatedConf !== null
+                    ? `<div style="font-size:0.8125rem; color:var(--primary-color); font-weight:600;">Validated: ${validatedConf.toFixed(1)}%</div>`
+                    : `<div style="font-size:0.75rem; color:var(--text-tertiary);">Expert Review pending</div>`}
+            </div>
+            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Risk Reduction</div>
+                <div style="font-size:2rem; font-weight:700; color:var(--secondary-color);">${riskReductionPct}<span style="font-size:1rem;">%</span></div>
+                <div style="font-size:0.75rem; color:var(--text-tertiary);">\$${implCost}K · ${roi}x ROI</div>
+            </div>
+        </div>
+
+        <!-- Two-column: Residual Risk + Top Actions -->
+        <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
+            <!-- Residual Risk -->
+            <div style="flex:2; min-width:280px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem;">
+                <h3 style="margin:0 0 1rem; font-size:0.9375rem; color:var(--text-color);">Residual Risk by Threat</h3>
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.75rem;">After all recommended controls are applied</div>
+                ${residualRows || '<div style="color:var(--text-tertiary); font-size:0.875rem; padding:0.5rem 0;">Run analysis to see residual risk breakdown</div>'}
+            </div>
+            <!-- Top 3 Actions -->
+            <div style="flex:1; min-width:240px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem;">
+                <h3 style="margin:0 0 1rem; font-size:0.9375rem; color:var(--text-color);">⚡ Top 3 Immediate Actions</h3>
+                ${top3.length > 0 ? top3.map((c, i) => `
+                <div style="padding:0.75rem 0; border-bottom:1px solid var(--border-color);">
+                    <div style="display:flex; align-items:flex-start; gap:0.5rem;">
+                        <div style="width:22px; height:22px; border-radius:50%; background:var(--primary-color); color:#fff; font-size:0.75rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${i+1}</div>
+                        <div>
+                            <div style="font-weight:600; color:var(--text-color); font-size:0.875rem; text-transform:uppercase;">${c.control}</div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.2rem;">Covers ${c.attack_paths?.length || 0} threat path${(c.attack_paths?.length || 0) !== 1 ? 's' : ''}</div>
+                        </div>
+                    </div>
+                </div>`).join('') : '<div style="color:var(--text-tertiary); font-size:0.875rem;">No critical actions identified</div>'}
+            </div>
+        </div>
+
+        <!-- Improvement Tiers -->
+        <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem; margin-bottom:0.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <h3 style="margin:0; font-size:0.9375rem; color:var(--text-color);">Improvement Path</h3>
+                ${!hasMoe ? `<span style="font-size:0.8125rem; color:var(--text-tertiary);">Run Expert Review to unlock full roadmap</span>` : `<span style="font-size:0.8125rem; color:var(--secondary-color);">✅ Expert Review complete</span>`}
+            </div>
+            <div style="display:flex; gap:1rem; flex-wrap:wrap;">${tierCards}</div>
+        </div>
+        `;
+
+        // Wire tier diagram buttons → Visualise tab
+        container.querySelectorAll('.tier-diagram-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const file = btn.dataset.file;
+                this.switchTab('hardening');
+                // Signal the hardening tab to open this scenario diagram
+                this._pendingScenarioDiagram = file;
+            });
+        });
     }
 
     async renderArchitectureDiagram() {

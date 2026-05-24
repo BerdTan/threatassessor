@@ -64,30 +64,29 @@
             <div id="tab-content" class="tab-content" style="display: none;">
                 <!-- Overview Tab -->
                 <div class="tab-pane active" data-tab="overview">
-                    <h2>Threat Overview</h2>
+                    <!-- So-what dashboard rendered by loadOverviewTab() -->
+                    <div id="overview-dashboard"></div>
 
-                    <!-- Sub-tabs for Threat Map and Diagram -->
-                    <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--border-color); margin-bottom: 1rem;">
-                        <button class="overview-subtab active" data-subtab="threat-map" style="padding: 0.75rem 1.5rem; background: var(--primary-color); color: var(--button-text-color); border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 0.9375rem; transition: all 0.2s;">
-                            📊 Threat Heat Map
-                        </button>
-                        <button class="overview-subtab" data-subtab="arch-diagram" style="padding: 0.75rem 1.5rem; background: transparent; color: var(--text-color); border: none; border-bottom: 2px solid transparent; cursor: pointer; font-weight: 600; font-size: 0.9375rem; transition: all 0.2s;">
-                            🏗️ Architecture Diagram
-                        </button>
-                    </div>
-
-                    <!-- Threat Map View -->
-                    <div id="overview-threat-map" class="overview-subtab-content active" style="display: block;">
-                        <div class="card" style="height: calc(100vh - 280px);">
-                            <canvas id="threat-chart"></canvas>
+                    <!-- Detail sub-tabs (Threat Chart + Architecture Diagram) -->
+                    <div id="overview-detail" style="margin-top: 1.5rem;">
+                        <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--border-color); margin-bottom: 1rem;">
+                            <button class="overview-subtab active" data-subtab="threat-map" style="padding: 0.625rem 1.25rem; background: var(--primary-color); color: var(--button-text-color); border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
+                                📊 Threat Heat Map
+                            </button>
+                            <button class="overview-subtab" data-subtab="arch-diagram" style="padding: 0.625rem 1.25rem; background: transparent; color: var(--text-color); border: none; border-bottom: 2px solid transparent; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
+                                🏗️ Architecture Diagram
+                            </button>
                         </div>
-                    </div>
-
-                    <!-- Architecture Diagram View -->
-                    <div id="overview-arch-diagram" class="overview-subtab-content" style="display: none;">
-                        <div class="card" style="height: calc(100vh - 280px);">
-                            <div id="arch-diagram" class="diagram-container" style="height: 100%;">
-                                <p class="placeholder">Architecture will be displayed here</p>
+                        <div id="overview-threat-map" class="overview-subtab-content active" style="display: block;">
+                            <div class="card" style="height: 300px;">
+                                <canvas id="threat-chart"></canvas>
+                            </div>
+                        </div>
+                        <div id="overview-arch-diagram" class="overview-subtab-content" style="display: none;">
+                            <div class="card" style="height: 400px;">
+                                <div id="arch-diagram" class="diagram-container" style="height: 100%;">
+                                    <p class="placeholder">Architecture will be displayed here</p>
+                                </div>
                             </div>
                         </div>
                     </div>
