@@ -620,23 +620,48 @@ class Dashboard {
             phishing: 'Phishing', insider_threat: 'Insider Threat',
             dos: 'DoS / Availability', supply_chain: 'Supply Chain'
         };
-        const statusIcon = { ACCEPT: '✅', MONITOR: '👁', MITIGATE: '🔴' };
+        const statusIcon  = { ACCEPT: '✅', MONITOR: '👁', MITIGATE: '🔴' };
         const statusColor = { ACCEPT: 'var(--secondary-color)', MONITOR: 'var(--warning-color)', MITIGATE: 'var(--danger-color)' };
+        const statusBg    = { ACCEPT: 'var(--secondary-color)22', MONITOR: 'var(--warning-color)22', MITIGATE: 'var(--danger-color)22' };
 
-        const residualRows = Object.entries(perThreat).map(([key, t]) => {
-            const icon  = statusIcon[t.status]  || '❓';
-            const color = statusColor[t.status] || 'var(--text-secondary)';
-            const bar   = Math.round((1 - (t.residual_risk / (t.initial_risk || 1))) * 100);
-            return `
-            <div style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem 0; border-bottom:1px solid var(--border-color);">
-                <div style="width:130px; font-size:0.8125rem; color:var(--text-color); flex-shrink:0;">${threatLabels[key] || key}</div>
-                <div style="flex:1; background:var(--nav-hover-bg); border-radius:4px; height:8px; overflow:hidden;">
-                    <div style="height:100%; width:${bar}%; background:var(--secondary-color); border-radius:4px; transition:width 0.6s;"></div>
+        // Stacked before/after bar: full width = initial_risk (normalised to max), split into residual (danger) + eliminated (green)
+        const maxInitial = Math.max(...Object.values(perThreat).map(t => t.initial_risk || 0), 1);
+
+        const residualRows = Object.entries(perThreat)
+            .sort((a, b) => (b[1].initial_risk || 0) - (a[1].initial_risk || 0))
+            .map(([key, t]) => {
+                const icon         = statusIcon[t.status]  || '❓';
+                const segColor     = statusColor[t.status] || 'var(--text-secondary)';
+                const pillBg       = statusBg[t.status]    || 'transparent';
+                const totalPct     = (t.initial_risk / maxInitial) * 100;
+                const residualPct  = (t.residual_risk / maxInitial) * 100;
+                const eliminatedPct = totalPct - residualPct;
+                const pctElim      = t.initial_risk > 0 ? Math.round((1 - t.residual_risk / t.initial_risk) * 100) : 0;
+                return `
+            <div style="padding:0.625rem 0; border-bottom:1px solid var(--border-color);">
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.375rem;">
+                    <div style="width:130px; font-size:0.8125rem; color:var(--text-color); flex-shrink:0; font-weight:500;">${threatLabels[key] || key}</div>
+                    <div style="flex:1; position:relative; background:var(--nav-hover-bg); border-radius:4px; height:10px; overflow:hidden;">
+                        <!-- eliminated (green, on right) -->
+                        <div style="position:absolute; right:${100 - totalPct}%; left:${residualPct}%; height:100%; background:var(--secondary-color); opacity:0.55; border-radius:0 4px 4px 0; transition:all 0.6s;"></div>
+                        <!-- residual (status colour, on left) -->
+                        <div style="position:absolute; left:0; width:${residualPct}%; height:100%; background:${segColor}; border-radius:4px 0 0 4px; transition:width 0.6s;"></div>
+                    </div>
+                    <div style="width:62px; font-size:0.75rem; color:var(--text-secondary); text-align:right; flex-shrink:0;">
+                        <span style="color:${segColor}; font-weight:600;">${t.residual_risk}</span>
+                        <span style="color:var(--text-tertiary);"> / ${t.initial_risk}</span>
+                    </div>
+                    <div style="width:80px; flex-shrink:0; text-align:right;">
+                        <span style="display:inline-block; padding:0.125rem 0.375rem; border-radius:4px; font-size:0.75rem; font-weight:700; background:${pillBg}; color:${segColor};">${icon} ${t.status}</span>
+                    </div>
                 </div>
-                <div style="width:60px; font-size:0.75rem; color:var(--text-secondary); text-align:right;">${t.initial_risk}→${t.residual_risk}</div>
-                <div style="width:80px; font-size:0.8125rem; font-weight:600; color:${color}; text-align:right;">${icon} ${t.status}</div>
+                <div style="display:flex; gap:0.5rem; padding-left:130px; font-size:0.7rem; color:var(--text-tertiary);">
+                    <span style="color:var(--secondary-color); font-weight:600;">${pctElim}% eliminated</span>
+                    <span>·</span>
+                    <span style="color:${segColor};">${t.residual_risk} residual exposure</span>
+                </div>
             </div>`;
-        }).join('');
+            }).join('');
 
         // Improvement tier cards — active if MoE run, locked otherwise
         const hasMoe = validatedConf !== null;
@@ -698,8 +723,14 @@ class Dashboard {
         <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
             <!-- Residual Risk -->
             <div style="flex:2; min-width:280px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem;">
-                <h3 style="margin:0 0 1rem; font-size:0.9375rem; color:var(--text-color);">Residual Risk by Threat</h3>
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.75rem;">After all recommended controls are applied</div>
+                <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.5rem;">
+                    <h3 style="margin:0; font-size:0.9375rem; color:var(--text-color);">Risk Before vs After Controls</h3>
+                </div>
+                <div style="display:flex; gap:1rem; font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.875rem; flex-wrap:wrap;">
+                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--danger-color); border-radius:2px;"></span> Residual exposure</span>
+                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--secondary-color); opacity:0.6; border-radius:2px;"></span> Risk eliminated by controls</span>
+                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--nav-hover-bg); border-radius:2px; border:1px solid var(--border-color);"></span> No initial exposure</span>
+                </div>
                 ${residualRows || '<div style="color:var(--text-tertiary); font-size:0.875rem; padding:0.5rem 0;">Run analysis to see residual risk breakdown</div>'}
             </div>
             <!-- Top 3 Actions -->
@@ -1491,35 +1522,19 @@ class Dashboard {
             control.priority === 'high' ? 'var(--warning-color)' :
             'var(--primary-color)';
 
-        // Fetch names for techniques and mitigations in parallel
-        const [techniqueNames, mitigationNames] = await Promise.all([
-            this.fetchTechniqueNames(control.techniques || []),
-            this.fetchMitigationNames(control.mitigations || [])
+        // Fetch technique names + per-technique mitigations in parallel
+        const techs = control.techniques || [];
+        const [techniqueNames, tmData] = await Promise.all([
+            this.fetchTechniqueNames(techs),
+            techs.length > 0
+                ? fetch(`/api/v1/technique-mitigations?technique_ids=${techs.join(',')}`)
+                    .then(r => r.ok ? r.json() : { mappings: {} })
+                    .catch(() => ({ mappings: {} }))
+                : Promise.resolve({ mappings: {} })
         ]);
-
-        // Build per-mitigation → techniques map using MITRE technique→mitigation data
-        // We fetch each technique's mitigations to find which mitigations cover which techniques
-        const mitToTechniques = {};
-        if (control.techniques && control.mitigations && control.techniques.length > 0 && control.mitigations.length > 0) {
-            try {
-                const tmResp = await fetch(`/api/v1/technique-mitigations?technique_ids=${control.techniques.join(',')}`);
-                if (tmResp.ok) {
-                    const tmData = await tmResp.json();
-                    // tmData.mappings: { techId: [mitId, ...] }
-                    const mappings = tmData.mappings || {};
-                    for (const [techId, mits] of Object.entries(mappings)) {
-                        for (const mitId of mits) {
-                            if (control.mitigations.includes(mitId)) {
-                                if (!mitToTechniques[mitId]) mitToTechniques[mitId] = [];
-                                mitToTechniques[mitId].push(techId);
-                            }
-                        }
-                    }
-                }
-            } catch (e) {
-                // Non-critical: fall back to showing mitigations without technique tags
-            }
-        }
+        const techMitMappings = tmData.mappings || {};
+        const allMitIds = [...new Set(Object.values(techMitMappings).flat())];
+        const mitigationNames = await this.fetchMitigationNames(allMitIds);
 
         rightPaneContent.innerHTML = `
             <h3 style="color: ${priorityColor};">${control.control}</h3>
@@ -1561,52 +1576,38 @@ class Dashboard {
             </div>
 
             <div style="margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--primary-color);">🔬 Attack Techniques</h4>
-                ${control.techniques && control.techniques.length > 0 ? `
-                    ${control.techniques.map(tech => `
-                        <div style="margin-bottom: 0.625rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; border-left: 3px solid var(--primary-color);">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
-                                <div style="flex: 1;">
+                <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--primary-color);">🔬 Techniques & Mitigations</h4>
+                ${techs.length > 0 ? `
+                    ${techs.map(tech => {
+                        const techName = techniqueNames[tech] || tech;
+                        const mits = techMitMappings[tech] || [];
+                        return `
+                        <div style="margin-bottom: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; background: var(--nav-hover-bg); border-left: 3px solid var(--primary-color);">
+                                <div>
                                     <code style="font-weight: 700; color: var(--primary-color); font-size: 0.875rem;">${tech}</code>
-                                    <span style="margin-left: 0.5rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">${techniqueNames[tech] ? `· ${techniqueNames[tech]}` : ''}</span>
+                                    ${techName !== tech ? `<span style="margin-left: 0.5rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">· ${techName}</span>` : ''}
                                 </div>
-                                <a href="https://attack.mitre.org/techniques/${tech}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">
-                                    🔗 MITRE
-                                </a>
+                                <a href="https://attack.mitre.org/techniques/${tech}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">🔗</a>
                             </div>
-                        </div>
-                    `).join('')}
-                ` : '<p style="color: var(--text-tertiary); font-style: italic;">No techniques mapped</p>'}
-            </div>
-
-            <div style="margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--secondary-color);">🛡️ Mitigations</h4>
-                ${control.mitigations && control.mitigations.length > 0 ? `
-                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                        ${control.mitigations.map(mit => {
-                            const name = mitigationNames[mit] || mit;
-                            const techTags = mitToTechniques[mit] || [];
-                            return `
-                            <div style="padding: 0.625rem 0.875rem; background: var(--nav-hover-bg); border-radius: 6px; border: 1px solid var(--border-color); border-left: 3px solid var(--secondary-color);">
-                                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
-                                    <div style="flex: 1;">
-                                        <code style="font-weight: 700; color: var(--secondary-color); font-size: 0.875rem;">${mit}</code>
-                                        <span style="margin-left: 0.5rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">${name !== mit ? `· ${name}` : ''}</span>
-                                        ${techTags.length > 0 ? `
-                                            <div style="margin-top: 0.375rem; display: flex; flex-wrap: wrap; gap: 0.25rem;">
-                                                ${techTags.map(t => `<span style="font-size: 0.6875rem; padding: 0.125rem 0.375rem; background: var(--primary-color)18; color: var(--primary-color); border-radius: 4px; font-family: monospace;">${t}</span>`).join('')}
-                                            </div>
-                                        ` : ''}
+                            ${mits.length > 0 ? `
+                                <div style="padding: 0.625rem 0.75rem; background: var(--card-bg); border-top: 1px solid var(--border-color);">
+                                    <div style="font-size: 0.6875rem; color: var(--text-tertiary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.375rem;">Mitigations</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
+                                        ${mits.map(m => `
+                                            <a href="https://attack.mitre.org/mitigations/${m}/" target="_blank"
+                                               style="display:inline-flex; align-items:center; gap:0.25rem; padding:0.25rem 0.5rem; background:var(--secondary-color)12; border:1px solid var(--secondary-color)44; border-radius:4px; text-decoration:none; font-size:0.75rem;"
+                                               title="${mitigationNames[m] || m}">
+                                                <code style="color:var(--secondary-color); font-weight:700;">${m}</code>
+                                                ${mitigationNames[m] ? `<span style="color:var(--text-secondary); max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">· ${mitigationNames[m]}</span>` : ''}
+                                            </a>
+                                        `).join('')}
                                     </div>
-                                    <a href="https://attack.mitre.org/mitigations/${mit}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">
-                                        🔗 MITRE
-                                    </a>
                                 </div>
-                            </div>
-                            `;
-                        }).join('')}
-                    </div>
-                ` : '<p style="color: var(--text-tertiary); font-style: italic;">No mitigations mapped</p>'}
+                            ` : `<div style="padding:0.5rem 0.75rem; background:var(--card-bg); border-top:1px solid var(--border-color); font-size:0.75rem; color:var(--text-tertiary); font-style:italic;">No mitigations mapped for this technique</div>`}
+                        </div>`;
+                    }).join('')}
+                ` : '<p style="color: var(--text-tertiary); font-style: italic;">No techniques mapped</p>'}
             </div>
         `;
 
