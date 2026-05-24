@@ -2730,76 +2730,39 @@ class Dashboard {
         }
 
         const archName = this.analysisData.architecture_name;
-        const reportPaths = this.analysisData.report_paths;
-
-        // Check if reports were generated during analysis
-        if (reportPaths && reportPaths.executive) {
-            // Reports generated! Show them
-            this.renderGeneratedReports(reportPaths, archName);
-            this.updateStatusMessage(`✅ ${archName} reports ready`);
-            return;
-        }
-
-        // Try to fetch reports from API (fallback for CLI-generated reports)
-        listContainer.innerHTML = '<p class="placeholder">Loading reports...</p>';
+        listContainer.innerHTML = '<p class="placeholder" style="padding: 2rem;">Loading reports...</p>';
         this.updateStatusMessage(`📄 Loading reports for ${archName}...`);
 
         try {
             const response = await fetch(`/api/v1/reports/${archName}`);
             if (!response.ok) {
                 if (response.status === 404) {
-                    // Architecture not found - reports not generated
                     listContainer.innerHTML = `
                         <div style="padding: 2rem; text-align: center;">
-                            <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
-                            <h3 style="color: var(--warning-color); margin-bottom: 1rem;">Reports Not Available</h3>
-                            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
-                                <strong>📊 All analysis data is available in the dashboard tabs:</strong>
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">📂</div>
+                            <h3 style="color: var(--text-secondary); margin-bottom: 1rem;">No Reports Yet</h3>
+                            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem;">
+                                Reports are generated during analysis. Run a full analysis to generate downloadable reports.
                             </p>
-                            <ul style="color: var(--text-secondary); font-size: 0.875rem; margin-left: 1.5rem; margin-bottom: 1.5rem; line-height: 1.8;">
-                                <li><strong>📊 Overview</strong> - Threat heat map and architecture diagram</li>
-                                <li><strong>🎯 Attack Paths</strong> - Step-by-step attack traversal with techniques</li>
-                                <li><strong>🛡️ Controls</strong> - Security control recommendations with priorities</li>
-                                <li><strong>🔒 Visualise</strong> - Before/after control placement visualization</li>
-                                <li><strong>📋 MITRE</strong> - Complete technique coverage matrix</li>
-                                <li><strong>💾 Raw Data</strong> - Complete JSON analysis (download via browser)</li>
-                            </ul>
-                            <div style="padding: 1rem; background: var(--warning-color)15; border-left: 4px solid var(--warning-color); border-radius: 8px; margin-bottom: 1rem;">
-                                <h5 style="color: var(--warning-color); margin-bottom: 0.5rem;">🚧 Coming Soon: Downloadable Reports</h5>
-                                <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;">
-                                    Automatic generation of Executive Dashboard, Technical Report, and Action Plan will be added in the next update.
-                                </p>
-                                <p style="color: var(--text-tertiary); font-size: 0.8125rem;">
-                                    <em>Currently, these reports must be generated separately via CLI. This will be integrated into the web analysis flow soon for better UX.</em>
-                                </p>
-                            </div>
-                            <p style="padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px; color: var(--text-secondary); font-size: 0.875rem;">
-                                💡 <strong>For now, to generate downloadable markdown reports:</strong><br>
-                                Run: <code style="color: var(--primary-color);">python3 -m chatbot.main --gen-arch-truth your_architecture.mmd</code><br>
-                                Reports saved to: <code>report/your_architecture/</code>
+                            <p style="color: var(--text-tertiary); font-size: 0.8125rem; padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px;">
+                                CLI: <code style="color: var(--primary-color);">python3 -m chatbot.main --gen-arch-truth your_architecture.mmd</code>
                             </p>
                         </div>
                     `;
                     return;
                 }
-
                 const errorText = await response.text();
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 
             const data = await response.json();
-            this.renderReportsList(data);
-            this.updateStatusMessage(`✅ Loaded ${data.count || 0} reports for ${archName}`);
+            this.renderReportsPanel(archName, data.reports || []);
+            this.updateStatusMessage(`✅ ${archName} reports ready`);
         } catch (error) {
             console.error('Error loading reports:', error);
             listContainer.innerHTML = `
                 <div style="padding: 2rem;">
-                    <p style="color: var(--danger-color); margin-bottom: 1rem;">
-                        ⚠️ Failed to load reports
-                    </p>
-                    <p style="color: var(--text-secondary); font-size: 0.875rem;">
-                        ${error.message}
-                    </p>
+                    <p style="color: var(--danger-color);">⚠️ Failed to load reports: ${error.message}</p>
                 </div>
             `;
         }
@@ -2863,663 +2826,267 @@ class Dashboard {
         }
     }
 
-    renderGeneratedReports(reportPaths, archName) {
+    renderReportsPanel(archName, allFiles) {
         const listContainer = document.getElementById('reports-list');
+        this.reportContents = {};
 
-        const reports = [
-            {
-                id: 'executive',
-                name: '01_executive_summary.md',
-                title: 'Executive Summary',
-                icon: '📊',
-                description: 'High-level threat overview for executives and CISOs',
-                path: reportPaths.executive,
-                color: 'var(--primary-color)',
-                type: 'markdown'
-            },
-            {
-                id: 'technical',
-                name: '02_technical_report.md',
-                title: 'Technical Report',
-                icon: '🔧',
-                description: 'Detailed technical analysis with MITRE mappings',
-                path: reportPaths.technical,
-                color: 'var(--secondary-color)',
-                type: 'markdown'
-            },
-            {
-                id: 'action',
-                name: '03_action_plan.md',
-                title: 'Action Plan',
-                icon: '✅',
-                description: 'Prioritized recommendations and implementation steps',
-                path: reportPaths.action_plan,
-                color: 'var(--warning-color)',
-                type: 'markdown'
-            },
-            {
-                id: 'before-diagram',
-                name: 'before.mmd',
-                title: 'Before Diagram',
-                icon: '⚠️',
-                description: 'Original architecture diagram (before hardening)',
-                path: reportPaths.before_diagram,
-                color: 'var(--danger-color)',
-                type: 'mermaid'
-            },
-            {
-                id: 'after-diagram',
-                name: 'after.mmd',
-                title: 'After Diagram',
-                icon: '🛡️',
-                description: 'Hardened architecture with recommended controls',
-                path: reportPaths.after_diagram,
-                color: 'var(--secondary-color)',
-                type: 'mermaid'
+        // Catalogue definitions — maps filename prefix/exact to metadata
+        const REPORT_CATALOGUE = {
+            '01_executive_summary.md':    { id: 'executive',    title: 'Executive Summary',    icon: '📊', desc: 'High-level threat overview for leadership and CISOs', audience: 'stakeholder', type: 'markdown' },
+            '03_action_plan.md':          { id: 'action',       title: 'Action Plan',           icon: '✅', desc: 'Prioritised recommendations with implementation steps', audience: 'stakeholder', type: 'markdown' },
+            '08_improvement_summary.md':  { id: 'improvement',  title: 'Improvement Summary',   icon: '🗺️', desc: 'Roadmap across Quick Win, Recommended, and Maximum tiers', audience: 'stakeholder', type: 'markdown' },
+            'before.mmd':                 { id: 'before',       title: 'Current Architecture',  icon: '⚠️', desc: 'Architecture before hardening controls are applied', audience: 'stakeholder', type: 'mermaid', color: 'var(--danger-color)' },
+            'after.mmd':                  { id: 'after',        title: 'Hardened Architecture', icon: '🛡️', desc: 'Architecture with all recommended controls applied', audience: 'stakeholder', type: 'mermaid', color: 'var(--secondary-color)' },
+            '02_technical_report.md':     { id: 'technical',    title: 'Technical Report',      icon: '🔧', desc: 'Full MITRE ATT&CK technique mappings and control analysis', audience: 'technical', type: 'markdown' },
+            '04_architect_critique.json': { id: 'arch-critique', title: 'Architecture Review',  icon: '🏛️', desc: 'Expert assessment of threat model completeness', audience: 'expert', type: 'json' },
+            '05_tester_critique.json':    { id: 'tester-critique', title: 'Coverage Audit',     icon: '🧪', desc: 'MITRE technique coverage and mapping accuracy review', audience: 'expert', type: 'json' },
+            '06_red_team_critique.json':  { id: 'red-critique', title: 'Exploit Analysis',      icon: '🔴', desc: 'Red team assessment of control weaknesses and bypasses', audience: 'expert', type: 'json' },
+            '08a_quick_wins.mmd':         { id: 'tier-a',       title: 'Quick Wins Diagram',    icon: '⚡', desc: 'Architecture diagram with Quick Win controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--secondary-color)' },
+            '08b_recommended.mmd':        { id: 'tier-b',       title: 'Recommended Diagram',   icon: '📈', desc: 'Architecture diagram with Recommended controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--primary-color)' },
+            '08c_maximum.mmd':            { id: 'tier-c',       title: 'Maximum Coverage',      icon: '🔒', desc: 'Architecture diagram with Maximum controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--warning-color)' },
+        };
+
+        // Suppressed files (raw data, noise, or duplicates)
+        const SUPPRESSED = new Set(['ground_truth.json', '07_moe_orchestrator.json', '07_orchestrator_report.json', 'README.md']);
+
+        // Build report objects from files returned by API
+        const byAudience = { stakeholder: [], technical: [], expert: [] };
+        const fileMap = {};
+        allFiles.forEach(f => fileMap[f.filename] = f);
+
+        Object.entries(REPORT_CATALOGUE).forEach(([filename, meta]) => {
+            if (fileMap[filename]) {
+                byAudience[meta.audience].push({ ...meta, filename, url: fileMap[filename].url, size: fileMap[filename].size });
             }
-        ];
+        });
 
-        // Store reports for later access
-        this.availableReports = reports;
-        this.selectedReports = ['executive']; // Default to Executive
-        this.activeReportTab = 'executive';
-        this.reportContents = {}; // Cache loaded reports
+        // Any unrecognised files not suppressed go to technical as raw items
+        allFiles.forEach(f => {
+            if (!REPORT_CATALOGUE[f.filename] && !SUPPRESSED.has(f.filename)) {
+                byAudience.technical.push({
+                    id: f.filename,
+                    title: f.filename,
+                    icon: f.type === 'json' ? '📊' : f.type === 'mermaid' ? '🏗️' : '📄',
+                    desc: '',
+                    audience: 'technical',
+                    type: f.type,
+                    filename: f.filename,
+                    url: f.url,
+                    size: f.size
+                });
+            }
+        });
+
+        const hasExpert = byAudience.expert.length > 0;
+
+        // Stakeholder download pack filenames
+        const stakeholderFiles = byAudience.stakeholder.map(r => r.filename);
+        const allPackFiles = [...stakeholderFiles, ...byAudience.technical.map(r => r.filename), ...byAudience.expert.map(r => r.filename)];
 
         listContainer.innerHTML = `
-            <!-- Filter Controls -->
-            <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                    <label style="font-size: 0.875rem; font-weight: 600; color: var(--text-color);">Select Reports to View:</label>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button id="select-all-reports" style="padding: 0.375rem 0.75rem; border-radius: 6px; background: var(--secondary-color)22; color: var(--secondary-color); border: 1px solid var(--secondary-color); cursor: pointer; font-size: 0.8125rem; font-weight: 600;">
-                            View All
-                        </button>
-                        <button id="clear-all-reports" style="padding: 0.375rem 0.75rem; border-radius: 6px; background: var(--warning-color)22; color: var(--warning-color); border: 1px solid var(--warning-color); cursor: pointer; font-size: 0.8125rem; font-weight: 600;">
-                            Clear All
-                        </button>
+            <!-- Download packs -->
+            <div style="display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;">
+                <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 600;">Download:</span>
+                <button id="dl-stakeholder-pack" class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 600;">
+                    ⬇ Stakeholder Pack
+                </button>
+                <button id="dl-full-pack" style="padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 600; background: transparent; color: var(--text-color); border: 1.5px solid var(--border-color); border-radius: 6px; cursor: pointer;">
+                    ⬇ Full Pack
+                </button>
+                <span style="font-size: 0.75rem; color: var(--text-tertiary); margin-left: auto;">
+                    Saved to: <code style="color: var(--primary-color);">report/${archName}/</code>
+                </span>
+            </div>
+
+            <!-- Viewer panel -->
+            <div id="report-viewer" style="background: var(--card-bg); border-radius: 8px; padding: 0; min-height: 200px; margin-bottom: 1.5rem; overflow: hidden;">
+                <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+                    <p>Select a report below to view it inline.</p>
+                </div>
+            </div>
+
+            <!-- Section: For Stakeholders -->
+            ${byAudience.stakeholder.length > 0 ? `
+            <div class="report-section" style="margin-bottom: 1.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                    <span style="font-size: 1.125rem;">👔</span>
+                    <h4 style="margin: 0; color: var(--text-color); font-size: 0.9375rem;">For Stakeholders</h4>
+                    <span style="font-size: 0.75rem; color: var(--text-tertiary); padding: 0.125rem 0.5rem; background: var(--nav-hover-bg); border-radius: 10px;">Decision-driving</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.625rem;">
+                    ${byAudience.stakeholder.map(r => this._reportCard(r, archName)).join('')}
+                </div>
+            </div>` : ''}
+
+            <!-- Section: For Technical Teams -->
+            ${byAudience.technical.length > 0 ? `
+            <div class="report-section" style="margin-bottom: 1.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                    <span style="font-size: 1.125rem;">🔧</span>
+                    <h4 style="margin: 0; color: var(--text-color); font-size: 0.9375rem;">For Technical Teams</h4>
+                    <span style="font-size: 0.75rem; color: var(--text-tertiary); padding: 0.125rem 0.5rem; background: var(--nav-hover-bg); border-radius: 10px;">Implementation depth</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.625rem;">
+                    ${byAudience.technical.map(r => this._reportCard(r, archName)).join('')}
+                </div>
+            </div>` : ''}
+
+            <!-- Section: Expert Review Findings (only when MoE data present) -->
+            ${hasExpert ? `
+            <div class="report-section" style="margin-bottom: 1.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                    <span style="font-size: 1.125rem;">🧑‍🏫</span>
+                    <h4 style="margin: 0; color: var(--text-color); font-size: 0.9375rem;">Expert Review Findings</h4>
+                    <span style="font-size: 0.75rem; color: var(--secondary-color); padding: 0.125rem 0.5rem; background: var(--secondary-color)18; border-radius: 10px; border: 1px solid var(--secondary-color)44;">Validated</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.625rem;">
+                    ${byAudience.expert.map(r => this._reportCard(r, archName)).join('')}
+                </div>
+            </div>` : ''}
+        `;
+
+        // Wire report card clicks
+        listContainer.querySelectorAll('[data-report-id]').forEach(card => {
+            card.addEventListener('click', () => {
+                // Highlight active card
+                listContainer.querySelectorAll('[data-report-id]').forEach(c => {
+                    c.style.borderColor = 'var(--border-color)';
+                    c.style.background = 'var(--card-bg)';
+                });
+                card.style.borderColor = 'var(--primary-color)';
+                card.style.background = 'var(--primary-color)12';
+
+                const reportId = card.dataset.reportId;
+                const allReports = [...byAudience.stakeholder, ...byAudience.technical, ...byAudience.expert];
+                const report = allReports.find(r => r.id === reportId);
+                if (report) this._renderReportInPanel(report, archName);
+            });
+        });
+
+        // Download pack buttons
+        document.getElementById('dl-stakeholder-pack').addEventListener('click', () => {
+            stakeholderFiles.forEach(fn => window.open(`/api/v1/reports/${archName}/files/${fn}`, '_blank'));
+        });
+        document.getElementById('dl-full-pack').addEventListener('click', () => {
+            allPackFiles.forEach(fn => window.open(`/api/v1/reports/${archName}/files/${fn}`, '_blank'));
+        });
+    }
+
+    _reportCard(report, archName) {
+        return `
+            <div data-report-id="${report.id}" style="
+                padding: 0.875rem 1rem;
+                background: var(--card-bg);
+                border: 1.5px solid var(--border-color);
+                border-radius: 8px;
+                cursor: pointer;
+                transition: border-color 0.2s, background 0.2s;
+            ">
+                <div style="display: flex; align-items: flex-start; gap: 0.5rem;">
+                    <span style="font-size: 1.25rem; flex-shrink: 0; margin-top: 0.1rem;">${report.icon}</span>
+                    <div style="min-width: 0;">
+                        <div style="font-weight: 600; font-size: 0.875rem; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${report.title}</div>
+                        ${report.desc ? `<div style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 0.125rem; line-height: 1.3;">${report.desc}</div>` : ''}
                     </div>
                 </div>
-                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                    ${reports.map(report => `
-                        <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: var(--card-bg); border: 2px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: all 0.2s;" class="report-filter-label" data-report-id="${report.id}">
-                            <input type="checkbox" class="report-checkbox" value="${report.id}" ${report.id === 'executive' ? 'checked' : ''} style="cursor: pointer; width: 18px; height: 18px;">
-                            <span style="font-size: 1.25rem;">${report.icon}</span>
-                            <span style="font-weight: 600; color: var(--text-color);">${report.title}</span>
-                        </label>
-                    `).join('')}
-                </div>
-                <div style="margin-top: 0.75rem; font-size: 0.875rem; color: var(--text-secondary);">
-                    <strong id="report-count">1</strong> report(s) selected
-                </div>
-            </div>
-
-            <!-- Report Tabs (shown when multiple selected) -->
-            <div id="report-tabs-container" style="display: none; margin-bottom: 1rem;">
-                <div id="report-tabs" style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--border-color); padding-bottom: 0.5rem; overflow-x: auto;">
-                </div>
-            </div>
-
-            <!-- Report Viewer -->
-            <div id="report-viewer" style="background: var(--card-bg); border-radius: 8px; padding: 1.5rem; min-height: 500px;">
-                <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">
-                    Loading report...
-                </p>
-            </div>
-
-            <!-- Download Section -->
-            <div style="margin-top: 1.5rem; padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-                <div style="flex: 1;">
-                    <p style="color: var(--text-secondary); font-size: 0.875rem;">
-                        Reports saved to: <code style="color: var(--primary-color);">report/${archName}/</code>
-                    </p>
-                </div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button id="download-current-report" class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
-                        ⬇ Download Current
-                    </button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+                    <span style="font-size: 0.6875rem; color: var(--text-tertiary);">${report.type.toUpperCase()}</span>
+                    <a href="/api/v1/reports/${archName}/files/${report.filename}" target="_blank"
+                       style="font-size: 0.75rem; color: var(--primary-color); text-decoration: none; padding: 0.125rem 0.375rem; border: 1px solid var(--primary-color); border-radius: 4px;"
+                       onclick="event.stopPropagation()">⬇</a>
                 </div>
             </div>
         `;
-
-        // Setup event listeners
-        this.setupReportFilters(archName);
-
-        // Load initial report
-        this.loadSelectedReports(archName);
     }
 
-    setupReportFilters(archName) {
-        // Get filter elements
-        const checkboxes = document.querySelectorAll('.report-checkbox');
-        const selectAllBtn = document.getElementById('select-all-reports');
-        const clearAllBtn = document.getElementById('clear-all-reports');
-        const reportCount = document.getElementById('report-count');
-
-        // Handle checkbox changes
-        checkboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', () => {
-                // Update selected reports array
-                this.selectedReports = Array.from(checkboxes)
-                    .filter(cb => cb.checked)
-                    .map(cb => cb.value);
-
-                // Update UI
-                reportCount.textContent = this.selectedReports.length;
-
-                // Update visual state of labels
-                const label = checkbox.closest('.report-filter-label');
-                if (checkbox.checked) {
-                    label.style.borderColor = 'var(--primary-color)';
-                    label.style.background = 'var(--primary-color)15';
-                } else {
-                    label.style.borderColor = 'var(--border-color)';
-                    label.style.background = 'var(--card-bg)';
-                }
-
-                // Reload reports with new selection
-                this.loadSelectedReports(archName);
-            });
-
-            // Set initial label state
-            const label = checkbox.closest('.report-filter-label');
-            if (checkbox.checked) {
-                label.style.borderColor = 'var(--primary-color)';
-                label.style.background = 'var(--primary-color)15';
-            }
-        });
-
-        // Handle "View All" button
-        selectAllBtn.addEventListener('click', () => {
-            checkboxes.forEach(cb => {
-                cb.checked = true;
-                const label = cb.closest('.report-filter-label');
-                label.style.borderColor = 'var(--primary-color)';
-                label.style.background = 'var(--primary-color)15';
-            });
-
-            this.selectedReports = Array.from(checkboxes).map(cb => cb.value);
-            reportCount.textContent = this.selectedReports.length;
-            this.loadSelectedReports(archName);
-        });
-
-        // Handle "Clear All" button
-        clearAllBtn.addEventListener('click', () => {
-            checkboxes.forEach(cb => {
-                cb.checked = false;
-                const label = cb.closest('.report-filter-label');
-                label.style.borderColor = 'var(--border-color)';
-                label.style.background = 'var(--card-bg)';
-            });
-
-            this.selectedReports = [];
-            reportCount.textContent = '0';
-
-            // Show message in viewer
-            const viewer = document.getElementById('report-viewer');
-            viewer.innerHTML = `
-                <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">
-                    Select at least one report to view
-                </p>
-            `;
-
-            // Hide tabs
-            document.getElementById('report-tabs-container').style.display = 'none';
-        });
-    }
-
-    async loadSelectedReports(archName) {
+    async _renderReportInPanel(report, archName) {
         const viewer = document.getElementById('report-viewer');
-        const tabsContainer = document.getElementById('report-tabs-container');
-        const tabsDiv = document.getElementById('report-tabs');
 
-        // No reports selected
-        if (this.selectedReports.length === 0) {
-            viewer.innerHTML = `
-                <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">
-                    Select at least one report to view
-                </p>
-            `;
-            tabsContainer.style.display = 'none';
-            return;
-        }
-
-        // Single report selected - show directly (no tabs)
-        if (this.selectedReports.length === 1) {
-            tabsContainer.style.display = 'none';
-            this.activeReportTab = this.selectedReports[0];
-            await this.renderReportInViewer(this.activeReportTab, archName);
-            return;
-        }
-
-        // Multiple reports selected - show tabs
-        tabsContainer.style.display = 'block';
-
-        // Render tabs
-        tabsDiv.innerHTML = this.selectedReports.map(reportId => {
-            const report = this.availableReports.find(r => r.id === reportId);
-            const isActive = reportId === this.activeReportTab;
-
-            return `
-                <button class="report-tab ${isActive ? 'active' : ''}" data-report-id="${reportId}" style="
-                    padding: 0.5rem 1rem;
-                    background: ${isActive ? 'var(--primary-color)' : 'transparent'};
-                    color: ${isActive ? 'var(--button-text-color)' : 'var(--text-color)'};
-                    border: 2px solid ${isActive ? 'var(--primary-color)' : 'var(--border-color)'};
-                    border-bottom: none;
-                    border-radius: 8px 8px 0 0;
-                    cursor: pointer;
-                    font-weight: 600;
-                    font-size: 0.875rem;
-                    transition: all 0.2s;
-                    white-space: nowrap;
-                ">
-                    ${report.icon} ${report.title}
-                </button>
-            `;
-        }).join('');
-
-        // Add tab click handlers
-        tabsDiv.querySelectorAll('.report-tab').forEach(tab => {
-            tab.addEventListener('click', async () => {
-                const reportId = tab.dataset.reportId;
-                this.activeReportTab = reportId;
-
-                // Update tab styles
-                tabsDiv.querySelectorAll('.report-tab').forEach(t => {
-                    const isActive = t.dataset.reportId === reportId;
-                    t.classList.toggle('active', isActive);
-                    t.style.background = isActive ? 'var(--primary-color)' : 'transparent';
-                    t.style.color = isActive ? 'var(--button-text-color)' : 'var(--text-color)';
-                    t.style.borderColor = isActive ? 'var(--primary-color)' : 'var(--border-color)';
-                });
-
-                // Load report content
-                await this.renderReportInViewer(reportId, archName);
-            });
-        });
-
-        // Load initial tab content
-        await this.renderReportInViewer(this.activeReportTab, archName);
-    }
-
-    async renderReportInViewer(reportId, archName) {
-        const viewer = document.getElementById('report-viewer');
-        const report = this.availableReports.find(r => r.id === reportId);
-
-        if (!report) {
-            viewer.innerHTML = '<p style="color: var(--danger-color);">Report not found</p>';
-            return;
-        }
-
-        // Check if already cached (but skip cache for mermaid diagrams - they need re-rendering)
-        if (this.reportContents[reportId] && report.type !== 'mermaid') {
-            viewer.innerHTML = this.reportContents[reportId];
+        // Serve from cache (not mermaid — needs fresh render)
+        if (this.reportContents[report.id] && report.type !== 'mermaid') {
+            viewer.innerHTML = this.reportContents[report.id];
             this.applyCodeHighlighting(viewer);
             return;
         }
 
-        // Show loading state
         viewer.innerHTML = `
-            <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
-                <div style="font-size: 2rem; margin-bottom: 1rem;">${report.icon}</div>
-                <h4 style="margin-bottom: 0.5rem; color: var(--text-color);">Loading ${report.title}...</h4>
-                <p style="font-size: 0.875rem;">Fetching markdown content</p>
+            <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">${report.icon}</div>
+                <p>Loading ${report.title}...</p>
             </div>
         `;
 
         try {
-            // Fetch content
-            const response = await fetch(`/api/v1/reports/${archName}/files/${report.name}`);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
+            const response = await fetch(`/api/v1/reports/${archName}/files/${report.filename}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            const content = await response.text();
             let htmlContent;
-
-            // Handle mermaid diagrams differently
             if (report.type === 'mermaid') {
+                const content = await response.text();
+                const borderColor = report.color || 'var(--border-color)';
                 htmlContent = `
-                    <!-- Diagram controls -->
-                    <div style="margin-bottom: 0.5rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
-                        <button id="report-diagram-zoom-in" class="btn-icon" title="Zoom In">🔍+</button>
-                        <button id="report-diagram-zoom-out" class="btn-icon" title="Zoom Out">🔍−</button>
-                        <button id="report-diagram-zoom-reset" class="btn-icon" title="Reset Zoom">↺</button>
-                        <div style="width: 1px; height: 24px; background: var(--border-color); margin: 0 0.25rem;"></div>
-                        <button id="report-diagram-fit-width" class="btn-icon" title="Fit to Width">↔️</button>
-                        <button id="report-diagram-fit-height" class="btn-icon" title="Fit to Height">↕️</button>
+                    <div style="padding: 0.75rem; display: flex; gap: 0.25rem;">
+                        <button id="rp-zoom-in" class="btn-icon" title="Zoom In">🔍+</button>
+                        <button id="rp-zoom-out" class="btn-icon" title="Zoom Out">🔍−</button>
+                        <button id="rp-zoom-reset" class="btn-icon" title="Reset">↺</button>
                     </div>
-                    <div id="report-diagram-container" style="padding: 1rem; background: var(--code-bg); border-radius: 8px; overflow: auto; max-height: 600px; border: 2px solid ${report.color};">
-                        <div class="mermaid" id="report-diagram">${content}</div>
+                    <div style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 550px; border-top: 2px solid ${borderColor};">
+                        <div class="mermaid" id="rp-diagram">${content}</div>
+                    </div>
+                `;
+            } else if (report.type === 'json') {
+                const data = await response.json();
+                const jsonStr = JSON.stringify(data, null, 2);
+                htmlContent = `
+                    <div style="padding: 1.25rem; border-bottom: 1.5px solid var(--border-color);">
+                        <span style="font-size: 1.5rem;">${report.icon}</span>
+                        <strong style="margin-left: 0.5rem; color: var(--text-color);">${report.title}</strong>
+                        <p style="color: var(--text-secondary); font-size: 0.8125rem; margin: 0.25rem 0 0;">${report.desc}</p>
+                    </div>
+                    <div style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 550px;">
+                        <pre style="margin: 0; font-size: 0.8125rem;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>
                     </div>
                 `;
             } else {
-                // Convert markdown to HTML
-                htmlContent = window.marked ? marked.parse(content) : `<pre>${content}</pre>`;
-            }
-
-            // Build full HTML with header and content
-            const fullHtml = `
-                <div style="margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid var(--border-color);">
-                    <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
-                        <span style="font-size: 2rem;">${report.icon}</span>
-                        <h3 style="margin: 0; color: ${report.color};">${report.title}</h3>
+                const text = await response.text();
+                const rendered = window.marked ? marked.parse(text) : `<pre style="white-space: pre-wrap;">${this.escapeHtml(text)}</pre>`;
+                htmlContent = `
+                    <div style="padding: 1.25rem; border-bottom: 1.5px solid var(--border-color);">
+                        <span style="font-size: 1.5rem;">${report.icon}</span>
+                        <strong style="margin-left: 0.5rem; color: var(--text-color);">${report.title}</strong>
+                        <p style="color: var(--text-secondary); font-size: 0.8125rem; margin: 0.25rem 0 0;">${report.desc}</p>
                     </div>
-                    <p style="color: var(--text-secondary); font-size: 0.875rem; margin: 0;">
-                        ${report.description}
-                    </p>
-                </div>
-                <div class="${report.type === 'mermaid' ? '' : 'markdown-content'}" style="line-height: 1.7; color: var(--text-color);">
-                    ${htmlContent}
-                </div>
-            `;
-
-            // Cache and display (don't cache mermaid diagrams - they need fresh rendering)
-            if (report.type !== 'mermaid') {
-                this.reportContents[reportId] = fullHtml;
+                    <div class="markdown-content" style="padding: 1.5rem; line-height: 1.7; color: var(--text-color); overflow: auto; max-height: 600px;">
+                        ${rendered}
+                    </div>
+                `;
             }
-            viewer.innerHTML = fullHtml;
 
-            // Render mermaid if diagram
+            if (report.type !== 'mermaid') this.reportContents[report.id] = htmlContent;
+            viewer.innerHTML = htmlContent;
+
             if (report.type === 'mermaid' && window.mermaid) {
-                try {
-                    // Wait for DOM to be ready
-                    await new Promise(resolve => setTimeout(resolve, 100));
-
-                    const diagramElement = document.querySelector('#report-diagram');
-                    if (diagramElement) {
-                        await mermaid.run({
-                            nodes: [diagramElement]
-                        });
-                        console.log('[DEBUG] Report diagram rendered successfully');
-
-                        // Setup zoom controls after render
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                        this.setupDiagramZoom('report-diagram');
-                        console.log('[DEBUG] Zoom controls attached for report diagram');
-                    } else {
-                        console.error('[DEBUG] Report diagram element not found');
-                    }
-                } catch (error) {
-                    console.error('Mermaid rendering failed:', error);
+                await new Promise(r => setTimeout(r, 100));
+                const el = document.getElementById('rp-diagram');
+                if (el) {
+                    await mermaid.run({ nodes: [el] });
+                    await new Promise(r => setTimeout(r, 100));
+                    this.setupDiagramZoom('rp-diagram');
                 }
             } else {
-                // Apply syntax highlighting for markdown
                 this.applyCodeHighlighting(viewer);
             }
-
-            // Update download button
-            this.updateDownloadButton(report, archName);
-
         } catch (error) {
-            console.error('Error loading report:', error);
-            viewer.innerHTML = `
-                <div style="padding: 2rem; text-align: center;">
-                    <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
-                    <h4 style="color: var(--danger-color); margin-bottom: 0.5rem;">Failed to Load Report</h4>
-                    <p style="color: var(--text-secondary); font-size: 0.875rem;">${error.message}</p>
-                    <button onclick="window.location.reload()" class="btn-primary" style="margin-top: 1rem;">
-                        🔄 Retry
-                    </button>
-                </div>
-            `;
+            console.error('Report render error:', error);
+            viewer.innerHTML = `<div style="padding: 2rem; color: var(--danger-color);">⚠️ Failed to load ${report.title}: ${error.message}</div>`;
         }
     }
 
     applyCodeHighlighting(container) {
-        // Apply syntax highlighting to code blocks if hljs available
         if (window.hljs) {
             container.querySelectorAll('pre code').forEach(block => {
                 hljs.highlightBlock(block);
             });
-        }
-    }
-
-    updateDownloadButton(report, archName) {
-        const downloadBtn = document.getElementById('download-current-report');
-        if (downloadBtn) {
-            downloadBtn.onclick = () => {
-                window.open(`/api/v1/reports/${archName}/files/${report.name}`, '_blank');
-            };
-        }
-    }
-
-    async viewGeneratedReport(report, archName) {
-        const rightPaneContent = document.getElementById('right-pane-content');
-        const rightPane = document.getElementById('right-pane');
-
-        try {
-            // Show loading state
-            rightPaneContent.innerHTML = `
-                <h3>${report.title}</h3>
-                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Loading report...</p>
-            `;
-            rightPane.classList.add('visible');
-
-            // Fetch the markdown file
-            const response = await fetch(`/api/v1/reports/${archName}/files/${report.name}`);
-            if (!response.ok) {
-                throw new Error(`Failed to load report: ${response.statusText}`);
-            }
-
-            const markdown = await response.text();
-
-            // Render markdown to HTML
-            const htmlContent = window.marked ? marked.parse(markdown) : markdown;
-
-            rightPaneContent.innerHTML = `
-                <div style="margin-bottom: 1rem;">
-                    <a href="/api/v1/reports/${archName}/files/${report.name}" download="${report.name}" class="btn-primary" style="display: inline-block; text-decoration: none; padding: 0.5rem 1rem;">
-                        ⬇ Download ${report.name}
-                    </a>
-                </div>
-                <div style="padding: 1.5rem; background: var(--code-bg); border-radius: 8px; max-height: 70vh; overflow-y: auto; line-height: 1.6;">
-                    ${htmlContent}
-                </div>
-            `;
-
-            // Apply syntax highlighting if available
-            if (window.hljs) {
-                rightPaneContent.querySelectorAll('pre code').forEach(block => {
-                    hljs.highlightBlock(block);
-                });
-            }
-
-        } catch (error) {
-            console.error('Error loading report:', error);
-            rightPaneContent.innerHTML = `
-                <h3>${report.title}</h3>
-                <div style="padding: 1rem; background: var(--danger-color)15; border-left: 4px solid var(--danger-color); border-radius: 8px; margin-top: 1rem;">
-                    <p style="color: var(--danger-color); font-weight: 600;">⚠️ Failed to load report</p>
-                    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.5rem;">${error.message}</p>
-                </div>
-            `;
-        }
-    }
-
-    renderReportsList(data) {
-        const listContainer = document.getElementById('reports-list');
-
-        if (!data.reports || data.reports.length === 0) {
-            listContainer.innerHTML = '<p class="placeholder">No reports generated yet</p>';
-            return;
-        }
-
-        listContainer.innerHTML = `
-            <h4>Generated Reports (${data.count})</h4>
-            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
-                Click on a report to view contents
-            </p>
-        `;
-
-        // Group reports by type
-        const mmdFiles = data.reports.filter(r => r.type === 'mermaid');
-        const mdReports = data.reports.filter(r => r.type === 'markdown');
-        const jsonFiles = data.reports.filter(r => r.type === 'json');
-        const otherFiles = data.reports.filter(r => r.type === 'text');
-
-        // Render mermaid diagrams
-        if (mmdFiles.length > 0) {
-            const section = document.createElement('div');
-            section.style.marginBottom = '1.5rem';
-            section.innerHTML = '<h5 style="margin-bottom: 0.75rem; color: var(--primary-color);">🏗️ Architecture Diagrams</h5>';
-
-            mmdFiles.forEach(report => {
-                const item = this.createReportItem(report, data.architecture);
-                section.appendChild(item);
-            });
-
-            listContainer.appendChild(section);
-        }
-
-        // Render markdown reports
-        if (mdReports.length > 0) {
-            const section = document.createElement('div');
-            section.style.marginBottom = '1.5rem';
-            section.innerHTML = '<h5 style="margin-bottom: 0.75rem; color: var(--primary-color);">📄 Analysis Reports</h5>';
-
-            mdReports.forEach(report => {
-                const item = this.createReportItem(report, data.architecture);
-                section.appendChild(item);
-            });
-
-            listContainer.appendChild(section);
-        }
-
-        // Render JSON files
-        if (jsonFiles.length > 0) {
-            const section = document.createElement('div');
-            section.style.marginBottom = '1.5rem';
-            section.innerHTML = '<h5 style="margin-bottom: 0.75rem; color: var(--primary-color);">📊 Data Files</h5>';
-
-            jsonFiles.forEach(report => {
-                const item = this.createReportItem(report, data.architecture);
-                section.appendChild(item);
-            });
-
-            listContainer.appendChild(section);
-        }
-    }
-
-    createReportItem(report, archName) {
-        const item = document.createElement('div');
-        item.className = 'list-item';
-
-        const sizeKB = (report.size / 1024).toFixed(1);
-        const icon = report.type === 'markdown' ? '📝' :
-                    report.type === 'json' ? '📊' :
-                    report.type === 'mermaid' ? '🏗️' : '📄';
-
-        item.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <div style="font-weight: 600;">${icon} ${report.filename}</div>
-                    <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                        ${sizeKB} KB · ${report.type}
-                    </div>
-                </div>
-                <button class="btn-icon" style="padding: 0.25rem 0.5rem;" title="Download">
-                    ⬇
-                </button>
-            </div>
-        `;
-
-        item.addEventListener('click', async (e) => {
-            // Remove active from all items
-            document.querySelectorAll('#reports-list .list-item').forEach(el => el.classList.remove('active'));
-            item.classList.add('active');
-
-            await this.loadReportContent(archName, report);
-        });
-
-        // Download button
-        const downloadBtn = item.querySelector('.btn-icon');
-        downloadBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            window.open(report.url, '_blank');
-        });
-
-        return item;
-    }
-
-    async loadReportContent(archName, report) {
-        // Determine if file is large (needs streaming)
-        const isLarge = report.size > 50000; // 50KB threshold
-        const sizeKB = (report.size / 1024).toFixed(1);
-
-        try {
-            // Show right pane with loading state first
-            const loadingContent = `
-                <div style="margin-bottom: 1rem;">
-                    <a href="${report.url}" target="_blank" class="btn-primary" style="display: inline-block; text-decoration: none;">
-                        ⬇ Download ${report.type === 'json' ? 'JSON' : 'Report'}
-                    </a>
-                    <span style="margin-left: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
-                        ${sizeKB} KB ${isLarge ? '(Streaming...)' : ''}
-                    </span>
-                </div>
-                <div id="streaming-container" style="
-                    padding: 1rem;
-                    background: var(--code-bg);
-                    border-radius: 8px;
-                    border: 1px solid var(--border-color);
-                    max-height: 70vh;
-                    overflow-y: auto;
-                ">
-                </div>
-            `;
-
-            this.showRightPane(report.filename, loadingContent);
-
-            // Fetch content
-            const response = await fetch(`/api/v1/reports/${archName}/files/${report.filename}`);
-            if (!response.ok) {
-                throw new Error('Failed to load report content');
-            }
-
-            // Initialize streaming renderer
-            const renderer = new StreamingRenderer('streaming-container');
-
-            if (report.type === 'json') {
-                const data = await response.json();
-
-                if (isLarge) {
-                    // Stream large JSON line-by-line
-                    await renderer.streamJSON(data, 5);
-                } else {
-                    // Render small JSON immediately
-                    const jsonStr = JSON.stringify(data, null, 2);
-                    const container = document.getElementById('streaming-container');
-                    container.innerHTML = `<pre style="margin: 0;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>`;
-
-                    if (window.hljs) {
-                        const codeBlock = container.querySelector('code');
-                        if (codeBlock) hljs.highlightElement(codeBlock);
-                    }
-                }
-            } else {
-                // Markdown
-                const text = await response.text();
-
-                if (isLarge) {
-                    // Stream large markdown
-                    await renderer.streamMarkdown(text, true);
-                } else {
-                    // Render small markdown immediately
-                    const container = document.getElementById('streaming-container');
-                    container.style.padding = '1.5rem';
-                    container.style.background = 'var(--card-bg)';
-
-                    if (window.marked) {
-                        container.innerHTML = marked.parse(text);
-                    } else {
-                        container.innerHTML = `<pre style="white-space: pre-wrap; word-wrap: break-word;">${this.escapeHtml(text)}</pre>`;
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error loading report content:', error);
-            this.showRightPane('Error', `<p style="color: var(--danger-color);">Failed to load report: ${error.message}</p>`);
         }
     }
 
