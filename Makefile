@@ -1,46 +1,109 @@
-.PHONY: docs view-docs clean-html help
+.PHONY: help install setup start stop restart status logs demo demo-quick test docs clean
 
-# Generate HTML documentation from markdown sources
-docs:
-	@echo "Generating HTML documentation..."
-	@bash -c "source .venv/bin/activate && python3 scripts/docs/generate_html_docs.py"
-	@echo ""
-	@echo "✓ Documentation generated in html/ folder"
-	@echo ""
-	@echo "Generated files:"
-	@echo "  - html/index.html (from README.md)"
-	@echo "  - html/status.html (from STATUS_AND_PLAN.md)"
-	@echo "  - html/roadmap.html (from docs/specs/MVP_SPECIFICATION.md)"
+# ──────────────────────────────────────────────────────────────
+# ThreatAssessor — Developer Makefile
+# Try-it-yourself entry point for new contributors and API users
+# ──────────────────────────────────────────────────────────────
 
-# Open generated HTML documentation in browser
-view-docs:
-	@echo "Opening HTML documentation..."
-	@open html/index.html 2>/dev/null || xdg-open html/index.html 2>/dev/null || echo "Please open html/index.html manually"
-	@open html/status.html 2>/dev/null || xdg-open html/status.html 2>/dev/null || echo "Please open html/status.html manually"
-	@open html/roadmap.html 2>/dev/null || xdg-open html/roadmap.html 2>/dev/null || echo "Please open html/roadmap.html manually"
-
-# Clean generated HTML files
-clean-html:
-	@echo "Cleaning generated HTML files..."
-	@rm -f html/*.html
-	@echo "✓ HTML files removed"
-
-# Show help
+# Default target
 help:
-	@echo "ThreatAssessor - Available Make Targets"
 	@echo ""
-	@echo "  make docs       - Regenerate HTML documentation from markdown sources"
-	@echo "  make view-docs  - Open generated HTML documentation in browser"
-	@echo "  make clean-html - Remove generated HTML files"
-	@echo "  make help       - Show this help message"
+	@echo "  ThreatAssessor — Available Commands"
+	@echo "  ─────────────────────────────────────────────────────"
 	@echo ""
-	@echo "Documentation:"
-	@echo "  Sources (edit these):         Outputs (generated):"
-	@echo "  - README.md                 → html/index.html"
-	@echo "  - STATUS_AND_PLAN.md        → html/status.html"
-	@echo "  - docs/specs/MVP_SPECIFICATION.md → html/roadmap.html"
+	@echo "  First time?"
+	@echo "    make install       Install Python dependencies"
+	@echo "    make setup         Copy .env.example → .env (edit to add API keys)"
 	@echo ""
-	@echo "The Makefile provides shortcuts for:"
-	@echo "  1. Regenerating HTML after editing markdown"
-	@echo "  2. Opening HTML docs in your browser"
-	@echo "  3. Cleaning up generated HTML files"
+	@echo "  Day-to-day:"
+	@echo "    make start         Start the API server (http://localhost:8000)"
+	@echo "    make stop          Stop the API server"
+	@echo "    make restart       Restart the API server"
+	@echo "    make status        Show API server status"
+	@echo "    make logs          Tail live API logs"
+	@echo ""
+	@echo "  Try it out:"
+	@echo "    make demo          Full analysis with Expert Review (~2 min, requires API key)"
+	@echo "    make demo-quick    Deterministic-only analysis (~30 sec, no API key needed)"
+	@echo ""
+	@echo "  Development:"
+	@echo "    make test          Run test suite"
+	@echo "    make docs          Regenerate HTML documentation"
+	@echo "    make clean         Remove generated reports and logs"
+	@echo ""
+	@echo "  URLs (after make start):"
+	@echo "    Dashboard  →  http://localhost:8000/dashboard"
+	@echo "    API docs   →  http://localhost:8000/docs"
+	@echo "    Health     →  http://localhost:8000/health"
+	@echo ""
+
+# ── Setup ─────────────────────────────────────────────────────
+
+install:
+	@echo "Installing Python dependencies..."
+	pip install -r requirements.txt
+	@echo ""
+	@echo "✓ Dependencies installed"
+	@echo "  Next: make setup (configure API keys)"
+
+setup:
+	@if [ -f .env ]; then \
+		echo "⚠  .env already exists — skipping copy"; \
+	else \
+		cp .env.example .env; \
+		echo "✓ .env created from .env.example"; \
+	fi
+	@echo ""
+	@echo "  Edit .env and set at least one of:"
+	@echo "    OPENROUTER_API_KEY   (free tier at openrouter.ai — recommended)"
+	@echo "    AWS_BEDROCK_API_KEY  (enterprise fallback)"
+	@echo ""
+	@echo "  Then: make start"
+
+# ── Server lifecycle ──────────────────────────────────────────
+
+start:
+	@./scripts/api/api_start.sh
+
+stop:
+	@./scripts/api/api_stop.sh
+
+restart:
+	@./scripts/api/api_restart.sh
+
+status:
+	@./scripts/api/api_status.sh
+
+logs:
+	@tail -f logs/api.log
+
+# ── Try it out ────────────────────────────────────────────────
+
+demo:
+	@echo "Running full analysis with Expert Review on sample architecture..."
+	@echo "(~2 min — requires LLM API key in .env)"
+	@echo ""
+	@./demo_expert_llm.sh tests/data/architectures/00_safeentry.mmd
+
+demo-quick:
+	@echo "Running deterministic-only analysis on sample architecture..."
+	@echo "(~30 sec — no API key required)"
+	@echo ""
+	@./demo_deterministic_engine.sh --validate-orphan tests/data/architectures/00_safeentry.mmd
+
+# ── Development ───────────────────────────────────────────────
+
+test:
+	@echo "Running test suite..."
+	python3 -m pytest tests/ -v --tb=short
+
+docs:
+	@echo "Regenerating HTML documentation..."
+	@bash -c "source .venv/bin/activate 2>/dev/null || true; python3 scripts/docs/generate_html_docs.py"
+	@echo "✓ Documentation regenerated"
+
+clean:
+	@echo "Removing generated reports and logs..."
+	@rm -rf report/*/
+	@rm -f logs/api.log logs/api.pid
+	@echo "✓ Cleaned"
