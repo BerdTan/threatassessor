@@ -70,7 +70,7 @@ def generate_executive_summary(ground_truth: Dict) -> str:
     report += f"**Architecture:** {arch_name} | **Date:** {datetime.now().strftime('%B %d, %Y')}\n\n"
 
     # Dashboard reference (Phase 3D)
-    report += "> 📊 **Primary Report:** See [`00_executive_dashboard.md`](00_executive_dashboard.md) for AI-validated analysis with confidence scoring.\n"
+    report += "> 📊 **Primary Report:** See [`01_executive_summary.md`](01_executive_summary.md) for AI-validated analysis with confidence scoring.\n"
     report += "> This file provides deterministic threat assessment details.\n\n"
     report += "---\n\n"
 
@@ -318,7 +318,7 @@ def generate_technical_report(ground_truth: Dict) -> str:
     report += f"**Date:** {datetime.now().strftime('%B %d, %Y')}\n\n"
 
     # Dashboard reference (Phase 3D)
-    report += "> 📊 **Primary Report:** See [`00_executive_dashboard.md`](00_executive_dashboard.md) for validated analysis.\n"
+    report += "> 📊 **Primary Report:** See [`01_executive_summary.md`](01_executive_summary.md) for validated analysis.\n"
     report += "> This file provides detailed technical findings from deterministic analysis.\n\n"
     report += "---\n\n"
 
@@ -636,7 +636,7 @@ def generate_action_plan(ground_truth: Dict) -> str:
     report += f"**Timeline:** {'2-4 weeks' if risk >= 60 else '4-8 weeks'}\n\n"
 
     # Dashboard reference (Phase 3D)
-    report += "> 📊 **Primary Report:** See [`00_executive_dashboard.md`](00_executive_dashboard.md) for validated recommendations.\n"
+    report += "> 📊 **Primary Report:** See [`01_executive_summary.md`](01_executive_summary.md) for validated recommendations.\n"
     report += "> This file provides implementation roadmap from deterministic analysis.\n\n"
     report += "---\n\n"
 

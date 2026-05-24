@@ -1441,8 +1441,8 @@ class Dashboard {
 
         // Sort attack paths by control count (most controls first), then by criticality
         const sortedPaths = [...attackPaths].sort((a, b) => {
-            const aIndex = parseInt(a.id.replace('AP-', '')) - 1;
-            const bIndex = parseInt(b.id.replace('AP-', '')) - 1;
+            const aIndex = attackPaths.indexOf(a);
+            const bIndex = attackPaths.indexOf(b);
             const aControls = controlRecs.filter(c => c.attack_paths && c.attack_paths.includes(aIndex)).length;
             const bControls = controlRecs.filter(c => c.attack_paths && c.attack_paths.includes(bIndex)).length;
 
@@ -1455,8 +1455,8 @@ class Dashboard {
         });
 
         sortedPaths.forEach(path => {
-            // Find controls that apply to this path
-            const pathIndex = parseInt(path.id.replace('AP-', '')) - 1;
+            // Find controls that apply to this path using array position (not AP- number)
+            const pathIndex = attackPaths.indexOf(path);
             const pathControls = controlRecs.filter(c =>
                 c.attack_paths && c.attack_paths.includes(pathIndex)
             );
@@ -2258,9 +2258,14 @@ class Dashboard {
         rightPane.classList.add('visible');
     }
 
+    getPathIndex(path) {
+        const attackPaths = (this.analysisData?.analysis || {}).expected_attack_paths || [];
+        return attackPaths.indexOf(path);
+    }
+
     groupControlsByNode(controls, path) {
         const grouped = {};
-        const pathIndex = parseInt(path.id.replace('AP-', '')) - 1;
+        const pathIndex = this.getPathIndex(path);
 
         console.log('[DEBUG] groupControlsByNode - controls count:', controls.length);
         console.log('[DEBUG] groupControlsByNode - pathIndex:', pathIndex);
@@ -2437,7 +2442,7 @@ class Dashboard {
 
     getControlPlacementForPath(control, path) {
         const hopAnalysis = control._layered_defense?.hop_analysis || [];
-        const pathIndex = parseInt(path.id.replace('AP-', '')) - 1;
+        const pathIndex = this.getPathIndex(path);
 
         const hopsInPath = hopAnalysis.filter(hop => hop.path_id === pathIndex);
 
