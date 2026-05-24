@@ -2448,7 +2448,7 @@ class Dashboard {
             return `${sanitized}["${node}"]`;
         }).join(' --> ');
 
-        const diagram = `flowchart LR\n    ${nodes}\n    style ${path.path[0].replace(/[[\](){}]/g, '')} fill:#ff6b8a,stroke:#ff0033,stroke-width:3px\n    style ${path.path[path.path.length - 1].replace(/[[\](){}]/g, '')} fill:#f39c12,stroke:#d68910,stroke-width:3px`;
+        const diagram = `flowchart LR\n    ${nodes}\n    style ${path.path[0].replace(/[[\](){}]/g, '')} fill:#ff6b8a,stroke:#ff0033,stroke-width:3px,color:#000000\n    style ${path.path[path.path.length - 1].replace(/[[\](){}]/g, '')} fill:#f39c12,stroke:#d68910,stroke-width:3px,color:#000000`;
         console.log('[DEBUG] Generated diagram:', diagram);
         return diagram;
     }
@@ -2711,16 +2711,16 @@ class Dashboard {
         let styles = '\n';
 
         // Entry point (red)
-        styles += `    style ${path.path[0].replace(/[[\](){}]/g, '')} fill:#ff6b8a,stroke:#ff0033,stroke-width:3px\n`;
+        styles += `    style ${path.path[0].replace(/[[\](){}]/g, '')} fill:#ff6b8a,stroke:#ff0033,stroke-width:3px,color:#000000\n`;
 
         // Target (orange)
-        styles += `    style ${path.path[path.path.length - 1].replace(/[[\](){}]/g, '')} fill:#f39c12,stroke:#d68910,stroke-width:3px\n`;
+        styles += `    style ${path.path[path.path.length - 1].replace(/[[\](){}]/g, '')} fill:#f39c12,stroke:#d68910,stroke-width:3px,color:#000000\n`;
 
         // Protected nodes (green) - nodes that have controls
         hardenedNodes.forEach(hardenedNode => {
             const matchingPathNode = this.findMatchingPathNode(hardenedNode, path.path);
             if (matchingPathNode) {
-                styles += `    style ${matchingPathNode.replace(/[[\](){}]/g, '')} fill:#5fd49c,stroke:#00aa55,stroke-width:4px\n`;
+                styles += `    style ${matchingPathNode.replace(/[[\](){}]/g, '')} fill:#5fd49c,stroke:#00aa55,stroke-width:4px,color:#000000\n`;
             }
         });
 
