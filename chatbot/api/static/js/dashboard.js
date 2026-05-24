@@ -2842,8 +2842,8 @@ class Dashboard {
             '05_tester_critique.json':    { id: 'tester-critique', title: 'Coverage Audit',     icon: '🧪', desc: 'MITRE technique coverage and mapping accuracy review', audience: 'expert', type: 'json' },
             '06_red_team_critique.json':  { id: 'red-critique', title: 'Exploit Analysis',      icon: '🔴', desc: 'Red team assessment of control weaknesses and bypasses', audience: 'expert', type: 'json' },
             '08a_quick_wins.mmd':         { id: 'tier-a',       title: 'Quick Wins Diagram',    icon: '⚡', desc: 'Architecture diagram with Quick Win controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--secondary-color)' },
-            '08b_recommended.mmd':        { id: 'tier-b',       title: 'Recommended Diagram',   icon: '📈', desc: 'Architecture diagram with Recommended controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--primary-color)' },
-            '08c_maximum.mmd':            { id: 'tier-c',       title: 'Maximum Coverage',      icon: '🔒', desc: 'Architecture diagram with Maximum controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--warning-color)' },
+            '08b_recommended_target.mmd': { id: 'tier-b',       title: 'Recommended Diagram',   icon: '📈', desc: 'Architecture diagram with Recommended controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--primary-color)' },
+            '08c_maximum_security.mmd':   { id: 'tier-c',       title: 'Maximum Coverage',      icon: '🔒', desc: 'Architecture diagram with Maximum controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--warning-color)' },
         };
 
         // Suppressed files (raw data, noise, or duplicates)
