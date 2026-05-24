@@ -614,7 +614,7 @@ class Dashboard {
             .sort((a, b) => (priority[a.priority?.toLowerCase()] ?? 9) - (priority[b.priority?.toLowerCase()] ?? 9))
             .slice(0, 3);
 
-        // Residual risk rows
+        // Residual risk rows — use before/after per-threat data for accurate 3-segment bars
         const threatLabels = {
             ransomware: 'Ransomware', application_vulns: 'App Vulnerabilities',
             phishing: 'Phishing', insider_threat: 'Insider Threat',
@@ -623,43 +623,85 @@ class Dashboard {
         const statusIcon  = { ACCEPT: '✅', MONITOR: '👁', MITIGATE: '🔴' };
         const statusColor = { ACCEPT: 'var(--secondary-color)', MONITOR: 'var(--warning-color)', MITIGATE: 'var(--danger-color)' };
         const statusBg    = { ACCEPT: 'var(--secondary-color)22', MONITOR: 'var(--warning-color)22', MITIGATE: 'var(--danger-color)22' };
+        const statusLabel = { ACCEPT: 'Accept', MONITOR: 'Monitor', MITIGATE: 'Act Now' };
+        const statusDesc  = {
+            ACCEPT:  'Residual risk is low — accept and review quarterly',
+            MONITOR: 'Residual risk is moderate — monitor actively',
+            MITIGATE:'Residual risk is high — additional controls required'
+        };
 
-        // Stacked before/after bar: full width = initial_risk (normalised to max), split into residual (danger) + eliminated (green)
-        const maxInitial = Math.max(...Object.values(perThreat).map(t => t.initial_risk || 0), 1);
+        // Use before/after per-threat: before = with existing controls, after = with all recommendations applied
+        const beforePerThreat = (residualBefore.per_threat) || {};
+        const afterPerThreat  = (residualAfter.per_threat)  || {};
+        // Fall back to perThreat (old field) if before/after unavailable
+        const sourceKeys = Object.keys(beforePerThreat).length ? Object.keys(beforePerThreat)
+                         : Object.keys(afterPerThreat).length  ? Object.keys(afterPerThreat)
+                         : Object.keys(perThreat);
 
-        const residualRows = Object.entries(perThreat)
-            .sort((a, b) => (b[1].initial_risk || 0) - (a[1].initial_risk || 0))
-            .map(([key, t]) => {
-                const icon         = statusIcon[t.status]  || '❓';
-                const segColor     = statusColor[t.status] || 'var(--text-secondary)';
-                const pillBg       = statusBg[t.status]    || 'transparent';
-                const totalPct     = (t.initial_risk / maxInitial) * 100;
-                const residualPct  = (t.residual_risk / maxInitial) * 100;
-                const eliminatedPct = totalPct - residualPct;
-                const pctElim      = t.initial_risk > 0 ? Math.round((1 - t.residual_risk / t.initial_risk) * 100) : 0;
+        const maxInitial = Math.max(...sourceKeys.map(k => {
+            const t = beforePerThreat[k] || afterPerThreat[k] || perThreat[k] || {};
+            return t.initial_risk || 0;
+        }), 1);
+
+        const hasBefore = Object.keys(beforePerThreat).length > 0;
+        const hasAfter  = Object.keys(afterPerThreat).length > 0;
+
+        const residualRows = sourceKeys
+            .sort((a, b) => {
+                const ia = (beforePerThreat[a] || afterPerThreat[a] || perThreat[a] || {}).initial_risk || 0;
+                const ib = (beforePerThreat[b] || afterPerThreat[b] || perThreat[b] || {}).initial_risk || 0;
+                return ib - ia;
+            })
+            .map(key => {
+                const tb = beforePerThreat[key] || {};
+                const ta = afterPerThreat[key]  || perThreat[key] || {};
+                const initialRisk   = tb.initial_risk  ?? ta.initial_risk  ?? 0;
+                const currentResidual = tb.residual_risk ?? initialRisk;   // after existing controls
+                const targetResidual  = ta.residual_risk ?? currentResidual; // after all recommendations
+                const currentStatus   = tb.status ?? ta.status ?? 'MITIGATE';
+                const targetStatus    = ta.status ?? 'ACCEPT';
+
+                // Three bar segments (as % of maxInitial):
+                // [targetResidual] [currentResidual-targetResidual gap closed by recs] [initialRisk-currentResidual already handled]
+                const pTarget  = (targetResidual  / maxInitial) * 100;
+                const pGain    = ((currentResidual - targetResidual) / maxInitial) * 100;
+                const pHandled = ((initialRisk - currentResidual) / maxInitial) * 100;
+                const pUnused  = 100 - pTarget - pGain - pHandled;
+
+                const currentSegColor = statusColor[currentStatus] || 'var(--text-secondary)';
+                const targetSegColor  = statusColor[targetStatus]  || 'var(--secondary-color)';
+                const pillBg          = statusBg[targetStatus]     || 'transparent';
+
+                const pctCurrentGain  = initialRisk > 0 ? Math.round((1 - currentResidual / initialRisk) * 100) : 100;
+                const pctTargetGain   = initialRisk > 0 ? Math.round((1 - targetResidual  / initialRisk) * 100) : 100;
+
                 return `
             <div style="padding:0.625rem 0; border-bottom:1px solid var(--border-color);">
-                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.375rem;">
-                    <div style="width:130px; font-size:0.8125rem; color:var(--text-color); flex-shrink:0; font-weight:500;">${threatLabels[key] || key}</div>
-                    <div style="flex:1; position:relative; background:var(--nav-hover-bg); border-radius:4px; height:10px; overflow:hidden;">
-                        <!-- eliminated (green, on right) -->
-                        <div style="position:absolute; right:${100 - totalPct}%; left:${residualPct}%; height:100%; background:var(--secondary-color); opacity:0.55; border-radius:0 4px 4px 0; transition:all 0.6s;"></div>
-                        <!-- residual (status colour, on left) -->
-                        <div style="position:absolute; left:0; width:${residualPct}%; height:100%; background:${segColor}; border-radius:4px 0 0 4px; transition:width 0.6s;"></div>
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+                    <div style="width:126px; font-size:0.8125rem; color:var(--text-color); flex-shrink:0; font-weight:500;">${threatLabels[key] || key}</div>
+                    <!-- Stacked bar: full = initialRisk -->
+                    <div style="flex:1; display:flex; border-radius:4px; height:10px; overflow:hidden; background:var(--nav-hover-bg);">
+                        <!-- Accepted residual (target status colour) -->
+                        <div style="width:${pTarget}%; background:${targetSegColor}; flex-shrink:0; transition:width 0.6s;" title="Accepted residual: ${targetResidual}"></div>
+                        <!-- Gain from recommendations (green) -->
+                        <div style="width:${pGain}%; background:var(--secondary-color); opacity:0.75; flex-shrink:0; transition:width 0.6s;" title="Closed by recommendations: ${Math.round(currentResidual - targetResidual)}"></div>
+                        <!-- Already handled by current controls (muted green) -->
+                        <div style="width:${pHandled}%; background:var(--secondary-color); opacity:0.35; flex-shrink:0; transition:width 0.6s;" title="Already handled by existing controls: ${Math.round(initialRisk - currentResidual)}"></div>
+                        <!-- Unused scale space -->
+                        <div style="flex:1;"></div>
                     </div>
-                    <div style="width:62px; font-size:0.75rem; color:var(--text-secondary); text-align:right; flex-shrink:0;">
-                        <span style="color:${segColor}; font-weight:600;">${t.residual_risk}</span>
-                        <span style="color:var(--text-tertiary);"> / ${t.initial_risk}</span>
-                    </div>
-                    <div style="width:80px; flex-shrink:0; text-align:right;">
-                        <span style="display:inline-block; padding:0.125rem 0.375rem; border-radius:4px; font-size:0.75rem; font-weight:700; background:${pillBg}; color:${segColor};">${icon} ${t.status}</span>
+                    <div style="width:86px; flex-shrink:0; text-align:right;">
+                        <span style="display:inline-block; padding:0.125rem 0.375rem; border-radius:4px; font-size:0.72rem; font-weight:700; background:${pillBg}; color:${targetSegColor};">${statusIcon[targetStatus] || ''} ${statusLabel[targetStatus] || targetStatus}</span>
                     </div>
                 </div>
-                <div style="display:flex; gap:0.5rem; padding-left:130px; font-size:0.7rem; color:var(--text-tertiary);">
-                    <span style="color:var(--secondary-color); font-weight:600;">${pctElim}% eliminated</span>
-                    <span>·</span>
-                    <span style="color:${segColor};">${t.residual_risk} residual exposure</span>
+                <div style="display:flex; gap:0.75rem; padding-left:130px; font-size:0.7rem; color:var(--text-tertiary); flex-wrap:wrap;">
+                    <span>Unmitigated: <strong style="color:var(--text-color);">${initialRisk}</strong></span>
+                    <span>→ Now: <strong style="color:${currentSegColor};">${currentResidual}</strong> (${pctCurrentGain}% handled)</span>
+                    ${pGain > 0 ? `<span>→ With recs: <strong style="color:${targetSegColor};">${targetResidual}</strong> (${pctTargetGain}% handled)</span>` : `<span style="color:var(--secondary-color);">✓ Fully addressed</span>`}
                 </div>
+                ${targetResidual > 0 || currentStatus !== 'ACCEPT' ? `
+                <div style="padding-left:130px; margin-top:0.25rem; font-size:0.7rem; color:var(--text-tertiary); font-style:italic;">${statusDesc[targetStatus] || ''}</div>
+                ` : ''}
             </div>`;
             }).join('');
 
@@ -723,13 +765,21 @@ class Dashboard {
         <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
             <!-- Residual Risk -->
             <div style="flex:2; min-width:280px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem;">
-                <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.5rem;">
-                    <h3 style="margin:0; font-size:0.9375rem; color:var(--text-color);">Risk Before vs After Controls</h3>
+                <h3 style="margin:0 0 0.5rem; font-size:0.9375rem; color:var(--text-color);">Threat Exposure: Now → With Recommendations</h3>
+                <!-- Overall summary line tying to top KPIs -->
+                <div style="display:flex; gap:1rem; margin-bottom:0.75rem; padding:0.625rem 0.875rem; background:var(--nav-hover-bg); border-radius:6px; font-size:0.8rem; flex-wrap:wrap; align-items:center;">
+                    <span>Overall exposure now: <strong style="color:${beforeScore > 20 ? 'var(--danger-color)' : beforeScore > 10 ? 'var(--warning-color)' : 'var(--secondary-color)'};">${beforeScore.toFixed(0)}</strong></span>
+                    <span style="color:var(--text-tertiary);">→</span>
+                    <span>With all recs: <strong style="color:var(--secondary-color);">${afterScore.toFixed(0)}</strong></span>
+                    <span style="color:var(--text-tertiary);">·</span>
+                    <span style="color:var(--secondary-color); font-weight:600;">${riskReductionPct}% reduction</span>
+                    <span style="color:var(--text-tertiary); font-size:0.7rem; margin-left:auto;">Risk Score: ${risk}/100 · Defensibility: ${def}/100</span>
                 </div>
-                <div style="display:flex; gap:1rem; font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.875rem; flex-wrap:wrap;">
-                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--danger-color); border-radius:2px;"></span> Residual exposure</span>
-                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--secondary-color); opacity:0.6; border-radius:2px;"></span> Risk eliminated by controls</span>
-                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--nav-hover-bg); border-radius:2px; border:1px solid var(--border-color);"></span> No initial exposure</span>
+                <!-- Bar legend -->
+                <div style="display:flex; gap:0.75rem; font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.875rem; flex-wrap:wrap;">
+                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--secondary-color); opacity:0.35; border-radius:2px;"></span> Existing controls handle</span>
+                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--secondary-color); opacity:0.75; border-radius:2px;"></span> Recommendations close</span>
+                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:12px; height:8px; background:var(--warning-color); border-radius:2px;"></span> Accepted residual</span>
                 </div>
                 ${residualRows || '<div style="color:var(--text-tertiary); font-size:0.875rem; padding:0.5rem 0;">Run analysis to see residual risk breakdown</div>'}
             </div>
@@ -1536,6 +1586,14 @@ class Dashboard {
         const allMitIds = [...new Set(Object.values(techMitMappings).flat())];
         const mitigationNames = await this.fetchMitigationNames(allMitIds);
 
+        // Coverage count: how many of this control's techniques each mitigation addresses
+        const mitCoverage = {};
+        for (const mits of Object.values(techMitMappings)) {
+            for (const m of mits) { mitCoverage[m] = (mitCoverage[m] || 0) + 1; }
+        }
+        // Return mitigation list sorted by coverage desc
+        const sortedMits = (mits) => [...mits].sort((a, b) => (mitCoverage[b] || 0) - (mitCoverage[a] || 0));
+
         rightPaneContent.innerHTML = `
             <h3 style="color: ${priorityColor};">${control.control}</h3>
             <div style="margin-bottom: 1.5rem;">
@@ -1580,7 +1638,7 @@ class Dashboard {
                 ${techs.length > 0 ? `
                     ${techs.map(tech => {
                         const techName = techniqueNames[tech] || tech;
-                        const mits = techMitMappings[tech] || [];
+                        const mits = sortedMits(techMitMappings[tech] || []);
                         return `
                         <div style="margin-bottom: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
                             <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; background: var(--nav-hover-bg); border-left: 3px solid var(--primary-color);">
@@ -1591,18 +1649,23 @@ class Dashboard {
                                 <a href="https://attack.mitre.org/techniques/${tech}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">🔗</a>
                             </div>
                             ${mits.length > 0 ? `
-                                <div style="padding: 0.625rem 0.75rem; background: var(--card-bg); border-top: 1px solid var(--border-color);">
-                                    <div style="font-size: 0.6875rem; color: var(--text-tertiary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.375rem;">Mitigations</div>
-                                    <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
-                                        ${mits.map(m => `
-                                            <a href="https://attack.mitre.org/mitigations/${m}/" target="_blank"
-                                               style="display:inline-flex; align-items:center; gap:0.25rem; padding:0.25rem 0.5rem; background:var(--secondary-color)12; border:1px solid var(--secondary-color)44; border-radius:4px; text-decoration:none; font-size:0.75rem;"
-                                               title="${mitigationNames[m] || m}">
-                                                <code style="color:var(--secondary-color); font-weight:700;">${m}</code>
-                                                ${mitigationNames[m] ? `<span style="color:var(--text-secondary); max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">· ${mitigationNames[m]}</span>` : ''}
-                                            </a>
-                                        `).join('')}
+                                <div style="background: var(--card-bg); border-top: 1px solid var(--border-color);">
+                                    <div style="padding: 0.375rem 0.75rem; font-size: 0.6875rem; color: var(--text-tertiary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border-color);">
+                                        ${mits.length} Mitigation${mits.length !== 1 ? 's' : ''} — broadest coverage first
                                     </div>
+                                    ${mits.map((m, idx) => {
+                                        const cov = mitCoverage[m] || 1;
+                                        const covLabel = techs.length > 1 ? `covers ${cov}/${techs.length} technique${cov !== 1 ? 's' : ''}` : '';
+                                        return `
+                                        <a href="https://attack.mitre.org/mitigations/${m}/" target="_blank"
+                                           style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.75rem; border-bottom:${idx < mits.length - 1 ? '1px solid var(--border-color)' : 'none'}; text-decoration:none; transition:background 0.15s;"
+                                           onmouseover="this.style.background='var(--nav-hover-bg)'" onmouseout="this.style.background='transparent'">
+                                            <code style="color:var(--secondary-color); font-weight:700; font-size:0.8125rem; flex-shrink:0;">${m}</code>
+                                            <span style="color:var(--text-secondary); font-size:0.8125rem; flex:1;">${mitigationNames[m] || ''}</span>
+                                            ${covLabel ? `<span style="font-size:0.7rem; color:var(--text-tertiary); flex-shrink:0; white-space:nowrap;">${covLabel}</span>` : ''}
+                                            <span style="font-size:0.7rem; color:var(--text-tertiary); flex-shrink:0;">↗</span>
+                                        </a>
+                                    `}).join('')}
                                 </div>
                             ` : `<div style="padding:0.5rem 0.75rem; background:var(--card-bg); border-top:1px solid var(--border-color); font-size:0.75rem; color:var(--text-tertiary); font-style:italic;">No mitigations mapped for this technique</div>`}
                         </div>`;
