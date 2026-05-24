@@ -236,6 +236,66 @@ async def get_report_summary(architecture_name: str):
     return summary
 
 
+@router.get("/mitigations")
+async def get_mitigation_names(mitigation_ids: str = Query(..., description="Comma-separated mitigation IDs (e.g., M1042,M1026,M1037)")):
+    """
+    Get MITRE ATT&CK mitigation names for given IDs.
+
+    Args:
+        mitigation_ids: Comma-separated mitigation IDs
+
+    Returns:
+        Dictionary mapping mitigation IDs to names
+    """
+    mitre = get_mitre_helper()
+
+    ids = [mid.strip() for mid in mitigation_ids.split(',') if mid.strip()]
+
+    if not ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No mitigation IDs provided"
+        )
+
+    if len(ids) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Too many mitigation IDs (max 100)"
+        )
+
+    result = {}
+    for mid in ids:
+        mit = mitre.find_mitigation(mid)
+        if mit:
+            result[mid] = mit.get('name', 'Unknown')
+        else:
+            result[mid] = f"Unknown ({mid})"
+
+    return {"mitigations": result}
+
+
+@router.get("/technique-mitigations")
+async def get_technique_mitigations(technique_ids: str = Query(..., description="Comma-separated technique IDs")):
+    """
+    Return which MITRE mitigation IDs apply to each given technique ID.
+
+    Returns:
+        mappings: { techniqueId: [mitigationId, ...] }
+    """
+    mitre = get_mitre_helper()
+    ids = [tid.strip() for tid in technique_ids.split(',') if tid.strip()]
+
+    if not ids or len(ids) > 50:
+        raise HTTPException(status_code=400, detail="Provide 1-50 technique IDs")
+
+    mappings = {}
+    for tid in ids:
+        mits = mitre.get_technique_mitigations(tid)
+        mappings[tid] = [m.get('mitigation_id') for m in mits if m.get('mitigation_id')]
+
+    return {"mappings": mappings}
+
+
 @router.get("/techniques")
 async def get_technique_names(technique_ids: str = Query(..., description="Comma-separated technique IDs (e.g., T1566,T1078,T1059)")):
     """

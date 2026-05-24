@@ -32,6 +32,7 @@ class MitreHelper:
         # O(1) lookup indexes built at load time
         self._technique_by_ext_id = {}   # "T1059" / "T1059.001" → technique obj
         self._technique_by_name  = {}    # lowercase name → technique obj
+        self._mitigation_by_ext_id = {}  # "M1042" → mitigation obj
         self._mitigations_by_technique = {}  # technique internal_id → [mitigation dicts]
 
         if use_local:
@@ -63,6 +64,10 @@ class MitreHelper:
                         self.tactics.append(obj)
                     elif obj_type == 'course-of-action':
                         self.mitigations.append(obj)
+                        for ref in obj.get('external_references', []):
+                            ext_id = ref.get('external_id', '')
+                            if ext_id and ext_id.startswith('M'):
+                                self._mitigation_by_ext_id[ext_id.upper()] = obj
                     elif obj_type == 'relationship':
                         self.relationships.append(obj)
 
@@ -99,6 +104,10 @@ class MitreHelper:
         if result:
             return result
         return self._technique_by_name.get(name_or_id.lower())
+
+    def find_mitigation(self, mit_id):
+        """Return mitigation object by external ID (e.g. 'M1042'). O(1)."""
+        return self._mitigation_by_ext_id.get(mit_id.upper())
 
     def get_technique_summary(self, name_or_id):
         """Return a summary of a technique for bot advice."""

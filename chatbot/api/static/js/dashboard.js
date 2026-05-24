@@ -1487,8 +1487,35 @@ class Dashboard {
             control.priority === 'high' ? 'var(--warning-color)' :
             'var(--primary-color)';
 
-        // Fetch technique names
-        const techniqueNames = await this.fetchTechniqueNames(control.techniques || []);
+        // Fetch names for techniques and mitigations in parallel
+        const [techniqueNames, mitigationNames] = await Promise.all([
+            this.fetchTechniqueNames(control.techniques || []),
+            this.fetchMitigationNames(control.mitigations || [])
+        ]);
+
+        // Build per-mitigation → techniques map using MITRE technique→mitigation data
+        // We fetch each technique's mitigations to find which mitigations cover which techniques
+        const mitToTechniques = {};
+        if (control.techniques && control.mitigations && control.techniques.length > 0 && control.mitigations.length > 0) {
+            try {
+                const tmResp = await fetch(`/api/v1/technique-mitigations?technique_ids=${control.techniques.join(',')}`);
+                if (tmResp.ok) {
+                    const tmData = await tmResp.json();
+                    // tmData.mappings: { techId: [mitId, ...] }
+                    const mappings = tmData.mappings || {};
+                    for (const [techId, mits] of Object.entries(mappings)) {
+                        for (const mitId of mits) {
+                            if (control.mitigations.includes(mitId)) {
+                                if (!mitToTechniques[mitId]) mitToTechniques[mitId] = [];
+                                mitToTechniques[mitId].push(techId);
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                // Non-critical: fall back to showing mitigations without technique tags
+            }
+        }
 
         rightPaneContent.innerHTML = `
             <h3 style="color: ${priorityColor};">${control.control}</h3>
@@ -1509,9 +1536,7 @@ class Dashboard {
                 ${control.detailed_rationale ? `
                     <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
                         ${control.detailed_rationale.map(r => `
-                            <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
-                                • ${r}
-                            </div>
+                            <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">• ${r}</div>
                         `).join('')}
                     </div>
                 ` : ''}
@@ -1522,13 +1547,11 @@ class Dashboard {
                 ${control.attack_paths && control.attack_paths.length > 0 ? `
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         ${control.attack_paths.map(pathIdx => `
-                            <span style="padding: 0.5rem 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; font-size: 0.875rem;">
-                                AP-${pathIdx + 1}
-                            </span>
+                            <span style="padding: 0.5rem 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; font-size: 0.875rem;">AP-${pathIdx + 1}</span>
                         `).join('')}
                     </div>
                     <p style="margin-top: 0.75rem; font-size: 0.8125rem; color: var(--text-tertiary);">
-                        This control addresses vulnerabilities in ${control.attack_paths.length} attack path${control.attack_paths.length > 1 ? 's' : ''}
+                        Addresses vulnerabilities in ${control.attack_paths.length} attack path${control.attack_paths.length > 1 ? 's' : ''}
                     </p>
                 ` : '<p style="color: var(--text-tertiary); font-style: italic;">No specific paths mapped</p>'}
             </div>
@@ -1537,11 +1560,11 @@ class Dashboard {
                 <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--primary-color);">🔬 MITRE ATT&CK Techniques</h4>
                 ${control.techniques && control.techniques.length > 0 ? `
                     ${control.techniques.map(tech => `
-                        <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; border-left: 3px solid var(--primary-color);">
+                        <div style="margin-bottom: 0.625rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; border-left: 3px solid var(--primary-color);">
                             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
                                 <div style="flex: 1;">
                                     <code style="font-weight: 700; color: var(--primary-color); font-size: 0.875rem;">${tech}</code>
-                                    <span style="margin-left: 0.5rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">- ${techniqueNames[tech] || tech}</span>
+                                    <span style="margin-left: 0.5rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">${techniqueNames[tech] ? `· ${techniqueNames[tech]}` : ''}</span>
                                 </div>
                                 <a href="https://attack.mitre.org/techniques/${tech}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">
                                     🔗 MITRE
@@ -1555,12 +1578,29 @@ class Dashboard {
             <div style="margin-bottom: 1.5rem;">
                 <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--secondary-color);">🛡️ MITRE Mitigations</h4>
                 ${control.mitigations && control.mitigations.length > 0 ? `
-                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                        ${control.mitigations.map(mit => `
-                            <a href="https://attack.mitre.org/mitigations/${mit}/" target="_blank" style="padding: 0.5rem 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; text-decoration: none; color: var(--secondary-color); font-size: 0.875rem; font-weight: 600; border: 1px solid var(--border-color); transition: all 0.2s;" onmouseover="this.style.borderColor='var(--secondary-color)'" onmouseout="this.style.borderColor='var(--border-color)'">
-                                ${mit}
-                            </a>
-                        `).join('')}
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        ${control.mitigations.map(mit => {
+                            const name = mitigationNames[mit] || mit;
+                            const techTags = mitToTechniques[mit] || [];
+                            return `
+                            <div style="padding: 0.625rem 0.875rem; background: var(--nav-hover-bg); border-radius: 6px; border: 1px solid var(--border-color); border-left: 3px solid var(--secondary-color);">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
+                                    <div style="flex: 1;">
+                                        <code style="font-weight: 700; color: var(--secondary-color); font-size: 0.875rem;">${mit}</code>
+                                        <span style="margin-left: 0.5rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">${name !== mit ? `· ${name}` : ''}</span>
+                                        ${techTags.length > 0 ? `
+                                            <div style="margin-top: 0.375rem; display: flex; flex-wrap: wrap; gap: 0.25rem;">
+                                                ${techTags.map(t => `<span style="font-size: 0.6875rem; padding: 0.125rem 0.375rem; background: var(--primary-color)18; color: var(--primary-color); border-radius: 4px; font-family: monospace;">${t}</span>`).join('')}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                    <a href="https://attack.mitre.org/mitigations/${mit}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">
+                                        🔗 MITRE
+                                    </a>
+                                </div>
+                            </div>
+                            `;
+                        }).join('')}
                     </div>
                 ` : '<p style="color: var(--text-tertiary); font-style: italic;">No mitigations mapped</p>'}
             </div>
@@ -2196,8 +2236,8 @@ class Dashboard {
     }
 
     setupDiagramZoom(prefix) {
-        let scale = 0.5; // Start at 50%
-        const container = document.getElementById(`${prefix}-container`);
+        // Support both naming conventions: "rp-diagram" (no separate container) and "before"/"after"/"full"
+        const container = document.getElementById(`${prefix}-container`) || document.getElementById(`${prefix}`);
         const getDiagram = () => container?.querySelector('svg');
 
         const zoomInBtn = document.getElementById(`${prefix}-zoom-in`);
@@ -2206,38 +2246,38 @@ class Dashboard {
         const fitWidthBtn = document.getElementById(`${prefix}-fit-width`);
         const fitHeightBtn = document.getElementById(`${prefix}-fit-height`);
 
-        console.log('[DEBUG] setupDiagramZoom:', prefix, 'Container:', !!container, 'Buttons:', {in:!!zoomInBtn, out:!!zoomOutBtn, reset:!!zoomResetBtn});
-
         if (!container) return;
 
-        // Store original dimensions after first render
+        let scale = 1;
+
+        // Auto-fit to container width on first load
         setTimeout(() => {
             const svg = getDiagram();
-            if (svg) {
-                const bbox = svg.getBBox();
-                const currentWidth = svg.getAttribute('width');
-                const currentHeight = svg.getAttribute('height');
+            if (!svg) return;
 
-                console.log('[DEBUG] SVG dimensions - width:', currentWidth, 'height:', currentHeight, 'bbox:', bbox.width, 'x', bbox.height);
+            const bbox = svg.getBBox();
+            const currentWidth = parseFloat(svg.getAttribute('width')) || bbox.width || 800;
+            const currentHeight = parseFloat(svg.getAttribute('height')) || bbox.height || 600;
 
-                this[`${prefix}OriginalWidth`] = bbox.width || parseFloat(currentWidth) || 800;
-                this[`${prefix}OriginalHeight`] = bbox.height || parseFloat(currentHeight) || 600;
+            this[`${prefix}OriginalWidth`] = currentWidth;
+            this[`${prefix}OriginalHeight`] = currentHeight;
 
-                console.log('[DEBUG] Stored original dimensions:', this[`${prefix}OriginalWidth`], 'x', this[`${prefix}OriginalHeight`]);
-
-                // Set initial 50% size
-                svg.setAttribute('width', this[`${prefix}OriginalWidth`] * scale);
-                svg.setAttribute('height', this[`${prefix}OriginalHeight`] * scale);
-
-                console.log('[DEBUG] Set initial size to:', this[`${prefix}OriginalWidth`] * scale, 'x', this[`${prefix}OriginalHeight`] * scale);
+            // Fit to container width by default (with 32px padding)
+            const containerWidth = container.clientWidth - 32;
+            if (currentWidth > containerWidth) {
+                scale = containerWidth / currentWidth;
+                svg.setAttribute('width', currentWidth * scale);
+                svg.setAttribute('height', currentHeight * scale);
+                svg.style.maxWidth = 'none';
             } else {
-                console.error('[DEBUG] SVG not found in container for:', prefix);
+                // Already fits — ensure no stale max-width constraint
+                svg.style.maxWidth = 'none';
             }
-        }, 100);
+        }, 150);
 
         if (zoomInBtn) {
             zoomInBtn.addEventListener('click', () => {
-                scale = Math.min(scale + 0.2, 3);
+                scale = Math.min(scale + 0.2, 4);
                 const svg = getDiagram();
                 if (svg && this[`${prefix}OriginalWidth`]) {
                     svg.setAttribute('width', this[`${prefix}OriginalWidth`] * scale);
@@ -2248,7 +2288,7 @@ class Dashboard {
 
         if (zoomOutBtn) {
             zoomOutBtn.addEventListener('click', () => {
-                scale = Math.max(scale - 0.2, 0.3);
+                scale = Math.max(scale - 0.2, 0.1);
                 const svg = getDiagram();
                 if (svg && this[`${prefix}OriginalWidth`]) {
                     svg.setAttribute('width', this[`${prefix}OriginalWidth`] * scale);
@@ -2259,9 +2299,11 @@ class Dashboard {
 
         if (zoomResetBtn) {
             zoomResetBtn.addEventListener('click', () => {
-                scale = 0.5;
                 const svg = getDiagram();
                 if (svg && this[`${prefix}OriginalWidth`]) {
+                    // Reset to fit-width
+                    const containerWidth = container.clientWidth - 32;
+                    scale = Math.min(1, containerWidth / this[`${prefix}OriginalWidth`]);
                     svg.setAttribute('width', this[`${prefix}OriginalWidth`] * scale);
                     svg.setAttribute('height', this[`${prefix}OriginalHeight`] * scale);
                 }
@@ -2826,6 +2868,34 @@ class Dashboard {
         }
     }
 
+    async fetchMitigationNames(mitigationIds) {
+        if (!mitigationIds || mitigationIds.length === 0) return {};
+
+        if (!this.mitigationNamesCache) this.mitigationNamesCache = {};
+        const uncachedIds = mitigationIds.filter(id => !this.mitigationNamesCache[id]);
+
+        if (uncachedIds.length === 0) {
+            return mitigationIds.reduce((acc, id) => {
+                acc[id] = this.mitigationNamesCache[id];
+                return acc;
+            }, {});
+        }
+
+        try {
+            const response = await fetch(`/api/v1/mitigations?mitigation_ids=${uncachedIds.join(',')}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            Object.assign(this.mitigationNamesCache, data.mitigations || {});
+            return mitigationIds.reduce((acc, id) => {
+                acc[id] = this.mitigationNamesCache[id] || id;
+                return acc;
+            }, {});
+        } catch (error) {
+            console.error('Error fetching mitigation names:', error);
+            return mitigationIds.reduce((acc, id) => { acc[id] = id; return acc; }, {});
+        }
+    }
+
     renderReportsPanel(archName, allFiles) {
         const listContainer = document.getElementById('reports-list');
         this.reportContents = {};
@@ -3025,12 +3095,15 @@ class Dashboard {
                 const content = await response.text();
                 const borderColor = report.color || 'var(--border-color)';
                 htmlContent = `
-                    <div style="padding: 0.75rem; display: flex; gap: 0.25rem;">
-                        <button id="rp-zoom-in" class="btn-icon" title="Zoom In">🔍+</button>
-                        <button id="rp-zoom-out" class="btn-icon" title="Zoom Out">🔍−</button>
-                        <button id="rp-zoom-reset" class="btn-icon" title="Reset">↺</button>
+                    <div style="padding: 0.75rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                        <button id="rp-diagram-zoom-in" class="btn-icon" title="Zoom In">🔍+</button>
+                        <button id="rp-diagram-zoom-out" class="btn-icon" title="Zoom Out">🔍−</button>
+                        <button id="rp-diagram-zoom-reset" class="btn-icon" title="Fit to Width">↺</button>
+                        <div style="width: 1px; height: 24px; background: var(--border-color); margin: 0 0.25rem;"></div>
+                        <button id="rp-diagram-fit-width" class="btn-icon" title="Fit to Width">↔️</button>
+                        <button id="rp-diagram-fit-height" class="btn-icon" title="Fit to Height">↕️</button>
                     </div>
-                    <div style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 550px; border-top: 2px solid ${borderColor};">
+                    <div id="rp-diagram-container" style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 550px; border-top: 2px solid ${borderColor};">
                         <div class="mermaid" id="rp-diagram">${content}</div>
                     </div>
                 `;
@@ -3079,6 +3152,7 @@ class Dashboard {
         } catch (error) {
             console.error('Report render error:', error);
             viewer.innerHTML = `<div style="padding: 2rem; color: var(--danger-color);">⚠️ Failed to load ${report.title}: ${error.message}</div>`;
+
         }
     }
 
@@ -3240,9 +3314,8 @@ class Dashboard {
 
         const analysis = this.analysisData.analysis || {};
 
-        // Build comprehensive artifact list
+        // Build artifact list from in-memory analysis data (ground_truth.json is in Reports tab)
         const artifacts = [
-            { name: 'ground_truth.json', data: analysis, description: 'Complete analysis results' },
             { name: 'architecture_name', data: { architecture_name: this.analysisData.architecture_name }, description: 'Architecture identifier' },
             { name: 'confidence', data: { confidence: this.analysisData.confidence }, description: 'Analysis confidence score' },
             { name: 'patterns_applied', data: { patterns_applied: this.analysisData.patterns_applied }, description: 'Threat patterns detected' }
