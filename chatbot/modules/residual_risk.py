@@ -9,7 +9,12 @@ Key Principle: No Silver Bullet
 - Transparent about control effectiveness limitations
 
 Formula:
-    Residual Risk = Initial Risk × (1 - Control Effectiveness)
+    Residual Risk = Initial Risk × max(failure_probability, 0.10)
+
+    failure_probability = product(1 - effectiveness_i)
+    Floor at 10%: no control suite provides >90% effectiveness in practice
+    (NIST / industry standard — independence stacking otherwise produces
+    near-zero residuals with 4+ controls, which is physically implausible)
 
 Thresholds:
     < 10: ACCEPT (low risk, quarterly monitoring)
@@ -225,6 +230,16 @@ def calculate_residual_risk_for_threat(
         failure_probability *= (1.0 - effectiveness)
 
     combined_effectiveness = 1.0 - failure_probability
+
+    # Floor: no control combination eliminates risk entirely (NIST / industry standard).
+    # Independence stacking with 4+ controls drives failure_prob to near-zero,
+    # producing residual=0 via int() truncation — physically impossible against a
+    # determined attacker.  Cap combined_effectiveness at 90% (floor failure at 10%).
+    MIN_FAILURE_PROBABILITY = 0.10
+    if failure_probability < MIN_FAILURE_PROBABILITY:
+        failure_probability = MIN_FAILURE_PROBABILITY
+        combined_effectiveness = 1.0 - failure_probability
+
     residual_risk = int(initial_risk * failure_probability)
 
     # Determine status based on thresholds

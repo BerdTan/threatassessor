@@ -725,12 +725,12 @@ class Dashboard {
             return afterResidual !== null && afterResidual === 0 && initial >= 40;
         });
         const residualQualityWarning = implausibleThreats.length > 0
-            ? '<div style="margin-top:0.5rem; padding:0.625rem 0.875rem; background:var(--danger-color)0d; border:1px solid var(--danger-color)44; border-radius:6px; font-size:0.75rem; color:var(--text-secondary); line-height:1.6;">'
-              + '🔍 <strong style="color:var(--danger-color);">Data quality note:</strong> '
+            ? '<div style="margin-top:0.5rem; padding:0.625rem 0.875rem; background:var(--warning-color)0d; border:1px solid var(--warning-color)44; border-radius:6px; font-size:0.75rem; color:var(--text-secondary); line-height:1.6;">'
+              + '🔁 <strong style="color:var(--warning-color);">Re-run recommended:</strong> '
               + implausibleThreats.map(k => k.replace(/_/g, ' ')).join(', ')
-              + ' show residual risk = 0 after controls — this assumes perfect deployment of all recommended controls with zero implementation gaps. '
-              + 'Treat the <strong>' + riskReductionPct + '%</strong> risk reduction figure as a theoretical upper bound, not an achievable guarantee. '
-              + 'The Tester expert flagged this as an inconsistency. Human review recommended.'
+              + ' show residual = 0, which indicates this report was generated before the 10% residual floor was applied. '
+              + 'Re-running the analysis will produce corrected figures. '
+              + 'Current risk reduction of <strong>' + riskReductionPct + '%</strong> is overstated.'
               + '</div>'
             : '';
 
