@@ -614,37 +614,27 @@ class Dashboard {
             .sort((a, b) => (priority[a.priority?.toLowerCase()] ?? 9) - (priority[b.priority?.toLowerCase()] ?? 9))
             .slice(0, 3);
 
-        // Residual risk rows — use before/after per-threat data for accurate 3-segment bars
+        // Per-threat exposure rows
         const threatLabels = {
             ransomware: 'Ransomware', application_vulns: 'App Vulnerabilities',
             phishing: 'Phishing', insider_threat: 'Insider Threat',
             dos: 'DoS / Availability', supply_chain: 'Supply Chain'
         };
-        const statusIcon  = { ACCEPT: '✅', MONITOR: '👁', MITIGATE: '🔴' };
-        const statusColor = { ACCEPT: 'var(--secondary-color)', MONITOR: 'var(--warning-color)', MITIGATE: 'var(--danger-color)' };
-        const statusBg    = { ACCEPT: 'var(--secondary-color)22', MONITOR: 'var(--warning-color)22', MITIGATE: 'var(--danger-color)22' };
-        const statusLabel = { ACCEPT: 'Accept', MONITOR: 'Monitor', MITIGATE: 'Act Now' };
-        const statusDesc  = {
-            ACCEPT:  'Residual risk is low — accept and review quarterly',
-            MONITOR: 'Residual risk is moderate — monitor actively',
-            MITIGATE:'Residual risk is high — additional controls required'
+        const threatIcons = {
+            ransomware: '🔒', application_vulns: '🐛', phishing: '🎣',
+            insider_threat: '👤', dos: '💥', supply_chain: '📦'
         };
 
-        // Use before/after per-threat: before = with existing controls, after = with all recommendations applied
-        const beforePerThreat = (residualBefore.per_threat) || {};
-        const afterPerThreat  = (residualAfter.per_threat)  || {};
-        // Fall back to perThreat (old field) if before/after unavailable
+        // before = existing controls only, after = with all recommendations applied
+        const beforePerThreat = residualBefore.per_threat || {};
+        const afterPerThreat  = residualAfter.per_threat  || {};
         const sourceKeys = Object.keys(beforePerThreat).length ? Object.keys(beforePerThreat)
                          : Object.keys(afterPerThreat).length  ? Object.keys(afterPerThreat)
                          : Object.keys(perThreat);
 
-        const maxInitial = Math.max(...sourceKeys.map(k => {
-            const t = beforePerThreat[k] || afterPerThreat[k] || perThreat[k] || {};
-            return t.initial_risk || 0;
-        }), 1);
-
-        const hasBefore = Object.keys(beforePerThreat).length > 0;
-        const hasAfter  = Object.keys(afterPerThreat).length > 0;
+        const maxInitial = Math.max(...sourceKeys.map(k =>
+            (beforePerThreat[k] || afterPerThreat[k] || perThreat[k] || {}).initial_risk || 0
+        ), 1);
 
         const residualRows = sourceKeys
             .sort((a, b) => {
@@ -655,54 +645,79 @@ class Dashboard {
             .map(key => {
                 const tb = beforePerThreat[key] || {};
                 const ta = afterPerThreat[key]  || perThreat[key] || {};
-                const initialRisk   = tb.initial_risk  ?? ta.initial_risk  ?? 0;
-                const currentResidual = tb.residual_risk ?? initialRisk;   // after existing controls
-                const targetResidual  = ta.residual_risk ?? currentResidual; // after all recommendations
-                const currentStatus   = tb.status ?? ta.status ?? 'MITIGATE';
-                const targetStatus    = ta.status ?? 'ACCEPT';
+                const initial  = tb.initial_risk  ?? ta.initial_risk  ?? 0;
+                const current  = tb.residual_risk ?? initial;   // after existing controls
+                const target   = ta.residual_risk ?? current;   // after all recommendations
+                const existingControls = (tb.controls || []).map(c => c.name);
+                const allControls      = (ta.controls || []).map(c => c.name);
+                const newControls      = allControls.filter(n => !existingControls.includes(n));
 
-                // Three bar segments (as % of maxInitial):
-                // [targetResidual] [currentResidual-targetResidual gap closed by recs] [initialRisk-currentResidual already handled]
-                const pTarget  = (targetResidual  / maxInitial) * 100;
-                const pGain    = ((currentResidual - targetResidual) / maxInitial) * 100;
-                const pHandled = ((initialRisk - currentResidual) / maxInitial) * 100;
-                const pUnused  = 100 - pTarget - pGain - pHandled;
+                // Bar widths as % of maxInitial (so bars are comparable across threats)
+                const barWidth   = (initial / maxInitial) * 100;   // total bar extent
+                const pExisting  = (Math.max(initial - current, 0) / maxInitial) * 100;  // covered by existing
+                const pRecs      = (Math.max(current - target,  0) / maxInitial) * 100;  // closed by recs
+                const pResidual  = (target / maxInitial) * 100;                          // always-remaining
 
-                const currentSegColor = statusColor[currentStatus] || 'var(--text-secondary)';
-                const targetSegColor  = statusColor[targetStatus]  || 'var(--secondary-color)';
-                const pillBg          = statusBg[targetStatus]     || 'transparent';
+                // Tier marker positions on the bar (approximate: quick=1st rec, rec=half recs, max=all recs)
+                // Position = pExisting + fraction of pRecs
+                const nRecs = newControls.length;
+                const quickPos   = nRecs > 0 ? pExisting + pRecs * (1 / Math.max(nRecs, 1))         : null;
+                const recPos     = nRecs > 1 ? pExisting + pRecs * (Math.ceil(nRecs/2) / nRecs)     : null;
+                const maxPos     = nRecs > 0 ? pExisting + pRecs                                     : null;
 
-                const pctCurrentGain  = initialRisk > 0 ? Math.round((1 - currentResidual / initialRisk) * 100) : 100;
-                const pctTargetGain   = initialRisk > 0 ? Math.round((1 - targetResidual  / initialRisk) * 100) : 100;
-
-                // Plain-English summary line
-                let summaryLine;
-                if (targetResidual === 0 && currentResidual === 0) {
-                    summaryLine = `Starting exposure <strong>${initialRisk}</strong> — fully covered by existing controls`;
-                } else if (targetResidual === 0) {
-                    summaryLine = `Starting exposure <strong>${initialRisk}</strong> → current controls reduce to <strong style="color:${currentSegColor};">${currentResidual}</strong> → applying recommendations eliminates the rest`;
-                } else {
-                    summaryLine = `Starting exposure <strong>${initialRisk}</strong> → current controls reduce to <strong style="color:${currentSegColor};">${currentResidual}</strong>${pGain > 0 ? ` → recommendations reduce to <strong style="color:${targetSegColor};">${targetResidual}</strong>` : ''} — <strong style="color:${targetSegColor};">${targetResidual} remaining</strong> (${statusDesc[targetStatus]})`;
-                }
+                // Status of current (before recs) drives urgency label
+                const urgency = tb.status === 'MITIGATE' ? { label: 'Action needed', color: 'var(--danger-color)' }
+                              : tb.status === 'MONITOR'  ? { label: 'Monitor',       color: 'var(--warning-color)' }
+                              :                            { label: 'Managed',        color: 'var(--secondary-color)' };
 
                 return `
-            <div style="padding:0.625rem 0; border-bottom:1px solid var(--border-color);">
-                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
-                    <div style="width:126px; font-size:0.8125rem; color:var(--text-color); flex-shrink:0; font-weight:500;">${threatLabels[key] || key}</div>
-                    <!-- Stacked bar left→right: handled | recs close | residual remaining | unused scale -->
-                    <div style="flex:1; display:flex; border-radius:4px; height:10px; overflow:hidden; background:var(--nav-hover-bg);">
-                        <div style="width:${pHandled}%; background:var(--secondary-color); opacity:0.35; flex-shrink:0; transition:width 0.6s;" title="Existing controls: −${Math.round(initialRisk - currentResidual)}"></div>
-                        <div style="width:${pGain}%; background:var(--secondary-color); opacity:0.8; flex-shrink:0; transition:width 0.6s;" title="Recommendations close: −${Math.round(currentResidual - targetResidual)}"></div>
-                        <div style="width:${pTarget}%; background:${targetSegColor}; flex-shrink:0; transition:width 0.6s;" title="Remaining: ${targetResidual}"></div>
-                        <div style="flex:1;"></div>
-                    </div>
-                    <div style="width:86px; flex-shrink:0; text-align:right;">
-                        <span style="display:inline-block; padding:0.125rem 0.375rem; border-radius:4px; font-size:0.72rem; font-weight:700; background:${pillBg}; color:${targetSegColor};">${statusIcon[targetStatus] || ''} ${statusLabel[targetStatus] || targetStatus}</span>
-                    </div>
+            <div style="margin-bottom:1rem;">
+                <!-- Threat label + control counts + urgency -->
+                <div style="display:flex; align-items:center; gap:0.625rem; margin-bottom:0.375rem;">
+                    <span style="font-size:0.875rem;">${threatIcons[key] || '⚠️'}</span>
+                    <span style="font-size:0.8125rem; font-weight:600; color:var(--text-color); flex:1;">${threatLabels[key] || key}</span>
+                    <span style="font-size:0.72rem; color:var(--text-secondary);">
+                        ${existingControls.length} control${existingControls.length !== 1 ? 's' : ''} active
+                        ${newControls.length > 0 ? `· <span style="color:var(--warning-color); font-weight:600;">+${newControls.length} recommended</span>` : ''}
+                    </span>
+                    <span style="padding:0.1rem 0.4rem; border-radius:4px; font-size:0.7rem; font-weight:700;
+                          background:${urgency.color}22; color:${urgency.color};">${urgency.label}</span>
                 </div>
-                <div style="padding-left:130px; font-size:0.7rem; color:var(--text-tertiary); line-height:1.5;">${summaryLine}</div>
+
+                <!-- Stacked bar with tier markers -->
+                <div style="position:relative; margin-left:0; margin-bottom:0.375rem;">
+                    <div style="display:flex; height:12px; border-radius:6px; overflow:hidden; background:var(--nav-hover-bg); width:100%;">
+                        <!-- Existing controls segment (muted green) -->
+                        <div style="width:${pExisting}%; background:var(--secondary-color); opacity:0.4; flex-shrink:0;" title="Covered by ${existingControls.length} existing control${existingControls.length !== 1 ? 's' : ''}"></div>
+                        <!-- Recommendations segment (bright green) -->
+                        <div style="width:${pRecs}%; background:var(--secondary-color); opacity:0.85; flex-shrink:0;" title="${newControls.length} recommended control${newControls.length !== 1 ? 's' : ''} close this gap"></div>
+                        <!-- Residual segment (always amber — never truly zero) -->
+                        <div style="width:${Math.max(pResidual, pResidual > 0 ? 0 : 0.8)}%; background:var(--warning-color); opacity:0.7; flex-shrink:0;" title="Residual exposure (implementation gaps, misconfig, human error)"></div>
+                    </div>
+                    <!-- Tier tick marks -->
+                    ${quickPos !== null ? `<div style="position:absolute; top:-3px; left:${quickPos}%; transform:translateX(-50%); width:2px; height:18px; background:var(--text-color); opacity:0.5;" title="⚡ Quick Win"></div>` : ''}
+                    ${recPos   !== null ? `<div style="position:absolute; top:-3px; left:${recPos}%;   transform:translateX(-50%); width:2px; height:18px; background:var(--primary-color); opacity:0.8;" title="⭐ Recommended"></div>` : ''}
+                    ${maxPos   !== null ? `<div style="position:absolute; top:-3px; left:${maxPos}%;   transform:translateX(-50%); width:2px; height:18px; background:var(--secondary-color);" title="🔒 Maximum"></div>` : ''}
+                </div>
+
+                <!-- Below-bar text -->
+                <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-tertiary);">
+                    <span>Exposure: <strong style="color:var(--text-color);">${initial}</strong>
+                      → after controls: <strong style="color:var(--secondary-color);">${current}</strong>
+                      ${newControls.length > 0 ? `→ with recs: <strong style="color:var(--secondary-color);">${target}</strong>` : ''}
+                    </span>
+                    <span style="color:var(--warning-color); font-style:italic;">~${Math.max(target, Math.round(initial * 0.05))} residual</span>
+                </div>
             </div>`;
             }).join('');
+
+        // Honest residual note
+        const residualNote = `
+            <div style="margin-top:0.75rem; padding:0.625rem 0.875rem; background:var(--warning-color)11; border:1px solid var(--warning-color)44; border-radius:6px; font-size:0.75rem; color:var(--text-secondary); line-height:1.6;">
+                ⚠️ <strong style="color:var(--text-color);">Controls reduce risk — they do not eliminate it.</strong>
+                Residual exposure persists due to implementation gaps, misconfigurations, human error, and technical bypasses.
+                The goal is risk-informed management, not false certainty. Review quarterly.
+            </div>`;
 
         // Improvement tier cards — active if MoE run, locked otherwise
         const hasMoe = validatedConf !== null;
@@ -762,48 +777,66 @@ class Dashboard {
 
         <!-- Two-column: Residual Risk + Top Actions -->
         <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
-            <!-- Residual Risk -->
-            <div style="flex:2; min-width:280px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem;">
-                <h3 style="margin:0 0 0.5rem; font-size:0.9375rem; color:var(--text-color);">Threat Exposure: Now → With Recommendations</h3>
-                <!-- Overall summary line tying to top KPIs -->
-                <div style="display:flex; gap:1rem; margin-bottom:0.75rem; padding:0.625rem 0.875rem; background:var(--nav-hover-bg); border-radius:6px; font-size:0.8rem; flex-wrap:wrap; align-items:center;">
-                    <span>Overall exposure now: <strong style="color:${beforeScore > 20 ? 'var(--danger-color)' : beforeScore > 10 ? 'var(--warning-color)' : 'var(--secondary-color)'};">${beforeScore.toFixed(0)}</strong></span>
-                    <span style="color:var(--text-tertiary);">→</span>
-                    <span>With all recs: <strong style="color:var(--secondary-color);">${afterScore.toFixed(0)}</strong></span>
-                    <span style="color:var(--text-tertiary);">·</span>
-                    <span style="color:var(--secondary-color); font-weight:600;">${riskReductionPct}% reduction</span>
-                    <span style="color:var(--text-tertiary); font-size:0.7rem; margin-left:auto;">Risk Score: ${risk}/100 · Defensibility: ${def}/100</span>
+            <!-- Threat Exposure Breakdown -->
+            <div style="flex:2; min-width:300px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem;">
+                <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.375rem; flex-wrap:wrap; gap:0.5rem;">
+                    <h3 style="margin:0; font-size:0.9375rem; color:var(--text-color);">Threat Exposure by Category</h3>
+                    <span style="font-size:0.7rem; color:var(--text-tertiary);">bar width = relative initial exposure</span>
                 </div>
-                <!-- Bar legend: left to right mirrors the bar segments -->
-                <div style="display:flex; gap:0.875rem; font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.875rem; flex-wrap:wrap; align-items:center;">
-                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:18px; height:8px; background:var(--secondary-color); opacity:0.35; border-radius:2px;"></span> Covered by existing controls</span>
-                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:18px; height:8px; background:var(--secondary-color); opacity:0.8; border-radius:2px;"></span> Closed by recommendations</span>
-                    <span style="display:flex; align-items:center; gap:0.3rem;"><span style="display:inline-block; width:18px; height:8px; background:var(--danger-color); border-radius:2px;"></span> Remaining exposure (act / monitor / accept)</span>
+                <!-- Legend -->
+                <div style="display:flex; gap:0.75rem; font-size:0.7rem; color:var(--text-secondary); margin-bottom:1rem; flex-wrap:wrap; align-items:center;">
+                    <span style="display:flex; align-items:center; gap:0.25rem;"><span style="display:inline-block; width:14px; height:7px; background:var(--secondary-color); opacity:0.4; border-radius:2px;"></span>Existing controls</span>
+                    <span style="display:flex; align-items:center; gap:0.25rem;"><span style="display:inline-block; width:14px; height:7px; background:var(--secondary-color); opacity:0.85; border-radius:2px;"></span>Recommended controls</span>
+                    <span style="display:flex; align-items:center; gap:0.25rem;"><span style="display:inline-block; width:14px; height:7px; background:var(--warning-color); opacity:0.7; border-radius:2px;"></span>Residual (always present)</span>
+                    <span style="display:flex; align-items:center; gap:0.25rem; margin-left:auto;">
+                        <span style="display:inline-block; width:2px; height:12px; background:var(--text-secondary); opacity:0.5;"></span>⚡
+                        <span style="display:inline-block; width:2px; height:12px; background:var(--primary-color); opacity:0.8;"></span>⭐
+                        <span style="display:inline-block; width:2px; height:12px; background:var(--secondary-color);"></span>🔒
+                        <span style="color:var(--text-tertiary);">investment tiers</span>
+                    </span>
                 </div>
-                ${residualRows || '<div style="color:var(--text-tertiary); font-size:0.875rem; padding:0.5rem 0;">Run analysis to see residual risk breakdown</div>'}
+                ${residualRows || '<div style="color:var(--text-tertiary); font-size:0.875rem; padding:0.5rem 0;">Run analysis to see threat breakdown</div>'}
+                ${residualNote}
+                <!-- Bridge to action plan -->
+                <div style="margin-top:0.875rem; padding:0.625rem 0.875rem; background:var(--primary-color)11; border-left:3px solid var(--primary-color); border-radius:0 6px 6px 0; font-size:0.8rem; color:var(--text-secondary);">
+                    The <strong style="color:var(--text-color);">Top Actions</strong> on the right are the highest-leverage controls to close these gaps.
+                    See <strong style="color:var(--primary-color); cursor:pointer;" onclick="window.dashboard?.switchTab('controls')">Mitigations tab</strong> for the full prioritised list.
+                </div>
             </div>
             <!-- Top 3 Actions -->
             <div style="flex:1; min-width:240px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem;">
-                <h3 style="margin:0 0 1rem; font-size:0.9375rem; color:var(--text-color);">⚡ Top 3 Immediate Actions</h3>
-                ${top3.length > 0 ? top3.map((c, i) => `
+                <h3 style="margin:0 0 0.375rem; font-size:0.9375rem; color:var(--text-color);">⚡ Start Here</h3>
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:1rem;">Highest-coverage controls across all threat categories</div>
+                ${top3.length > 0 ? top3.map((c, i) => {
+                    const priColor = c.priority === 'critical' ? 'var(--danger-color)' : c.priority === 'high' ? 'var(--warning-color)' : 'var(--primary-color)';
+                    return `
                 <div style="padding:0.75rem 0; border-bottom:1px solid var(--border-color);">
                     <div style="display:flex; align-items:flex-start; gap:0.5rem;">
-                        <div style="width:22px; height:22px; border-radius:50%; background:var(--primary-color); color:#fff; font-size:0.75rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${i+1}</div>
-                        <div>
+                        <div style="width:22px; height:22px; border-radius:50%; background:${priColor}; color:#fff; font-size:0.75rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${i+1}</div>
+                        <div style="flex:1;">
                             <div style="font-weight:600; color:var(--text-color); font-size:0.875rem; text-transform:uppercase;">${c.control}</div>
-                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.2rem;">Covers ${c.attack_paths?.length || 0} threat path${(c.attack_paths?.length || 0) !== 1 ? 's' : ''}</div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.2rem;">
+                                Covers ${c.attack_paths?.length || 0} threat path${(c.attack_paths?.length || 0) !== 1 ? 's' : ''}
+                                <span style="margin-left:0.5rem; padding:0.1rem 0.35rem; background:${priColor}22; color:${priColor}; border-radius:3px; font-size:0.7rem; font-weight:700;">${c.priority}</span>
+                            </div>
                         </div>
                     </div>
-                </div>`).join('') : '<div style="color:var(--text-tertiary); font-size:0.875rem;">No critical actions identified</div>'}
+                </div>`}).join('') : '<div style="color:var(--text-tertiary); font-size:0.875rem;">No critical actions identified</div>'}
+                ${top3.length > 0 ? `
+                <div style="margin-top:0.75rem; font-size:0.75rem; color:var(--text-tertiary); font-style:italic;">
+                    These are Quick Win candidates. The full action plan is in the
+                    <strong style="color:var(--primary-color); cursor:pointer;" onclick="window.dashboard?.switchTab('controls')">Mitigations tab</strong>.
+                </div>` : ''}
             </div>
         </div>
 
         <!-- Improvement Tiers -->
         <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem; margin-bottom:0.5rem;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                <h3 style="margin:0; font-size:0.9375rem; color:var(--text-color);">Improvement Path</h3>
-                ${!hasMoe ? `<span style="font-size:0.8125rem; color:var(--text-tertiary);">Run Expert Review to unlock full roadmap</span>` : `<span style="font-size:0.8125rem; color:var(--secondary-color);">✅ Expert Review complete</span>`}
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.375rem; flex-wrap:wrap; gap:0.5rem;">
+                <h3 style="margin:0; font-size:0.9375rem; color:var(--text-color);">Investment Tiers — What Each Level Achieves</h3>
+                ${!hasMoe ? `<span style="font-size:0.8125rem; color:var(--text-tertiary);">Run Expert Review to unlock diagrams</span>` : `<span style="font-size:0.8125rem; color:var(--secondary-color);">✅ Expert Review complete</span>`}
             </div>
+            <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:1rem;">The tier markers on the bars above show where each investment level lands per threat category.</div>
             <div style="display:flex; gap:1rem; flex-wrap:wrap;">${tierCards}</div>
         </div>
         `;
