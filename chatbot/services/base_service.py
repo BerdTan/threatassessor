@@ -290,9 +290,8 @@ class MitreCache:
             with self._data_lock:
                 if self._data is None:
                     logger.info("Loading MITRE ATT&CK data...")
-                    from chatbot.modules.mitre import MitreHelper
-                    helper = MitreHelper()
-                    self._data = helper.get_enterprise_data()
+                    from chatbot.modules.mitre import get_mitre_helper
+                    self._data = get_mitre_helper()
                     logger.info("MITRE data loaded (cached)")
         return self._data
 

@@ -15,7 +15,7 @@ from typing import Dict, List
 from datetime import datetime
 from pathlib import Path
 
-from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 from chatbot.modules.report_formatter import (
     format_section_header,
     format_metric_dashboard,
@@ -308,7 +308,7 @@ def generate_technical_report(ground_truth: Dict) -> str:
 
     # Initialize MITRE helper for technique lookups
     try:
-        mitre = MitreHelper(use_local=True)
+        mitre = get_mitre_helper()
     except Exception as e:
         mitre = None  # Graceful fallback if MITRE data unavailable
 

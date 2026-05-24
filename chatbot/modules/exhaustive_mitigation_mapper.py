@@ -18,7 +18,7 @@ from typing import Dict, List, Set, Tuple, Optional
 from collections import defaultdict
 import logging
 
-from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 
 logger = logging.getLogger(__name__)
 
@@ -864,7 +864,7 @@ if __name__ == "__main__":
     print("="*80)
 
     # Initialize MITRE
-    mitre = MitreHelper(use_local=True)
+    mitre = get_mitre_helper()
 
     # Test techniques
     test_techniques = ["T1190", "T1059", "T1078", "T1213"]

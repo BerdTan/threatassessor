@@ -8,19 +8,13 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, status, Query
 from fastapi.responses import FileResponse, JSONResponse
 from typing import List, Dict
-from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.mitre import MitreHelper, get_mitre_helper as _get_mitre_singleton
 
 router = APIRouter(prefix="/api/v1", tags=["reports"])
 
-# Cache MITRE helper instance
-_mitre_helper = None
-
 def get_mitre_helper() -> MitreHelper:
-    """Get cached MITRE helper instance."""
-    global _mitre_helper
-    if _mitre_helper is None:
-        _mitre_helper = MitreHelper()
-    return _mitre_helper
+    """Return the shared MITRE singleton."""
+    return _get_mitre_singleton()
 
 
 def get_report_dir() -> Path:

@@ -15,7 +15,7 @@ from typing import Dict, List, Set, Tuple
 import logging
 from collections import defaultdict
 
-from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 from chatbot.modules.confidence_scoring import add_confidence_to_recommendations
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ def generate_threat_driven_controls(
             }
         }
     """
-    mitre = MitreHelper(use_local=True)
+    mitre = get_mitre_helper()
     attack_paths = ground_truth.get("expected_attack_paths", [])
     rapids = ground_truth.get("rapids_assessment", {})
 

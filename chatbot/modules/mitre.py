@@ -4,49 +4,85 @@ mitre.py - MITRE ATT&CK integration scaffold
 This module provides functions to query and use MITRE ATT&CK data for threat modeling and advisory.
 """
 
-# You need to install mitreattack-python:
-# pip install mitreattack-python
-
 import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Module-level singleton — loaded once, shared across all callers
+_instance = None
+
+def get_mitre_helper(local_path=None):
+    """Return the shared MitreHelper singleton, loading once on first call."""
+    global _instance
+    if _instance is None:
+        _instance = MitreHelper(use_local=True, local_path=local_path)
+    return _instance
+
 
 class MitreHelper:
     def __init__(self, use_local=True, local_path=None):
         self.techniques = []
         self.tactics = []
         self.mitigations = []
-        self.relationships = []  # Store relationship objects
-        self.data_objects = {}    # Map object IDs to objects for fast lookup
+        self.relationships = []
+        self.data_objects = {}
+
+        # O(1) lookup indexes built at load time
+        self._technique_by_ext_id = {}   # "T1059" / "T1059.001" → technique obj
+        self._technique_by_name  = {}    # lowercase name → technique obj
+        self._mitigations_by_technique = {}  # technique internal_id → [mitigation dicts]
 
         if use_local:
-            # Default path for local enterprise-attack.json
             if not local_path:
                 local_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'enterprise-attack.json')
             try:
                 with open(local_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
+
                 for obj in data.get('objects', []):
-                    obj_id = obj.get('id')
+                    obj_id   = obj.get('id')
                     obj_type = obj.get('type')
 
-                    # Store in ID lookup map
                     if obj_id:
                         self.data_objects[obj_id] = obj
 
-                    # Categorize by type
                     if obj_type == 'attack-pattern':
                         self.techniques.append(obj)
+                        # Build ext-id and name indexes
+                        for ref in obj.get('external_references', []):
+                            ext_id = ref.get('external_id', '')
+                            if ext_id:
+                                self._technique_by_ext_id[ext_id.upper()] = obj
+                        name = obj.get('name', '')
+                        if name:
+                            self._technique_by_name[name.lower()] = obj
+
                     elif obj_type == 'x-mitre-tactic':
                         self.tactics.append(obj)
                     elif obj_type == 'course-of-action':
                         self.mitigations.append(obj)
                     elif obj_type == 'relationship':
                         self.relationships.append(obj)
+
+                # Build relationships index: technique internal_id → mitigations
+                for rel in self.relationships:
+                    if (rel.get('relationship_type') == 'mitigates'
+                            and not rel.get('revoked', False)):
+                        target = rel.get('target_ref')   # attack-pattern internal id
+                        if target:
+                            self._mitigations_by_technique.setdefault(target, []).append(rel)
+
+                logger.info(
+                    f"MITRE cache loaded: {len(self.techniques)} techniques, "
+                    f"{len(self.tactics)} tactics, {len(self.mitigations)} mitigations, "
+                    f"{len(self.relationships)} relationships"
+                )
             except Exception as e:
-                print(f"Error loading local MITRE ATT&CK data: {e}")
+                logger.error(f"Error loading local MITRE ATT&CK data: {e}")
         else:
-            # Future: Add online data loading here
-            print("Online MITRE ATT&CK data loading not implemented yet.")
+            logger.warning("Online MITRE ATT&CK data loading not implemented yet.")
 
     def get_techniques(self):
         return self.techniques
@@ -58,13 +94,11 @@ class MitreHelper:
         return self.mitigations
 
     def find_technique(self, name_or_id):
-        for tech in self.techniques:
-            ext_refs = tech.get('external_references', [])
-            ext_id = next((ref.get('external_id', '') for ref in ext_refs if 'external_id' in ref), '')
-            # Match external_id or name exactly
-            if name_or_id.lower() == ext_id.lower() or name_or_id.lower() == tech.get('name', '').lower():
-                return tech
-        return None
+        # O(1) — check ext-id index first, then name index
+        result = self._technique_by_ext_id.get(name_or_id.upper())
+        if result:
+            return result
+        return self._technique_by_name.get(name_or_id.lower())
 
     def get_technique_summary(self, name_or_id):
         """Return a summary of a technique for bot advice."""
@@ -116,7 +150,7 @@ class MitreHelper:
             ]
         """
         # Convert external ID to internal ID if needed
-        if technique_id.startswith('T'):
+        if technique_id.startswith('T') or technique_id.startswith('AML'):
             tech = self.find_technique(technique_id)
             if not tech:
                 return []
@@ -124,13 +158,8 @@ class MitreHelper:
         else:
             technique_internal_id = technique_id
 
-        # Find all mitigation relationships for this technique
-        mitigation_relationships = [
-            rel for rel in self.relationships
-            if rel.get('relationship_type') == 'mitigates'
-            and rel.get('target_ref') == technique_internal_id
-            and not rel.get('revoked', False)  # Skip deprecated relationships
-        ]
+        # O(1) — use pre-built relationships index
+        mitigation_relationships = self._mitigations_by_technique.get(technique_internal_id, [])
 
         # Build mitigation details
         mitigations = []

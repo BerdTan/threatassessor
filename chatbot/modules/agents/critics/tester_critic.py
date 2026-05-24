@@ -37,7 +37,7 @@ from typing import Dict, List, Optional
 
 from chatbot.modules.agent_framework import CriticAgent
 from chatbot.modules.artifact_extractor import ArtifactSet
-from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 
 logger = logging.getLogger(__name__)
 
@@ -381,7 +381,7 @@ def create_tester_prompt(
         all_techniques.extend(path.get("techniques", []))
 
     # Build MITRE reference
-    mitre = MitreHelper(use_local=True)
+    mitre = get_mitre_helper()
     mitre_reference = build_mitre_reference(all_techniques, mitre)
 
     # Extract key data
@@ -831,10 +831,10 @@ class TesterCritic:
 
         Checks if gap claims invalid mappings that are actually valid.
         """
-        from chatbot.modules.mitre import MitreHelper
+        from chatbot.modules.mitre import get_mitre_helper
 
         controls = artifacts.tier1_critical["artifact_2_controls"]["controls"]
-        mitre = MitreHelper(use_local=True)
+        mitre = get_mitre_helper()
 
         validated_gaps = []
         false_positives = []

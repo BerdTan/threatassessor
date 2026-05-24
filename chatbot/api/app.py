@@ -32,10 +32,10 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI app
     """
-    # Preload MITRE cache at startup (avoid first-request delay)
-    from chatbot.modules.mitre import MitreHelper
+    # Preload MITRE cache at startup — initialises singleton shared across all modules
+    from chatbot.modules.mitre import get_mitre_helper
     print("🔄 Preloading MITRE ATT&CK cache (44MB)...")
-    _preload_cache = MitreHelper()
+    _preload_cache = get_mitre_helper()
     print(f"✅ MITRE cache loaded: {len(_preload_cache.techniques)} techniques, {len(_preload_cache.tactics)} tactics")
 
     app = FastAPI(

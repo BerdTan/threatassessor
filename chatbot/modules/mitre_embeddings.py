@@ -15,7 +15,7 @@ import os
 import logging
 from typing import List, Dict, Tuple, Optional
 from chatbot.modules.embeddings import get_embedding, cosine_similarity
-from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 
 logger = logging.getLogger(__name__)
 
@@ -331,8 +331,8 @@ def search_techniques(
         ]
 
     Example:
-        >>> from chatbot.modules.mitre import MitreHelper
-        >>> mitre = MitreHelper(use_local=True)
+        >>> from chatbot.modules.mitre import MitreHelper, get_mitre_helper
+        >>> mitre = get_mitre_helper()
         >>> results = search_techniques("attacker uses PowerShell", mitre, top_k=5)
         >>> print(results[0]["external_id"], results[0]["name"])
         T1059.001 PowerShell
@@ -377,11 +377,11 @@ if __name__ == "__main__":
     # Test semantic search
     print("Testing semantic search module...\n")
 
-    from chatbot.modules.mitre import MitreHelper
+    from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 
     # Initialize MITRE
     print("Loading MITRE data...")
-    mitre = MitreHelper(use_local=True)
+    mitre = get_mitre_helper()
     print(f"Loaded {len(mitre.get_techniques())} techniques\n")
 
     # Test cache building (or loading)

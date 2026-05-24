@@ -9,7 +9,7 @@ This module integrates:
 - Keyword-based fallback (mitre_template) for API failures
 """
 import logging
-from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 from chatbot.modules.mitre_template import build_threat_prompt
 from chatbot.modules.mitre_embeddings import search_techniques
 from chatbot.modules.llm_mitre_analyzer import analyze_scenario
@@ -27,7 +27,7 @@ class AgentManager:
             use_semantic_search: If True, use LLM-enhanced semantic search.
                                  If False, fallback to keyword-based search.
         """
-        self.mitre = MitreHelper(use_local=True)
+        self.mitre = get_mitre_helper()
         self.use_semantic_search = use_semantic_search
         logger.info(f"AgentManager initialized (semantic_search={use_semantic_search})")
 

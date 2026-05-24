@@ -17,7 +17,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Set
 from dataclasses import dataclass
 
-from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ class MitreValidator:
         """
         if mitre is None:
             logger.info("Loading MITRE ATT&CK data...")
-            mitre = MitreHelper(use_local=True)
+            mitre = get_mitre_helper()
             logger.info(f"Loaded {len(mitre.get_techniques())} techniques, "
                        f"{len(mitre.get_mitigations())} mitigations")
 

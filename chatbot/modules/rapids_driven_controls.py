@@ -18,7 +18,7 @@ from typing import Dict, List, Set, Tuple
 import logging
 from collections import defaultdict
 
-from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 from chatbot.modules.confidence_scoring import add_confidence_to_recommendations
 
 logger = logging.getLogger(__name__)
@@ -168,7 +168,7 @@ def generate_rapids_driven_controls(
 
     Returns: List of control recommendations with RAPIDS context
     """
-    mitre = MitreHelper(use_local=True)
+    mitre = get_mitre_helper()
 
     rapids = ground_truth.get("rapids_assessment", {})
     attack_paths = ground_truth.get("expected_attack_paths", [])

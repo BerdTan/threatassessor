@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from chatbot.parsers.mermaid_parser import parse_mermaid_file, MermaidParser
-from chatbot.modules.mitre import MitreHelper
+from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 from chatbot.modules.control_detection import (
     detect_controls_in_architecture,
     identify_missing_controls,
@@ -1114,7 +1114,7 @@ def generate_ground_truth(
     logger.info(f"Generating ground truth for {mmd_file_path} (LLM: {use_llm})")
 
     # Initialize MITRE helper for exhaustive mitigation analysis
-    mitre = MitreHelper(use_local=True)
+    mitre = get_mitre_helper()
 
     # Parse architecture
     parsed = parse_mermaid_file(mmd_file_path)

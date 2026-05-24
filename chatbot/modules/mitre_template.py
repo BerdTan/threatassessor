@@ -35,8 +35,8 @@ def build_threat_prompt(user_input, keywords, mitre_helper):
 
 # Example usage:
 if __name__ == "__main__":
-    from chatbot.modules.mitre import MitreHelper
-    mitre = MitreHelper(use_local=True)
+    from chatbot.modules.mitre import MitreHelper, get_mitre_helper
+    mitre = get_mitre_helper()
     user_input = "We allow desktop access for IT support."
     keywords = ["desktop", "RDP"]
     prompt = build_threat_prompt(user_input, keywords, mitre)
