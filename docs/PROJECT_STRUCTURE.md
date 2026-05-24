@@ -124,9 +124,9 @@ ThreatAssessor uses **spec-driven development** with documentation serving as th
 
 **When to Use:** Checking project status, preparing status reports, tracking milestones
 
-**Source:** [STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md) (Markdown, git-tracked)
+**Source:** [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) (Markdown, git-tracked)
 
-### 6. [STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md) - Detailed Status (Source) 📄
+### 6. [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Detailed Status (Source) 📄
 **Purpose:** Detailed project status with function-level tracking  
 **Format:** Markdown  
 **Update Frequency:** After each phase completion
@@ -243,7 +243,7 @@ This documentation structure supports **spec-driven agent-based development**:
 | **Developers** | [CLAUDE.md](../CLAUDE.md) | Markdown | Quick reference cheat sheet |
 | **Architects** | [PRODUCT_ROADMAP.html](../html/roadmap.html) | HTML | Strategic roadmap |
 | **Managers** | [status.html](../html/status.html) | HTML | Project dashboard |
-| **Anyone** | [STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md) | Markdown | Detailed status |
+| **Anyone** | [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) | Markdown | Detailed status |
 
 ---
 

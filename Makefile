@@ -54,7 +54,11 @@ setup:
 		echo "✓ .env created from .env.example"; \
 	fi
 	@echo ""
-	@echo "  Edit .env and set at least one of:"
+	@echo "  Generate a random API key and set it:"
+	@printf "    API_KEY=$$(openssl rand -hex 32)\n" >> .env 2>/dev/null || true
+	@echo "    ✓ API_KEY generated in .env"
+	@echo ""
+	@echo "  Also set at least one LLM provider key in .env:"
 	@echo "    OPENROUTER_API_KEY   (free tier at openrouter.ai — recommended)"
 	@echo "    AWS_BEDROCK_API_KEY  (enterprise fallback)"
 	@echo ""

@@ -12,6 +12,7 @@ from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
@@ -102,6 +103,21 @@ API key required via `TM-API-KEY` header.
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json"
+    )
+
+    # CORS middleware — origins read from env var, falling back to localhost defaults
+    _raw_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    _allowed_origins = (
+        [o.strip() for o in _raw_origins.split(",") if o.strip()]
+        if _raw_origins.strip()
+        else ["http://localhost:8000", "http://localhost:3000"]
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_allowed_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["TM-API-KEY", "Content-Type"],
     )
 
     # Health check endpoint (no authentication required)

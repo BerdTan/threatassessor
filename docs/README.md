@@ -19,7 +19,7 @@
 
 **Checking Project Status?**
 👉 [../html/status.html](../html/status.html) - Project dashboard with metrics (HTML)  
-👉 [../STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md) - Detailed status (Markdown)
+👉 [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Detailed status (Markdown)
 
 **Planning Future Phases?**
 👉 [../html/roadmap.html](../html/roadmap.html) - Strategic roadmap (HTML)
@@ -40,7 +40,7 @@
 
 **Markdown Sources (CLI-friendly):**
 - [../README.md](../README.md) - User quick start guide (source for index.html)
-- [../STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md) - Project status (source for status.html)
+- [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Project status (source for status.html)
 - [../CLAUDE.md](../CLAUDE.md) - Developer quick reference
 - [specs/MVP_SPECIFICATION.md](specs/MVP_SPECIFICATION.md) - Roadmap source (generates PRODUCT_ROADMAP.html)
 
@@ -75,7 +75,7 @@
 
 ### User Guides
 - [../README.md](../README.md) - Quick start + demo scripts
-- [../STATUS_AND_PLAN.md](../STATUS_AND_PLAN.md) - Current status + roadmap
+- [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Current status + roadmap
 - [core/V1_FEATURES.md](core/V1_FEATURES.md) - Feature list with examples
 
 ### Developer Guides

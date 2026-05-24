@@ -43,7 +43,7 @@ Read these in order:
 open status.html
 
 # Option 2: CLI status check
-cat STATUS_AND_PLAN.md | head -50
+cat docs/STATUS_AND_PLAN.md | head -50
 ```
 
 ### Next Implementation Phase
@@ -55,7 +55,7 @@ cat docs/NEXT_STEPS.md
 open ../html/roadmap.html
 
 # 3. Test everything works
-./test_demos.sh
+./scripts/test_demos.sh
 ```
 
 **Next Phase:** Stage 2 Phase 2B - FastAPI Router (2h)  
@@ -82,7 +82,7 @@ cat report/00_safeentry/00_executive_dashboard.md
 
 **Core Docs (root folder):**
 - [README.md](README.md) - User guide
-- [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Project status
+- [docs/STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Project status
 - [CLAUDE.md](CLAUDE.md) - Developer reference
 
 **Detailed Docs (docs/ folder):**
@@ -97,12 +97,16 @@ cat report/00_safeentry/00_executive_dashboard.md
 ```
 📄 START_HERE.md           ← This file
 📄 README.md               ← User quick start
-📄 STATUS_AND_PLAN.md      ← Current status + roadmap
 📄 CLAUDE.md               ← Developer reference
 
 🔧 demo_deterministic_engine.sh   ← Fast analysis (no LLM, 30s)
 🔧 demo_expert_llm.sh             ← Full MoE pipeline (2 min)
-🔧 test_demos.sh                  ← Test both scripts
+
+📁 docs/
+   📄 STATUS_AND_PLAN.md    ← Current status + roadmap
+
+📁 scripts/
+   🔧 test_demos.sh         ← Test both demo scripts
 
 📁 chatbot/                ← Application code
 📁 docs/                   ← Documentation (start with NEXT_STEPS.md)

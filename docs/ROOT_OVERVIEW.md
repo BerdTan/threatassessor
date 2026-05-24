@@ -14,7 +14,7 @@
    - Implementation guide
    - Success criteria
 
-2. **STATUS_AND_PLAN.md**
+2. **docs/STATUS_AND_PLAN.md**
    - Current project status
    - Implementation history
    - Roadmap
@@ -38,13 +38,15 @@
 ```
 ThreatAssessor/
 ├── 📄 README.md                  # User quick start
-├── 📄 STATUS_AND_PLAN.md         # Current status + roadmap
 ├── 📄 CLAUDE.md                  # Developer quick reference
 │
 ├── 🔧 demo_deterministic_engine.sh  # Deterministic analysis (no LLM, 30s)
 ├── 🔧 demo_expert_llm.sh         # Full MoE pipeline with critics (2 min)
-├── 🔧 test_demos.sh              # Test both demo scripts
 ├── 📦 requirements.txt           # Python dependencies
+│
+├── 📁 docs/
+│   ├── 📄 STATUS_AND_PLAN.md     # Current status + roadmap (moved from root)
+│   └── …
 │
 ├── 📁 chatbot/                   # Main application code
 │   ├── modules/                  # Core analysis modules
@@ -110,7 +112,7 @@ ThreatAssessor/
 cat docs/NEXT_STEPS.md
 
 # 2. Check current status
-cat STATUS_AND_PLAN.md | head -50
+cat docs/STATUS_AND_PLAN.md | head -50
 
 # 3. Run tests to verify everything works
 python3 tests/diagnostic_regression.py
@@ -128,7 +130,7 @@ python3 -m pytest tests/test_services_concurrent.py -v
 # Output: 16 files (deterministic + 3 critics + dashboard + phased roadmaps)
 
 # Option 3: Test both demo scripts
-./test_demos.sh
+./scripts/test_demos.sh
 # Validates both scripts work correctly
 
 # View generated reports
@@ -195,7 +197,7 @@ touch chatbot/api/models/__init__.py
 ./demo_expert_llm.sh tests/data/architectures/21_agentic_ai_system.mmd
 ```
 
-### test_demos.sh
+### scripts/test_demos.sh
 **Purpose:** Validate both demo scripts work correctly
 **Time:** ~3 minutes
 **Output:** Test results for both scripts
@@ -207,7 +209,7 @@ touch chatbot/api/models/__init__.py
 
 **Example:**
 ```bash
-./test_demos.sh
+./scripts/test_demos.sh
 ```
 
 ---

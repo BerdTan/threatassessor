@@ -15,7 +15,7 @@
 
 # Access dashboard: http://localhost:8000/dashboard
 # API docs: http://localhost:8000/docs
-# See: API_MANAGEMENT.md for full details
+# See: docs/operations/API_MANAGEMENT.md for full details
 ```
 
 **CLI Analysis:**
@@ -102,7 +102,7 @@ chatbot/data/*.json          # Large data files (44MB + 45MB)
 
 ## Quick Troubleshooting
 
-**API Management (see [API_MANAGEMENT.md](API_MANAGEMENT.md) for full guide):**
+**API Management (see [docs/operations/API_MANAGEMENT.md](docs/operations/API_MANAGEMENT.md) for full guide):**
 ```bash
 ./scripts/api/api_status.sh    # Check status
 ./scripts/api/api_stop.sh      # Stop API
@@ -138,10 +138,10 @@ python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.
 - [docs/specs/PRODUCT_ROADMAP.html](docs/specs/PRODUCT_ROADMAP.html) - Full Stage 2 roadmap (HTML)
 
 **Quick Reference:**
-- Markdown sources: [README.md](README.md), [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) (git-tracked, CLI-friendly)
+- Markdown sources: [README.md](README.md), [docs/STATUS_AND_PLAN.md](docs/STATUS_AND_PLAN.md) (git-tracked, CLI-friendly)
 - HTML views: `index.html`, `status.html` (generated, better UX for browsers)
 - Tactical guide: [docs/development/NEXT_STEPS.md](docs/development/NEXT_STEPS.md) - Current phase (Stage 2 Phase 2B)
-- API management: [API_MANAGEMENT.md](API_MANAGEMENT.md) - Server lifecycle scripts
+- API management: [docs/operations/API_MANAGEMENT.md](docs/operations/API_MANAGEMENT.md) - Server lifecycle scripts
 
 **Core references:**
 - [docs/core/V1_FEATURES.md](docs/core/V1_FEATURES.md) - Feature list
