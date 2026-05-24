@@ -382,17 +382,9 @@ class Dashboard {
         if (uploadBtn) uploadBtn.style.display = 'none';
         if (newAnalysisBtn) newAnalysisBtn.style.display = 'inline-block';
 
-        // Show Expert Review tab if MoE data exists for this architecture
-        if (archName) {
-            fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`, { method: 'HEAD' })
-                .then(r => {
-                    if (r.ok) {
-                        const tab = document.querySelector('.nav-tab[data-tab="expert-review"]');
-                        if (tab) tab.style.display = 'block';
-                    }
-                })
-                .catch(() => {});
-        }
+        // Always show Expert Review tab when analysis is loaded (tab shows Run button if MoE not run yet)
+        const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
+        if (expertReviewTab) expertReviewTab.style.display = 'block';
 
         // Load current tab data
         this.loadTabData(this.currentTab);
@@ -3261,13 +3253,29 @@ class Dashboard {
                     <div style="text-align: center; padding: 3rem 2rem;">
                         <div style="font-size: 3rem; margin-bottom: 1rem;">🧑‍🏫</div>
                         <h3 style="color: var(--text-color); margin-bottom: 0.75rem;">Expert Review Not Run</h3>
-                        <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto 1.5rem;">
+                        <p style="color: var(--text-secondary); max-width: 440px; margin: 0 auto 1.5rem;">
                             The expert panel (Architecture Review, Coverage Audit, Exploit Analysis) has not reviewed this assessment yet.
-                            Running it increases confidence from the Foundation Score and unlocks the Improvement Roadmap.
+                            Running it adjusts confidence from the Foundation Score and unlocks the Improvement Roadmap.
                         </p>
-                        <p style="color: var(--text-tertiary); font-size: 0.875rem;">
-                            Expert Review is currently available via CLI: <code>./demo_expert_llm.sh ${archName}.mmd</code>
-                        </p>
+                        <button id="run-expert-review-btn" onclick="window.dashboard.runExpertReview('${archName}')"
+                            style="background: var(--primary-color); color: #fff; border: none; border-radius: 8px;
+                                   padding: 0.75rem 1.75rem; font-size: 0.9375rem; font-weight: 600;
+                                   cursor: pointer; margin-bottom: 1.5rem;">
+                            Run Expert Review (~90 s)
+                        </button>
+                        <div id="expert-review-progress" style="display:none; max-width: 480px; margin: 0 auto; text-align: left;">
+                            <div style="background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); padding: 1rem;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                    <span id="erp-stage-label" style="font-size:0.875rem; color: var(--text-secondary);">Starting...</span>
+                                    <span id="erp-pct" style="font-size:0.875rem; font-weight:600; color:var(--primary-color);">0%</span>
+                                </div>
+                                <div style="background: var(--nav-hover-bg); border-radius: 4px; height: 6px; overflow: hidden;">
+                                    <div id="erp-bar" style="height:100%; width:0%; background: var(--primary-color); transition: width 0.4s ease;"></div>
+                                </div>
+                                <div id="erp-message" style="font-size:0.8125rem; color:var(--text-tertiary); margin-top:0.5rem; min-height:1.2em;"></div>
+                            </div>
+                        </div>
+                        <div id="expert-review-error" style="display:none; color:var(--danger-color); font-size:0.875rem; margin-top:1rem; max-width:440px; margin-left:auto; margin-right:auto;"></div>
                     </div>`;
                 return;
             }
@@ -3275,7 +3283,10 @@ class Dashboard {
             const moe = await response.json();
             const confidence = moe.confidence || {};
             const expertValidations = moe.expert_validations || {};
-            const consensusRecs = moe.consensus_recommendations || [];
+            const consensusRecsRaw = moe.consensus_recommendations || {};
+            // consensus_recommendations is {critical:[...], high:[...], review:[...]}
+            const consensusCritical = Array.isArray(consensusRecsRaw.critical) ? consensusRecsRaw.critical : (Array.isArray(consensusRecsRaw) ? consensusRecsRaw : []);
+            const consensusHigh = Array.isArray(consensusRecsRaw.high) ? consensusRecsRaw.high : [];
 
             const expertDefs = [
                 { key: 'architect', icon: '🏛️', label: 'Architecture Review', role: 'Design quality & threat completeness' },
@@ -3364,19 +3375,109 @@ class Dashboard {
                 </div>
 
                 <!-- Consensus -->
-                ${consensusRecs.length > 0 ? `
+                ${consensusCritical.length + consensusHigh.length > 0 ? `
                 <div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; border: 1px solid var(--border-color);">
-                    <h3 style="margin: 0 0 1rem; color: var(--text-color); font-size: 1rem;">Consensus Recommendations</h3>
+                    <h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">Consensus Recommendations</h3>
                     <p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Items all three experts agree on — highest confidence to act on first.</p>
-                    ${consensusRecs.map(r => `
-                        <div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--secondary-color);">
+                    ${consensusCritical.length > 0 ? `
+                        <div style="font-size:0.8125rem; font-weight:600; color:var(--danger-color); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.5rem;">Critical</div>
+                        ${consensusCritical.map(r => `
+                        <div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--danger-color);">
                             <div style="font-size: 0.875rem; color: var(--text-color);">${typeof r === 'string' ? r : (r.recommendation || r.description || JSON.stringify(r))}</div>
-                        </div>`).join('')}
+                        </div>`).join('')}` : ''}
+                    ${consensusHigh.length > 0 ? `
+                        <div style="font-size:0.8125rem; font-weight:600; color:var(--warning-color); text-transform:uppercase; letter-spacing:0.04em; margin: 0.75rem 0 0.5rem;">High</div>
+                        ${consensusHigh.map(r => `
+                        <div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--warning-color);">
+                            <div style="font-size: 0.875rem; color: var(--text-color);">${typeof r === 'string' ? r : (r.recommendation || r.description || JSON.stringify(r))}</div>
+                        </div>`).join('')}` : ''}
                 </div>` : ''}
             `;
         } catch (err) {
             container.innerHTML = `<p class="placeholder">Error loading expert review: ${err.message}</p>`;
         }
+    }
+
+    runExpertReview(archName) {
+        const btn = document.getElementById('run-expert-review-btn');
+        const progressBox = document.getElementById('expert-review-progress');
+        const errorBox = document.getElementById('expert-review-error');
+        const bar = document.getElementById('erp-bar');
+        const pct = document.getElementById('erp-pct');
+        const stageLabel = document.getElementById('erp-stage-label');
+        const message = document.getElementById('erp-message');
+
+        if (!btn || !progressBox) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+        btn.style.opacity = '0.6';
+        progressBox.style.display = 'block';
+        if (errorBox) errorBox.style.display = 'none';
+
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const url = `/api/v1/expert-review?architecture_name=${encodeURIComponent(archName)}`;
+
+        // SSE over fetch (EventSource doesn't support custom headers)
+        fetch(url, { headers: { 'TM-API-KEY': apiKey } })
+            .then(resp => {
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let buf = '';
+
+                const pump = () => reader.read().then(({ done, value }) => {
+                    if (done) return;
+                    buf += decoder.decode(value, { stream: true });
+                    const parts = buf.split('\n\n');
+                    buf = parts.pop();
+                    for (const part of parts) {
+                        let evtType = 'message', dataLine = '';
+                        for (const line of part.split('\n')) {
+                            if (line.startsWith('event: ')) evtType = line.slice(7).trim();
+                            else if (line.startsWith('data: ')) dataLine = line.slice(6).trim();
+                        }
+                        if (!dataLine) continue;
+                        try {
+                            const data = JSON.parse(dataLine);
+                            if (evtType === 'progress') {
+                                const p = data.progress || 0;
+                                bar.style.width = p + '%';
+                                pct.textContent = p + '%';
+                                const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
+                                stageLabel.textContent = stageMap[data.stage] || data.stage;
+                                message.textContent = data.message || '';
+                            } else if (evtType === 'complete') {
+                                // Reload the tab with fresh MoE data
+                                setTimeout(() => this.loadExpertReviewTab(), 600);
+                                // Also refresh Overview to show updated confidence
+                                setTimeout(() => {
+                                    if (this.currentTab === 'overview') this.loadOverviewTab();
+                                }, 1200);
+                            } else if (evtType === 'error') {
+                                btn.disabled = false;
+                                btn.textContent = 'Retry Expert Review';
+                                btn.style.opacity = '1';
+                                if (errorBox) {
+                                    errorBox.textContent = data.detail || data.message || 'Expert Review failed';
+                                    errorBox.style.display = 'block';
+                                }
+                            }
+                        } catch (_) {}
+                    }
+                    return pump();
+                });
+                return pump();
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.textContent = 'Retry Expert Review';
+                btn.style.opacity = '1';
+                if (errorBox) {
+                    errorBox.textContent = `Connection error: ${err.message}`;
+                    errorBox.style.display = 'block';
+                }
+            });
     }
 
     loadRawDataTab() {

@@ -4,16 +4,20 @@ SSE Streaming Routes
 Server-Sent Events endpoints for real-time analysis progress.
 """
 
+import logging
 import tempfile
 import asyncio
+import concurrent.futures
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator
 
 from chatbot.services import ThreatAnalysisService
 from chatbot.api.dependencies import verify_api_key
 from chatbot.api.streaming import SSEStream, ProgressTracker
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/v1", tags=["streaming"])
@@ -390,3 +394,174 @@ async def analyze_architecture_stream(
         # Cleanup happens after stream completes
         # Note: Can't delete here as stream is still running
         pass
+
+
+async def expert_review_with_progress(
+    architecture_name: str
+) -> AsyncGenerator[str, None]:
+    """
+    Run MoE Expert Review pipeline with SSE progress updates.
+
+    Requires analysis to have been run first (ground_truth.json must exist).
+
+    Args:
+        architecture_name: Architecture name (matches report directory)
+
+    Yields:
+        SSE formatted progress events
+    """
+    from chatbot.modules.agents.orchestrators.moe_orchestrator import (
+        run_moe_pipeline, MissingPrerequisiteError
+    )
+
+    report_dir = Path(__file__).parent.parent.parent.parent / "report" / architecture_name
+
+    try:
+        # Check prerequisites
+        gt_path = report_dir / "ground_truth.json"
+        if not gt_path.exists():
+            yield await SSEStream.send_error(
+                error_message="Prerequisites missing",
+                detail=f"Run analysis first — ground_truth.json not found for '{architecture_name}'"
+            )
+            return
+
+        yield await SSEStream.send_progress(
+            stage="architect",
+            progress=5,
+            message=f"[2A] Architect Critic: Loading analysis artifacts for '{architecture_name}'...",
+            eta_seconds=90
+        )
+        await asyncio.sleep(0.1)
+
+        yield await SSEStream.send_progress(
+            stage="architect",
+            progress=10,
+            message="[2A] Architect Critic: Reviewing threat model completeness...",
+            eta_seconds=80
+        )
+        await asyncio.sleep(0.1)
+
+        # Run full pipeline in thread pool (synchronous blocking ~90s)
+        loop = asyncio.get_event_loop()
+
+        # Emit staged progress while the pipeline runs in the background.
+        # Pipeline is opaque/synchronous; we interleave timed progress yields with awaiting it.
+        task = loop.run_in_executor(None, run_moe_pipeline, str(report_dir))
+
+        stage_updates = [
+            (20, "architect", "[2A] Architect Critic: Validating attack paths and threat coverage...", 70),
+            (35, "architect", "[2A] Architect Critic: Checking MITRE technique completeness...", 55),
+            (50, "tester",    "[2B] Tester Critic: Reviewing Architect findings and MITRE mappings...", 40),
+            (65, "tester",    "[2B] Tester Critic: Verifying control effectiveness claims...", 30),
+            (75, "red_team",  "[2C] Red Team Critic: Probing control weaknesses and bypass paths...", 20),
+            (85, "red_team",  "[2C] Red Team Critic: Stress-testing defensive posture...", 12),
+            (90, "synthesis", "[L3] Orchestrator: Synthesising consensus recommendations...", 8),
+        ]
+
+        result = None
+        for progress, stage, message, eta in stage_updates:
+            # Yield the progress event, then wait up to 12s before the next update
+            # (or until the task finishes, whichever comes first)
+            yield await SSEStream.send_progress(
+                stage=stage,
+                progress=progress,
+                message=message,
+                eta_seconds=eta
+            )
+            try:
+                result = await asyncio.wait_for(asyncio.shield(task), timeout=12.0)
+                break  # Pipeline finished before the 12s window elapsed
+            except asyncio.TimeoutError:
+                pass  # Pipeline still running — continue to next progress update
+
+        # Await final result if not already retrieved
+        if result is None:
+            result = await task
+
+        yield await SSEStream.send_progress(
+            stage="synthesis",
+            progress=95,
+            message="[L3] Orchestrator: Generating expert review reports...",
+            eta_seconds=3
+        )
+        await asyncio.sleep(0.1)
+
+        yield await SSEStream.send_progress(
+            stage="complete",
+            progress=100,
+            message=f"✅ Expert Review complete — final confidence: {result.final_confidence:.1f}%",
+            eta_seconds=0
+        )
+        await asyncio.sleep(0.1)
+
+        yield await SSEStream.send_complete(result.to_dict())
+
+    except MissingPrerequisiteError as e:
+        yield await SSEStream.send_error(
+            error_message="Missing prerequisite",
+            detail=str(e)
+        )
+    except Exception as e:
+        yield await SSEStream.send_error(
+            error_message="Expert Review failed",
+            detail=str(e)
+        )
+
+
+@router.get("/expert-review")
+async def expert_review_stream(
+    architecture_name: str = Query(
+        ...,
+        description="Architecture name (must match an existing analysis in report/)"
+    ),
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Run MoE Expert Review on a previously analyzed architecture.
+
+    Streams real-time progress via SSE as three independent critic agents
+    (Architect, Tester, Red Team) validate the deterministic analysis and
+    produce a consensus confidence score and unified recommendations.
+
+    **Prerequisites:** Run `/api/v1/analyze-stream` first to generate `ground_truth.json`.
+
+    **SSE Events:**
+    - `progress`: Stage updates (architect → tester → red_team → synthesis)
+    - `complete`: Final MoEResult with confidence and consensus recommendations
+    - `error`: Error details (e.g. missing prerequisites)
+
+    **Example Client (JavaScript):**
+    ```javascript
+    const url = `/api/v1/expert-review?architecture_name=${archName}`;
+    const es = new EventSource(url);
+
+    es.addEventListener('progress', (e) => {
+      const d = JSON.parse(e.data);
+      console.log(`${d.message} (${d.progress}%)`);
+    });
+
+    es.addEventListener('complete', (e) => {
+      const result = JSON.parse(e.data);
+      console.log('Final confidence:', result.confidence.final);
+      es.close();
+    });
+    ```
+    """
+    # Validate architecture_name to prevent path traversal
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid architecture_name"
+        )
+
+    return StreamingResponse(
+        expert_review_with_progress(architecture_name),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive"
+        }
+    )
