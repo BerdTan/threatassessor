@@ -173,17 +173,19 @@ def generate_executive_summary(ground_truth: Dict) -> str:
     else:
         report += "✅ No critical threat categories identified (all risks < 70)\n\n"
 
-    # Top attack paths
+    # All attack paths
+    all_aps = ground_truth["expected_attack_paths"]
     if attack_paths > 0:
-        report += "### 🎯 Top Attack Paths\n\n"
-        for i, ap in enumerate(ground_truth["expected_attack_paths"][:3], 1):
+        report += f"### 🎯 Attack Paths ({attack_paths} identified)\n\n"
+        for i, ap in enumerate(all_aps, 1):
             path_str = " → ".join([n.split()[0] for n in ap["path"][:4]])  # Shorten names
             if len(ap["path"]) > 4:
                 path_str += " → ..."
             tier = ap.get("criticality_tier", "UNKNOWN")
             tier_icon = "🔴" if "CRITICAL" in tier else "🟠" if "HIGH" in tier else "🟡"
+            n_controls = len([c for c in ground_truth.get("control_recommendations", []) if i - 1 in c.get("attack_paths", [])])
             report += f"{i}. **{tier_icon} {tier}:** {path_str}\n"
-            report += f"   - Entry: {ap['entry']} | Target: {ap['target']}\n\n"
+            report += f"   - Entry: {ap['entry']} | Target: {ap['target']} | Controls: {n_controls}\n\n"
     else:
         report += "✅ No direct attack paths identified\n\n"
 
@@ -446,6 +448,7 @@ def generate_technical_report(ground_truth: Dict) -> str:
             enhanced_rationale = rec.get("enhanced_rationale", rec["rationale"])
             mitigations = rec.get("mitigations", [])
             techniques = rec.get("techniques", [])
+            is_gap_control = not rec.get("attack_paths", [])
 
             # Confidence indicator
             conf_indicator = "🟢" if conf_level == "HIGH" else "🟡" if conf_level == "MEDIUM" else "🟠"
@@ -459,8 +462,11 @@ def generate_technical_report(ground_truth: Dict) -> str:
             if len(techniques) > 3:
                 techniques_str += f" +{len(techniques)-3}"
 
-            # Truncate rationale for table
-            rationale_short = enhanced_rationale if len(enhanced_rationale) < 50 else enhanced_rationale[:47] + "..."
+            # Gap controls: replace blank/misleading rationale with clear label
+            if is_gap_control:
+                rationale_short = "Generic hardening — no direct path mapping"
+            else:
+                rationale_short = enhanced_rationale if len(enhanced_rationale) < 50 else enhanced_rationale[:47] + "..."
 
             report += f"| {i} | **{control.upper()}** | {priority.upper()} | {conf_indicator} {conf_level} ({conf_score:.0%}) | {mitigations_str} | {techniques_str} | {rationale_short} |\n"
 
@@ -640,47 +646,54 @@ def generate_action_plan(ground_truth: Dict) -> str:
     report += "> This file provides implementation roadmap from deterministic analysis.\n\n"
     report += "---\n\n"
 
-    report += format_section_header("Phase 1: Immediate (Week 1) - Quick Wins", "⚡", 2)
+    # Drive phases from control_recommendations (covers all controls with correct priority)
+    control_recs = ground_truth.get("control_recommendations", [])
+    # Fall back to controls_missing strings if no recommendations available
+    if not control_recs:
+        control_recs = [{"control": c, "priority": "high", "attack_paths": []} for c in missing]
 
-    # Quick wins (easy to implement)
-    quick_wins = [c for c in missing if c in ["mfa", "logging", "rate limiting", "audit log"]][:3]
+    # Phase buckets: CRITICAL path-mapped → Phase 1, HIGH path-mapped → Phase 2,
+    # MEDIUM path-mapped + all gap controls → Phase 3
+    phase1 = [r for r in control_recs if r.get("priority", "").lower() == "critical" and r.get("attack_paths")]
+    phase2 = [r for r in control_recs if r.get("priority", "").lower() == "high" and r.get("attack_paths")]
+    phase3 = [r for r in control_recs if r.get("priority", "").lower() in ("medium", "low") and r.get("attack_paths")]
+    gap    = [r for r in control_recs if not r.get("attack_paths")]
 
-    if quick_wins:
-        report += "\n| Task | Control | Owner | Effort | Cost | Impact | Validation |\n"
-        report += "|------|---------|-------|--------|------|--------|------------|\n"
-        for i, control in enumerate(quick_wins, 1):
-            report += f"| {i} | **{control.upper()}** | Security Ops | 4-8 hours | $500-$1K | -10 to -15 pts | Security team test |\n"
-        report += "\n"
+    def _phase_table(recs, owner, effort, cost, impact, validation):
+        out = "\n| # | Control | Priority | Paths Covered | Owner | Effort | Cost | Impact | Validation |\n"
+        out += "|---|---------|----------|---------------|-------|--------|------|--------|------------|\n"
+        for i, rec in enumerate(recs, 1):
+            ctrl = rec["control"].upper()
+            pri  = rec.get("priority", "").upper()
+            aps  = rec.get("attack_paths", [])
+            paths_str = ", ".join([f"AP#{p+1}" for p in aps]) if aps else "Generic hardening"
+            out += f"| {i} | **{ctrl}** | {pri} | {paths_str} | {owner} | {effort} | {cost} | {impact} | {validation} |\n"
+        return out + "\n"
+
+    report += format_section_header("Phase 1: Immediate (Week 1) — Critical Path Controls", "⚡", 2)
+    if phase1:
+        report += _phase_table(phase1, "Security Ops", "4–8 hours", "$500–$1K", "−10 to −15 pts", "Security team test")
     else:
-        report += "\n✓ No quick-win controls needed\n\n"
+        report += "\n✓ No critical path controls pending\n\n"
 
-    report += format_section_header("Phase 2: Short-Term (Weeks 2-3) - Critical Controls", "🛡️", 2)
-
-    # Medium-effort controls
-    medium_effort = [c for c in missing if c in ["waf", "firewall", "backup", "encryption", "ids/ips"]][:3]
-
-    if medium_effort:
-        report += "\n| Task | Control | Owner | Effort | Cost | Impact | Validation |\n"
-        report += "|------|---------|-------|--------|------|--------|------------|\n"
-        for i, control in enumerate(medium_effort, 1):
-            report += f"| {i} | **{control.upper()}** | Infra / Sec Arch | 2-3 days | $3K-$5K | -15 to -20 pts | Penetration test |\n"
-        report += "\n"
+    report += format_section_header("Phase 2: Short-Term (Weeks 2–3) — High-Priority Path Controls", "🛡️", 2)
+    if phase2:
+        report += _phase_table(phase2, "Infra / Sec Arch", "2–3 days", "$3K–$5K", "−10 to −20 pts", "Penetration test")
     else:
-        report += "\n✓ All critical controls implemented\n\n"
+        report += "\n✓ All high-priority path controls implemented\n\n"
 
-    report += format_section_header("Phase 3: Long-Term (Weeks 4-8) - Advanced Protection", "🚀", 2)
-
-    # Complex controls
-    complex_controls = [c for c in missing if c in ["network segmentation", "edr", "siem", "iam"]][:3]
-
-    if complex_controls:
-        report += "\n| Task | Control | Owner | Effort | Cost | Impact | Validation |\n"
-        report += "|------|---------|-------|--------|------|--------|------------|\n"
-        for i, control in enumerate(complex_controls, 1):
-            report += f"| {i} | **{control.upper()}** | Sec Arch (approval req) | 1-2 weeks | $10K-$20K | -20 to -30 pts | Red team exercise |\n"
-        report += "\n"
+    report += format_section_header("Phase 3: Medium-Term (Weeks 4–8) — Remaining Path Controls", "🚀", 2)
+    if phase3:
+        report += _phase_table(phase3, "Sec Arch", "1–2 weeks", "$5K–$15K", "−5 to −15 pts", "Red team exercise")
     else:
-        report += "\n✓ Advanced controls in place\n\n"
+        report += "\n✓ All medium-priority path controls implemented\n\n"
+
+    report += format_section_header("Phase 4: Ongoing — Generic Hardening Controls", "🔒", 2)
+    report += "\n> These controls address threat scenarios not directly mapped to identified attack paths.\n> They provide defence-in-depth and should be scheduled based on organisational capacity.\n\n"
+    if gap:
+        report += _phase_table(gap, "Security Ops / Ops", "Varies", "Varies", "Defence-in-depth", "Compliance audit")
+    else:
+        report += "\n✓ No gap hardening controls pending\n\n"
 
     report += format_section_header("Success Metrics & Validation", "✅", 2)
     report += "\n**Target Metrics (Post-Implementation):**\n\n"
