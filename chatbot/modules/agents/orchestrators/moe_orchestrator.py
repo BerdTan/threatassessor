@@ -94,6 +94,11 @@ class ValidationResult:
     strengths: List[str]
     recommendations: List[Dict]
     original_score: int  # Original expert score (for reference)
+    breakdown: Dict = None  # Sub-dimension scores (for UI display)
+
+    def __post_init__(self):
+        if self.breakdown is None:
+            self.breakdown = {}
 
     def to_dict(self) -> Dict:
         """Convert to dictionary."""
@@ -495,8 +500,23 @@ class MoEOrchestrator:
         - Coverage metrics
         - Architect's recommendations valid
         """
-        # Determine validation status
+        # Count CRITICAL/HIGH gaps — used to override PASS when serious gaps exist
         critical_gaps = len([g for g in critique.gaps if g.get("severity") in ["CRITICAL", "HIGH"]])
+
+        # Penalty for sub-dimensions that critically fail (<50% of their max score)
+        # e.g. roadmap_validation: 1/10 = 10% — flags structural weakness missed by aggregate score
+        sub_penalty = 0.0
+        raw_breakdown = critique.breakdown if isinstance(critique.breakdown, dict) else {}
+        for sub_key, sub_data in raw_breakdown.items():
+            if isinstance(sub_data, dict):
+                sub_score = sub_data.get("score", 0)
+                sub_max = sub_data.get("max", 0)
+                if sub_max > 0 and (sub_score / sub_max) < 0.50:
+                    sub_penalty -= 0.02  # -2% per critically failed sub-dimension
+                    logger.info(
+                        f"Tester: sub-dimension '{sub_key}' critically low "
+                        f"({sub_score}/{sub_max} = {sub_score/sub_max*100:.0f}%) → -2% penalty"
+                    )
 
         if critique.score >= 85:
             status = "PASS"
@@ -510,6 +530,19 @@ class MoEOrchestrator:
         else:
             status = "MAJOR_GAPS"
             adjustment = -0.05  # -5%
+
+        # Override: PASS is not valid when HIGH/CRITICAL gaps exist
+        if status == "PASS" and critical_gaps > 0:
+            status = "MINOR_GAPS"
+            adjustment = -0.01
+
+        # Apply sub-dimension penalty
+        if sub_penalty < 0:
+            adjustment += sub_penalty
+            if adjustment <= -0.05:
+                status = "MAJOR_GAPS"
+            elif adjustment < 0 and status == "PASS":
+                status = "MINOR_GAPS"
 
         # Extract recommendations
         recommendations = []
@@ -528,7 +561,8 @@ class MoEOrchestrator:
             gaps=critique.gaps,
             strengths=critique.strengths,
             recommendations=recommendations,
-            original_score=critique.score
+            original_score=critique.score,
+            breakdown=raw_breakdown,
         )
 
     def _process_red_team_validation(self, critique: CritiqueScore) -> ValidationResult:

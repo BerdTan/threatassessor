@@ -714,13 +714,33 @@ class Dashboard {
             </div>`;
             }).join('');
 
+        // Detect implausibly optimistic per-threat "after" values
+        // Flags categories where after=0 but initial_risk was high (≥40) — suggests model assumed
+        // full deployment of all recommended controls with no implementation failure.
+        const implausibleThreats = sourceKeys.filter(key => {
+            const ta = afterPerThreat[key] || {};
+            const tb = beforePerThreat[key] || {};
+            const initial = tb.initial_risk ?? ta.initial_risk ?? 0;
+            const afterResidual = ta.residual_risk ?? null;
+            return afterResidual !== null && afterResidual === 0 && initial >= 40;
+        });
+        const residualQualityWarning = implausibleThreats.length > 0
+            ? '<div style="margin-top:0.5rem; padding:0.625rem 0.875rem; background:var(--danger-color)0d; border:1px solid var(--danger-color)44; border-radius:6px; font-size:0.75rem; color:var(--text-secondary); line-height:1.6;">'
+              + '🔍 <strong style="color:var(--danger-color);">Data quality note:</strong> '
+              + implausibleThreats.map(k => k.replace(/_/g, ' ')).join(', ')
+              + ' show residual risk = 0 after controls — this assumes perfect deployment of all recommended controls with zero implementation gaps. '
+              + 'Treat the <strong>' + riskReductionPct + '%</strong> risk reduction figure as a theoretical upper bound, not an achievable guarantee. '
+              + 'The Tester expert flagged this as an inconsistency. Human review recommended.'
+              + '</div>'
+            : '';
+
         // Honest residual note
         const residualNote = `
             <div style="margin-top:0.75rem; padding:0.625rem 0.875rem; background:var(--warning-color)11; border:1px solid var(--warning-color)44; border-radius:6px; font-size:0.75rem; color:var(--text-secondary); line-height:1.6;">
                 ⚠️ <strong style="color:var(--text-color);">Controls reduce risk — they do not eliminate it.</strong>
                 Residual exposure persists due to implementation gaps, misconfigurations, human error, and technical bypasses.
                 The goal is risk-informed management, not false certainty. Review quarterly.
-            </div>`;
+            </div>` + residualQualityWarning;
 
         // Improvement tier cards — use real MoE data if available, fall back to generic estimates
         const hasMoe = validatedConf !== null;
@@ -3374,10 +3394,14 @@ class Dashboard {
                         + (b.recommendation ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-top:0.25rem;">→ ' + b.recommendation + '</div>' : '')
                         + '</div>';
                 }
-                blindspotsHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
-                    + '<h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">🔍 Blindspots</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Gaps all three critics structurally could not see — highest priority for human review.</p>'
-                    + cards + '</div>';
+                blindspotsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                    + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
+                    + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">🔍 Blindspots</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Gaps all three critics structurally could not see — highest priority for human review.</p></div>'
+                    + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
+                    + '</div>'
+                    + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + cards + '</div>'
+                    + '</div>';
             }
 
             // Build contradictions HTML — summary cards with right-pane detail on click
@@ -3410,10 +3434,14 @@ class Dashboard {
                         + '<div style="font-size:0.8125rem; color:var(--warning-color); margin-top:0.35rem; font-style:italic;">' + (c.resolution || 'UNSURE — human review needed') + '</div>'
                         + '</div>';
                 }
-                contradictionsHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
-                    + '<h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">⚠️ Expert Disagreements</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Where critics contradict each other. Click <em>View analysis →</em> for root cause and recommended human action.</p>'
-                    + cards + '</div>';
+                contradictionsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                    + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
+                    + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">⚠️ Expert Disagreements</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Where critics contradict each other. Click <em>View analysis →</em> for root cause.</p></div>'
+                    + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
+                    + '</div>'
+                    + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + cards + '</div>'
+                    + '</div>';
             }
 
             // Build synthesis footer outside template literal
@@ -3462,10 +3490,13 @@ class Dashboard {
                         + residualBlock
                         + '</div>';
                 }
-                tiersHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
-                    + '<h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">📊 Improvement Tiers</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Cost and effort from Red Team exploit roadmap — not estimated where data is absent.</p>'
-                    + tierCards
+                tiersHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                    + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
+                    + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">📊 Improvement Tiers</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Cost and effort from Red Team exploit roadmap — not estimated where data is absent.</p></div>'
+                    + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
+                    + '</div>'
+                    + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + tierCards + '</div>'
                     + '</div>';
             }
 
@@ -3547,13 +3578,47 @@ class Dashboard {
                         + (g.recommendation ? '<div style="font-size: 0.8125rem; color: var(--secondary-color);">→ ' + g.recommendation + '</div>' : '')
                         + '</div>';
                 }
+                // Sub-dimension breakdown bars (tester only, when breakdown data present)
+                let breakdownBars = '';
+                if (e.key === 'tester' && v.breakdown && Object.keys(v.breakdown).length > 0) {
+                    const subLabels = {
+                        validation_checks:    'Validation Checks',
+                        coverage_metrics:     'Coverage Metrics',
+                        internal_consistency: 'Internal Consistency',
+                        roadmap_validation:   'Roadmap Validation',
+                    };
+                    let bars = '';
+                    for (const [subKey, subData] of Object.entries(v.breakdown)) {
+                        if (typeof subData !== 'object' || !subData.max) continue;
+                        const pct = Math.round((subData.score / subData.max) * 100);
+                        const barColor = pct < 50 ? 'var(--danger-color)' : pct < 75 ? 'var(--warning-color)' : 'var(--secondary-color)';
+                        const warning = pct < 50 ? ' <span style="color:var(--danger-color); font-size:0.7rem;">⚠ critically low</span>' : '';
+                        bars += '<div style="margin-bottom:0.5rem;">'
+                            + '<div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.2rem;">'
+                            + '<span>' + (subLabels[subKey] || subKey) + warning + '</span>'
+                            + '<span style="color:var(--text-color); font-weight:600;">' + subData.score + '/' + subData.max + ' (' + pct + '%)</span>'
+                            + '</div>'
+                            + '<div style="background:var(--nav-hover-bg); border-radius:3px; height:6px; overflow:hidden;">'
+                            + '<div style="width:' + pct + '%; height:100%; background:' + barColor + '; border-radius:3px;"></div>'
+                            + '</div>'
+                            + (subData.reasoning ? '<div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.15rem; font-style:italic;">' + subData.reasoning + '</div>' : '')
+                            + '</div>';
+                    }
+                    breakdownBars = '<div style="margin-bottom:0.75rem; padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px;">'
+                        + '<div style="font-size:0.75rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.5rem; text-transform:uppercase; letter-spacing:0.04em;">Sub-dimension scores</div>'
+                        + bars + '</div>';
+                }
+
                 const bodyHtml = gaps.length > 0
                     ? '<div class="er-panel-body" style="padding: 1rem 1.25rem;">'
+                        + breakdownBars
                         + '<div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">' + gaps.length + ' finding' + (gaps.length > 1 ? 's' : '') + '</div>'
                         + severityLegend
                         + '<div style="margin-top:0.75rem;">' + gapItems + '</div>'
                         + '</div>'
-                    : '<div class="er-panel-body" style="padding: 0.75rem 1.25rem; font-size:0.8125rem; color:var(--text-tertiary);">No findings — criteria passed.</div>';
+                    : '<div class="er-panel-body" style="padding: 0.75rem 1.25rem; font-size:0.8125rem; color:var(--text-tertiary);">'
+                        + breakdownBars
+                        + 'No findings — criteria passed.</div>';
 
                 expertPanelCards += '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select:none;">'
@@ -3633,10 +3698,14 @@ class Dashboard {
                             + '</div>';
                     }
                 }
-                consensusHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
-                    + '<h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">Cross-Expert Findings</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">KNOWN = ≥2 critics independently agree. UNSURE = single critic, needs human verification.</p>'
-                    + inner + '</div>';
+                consensusHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                    + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
+                    + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">Cross-Expert Findings</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">KNOWN = ≥2 critics agree. UNSURE = single critic, needs human verification.</p></div>'
+                    + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
+                    + '</div>'
+                    + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + inner + '</div>'
+                    + '</div>';
             }
 
             container.innerHTML = ''
