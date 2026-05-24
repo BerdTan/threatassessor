@@ -37,12 +37,10 @@
         <aside class="sidebar">
             <nav class="sidebar-nav">
                 <button class="nav-tab active" data-tab="overview">📊 Overview</button>
-                <button class="nav-tab" data-tab="patterns">🧩 Patterns</button>
-                <button class="nav-tab" data-tab="attacks">🎯 Attacks</button>
-                <button class="nav-tab" data-tab="controls">🛡️ Controls</button>
+                <button class="nav-tab" data-tab="attacks">🎯 Threat Paths</button>
+                <button class="nav-tab" data-tab="controls">🛡️ Mitigations</button>
                 <button class="nav-tab" data-tab="hardening">🔒 Visualise</button>
-                <button class="nav-tab" data-tab="mitre">📋 MITRE</button>
-                <button class="nav-tab" data-tab="ai-ml" style="display: none;">🤖 AI/ML</button>
+                <button class="nav-tab" data-tab="expert-review" style="display: none;">🧑‍🏫 Expert Review</button>
                 <button class="nav-tab" data-tab="reports">📄 Reports</button>
                 <button class="nav-tab" data-tab="raw-data">💾 Raw Data</button>
             </nav>
@@ -95,17 +93,9 @@
                     </div>
                 </div>
 
-                <!-- Patterns Tab -->
-                <div class="tab-pane" data-tab="patterns">
-                    <h2>Threat Patterns Applied</h2>
-                    <div id="patterns-list" class="patterns-list">
-                        <p class="placeholder">Pattern information loading...</p>
-                    </div>
-                </div>
-
                 <!-- Attacks Tab -->
                 <div class="tab-pane" data-tab="attacks">
-                    <h2>Attack Paths</h2>
+                    <h2>Threat Paths</h2>
                     <div class="split-view">
                         <div class="split-left">
                             <div id="attack-paths-list" class="list-container">
@@ -117,7 +107,7 @@
 
                 <!-- Controls Tab -->
                 <div class="tab-pane" data-tab="controls">
-                    <h2>Security Controls</h2>
+                    <h2>Mitigations</h2>
                     <div class="split-view">
                         <div class="split-left">
                             <div id="controls-table" class="table-container">
@@ -139,28 +129,11 @@
                     </div>
                 </div>
 
-                <!-- MITRE Tab -->
-                <div class="tab-pane" data-tab="mitre">
-                    <h2>MITRE ATT&CK Technique Coverage</h2>
-                    <div id="mitre-matrix" class="mitre-matrix">
-                        <p class="placeholder">MITRE technique matrix loading...</p>
-                    </div>
-                </div>
-
-                <!-- AI/ML Tab (conditional) -->
-                <div class="tab-pane" data-tab="ai-ml">
-                    <h2>AI/ML Risk Analysis</h2>
-                    <div class="split-view">
-                        <div class="split-left">
-                            <h3>AI/ML Risk Categories (ARC Framework)</h3>
-                            <canvas id="ai-risk-chart"></canvas>
-                        </div>
-                        <div class="split-right">
-                            <h3>AI-Specific Controls</h3>
-                            <div id="ai-controls" class="list-container">
-                                <p class="placeholder">AI/ML control recommendations loading...</p>
-                            </div>
-                        </div>
+                <!-- Expert Review Tab (shown when MoE data available) -->
+                <div class="tab-pane" data-tab="expert-review">
+                    <h2>Expert Review</h2>
+                    <div id="expert-review-content" class="list-container">
+                        <p class="placeholder">Expert review data loading...</p>
                     </div>
                 </div>
 
@@ -214,11 +187,9 @@
         <div id="stages" class="stages">
             <span class="stage" data-stage="parsing">Parsing</span>
             <span class="stage-arrow">→</span>
-            <span class="stage" data-stage="mitre">MITRE</span>
+            <span class="stage" data-stage="mitre">Threat Mapping</span>
             <span class="stage-arrow">→</span>
-            <span class="stage" data-stage="rapids">RAPIDS</span>
-            <span class="stage-arrow" id="ai-ml-arrow" style="display: none;">→</span>
-            <span class="stage" data-stage="ai_ml" id="ai-ml-stage" style="display: none;">AI/ML</span>
+            <span class="stage" data-stage="rapids">Risk Assessment</span>
             <span class="stage-arrow">→</span>
             <span class="stage" data-stage="validation">Done</span>
         </div>

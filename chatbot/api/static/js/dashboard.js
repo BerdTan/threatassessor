@@ -162,14 +162,12 @@ class Dashboard {
         // Update status message
         const tabNames = {
             'overview': 'Overview',
-            'patterns': 'Threat Patterns',
-            'attacks': 'Attack Paths',
-            'controls': 'Security Controls',
-            'hardening': 'Control Placement',
-            'mitre': 'MITRE Techniques',
-            'ai-ml': 'AI/ML Risks',
-            'reports': 'Generated Reports',
-            'raw-data': 'Raw Data Artifacts'
+            'attacks': 'Threat Paths',
+            'controls': 'Mitigations',
+            'hardening': 'Visualise',
+            'expert-review': 'Expert Review',
+            'reports': 'Reports',
+            'raw-data': 'Raw Data'
         };
         this.updateStatusMessage(`📂 Viewing ${tabNames[tabName] || tabName}`);
 
@@ -318,12 +316,6 @@ class Dashboard {
             badgesContainer.appendChild(badge);
         });
 
-        // Show AI/ML tab if detected
-        const hasAIML = patterns.some(p => p.pattern_id === 'ai_ml_arc');
-        if (hasAIML) {
-            document.querySelector('.nav-tab[data-tab="ai-ml"]').style.display = 'block';
-        }
-
         // Store patterns
         this.patterns = patterns;
     }
@@ -389,6 +381,18 @@ class Dashboard {
         if (uploadBtn) uploadBtn.style.display = 'none';
         if (newAnalysisBtn) newAnalysisBtn.style.display = 'inline-block';
 
+        // Show Expert Review tab if MoE data exists for this architecture
+        if (archName) {
+            fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`, { method: 'HEAD' })
+                .then(r => {
+                    if (r.ok) {
+                        const tab = document.querySelector('.nav-tab[data-tab="expert-review"]');
+                        if (tab) tab.style.display = 'block';
+                    }
+                })
+                .catch(() => {});
+        }
+
         // Load current tab data
         this.loadTabData(this.currentTab);
     }
@@ -425,11 +429,9 @@ class Dashboard {
             patternBadges.innerHTML = '<span class="badge badge-disabled">No analysis yet</span>';
         }
 
-        // Hide AI/ML stage
-        const aiMlStage = document.getElementById('ai-ml-stage');
-        const aiMlArrow = document.getElementById('ai-ml-arrow');
-        if (aiMlStage) aiMlStage.style.display = 'none';
-        if (aiMlArrow) aiMlArrow.style.display = 'none';
+        // Hide Expert Review tab until MoE data confirmed
+        const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
+        if (expertReviewTab) expertReviewTab.style.display = 'none';
 
         // Hide right pane
         this.hideRightPane();
@@ -531,9 +533,6 @@ class Dashboard {
             case 'overview':
                 this.loadOverviewTab();
                 break;
-            case 'patterns':
-                this.loadPatternsTab();
-                break;
             case 'attacks':
                 this.loadAttacksTab();
                 break;
@@ -543,11 +542,8 @@ class Dashboard {
             case 'hardening':
                 this.loadHardeningTab();
                 break;
-            case 'mitre':
-                this.loadMitreTab();
-                break;
-            case 'ai-ml':
-                this.loadAIMLTab();
+            case 'expert-review':
+                this.loadExpertReviewTab();
                 break;
             case 'reports':
                 this.loadReportsTab();
@@ -3346,6 +3342,146 @@ class Dashboard {
         } catch (error) {
             console.error('Error loading report content:', error);
             this.showRightPane('Error', `<p style="color: var(--danger-color);">Failed to load report: ${error.message}</p>`);
+        }
+    }
+
+    async loadExpertReviewTab() {
+        const container = document.getElementById('expert-review-content');
+        if (!this.analysisData) {
+            container.innerHTML = '<p class="placeholder">No analysis data available</p>';
+            return;
+        }
+
+        const archName = this.analysisData.architecture_name || this.analysisData.architecture;
+        if (!archName) {
+            container.innerHTML = '<p class="placeholder">Architecture name not found</p>';
+            return;
+        }
+
+        container.innerHTML = '<p class="placeholder">Loading expert review data...</p>';
+
+        try {
+            const response = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
+            if (!response.ok) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 3rem 2rem;">
+                        <div style="font-size: 3rem; margin-bottom: 1rem;">🧑‍🏫</div>
+                        <h3 style="color: var(--text-color); margin-bottom: 0.75rem;">Expert Review Not Run</h3>
+                        <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto 1.5rem;">
+                            The expert panel (Architecture Review, Coverage Audit, Exploit Analysis) has not reviewed this assessment yet.
+                            Running it increases confidence from the Foundation Score and unlocks the Improvement Roadmap.
+                        </p>
+                        <p style="color: var(--text-tertiary); font-size: 0.875rem;">
+                            Expert Review is currently available via CLI: <code>./demo_expert_llm.sh ${archName}.mmd</code>
+                        </p>
+                    </div>`;
+                return;
+            }
+
+            const moe = await response.json();
+            const confidence = moe.confidence || {};
+            const expertValidations = moe.expert_validations || {};
+            const consensusRecs = moe.consensus_recommendations || [];
+
+            const expertDefs = [
+                { key: 'architect', icon: '🏛️', label: 'Architecture Review', role: 'Design quality & threat completeness' },
+                { key: 'tester',    icon: '🔬', label: 'Coverage Audit',       role: 'MITRE mapping accuracy' },
+                { key: 'red_team',  icon: '🎯', label: 'Exploit Analysis',     role: 'Control effectiveness under attack' },
+            ];
+
+            const statusColor = {
+                'PASS': 'var(--secondary-color)',
+                'MINOR_GAPS': 'var(--warning-color)',
+                'MAJOR_GAPS': 'var(--danger-color)',
+                'FAIL': 'var(--danger-color)',
+            };
+
+            const finalConf = (confidence.final || 0).toFixed(1);
+            const baseConf  = (confidence.base  || 99.5).toFixed(1);
+            const interp    = confidence.interpretation || '';
+
+            container.innerHTML = `
+                <!-- Confidence Waterfall -->
+                <div style="background: var(--card-bg); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">
+                    <h3 style="margin: 0 0 1rem; color: var(--text-color); font-size: 1rem;">Confidence Progression</h3>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <div style="text-align: center; min-width: 80px;">
+                            <div style="font-size: 1.25rem; font-weight: 700; color: var(--secondary-color);">${baseConf}%</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary);">Foundation</div>
+                        </div>
+                        ${expertDefs.map(e => {
+                            const v = expertValidations[e.key];
+                            if (!v) return '';
+                            const adj = ((v.confidence_adjustment || 0) * 100).toFixed(1);
+                            const sign = adj >= 0 ? '+' : '';
+                            return `
+                                <div style="color: var(--text-tertiary); font-size: 1.25rem;">→</div>
+                                <div style="text-align: center; min-width: 80px;">
+                                    <div style="font-size: 1rem; font-weight: 600; color: var(--warning-color);">${sign}${adj}%</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">${e.label}</div>
+                                </div>`;
+                        }).join('')}
+                        <div style="color: var(--text-tertiary); font-size: 1.25rem;">→</div>
+                        <div style="text-align: center; min-width: 80px;">
+                            <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${finalConf}%</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary);">Validated</div>
+                        </div>
+                    </div>
+                    ${interp ? `<p style="margin: 0.75rem 0 0; font-size: 0.875rem; color: var(--text-secondary);">${interp}</p>` : ''}
+                </div>
+
+                <!-- Expert Panels -->
+                <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+                    ${expertDefs.map(e => {
+                        const v = expertValidations[e.key];
+                        if (!v) return '';
+                        const adj = ((v.confidence_adjustment || 0) * 100).toFixed(1);
+                        const sign = adj >= 0 ? '+' : '';
+                        const status = v.validation_status || 'UNKNOWN';
+                        const color = statusColor[status] || 'var(--text-secondary)';
+                        const gaps = v.gaps || [];
+                        return `
+                        <div style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">
+                            <div style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color);">
+                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                    <span style="font-size: 1.5rem;">${e.icon}</span>
+                                    <div>
+                                        <div style="font-weight: 700; color: var(--text-color);">${e.label}</div>
+                                        <div style="font-size: 0.8125rem; color: var(--text-secondary);">${e.role}</div>
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 1.125rem; font-weight: 700; color: var(--warning-color);">${sign}${adj}%</div>
+                                    <div style="font-size: 0.75rem; font-weight: 600; color: ${color};">${status.replace('_', ' ')}</div>
+                                </div>
+                            </div>
+                            ${gaps.length > 0 ? `
+                            <div style="padding: 1rem 1.25rem;">
+                                <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.75rem;">${gaps.length} finding${gaps.length > 1 ? 's' : ''}</div>
+                                ${gaps.map(g => `
+                                    <div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid ${g.severity === 'HIGH' || g.severity === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)'};">
+                                        <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-color); margin-bottom: 0.25rem;">${g.category ? g.category.replace(/_/g, ' ').toUpperCase() : ''} · <span style="color: ${g.severity === 'HIGH' || g.severity === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)'};">${g.severity || ''}</span></div>
+                                        <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">${g.description || ''}</div>
+                                        ${g.recommendation ? `<div style="font-size: 0.8125rem; color: var(--secondary-color);">→ ${g.recommendation}</div>` : ''}
+                                    </div>`).join('')}
+                            </div>` : ''}
+                        </div>`;
+                    }).join('')}
+                </div>
+
+                <!-- Consensus -->
+                ${consensusRecs.length > 0 ? `
+                <div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; border: 1px solid var(--border-color);">
+                    <h3 style="margin: 0 0 1rem; color: var(--text-color); font-size: 1rem;">Consensus Recommendations</h3>
+                    <p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Items all three experts agree on — highest confidence to act on first.</p>
+                    ${consensusRecs.map(r => `
+                        <div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--secondary-color);">
+                            <div style="font-size: 0.875rem; color: var(--text-color);">${typeof r === 'string' ? r : (r.recommendation || r.description || JSON.stringify(r))}</div>
+                        </div>`).join('')}
+                </div>` : ''}
+            `;
+        } catch (err) {
+            container.innerHTML = `<p class="placeholder">Error loading expert review: ${err.message}</p>`;
         }
     }
 
