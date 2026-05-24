@@ -3284,9 +3284,104 @@ class Dashboard {
             const confidence = moe.confidence || {};
             const expertValidations = moe.expert_validations || {};
             const consensusRecsRaw = moe.consensus_recommendations || {};
-            // consensus_recommendations is {critical:[...], high:[...], review:[...]}
-            const consensusCritical = Array.isArray(consensusRecsRaw.critical) ? consensusRecsRaw.critical : (Array.isArray(consensusRecsRaw) ? consensusRecsRaw : []);
+            const consensusCritical = Array.isArray(consensusRecsRaw.critical) ? consensusRecsRaw.critical : [];
             const consensusHigh = Array.isArray(consensusRecsRaw.high) ? consensusRecsRaw.high : [];
+            const consensusReview = Array.isArray(consensusRecsRaw.review) ? consensusRecsRaw.review : [];
+            const blindspots = Array.isArray(consensusRecsRaw.blindspots) ? consensusRecsRaw.blindspots : [];
+            const contradictions = Array.isArray(consensusRecsRaw.contradictions) ? consensusRecsRaw.contradictions : [];
+            const synthQuality = consensusRecsRaw.synthesis_quality || '';
+            const improvTiers = moe.improvement_options || {};
+            const synthComment = consensusRecsRaw.confidence_commentary || '';
+            const isFallback = synthQuality === 'FALLBACK';
+            const synthBorderColor = isFallback ? 'var(--warning-color)' : 'var(--border-color)';
+
+            // Build blindspots HTML
+            let blindspotsHtml = '';
+            if (blindspots.length > 0) {
+                let cards = '';
+                for (const b of blindspots) {
+                    cards += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--primary-color);">'
+                        + '<div style="font-size: 0.875rem; font-weight:600; color: var(--text-color);">' + (b.description || '') + '</div>'
+                        + (b.why_missed ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.25rem;">Why missed: ' + b.why_missed + '</div>' : '')
+                        + (b.recommendation ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-top:0.25rem;">→ ' + b.recommendation + '</div>' : '')
+                        + '</div>';
+                }
+                blindspotsHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
+                    + '<h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">🔍 Blindspots</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Gaps all three critics structurally could not see — highest priority for human review.</p>'
+                    + cards + '</div>';
+            }
+
+            // Build contradictions HTML
+            let contradictionsHtml = '';
+            if (contradictions.length > 0) {
+                let cards = '';
+                for (const c of contradictions) {
+                    cards += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--warning-color);">'
+                        + '<div style="font-size: 0.875rem; font-weight:600; color: var(--text-color); margin-bottom:0.5rem;">' + (c.topic || '') + '</div>'
+                        + '<div style="font-size:0.8125rem; color:var(--text-secondary);">🏛️ Architect/Tester: ' + (c.architect_view || '') + '</div>'
+                        + '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.2rem;">🎯 Red Team: ' + (c.tester_or_redteam_view || '') + '</div>'
+                        + '<div style="font-size:0.8125rem; color:var(--warning-color); margin-top:0.35rem; font-style:italic;">' + (c.resolution || 'UNSURE — human review needed') + '</div>'
+                        + '</div>';
+                }
+                contradictionsHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
+                    + '<h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">⚠️ Expert Disagreements</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Where critics contradict each other — human judgment required, not resolved by the system.</p>'
+                    + cards + '</div>';
+            }
+
+            // Build synthesis footer outside template literal
+            let synthFooterHtml = '';
+            if (synthComment || isFallback) {
+                synthFooterHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1rem 1.25rem; border: 1px solid ' + synthBorderColor + ';">'
+                    + (synthComment ? '<span style="font-size:0.8125rem; color:var(--text-secondary); font-style:italic;">' + synthComment + '</span>' : '')
+                    + (isFallback ? '<div style="font-size:0.8125rem; color:var(--warning-color); margin-top:0.25rem;">⚠ Synthesis used fallback — LLM was unavailable. Consensus is a gap union, not a reasoned cross-validation.</div>' : '')
+                    + '</div>';
+            }
+
+            // Build improvement tier HTML outside template literal to avoid deep nesting
+            const tierDefs = [
+                { key: 'quick_wins',  label: '⚡ Quick Win',      color: 'var(--secondary-color)' },
+                { key: 'recommended', label: '⭐ Recommended',    color: 'var(--primary-color)'   },
+                { key: 'maximum',     label: '🔒 Maximum',        color: 'var(--warning-color)'   },
+            ];
+            let tiersHtml = '';
+            if (Object.keys(improvTiers).length > 0) {
+                let tierCards = '';
+                for (const { key, label, color } of tierDefs) {
+                    const t = improvTiers[key];
+                    if (!t) continue;
+                    const items = Array.isArray(t.items) ? t.items : [];
+                    const itemList = items.length > 0
+                        ? '<ul style="margin:0.5rem 0 0; padding-left:1.25rem; font-size:0.8125rem; color:var(--text-color);">' + items.map(function(i) { return '<li>' + i + '</li>'; }).join('') + '</ul>'
+                        : '';
+                    const residualBlock = t.residual
+                        ? '<div style="margin-top:0.5rem; padding:0.5rem; background:rgba(255,165,0,0.08); border-radius:4px; font-size:0.8125rem; color:var(--warning-color);">Residual: ' + t.residual + '</div>'
+                        : '';
+                    const rationaleBlock = t.rationale
+                        ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.5rem; font-style:italic;">' + t.rationale + '</div>'
+                        : '';
+                    tierCards += '<div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">'
+                        + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">'
+                        + '<span style="font-weight:700; color:' + color + ';">' + label + '</span>'
+                        + '<span style="font-size:0.8125rem; color:var(--text-secondary);">' + (t.practical_verdict ? 'Practical: ' + t.practical_verdict : '') + '</span>'
+                        + '</div>'
+                        + rationaleBlock
+                        + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; font-size:0.8125rem; margin-bottom:0.5rem;">'
+                        + '<div><span style="color:var(--text-tertiary);">Cost:</span> ' + (t.cost || 'cost not estimated') + '</div>'
+                        + '<div><span style="color:var(--text-tertiary);">Effort:</span> ' + (t.effort || 'not estimated') + '</div>'
+                        + '<div><span style="color:var(--text-tertiary);">Risk:</span> ' + (t.risk_reduction || '—') + '</div>'
+                        + '</div>'
+                        + itemList
+                        + residualBlock
+                        + '</div>';
+                }
+                tiersHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
+                    + '<h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">📊 Improvement Tiers</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Cost and effort from Red Team exploit roadmap — not estimated where data is absent.</p>'
+                    + tierCards
+                    + '</div>';
+            }
 
             const expertDefs = [
                 { key: 'architect', icon: '🏛️', label: 'Architecture Review', role: 'Design quality & threat completeness' },
@@ -3305,94 +3400,116 @@ class Dashboard {
             const baseConf  = (confidence.base  || 99.5).toFixed(1);
             const interp    = confidence.interpretation || '';
 
-            container.innerHTML = `
-                <!-- Confidence Waterfall -->
-                <div style="background: var(--card-bg); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">
-                    <h3 style="margin: 0 0 1rem; color: var(--text-color); font-size: 1rem;">Confidence Progression</h3>
-                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                        <div style="text-align: center; min-width: 80px;">
-                            <div style="font-size: 1.25rem; font-weight: 700; color: var(--secondary-color);">${baseConf}%</div>
-                            <div style="font-size: 0.75rem; color: var(--text-secondary);">Foundation</div>
-                        </div>
-                        ${expertDefs.map(e => {
-                            const v = expertValidations[e.key];
-                            if (!v) return '';
-                            const adj = ((v.confidence_adjustment || 0) * 100).toFixed(1);
-                            const sign = adj >= 0 ? '+' : '';
-                            return `
-                                <div style="color: var(--text-tertiary); font-size: 1.25rem;">→</div>
-                                <div style="text-align: center; min-width: 80px;">
-                                    <div style="font-size: 1rem; font-weight: 600; color: var(--warning-color);">${sign}${adj}%</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">${e.label}</div>
-                                </div>`;
-                        }).join('')}
-                        <div style="color: var(--text-tertiary); font-size: 1.25rem;">→</div>
-                        <div style="text-align: center; min-width: 80px;">
-                            <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${finalConf}%</div>
-                            <div style="font-size: 0.75rem; color: var(--text-secondary);">Validated</div>
-                        </div>
-                    </div>
-                    ${interp ? `<p style="margin: 0.75rem 0 0; font-size: 0.875rem; color: var(--text-secondary);">${interp}</p>` : ''}
-                </div>
+            // Build confidence waterfall nodes
+            let waterfallNodes = '';
+            for (const e of expertDefs) {
+                const v = expertValidations[e.key];
+                if (!v) continue;
+                const adj = ((v.confidence_adjustment || 0) * 100).toFixed(1);
+                const sign = parseFloat(adj) >= 0 ? '+' : '';
+                waterfallNodes += '<div style="color: var(--text-tertiary); font-size: 1.25rem;">→</div>'
+                    + '<div style="text-align: center; min-width: 80px;">'
+                    + '<div style="font-size: 1rem; font-weight: 600; color: var(--warning-color);">' + sign + adj + '%</div>'
+                    + '<div style="font-size: 0.75rem; color: var(--text-secondary);">' + e.label + '</div>'
+                    + '</div>';
+            }
 
-                <!-- Expert Panels -->
-                <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
-                    ${expertDefs.map(e => {
-                        const v = expertValidations[e.key];
-                        if (!v) return '';
-                        const adj = ((v.confidence_adjustment || 0) * 100).toFixed(1);
-                        const sign = adj >= 0 ? '+' : '';
-                        const status = v.validation_status || 'UNKNOWN';
-                        const color = statusColor[status] || 'var(--text-secondary)';
-                        const gaps = v.gaps || [];
-                        return `
-                        <div style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">
-                            <div style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color);">
-                                <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                    <span style="font-size: 1.5rem;">${e.icon}</span>
-                                    <div>
-                                        <div style="font-weight: 700; color: var(--text-color);">${e.label}</div>
-                                        <div style="font-size: 0.8125rem; color: var(--text-secondary);">${e.role}</div>
-                                    </div>
-                                </div>
-                                <div style="text-align: right;">
-                                    <div style="font-size: 1.125rem; font-weight: 700; color: var(--warning-color);">${sign}${adj}%</div>
-                                    <div style="font-size: 0.75rem; font-weight: 600; color: ${color};">${status.replace('_', ' ')}</div>
-                                </div>
-                            </div>
-                            ${gaps.length > 0 ? `
-                            <div style="padding: 1rem 1.25rem;">
-                                <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.75rem;">${gaps.length} finding${gaps.length > 1 ? 's' : ''}</div>
-                                ${gaps.map(g => `
-                                    <div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid ${g.severity === 'HIGH' || g.severity === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)'};">
-                                        <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-color); margin-bottom: 0.25rem;">${g.category ? g.category.replace(/_/g, ' ').toUpperCase() : ''} · <span style="color: ${g.severity === 'HIGH' || g.severity === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)'};">${g.severity || ''}</span></div>
-                                        <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">${g.description || ''}</div>
-                                        ${g.recommendation ? `<div style="font-size: 0.8125rem; color: var(--secondary-color);">→ ${g.recommendation}</div>` : ''}
-                                    </div>`).join('')}
-                            </div>` : ''}
-                        </div>`;
-                    }).join('')}
-                </div>
+            // Build expert panel cards
+            let expertPanels = '';
+            for (const e of expertDefs) {
+                const v = expertValidations[e.key];
+                if (!v) continue;
+                const adj = ((v.confidence_adjustment || 0) * 100).toFixed(1);
+                const sign = parseFloat(adj) >= 0 ? '+' : '';
+                const status = v.validation_status || 'UNKNOWN';
+                const color = statusColor[status] || 'var(--text-secondary)';
+                const gaps = v.gaps || [];
+                let gapItems = '';
+                for (const g of gaps) {
+                    const borderCol = (g.severity === 'HIGH' || g.severity === 'CRITICAL') ? 'var(--danger-color)' : 'var(--warning-color)';
+                    const sevCol = (g.severity === 'HIGH' || g.severity === 'CRITICAL') ? 'var(--danger-color)' : 'var(--warning-color)';
+                    gapItems += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid ' + borderCol + ';">'
+                        + '<div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-color); margin-bottom: 0.25rem;">' + (g.category ? g.category.replace(/_/g, ' ').toUpperCase() : '') + ' · <span style="color: ' + sevCol + ';">' + (g.severity || '') + '</span></div>'
+                        + '<div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">' + (g.description || '') + '</div>'
+                        + (g.recommendation ? '<div style="font-size: 0.8125rem; color: var(--secondary-color);">→ ' + g.recommendation + '</div>' : '')
+                        + '</div>';
+                }
+                expertPanels += '<div style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">'
+                    + '<div style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color);">'
+                    + '<div style="display: flex; align-items: center; gap: 0.75rem;">'
+                    + '<span style="font-size: 1.5rem;">' + e.icon + '</span>'
+                    + '<div><div style="font-weight: 700; color: var(--text-color);">' + e.label + '</div>'
+                    + '<div style="font-size: 0.8125rem; color: var(--text-secondary);">' + e.role + '</div></div>'
+                    + '</div>'
+                    + '<div style="text-align: right;">'
+                    + '<div style="font-size: 1.125rem; font-weight: 700; color: var(--warning-color);">' + sign + adj + '%</div>'
+                    + '<div style="font-size: 0.75rem; font-weight: 600; color: ' + color + ';">' + status.replace('_', ' ') + '</div>'
+                    + '</div></div>'
+                    + (gaps.length > 0 ? '<div style="padding: 1rem 1.25rem;"><div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.75rem;">' + gaps.length + ' finding' + (gaps.length > 1 ? 's' : '') + '</div>' + gapItems + '</div>' : '')
+                    + '</div>';
+            }
 
-                <!-- Consensus -->
-                ${consensusCritical.length + consensusHigh.length > 0 ? `
-                <div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; border: 1px solid var(--border-color);">
-                    <h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">Consensus Recommendations</h3>
-                    <p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Items all three experts agree on — highest confidence to act on first.</p>
-                    ${consensusCritical.length > 0 ? `
-                        <div style="font-size:0.8125rem; font-weight:600; color:var(--danger-color); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.5rem;">Critical</div>
-                        ${consensusCritical.map(r => `
-                        <div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--danger-color);">
-                            <div style="font-size: 0.875rem; color: var(--text-color);">${typeof r === 'string' ? r : (r.recommendation || r.description || JSON.stringify(r))}</div>
-                        </div>`).join('')}` : ''}
-                    ${consensusHigh.length > 0 ? `
-                        <div style="font-size:0.8125rem; font-weight:600; color:var(--warning-color); text-transform:uppercase; letter-spacing:0.04em; margin: 0.75rem 0 0.5rem;">High</div>
-                        ${consensusHigh.map(r => `
-                        <div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--warning-color);">
-                            <div style="font-size: 0.875rem; color: var(--text-color);">${typeof r === 'string' ? r : (r.recommendation || r.description || JSON.stringify(r))}</div>
-                        </div>`).join('')}` : ''}
-                </div>` : ''}
-            `;
+            // Build consensus section
+            let consensusHtml = '';
+            if (consensusCritical.length + consensusHigh.length + consensusReview.length > 0) {
+                let inner = '';
+                if (consensusCritical.length > 0) {
+                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--danger-color); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.5rem;">Critical · KNOWN</div>';
+                    for (const r of consensusCritical) {
+                        inner += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--danger-color);">'
+                            + '<div style="font-size: 0.875rem; color: var(--text-color);">' + (r.description || r.recommendation || '') + '</div>'
+                            + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
+                            + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
+                            + '</div>';
+                    }
+                }
+                if (consensusHigh.length > 0) {
+                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--warning-color); text-transform:uppercase; letter-spacing:0.04em; margin: 0.75rem 0 0.5rem;">High · UNSURE</div>';
+                    for (const r of consensusHigh) {
+                        inner += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--warning-color);">'
+                            + '<div style="font-size: 0.875rem; color: var(--text-color);">' + (r.description || r.recommendation || '') + '</div>'
+                            + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
+                            + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
+                            + '</div>';
+                    }
+                }
+                if (consensusReview.length > 0) {
+                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.04em; margin: 0.75rem 0 0.5rem;">For Review · UNSURE (single critic)</div>';
+                    for (const r of consensusReview) {
+                        inner += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--border-color);">'
+                            + '<div style="font-size: 0.875rem; color: var(--text-secondary);">' + (r.description || r.recommendation || '') + '</div>'
+                            + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Raised by: ' + r.source + '</div>' : '')
+                            + '</div>';
+                    }
+                }
+                consensusHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
+                    + '<h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">Cross-Expert Findings</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">KNOWN = ≥2 critics independently agree. UNSURE = single critic, needs human verification.</p>'
+                    + inner + '</div>';
+            }
+
+            container.innerHTML = ''
+                + '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">'
+                + '<h3 style="margin: 0 0 1rem; color: var(--text-color); font-size: 1rem;">Confidence Progression</h3>'
+                + '<div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">'
+                + '<div style="text-align: center; min-width: 80px;">'
+                + '<div style="font-size: 1.25rem; font-weight: 700; color: var(--secondary-color);">' + baseConf + '%</div>'
+                + '<div style="font-size: 0.75rem; color: var(--text-secondary);">Foundation</div>'
+                + '</div>'
+                + waterfallNodes
+                + '<div style="color: var(--text-tertiary); font-size: 1.25rem;">→</div>'
+                + '<div style="text-align: center; min-width: 80px;">'
+                + '<div style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">' + finalConf + '%</div>'
+                + '<div style="font-size: 0.75rem; color: var(--text-secondary);">Validated</div>'
+                + '</div></div>'
+                + (interp ? '<p style="margin: 0.75rem 0 0; font-size: 0.875rem; color: var(--text-secondary);">' + interp + '</p>' : '')
+                + '</div>'
+                + '<div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">' + expertPanels + '</div>'
+                + consensusHtml
+                + blindspotsHtml
+                + contradictionsHtml
+                + tiersHtml
+                + synthFooterHtml;
         } catch (err) {
             container.innerHTML = `<p class="placeholder">Error loading expert review: ${err.message}</p>`;
         }

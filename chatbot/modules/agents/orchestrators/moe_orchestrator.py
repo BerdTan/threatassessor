@@ -35,8 +35,31 @@ from chatbot.modules.agents.critics.tester_critic import TesterCritic
 from chatbot.modules.agents.critics.red_teamer_critic import RedTeamerCritic
 from chatbot.modules.artifact_extractor import extract_artifacts, ArtifactSet
 from chatbot.modules.agent_framework import CritiqueScore
+from agentic.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Orchestrator system prompt — defines the synthesis role precisely
+# ---------------------------------------------------------------------------
+_ORCHESTRATOR_SYSTEM = """You are the Layer 3 Orchestrator in a Mixture-of-Experts security assessment pipeline.
+
+Your role is SYNTHESIS, not generation. Three expert agents have already reviewed a deterministic threat assessment:
+- Architect (2A): assessed design quality and threat model completeness
+- Tester (2B):    validated MITRE technique mappings and internal consistency
+- Red Team (2C):  assessed exploit difficulty and control bypass feasibility
+
+Your job is to produce a balanced, grounded final view that the human decision-maker can act on.
+
+Rules you must follow:
+1. CITE YOUR EVIDENCE — every finding must reference which critic raised it or which field in ground_truth supports it.
+2. DISTINGUISH KNOWN vs UNSURE — if only one critic raised a finding, mark it UNSURE. If all three agree, mark it KNOWN.
+3. NEVER INVENT COSTS — use the Red Team's exploit_mitigation_roadmap cost/effort fields verbatim. If no cost data exists, say "cost not estimated".
+4. CALL OUT CONTRADICTIONS — where critics disagree, surface the contradiction rather than picking a side.
+5. CALL OUT BLINDSPOTS — identify what ALL THREE critics structurally could not see (e.g. a whole threat category with zero controls).
+6. ROI BALANCE — Quick Win = highest security gain per unit effort, lowest user friction. Recommended = balanced security/usability/cost. Max = full coverage including diminishing-return items.
+7. RESIDUAL IS REAL — never claim a tier eliminates risk. State what residual remains and why (misconfiguration, human error, zero-days, implementation drift).
+"""
 
 
 # ============================================================================
@@ -95,20 +118,37 @@ class MoEResult:
     tester_result: ValidationResult
     red_team_result: ValidationResult
 
-    # Consensus recommendations (unified)
-    critical_recommendations: List[Dict]  # All 3 agree
-    high_recommendations: List[Dict]      # 2 agree
-    review_recommendations: List[Dict]    # 1 only (may be false positive)
+    # Consensus recommendations — produced by LLM synthesis
+    critical_recommendations: List[Dict]  # ≥2 critics agree (KNOWN)
+    high_recommendations: List[Dict]      # 1 critic + corroborated (UNSURE)
+    review_recommendations: List[Dict]    # 1 critic only (UNSURE)
+
+    # Synthesis extras
+    blindspots: List[Dict] = None         # Gaps all three critics structurally missed
+    contradictions: List[Dict] = None     # Where critics disagree — human must decide
+    synthesis_quality: str = "UNKNOWN"    # FULL | FALLBACK
 
     # Risk transformation (from deterministic)
-    current_risk: int  # 0-100
-    target_risk: int   # After critical + high
-    risk_reduction: int  # Percentage
+    current_risk: int = 0
+    target_risk: int = 0
+    risk_reduction: int = 0
 
-    # Improvement options
-    quick_wins: Dict      # Critical only (1-2 weeks)
-    recommended: Dict     # Critical + High (1-3 months)
-    maximum: Dict         # All recommendations (6+ months)
+    # Improvement options (sourced from Red Team roadmap, not hardcoded)
+    quick_wins: Dict = None
+    recommended: Dict = None
+    maximum: Dict = None
+
+    def __post_init__(self):
+        if self.blindspots is None:
+            self.blindspots = []
+        if self.contradictions is None:
+            self.contradictions = []
+        if self.quick_wins is None:
+            self.quick_wins = {}
+        if self.recommended is None:
+            self.recommended = {}
+        if self.maximum is None:
+            self.maximum = {}
 
     def to_dict(self) -> Dict:
         """Convert to dictionary."""
@@ -132,7 +172,10 @@ class MoEResult:
             "consensus_recommendations": {
                 "critical": self.critical_recommendations,
                 "high": self.high_recommendations,
-                "review": self.review_recommendations
+                "review": self.review_recommendations,
+                "blindspots": self.blindspots,
+                "contradictions": self.contradictions,
+                "synthesis_quality": self.synthesis_quality,
             },
             "risk_transformation": {
                 "current": self.current_risk,
@@ -308,12 +351,16 @@ class MoEOrchestrator:
 
         logger.info(f"MoE Pipeline: Final confidence = {final_confidence:.1f}%")
 
-        # Synthesize consensus recommendations
+        # Synthesize consensus recommendations (LLM call — passes raw CritiqueScore
+        # objects so the synthesiser can read Red Team's exploit_mitigation_roadmap)
         consensus = self._synthesize_consensus(
             ground_truth,
             architect_result,
             tester_result,
-            red_team_result
+            red_team_result,
+            architect_raw=architect_critique,
+            tester_raw=tester_critique,
+            red_team_raw=red_team_critique,
         )
 
         # Extract risk transformation from ground truth
@@ -339,6 +386,9 @@ class MoEOrchestrator:
             critical_recommendations=consensus["critical"],
             high_recommendations=consensus["high"],
             review_recommendations=consensus["review"],
+            blindspots=consensus.get("blindspots", []),
+            contradictions=consensus.get("contradictions", []),
+            synthesis_quality=consensus.get("synthesis_quality", "UNKNOWN"),
             current_risk=risk_data["current"],
             target_risk=risk_data["target"],
             risk_reduction=risk_data["reduction"],
@@ -557,69 +607,233 @@ class MoEOrchestrator:
         ground_truth: Dict,
         architect: ValidationResult,
         tester: ValidationResult,
-        red_team: ValidationResult
+        red_team: ValidationResult,
+        architect_raw: Optional[CritiqueScore] = None,
+        tester_raw: Optional[CritiqueScore] = None,
+        red_team_raw: Optional[CritiqueScore] = None,
     ) -> Dict:
         """
-        Synthesize consensus recommendations from all experts.
+        LLM synthesis: cross-validate all three critic outputs and produce grounded
+        consensus with KNOWN/UNSURE distinction, ROI-tiered improvement options,
+        real costs from Red Team data, and explicit residual risk per tier.
 
-        Prioritization:
-        - CRITICAL: All 3 experts agree (high confidence)
-        - HIGH: 2 experts agree (medium confidence)
-        - REVIEW: 1 expert only (may be false positive)
+        Falls back to simple gap-union if the LLM call fails.
         """
-        # Extract gaps from each expert
-        all_gaps = {
-            "architect": architect.gaps,
-            "tester": tester.gaps,
-            "red_team": red_team.gaps
-        }
+        synthesis = self._llm_synthesize(
+            ground_truth, architect, tester, red_team,
+            architect_raw, tester_raw, red_team_raw
+        )
+        if synthesis:
+            return synthesis
 
-        # Group by similarity (simple: exact description match)
-        # TODO: Enhance with semantic similarity
-        gap_groups = {}
-
-        for expert_name, gaps in all_gaps.items():
-            for gap in gaps:
-                desc = gap.get("description", "")[:100]  # First 100 chars
-
-                if desc not in gap_groups:
-                    gap_groups[desc] = {
-                        "description": gap.get("description"),
-                        "category": gap.get("category"),
-                        "severity": gap.get("severity"),
-                        "experts": []
-                    }
-
-                gap_groups[desc]["experts"].append(expert_name)
-
-        # Categorize by consensus
-        critical = []  # 3 experts
-        high = []      # 2 experts
-        review = []    # 1 expert
-
-        for desc, group in gap_groups.items():
-            expert_count = len(group["experts"])
-
-            recommendation = {
-                "description": group["description"],
-                "category": group["category"],
-                "severity": group["severity"],
-                "source": " + ".join(group["experts"]),
-                "confidence": expert_count * 33  # 33%, 66%, or 99%
-            }
-
-            if expert_count == 3:
-                critical.append(recommendation)
-            elif expert_count == 2:
-                high.append(recommendation)
-            else:
-                review.append(recommendation)
-
+        # ---- fallback: union of all gaps, no consensus scoring ----
+        logger.warning("Orchestrator: LLM synthesis failed — using gap-union fallback")
+        all_gaps = architect.gaps + tester.gaps + red_team.gaps
+        seen, deduped = set(), []
+        for g in all_gaps:
+            key = g.get("description", "")[:80]
+            if key not in seen:
+                seen.add(key)
+                deduped.append({
+                    "description": g.get("description", ""),
+                    "category": g.get("category", ""),
+                    "severity": g.get("severity", "MEDIUM"),
+                    "source": "fallback-union",
+                    "confidence_label": "UNSURE",
+                })
         return {
-            "critical": critical,
-            "high": high,
-            "review": review
+            "critical": [],
+            "high": deduped[:5],
+            "review": deduped[5:],
+            "blindspots": [],
+            "contradictions": [],
+            "improvement_tiers": {},
+            "synthesis_quality": "FALLBACK",
         }
+
+    def _llm_synthesize(
+        self,
+        ground_truth: Dict,
+        architect: ValidationResult,
+        tester: ValidationResult,
+        red_team: ValidationResult,
+        architect_raw: Optional[CritiqueScore],
+        tester_raw: Optional[CritiqueScore],
+        red_team_raw: Optional[CritiqueScore],
+    ) -> Optional[Dict]:
+        """
+        Single LLM call that reads all three critic outputs and produces the
+        structured synthesis JSON.  Returns None on any failure so the caller
+        can fall back gracefully.
+        """
+        try:
+            # ---- build the prompt ----
+            arch_name = ground_truth.get("architecture", "unknown")
+
+            # Risk numbers from ground truth
+            rt = self._extract_risk_transformation(ground_truth)
+            risk_summary = (
+                f"Current risk score: {rt['current']}/100  |  "
+                f"Target after all controls: {rt['target']}/100  |  "
+                f"Estimated reduction: {rt['reduction']}%"
+            )
+
+            # Red Team exploit-mitigation roadmap (the only place real costs live)
+            rt_roadmap = []
+            if red_team_raw and hasattr(red_team_raw, 'breakdown'):
+                rt_roadmap = red_team_raw.breakdown.get("exploit_mitigation_roadmap", [])
+            rt_roadmap_json = json.dumps(rt_roadmap, indent=2) if rt_roadmap else "[]"
+
+            # Serialize critic outputs compactly
+            def _gap_list(v: ValidationResult) -> str:
+                return json.dumps(v.gaps, indent=2) if v.gaps else "[]"
+
+            def _roadmap(v: ValidationResult) -> str:
+                return json.dumps(v.recommendations, indent=2) if v.recommendations else "[]"
+
+            prompt = f"""
+You are synthesising a security assessment for architecture: "{arch_name}"
+
+{risk_summary}
+
+═══════════════════════════════════════════════════════════
+ARCHITECT CRITIC OUTPUT  (Layer 2A)
+Score: {architect.original_score}/100  |  Status: {architect.validation_status}
+Gaps:
+{_gap_list(architect)}
+Recommendations:
+{_roadmap(architect)}
+
+═══════════════════════════════════════════════════════════
+TESTER CRITIC OUTPUT  (Layer 2B)
+Score: {tester.original_score}/100  |  Status: {tester.validation_status}
+Gaps:
+{_gap_list(tester)}
+Recommendations:
+{_roadmap(tester)}
+
+═══════════════════════════════════════════════════════════
+RED TEAM CRITIC OUTPUT  (Layer 2C)
+Score: {red_team.original_score}/100  |  Status: {red_team.validation_status}
+Gaps (exploit feasibility):
+{_gap_list(red_team)}
+Exploit Mitigation Roadmap (use these cost/effort fields verbatim — do not invent):
+{rt_roadmap_json}
+
+═══════════════════════════════════════════════════════════
+YOUR SYNTHESIS TASK
+
+Produce a JSON object with EXACTLY this structure:
+
+```json
+{{
+  "critical": [
+    {{
+      "description": "...",
+      "category": "...",
+      "severity": "CRITICAL|HIGH",
+      "source": "which critics raised this (e.g. architect+tester)",
+      "confidence_label": "KNOWN",
+      "evidence": "cite the specific gap/field that supports this"
+    }}
+  ],
+  "high": [ /* same shape, confidence_label KNOWN or UNSURE */ ],
+  "review": [ /* same shape, confidence_label UNSURE — single-critic findings */ ],
+  "blindspots": [
+    {{
+      "description": "gap that ALL THREE critics structurally missed",
+      "why_missed": "reason (e.g. rubric scope, single-lens focus)",
+      "recommendation": "what the human should investigate"
+    }}
+  ],
+  "contradictions": [
+    {{
+      "topic": "...",
+      "architect_view": "...",
+      "tester_or_redteam_view": "...",
+      "resolution": "UNSURE — human review needed"
+    }}
+  ],
+  "improvement_tiers": {{
+    "quick_win": {{
+      "rationale": "highest security gain per unit effort, lowest user friction",
+      "items": ["..."],
+      "effort": "use Red Team roadmap effort field verbatim, or state 'not estimated'",
+      "cost": "use Red Team roadmap cost field verbatim, or state 'cost not estimated'",
+      "risk_reduction": "estimated score change (e.g. {rt['current']} → X)",
+      "residual": "what risk remains even after Quick Win — be honest",
+      "practical_verdict": "YES|MAYBE based on Red Team practical field"
+    }},
+    "recommended": {{
+      "rationale": "balanced security / usability / cost — realistic for most teams",
+      "items": ["..."],
+      "effort": "...",
+      "cost": "...",
+      "risk_reduction": "...",
+      "residual": "...",
+      "practical_verdict": "..."
+    }},
+    "maximum": {{
+      "rationale": "full coverage including diminishing-return items",
+      "items": ["..."],
+      "effort": "...",
+      "cost": "...",
+      "risk_reduction": "...",
+      "residual": "residual that persists regardless (misconfiguration, human error, zero-days, implementation drift) — never claim zero",
+      "practical_verdict": "MAYBE|NO for most teams — explain tradeoff"
+    }}
+  }},
+  "confidence_commentary": "1-2 sentences: what the cross-expert agreement pattern means for confidence in this assessment",
+  "synthesis_quality": "FULL"
+}}
+```
+
+RULES:
+- critical = findings ≥2 critics independently raised (mark KNOWN)
+- high = single-critic findings that Red Team exploit data corroborates (mark UNSURE if not corroborated)
+- review = single-critic, not corroborated elsewhere (mark UNSURE)
+- Never invent cost figures. Quote Red Team roadmap fields exactly or say "cost not estimated".
+- Residual must always be non-empty — controls reduce risk, they do not eliminate it.
+- If critics contradict each other, put it in contradictions, do NOT resolve it yourself.
+"""
+
+            llm = LLMClient()
+            response = llm.generate(
+                prompt=prompt.strip(),
+                system_message=_ORCHESTRATOR_SYSTEM,
+                temperature=0.2,   # low — we want consistent structured output
+                max_tokens=4000,
+            )
+
+            # Parse JSON from response
+            content = response.content if hasattr(response, 'content') else str(response)
+            if '```json' in content:
+                raw = content.split('```json')[1].split('```')[0].strip()
+            elif '```' in content and '{' in content:
+                raw = content.split('```')[1].split('```')[0].strip()
+            else:
+                raw = content.strip()
+
+            result = json.loads(raw)
+
+            # Minimal validation
+            required = ["critical", "high", "review", "improvement_tiers"]
+            if not all(k in result for k in required):
+                logger.warning("Orchestrator: LLM synthesis response missing required keys")
+                return None
+
+            logger.info(
+                f"Orchestrator: LLM synthesis complete — "
+                f"{len(result.get('critical',[]))} critical, "
+                f"{len(result.get('high',[]))} high, "
+                f"{len(result.get('review',[]))} review, "
+                f"{len(result.get('blindspots',[]))} blindspots"
+            )
+            return result
+
+        except Exception as e:
+            logger.warning(f"Orchestrator: LLM synthesis exception: {e}")
+            return None
 
     def _extract_risk_transformation(self, ground_truth: Dict) -> Dict:
         """
@@ -678,46 +892,47 @@ class MoEOrchestrator:
 
     def _build_improvement_options(self, consensus: Dict, risk_data: Dict) -> Dict:
         """
-        Build 3 improvement options (quick/recommended/maximum).
+        Read improvement tier data from the LLM synthesis output (consensus).
+        Falls back to count-based summaries without invented cost figures if
+        synthesis did not produce tier data.
         """
-        critical_count = len(consensus["critical"])
-        high_count = len(consensus["high"])
-        review_count = len(consensus["review"])
+        tiers = consensus.get("improvement_tiers", {})
 
-        # Quick wins: Critical only
-        quick_wins = {
-            "name": "Quick Wins",
-            "timeline": "1-2 weeks",
-            "cost": "$10-50K",
-            "items": critical_count,
-            "risk_reduction": f"{risk_data['current']} → ~{risk_data['current'] - 15}",
-            "focus": "Critical gaps only"
-        }
-
-        # Recommended: Critical + High
-        recommended = {
-            "name": "Recommended Target",
-            "timeline": "1-3 months",
-            "cost": "$75-200K",
-            "items": critical_count + high_count,
-            "risk_reduction": f"{risk_data['current']} → {risk_data['target']}",
-            "focus": "Critical + High priority"
-        }
-
-        # Maximum: All recommendations
-        maximum = {
-            "name": "Maximum Security",
-            "timeline": "6+ months",
-            "cost": "$300-600K",
-            "items": critical_count + high_count + review_count,
-            "risk_reduction": f"{risk_data['current']} → {max(0, risk_data['target'] - 5)}",
-            "focus": "All recommendations (diminishing returns)"
-        }
+        def _tier(key: str, name: str, focus: str) -> Dict:
+            t = tiers.get(key, {})
+            if t:
+                return {
+                    "name": name,
+                    "items": t.get("items", []),
+                    "effort": t.get("effort", "not estimated"),
+                    "cost": t.get("cost", "cost not estimated"),
+                    "risk_reduction": t.get("risk_reduction", ""),
+                    "residual": t.get("residual", ""),
+                    "practical_verdict": t.get("practical_verdict", ""),
+                    "rationale": t.get("rationale", ""),
+                }
+            # Fallback — never invent costs
+            counts = {
+                "quick_win":   len(consensus.get("critical", [])),
+                "recommended": len(consensus.get("critical", [])) + len(consensus.get("high", [])),
+                "maximum":     len(consensus.get("critical", [])) + len(consensus.get("high", [])) + len(consensus.get("review", [])),
+            }
+            return {
+                "name": name,
+                "items": [],
+                "effort": "not estimated",
+                "cost": "cost not estimated",
+                "risk_reduction": f"{risk_data['current']} → {risk_data['target']}",
+                "residual": "Residual risk remains — controls reduce exposure but do not eliminate it.",
+                "practical_verdict": "not assessed",
+                "item_count": counts.get(key, 0),
+                "focus": focus,
+            }
 
         return {
-            "quick_wins": quick_wins,
-            "recommended": recommended,
-            "maximum": maximum
+            "quick_wins":  _tier("quick_win",   "Quick Wins",         "Critical gaps — highest ROI, lowest friction"),
+            "recommended": _tier("recommended",  "Recommended Target", "Critical + High — balanced security/usability/cost"),
+            "maximum":     _tier("maximum",      "Maximum Security",   "Full coverage including diminishing-return items"),
         }
 
     def _save_validation(self, critique: CritiqueScore, output_path: Path):
