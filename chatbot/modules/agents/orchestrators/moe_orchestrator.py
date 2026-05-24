@@ -624,6 +624,12 @@ class MoEOrchestrator:
             architect_raw, tester_raw, red_team_raw
         )
         if synthesis:
+            # Second pass: self-reflect on any contradictions found
+            if synthesis.get("contradictions"):
+                synthesis["contradictions"] = self._reflect_contradictions(
+                    synthesis["contradictions"],
+                    architect, tester, red_team
+                )
             return synthesis
 
         # ---- fallback: union of all gaps, no consensus scoring ----
@@ -834,6 +840,69 @@ RULES:
         except Exception as e:
             logger.warning(f"Orchestrator: LLM synthesis exception: {e}")
             return None
+
+    def _reflect_contradictions(
+        self,
+        contradictions: List[Dict],
+        architect: "ValidationResult",
+        tester: "ValidationResult",
+        red_team: "ValidationResult",
+    ) -> List[Dict]:
+        """
+        Second-pass LLM call: for each contradiction, ask WHY the critics disagree.
+        Possible causes: different scope, stale data reference, JSON field mismatch,
+        assessment incomplete.  Returns the enriched contradiction list; falls back
+        to the original list if the call fails.
+        """
+        try:
+            items_json = json.dumps(contradictions, indent=2)
+            prompt = f"""You are a quality-control reviewer for a multi-expert security assessment.
+
+The three expert critics disagreed on the following topics:
+
+{items_json}
+
+For each contradiction, diagnose WHY the disagreement exists.  Consider:
+1. Scope mismatch — each critic only sees their rubric, so one may be correct within their scope and the other correct within theirs
+2. JSON/data reference error — one critic may have read a stale field or misidentified a control
+3. Assessment confidence — one critic may have guessed while the other had direct evidence
+4. Genuine expert disagreement — both are right from different attack angles
+
+Return a JSON array with the SAME length and order as the input, each item having:
+{{
+  "topic": "<same as input>",
+  "architect_view": "<same as input>",
+  "tester_or_redteam_view": "<same as input>",
+  "resolution": "<original resolution>",
+  "disagreement_root_cause": "SCOPE_MISMATCH | DATA_REFERENCE_ERROR | CONFIDENCE_DIFFERENCE | GENUINE_DISAGREEMENT",
+  "root_cause_explanation": "1-2 sentences explaining specifically why these critics see it differently",
+  "human_action": "what a human reviewer should do to resolve this (e.g. check field X, run test Y)"
+}}
+
+Reply with only the JSON array, no other text.
+"""
+            llm = LLMClient()
+            response = llm.generate(
+                prompt=prompt.strip(),
+                system_message="You are a rigorous security assessment quality reviewer. Return only valid JSON.",
+                temperature=0.1,
+                max_tokens=2000,
+            )
+            content = response.content if hasattr(response, 'content') else str(response)
+            if '```json' in content:
+                raw = content.split('```json')[1].split('```')[0].strip()
+            elif '```' in content:
+                raw = content.split('```')[1].split('```')[0].strip()
+            else:
+                raw = content.strip()
+
+            enriched = json.loads(raw)
+            if isinstance(enriched, list) and len(enriched) == len(contradictions):
+                logger.info(f"Orchestrator: contradiction self-reflection complete ({len(enriched)} items)")
+                return enriched
+        except Exception as e:
+            logger.warning(f"Orchestrator: contradiction reflection failed: {e}")
+        return contradictions
 
     def _extract_risk_transformation(self, ground_truth: Dict) -> Dict:
         """

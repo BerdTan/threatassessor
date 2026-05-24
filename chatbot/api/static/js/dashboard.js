@@ -590,12 +590,23 @@ class Dashboard {
         const foundationConf = (this.analysisData.confidence ?? 0.995) * 100;
         let validatedConf = null;
         let moeInterp = '';
+        let moeImprovTiers = {};
+        let moeKnownFindings = [];
+        let moeSynthComment = '';
         try {
             const moeResp = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
             if (moeResp.ok) {
                 const moe = await moeResp.json();
                 validatedConf = (moe.confidence?.final ?? null);
                 moeInterp = moe.confidence?.interpretation ?? '';
+                moeImprovTiers = moe.improvement_options || {};
+                moeSynthComment = (moe.consensus_recommendations || {}).confidence_commentary || '';
+                // Collect KNOWN critical/high for overview summary
+                const cr = moe.consensus_recommendations || {};
+                const allFinds = [...(cr.critical || []), ...(cr.high || [])];
+                moeKnownFindings = allFinds.filter(r =>
+                    r.confidence_label === 'KNOWN' || (r.source && r.source.includes('+'))
+                ).slice(0, 3);
             }
         } catch (_) {}
 
@@ -711,23 +722,30 @@ class Dashboard {
                 The goal is risk-informed management, not false certainty. Review quarterly.
             </div>`;
 
-        // Improvement tier cards — active if MoE run, locked otherwise
+        // Improvement tier cards — use real MoE data if available, fall back to generic estimates
         const hasMoe = validatedConf !== null;
+        // Map MoE tier keys to display config
+        const tierMoeKey = { 'Quick Wins': 'quick_wins', 'Recommended': 'recommended', 'Maximum': 'maximum' };
         const tiers = [
-            { icon: '⚡', label: 'Quick Wins',     timeline: '1–2 weeks',   cost: '$10K–$50K',    delta: '+10',  file: '08a_quick_wins.mmd' },
-            { icon: '⭐', label: 'Recommended',    timeline: '1–3 months',  cost: '$75K–$200K',   delta: '+20',  file: '08b_recommended_target.mmd', recommended: true },
-            { icon: '🔒', label: 'Maximum',        timeline: '6–12 months', cost: '$300K–$600K',  delta: 'Full', file: '08c_maximum_security.mmd' },
+            { icon: '⚡', label: 'Quick Wins',     timeline: '1–2 weeks',   cost: 'Expert estimate pending',  file: '08a_quick_wins.mmd' },
+            { icon: '⭐', label: 'Recommended',    timeline: '1–3 months',  cost: 'Expert estimate pending',  file: '08b_recommended_target.mmd', recommended: true },
+            { icon: '🔒', label: 'Maximum',        timeline: '6–12 months', cost: 'Expert estimate pending',  file: '08c_maximum_security.mmd' },
         ];
         const tierCards = tiers.map(t => {
+            const moeKey = tierMoeKey[t.label];
+            const mT = (hasMoe && moeKey) ? (moeImprovTiers[moeKey] || {}) : {};
+            const costText = mT.cost || t.cost;
+            const effortText = mT.effort ? 'Effort: ' + mT.effort : t.timeline;
+            const riskText = mT.risk_reduction || '';
             const border = t.recommended ? '2px solid var(--secondary-color)' : '1px solid var(--border-color)';
-            const bg     = t.recommended ? 'var(--card-bg)' : 'var(--card-bg)';
             return `
-            <div style="flex:1; min-width:160px; background:${bg}; border:${border}; border-radius:10px; padding:1rem; position:relative;">
+            <div style="flex:1; min-width:160px; background:var(--card-bg); border:${border}; border-radius:10px; padding:1rem; position:relative;">
                 ${t.recommended ? `<div style="position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:var(--secondary-color); color:#000; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:10px;">RECOMMENDED</div>` : ''}
                 <div style="font-size:1.5rem; margin-bottom:0.5rem;">${t.icon}</div>
                 <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">${t.label}</div>
-                <div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.25rem;">${t.timeline}</div>
-                <div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.75rem;">${t.cost}</div>
+                <div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.15rem;">${effortText}</div>
+                <div style="font-size:0.8125rem; color:${hasMoe ? 'var(--text-color)' : 'var(--text-tertiary)'}; font-weight:${hasMoe ? '600' : '400'}; margin-bottom:${riskText ? '0.15rem' : '0.75rem'};">${costText}</div>
+                ${riskText ? `<div style="font-size:0.75rem; color:var(--secondary-color); margin-bottom:0.75rem;">Risk: ${riskText}</div>` : ''}
                 ${hasMoe
                     ? `<button class="btn-secondary tier-diagram-btn" data-file="${t.file}" style="width:100%; padding:0.375rem; font-size:0.8125rem; cursor:pointer;">View Diagram →</button>`
                     : `<div style="font-size:0.75rem; color:var(--text-tertiary); font-style:italic;">Run Expert Review to unlock roadmap</div>`
@@ -735,7 +753,34 @@ class Dashboard {
             </div>`;
         }).join('');
 
+        // Build Expert Review synthesis summary for Overview (items 2 & 5)
+        let moeOverviewSummary = '';
+        if (hasMoe) {
+            let knownList = '';
+            for (const f of moeKnownFindings) {
+                knownList += '<li style="margin-bottom:0.25rem;">' + (f.description || f.recommendation || '') + '</li>';
+            }
+            const knownBlock = knownList
+                ? '<ul style="margin:0.5rem 0 0; padding-left:1.25rem; font-size:0.8125rem; color:var(--text-color);">' + knownList + '</ul>'
+                : '';
+            const commentBlock = moeSynthComment
+                ? '<div style="font-size:0.8125rem; color:var(--text-secondary); font-style:italic; margin-top:0.5rem;">' + moeSynthComment + '</div>'
+                : '';
+            moeOverviewSummary = '<div style="background:var(--primary-color)0e; border:1px solid var(--primary-color)44; border-radius:8px; padding:0.75rem 1rem; margin-bottom:1.25rem;">'
+                + '<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem;">'
+                + '<span style="font-size:0.9375rem;">🧑‍🏫</span>'
+                + '<span style="font-size:0.8125rem; font-weight:700; color:var(--primary-color);">Expert Review validated — ' + validatedConf.toFixed(1) + '% confidence</span>'
+                + '</div>'
+                + (moeKnownFindings.length > 0
+                    ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.25rem;">Key KNOWN findings (' + moeKnownFindings.length + ' confirmed by multiple experts):</div>' + knownBlock
+                    : '<div style="font-size:0.8125rem; color:var(--secondary-color);">No critical multi-expert findings — strong posture.</div>')
+                + commentBlock
+                + '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.5rem;">Full details → <strong style="cursor:pointer; color:var(--primary-color);" onclick="window.dashboard?.switchTab(\'expert-review\')">Expert Review tab</strong></div>'
+                + '</div>';
+        }
+
         container.innerHTML = `
+        ${moeOverviewSummary}
         <!-- Confidence + Scores Row -->
         <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
             <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
@@ -826,7 +871,7 @@ class Dashboard {
         <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem; margin-bottom:0.5rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.375rem; flex-wrap:wrap; gap:0.5rem;">
                 <h3 style="margin:0; font-size:0.9375rem; color:var(--text-color);">Investment Tiers — What Each Level Achieves</h3>
-                ${!hasMoe ? `<span style="font-size:0.8125rem; color:var(--text-tertiary);">Run Expert Review to unlock diagrams</span>` : `<span style="font-size:0.8125rem; color:var(--secondary-color);">✅ Expert Review complete</span>`}
+                ${!hasMoe ? `<span style="font-size:0.8125rem; color:var(--text-tertiary);">Run Expert Review to unlock diagrams</span>` : `<span style="font-size:0.8125rem; color:var(--secondary-color);">✅ Validated ${validatedConf ? validatedConf.toFixed(1) + '%' : ''}</span>`}
             </div>
             <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:1rem;">The tier markers on the bars above show where each investment level lands per threat category.</div>
             <div style="display:flex; gap:1rem; flex-wrap:wrap;">${tierCards}</div>
@@ -3263,7 +3308,7 @@ class Dashboard {
                                    cursor: pointer; margin-bottom: 1.5rem;">
                             Run Expert Review (~90 s)
                         </button>
-                        <div id="expert-review-progress" style="display:none; max-width: 480px; margin: 0 auto; text-align: left;">
+                        <div id="expert-review-progress" style="display:none; max-width: 520px; margin: 0 auto; text-align: left;">
                             <div style="background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); padding: 1rem;">
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
                                     <span id="erp-stage-label" style="font-size:0.875rem; color: var(--text-secondary);">Starting...</span>
@@ -3273,6 +3318,29 @@ class Dashboard {
                                     <div id="erp-bar" style="height:100%; width:0%; background: var(--primary-color); transition: width 0.4s ease;"></div>
                                 </div>
                                 <div id="erp-message" style="font-size:0.8125rem; color:var(--text-tertiary); margin-top:0.5rem; min-height:1.2em;"></div>
+                                <!-- Progressive agent status cards -->
+                                <div style="display:flex; gap:0.5rem; margin-top:0.875rem; flex-wrap:wrap;">
+                                    <div id="erp-card-architect" style="flex:1; min-width:120px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                        <div style="font-size:0.875rem;">🏛️</div>
+                                        <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Architect</div>
+                                        <div id="erp-card-architect-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                                    </div>
+                                    <div id="erp-card-tester" style="flex:1; min-width:120px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                        <div style="font-size:0.875rem;">🔬</div>
+                                        <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Tester</div>
+                                        <div id="erp-card-tester-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                                    </div>
+                                    <div id="erp-card-red_team" style="flex:1; min-width:120px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                        <div style="font-size:0.875rem;">🎯</div>
+                                        <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Red Team</div>
+                                        <div id="erp-card-red_team-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                                    </div>
+                                    <div id="erp-card-synthesis" style="flex:1; min-width:120px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                        <div style="font-size:0.875rem;">⚙️</div>
+                                        <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Synthesis</div>
+                                        <div id="erp-card-synthesis-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div id="expert-review-error" style="display:none; color:var(--danger-color); font-size:0.875rem; margin-top:1rem; max-width:440px; margin-left:auto; margin-right:auto;"></div>
@@ -3312,21 +3380,33 @@ class Dashboard {
                     + cards + '</div>';
             }
 
-            // Build contradictions HTML
+            // Build contradictions HTML — includes self-reflection root cause when present
+            const rootCauseLabel = {
+                SCOPE_MISMATCH: '🔭 Scope mismatch',
+                DATA_REFERENCE_ERROR: '🗂️ Data reference error',
+                CONFIDENCE_DIFFERENCE: '🎲 Confidence difference',
+                GENUINE_DISAGREEMENT: '⚔️ Genuine disagreement',
+            };
             let contradictionsHtml = '';
             if (contradictions.length > 0) {
                 let cards = '';
                 for (const c of contradictions) {
+                    const causeKey = c.disagreement_root_cause || '';
+                    const causeTag = causeKey
+                        ? '<span style="font-size:0.7rem; font-weight:700; color:var(--primary-color); background:var(--primary-color)18; border:1px solid var(--primary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">' + (rootCauseLabel[causeKey] || causeKey) + '</span>'
+                        : '';
                     cards += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--warning-color);">'
-                        + '<div style="font-size: 0.875rem; font-weight:600; color: var(--text-color); margin-bottom:0.5rem;">' + (c.topic || '') + '</div>'
+                        + '<div style="font-size: 0.875rem; font-weight:600; color: var(--text-color); margin-bottom:0.5rem; display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (c.topic || '') + causeTag + '</div>'
                         + '<div style="font-size:0.8125rem; color:var(--text-secondary);">🏛️ Architect/Tester: ' + (c.architect_view || '') + '</div>'
                         + '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.2rem;">🎯 Red Team: ' + (c.tester_or_redteam_view || '') + '</div>'
+                        + (c.root_cause_explanation ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.35rem; padding:0.4rem 0.6rem; background:var(--card-bg); border-radius:4px;">Why: ' + c.root_cause_explanation + '</div>' : '')
+                        + (c.human_action ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-top:0.25rem;">→ Human action: ' + c.human_action + '</div>' : '')
                         + '<div style="font-size:0.8125rem; color:var(--warning-color); margin-top:0.35rem; font-style:italic;">' + (c.resolution || 'UNSURE — human review needed') + '</div>'
                         + '</div>';
                 }
                 contradictionsHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
                     + '<h3 style="margin: 0 0 0.25rem; color: var(--text-color); font-size: 1rem;">⚠️ Expert Disagreements</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Where critics contradict each other — human judgment required, not resolved by the system.</p>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0 0 1rem;">Where critics contradict each other — root cause analysis shown. Human judgment required.</p>'
                     + cards + '</div>';
             }
 
@@ -3396,6 +3476,27 @@ class Dashboard {
                 'FAIL': 'var(--danger-color)',
             };
 
+            // Legend text and severity helpers
+            const statusDesc = {
+                'PASS': 'No significant issues — controls and mappings verified',
+                'MINOR_GAPS': 'Small gaps found — low exploitability risk',
+                'MAJOR_GAPS': 'Significant issues found — high exploitability risk',
+                'FAIL': 'Critical failures — immediate action required',
+                'UNKNOWN': 'Status unavailable',
+            };
+            const severityColor = {
+                'CRITICAL': 'var(--danger-color)', 'HIGH': 'var(--danger-color)',
+                'MEDIUM': 'var(--warning-color)', 'MINOR': 'var(--warning-color)',
+                'LOW': 'var(--text-tertiary)',
+            };
+            const severityLegend = '<div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.75rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px;">'
+                + '<span style="font-size:0.7rem; color:var(--text-tertiary); margin-right:0.25rem; align-self:center;">Severity:</span>'
+                + '<span style="font-size:0.7rem; color:var(--danger-color);">● CRITICAL — exploitable, immediate</span>'
+                + '<span style="font-size:0.7rem; color:var(--danger-color); margin-left:0.5rem;">● HIGH — significant risk</span>'
+                + '<span style="font-size:0.7rem; color:var(--warning-color); margin-left:0.5rem;">● MEDIUM/MINOR — moderate concern</span>'
+                + '<span style="font-size:0.7rem; color:var(--text-tertiary); margin-left:0.5rem;">● LOW — informational</span>'
+                + '</div>';
+
             const finalConf = (confidence.final || 0).toFixed(1);
             const baseConf  = (confidence.base  || 99.5).toFixed(1);
             const interp    = confidence.interpretation || '';
@@ -3423,11 +3524,14 @@ class Dashboard {
                 const sign = parseFloat(adj) >= 0 ? '+' : '';
                 const status = v.validation_status || 'UNKNOWN';
                 const color = statusColor[status] || 'var(--text-secondary)';
+                const statusText = status.replace(/_/g, ' ');
+                const statusExplain = statusDesc[status] || '';
                 const gaps = v.gaps || [];
                 let gapItems = '';
                 for (const g of gaps) {
-                    const borderCol = (g.severity === 'HIGH' || g.severity === 'CRITICAL') ? 'var(--danger-color)' : 'var(--warning-color)';
-                    const sevCol = (g.severity === 'HIGH' || g.severity === 'CRITICAL') ? 'var(--danger-color)' : 'var(--warning-color)';
+                    const sev = (g.severity || '').toUpperCase();
+                    const borderCol = severityColor[sev] || 'var(--border-color)';
+                    const sevCol = severityColor[sev] || 'var(--text-tertiary)';
                     gapItems += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid ' + borderCol + ';">'
                         + '<div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-color); margin-bottom: 0.25rem;">' + (g.category ? g.category.replace(/_/g, ' ').toUpperCase() : '') + ' · <span style="color: ' + sevCol + ';">' + (g.severity || '') + '</span></div>'
                         + '<div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">' + (g.description || '') + '</div>'
@@ -3443,41 +3547,67 @@ class Dashboard {
                     + '</div>'
                     + '<div style="text-align: right;">'
                     + '<div style="font-size: 1.125rem; font-weight: 700; color: var(--warning-color);">' + sign + adj + '%</div>'
-                    + '<div style="font-size: 0.75rem; font-weight: 600; color: ' + color + ';">' + status.replace('_', ' ') + '</div>'
+                    + '<div style="font-size: 0.75rem; font-weight: 600; color: ' + color + ';" title="' + statusExplain + '">' + statusText + '</div>'
                     + '</div></div>'
-                    + (gaps.length > 0 ? '<div style="padding: 1rem 1.25rem;"><div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.75rem;">' + gaps.length + ' finding' + (gaps.length > 1 ? 's' : '') + '</div>' + gapItems + '</div>' : '')
+                    + (gaps.length > 0
+                        ? '<div style="padding: 1rem 1.25rem;">'
+                            + '<div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">' + gaps.length + ' finding' + (gaps.length > 1 ? 's' : '') + '</div>'
+                            + severityLegend
+                            + '<div style="margin-top:0.75rem;">' + gapItems + '</div>'
+                            + '</div>'
+                        : '')
                     + '</div>';
             }
 
-            // Build consensus section
+            // Helper: derive KNOWN/UNSURE from item data (source with '+' = multi-critic = KNOWN)
+            function isKnown(r) {
+                if (r.confidence_label === 'KNOWN') return true;
+                if (r.confidence_label === 'UNSURE') return false;
+                // Fallback: source with '+' means multiple critics agreed
+                return r.source && r.source.includes('+');
+            }
+
+            // Build consensus section — per-item KNOWN/UNSURE badge, not per-group header
             let consensusHtml = '';
             if (consensusCritical.length + consensusHigh.length + consensusReview.length > 0) {
                 let inner = '';
                 if (consensusCritical.length > 0) {
-                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--danger-color); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.5rem;">Critical · KNOWN</div>';
+                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--danger-color); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.5rem;">Critical</div>';
                     for (const r of consensusCritical) {
+                        const known = isKnown(r);
+                        const badge = known
+                            ? '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>'
+                            : '<span style="font-size:0.7rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
                         inner += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--danger-color);">'
-                            + '<div style="font-size: 0.875rem; color: var(--text-color);">' + (r.description || r.recommendation || '') + '</div>'
+                            + '<div style="font-size: 0.875rem; color: var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
                             + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
                             + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
                             + '</div>';
                     }
                 }
                 if (consensusHigh.length > 0) {
-                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--warning-color); text-transform:uppercase; letter-spacing:0.04em; margin: 0.75rem 0 0.5rem;">High · UNSURE</div>';
+                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--warning-color); text-transform:uppercase; letter-spacing:0.04em; margin: 0.75rem 0 0.5rem;">High</div>';
                     for (const r of consensusHigh) {
+                        const known = isKnown(r);
+                        const badge = known
+                            ? '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>'
+                            : '<span style="font-size:0.7rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
                         inner += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--warning-color);">'
-                            + '<div style="font-size: 0.875rem; color: var(--text-color);">' + (r.description || r.recommendation || '') + '</div>'
+                            + '<div style="font-size: 0.875rem; color: var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
                             + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
                             + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
                             + '</div>';
                     }
                 }
                 if (consensusReview.length > 0) {
-                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.04em; margin: 0.75rem 0 0.5rem;">For Review · UNSURE (single critic)</div>';
+                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.04em; margin: 0.75rem 0 0.5rem;">For Review</div>';
                     for (const r of consensusReview) {
+                        const known = isKnown(r);
+                        const badge = known
+                            ? '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>'
+                            : '<span style="font-size:0.7rem; font-weight:700; color:var(--text-tertiary); background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
                         inner += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--border-color);">'
-                            + '<div style="font-size: 0.875rem; color: var(--text-secondary);">' + (r.description || r.recommendation || '') + '</div>'
+                            + '<div style="font-size: 0.875rem; color: var(--text-secondary); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
                             + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Raised by: ' + r.source + '</div>' : '')
                             + '</div>';
                     }
@@ -3564,6 +3694,31 @@ class Dashboard {
                                 const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
                                 stageLabel.textContent = stageMap[data.stage] || data.stage;
                                 message.textContent = data.message || '';
+
+                                // Progressive agent cards: activate current stage, mark previous done
+                                const agentOrder = ['architect', 'tester', 'red_team', 'synthesis'];
+                                const currentIdx = agentOrder.indexOf(data.stage);
+                                for (let i = 0; i < agentOrder.length; i++) {
+                                    const card = document.getElementById('erp-card-' + agentOrder[i]);
+                                    const statusEl = document.getElementById('erp-card-' + agentOrder[i] + '-status');
+                                    if (!card || !statusEl) continue;
+                                    if (i < currentIdx) {
+                                        card.style.opacity = '1';
+                                        card.style.borderColor = 'var(--secondary-color)';
+                                        statusEl.textContent = '✓ Done';
+                                        statusEl.style.color = 'var(--secondary-color)';
+                                    } else if (i === currentIdx) {
+                                        card.style.opacity = '1';
+                                        card.style.borderColor = 'var(--primary-color)';
+                                        statusEl.textContent = 'Running...';
+                                        statusEl.style.color = 'var(--primary-color)';
+                                    } else {
+                                        card.style.opacity = '0.35';
+                                        card.style.borderColor = 'var(--border-color)';
+                                        statusEl.textContent = 'Waiting';
+                                        statusEl.style.color = 'var(--text-tertiary)';
+                                    }
+                                }
                             } else if (evtType === 'complete') {
                                 // Reload the tab with fresh MoE data
                                 setTimeout(() => this.loadExpertReviewTab(), 600);
