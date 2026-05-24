@@ -33,7 +33,7 @@ import logging
 from typing import Dict, List, Set
 
 from chatbot.modules.pattern_registry import ThreatPattern
-from chatbot.modules.atlas_helper import AtlasHelper
+from chatbot.modules.atlas_helper import get_atlas_helper
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +176,7 @@ class AIPattern(ThreatPattern):
 
     def __init__(self):
         super().__init__(name="AI/ML (ARC Framework)", version="1.1")
-        self.atlas = AtlasHelper()
+        self.atlas = get_atlas_helper()
         logger.info(f"{self.name} pattern initialized - ready for use (ATLAS: {len(self.atlas.get_techniques())} techniques)")
 
     def get_name(self) -> str:

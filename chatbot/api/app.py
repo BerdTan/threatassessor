@@ -38,6 +38,12 @@ def create_app() -> FastAPI:
     _preload_cache = get_mitre_helper()
     print(f"✅ MITRE cache loaded: {len(_preload_cache.techniques)} techniques, {len(_preload_cache.tactics)} tactics")
 
+    # Preload ATLAS + pattern registry — each pattern's __init__ runs once here
+    from chatbot.modules.pattern_registry import get_pattern_registry
+    print("🔄 Preloading pattern registry (ATLAS + RAPIDS + AI/ML)...")
+    _preload_registry = get_pattern_registry()
+    print(f"✅ Pattern registry ready: {_preload_registry.list_patterns()}")
+
     app = FastAPI(
         title="ThreatAssessor API",
         version="1.3.0",

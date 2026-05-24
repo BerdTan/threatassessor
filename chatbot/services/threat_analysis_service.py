@@ -257,9 +257,9 @@ class ThreatAnalysisService(BaseService):
             ServiceResult with pattern metadata
         """
         try:
-            from chatbot.modules.agents.analysts.pattern_registry import PatternRegistry
+            from chatbot.modules.pattern_registry import get_pattern_registry
 
-            registry = PatternRegistry()
+            registry = get_pattern_registry()
             patterns = registry.list_patterns()
 
             return ServiceResult(

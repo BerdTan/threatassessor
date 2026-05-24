@@ -277,4 +277,15 @@ class AtlasHelper:
         return results
 
 
-__all__ = ['AtlasHelper']
+_atlas_instance = None
+
+
+def get_atlas_helper(data_dir=None) -> 'AtlasHelper':
+    """Return the shared AtlasHelper singleton (lazy-loaded on first call)."""
+    global _atlas_instance
+    if _atlas_instance is None:
+        _atlas_instance = AtlasHelper(data_dir=data_dir)
+    return _atlas_instance
+
+
+__all__ = ['AtlasHelper', 'get_atlas_helper']

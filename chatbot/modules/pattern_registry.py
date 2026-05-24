@@ -309,17 +309,28 @@ class PatternRegistry:
 # Convenience functions
 def create_default_registry() -> PatternRegistry:
     """
-    Create registry with default patterns (RAPIDS only for now).
+    Create registry with all available patterns.
 
     Returns:
-        PatternRegistry with RAPIDS pattern registered
+        PatternRegistry with all built-in patterns registered
     """
-    from chatbot.modules.patterns.rapids_pattern import RAPIDSPattern
+    from chatbot.modules.patterns.ai_pattern import AIPattern
 
     registry = PatternRegistry()
-    registry.register(RAPIDSPattern())
+    registry.register(AIPattern())
 
     return registry
 
 
-__all__ = ['ThreatPattern', 'ThreatAssessment', 'PatternRegistry', 'create_default_registry']
+_registry_instance: Optional[PatternRegistry] = None
+
+
+def get_pattern_registry() -> PatternRegistry:
+    """Return the shared PatternRegistry singleton (built once at first call)."""
+    global _registry_instance
+    if _registry_instance is None:
+        _registry_instance = create_default_registry()
+    return _registry_instance
+
+
+__all__ = ['ThreatPattern', 'ThreatAssessment', 'PatternRegistry', 'create_default_registry', 'get_pattern_registry']

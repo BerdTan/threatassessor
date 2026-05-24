@@ -119,14 +119,12 @@ class ThreatAnalyst(AnalystAgent):
             logger.info(f"{self.role}: AI architecture detected, running AI pattern")
 
             try:
-                from chatbot.modules.patterns.ai_pattern import AIPattern
-                from chatbot.modules.pattern_registry import PatternRegistry
+                from chatbot.modules.pattern_registry import get_pattern_registry
 
-                # Create registry with AI pattern if not already set
+                # Use shared singleton — built once, reused across all calls
                 if not hasattr(self, 'pattern_registry'):
-                    self.pattern_registry = PatternRegistry()
-                    self.pattern_registry.register(AIPattern())
-                    logger.info(f"{self.role}: Auto-initialized PatternRegistry with AI pattern")
+                    self.pattern_registry = get_pattern_registry()
+                    logger.info(f"{self.role}: Using shared PatternRegistry singleton")
 
                 # Run AI pattern assessment
                 # Extract node names from ground truth
@@ -195,8 +193,8 @@ class ThreatAnalyst(AnalystAgent):
 
             # Calculate ARC control gaps (benchmark)
             try:
-                from chatbot.modules.patterns.ai_pattern import AIPattern
-                ai_pattern = AIPattern()
+                from chatbot.modules.pattern_registry import get_pattern_registry
+                ai_pattern = get_pattern_registry().get_pattern("AI/ML (ARC)")
                 arc_gaps = ai_pattern.get_arc_control_gaps(
                     controls_present,
                     ai_assessment.threats
