@@ -49,20 +49,56 @@ ThreatAssessor parses the Mermaid diagram into a graph, then the RAPIDS engine w
 
 ## API usage
 
-The REST API is available at **http://localhost:8000/docs** (Swagger UI).
+The REST API is available at **http://localhost:8000/docs** (Swagger UI). The machine-readable spec is at `openapi.yaml`.
 
 ```bash
 # Analyze an architecture diagram
 curl -X POST http://localhost:8000/api/v1/analyze \
   -H "TM-API-KEY: <your-key>" \
   -F "architecture_file=@my_architecture.mmd"
+
+# Stream analysis with real-time progress
+curl -N -X POST http://localhost:8000/api/v1/analyze-stream \
+  -H "TM-API-KEY: <your-key>" \
+  -F "architecture_file=@my_architecture.mmd"
 ```
 
 Set `API_KEY` in your `.env` file; the server reads it on startup.
+
+### Key endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check (no auth) |
+| POST | `/api/v1/analyze` | Deterministic analysis, returns JSON |
+| POST | `/api/v1/analyze-stream` | Same analysis with SSE progress events |
+| GET | `/api/v1/expert-review` | SSE stream for MoE validation |
+| GET | `/api/v1/reports` | List generated report directories |
+| GET | `/api/v1/reports/{name}/download` | Download report as ZIP |
+
+## Repository layout
+
+```
+chatbot/          Core analysis engine and REST API
+  api/            FastAPI application (app.py, routes/, models/, static/)
+  modules/        Threat analysis, RAPIDS, MoE agents, self-validation
+  services/       Thread-safe service layer
+  data/           MITRE data files (not in git — see above)
+agentic/          Multi-provider LLM client (OpenRouter, Bedrock)
+scripts/          Server lifecycle, validation, doc generation
+  api/            api_start/stop/restart/status scripts
+  validation/     check_orphans.py, validate_llm_config.py
+  docs/           generate_html_docs.py
+tests/            Test suite + 22 sample .mmd architectures
+docs/             Project documentation
+html/             Generated HTML docs (index.html, status.html, roadmap.html)
+openapi.yaml      OpenAPI 3.0 spec (auto-generated from FastAPI app)
+```
 
 ## Links
 
 - **Dashboard** — http://localhost:8000/dashboard
 - **API docs (Swagger)** — http://localhost:8000/docs
+- **OpenAPI spec** — [openapi.yaml](openapi.yaml)
 - **API management guide** — [docs/operations/API_MANAGEMENT.md](docs/operations/API_MANAGEMENT.md)
 - **Developer reference** — [CLAUDE.md](CLAUDE.md)

@@ -1,0 +1,738 @@
+openapi: 3.1.0
+info:
+  title: ThreatAssessor API
+  description: "\n# ThreatAssessor API\n\nArchitecture threat analysis with MITRE\
+    \ ATT&CK + AI/ML pattern detection.\n\n## Features\n- **Deterministic Engine**:\
+    \ 99.5% confidence RAPIDS threat assessment\n- **AI/ML Patterns**: MITRE ATLAS\
+    \ + ARC Framework detection\n- **Attack Path Analysis**: Multi-hop technique mapping\n\
+    - **Control Recommendations**: Prevention + DIR framework\n\n## API Dependencies\
+    \ & Sequencing\n\n### ✅ Independent Endpoints (No Prerequisites)\n- `GET /health`\
+    \ - Always callable\n- `POST /analyze` - **Entry point** for analysis\n\n### ⚠️\
+    \ Dependent Endpoints (Has Prerequisites)\n- `POST /validate` - Requires `ground_truth.json`\
+    \ from `/analyze`\n  - **Must call `/analyze` first** to generate ground truth\
+    \ file\n  - Error 404 if ground truth not found\n\n### \U0001F4CB Typical Workflows\n\
+    \n**Quick Assessment (No MoE Validation):**\n```\nPOST /analyze → 99.5% confidence\n\
+    ```\n\n**Two-Step Analysis:**\n```\n1. POST /analyze  → Generates ground_truth.json\
+    \ (99.5% confidence)\n2. POST /validate → Uses ground_truth.json (93-96% confidence)\n\
+    ```\n\n**Full Pipeline (Future):**\n```\nPOST /orchestrate → analyze + validate\
+    \ + synthesis (93-96% confidence)\n```\n\n## Authentication\nAPI key required\
+    \ via `TM-API-KEY` header.\n\n## Performance\n- Analysis: ~30 seconds (P95)\n\
+    - Timeout: 120 seconds (2 minutes)\n- Concurrent limit: 10 requests (tested)\n\
+    \n## Rate Limiting\n- 10 requests/minute per API key\n- 429 Too Many Requests\
+    \ if exceeded\n"
+  version: 1.3.0
+paths:
+  /health:
+    get:
+      tags:
+      - health
+      summary: Health check
+      description: System health status check. No authentication required.
+      operationId: health_check_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /api/v1/analyze:
+    post:
+      tags:
+      - analysis
+      summary: Analyze architecture diagram
+      description: 'Run deterministic threat analysis (Team 1: ThreatAnalysisService).
+
+
+        **Expected Performance:**
+
+        - Response time: ~30 seconds (P50), ~45 seconds (P95)
+
+        - Timeout: 120 seconds
+
+
+        **Confidence Level:**
+
+        - Base confidence: 99.5% (deterministic engine)
+
+        - Includes: RAPIDS assessment, attack paths, control recommendations
+
+
+        **Dependencies:**
+
+        - ✅ **No prerequisites** - This is the entry point
+
+        - Generates: `ground_truth.json` in `report/{arch_name}/` directory
+
+
+        **Output Files:**
+
+        - `report/{arch_name}/ground_truth.json` - Analysis results (used by /validate)
+
+        - `report/{arch_name}/01_executive_summary.md`
+
+        - `report/{arch_name}/02_technical_report.md`
+
+        - `report/{arch_name}/03_action_plan.md`
+
+
+        **Use Cases:**
+
+        - Initial threat assessment
+
+        - Quick architecture review
+
+        - CI/CD pipeline integration
+
+        - Entry point for two-step workflow (analyze → validate)'
+      operationId: analyze_architecture_api_v1_analyze_post
+      parameters:
+      - name: include_validation
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+          title: Include Validation
+      - name: TM-API-KEY
+        in: header
+        required: true
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_analyze_architecture_api_v1_analyze_post'
+      responses:
+        '200':
+          description: Analysis completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+        '400':
+          description: Invalid file format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Invalid Mermaid syntax
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+  /dashboard:
+    get:
+      tags:
+      - dashboard
+      summary: Dashboard
+      description: Serve the ThreatAssessor dashboard UI with cache busting.
+      operationId: dashboard_dashboard_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/html:
+              schema:
+                type: string
+  /:
+    get:
+      tags:
+      - dashboard
+      summary: Root
+      description: Redirect root to dashboard.
+      operationId: root__get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/html:
+              schema:
+                type: string
+  /api/v1/analyze-stream:
+    post:
+      tags:
+      - streaming
+      summary: Analyze Architecture Stream
+      description: "Analyze architecture with real-time SSE progress updates.\n\n\
+        **SSE Events:**\n- `progress`: Stage updates with percentage and ETA\n- `patterns_detected`:\
+        \ Threat patterns applied (RAPIDS, AI/ML, etc.)\n- `threat_scores`: Threat\
+        \ scores grouped by pattern\n- `attack_path`: Attack path discovery (streamed\
+        \ as found)\n- `complete`: Final analysis result\n- `error`: Error occurred\n\
+        \n**Progress Stages:**\n1. Parsing (0-10%)\n2. MITRE Cache Loading (10-20%)\n\
+        3. RAPIDS Analysis (20-60%)\n4. AI/ML Analysis (60-80%, if detected)\n5. Validation\
+        \ (80-100%)\n\n**Example Client (JavaScript):**\n```javascript\nconst eventSource\
+        \ = new EventSource('/api/v1/analyze-stream');\n\neventSource.addEventListener('progress',\
+        \ (e) => {\n  const data = JSON.parse(e.data);\n  updateProgressBar(data.progress);\n\
+        \  updateStatusMessage(data.message);\n});\n\neventSource.addEventListener('complete',\
+        \ (e) => {\n  const result = JSON.parse(e.data);\n  displayResults(result);\n\
+        \  eventSource.close();\n});\n```\n\n**Example Client (Python):**\n```python\n\
+        import requests\n\nresponse = requests.post(\n    'http://localhost:8000/api/v1/analyze-stream',\n\
+        \    headers={'TM-API-KEY': 'your-key'},\n    files={'architecture_file':\
+        \ open('arch.mmd', 'rb')},\n    stream=True\n)\n\nfor line in response.iter_lines():\n\
+        \    if line.startswith(b'data: '):\n        data = json.loads(line[6:])\n\
+        \        print(f\"Progress: {data['progress']}% - {data['message']}\")\n```"
+      operationId: analyze_architecture_stream_api_v1_analyze_stream_post
+      parameters:
+      - name: include_validation
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+          title: Include Validation
+      - name: TM-API-KEY
+        in: header
+        required: true
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_analyze_architecture_stream_api_v1_analyze_stream_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/expert-review:
+    get:
+      tags:
+      - streaming
+      summary: Expert Review Stream
+      description: "Run MoE Expert Review on a previously analyzed architecture.\n\
+        \nStreams real-time progress via SSE as three independent critic agents\n\
+        (Architect, Tester, Red Team) validate the deterministic analysis and\nproduce\
+        \ a consensus confidence score and unified recommendations.\n\n**Prerequisites:**\
+        \ Run `/api/v1/analyze-stream` first to generate `ground_truth.json`.\n\n\
+        **SSE Events:**\n- `progress`: Stage updates (architect → tester → red_team\
+        \ → synthesis)\n- `complete`: Final MoEResult with confidence and consensus\
+        \ recommendations\n- `error`: Error details (e.g. missing prerequisites)\n\
+        \n**Example Client (JavaScript):**\n```javascript\nconst url = `/api/v1/expert-review?architecture_name=${archName}`;\n\
+        const es = new EventSource(url);\n\nes.addEventListener('progress', (e) =>\
+        \ {\n  const d = JSON.parse(e.data);\n  console.log(`${d.message} (${d.progress}%)`);\n\
+        });\n\nes.addEventListener('complete', (e) => {\n  const result = JSON.parse(e.data);\n\
+        \  console.log('Final confidence:', result.confidence.final);\n  es.close();\n\
+        });\n```"
+      operationId: expert_review_stream_api_v1_expert_review_get
+      parameters:
+      - name: architecture_name
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Architecture name (must match an existing analysis in report/)
+          title: Architecture Name
+        description: Architecture name (must match an existing analysis in report/)
+      - name: TM-API-KEY
+        in: header
+        required: true
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports:
+    get:
+      tags:
+      - reports
+      summary: List Architectures
+      description: "List all architectures that have generated reports.\n\nReturns:\n\
+        \    List of architecture names with report counts\n\nExample:\n    ```json\n\
+        \    {\n      \"architectures\": [\n        {\n          \"name\": \"web_app\"\
+        ,\n          \"report_count\": 4,\n          \"files\": [\"01_executive_summary.md\"\
+        , \"02_technical_report.md\", ...]\n        }\n      ],\n      \"total\":\
+        \ 5\n    }\n    ```"
+      operationId: list_architectures_api_v1_reports_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}:
+    get:
+      tags:
+      - reports
+      summary: List Reports
+      description: "List all report files for a specific architecture.\n\nArgs:\n\
+        \    architecture_name: Architecture directory name\n\nReturns:\n    List\
+        \ of report files with metadata\n\nExample:\n    ```json\n    {\n      \"\
+        architecture\": \"web_app\",\n      \"reports\": [\n        {\n          \"\
+        filename\": \"01_executive_summary.md\",\n          \"type\": \"markdown\"\
+        ,\n          \"size\": 12345,\n          \"url\": \"/api/v1/reports/web_app/files/01_executive_summary.md\"\
+        \n        }\n      ]\n    }\n    ```"
+      operationId: list_reports_api_v1_reports__architecture_name__get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/files/{filename}:
+    get:
+      tags:
+      - reports
+      summary: Get Report File
+      description: "Download a specific report file.\n\nArgs:\n    architecture_name:\
+        \ Architecture directory name\n    filename: Report filename (e.g., \"01_executive_summary.md\"\
+        )\n\nReturns:\n    File contents (text/markdown for .md, application/json\
+        \ for .json)\n\nRaises:\n    404: If architecture or file not found\n    400:\
+        \ If filename contains path traversal attempts"
+      operationId: get_report_file_api_v1_reports__architecture_name__files__filename__get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: filename
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Filename
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/summary:
+    get:
+      tags:
+      - reports
+      summary: Get Report Summary
+      description: "Get a quick summary of available reports for an architecture.\n\
+        \nReturns metadata without file contents (faster than listing all files).\n\
+        \nArgs:\n    architecture_name: Architecture directory name\n\nReturns:\n\
+        \    Summary with file counts and types"
+      operationId: get_report_summary_api_v1_reports__architecture_name__summary_get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/download:
+    get:
+      tags:
+      - reports
+      summary: Download Reports Zip
+      description: "Download report files as a ZIP archive.\n\nArgs:\n    architecture_name:\
+        \ Architecture directory name\n    pack: \"stakeholder\" (decision-facing\
+        \ docs) or \"full\" (all non-suppressed files)\n\nReturns:\n    ZIP file stream"
+      operationId: download_reports_zip_api_v1_reports__architecture_name__download_get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: pack
+        in: query
+        required: false
+        schema:
+          type: string
+          default: full
+          title: Pack
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/mitigations:
+    get:
+      tags:
+      - reports
+      summary: Get Mitigation Names
+      description: "Get MITRE ATT&CK mitigation names for given IDs.\n\nArgs:\n  \
+        \  mitigation_ids: Comma-separated mitigation IDs\n\nReturns:\n    Dictionary\
+        \ mapping mitigation IDs to names"
+      operationId: get_mitigation_names_api_v1_mitigations_get
+      parameters:
+      - name: mitigation_ids
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Comma-separated mitigation IDs (e.g., M1042,M1026,M1037)
+          title: Mitigation Ids
+        description: Comma-separated mitigation IDs (e.g., M1042,M1026,M1037)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/technique-mitigations:
+    get:
+      tags:
+      - reports
+      summary: Get Technique Mitigations
+      description: "Return which MITRE mitigation IDs apply to each given technique\
+        \ ID.\n\nReturns:\n    mappings: { techniqueId: [mitigationId, ...] }"
+      operationId: get_technique_mitigations_api_v1_technique_mitigations_get
+      parameters:
+      - name: technique_ids
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Comma-separated technique IDs
+          title: Technique Ids
+        description: Comma-separated technique IDs
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/techniques:
+    get:
+      tags:
+      - reports
+      summary: Get Technique Names
+      description: "Get MITRE ATT&CK technique names for given IDs.\n\nThis reduces\
+        \ API calls and keeps users on dashboard instead of clicking to MITRE site.\n\
+        \nArgs:\n    technique_ids: Comma-separated technique IDs\n\nReturns:\n  \
+        \  Dictionary mapping technique IDs to names\n\nExample:\n    GET /api/v1/techniques?technique_ids=T1566,T1078,T1059\n\
+        \n    Response:\n    ```json\n    {\n      \"techniques\": {\n        \"T1566\"\
+        : \"Phishing\",\n        \"T1078\": \"Valid Accounts\",\n        \"T1059\"\
+        : \"Command and Scripting Interpreter\"\n      }\n    }\n    ```"
+      operationId: get_technique_names_api_v1_techniques_get
+      parameters:
+      - name: technique_ids
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Comma-separated technique IDs (e.g., T1566,T1078,T1059)
+          title: Technique Ids
+        description: Comma-separated technique IDs (e.g., T1566,T1078,T1059)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+components:
+  schemas:
+    AnalyzeResponse:
+      properties:
+        success:
+          type: boolean
+          title: Success
+          description: Whether analysis succeeded
+        request_id:
+          type: string
+          title: Request Id
+          description: Unique request identifier (UUID)
+        execution_time_ms:
+          type: number
+          title: Execution Time Ms
+          description: Execution time in milliseconds
+        data:
+          additionalProperties: true
+          type: object
+          title: Data
+          description: Analysis results
+      type: object
+      required:
+      - success
+      - request_id
+      - execution_time_ms
+      - data
+      title: AnalyzeResponse
+      description: Response schema for POST /analyze endpoint.
+      example:
+        data:
+          analysis:
+            controls_missing:
+            - logging
+            - backup
+            controls_present:
+            - waf
+            - mfa
+            - edr
+            expected_defensibility: 54
+            expected_risk_score: 77
+          architecture_name: web_app
+          confidence: 0.995
+        execution_time_ms: 28734.5
+        request_id: 550e8400-e29b-41d4-a716-446655440000
+        success: true
+    Body_analyze_architecture_api_v1_analyze_post:
+      properties:
+        architecture_file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: Architecture File
+          description: Mermaid diagram file (.mmd format, max 10MB)
+      type: object
+      required:
+      - architecture_file
+      title: Body_analyze_architecture_api_v1_analyze_post
+    Body_analyze_architecture_stream_api_v1_analyze_stream_post:
+      properties:
+        architecture_file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: Architecture File
+          description: Mermaid diagram file (.mmd format, max 10MB)
+      type: object
+      required:
+      - architecture_file
+      title: Body_analyze_architecture_stream_api_v1_analyze_stream_post
+    ErrorResponse:
+      properties:
+        type:
+          type: string
+          title: Type
+          description: Problem type URI
+        title:
+          type: string
+          title: Title
+          description: Short human-readable summary
+        status:
+          type: integer
+          title: Status
+          description: HTTP status code
+        detail:
+          type: string
+          title: Detail
+          description: Human-readable explanation
+        instance:
+          type: string
+          title: Instance
+          description: API endpoint that generated error
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: Request correlation ID
+      type: object
+      required:
+      - type
+      - title
+      - status
+      - detail
+      - instance
+      title: ErrorResponse
+      description: RFC 7807 Problem Details for HTTP APIs.
+      example:
+        detail: File must have .mmd extension
+        instance: /api/v1/analyze
+        request_id: 550e8400-e29b-41d4-a716-446655440000
+        status: 400
+        title: Invalid request
+        type: https://api.threatassessor.example.com/errors/bad-request
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: 'Health status: healthy, degraded, or unhealthy'
+        version:
+          type: string
+          title: Version
+          description: API version
+        timestamp:
+          type: string
+          title: Timestamp
+          description: Current timestamp (ISO 8601)
+        services:
+          additionalProperties: true
+          type: object
+          title: Services
+          description: Service status details
+        errors:
+          anyOf:
+          - items: {}
+            type: array
+          - type: 'null'
+          title: Errors
+          description: Error messages if unhealthy
+      type: object
+      required:
+      - status
+      - version
+      - timestamp
+      - services
+      title: HealthResponse
+      description: Response schema for GET /health endpoint.
+      example:
+        services:
+          deterministic_engine: operational
+          mitre_cache: loaded
+          service_layer: operational
+        status: healthy
+        timestamp: '2026-05-23T10:30:00Z'
+        version: 1.3.0
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: TM-API-KEY
+servers:
+- url: http://localhost:8000
+  description: Local development

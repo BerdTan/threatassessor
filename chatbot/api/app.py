@@ -391,6 +391,39 @@ Run deterministic threat analysis (Team 1: ThreatAnalysisService).
     app.include_router(streaming_router)
     app.include_router(reports_router)
 
+    # Enrich OpenAPI spec: add server URL and API key security scheme
+    from fastapi.openapi.utils import get_openapi
+
+    def custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        schema["servers"] = [
+            {"url": "http://localhost:8000", "description": "Local development"},
+        ]
+        schema.setdefault("components", {})
+        schema["components"]["securitySchemes"] = {
+            "ApiKeyAuth": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "TM-API-KEY",
+            }
+        }
+        # Apply security to all non-health paths
+        for path, path_item in schema.get("paths", {}).items():
+            for method, operation in path_item.items():
+                if path not in ("/health", "/dashboard", "/") and method in ("get", "post", "put", "delete", "patch"):
+                    operation.setdefault("security", [{"ApiKeyAuth": []}])
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = custom_openapi  # type: ignore[method-assign]
+
     return app
 
 
