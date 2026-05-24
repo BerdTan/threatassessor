@@ -74,7 +74,14 @@ def validate_technique_for_path(
 
     # T1213 - Data from Information Repositories
     elif technique_id == "T1213":
-        has_data_target = any(kw in target_label for kw in ["database", "db", "storage", "data", "repository", "file"])
+        # Check both the resolved label AND the raw node ID (CamelCase names like
+        # "AccessLogDB" or "UserDB" contain "db" but label lookup may return empty)
+        target_node_id = path_nodes[-1].lower() if path_nodes else ""
+        has_data_target = any(kw in target_label for kw in [
+            "database", "db", "storage", "data", "repository", "file", "cache", "log", "registry",
+        ]) or any(kw in target_node_id for kw in [
+            "database", "db", "storage", "data", "repository", "file", "cache", "log", "registry",
+        ])
 
         if has_data_target:
             validations.append((True, 0.1, "Data repository target confirmed"))
@@ -83,7 +90,12 @@ def validate_technique_for_path(
 
     # T1059 - Command and Scripting Interpreter
     elif technique_id == "T1059":
-        has_exec_component = any(kw in path_str for kw in ["server", "application", "exec", "lambda", "function", "worker"])
+        # Execution environments: classic names AND API/service/app patterns common in
+        # modern architectures (APIGateway, AuthService, MobileApp, AccessControlAPI, etc.)
+        has_exec_component = any(kw in path_str for kw in [
+            "server", "application", "exec", "lambda", "function", "worker",
+            "api", "service", "app", "microservice", "backend", "runtime",
+        ])
 
         if has_exec_component:
             validations.append((True, 0.08, "Execution environment present"))
@@ -107,6 +119,83 @@ def validate_technique_for_path(
             validations.append((True, 0.08, "Intermediary component detected"))
         else:
             validations.append((False, -0.05, "No proxy/intermediary component"))
+
+    # T1005 - Data from Local System
+    elif technique_id == "T1005":
+        # Valid if architecture has any data store or file system component
+        has_data_component = any(kw in path_str for kw in [
+            "db", "database", "storage", "file", "cache", "log", "repository", "data",
+        ])
+        if has_data_component:
+            validations.append((True, 0.05, "Data storage component present"))
+        else:
+            validations.append((False, 0.0, "No local data storage component detected"))
+
+    # T1567 - Exfiltration Over Web Service
+    elif technique_id == "T1567":
+        # Valid if there's an outbound web component (API, gateway, external service)
+        has_web_out = any(kw in path_str for kw in [
+            "api", "gateway", "internet", "external", "web", "cdn", "upload",
+        ])
+        if has_web_out:
+            validations.append((True, 0.05, "Outbound web component present for exfiltration path"))
+        else:
+            validations.append((False, 0.0, "No clear outbound web channel detected"))
+
+    # T1486 - Data Encrypted for Impact (ransomware)
+    elif technique_id == "T1486":
+        # Valid if architecture has data stores (ransomware targets data at rest)
+        has_data = any(kw in path_str for kw in [
+            "db", "database", "storage", "file", "backup", "cache", "data",
+        ])
+        if has_data:
+            validations.append((True, 0.05, "Data storage target suitable for ransomware"))
+        else:
+            validations.append((False, 0.0, "No data storage found for ransomware impact"))
+
+    # T1490 - Inhibit System Recovery
+    elif technique_id == "T1490":
+        # Valid if backup/recovery components are present (attacker targets them)
+        has_recovery = any(kw in path_str for kw in [
+            "backup", "recovery", "restore", "snapshot", "replication",
+        ])
+        has_data = any(kw in path_str for kw in ["db", "database", "storage", "data"])
+        if has_recovery or has_data:
+            validations.append((True, 0.05, "Recovery/data components present — inhibition is relevant"))
+        else:
+            validations.append((False, 0.0, "No recovery or data components detected"))
+
+    # T1485 - Data Destruction
+    elif technique_id == "T1485":
+        has_data = any(kw in path_str for kw in [
+            "db", "database", "storage", "file", "cache", "data", "log",
+        ])
+        if has_data:
+            validations.append((True, 0.05, "Data components present — destruction is relevant"))
+        else:
+            validations.append((False, 0.0, "No data components found for destruction"))
+
+    # T1203 - Exploitation for Client Execution
+    elif technique_id == "T1203":
+        # Valid if client-facing or browser-accessible component present
+        has_client = any(kw in path_str for kw in [
+            "user", "client", "browser", "mobile", "app", "frontend", "web",
+        ])
+        if has_client:
+            validations.append((True, 0.05, "Client-facing component present"))
+        else:
+            validations.append((False, 0.0, "No client-facing component for client exploitation"))
+
+    # T1212 - Exploitation for Credential Access
+    elif technique_id == "T1212":
+        # Valid if authentication or credential components exist
+        has_auth = any(kw in path_str for kw in [
+            "auth", "login", "credential", "user", "identity", "sso", "mfa", "password",
+        ])
+        if has_auth:
+            validations.append((True, 0.05, "Authentication component present for credential exploitation"))
+        else:
+            validations.append((False, 0.0, "No authentication component found"))
 
     # Default: Check if technique name/description has keywords from path
     else:
