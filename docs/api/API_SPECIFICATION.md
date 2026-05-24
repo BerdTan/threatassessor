@@ -451,18 +451,39 @@ curl -H "TM-API-KEY: your-key" \
 
 ---
 
-### 7. Download ZIP Archive (TODO - Not Implemented)
+### 7. Download ZIP Archive
 
 **Endpoint:** `GET /api/v1/reports/{architecture_name}/download`
 
-**Description:** Download all reports as ZIP archive.
+**Description:** Download report files as a ZIP archive. Two pack options control which files are included.
 
-**Status:** ⚠️ **Not yet implemented** - Will be added in future version
+**Query Parameters:**
+- `pack` (optional, default `full`): `stakeholder` or `full`
 
-**Planned Response:**
-- **200 OK:** ZIP file
+**Pack contents:**
+
+| Pack | Files included |
+|------|---------------|
+| `stakeholder` | `01_executive_summary.md`, `03_action_plan.md`, `08_improvement_summary.md`, `before.mmd`, `after.mmd` |
+| `full` | All files except `ground_truth.json`, `07_moe_orchestrator.json`, `07_orchestrator_report.json`, `README.md` |
+
+**Example:**
+```bash
+# Stakeholder pack
+curl -H "TM-API-KEY: your-key" \
+  "http://localhost:8000/api/v1/reports/web_app/download?pack=stakeholder" \
+  -o web_app_stakeholder.zip
+
+# Full pack
+curl -H "TM-API-KEY: your-key" \
+  "http://localhost:8000/api/v1/reports/web_app/download?pack=full" \
+  -o web_app_full.zip
+```
+
+**Response:**
+- **200 OK:** ZIP stream
 - **Content-Type:** `application/zip`
-- **Content-Disposition:** `attachment; filename="web_app_reports.zip"`
+- **Content-Disposition:** `attachment; filename="web_app_stakeholder.zip"`
 
 ---
 
@@ -500,7 +521,64 @@ TM-API-KEY: your-key
 
 ---
 
-### 9. Health Check
+### 9. Get MITRE Mitigation Names
+
+**Endpoint:** `GET /api/v1/mitigations`
+
+**Description:** Resolve mitigation IDs to human-readable names.
+
+**Query Parameters:**
+- `mitigation_ids` (required): Comma-separated mitigation IDs (max 100)
+
+**Example Request:**
+```http
+GET /api/v1/mitigations?mitigation_ids=M1042,M1026,M1037
+TM-API-KEY: your-key
+```
+
+**Response (200 OK):**
+```json
+{
+  "mitigations": {
+    "M1042": "Disable or Remove Feature or Program",
+    "M1026": "Privileged Account Management",
+    "M1037": "Filter Network Traffic"
+  }
+}
+```
+
+---
+
+### 10. Get Technique → Mitigation Mappings
+
+**Endpoint:** `GET /api/v1/technique-mitigations`
+
+**Description:** Return which MITRE mitigation IDs apply to each given technique. Used to show mitigations inline per technique in the UI.
+
+**Query Parameters:**
+- `technique_ids` (required): Comma-separated technique IDs (max 50)
+
+**Example Request:**
+```http
+GET /api/v1/technique-mitigations?technique_ids=T1566,T1078
+TM-API-KEY: your-key
+```
+
+**Response (200 OK):**
+```json
+{
+  "mappings": {
+    "T1566": ["M1047", "M1031", "M1054", "M1021", "M1049", "M1017"],
+    "T1078": ["M1027", "M1018", "M1026", "M1032", "M1013", "M1017", "M1015", "M1036"]
+  }
+}
+```
+
+**Use Case:** Pair with `/mitigations` to display `M1042 · Disable or Remove Feature or Program` alongside each technique in attack path and control views.
+
+---
+
+### 11. Health Check
 
 **Endpoint:** `GET /api/v1/health`
 

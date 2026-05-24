@@ -4,9 +4,11 @@ Reports API Routes
 Endpoints for accessing generated analysis reports.
 """
 
+import io
+import zipfile
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, status, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from typing import List, Dict
 from chatbot.modules.mitre import MitreHelper, get_mitre_helper as _get_mitre_singleton
 
@@ -234,6 +236,55 @@ async def get_report_summary(architecture_name: str):
     )
 
     return summary
+
+
+@router.get("/reports/{architecture_name}/download")
+async def download_reports_zip(architecture_name: str, pack: str = "full"):
+    """
+    Download report files as a ZIP archive.
+
+    Args:
+        architecture_name: Architecture directory name
+        pack: "stakeholder" (decision-facing docs) or "full" (all non-suppressed files)
+
+    Returns:
+        ZIP file stream
+    """
+    report_dir = get_report_dir() / architecture_name
+
+    if not report_dir.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Architecture '{architecture_name}' not found"
+        )
+
+    # Files excluded from all packs (internal/noise)
+    SUPPRESSED = {'ground_truth.json', '07_moe_orchestrator.json', '07_orchestrator_report.json', 'README.md'}
+
+    # Stakeholder pack: decision-driving documents
+    STAKEHOLDER = {
+        '01_executive_summary.md', '03_action_plan.md', '08_improvement_summary.md',
+        'before.mmd', 'after.mmd'
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for file in sorted(report_dir.iterdir()):
+            if not file.is_file():
+                continue
+            if file.name in SUPPRESSED:
+                continue
+            if pack == 'stakeholder' and file.name not in STAKEHOLDER:
+                continue
+            zf.write(file, arcname=file.name)
+
+    buf.seek(0)
+    filename = f"{architecture_name}_{pack}.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 @router.get("/mitigations")

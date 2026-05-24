@@ -1165,33 +1165,34 @@ class Dashboard {
     }
 
     async showAttackPathDetail(path) {
-        // Get per-node techniques
         const perNodeTechniques = path.per_node_techniques || {};
-
-        // Fetch technique names
         const allTechniques = path.techniques || [];
-        const techniqueNames = await this.fetchTechniqueNames(allTechniques);
+
+        // Fetch technique names + per-technique mitigations in parallel
+        const [techniqueNames, tmData] = await Promise.all([
+            this.fetchTechniqueNames(allTechniques),
+            allTechniques.length > 0
+                ? fetch(`/api/v1/technique-mitigations?technique_ids=${allTechniques.join(',')}`)
+                    .then(r => r.ok ? r.json() : { mappings: {} })
+                    .catch(() => ({ mappings: {} }))
+                : Promise.resolve({ mappings: {} })
+        ]);
+        const techMitMappings = tmData.mappings || {};
+
+        // Collect all unique mitigation IDs to resolve names
+        const allMitIds = [...new Set(Object.values(techMitMappings).flat())];
+        const mitigationNames = await this.fetchMitigationNames(allMitIds);
 
         // Build step-by-step HTML with clickable steps
         const stepsHtml = path.path.map((node, idx) => {
             const stepTechniques = perNodeTechniques[node] || [];
             const stepId = `step-${path.id}-${idx}`;
+            const bgColor = idx === 0 ? 'var(--danger-color)15' : idx === path.path.length - 1 ? 'var(--warning-color)15' : 'var(--nav-hover-bg)';
+            const borderColor = idx === 0 ? 'var(--danger-color)' : idx === path.path.length - 1 ? 'var(--warning-color)' : 'var(--primary-color)';
 
             return `
                 <div class="attack-step" data-step="${idx}" style="margin-bottom: 0.75rem;">
-                    <div class="step-header" style="display: flex; align-items: center; cursor: pointer; padding: 0.75rem; background: ${
-                        idx === 0 ? 'var(--danger-color)15' :
-                        idx === path.path.length - 1 ? 'var(--warning-color)15' :
-                        'var(--nav-hover-bg)'
-                    }; border-radius: 8px; border-left: 4px solid ${
-                        idx === 0 ? 'var(--danger-color)' :
-                        idx === path.path.length - 1 ? 'var(--warning-color)' :
-                        'var(--primary-color)'
-                    }; transition: all 0.2s;" onmouseover="this.style.background='var(--list-hover-bg)'" onmouseout="this.style.background='${
-                        idx === 0 ? 'var(--danger-color)15' :
-                        idx === path.path.length - 1 ? 'var(--warning-color)15' :
-                        'var(--nav-hover-bg)'
-                    }'">
+                    <div class="step-header" style="display: flex; align-items: center; cursor: pointer; padding: 0.75rem; background: ${bgColor}; border-radius: 8px; border-left: 4px solid ${borderColor}; transition: all 0.2s;">
                         <div style="background: var(--primary-color); color: var(--button-text-color); width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1rem; margin-right: 0.75rem; flex-shrink: 0;">
                             ${idx + 1}
                         </div>
@@ -1207,32 +1208,35 @@ class Dashboard {
                     </div>
                     <div id="${stepId}" class="step-details" style="display: none; margin-top: 0.5rem; padding: 1rem; background: var(--code-bg); border-radius: 8px; border: 1px solid var(--border-color);">
                         ${stepTechniques.length > 0 ? `
-                            <h5 style="margin-bottom: 0.75rem; color: var(--primary-color); font-size: 0.9375rem;">Techniques Used at This Step:</h5>
                             ${stepTechniques.map(tech => {
-                                const techName = techniqueNames[tech] || 'Loading...';
+                                const techName = techniqueNames[tech] || tech;
+                                const mits = techMitMappings[tech] || [];
                                 return `
-                                <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; border-left: 3px solid var(--primary-color);">
-                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.5rem;">
-                                        <div style="flex: 1;">
-                                            <div>
-                                                <code style="font-weight: 700; color: var(--primary-color); font-size: 0.875rem;">${tech}</code>
-                                                <span style="margin-left: 0.5rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">- ${techName}</span>
+                                <div style="margin-bottom: 0.875rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; border-left: 3px solid var(--primary-color);">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; margin-bottom: ${mits.length > 0 ? '0.625rem' : '0'};">
+                                        <div>
+                                            <code style="font-weight: 700; color: var(--primary-color); font-size: 0.875rem;">${tech}</code>
+                                            <span style="margin-left: 0.5rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">${techName !== tech ? `· ${techName}` : ''}</span>
+                                        </div>
+                                        <a href="https://attack.mitre.org/techniques/${tech}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">🔗</a>
+                                    </div>
+                                    ${mits.length > 0 ? `
+                                        <div style="padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+                                            <div style="font-size: 0.6875rem; color: var(--text-tertiary); font-weight: 600; margin-bottom: 0.375rem; text-transform: uppercase; letter-spacing: 0.05em;">Mitigations</div>
+                                            <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
+                                                ${mits.map(m => `
+                                                    <a href="https://attack.mitre.org/mitigations/${m}/" target="_blank" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.5rem; background: var(--secondary-color)12; border: 1px solid var(--secondary-color)44; border-radius: 4px; text-decoration: none; font-size: 0.75rem;" title="${mitigationNames[m] || m}">
+                                                        <code style="color: var(--secondary-color); font-weight: 700;">${m}</code>
+                                                        <span style="color: var(--text-secondary); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${mitigationNames[m] ? `· ${mitigationNames[m]}` : ''}</span>
+                                                    </a>
+                                                `).join('')}
                                             </div>
                                         </div>
-                                        <a href="https://attack.mitre.org/techniques/${tech}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">
-                                            🔗 MITRE
-                                        </a>
-                                    </div>
-                                    <div style="font-size: 0.8125rem; color: var(--text-secondary);">
-                                        Click MITRE link for full details and mitigation recommendations
-                                    </div>
+                                    ` : ''}
                                 </div>
-                            `;
-                            }).join('')}
+                            `}).join('')}
                         ` : `
-                            <p style="color: var(--text-tertiary); font-style: italic; font-size: 0.875rem;">
-                                No specific techniques mapped to this step
-                            </p>
+                            <p style="color: var(--text-tertiary); font-style: italic; font-size: 0.875rem;">No techniques mapped to this step</p>
                         `}
                     </div>
                 </div>
@@ -1557,7 +1561,7 @@ class Dashboard {
             </div>
 
             <div style="margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--primary-color);">🔬 MITRE ATT&CK Techniques</h4>
+                <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--primary-color);">🔬 Attack Techniques</h4>
                 ${control.techniques && control.techniques.length > 0 ? `
                     ${control.techniques.map(tech => `
                         <div style="margin-bottom: 0.625rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; border-left: 3px solid var(--primary-color);">
@@ -1576,7 +1580,7 @@ class Dashboard {
             </div>
 
             <div style="margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--secondary-color);">🛡️ MITRE Mitigations</h4>
+                <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--secondary-color);">🛡️ Mitigations</h4>
                 ${control.mitigations && control.mitigations.length > 0 ? `
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${control.mitigations.map(mit => {
@@ -2957,22 +2961,17 @@ class Dashboard {
             <!-- Download packs -->
             <div style="display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;">
                 <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 600;">Download:</span>
-                <button id="dl-stakeholder-pack" class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 600;">
+                <a id="dl-stakeholder-pack" href="/api/v1/reports/${archName}/download?pack=stakeholder" download="${archName}_stakeholder.zip"
+                   class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 600; text-decoration: none;">
                     ⬇ Stakeholder Pack
-                </button>
-                <button id="dl-full-pack" style="padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 600; background: transparent; color: var(--text-color); border: 1.5px solid var(--border-color); border-radius: 6px; cursor: pointer;">
+                </a>
+                <a id="dl-full-pack" href="/api/v1/reports/${archName}/download?pack=full" download="${archName}_full.zip"
+                   style="padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 600; background: transparent; color: var(--text-color); border: 1.5px solid var(--border-color); border-radius: 6px; text-decoration: none;">
                     ⬇ Full Pack
-                </button>
+                </a>
                 <span style="font-size: 0.75rem; color: var(--text-tertiary); margin-left: auto;">
-                    Saved to: <code style="color: var(--primary-color);">report/${archName}/</code>
+                    Click any card to preview · ⬇ to download file
                 </span>
-            </div>
-
-            <!-- Viewer panel -->
-            <div id="report-viewer" style="background: var(--card-bg); border-radius: 8px; padding: 0; min-height: 200px; margin-bottom: 1.5rem; overflow: hidden;">
-                <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
-                    <p>Select a report below to view it inline.</p>
-                </div>
             </div>
 
             <!-- Section: For Stakeholders -->
@@ -3015,30 +3014,19 @@ class Dashboard {
             </div>` : ''}
         `;
 
-        // Wire report card clicks
+        // Wire card clicks → right pane preview
+        const allReports = [...byAudience.stakeholder, ...byAudience.technical, ...byAudience.expert];
         listContainer.querySelectorAll('[data-report-id]').forEach(card => {
             card.addEventListener('click', () => {
-                // Highlight active card
                 listContainer.querySelectorAll('[data-report-id]').forEach(c => {
                     c.style.borderColor = 'var(--border-color)';
                     c.style.background = 'var(--card-bg)';
                 });
                 card.style.borderColor = 'var(--primary-color)';
                 card.style.background = 'var(--primary-color)12';
-
-                const reportId = card.dataset.reportId;
-                const allReports = [...byAudience.stakeholder, ...byAudience.technical, ...byAudience.expert];
-                const report = allReports.find(r => r.id === reportId);
-                if (report) this._renderReportInPanel(report, archName);
+                const report = allReports.find(r => r.id === card.dataset.reportId);
+                if (report) this._renderReportInRightPane(report, archName);
             });
-        });
-
-        // Download pack buttons
-        document.getElementById('dl-stakeholder-pack').addEventListener('click', () => {
-            stakeholderFiles.forEach(fn => window.open(`/api/v1/reports/${archName}/files/${fn}`, '_blank'));
-        });
-        document.getElementById('dl-full-pack').addEventListener('click', () => {
-            allPackFiles.forEach(fn => window.open(`/api/v1/reports/${archName}/files/${fn}`, '_blank'));
         });
     }
 
@@ -3069,22 +3057,24 @@ class Dashboard {
         `;
     }
 
-    async _renderReportInPanel(report, archName) {
-        const viewer = document.getElementById('report-viewer');
+    async _renderReportInRightPane(report, archName) {
+        // Show right pane with loading state immediately
+        const downloadLink = `<a href="/api/v1/reports/${archName}/files/${report.filename}" download="${report.filename}" class="btn-primary" style="display: inline-block; text-decoration: none; padding: 0.375rem 0.875rem; font-size: 0.8125rem; margin-bottom: 1rem;">⬇ Download ${report.filename}</a>`;
 
-        // Serve from cache (not mermaid — needs fresh render)
+        this.showRightPane(`${report.icon} ${report.title}`, `
+            ${downloadLink}
+            <div id="rp-content-area" style="color: var(--text-secondary); font-size: 0.875rem;">Loading...</div>
+        `);
+
+        // Serve from cache (not mermaid — needs fresh render each time)
         if (this.reportContents[report.id] && report.type !== 'mermaid') {
-            viewer.innerHTML = this.reportContents[report.id];
-            this.applyCodeHighlighting(viewer);
+            const area = document.getElementById('rp-content-area');
+            if (area) {
+                area.innerHTML = this.reportContents[report.id];
+                this.applyCodeHighlighting(area);
+            }
             return;
         }
-
-        viewer.innerHTML = `
-            <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">${report.icon}</div>
-                <p>Loading ${report.title}...</p>
-            </div>
-        `;
 
         try {
             const response = await fetch(`/api/v1/reports/${archName}/files/${report.filename}`);
@@ -3095,15 +3085,14 @@ class Dashboard {
                 const content = await response.text();
                 const borderColor = report.color || 'var(--border-color)';
                 htmlContent = `
-                    <div style="padding: 0.75rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
                         <button id="rp-diagram-zoom-in" class="btn-icon" title="Zoom In">🔍+</button>
                         <button id="rp-diagram-zoom-out" class="btn-icon" title="Zoom Out">🔍−</button>
                         <button id="rp-diagram-zoom-reset" class="btn-icon" title="Fit to Width">↺</button>
-                        <div style="width: 1px; height: 24px; background: var(--border-color); margin: 0 0.25rem;"></div>
                         <button id="rp-diagram-fit-width" class="btn-icon" title="Fit to Width">↔️</button>
                         <button id="rp-diagram-fit-height" class="btn-icon" title="Fit to Height">↕️</button>
                     </div>
-                    <div id="rp-diagram-container" style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 550px; border-top: 2px solid ${borderColor};">
+                    <div id="rp-diagram-container" style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 70vh; border: 2px solid ${borderColor}; border-radius: 8px;">
                         <div class="mermaid" id="rp-diagram">${content}</div>
                     </div>
                 `;
@@ -3111,32 +3100,21 @@ class Dashboard {
                 const data = await response.json();
                 const jsonStr = JSON.stringify(data, null, 2);
                 htmlContent = `
-                    <div style="padding: 1.25rem; border-bottom: 1.5px solid var(--border-color);">
-                        <span style="font-size: 1.5rem;">${report.icon}</span>
-                        <strong style="margin-left: 0.5rem; color: var(--text-color);">${report.title}</strong>
-                        <p style="color: var(--text-secondary); font-size: 0.8125rem; margin: 0.25rem 0 0;">${report.desc}</p>
-                    </div>
-                    <div style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 550px;">
+                    <div style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 70vh; border-radius: 8px;">
                         <pre style="margin: 0; font-size: 0.8125rem;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>
                     </div>
                 `;
             } else {
                 const text = await response.text();
                 const rendered = window.marked ? marked.parse(text) : `<pre style="white-space: pre-wrap;">${this.escapeHtml(text)}</pre>`;
-                htmlContent = `
-                    <div style="padding: 1.25rem; border-bottom: 1.5px solid var(--border-color);">
-                        <span style="font-size: 1.5rem;">${report.icon}</span>
-                        <strong style="margin-left: 0.5rem; color: var(--text-color);">${report.title}</strong>
-                        <p style="color: var(--text-secondary); font-size: 0.8125rem; margin: 0.25rem 0 0;">${report.desc}</p>
-                    </div>
-                    <div class="markdown-content" style="padding: 1.5rem; line-height: 1.7; color: var(--text-color); overflow: auto; max-height: 600px;">
-                        ${rendered}
-                    </div>
-                `;
+                htmlContent = `<div class="markdown-content" style="line-height: 1.7; color: var(--text-color);">${rendered}</div>`;
             }
 
             if (report.type !== 'mermaid') this.reportContents[report.id] = htmlContent;
-            viewer.innerHTML = htmlContent;
+
+            const area = document.getElementById('rp-content-area');
+            if (!area) return;
+            area.innerHTML = htmlContent;
 
             if (report.type === 'mermaid' && window.mermaid) {
                 await new Promise(r => setTimeout(r, 100));
@@ -3147,11 +3125,12 @@ class Dashboard {
                     this.setupDiagramZoom('rp-diagram');
                 }
             } else {
-                this.applyCodeHighlighting(viewer);
+                this.applyCodeHighlighting(area);
             }
         } catch (error) {
             console.error('Report render error:', error);
-            viewer.innerHTML = `<div style="padding: 2rem; color: var(--danger-color);">⚠️ Failed to load ${report.title}: ${error.message}</div>`;
+            const area = document.getElementById('rp-content-area');
+            if (area) area.innerHTML = `<div style="color: var(--danger-color);">⚠️ Failed to load: ${error.message}</div>`;
 
         }
     }
