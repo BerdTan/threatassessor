@@ -155,11 +155,14 @@ def validate_technique_for_path(
 
     # T1490 - Inhibit System Recovery
     elif technique_id == "T1490":
-        # Valid if backup/recovery components are present (attacker targets them)
+        # Valid if backup/recovery components are present (attacker targets them),
+        # OR any persistent data store including session/state caches
         has_recovery = any(kw in path_str for kw in [
             "backup", "recovery", "restore", "snapshot", "replication",
         ])
-        has_data = any(kw in path_str for kw in ["db", "database", "storage", "data"])
+        has_data = any(kw in path_str for kw in [
+            "db", "database", "storage", "data", "cache",
+        ])
         if has_recovery or has_data:
             validations.append((True, 0.05, "Recovery/data components present — inhibition is relevant"))
         else:
@@ -188,9 +191,12 @@ def validate_technique_for_path(
 
     # T1212 - Exploitation for Credential Access
     elif technique_id == "T1212":
-        # Valid if authentication or credential components exist
+        # Valid if authentication, credential, or access-control components exist.
+        # "Access Control API/Service" enforces AuthN/AuthZ and is a valid T1212 target
+        # even though its label doesn't contain the literal word "auth".
         has_auth = any(kw in path_str for kw in [
             "auth", "login", "credential", "user", "identity", "sso", "mfa", "password",
+            "access control",
         ])
         if has_auth:
             validations.append((True, 0.05, "Authentication component present for credential exploitation"))
