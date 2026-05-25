@@ -891,60 +891,81 @@ class TesterCritic:
 
         Returns True if the gap claims invalid mapping but mapping is actually valid.
         """
-        desc = gap.get("description", "")
-
-        # Try to extract control name, technique ID, mitigation ID
-        # Simple heuristic: look for patterns like "CONTROL claims M#### for T####"
         import re
 
-        # Pattern: "CONTROL_NAME claims M#### for T####"
-        pattern = r"([A-Z\s]+)\s+(?:control\s+)?claims?\s+(M\d+).*?(?:for|addresses?)\s+(T\d+)"
-        match = re.search(pattern, desc, re.IGNORECASE)
+        desc = gap.get("description", "")
 
-        if not match:
-            # Can't parse, assume it's valid
-            return False
+        # Patterns the LLM uses to express "control X maps M#### to T####":
+        #   "MFA control claims M1032 mitigates T1485"
+        #   "MFA claims M1032 for T1485"
+        #   "M1032 is not in T1485's mitigation list"
+        #   "MFA control maps M1032 to T1485"
+        # We try two strategies:
+        #   A) Named-control pattern  → extract (control, mitigation, technique)
+        #   B) Mitigation-only pattern → extract (M####, T####) and check directly
 
-        control_name = match.group(1).strip().lower()
-        mitigation_id = match.group(2).upper()
-        technique_id = match.group(3).upper()
+        control_name = None
+        mitigation_id = None
+        technique_id = None
 
-        # Find the control in data
-        control = None
-        for ctrl in controls:
-            if ctrl["control"].lower() == control_name:
-                control = ctrl
+        # Strategy A: CONTROL_NAME … M#### … T#### (or reverse order T#### … M####)
+        patterns_a = [
+            # "CONTROL claims/maps M1032 … T1485"
+            r"([A-Z][A-Z\s\-_]{1,40}?)\s+(?:control\s+)?(?:claims?|maps?|uses?)\s+(M\d{4})\b.{0,60}?\b(T\d{4})\b",
+            # "CONTROL claims M1032 mitigates T1485"
+            r"([A-Z][A-Z\s\-_]{1,40}?)\s+(?:control\s+)?claims?\s+(M\d{4})\s+mitigates?\s+(T\d{4})\b",
+        ]
+        for pat in patterns_a:
+            m = re.search(pat, desc, re.IGNORECASE)
+            if m:
+                control_name = m.group(1).strip().lower()
+                mitigation_id = m.group(2).upper()
+                technique_id = m.group(3).upper()
                 break
 
-        if not control:
-            # Control not found, can't validate
+        # Strategy B: no named control — just M#### and T#### anywhere in the description
+        if not mitigation_id:
+            m_mit = re.search(r'\b(M\d{4})\b', desc)
+            m_tec = re.search(r'\b(T\d{4})\b', desc)
+            if m_mit and m_tec:
+                mitigation_id = m_mit.group(1).upper()
+                technique_id = m_tec.group(1).upper()
+
+        if not mitigation_id or not technique_id:
+            # Can't extract the IDs — can't validate, keep the gap
             return False
 
-        # Check if control actually claims this mitigation for this technique
-        technique_coverage = control.get("technique_coverage", {})
-
-        if technique_id not in technique_coverage:
-            # Technique not covered by control, gap might be valid
-            return False
-
-        claimed_mits = technique_coverage[technique_id]
-
-        if mitigation_id not in claimed_mits:
-            # Mitigation NOT claimed for this technique → gap is FALSE POSITIVE
-            logger.info(f"False positive: {control_name} does NOT claim {mitigation_id} for {technique_id}")
-            logger.info(f"  Actual coverage for {technique_id}: {claimed_mits}")
-            return True
-
-        # Mitigation IS claimed, check if it's valid
+        # Check MITRE ground truth first — if M#### IS valid for T#### per MITRE,
+        # the LLM's claim that it's invalid is a hallucination regardless of the
+        # control name.
         official_mits = mitre.get_technique_mitigations(technique_id)
         official_ids = [m["mitigation_id"] for m in official_mits]
 
         if mitigation_id in official_ids:
-            # Mapping is valid but gap claims it's invalid → FALSE POSITIVE
-            logger.info(f"False positive: {mitigation_id} IS valid for {technique_id} per MITRE")
+            logger.info(f"False positive: {mitigation_id} IS a valid mitigation for {technique_id} per MITRE")
             return True
 
-        # Mapping is truly invalid, gap is correct
+        # Mitigation is NOT in MITRE for that technique.
+        # If we have a control name, do a secondary check: maybe the control doesn't
+        # even claim that mitigation, making the gap description itself nonsensical.
+        if control_name:
+            control = None
+            for ctrl in controls:
+                if ctrl["control"].lower() == control_name:
+                    control = ctrl
+                    break
+
+            if control:
+                technique_coverage = control.get("technique_coverage", {})
+                if technique_id not in technique_coverage:
+                    return False  # Technique not covered — gap may be valid
+                claimed_mits = technique_coverage.get(technique_id, [])
+                if mitigation_id not in claimed_mits:
+                    # Control doesn't even claim this mitigation → gap description is wrong
+                    logger.info(f"False positive: {control_name} does NOT claim {mitigation_id} for {technique_id}")
+                    return True
+
+        # Truly invalid mapping
         return False
 
 

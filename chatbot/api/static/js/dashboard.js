@@ -6,7 +6,10 @@ class Dashboard {
         this.currentTab = 'overview';
         this.sseClient = null;
         this.uploadedFile = null;
-        this.techniqueNamesCache = {}; // Cache for technique names
+        this.techniqueNamesCache = {};
+
+        // Expert Review in-progress state — persists across tab switches
+        this._erpState = null;
 
         this.init();
     }
@@ -128,6 +131,23 @@ class Dashboard {
             // Reset inline styles that may have been set by resize
             rightPane.style.width = '';
         }
+    }
+
+    // Tabs that require a completed analysis to be meaningful
+    _contentTabs() {
+        return ['attacks', 'controls', 'hardening', 'expert-review'];
+    }
+
+    _setContentTabsDisabled(disabled) {
+        this._contentTabs().forEach(name => {
+            const tab = document.querySelector(`.nav-tab[data-tab="${name}"]`);
+            if (!tab) return;
+            if (disabled) {
+                tab.classList.add('disabled');
+            } else {
+                tab.classList.remove('disabled');
+            }
+        });
     }
 
     initTabs() {
@@ -263,6 +283,9 @@ class Dashboard {
         document.getElementById('upload-form-container').style.display = 'none';
         document.getElementById('tab-content').style.display = 'block';
 
+        // Grey out content tabs while analysis is in progress
+        this._setContentTabsDisabled(true);
+
         // Reset progress
         this.updateProgress(0, 'Starting analysis...');
 
@@ -386,6 +409,9 @@ class Dashboard {
         const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
         if (expertReviewTab) expertReviewTab.style.display = 'block';
 
+        // Enable content tabs now that analysis data is available
+        this._setContentTabsDisabled(false);
+
         // Load current tab data
         this.loadTabData(this.currentTab);
     }
@@ -425,6 +451,9 @@ class Dashboard {
         // Hide Expert Review tab until MoE data confirmed
         const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
         if (expertReviewTab) expertReviewTab.style.display = 'none';
+
+        // Grey out content tabs — no data to show
+        this._setContentTabsDisabled(true);
 
         // Hide right pane
         this.hideRightPane();
@@ -1522,27 +1551,13 @@ class Dashboard {
                     Showing <strong id="control-count">${controlRecs.length}</strong> of ${controlRecs.length} controls
                 </div>
             </div>
-            <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px; border-left: 4px solid var(--primary-color);">
-                <h4 style="margin-bottom: 0.75rem; font-size: 1rem; color: var(--primary-color);">📖 Legend - Mitigation Priority</h4>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; font-size: 0.875rem;">
-                    <div>
-                        <strong style="color: var(--danger-color);">CRITICAL</strong> - Addresses high-risk threats (immediate action required)
-                    </div>
-                    <div>
-                        <strong style="color: var(--warning-color);">HIGH</strong> - Important security improvements (high priority)
-                    </div>
-                    <div>
-                        <strong style="color: var(--primary-color);">MEDIUM</strong> - Recommended enhancements (plan for deployment)
-                    </div>
-                </div>
-                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
-                    <strong style="color: var(--text-color);">Score:</strong> <span style="color: var(--text-secondary);">Combined metric from threat severity (RAPIDS), attack path coverage, and technique count</span>
-                </div>
-                <div style="margin-top: 0.5rem;">
-                    <strong style="color: var(--text-color);">Implementation:</strong> <span style="color: var(--text-secondary);">Shown when control has specific technical implementation details (Type, Layer, Placement). Generic controls show rationale only.</span>
-                </div>
-                <div style="margin-top: 0.5rem;">
-                    <strong style="color: var(--text-color);">Click any control</strong> <span style="color: var(--text-secondary);">to view detailed rationale, affected nodes, MITRE mappings in right pane</span>
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 8px;">
+                <div style="margin-bottom: 0.4rem; font-size: 0.875rem; font-weight: 700;">📖 Legend</div>
+                <div style="font-size: 0.8125rem; line-height: 1.6;">
+                    <div><strong style="color: var(--danger-color);">CRITICAL</strong> - High-risk threats requiring immediate action</div>
+                    <div><strong style="color: var(--warning-color);">HIGH</strong> - Important improvements, prioritise soon</div>
+                    <div><strong style="color: var(--primary-color);">MEDIUM</strong> - Recommended enhancements, plan for deployment</div>
+                    <div style="margin-top: 0.4rem; color: var(--text-tertiary);"><em>Score: threat severity (RAPIDS) × attack path coverage × technique count. Click any control to view full details in right pane.</em></div>
                 </div>
             </div>
             <div id="controls-list"></div>
@@ -3057,27 +3072,24 @@ class Dashboard {
         const listContainer = document.getElementById('reports-list');
         this.reportContents = {};
 
-        // Catalogue definitions — maps filename prefix/exact to metadata
+        // Reports tab shows markdown and mermaid only — JSON lives in Raw Data tab
         const REPORT_CATALOGUE = {
-            '01_executive_summary.md':    { id: 'executive',    title: 'Executive Summary',    icon: '📊', desc: 'High-level threat overview for leadership and CISOs', audience: 'stakeholder', type: 'markdown' },
-            '03_action_plan.md':          { id: 'action',       title: 'Action Plan',           icon: '✅', desc: 'Prioritised recommendations with implementation steps', audience: 'stakeholder', type: 'markdown' },
-            '08_improvement_summary.md':  { id: 'improvement',  title: 'Improvement Summary',   icon: '🗺️', desc: 'Roadmap across Quick Win, Recommended, and Maximum tiers', audience: 'stakeholder', type: 'markdown' },
-            'before.mmd':                 { id: 'before',       title: 'Current Architecture',  icon: '⚠️', desc: 'Architecture before hardening controls are applied', audience: 'stakeholder', type: 'mermaid', color: 'var(--danger-color)' },
-            'after.mmd':                  { id: 'after',        title: 'Hardened Architecture', icon: '🛡️', desc: 'Architecture with all recommended controls applied', audience: 'stakeholder', type: 'mermaid', color: 'var(--secondary-color)' },
-            '02_technical_report.md':     { id: 'technical',    title: 'Technical Report',      icon: '🔧', desc: 'Full MITRE ATT&CK technique mappings and control analysis', audience: 'technical', type: 'markdown' },
-            '04_architect_critique.json': { id: 'arch-critique', title: 'Architecture Review',  icon: '🏛️', desc: 'Expert assessment of threat model completeness', audience: 'expert', type: 'json' },
-            '05_tester_critique.json':    { id: 'tester-critique', title: 'Coverage Audit',     icon: '🧪', desc: 'MITRE technique coverage and mapping accuracy review', audience: 'expert', type: 'json' },
-            '06_red_team_critique.json':  { id: 'red-critique', title: 'Exploit Analysis',      icon: '🔴', desc: 'Red team assessment of control weaknesses and bypasses', audience: 'expert', type: 'json' },
-            '08a_quick_wins.mmd':         { id: 'tier-a',       title: 'Quick Wins Diagram',    icon: '⚡', desc: 'Architecture diagram with Quick Win controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--secondary-color)' },
-            '08b_recommended_target.mmd': { id: 'tier-b',       title: 'Recommended Diagram',   icon: '📈', desc: 'Architecture diagram with Recommended controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--primary-color)' },
-            '08c_maximum_security.mmd':   { id: 'tier-c',       title: 'Maximum Coverage',      icon: '🔒', desc: 'Architecture diagram with Maximum controls highlighted', audience: 'expert', type: 'mermaid', color: 'var(--warning-color)' },
+            '01_executive_summary.md':    { id: 'executive',   title: 'Executive Summary',   icon: '📊', desc: 'High-level threat overview for leadership and CISOs', audience: 'stakeholder', type: 'markdown' },
+            '03_action_plan.md':          { id: 'action',      title: 'Action Plan',          icon: '✅', desc: 'Prioritised recommendations with implementation steps', audience: 'stakeholder', type: 'markdown' },
+            '08_improvement_summary.md':  { id: 'improvement', title: 'Improvement Summary',  icon: '🗺️', desc: 'Roadmap across Quick Win, Recommended, and Maximum tiers', audience: 'stakeholder', type: 'markdown' },
+            'before.mmd':                 { id: 'before',      title: 'Current Architecture', icon: '⚠️', desc: 'Architecture before hardening controls are applied', audience: 'stakeholder', type: 'mermaid', color: 'var(--danger-color)' },
+            'after.mmd':                  { id: 'after',       title: 'Hardened Architecture',icon: '🛡️', desc: 'Architecture with all recommended controls applied', audience: 'stakeholder', type: 'mermaid', color: 'var(--secondary-color)' },
+            '02_technical_report.md':     { id: 'technical',   title: 'Technical Report',     icon: '🔧', desc: 'Full MITRE ATT&CK technique mappings and control analysis', audience: 'technical', type: 'markdown' },
+            '08a_quick_wins.mmd':         { id: 'tier-a',      title: 'Quick Wins Diagram',   icon: '⚡', desc: 'Architecture diagram with Quick Win controls highlighted', audience: 'technical', type: 'mermaid', color: 'var(--secondary-color)' },
+            '08b_recommended_target.mmd': { id: 'tier-b',      title: 'Recommended Diagram',  icon: '📈', desc: 'Architecture diagram with Recommended controls highlighted', audience: 'technical', type: 'mermaid', color: 'var(--primary-color)' },
+            '08c_maximum_security.mmd':   { id: 'tier-c',      title: 'Maximum Coverage',     icon: '🔒', desc: 'Architecture diagram with Maximum controls highlighted', audience: 'technical', type: 'mermaid', color: 'var(--warning-color)' },
         };
 
-        // Suppressed files (raw data, noise, or duplicates)
-        const SUPPRESSED = new Set(['ground_truth.json', '07_moe_orchestrator.json', '07_orchestrator_report.json', 'README.md']);
+        // Skip JSON and README — JSON belongs in Raw Data, README is noise
+        const SKIP_EXTS = new Set(['.json']);
+        const SKIP_FILES = new Set(['README.md']);
 
-        // Build report objects from files returned by API
-        const byAudience = { stakeholder: [], technical: [], expert: [] };
+        const byAudience = { stakeholder: [], technical: [] };
         const fileMap = {};
         allFiles.forEach(f => fileMap[f.filename] = f);
 
@@ -3087,43 +3099,33 @@ class Dashboard {
             }
         });
 
-        // Any unrecognised files not suppressed go to technical as raw items
+        // Any unrecognised non-JSON files not skipped go to technical
         allFiles.forEach(f => {
-            if (!REPORT_CATALOGUE[f.filename] && !SUPPRESSED.has(f.filename)) {
+            const ext = f.filename.includes('.') ? '.' + f.filename.split('.').pop() : '';
+            if (!REPORT_CATALOGUE[f.filename] && !SKIP_EXTS.has(ext) && !SKIP_FILES.has(f.filename)) {
                 byAudience.technical.push({
-                    id: f.filename,
-                    title: f.filename,
-                    icon: f.type === 'json' ? '📊' : f.type === 'mermaid' ? '🏗️' : '📄',
-                    desc: '',
-                    audience: 'technical',
-                    type: f.type,
-                    filename: f.filename,
-                    url: f.url,
-                    size: f.size
+                    id: f.filename, title: f.filename,
+                    icon: f.type === 'mermaid' ? '🏗️' : '📄',
+                    desc: '', audience: 'technical', type: f.type,
+                    filename: f.filename, url: f.url, size: f.size
                 });
             }
         });
-
-        const hasExpert = byAudience.expert.length > 0;
-
-        // Stakeholder download pack filenames
-        const stakeholderFiles = byAudience.stakeholder.map(r => r.filename);
-        const allPackFiles = [...stakeholderFiles, ...byAudience.technical.map(r => r.filename), ...byAudience.expert.map(r => r.filename)];
 
         listContainer.innerHTML = `
             <!-- Download packs -->
             <div style="display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;">
                 <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 600;">Download:</span>
-                <a id="dl-stakeholder-pack" href="/api/v1/reports/${archName}/download?pack=stakeholder" download="${archName}_stakeholder.zip"
+                <a href="/api/v1/reports/${archName}/download?pack=stakeholder" download="${archName}_stakeholder.zip"
                    class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 600; text-decoration: none;">
                     ⬇ Stakeholder Pack
                 </a>
-                <a id="dl-full-pack" href="/api/v1/reports/${archName}/download?pack=full" download="${archName}_full.zip"
+                <a href="/api/v1/reports/${archName}/download?pack=reports" download="${archName}_reports.zip"
                    style="padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 600; background: transparent; color: var(--text-color); border: 1.5px solid var(--border-color); border-radius: 6px; text-decoration: none;">
-                    ⬇ Full Pack
+                    ⬇ All Reports
                 </a>
                 <span style="font-size: 0.75rem; color: var(--text-tertiary); margin-left: auto;">
-                    Click any card to preview · ⬇ to download file
+                    Click any card to preview · ⬇ on card to download · JSON data → Raw Data tab
                 </span>
             </div>
 
@@ -3152,23 +3154,9 @@ class Dashboard {
                     ${byAudience.technical.map(r => this._reportCard(r, archName)).join('')}
                 </div>
             </div>` : ''}
-
-            <!-- Section: Expert Review Findings (only when MoE data present) -->
-            ${hasExpert ? `
-            <div class="report-section" style="margin-bottom: 1.5rem;">
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
-                    <span style="font-size: 1.125rem;">🧑‍🏫</span>
-                    <h4 style="margin: 0; color: var(--text-color); font-size: 0.9375rem;">Expert Review Findings</h4>
-                    <span style="font-size: 0.75rem; color: var(--secondary-color); padding: 0.125rem 0.5rem; background: var(--secondary-color)18; border-radius: 10px; border: 1px solid var(--secondary-color)44;">Validated</span>
-                </div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.625rem;">
-                    ${byAudience.expert.map(r => this._reportCard(r, archName)).join('')}
-                </div>
-            </div>` : ''}
         `;
 
-        // Wire card clicks → right pane preview
-        const allReports = [...byAudience.stakeholder, ...byAudience.technical, ...byAudience.expert];
+        const allReports = [...byAudience.stakeholder, ...byAudience.technical];
         listContainer.querySelectorAll('[data-report-id]').forEach(card => {
             card.addEventListener('click', () => {
                 listContainer.querySelectorAll('[data-report-id]').forEach(c => {
@@ -3296,6 +3284,207 @@ class Dashboard {
         }
     }
 
+    // Return the button-row HTML for a given ERP state: 'idle' | 'running' | 'paused'
+    _erpButtonRowHtml(archName, erpState) {
+        if (erpState === 'running') {
+            return `<div id="erp-btn-row" style="display:inline-flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; flex-wrap:wrap; justify-content:center;">
+                <button id="run-expert-review-btn" disabled
+                    style="background:var(--primary-color); color:#fff; border:none; border-radius:8px;
+                           padding:0.75rem 1.75rem; font-size:0.9375rem; font-weight:600; cursor:default; opacity:0.6;">
+                    Running…
+                </button>
+                <button id="pause-expert-review-btn" onclick="window.dashboard._pauseExpertReview()"
+                    style="background:transparent; color:var(--warning-color); border:1px solid var(--warning-color);
+                           border-radius:6px; padding:0.35rem 0.9rem; font-size:0.8125rem; font-weight:600; cursor:pointer;">
+                    ⏸ Pause
+                </button>
+                <button id="cancel-expert-review-btn" onclick="window.dashboard._cancelExpertReview()"
+                    style="background:transparent; color:var(--danger-color); border:1px solid var(--danger-color);
+                           border-radius:6px; padding:0.35rem 0.9rem; font-size:0.8125rem; font-weight:600; cursor:pointer;">
+                    ✕ Cancel
+                </button>
+            </div>`;
+        }
+        if (erpState === 'paused') {
+            return `<div id="erp-btn-row" style="display:inline-flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; flex-wrap:wrap; justify-content:center;">
+                <button id="run-expert-review-btn" onclick="window.dashboard._resumeExpertReview()"
+                    style="background:var(--primary-color); color:#fff; border:none; border-radius:8px;
+                           padding:0.75rem 1.75rem; font-size:0.9375rem; font-weight:600; cursor:pointer;">
+                    ▶ Resume
+                </button>
+                <button id="cancel-expert-review-btn" onclick="window.dashboard._cancelExpertReview()"
+                    style="background:transparent; color:var(--danger-color); border:1px solid var(--danger-color);
+                           border-radius:6px; padding:0.35rem 0.9rem; font-size:0.8125rem; font-weight:600; cursor:pointer;">
+                    ✕ Cancel
+                </button>
+            </div>`;
+        }
+        // idle
+        return `<div id="erp-btn-row" style="display:inline-flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; flex-wrap:wrap; justify-content:center;">
+            <button id="run-expert-review-btn" onclick="window.dashboard.runExpertReview('${archName}')"
+                style="background:var(--primary-color); color:#fff; border:none; border-radius:8px;
+                       padding:0.75rem 1.75rem; font-size:0.9375rem; font-weight:600; cursor:pointer;">
+                Run Expert Review (~90 s)
+            </button>
+        </div>`;
+    }
+
+    // Swap the button row in-place without re-rendering the whole shell
+    _syncErpButtons(archName, erpState) {
+        const row = document.getElementById('erp-btn-row');
+        if (row) row.outerHTML = this._erpButtonRowHtml(archName, erpState);
+    }
+
+    // Build the progress UI shell — idle / running / paused states
+    _erpProgressShell(archName, erpState) {
+        const isActive = erpState === 'running' || erpState === 'paused';
+        const heading = erpState === 'running' ? 'Expert Review Running…'
+                      : erpState === 'paused'  ? 'Expert Review Paused'
+                      : 'Expert Review Not Run';
+        const subtitle = erpState === 'running' ? 'Analysis is in progress. Results appear as each critic finishes.'
+                       : erpState === 'paused'  ? 'Analysis is paused. Previously completed critics are saved. Resume to continue from where it stopped.'
+                       : 'The expert panel (Architecture Review, Coverage Audit, Exploit Analysis) has not reviewed this assessment yet. Running it adjusts confidence from the Foundation Score and unlocks the Improvement Roadmap.';
+        const progressDisplay = isActive ? 'block' : 'none';
+        return `
+            <div style="text-align: center; padding: 3rem 2rem;">
+                <div style="font-size: 3rem; margin-bottom: 1rem;">🧑‍🏫</div>
+                <h3 style="color: var(--text-color); margin-bottom: 0.75rem;">${heading}</h3>
+                <p style="color: var(--text-secondary); max-width: 440px; margin: 0 auto 1.5rem;">${subtitle}</p>
+                ${this._erpButtonRowHtml(archName, erpState)}
+                <div id="expert-review-progress" style="display:${progressDisplay}; max-width: 520px; margin: 0 auto; text-align: left;">
+                    <div style="background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); padding: 1rem;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span id="erp-stage-label" style="font-size:0.875rem; color: var(--text-secondary);">Starting...</span>
+                            <span id="erp-pct" style="font-size:0.875rem; font-weight:600; color:var(--primary-color);">0%</span>
+                        </div>
+                        <div style="background: var(--nav-hover-bg); border-radius: 4px; height: 6px; overflow: hidden;">
+                            <div id="erp-bar" style="height:100%; width:0%; background: var(--primary-color); transition: width 0.4s ease;"></div>
+                        </div>
+                        <div id="erp-message" style="font-size:0.8125rem; color:var(--text-tertiary); margin-top:0.5rem; min-height:1.2em;"></div>
+                        <!-- Progressive agent status cards -->
+                        <div style="display:flex; gap:0.5rem; margin-top:0.875rem; flex-wrap:wrap;">
+                            <div id="erp-card-architect" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                <div style="font-size:0.875rem;">🏛️</div>
+                                <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Architect</div>
+                                <div id="erp-card-architect-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                                <div id="erp-card-architect-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
+                            </div>
+                            <div id="erp-card-tester" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                <div style="font-size:0.875rem;">🔬</div>
+                                <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Tester</div>
+                                <div id="erp-card-tester-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                                <div id="erp-card-tester-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
+                            </div>
+                            <div id="erp-card-red_team" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                <div style="font-size:0.875rem;">🎯</div>
+                                <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Red Team</div>
+                                <div id="erp-card-red_team-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                                <div id="erp-card-red_team-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
+                            </div>
+                            <div id="erp-card-synthesis" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                <div style="font-size:0.875rem;">⚙️</div>
+                                <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Synthesis</div>
+                                <div id="erp-card-synthesis-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="expert-review-error" style="display:none; color:var(--danger-color); font-size:0.875rem; margin-top:1rem; max-width:440px; margin-left:auto; margin-right:auto;"></div>
+            </div>
+            <!-- Progressive critic details rendered here as each critic completes -->
+            <div id="erp-live-results" style="max-width:700px; margin:1.5rem auto 0; text-align:left;"></div>`;
+    }
+
+    // Re-apply in-progress state to the freshly rendered progress UI cards
+    _erpRestoreState() {
+        const s = this._erpState;
+        if (!s) return;
+        const bar = document.getElementById('erp-bar');
+        const pct = document.getElementById('erp-pct');
+        const stageLabel = document.getElementById('erp-stage-label');
+        const message = document.getElementById('erp-message');
+        if (bar) bar.style.width = (s.pct || 0) + '%';
+        if (pct) pct.textContent = (s.pct || 0) + '%';
+        const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
+        if (stageLabel) stageLabel.textContent = stageMap[s.stage] || (s.stage || 'Starting...');
+        if (message) message.textContent = s.message || '';
+        // Restore each critic card from saved cardStates
+        const agentOrder = ['architect', 'tester', 'red_team', 'synthesis'];
+        for (const agent of agentOrder) {
+            const cs = s.cardStates && s.cardStates[agent];
+            if (!cs) continue;
+            const card = document.getElementById('erp-card-' + agent);
+            const statusEl = document.getElementById('erp-card-' + agent + '-status');
+            const previewEl = document.getElementById('erp-card-' + agent + '-preview');
+            if (!card || !statusEl) continue;
+            card.style.opacity = cs.opacity;
+            card.style.borderColor = cs.borderColor;
+            statusEl.innerHTML = cs.statusHtml;
+            statusEl.style.color = cs.statusColor;
+            if (previewEl && cs.previewHtml) {
+                previewEl.innerHTML = cs.previewHtml;
+                previewEl.style.display = 'block';
+            }
+        }
+        // Restore progressive live results
+        const liveEl = document.getElementById('erp-live-results');
+        if (liveEl && s.liveResults && s.liveResults.length > 0) {
+            liveEl.innerHTML = s.liveResults.join('');
+        }
+    }
+
+    // Pause: abort the SSE stream but keep _erpState so the user can resume
+    _pauseExpertReview() {
+        const s = this._erpState;
+        if (!s || s.status !== 'running') return;
+        if (s.abortController) s.abortController.abort();
+        s.status = 'paused';
+        s.abortController = null;
+        s.message = 'Paused — click Resume to continue from where it stopped.';
+        this._syncErpButtons(s.archName, 'paused');
+        // Update stage label if visible
+        const stageLabel = document.getElementById('erp-stage-label');
+        if (stageLabel) stageLabel.textContent = '⏸ Paused';
+        const msgEl = document.getElementById('erp-message');
+        if (msgEl) msgEl.textContent = s.message;
+    }
+
+    // Resume: start a new SSE fetch — orchestrator will load saved critics from disk
+    _resumeExpertReview() {
+        const s = this._erpState;
+        if (!s || s.status !== 'paused') return;
+        const archName = s.archName;
+        // Re-wire a new AbortController and reset status to running
+        s.abortController = new AbortController();
+        s.status = 'running';
+        this._syncErpButtons(archName, 'running');
+        // Re-launch the SSE pump — re-uses existing _erpState so card/live state is preserved
+        this._launchErpFetch(archName);
+    }
+
+    // Cancel: abort the SSE stream AND purge partial files
+    async _cancelExpertReview() {
+        const s = this._erpState;
+        if (!s) return;
+        if (s.abortController) s.abortController.abort();
+        const archName = s.archName;
+        this._erpState = null;
+
+        // Delete partial critic files so a fresh run starts clean
+        if (archName) {
+            const apiKey = localStorage.getItem('tm_api_key') || '';
+            try {
+                await fetch(`/api/v1/expert-review/cancel?architecture_name=${encodeURIComponent(archName)}`, {
+                    method: 'DELETE',
+                    headers: { 'TM-API-KEY': apiKey }
+                });
+            } catch (_) {}
+        }
+
+        // Re-render tab to idle state
+        this.loadExpertReviewTab();
+    }
+
     async loadExpertReviewTab() {
         const container = document.getElementById('expert-review-content');
         if (!this.analysisData) {
@@ -3309,62 +3498,19 @@ class Dashboard {
             return;
         }
 
+        // If a run is in-progress or paused for this architecture, restore the progress UI
+        if (this._erpState && (this._erpState.status === 'running' || this._erpState.status === 'paused') && this._erpState.archName === archName) {
+            container.innerHTML = this._erpProgressShell(archName, this._erpState.status);
+            this._erpRestoreState();
+            return;
+        }
+
         container.innerHTML = '<p class="placeholder">Loading expert review data...</p>';
 
         try {
             const response = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
             if (!response.ok) {
-                container.innerHTML = `
-                    <div style="text-align: center; padding: 3rem 2rem;">
-                        <div style="font-size: 3rem; margin-bottom: 1rem;">🧑‍🏫</div>
-                        <h3 style="color: var(--text-color); margin-bottom: 0.75rem;">Expert Review Not Run</h3>
-                        <p style="color: var(--text-secondary); max-width: 440px; margin: 0 auto 1.5rem;">
-                            The expert panel (Architecture Review, Coverage Audit, Exploit Analysis) has not reviewed this assessment yet.
-                            Running it adjusts confidence from the Foundation Score and unlocks the Improvement Roadmap.
-                        </p>
-                        <button id="run-expert-review-btn" onclick="window.dashboard.runExpertReview('${archName}')"
-                            style="background: var(--primary-color); color: #fff; border: none; border-radius: 8px;
-                                   padding: 0.75rem 1.75rem; font-size: 0.9375rem; font-weight: 600;
-                                   cursor: pointer; margin-bottom: 1.5rem;">
-                            Run Expert Review (~90 s)
-                        </button>
-                        <div id="expert-review-progress" style="display:none; max-width: 520px; margin: 0 auto; text-align: left;">
-                            <div style="background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); padding: 1rem;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                    <span id="erp-stage-label" style="font-size:0.875rem; color: var(--text-secondary);">Starting...</span>
-                                    <span id="erp-pct" style="font-size:0.875rem; font-weight:600; color:var(--primary-color);">0%</span>
-                                </div>
-                                <div style="background: var(--nav-hover-bg); border-radius: 4px; height: 6px; overflow: hidden;">
-                                    <div id="erp-bar" style="height:100%; width:0%; background: var(--primary-color); transition: width 0.4s ease;"></div>
-                                </div>
-                                <div id="erp-message" style="font-size:0.8125rem; color:var(--text-tertiary); margin-top:0.5rem; min-height:1.2em;"></div>
-                                <!-- Progressive agent status cards -->
-                                <div style="display:flex; gap:0.5rem; margin-top:0.875rem; flex-wrap:wrap;">
-                                    <div id="erp-card-architect" style="flex:1; min-width:120px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
-                                        <div style="font-size:0.875rem;">🏛️</div>
-                                        <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Architect</div>
-                                        <div id="erp-card-architect-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
-                                    </div>
-                                    <div id="erp-card-tester" style="flex:1; min-width:120px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
-                                        <div style="font-size:0.875rem;">🔬</div>
-                                        <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Tester</div>
-                                        <div id="erp-card-tester-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
-                                    </div>
-                                    <div id="erp-card-red_team" style="flex:1; min-width:120px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
-                                        <div style="font-size:0.875rem;">🎯</div>
-                                        <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Red Team</div>
-                                        <div id="erp-card-red_team-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
-                                    </div>
-                                    <div id="erp-card-synthesis" style="flex:1; min-width:120px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
-                                        <div style="font-size:0.875rem;">⚙️</div>
-                                        <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Synthesis</div>
-                                        <div id="erp-card-synthesis-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div id="expert-review-error" style="display:none; color:var(--danger-color); font-size:0.875rem; margin-top:1rem; max-width:440px; margin-left:auto; margin-right:auto;"></div>
-                    </div>`;
+                container.innerHTML = this._erpProgressShell(archName, 'idle');
                 return;
             }
 
@@ -3441,6 +3587,19 @@ class Dashboard {
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
                     + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + cards + '</div>'
+                    + '</div>';
+            } else {
+                // No contradictions — always show this section so users know the experts agreed
+                contradictionsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                    + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
+                    + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">✅ Expert Disagreements</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">No contradictions — all three critics are in agreement on this assessment.</p></div>'
+                    + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;"> ⌄</span>'
+                    + '</div>'
+                    + '<div class="er-panel-body" style="padding: 0.75rem 1.25rem 1rem;">'
+                    + '<div style="padding:0.65rem 1rem; background:var(--secondary-color)14; border:1px solid var(--secondary-color)44; border-radius:8px; font-size:0.875rem; color:var(--secondary-color);">'
+                    + 'Architect, Tester, and Red Team reached consensus — no conflicting findings to resolve.'
+                    + '</div></div>'
                     + '</div>';
             }
 
@@ -3546,11 +3705,12 @@ class Dashboard {
             for (const e of expertDefs) {
                 const v = expertValidations[e.key];
                 if (!v) continue;
-                const adj = ((v.confidence_adjustment || 0) * 100).toFixed(1);
-                const sign = parseFloat(adj) >= 0 ? '+' : '';
+                const adjNum = parseFloat(((v.confidence_adjustment || 0) * 100).toFixed(1));
+                const adjWfLabel = adjNum === 0 ? '±0%' : (adjNum > 0 ? '+' : '') + adjNum + '%';
+                const adjWfColor = adjNum < 0 ? 'var(--warning-color)' : adjNum === 0 ? 'var(--text-tertiary)' : 'var(--secondary-color)';
                 waterfallNodes += '<div style="color: var(--text-tertiary); font-size: 1.25rem;">→</div>'
                     + '<div style="text-align: center; min-width: 80px;">'
-                    + '<div style="font-size: 1rem; font-weight: 600; color: var(--warning-color);">' + sign + adj + '%</div>'
+                    + '<div style="font-size: 1rem; font-weight: 600; color: ' + adjWfColor + ';">' + adjWfLabel + '</div>'
                     + '<div style="font-size: 0.75rem; color: var(--text-secondary);">' + e.label + '</div>'
                     + '</div>';
             }
@@ -3560,8 +3720,9 @@ class Dashboard {
             for (const e of expertDefs) {
                 const v = expertValidations[e.key];
                 if (!v) continue;
-                const adj = ((v.confidence_adjustment || 0) * 100).toFixed(1);
-                const sign = parseFloat(adj) >= 0 ? '+' : '';
+                const adjNum2 = parseFloat(((v.confidence_adjustment || 0) * 100).toFixed(1));
+                const adj = adjNum2 === 0 ? '±0' : (adjNum2 > 0 ? '+' : '') + adjNum2;
+                const sign = '';
                 const status = v.validation_status || 'UNKNOWN';
                 const color = statusColor[status] || 'var(--text-secondary)';
                 const statusText = status.replace(/_/g, ' ');
@@ -3578,35 +3739,43 @@ class Dashboard {
                         + (g.recommendation ? '<div style="font-size: 0.8125rem; color: var(--secondary-color);">→ ' + g.recommendation + '</div>' : '')
                         + '</div>';
                 }
-                // Sub-dimension breakdown bars (tester only, when breakdown data present)
+                // Sub-dimension breakdown (tester only) — compact score chips + gaps-only reasoning
                 let breakdownBars = '';
                 if (e.key === 'tester' && v.breakdown && Object.keys(v.breakdown).length > 0) {
                     const subLabels = {
-                        validation_checks:    'Validation Checks',
-                        coverage_metrics:     'Coverage Metrics',
-                        internal_consistency: 'Internal Consistency',
-                        roadmap_validation:   'Roadmap Validation',
+                        validation_checks:    'Validation',
+                        coverage_metrics:     'Coverage',
+                        internal_consistency: 'Consistency',
+                        roadmap_validation:   'Roadmap',
                     };
-                    let bars = '';
+                    // Score chips row
+                    let chips = '';
+                    let gapNotes = '';
                     for (const [subKey, subData] of Object.entries(v.breakdown)) {
                         if (typeof subData !== 'object' || !subData.max) continue;
                         const pct = Math.round((subData.score / subData.max) * 100);
-                        const barColor = pct < 50 ? 'var(--danger-color)' : pct < 75 ? 'var(--warning-color)' : 'var(--secondary-color)';
-                        const warning = pct < 50 ? ' <span style="color:var(--danger-color); font-size:0.7rem;">⚠ critically low</span>' : '';
-                        bars += '<div style="margin-bottom:0.5rem;">'
-                            + '<div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.2rem;">'
-                            + '<span>' + (subLabels[subKey] || subKey) + warning + '</span>'
-                            + '<span style="color:var(--text-color); font-weight:600;">' + subData.score + '/' + subData.max + ' (' + pct + '%)</span>'
-                            + '</div>'
-                            + '<div style="background:var(--nav-hover-bg); border-radius:3px; height:6px; overflow:hidden;">'
-                            + '<div style="width:' + pct + '%; height:100%; background:' + barColor + '; border-radius:3px;"></div>'
-                            + '</div>'
-                            + (subData.reasoning ? '<div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.15rem; font-style:italic;">' + subData.reasoning + '</div>' : '')
-                            + '</div>';
+                        const chipColor = pct < 50 ? 'var(--danger-color)' : pct < 75 ? 'var(--warning-color)' : 'var(--secondary-color)';
+                        chips += '<span title="' + (subLabels[subKey] || subKey) + ': ' + subData.score + '/' + subData.max + '" '
+                            + 'style="display:inline-flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:2px 8px; border-radius:10px; background:' + chipColor + '18; border:1px solid ' + chipColor + '44; color:' + chipColor + '; font-weight:600; white-space:nowrap;">'
+                            + (subLabels[subKey] || subKey) + ' <span style="color:var(--text-color);">' + subData.score + '/' + subData.max + '</span>'
+                            + '</span>';
+                        // Only show reasoning for dims that lost points
+                        if (pct < 100 && subData.reasoning) {
+                            // Extract first sentence — the "why it's not full"
+                            const firstSentence = subData.reasoning.split(/\.\s+/)[0].replace(/^(All|No |The )/i, s => s).trim();
+                            if (firstSentence.length > 10) {
+                                gapNotes += '<div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:0.25rem;">'
+                                    + '<span style="color:' + chipColor + '; font-weight:600;">' + (subLabels[subKey] || subKey) + ':</span> '
+                                    + firstSentence + (firstSentence.endsWith('.') ? '' : '.')
+                                    + '</div>';
+                            }
+                        }
                     }
-                    breakdownBars = '<div style="margin-bottom:0.75rem; padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px;">'
-                        + '<div style="font-size:0.75rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.5rem; text-transform:uppercase; letter-spacing:0.04em;">Sub-dimension scores</div>'
-                        + bars + '</div>';
+                    breakdownBars = '<div style="margin-bottom:0.75rem; padding:0.65rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px;">'
+                        + '<div style="display:flex; align-items:center; gap:0.35rem; flex-wrap:wrap; margin-bottom:' + (gapNotes ? '0.5rem' : '0') + ';">'
+                        + chips + '</div>'
+                        + (gapNotes ? '<div style="border-top:1px solid var(--border-color); padding-top:0.4rem;">' + gapNotes + '</div>' : '')
+                        + '</div>';
                 }
 
                 const bodyHtml = gaps.length > 0
@@ -3629,7 +3798,7 @@ class Dashboard {
                     + '</div>'
                     + '<div style="display:flex; align-items:center; gap:1rem;">'
                     + '<div style="text-align: right;">'
-                    + '<div style="font-size: 1.125rem; font-weight: 700; color: var(--warning-color);">' + sign + adj + '%</div>'
+                    + '<div style="font-size: 1.125rem; font-weight: 700; color: ' + (adjNum2 < 0 ? 'var(--warning-color)' : adjNum2 === 0 ? 'var(--text-tertiary)' : 'var(--secondary-color)') + ';">' + sign + adj + '%</div>'
                     + '<div style="font-size: 0.75rem; font-weight: 600; color: ' + color + ';" title="' + statusExplain + '">' + statusText + '</div>'
                     + '</div>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
@@ -3776,28 +3945,178 @@ class Dashboard {
         this.showRightPane('⚠️ ' + (c.topic || 'Disagreement'), content);
     }
 
+    // Build a live critic result card HTML from a critic_result SSE event payload
+    _buildLiveCriticCard(data) {
+        const labels = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team' };
+        const roles  = { architect: 'Architecture Review', tester: 'Coverage Audit', red_team: 'Exploit Analysis' };
+        const statusColor = data.status_color || 'var(--secondary-color)';
+        const adjPct = parseFloat(data.confidence_adjustment_pct);
+        const adjLabel = adjPct === 0 ? 'No adjustment' : (adjPct > 0 ? '+' : '') + adjPct + '% confidence';
+        const adjColor = adjPct < 0 ? 'var(--warning-color)' : adjPct === 0 ? 'var(--text-tertiary)' : 'var(--secondary-color)';
+        const statusText = (data.validation_status || '').replace(/_/g, ' ');
+        const sevColor = { CRITICAL: 'var(--danger-color)', HIGH: 'var(--danger-color)', MEDIUM: 'var(--warning-color)', LOW: 'var(--text-tertiary)' };
+
+        // Gap rows
+        let gapRows = '';
+        for (const g of (data.top_gaps || [])) {
+            const sc = sevColor[(g.severity || '').toUpperCase()] || 'var(--text-tertiary)';
+            gapRows += '<div style="padding:0.5rem 0.65rem; background:var(--bg-color); border-radius:5px; margin-bottom:0.35rem; border-left:3px solid ' + sc + ';">'
+                + (g.severity ? '<span style="font-size:0.7rem; font-weight:700; color:' + sc + ';">' + g.severity + '</span> ' : '')
+                + '<span style="font-size:0.8125rem; color:var(--text-secondary);">' + (g.description || '') + '</span>'
+                + '</div>';
+        }
+        const moreGaps = data.gap_count > (data.top_gaps || []).length
+            ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">+ ' + (data.gap_count - (data.top_gaps || []).length) + ' more — full details after completion</div>'
+            : '';
+
+        // Strengths (compact, one line each)
+        let strengthRows = '';
+        for (const s of (data.top_strengths || [])) {
+            strengthRows += '<div style="font-size:0.8rem; color:var(--secondary-color); margin-bottom:0.2rem;">✓ ' + s + '</div>';
+        }
+
+        return '<div style="background:var(--card-bg); border:1px solid ' + statusColor + '44; border-left:3px solid ' + statusColor + '; border-radius:8px; padding:0.875rem 1rem; margin-bottom:0.75rem;">'
+            + '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.25rem;">'
+            + '<div style="font-weight:700; color:var(--text-color); font-size:0.9375rem;">' + (labels[data.critic] || data.critic) + ' <span style="font-weight:400; font-size:0.8125rem; color:var(--text-tertiary);">' + (roles[data.critic] || '') + '</span></div>'
+            + '<div style="display:flex; align-items:center; gap:0.75rem; flex-shrink:0;">'
+            + '<span style="font-size:0.8125rem; color:var(--text-secondary);">' + data.score + '/100</span>'
+            + '<span style="font-size:0.8125rem; font-weight:600; color:' + adjColor + ';">' + adjLabel + '</span>'
+            + '<span style="font-size:0.8rem; font-weight:700; color:' + statusColor + '; background:' + statusColor + '18; border:1px solid ' + statusColor + '44; border-radius:6px; padding:1px 7px;">' + statusText + '</span>'
+            + '</div></div>'
+            + (gapRows ? '<div style="margin-bottom:0.4rem;">' + gapRows + moreGaps + '</div>' : '')
+            + (strengthRows ? '<div style="border-top:1px solid var(--border-color); padding-top:0.4rem; margin-top:0.4rem;">' + strengthRows + '</div>' : '')
+            + '</div>';
+    }
+
     runExpertReview(archName) {
-        const btn = document.getElementById('run-expert-review-btn');
+        if (!archName) return;
+
+        // Initialise persistent run state — survives tab switches
+        // status: 'running' | 'paused'
+        const abortController = new AbortController();
+        this._erpState = {
+            status: 'running',
+            archName,
+            stage: 'architect',
+            pct: 0,
+            message: 'Starting...',
+            cardStates: {},      // keyed by critic name
+            liveResults: [],     // ordered array of rendered critic HTML blocks
+            abortController,
+        };
+
+        // Swap buttons to running state immediately (before any tab switch)
+        this._syncErpButtons(archName, 'running');
+
+        // Ensure the progress box is visible
         const progressBox = document.getElementById('expert-review-progress');
         const errorBox = document.getElementById('expert-review-error');
-        const bar = document.getElementById('erp-bar');
-        const pct = document.getElementById('erp-pct');
-        const stageLabel = document.getElementById('erp-stage-label');
-        const message = document.getElementById('erp-message');
-
-        if (!btn || !progressBox) return;
-
-        btn.disabled = true;
-        btn.textContent = 'Running...';
-        btn.style.opacity = '0.6';
-        progressBox.style.display = 'block';
+        if (progressBox) progressBox.style.display = 'block';
         if (errorBox) errorBox.style.display = 'none';
 
+        this._launchErpFetch(archName);
+    }
+
+    // Apply a progress SSE event to state + DOM
+    _erpApplyProgress(data) {
+        if (!this._erpState) return;
+        const p = data.progress || 0;
+        this._erpState.pct = p;
+        this._erpState.stage = data.stage || this._erpState.stage;
+        this._erpState.message = data.message || '';
+        const bar = document.getElementById('erp-bar');
+        const pctEl = document.getElementById('erp-pct');
+        const stageLabel = document.getElementById('erp-stage-label');
+        const msgEl = document.getElementById('erp-message');
+        if (bar) bar.style.width = p + '%';
+        if (pctEl) pctEl.textContent = p + '%';
+        const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
+        if (stageLabel) stageLabel.textContent = stageMap[data.stage] || data.stage;
+        if (msgEl) msgEl.textContent = data.message || '';
+
+        // Derive a compact synthesis sub-step label from the message for the card status
+        const synthSubStepLabel = (() => {
+            const m = data.message || '';
+            if (m.includes('confidence score'))  return '⚙ Calculating confidence...';
+            if (m.includes('LLM synthesising'))  return '⚙ LLM consensus (~20s)...';
+            if (m.includes('roadmap'))            return '⚙ Building roadmap...';
+            if (m.includes('Saving'))             return '⚙ Saving results...';
+            if (m.includes('executive') || m.includes('diagram')) return '⚙ Generating reports...';
+            return '⚙ Running...';
+        })();
+
+        const agentOrder = ['architect', 'tester', 'red_team', 'synthesis'];
+        const currentIdx = agentOrder.indexOf(data.stage);
+        for (let i = 0; i < agentOrder.length; i++) {
+            const agent = agentOrder[i];
+            if (this._erpState.cardStates[agent] && this._erpState.cardStates[agent].isCriticResult) continue;
+            const card = document.getElementById('erp-card-' + agent);
+            const statusEl = document.getElementById('erp-card-' + agent + '-status');
+            if (!card || !statusEl) continue;
+            let cs;
+            if (i < currentIdx) {
+                cs = { opacity: '1', borderColor: 'var(--secondary-color)', statusHtml: '✓ Done', statusColor: 'var(--secondary-color)', isCriticResult: false };
+            } else if (i === currentIdx) {
+                const runningLabel = agent === 'synthesis' ? synthSubStepLabel : 'Running...';
+                cs = { opacity: '1', borderColor: 'var(--primary-color)', statusHtml: runningLabel, statusColor: 'var(--primary-color)', isCriticResult: false };
+            } else {
+                cs = { opacity: '0.35', borderColor: 'var(--border-color)', statusHtml: 'Waiting', statusColor: 'var(--text-tertiary)', isCriticResult: false };
+            }
+            this._erpState.cardStates[agent] = cs;
+            card.style.opacity = cs.opacity;
+            card.style.borderColor = cs.borderColor;
+            statusEl.innerHTML = cs.statusHtml;
+            statusEl.style.color = cs.statusColor;
+        }
+    }
+
+    // Apply a critic_result SSE event to state + DOM
+    _erpApplyCriticResult(data) {
+        if (!this._erpState) return;
+        const critic = data.critic;
+        const statusColor = data.status_color || 'var(--secondary-color)';
+        const adjPct2 = parseFloat(data.confidence_adjustment_pct);
+        const adjLabel2 = adjPct2 === 0 ? 'No adjustment' : (adjPct2 > 0 ? '+' : '') + adjPct2 + '% conf';
+        const statusHtml =
+            '<span style="color:' + statusColor + '; font-weight:600;">' + (data.validation_status || '') + '</span>'
+            + ' &nbsp;<span style="color:var(--text-tertiary);">' + data.score + '/100</span>';
+        let previewHtml = '<div style="color:var(--text-secondary);">'
+            + adjLabel2
+            + ' &nbsp;&bull;&nbsp; ' + data.gap_count + ' gap' + (data.gap_count !== 1 ? 's' : '')
+            + '</div>';
+        if (data.top_gaps && data.top_gaps.length > 0) {
+            const g = data.top_gaps[0];
+            previewHtml += '<div style="margin-top:0.2rem; color:var(--text-tertiary); overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">'
+                + (g.severity ? '<b>' + g.severity + '</b>: ' : '')
+                + (g.description || '')
+                + '</div>';
+        }
+        this._erpState.cardStates[critic] = { opacity: '1', borderColor: statusColor, statusHtml, statusColor, previewHtml, isCriticResult: true };
+        const card = document.getElementById('erp-card-' + critic);
+        const statusEl = document.getElementById('erp-card-' + critic + '-status');
+        const previewEl = document.getElementById('erp-card-' + critic + '-preview');
+        if (card) { card.style.opacity = '1'; card.style.borderColor = statusColor; }
+        if (statusEl) { statusEl.innerHTML = statusHtml; statusEl.style.color = statusColor; }
+        if (previewEl) { previewEl.innerHTML = previewHtml; previewEl.style.display = 'block'; }
+
+        // On resume, the same critic may come back from disk — don't duplicate live cards
+        const alreadyShown = this._erpState.liveResults.some(h => h.includes('id="erp-live-' + critic + '"'));
+        if (!alreadyShown) {
+            const liveCardHtml = this._buildLiveCriticCard(data).replace('<div style="background', '<div id="erp-live-' + critic + '" style="background');
+            this._erpState.liveResults.push(liveCardHtml);
+        }
+        const liveEl = document.getElementById('erp-live-results');
+        if (liveEl) liveEl.innerHTML = this._erpState.liveResults.join('');
+    }
+
+    // Launch (or re-launch for resume) the SSE fetch pump
+    _launchErpFetch(archName) {
         const apiKey = localStorage.getItem('tm_api_key') || '';
         const url = `/api/v1/expert-review?architecture_name=${encodeURIComponent(archName)}`;
+        const signal = this._erpState && this._erpState.abortController
+            ? this._erpState.abortController.signal : undefined;
 
-        // SSE over fetch (EventSource doesn't support custom headers)
-        fetch(url, { headers: { 'TM-API-KEY': apiKey } })
+        fetch(url, { headers: { 'TM-API-KEY': apiKey }, signal })
             .then(resp => {
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const reader = resp.body.getReader();
@@ -3819,51 +4138,23 @@ class Dashboard {
                         try {
                             const data = JSON.parse(dataLine);
                             if (evtType === 'progress') {
-                                const p = data.progress || 0;
-                                bar.style.width = p + '%';
-                                pct.textContent = p + '%';
-                                const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
-                                stageLabel.textContent = stageMap[data.stage] || data.stage;
-                                message.textContent = data.message || '';
-
-                                // Progressive agent cards: activate current stage, mark previous done
-                                const agentOrder = ['architect', 'tester', 'red_team', 'synthesis'];
-                                const currentIdx = agentOrder.indexOf(data.stage);
-                                for (let i = 0; i < agentOrder.length; i++) {
-                                    const card = document.getElementById('erp-card-' + agentOrder[i]);
-                                    const statusEl = document.getElementById('erp-card-' + agentOrder[i] + '-status');
-                                    if (!card || !statusEl) continue;
-                                    if (i < currentIdx) {
-                                        card.style.opacity = '1';
-                                        card.style.borderColor = 'var(--secondary-color)';
-                                        statusEl.textContent = '✓ Done';
-                                        statusEl.style.color = 'var(--secondary-color)';
-                                    } else if (i === currentIdx) {
-                                        card.style.opacity = '1';
-                                        card.style.borderColor = 'var(--primary-color)';
-                                        statusEl.textContent = 'Running...';
-                                        statusEl.style.color = 'var(--primary-color)';
-                                    } else {
-                                        card.style.opacity = '0.35';
-                                        card.style.borderColor = 'var(--border-color)';
-                                        statusEl.textContent = 'Waiting';
-                                        statusEl.style.color = 'var(--text-tertiary)';
-                                    }
-                                }
+                                this._erpApplyProgress(data);
+                            } else if (evtType === 'critic_result') {
+                                this._erpApplyCriticResult(data);
                             } else if (evtType === 'complete') {
-                                // Reload the tab with fresh MoE data
+                                this._erpState = null;
                                 setTimeout(() => this.loadExpertReviewTab(), 600);
-                                // Also refresh Overview to show updated confidence
                                 setTimeout(() => {
                                     if (this.currentTab === 'overview') this.loadOverviewTab();
                                 }, 1200);
                             } else if (evtType === 'error') {
-                                btn.disabled = false;
-                                btn.textContent = 'Retry Expert Review';
-                                btn.style.opacity = '1';
-                                if (errorBox) {
-                                    errorBox.textContent = data.detail || data.message || 'Expert Review failed';
-                                    errorBox.style.display = 'block';
+                                const an = this._erpState && this._erpState.archName;
+                                this._erpState = null;
+                                this._syncErpButtons(an, 'idle');
+                                const errBox = document.getElementById('expert-review-error');
+                                if (errBox) {
+                                    errBox.textContent = data.detail || data.message || 'Expert Review failed';
+                                    errBox.style.display = 'block';
                                 }
                             }
                         } catch (_) {}
@@ -3873,17 +4164,19 @@ class Dashboard {
                 return pump();
             })
             .catch(err => {
-                btn.disabled = false;
-                btn.textContent = 'Retry Expert Review';
-                btn.style.opacity = '1';
-                if (errorBox) {
-                    errorBox.textContent = `Connection error: ${err.message}`;
-                    errorBox.style.display = 'block';
+                if (err.name === 'AbortError') return;  // pause or cancel — not an error
+                const an = this._erpState && this._erpState.archName;
+                this._erpState = null;
+                this._syncErpButtons(an, 'idle');
+                const errBox = document.getElementById('expert-review-error');
+                if (errBox) {
+                    errBox.textContent = `Connection error: ${err.message}`;
+                    errBox.style.display = 'block';
                 }
             });
     }
 
-    loadRawDataTab() {
+    async loadRawDataTab() {
         const listContainer = document.getElementById('artifacts-list');
 
         if (!this.analysisData) {
@@ -3891,92 +4184,200 @@ class Dashboard {
             return;
         }
 
+        const archName = this.analysisData.architecture_name;
+        listContainer.innerHTML = '<p class="placeholder" style="padding: 2rem;">Loading JSON data files...</p>';
+
+        // JSON file catalogue — descriptions for known files
+        const JSON_CATALOGUE = {
+            'ground_truth.json':        { title: 'Ground Truth',         icon: '🏗️', desc: 'Full deterministic analysis output — threats, controls, attack paths, MITRE mappings', group: 'foundation' },
+            '04_architect_critique.json': { title: 'Architecture Review', icon: '🏛️', desc: 'Expert assessment of threat model completeness and structural coverage', group: 'expert' },
+            '05_tester_critique.json':  { title: 'Coverage Audit',        icon: '🔬', desc: 'MITRE technique coverage and mapping accuracy review', group: 'expert' },
+            '06_red_team_critique.json':{ title: 'Exploit Analysis',      icon: '🎯', desc: 'Red team assessment of control weaknesses and exploitable gaps', group: 'expert' },
+            '07_moe_orchestrator.json': { title: 'MoE Orchestrator',      icon: '🧠', desc: 'Mixture-of-Experts synthesis — consensus recommendations and confidence waterfall', group: 'expert' },
+            '07_orchestrator_report.json': { title: 'Orchestrator Report',icon: '📋', desc: 'Structured expert panel summary with contradiction and action item lists', group: 'expert' },
+        };
+
+        let savedFiles = [];
+        try {
+            const resp = await fetch(`/api/v1/reports/${archName}`);
+            if (resp.ok) {
+                const data = await resp.json();
+                savedFiles = (data.reports || []).filter(f => f.filename.endsWith('.json'));
+            }
+        } catch (_) { /* server JSON files optional */ }
+
+        // Group into foundation and expert
+        const groups = { foundation: [], expert: [] };
+        savedFiles.forEach(f => {
+            const meta = JSON_CATALOGUE[f.filename];
+            const group = meta ? meta.group : 'foundation';
+            groups[group].push({
+                id: f.filename,
+                title: meta ? meta.title : f.filename,
+                icon: meta ? meta.icon : '📊',
+                desc: meta ? meta.desc : '',
+                filename: f.filename,
+                size: f.size,
+                url: f.url,
+                source: 'file'
+            });
+        });
+
+        // In-memory live session data (not persisted to disk)
         const analysis = this.analysisData.analysis || {};
+        const liveArtifacts = [];
+        if (analysis.threats) liveArtifacts.push({ name: 'rapids_threats', data: { threats: analysis.threats }, description: 'RAPIDS threat assessment scores' });
+        if (analysis.ai_ml_risks) liveArtifacts.push({ name: 'ai_ml_risks', data: { ai_ml_risks: analysis.ai_ml_risks }, description: 'AI/ML risk analysis (ARC Framework)' });
+        if (analysis.controls_present || analysis.controls_missing) liveArtifacts.push({ name: 'controls', data: { controls_present: analysis.controls_present || [], controls_missing: analysis.controls_missing || [] }, description: 'Present and missing security controls' });
+        if (analysis.expected_attack_paths) liveArtifacts.push({ name: 'attack_paths', data: { expected_attack_paths: analysis.expected_attack_paths }, description: `${analysis.expected_attack_paths.length} attack paths identified` });
+        if (analysis.control_recommendations) liveArtifacts.push({ name: 'control_recommendations', data: { control_recommendations: analysis.control_recommendations }, description: `${analysis.control_recommendations.length} control recommendations` });
 
-        // Build artifact list from in-memory analysis data (ground_truth.json is in Reports tab)
-        const artifacts = [
-            { name: 'architecture_name', data: { architecture_name: this.analysisData.architecture_name }, description: 'Architecture identifier' },
-            { name: 'confidence', data: { confidence: this.analysisData.confidence }, description: 'Analysis confidence score' },
-            { name: 'patterns_applied', data: { patterns_applied: this.analysisData.patterns_applied }, description: 'Threat patterns detected' }
-        ];
+        const hasFoundation = groups.foundation.length > 0;
+        const hasExpert = groups.expert.length > 0;
+        const hasLive = liveArtifacts.length > 0;
 
-        // Add individual components if they exist
-        if (analysis.controls_present || analysis.controls_missing) {
-            artifacts.push({
-                name: 'controls',
-                data: {
-                    controls_present: analysis.controls_present || [],
-                    controls_missing: analysis.controls_missing || []
-                },
-                description: 'Present and missing security controls'
-            });
-        }
-
-        if (analysis.expected_attack_paths) {
-            artifacts.push({
-                name: 'attack_paths',
-                data: { expected_attack_paths: analysis.expected_attack_paths },
-                description: `${analysis.expected_attack_paths.length} attack paths identified`
-            });
-        }
-
-        if (analysis.control_recommendations) {
-            artifacts.push({
-                name: 'control_recommendations',
-                data: { control_recommendations: analysis.control_recommendations },
-                description: `${analysis.control_recommendations.length} control recommendations`
-            });
-        }
-
-        if (analysis.threats) {
-            artifacts.push({
-                name: 'rapids_threats',
-                data: { threats: analysis.threats },
-                description: 'RAPIDS threat assessment scores'
-            });
-        }
-
-        if (analysis.ai_ml_risks) {
-            artifacts.push({
-                name: 'ai_ml_risks',
-                data: { ai_ml_risks: analysis.ai_ml_risks },
-                description: 'AI/ML risk analysis (ARC Framework)'
-            });
-        }
+        const sectionHeader = (icon, label, badge, badgeColor) =>
+            `<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;">
+                <span style="font-size:1.125rem;">${icon}</span>
+                <h4 style="margin:0; color:var(--text-color); font-size:0.9375rem;">${label}</h4>
+                ${badge ? `<span style="font-size:0.75rem; color:${badgeColor || 'var(--text-tertiary)'}; padding:0.125rem 0.5rem; background:${badgeColor ? badgeColor + '18' : 'var(--nav-hover-bg)'}; border-radius:10px; ${badgeColor ? 'border:1px solid ' + badgeColor + '44;' : ''}">${badge}</span>` : ''}
+            </div>`;
 
         listContainer.innerHTML = `
-            <p style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
-                ${artifacts.length} artifacts available · Click to view JSON data
-            </p>
+            <!-- Download all JSON -->
+            <div style="display:flex; gap:0.75rem; margin-bottom:1.5rem; flex-wrap:wrap; align-items:center;">
+                <span style="font-size:0.8125rem; color:var(--text-secondary); font-weight:600;">Download:</span>
+                <a href="/api/v1/reports/${archName}/download?pack=json" download="${archName}_json.zip"
+                   class="btn-primary" style="padding:0.5rem 1rem; font-size:0.8125rem; font-weight:600; text-decoration:none;">
+                    ⬇ All JSON Files
+                </a>
+                <span style="font-size:0.75rem; color:var(--text-tertiary); margin-left:auto;">
+                    Click any file to inspect · ⬇ on card to download individually · Markdown reports → Reports tab
+                </span>
+            </div>
+
+            <!-- Foundation JSON -->
+            ${hasFoundation ? `
+            <div style="margin-bottom:1.5rem;">
+                ${sectionHeader('🏗️', 'Foundation Analysis', 'Deterministic engine output', '')}
+                <div id="rd-foundation-list" style="display:flex; flex-direction:column; gap:0.5rem;"></div>
+            </div>` : ''}
+
+            <!-- Expert Review JSON -->
+            ${hasExpert ? `
+            <div style="margin-bottom:1.5rem;">
+                ${sectionHeader('🧑‍🏫', 'Expert Review', 'Available after Expert Review runs', 'var(--secondary-color)')}
+                <div id="rd-expert-list" style="display:flex; flex-direction:column; gap:0.5rem;"></div>
+            </div>` : ''}
+
+            <!-- Live session data -->
+            ${hasLive ? `
+            <div style="margin-bottom:1.5rem;">
+                ${sectionHeader('⚡', 'Live Session Data', 'In-memory · not written to disk', '')}
+                <div id="rd-live-list" style="display:flex; flex-direction:column; gap:0.5rem;"></div>
+            </div>` : ''}
+
+            ${!hasFoundation && !hasExpert && !hasLive ? `
+            <div style="padding:2rem; text-align:center; color:var(--text-secondary); font-size:0.875rem;">
+                No JSON files found for <strong>${archName}</strong>. Run a full analysis first.
+            </div>` : ''}
         `;
 
-        artifacts.forEach(artifact => {
-            const item = document.createElement('div');
-            item.className = 'list-item';
-            item.style.cssText = 'padding: 1rem; cursor: pointer;';
-
-            const sizeKB = (JSON.stringify(artifact.data).length / 1024).toFixed(1);
-
-            item.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-weight: 600; margin-bottom: 0.25rem;">📊 ${artifact.name}</div>
-                        <div style="font-size: 0.8125rem; color: var(--text-secondary);">
-                            ${artifact.description} · ${sizeKB} KB
-                        </div>
+        const renderFileCard = (containerId, item) => {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const sizeKB = item.size ? (item.size / 1024).toFixed(1) : '?';
+            const card = document.createElement('div');
+            card.className = 'list-item';
+            card.dataset.fileId = item.id;
+            card.style.cssText = 'padding:0.875rem 1rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:0.75rem;';
+            card.innerHTML = `
+                <div style="display:flex; align-items:flex-start; gap:0.625rem; min-width:0;">
+                    <span style="font-size:1.125rem; flex-shrink:0;">${item.icon}</span>
+                    <div style="min-width:0;">
+                        <div style="font-weight:600; font-size:0.875rem; color:var(--text-color);">${item.title}</div>
+                        ${item.desc ? `<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.125rem; line-height:1.3;">${item.desc}</div>` : ''}
+                        <div style="font-size:0.6875rem; color:var(--text-tertiary); margin-top:0.25rem; font-family:monospace;">${item.filename} · ${sizeKB} KB</div>
                     </div>
-                    <span style="color: var(--primary-color);">→</span>
                 </div>
+                <a href="${item.url}" download="${item.filename}"
+                   style="font-size:0.75rem; color:var(--primary-color); text-decoration:none; padding:0.125rem 0.375rem; border:1px solid var(--primary-color); border-radius:4px; flex-shrink:0;"
+                   onclick="event.stopPropagation()">⬇</a>
             `;
+            card.addEventListener('click', () => {
+                listContainer.querySelectorAll('.list-item').forEach(el => { el.style.borderColor = 'var(--border-color)'; el.style.background = 'var(--card-bg)'; });
+                card.style.borderColor = 'var(--primary-color)';
+                card.style.background = 'var(--primary-color)12';
+                this._showJsonFileInRightPane(item, archName);
+            });
+            container.appendChild(card);
+        };
 
-            item.addEventListener('click', () => {
-                listContainer.querySelectorAll('.list-item').forEach(el => el.classList.remove('active'));
-                item.classList.add('active');
+        const renderLiveCard = (containerId, artifact) => {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const sizeKB = (JSON.stringify(artifact.data).length / 1024).toFixed(1);
+            const card = document.createElement('div');
+            card.className = 'list-item';
+            card.dataset.fileId = artifact.name;
+            card.style.cssText = 'padding:0.875rem 1rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:0.75rem;';
+            card.innerHTML = `
+                <div style="display:flex; align-items:flex-start; gap:0.625rem; min-width:0;">
+                    <span style="font-size:1.125rem; flex-shrink:0;">📊</span>
+                    <div style="min-width:0;">
+                        <div style="font-weight:600; font-size:0.875rem; color:var(--text-color);">${artifact.name}</div>
+                        <div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.125rem;">${artifact.description} · ${sizeKB} KB</div>
+                    </div>
+                </div>
+                <span style="color:var(--primary-color); flex-shrink:0;">→</span>
+            `;
+            card.addEventListener('click', () => {
+                listContainer.querySelectorAll('.list-item').forEach(el => { el.style.borderColor = 'var(--border-color)'; el.style.background = 'var(--card-bg)'; });
+                card.style.borderColor = 'var(--primary-color)';
+                card.style.background = 'var(--primary-color)12';
                 this.showArtifact(artifact);
             });
+            container.appendChild(card);
+        };
 
-            listContainer.appendChild(item);
-        });
+        groups.foundation.forEach(f => renderFileCard('rd-foundation-list', f));
+        groups.expert.forEach(f => renderFileCard('rd-expert-list', f));
+        liveArtifacts.forEach(a => renderLiveCard('rd-live-list', a));
+    }
+
+    async _showJsonFileInRightPane(item, archName) {
+        const downloadLink = `<a href="${item.url}" download="${item.filename}" class="btn-primary" style="display:inline-block; text-decoration:none; padding:0.375rem 0.875rem; font-size:0.8125rem; margin-bottom:1rem;">⬇ Download ${item.filename}</a>`;
+        this.showRightPane(`${item.icon} ${item.title}`, `
+            ${downloadLink}
+            <div id="rp-content-area" style="color:var(--text-secondary); font-size:0.875rem;">Loading...</div>
+        `);
+        try {
+            const resp = await fetch(item.url);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            const jsonStr = JSON.stringify(data, null, 2);
+            const isLarge = jsonStr.length > 50000;
+            const area = document.getElementById('rp-content-area');
+            if (!area) return;
+            area.innerHTML = `
+                <div style="margin-bottom:0.5rem; font-size:0.8125rem; color:var(--text-secondary);">${(jsonStr.length / 1024).toFixed(1)} KB${isLarge ? ' — large file, rendering…' : ''}</div>
+                <div id="streaming-container" style="padding:1rem; background:var(--code-bg); border-radius:8px; border:1px solid var(--border-color); overflow-x:auto; max-height:70vh; overflow-y:auto;"></div>
+            `;
+            const renderer = new StreamingRenderer('streaming-container');
+            if (isLarge) {
+                await renderer.streamJSON(data, 5);
+            } else {
+                document.getElementById('streaming-container').innerHTML =
+                    `<pre style="margin:0;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>`;
+                if (window.hljs) {
+                    const cb = document.querySelector('#streaming-container code');
+                    if (cb) hljs.highlightElement(cb);
+                }
+            }
+        } catch (err) {
+            const area = document.getElementById('rp-content-area');
+            if (area) area.innerHTML = `<p style="color:var(--danger-color);">⚠️ Failed to load: ${err.message}</p>`;
+        }
     }
 
     async showArtifact(artifact) {

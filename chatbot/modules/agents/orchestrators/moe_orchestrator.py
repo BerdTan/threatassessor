@@ -224,14 +224,17 @@ class MoEOrchestrator:
     Never allows LLM to override deterministic recommendations.
     """
 
-    def __init__(self, model: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None, progress_callback=None):
         """
         Initialize MoE orchestrator.
 
         Args:
             model: Optional model override for LLM experts
+            progress_callback: Optional callable(stage: str, result: ValidationResult)
+                called immediately after each critic finishes.  Must be non-blocking.
         """
         self.model = model
+        self.progress_callback = progress_callback
 
         # Create expert agents
         self.architect = EnhancedArchitectCritic(model=model)
@@ -291,60 +294,77 @@ class MoEOrchestrator:
         logger.info(f"MoE Pipeline: Extracted {artifacts.completeness['overall']['present']}/10 artifacts")
 
         # ===== LAYER 2A: ARCHITECT VALIDATION (REQUIRED) =====
-        logger.info("MoE Pipeline: Layer 2A - Running Architect validation...")
-
-        architect_critique = self.architect.critique(artifacts)
-        architect_result = self._process_architect_validation(architect_critique)
-
-        # Save immediately (fail-fast principle)
         arch_path = report_path / "04_architect_critique.json"
-        self._save_validation(architect_critique, arch_path)
+        saved_arch = self._load_saved_critique(arch_path)
 
+        if saved_arch:
+            logger.info("MoE Pipeline: Layer 2A - Loading saved Architect critique (resume)")
+            architect_critique = saved_arch
+        else:
+            logger.info("MoE Pipeline: Layer 2A - Running Architect validation...")
+            architect_critique = self.architect.critique(artifacts)
+            self._save_validation(architect_critique, arch_path)
+
+        architect_result = self._process_architect_validation(architect_critique)
         logger.info(f"MoE Pipeline: ✓ Layer 2A complete - {architect_result.validation_status}")
         logger.info(f"MoE Pipeline:   Confidence adjustment: {architect_result.confidence_adjustment*100:.1f}%")
 
+        if self.progress_callback:
+            self.progress_callback("architect", architect_result)
+
         # ===== LAYER 2B: TESTER VALIDATION (REQUIRED) =====
-        logger.info("MoE Pipeline: Layer 2B - Running Tester validation...")
-
-        # Check prerequisite
-        if not arch_path.exists():
-            raise MissingPrerequisiteError(
-                missing_file=str(arch_path),
-                layer="Layer 2B (Tester)"
-            )
-
-        tester_critique = self.tester.critique(artifacts, architect_critique)
-        tester_result = self._process_tester_validation(tester_critique)
-
-        # Save immediately
         test_path = report_path / "05_tester_critique.json"
-        self._save_validation(tester_critique, test_path)
+        saved_tester = self._load_saved_critique(test_path)
 
+        if saved_tester:
+            logger.info("MoE Pipeline: Layer 2B - Loading saved Tester critique (resume)")
+            tester_critique = saved_tester
+        else:
+            logger.info("MoE Pipeline: Layer 2B - Running Tester validation...")
+            if not arch_path.exists():
+                raise MissingPrerequisiteError(
+                    missing_file=str(arch_path),
+                    layer="Layer 2B (Tester)"
+                )
+            tester_critique = self.tester.critique(artifacts, architect_critique)
+            self._save_validation(tester_critique, test_path)
+
+        tester_result = self._process_tester_validation(tester_critique)
         logger.info(f"MoE Pipeline: ✓ Layer 2B complete - {tester_result.validation_status}")
         logger.info(f"MoE Pipeline:   Confidence adjustment: {tester_result.confidence_adjustment*100:.1f}%")
 
+        if self.progress_callback:
+            self.progress_callback("tester", tester_result)
+
         # ===== LAYER 2C: RED TEAM VALIDATION (REQUIRED) =====
-        logger.info("MoE Pipeline: Layer 2C - Running Red Team validation...")
-
-        # Check prerequisites
-        if not test_path.exists():
-            raise MissingPrerequisiteError(
-                missing_file=str(test_path),
-                layer="Layer 2C (Red Team)"
-            )
-
-        red_team_critique = self.red_team.critique(artifacts, ground_truth, tester_critique)
-        red_team_result = self._process_red_team_validation(red_team_critique)
-
-        # Save immediately
         red_path = report_path / "06_red_team_critique.json"
-        self._save_validation(red_team_critique, red_path)
+        saved_red = self._load_saved_critique(red_path)
 
+        if saved_red:
+            logger.info("MoE Pipeline: Layer 2C - Loading saved Red Team critique (resume)")
+            red_team_critique = saved_red
+        else:
+            logger.info("MoE Pipeline: Layer 2C - Running Red Team validation...")
+            if not test_path.exists():
+                raise MissingPrerequisiteError(
+                    missing_file=str(test_path),
+                    layer="Layer 2C (Red Team)"
+                )
+            red_team_critique = self.red_team.critique(artifacts, ground_truth, tester_critique)
+            self._save_validation(red_team_critique, red_path)
+
+        red_team_result = self._process_red_team_validation(red_team_critique)
         logger.info(f"MoE Pipeline: ✓ Layer 2C complete - {red_team_result.validation_status}")
         logger.info(f"MoE Pipeline:   Confidence adjustment: {red_team_result.confidence_adjustment*100:.1f}%")
 
+        if self.progress_callback:
+            self.progress_callback("red_team", red_team_result)
+
         # ===== LAYER 3: CONSENSUS SYNTHESIS =====
         logger.info("MoE Pipeline: Layer 3 - Synthesizing consensus...")
+
+        if self.progress_callback:
+            self.progress_callback("synthesis:confidence", None)
 
         # Calculate final confidence
         final_confidence = self._calculate_final_confidence(
@@ -355,6 +375,9 @@ class MoEOrchestrator:
         )
 
         logger.info(f"MoE Pipeline: Final confidence = {final_confidence:.1f}%")
+
+        if self.progress_callback:
+            self.progress_callback("synthesis:llm", None)
 
         # Synthesize consensus recommendations (LLM call — passes raw CritiqueScore
         # objects so the synthesiser can read Red Team's exploit_mitigation_roadmap)
@@ -367,6 +390,9 @@ class MoEOrchestrator:
             tester_raw=tester_critique,
             red_team_raw=red_team_critique,
         )
+
+        if self.progress_callback:
+            self.progress_callback("synthesis:build", None)
 
         # Extract risk transformation from ground truth
         risk_data = self._extract_risk_transformation(ground_truth)
@@ -402,6 +428,9 @@ class MoEOrchestrator:
             maximum=improvement_options["maximum"]
         )
 
+        if self.progress_callback:
+            self.progress_callback("synthesis:save", None)
+
         # Save orchestrator result (MoE format)
         orch_path = report_path / "07_moe_orchestrator.json"
         with open(orch_path, 'w') as f:
@@ -416,6 +445,9 @@ class MoEOrchestrator:
 
         # ===== GENERATE ADDITIONAL ARTIFACTS (Phase 3D Week 3) =====
         logger.info("MoE Pipeline: Generating CISO artifacts...")
+
+        if self.progress_callback:
+            self.progress_callback("synthesis:artifacts", None)
 
         # Generate executive dashboard (00_executive_dashboard.md) - NEW in Week 3
         try:
@@ -1045,18 +1077,53 @@ Reply with only the JSON array, no other text.
 
         logger.debug(f"Saved validation: {output_path}")
 
+    def _load_saved_critique(self, path: Path) -> Optional['CritiqueScore']:
+        """
+        Load a previously saved CritiqueScore from disk.
+
+        Used when resuming a paused pipeline — avoids re-calling the LLM for
+        critics that already completed.  Returns None if the file is missing or
+        malformed.
+        """
+        from chatbot.modules.agent_framework import CritiqueScore
+
+        if not path.exists():
+            return None
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            return CritiqueScore(
+                role=data.get("role", ""),
+                score=data.get("score", 0),
+                max_score=data.get("max_score", 100),
+                rating=data.get("rating", "UNKNOWN"),
+                breakdown=data.get("breakdown", {}),
+                gaps=data.get("gaps", []),
+                strengths=data.get("strengths", []),
+                improvement_roadmap=data.get("improvement_roadmap", []),
+            )
+        except Exception as e:
+            logger.warning(f"Could not load saved critique from {path}: {e}")
+            return None
+
 
 # ============================================================================
 # CONVENIENCE FUNCTION
 # ============================================================================
 
-def run_moe_pipeline(report_dir: str, base_confidence: float = 99.5) -> MoEResult:
+def run_moe_pipeline(
+    report_dir: str,
+    base_confidence: float = 99.5,
+    progress_callback=None
+) -> MoEResult:
     """
     Convenience function to run full MoE pipeline.
 
     Args:
         report_dir: Path to report directory
         base_confidence: Base confidence from deterministic (default: 99.5%)
+        progress_callback: Optional callable(stage: str, result: ValidationResult)
+            called immediately after each critic finishes.  Must be non-blocking.
 
     Returns:
         MoEResult with unified assessment
@@ -1068,7 +1135,7 @@ def run_moe_pipeline(report_dir: str, base_confidence: float = 99.5) -> MoEResul
         >>> result = run_moe_pipeline("report/10_complex_enterprise")
         >>> print(f"Final confidence: {result.final_confidence:.1f}%")
     """
-    orchestrator = MoEOrchestrator()
+    orchestrator = MoEOrchestrator(progress_callback=progress_callback)
     return orchestrator.run_pipeline(report_dir, base_confidence)
 
 

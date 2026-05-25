@@ -127,6 +127,12 @@ body {
     border-left-color: var(--primary-color);
 }
 
+.nav-tab.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 /* Main Pane - Flexible, No Scrolling Issues */
 .main-pane {
     flex: 1;

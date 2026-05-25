@@ -258,14 +258,20 @@ async def download_reports_zip(architecture_name: str, pack: str = "full"):
             detail=f"Architecture '{architecture_name}' not found"
         )
 
-    # Files excluded from all packs (internal/noise)
-    SUPPRESSED = {'ground_truth.json', '07_moe_orchestrator.json', '07_orchestrator_report.json', 'README.md'}
+    # README is internal noise, excluded from all packs
+    SUPPRESSED = {'README.md'}
 
-    # Stakeholder pack: decision-driving documents
+    # Stakeholder pack: decision-facing markdown + diagrams only
     STAKEHOLDER = {
         '01_executive_summary.md', '03_action_plan.md', '08_improvement_summary.md',
         'before.mmd', 'after.mmd'
     }
+
+    # JSON pack: all JSON files for raw-data tab download
+    JSON_EXTS = {'.json'}
+
+    # Reports pack: markdown + mermaid only (no JSON)
+    REPORTS_EXTS = {'.md', '.mmd'}
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -275,6 +281,10 @@ async def download_reports_zip(architecture_name: str, pack: str = "full"):
             if file.name in SUPPRESSED:
                 continue
             if pack == 'stakeholder' and file.name not in STAKEHOLDER:
+                continue
+            if pack == 'json' and file.suffix not in JSON_EXTS:
+                continue
+            if pack == 'reports' and file.suffix not in REPORTS_EXTS:
                 continue
             zf.write(file, arcname=file.name)
 
