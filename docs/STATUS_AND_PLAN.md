@@ -1,8 +1,8 @@
 # ThreatAssessor - Status & Action Plan
 
 **Version:** 1.3  
-**Last Updated:** 2026-05-24  
-**Current Status:** ✅ REST API + Dashboard live — Bug Fix + Validation Hardening complete
+**Last Updated:** 2026-05-25  
+**Current Status:** ✅ REST API + Dashboard live — Expert Review UX overhaul + Dashboard polish complete
 
 ---
 
@@ -16,13 +16,59 @@
 | Dashboard UI | ✅ Live | http://localhost:8000/dashboard |
 | Swagger / OpenAPI | ✅ Live | http://localhost:8000/docs + `openapi.yaml` in repo |
 | SSE streaming analysis | ✅ Live | Real-time progress via `/api/v1/analyze-stream` |
-| Expert Review tab | ✅ Live | MoE validation with collapsible panels |
+| Expert Review tab | ✅ Live | Progressive streaming, Pause/Resume/Cancel, sub-step synthesis progress |
 | Before/after risk bars | ✅ Live | Honest residual framing, 10% floor |
 | Residual risk floor | ✅ Fixed | 10% minimum per NIST (was producing 0 for 4+ controls) |
 | Self-validation accuracy | ✅ Fixed | T1212/T1490/T1059/T1213 + 7 other techniques — no more false negatives |
 | Tester scoring | ✅ Fixed | Sub-dimension penalty, critical_gaps override, PASS→MINOR_GAPS correction |
-| Expert Review UI | ✅ Fixed | All sections collapsible; sub-dimension bars; risk quality warning |
+| Tester false-positive detection | ✅ Fixed | MITRE ground-truth check first; fixes M1032/T1485 hallucination |
+| Expert Review UI | ✅ Fixed | Progressive critic cards; Pause/Resume; tab-switch state preserved |
+| Reports tab | ✅ Fixed | Markdown + diagrams only; JSON moved to Raw Data tab |
+| Raw Data tab | ✅ Fixed | Async file-based; Foundation + Expert Review JSON sections; individual downloads |
+| Content tabs disabled | ✅ Fixed | Attacks/Controls/Hardening/Expert Review greyed out until analysis complete |
+| Mitigations legend | ✅ Fixed | Consistent font size with Threat Paths legend |
 | requirements.txt | ✅ Fixed | FastAPI/uvicorn/pydantic/sse-starlette now pinned |
+
+---
+
+## 📋 Recent Work (May 25, 2026)
+
+### Expert Review UX Overhaul + Dashboard Polish (this session)
+
+#### 1. Expert Review — Progressive Streaming
+**Change:** Each critic's detailed card is appended live as it completes instead of waiting for all three. Critic results and the progress box update in real time.  
+**Commit:** `cf10377`
+
+#### 2. Expert Review — Pause / Resume / Cancel
+**Change:** Pause aborts the SSE stream but preserves state (progress %, cards, live results) in `_erpState`. Resume reconnects and the orchestrator skips already-completed critics via `_load_saved_critique()` checkpoint loading. Cancel purges the three critique JSON files via `DELETE /api/v1/expert-review/cancel`. Cancel button appears immediately when run starts via in-place `outerHTML` button-row swap.  
+**Commit:** `cf10377`
+
+#### 3. Expert Review — Synthesis Sub-Step Progress
+**Change:** Layer 3 (previously a silent ~20s block showing only "Running") now fires 5 `progress_callback` signals: `synthesis:confidence`, `synthesis:llm`, `synthesis:build`, `synthesis:save`, `synthesis:artifacts`. The SSE loop converts these to distinct progress events; the Synthesis card status shows the current sub-step (e.g. "⚙ LLM consensus (~20s)...").  
+**Commit:** `cf10377`
+
+#### 4. Expert Review — Confidence 0% Display
+**Change:** When a critic's confidence adjustment is zero, display "No adjustment" in neutral grey instead of "0% confidence" (which falsely implies low confidence). Applies to live cards, progress preview, completed panel headers, and the waterfall.  
+**Commit:** `cf10377`
+
+#### 5. Tester False-Positive Fix — M1032/T1485 (`tester_critic.py`)
+**Problem:** Tester LLM claimed M1032 is not a valid mitigation for T1485 (Data Destruction) — this is a hallucination; MITRE lists M1032, M1053, M1018 for T1485.  
+**Fix:** Rewrote `_check_if_false_positive()` to check MITRE ground truth first — if the M-code is in `get_technique_mitigations(T####)`, it is definitively not a false positive, regardless of LLM wording.  
+**Commit:** `cf10377`
+
+#### 6. Reports / Raw Data Tab Split
+**Reports:** Now shows markdown and mermaid only. Expert Review JSON section removed. "Full Pack" replaced with "All Reports" (`pack=reports`).  
+**Raw Data:** Rewritten as async. Fetches saved JSON from report directory. Organised into **Foundation Analysis** (`ground_truth.json`) and **Expert Review** (04–07 JSON) sections, plus **Live Session Data** for in-memory artifacts. Individual download buttons + "Download All JSON" (`pack=json` zip).  
+**Download endpoint:** Added `pack=json` and `pack=reports` to `/api/v1/reports/{name}/download`.  
+**Commit:** `cf10377`
+
+#### 7. Content Tabs Disabled Until Analysis Complete
+**Change:** Attacks, Controls, Hardening, Expert Review tabs get `disabled` class (35% opacity, `pointer-events:none`) on page load, during analysis-in-progress, and after reset. Enabled only when `displayResults()` fires.  
+**Commit:** `cf10377`
+
+#### 8. Mitigations Legend Font Size
+**Change:** Downsized from `h4` / `0.875rem` to match the Threat Paths legend (`0.875rem` title, `0.8125rem` body). Score/Implementation/Click notes condensed to a single muted italic line.  
+**Commit:** `cf10377`
 
 ---
 
@@ -82,24 +128,14 @@ python3 scripts/backtest_all_architectures.py
 
 Key affected reports: any with `overall_valid: false` in `ground_truth.json` + Expert Review showing "Validation issues" contradiction.
 
-#### B. MFA → T1485 mapping — Tester's reported issue
-The Tester critic (LLM) reported: "MFA control claims M1032 mitigates T1485 (Data Destruction), but M1032 is not in T1485's MITRE mitigation list."
-
-**Actual MITRE data:** `get_technique_mitigations('T1485')` returns M1032, M1053, M1018 — so M1032 IS a valid T1485 mitigation. This is an LLM hallucination in the Tester prompt, not a real code bug.
-
-**Options:**
-1. Add explicit ground-truth assertion in the Tester critic system prompt: "T1485 mitigations per MITRE include M1032, M1053, M1018"
-2. Post-process Tester output: if a claimed-invalid mapping actually has overlap with `get_technique_mitigations()`, override the LLM's verdict
-3. Accept as known LLM limitation — low severity since Tester still passes
-
-Recommendation: Option 2 (post-process) — the `validate_control_addresses_technique()` function in `self_validation.py` already does this check deterministically; wire its result to override the LLM tester's technique mapping verdict when they disagree.
+#### ~~B. MFA → T1485 mapping~~ ✅ Fixed (`cf10377`)
+`_check_if_false_positive()` in `tester_critic.py` now queries MITRE ground truth first. M1032 IS a valid T1485 mitigation — no longer reported as a false positive.
 
 #### C. `scripts/backtest_all_architectures.py` — File missing
 `CLAUDE.md` and `Makefile` both reference this script but it doesn't exist at that path.
 
 ```bash
 ls scripts/backtest_all_architectures.py  # Not found
-# Likely exists elsewhere or needs creation
 find . -name "backtest*" -not -path "./.git/*"
 ```
 
@@ -116,9 +152,6 @@ The current contradiction format shows raw Architect vs Red Team views. When the
 `roadmap_validation` frequently scores 1-6/10 because the Tester LLM evaluates the *Architect's roadmap* and finds it doesn't address the Tester's specific findings. This is structurally expected (they run independently), not a real quality failure. Consider:
 - Exclude `roadmap_validation` from the sub-dimension penalty calculation
 - Or: reduce its weight relative to `validation_checks` and `coverage_metrics`
-
-#### F. `docs/STATUS_AND_PLAN.md` — self-referential
-The "Next Steps" section previously pointed to Phase 2B (FastAPI Router) as the next step. That work is complete. No further phase is formally planned. Update `Next Steps` when the next initiative is defined.
 
 ---
 
@@ -227,7 +260,7 @@ The "Next Steps" section previously pointed to Phase 2B (FastAPI Router) as the 
 | Policy controls (behavioral analysis, audit log) may appear in "Additional recommended" comment | Cosmetic — data correct in ground_truth.json | Accepted |
 | LLM availability (~33% uptime on free tier) | Expert Review unavailable intermittently | Workaround: deterministic-only mode |
 | Large architectures (>30 nodes) may produce cluttered diagrams | Visual complexity | Workaround: use subgraphs |
-| Tester LLM sometimes hallucinates invalid mitigation claims (e.g. M1032/T1485) | False finding in Expert Review | See Pending Item B above |
+| Tester LLM sometimes hallucinates invalid mitigation claims | False finding in Expert Review | MITRE ground-truth post-process now overrides LLM verdict (fixed `cf10377`) |
 | Old reports (pre May 24) may still show `overall_valid: False` | Stale self-validation result | Regenerate with `demo_expert_llm.sh` |
 
 ---
@@ -268,5 +301,5 @@ cat report/your_architecture/00_executive_dashboard.md
 ---
 
 **Single Source of Truth:** This file tracks project status and roadmap  
-**Last Updated:** 2026-05-24  
-**Status:** ✅ REST API + Dashboard live — ready for use
+**Last Updated:** 2026-05-25  
+**Status:** ✅ REST API + Dashboard live — Expert Review UX overhaul complete
