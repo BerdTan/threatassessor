@@ -6,6 +6,14 @@
 
 ---
 
+## Session Protocol
+
+**At the start of every session, read:** [`docs/DECISIONS.md`](docs/DECISIONS.md)
+
+This file is the architectural decision log. After any significant decision about architecture, logic, or format, add an entry with: date, what was decided, the reasoning, and what alternatives were rejected.
+
+---
+
 ## Primary Commands
 
 **Web Dashboard (Recommended):**
