@@ -18,11 +18,82 @@ VERSION: 1.0 - Initial implementation wrapping deterministic engine
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from chatbot.modules.analyst_agent import AnalystAgent, AnalysisResult
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_base_confidence(ground_truth: dict) -> Tuple[float, dict]:
+    """
+    Compute architecture-sensitive base confidence (0.72–0.995).
+
+    Core principle: complexity penalises confidence; coverage signals recover it.
+    A large, complex architecture starts lower because there are more ways to
+    miss attack paths. It can only reach a high base if coverage proves the
+    complexity was thoroughly mapped.
+
+    Returns:
+        (base_confidence, breakdown_dict) where breakdown_dict contains
+        the intermediate signals for transparent reporting.
+    """
+    meta       = ground_truth.get("metadata", {})
+    paths      = ground_truth.get("expected_attack_paths", [])
+    validation = ground_truth.get("validation_report", {}).get("checks", {})
+
+    node_count       = meta.get("node_count", 0)
+    edge_count       = meta.get("edge_count", 0)
+    path_count       = len(paths)
+    technique_count  = sum(len(p.get("techniques", [])) for p in paths)
+    control_coverage = float(meta.get("control_coverage", 0.0))
+
+    checks    = [v for v in validation.values() if isinstance(v, dict)]
+    pass_rate = sum(1 for c in checks if c.get("passed")) / max(len(checks), 1)
+
+    # ── 1. Complexity penalty ─────────────────────────────────────────────────
+    # Saturates at node_count=20, edge_count=40; max combined penalty = 0.25
+    node_penalty = min(node_count / 20, 1.0) * 0.15
+    edge_penalty = min(edge_count / 40, 1.0) * 0.10
+    complexity_penalty = round(node_penalty + edge_penalty, 4)
+
+    # ── 2. Coverage recovery ──────────────────────────────────────────────────
+    # Paths and techniques are normalised against expected minimums for this size.
+    expected_paths      = max(node_count * 0.3, 1)
+    expected_techniques = max(node_count * 1.5, 5)
+    path_coverage = min(path_count / expected_paths, 1.0)
+    tech_coverage = min(technique_count / expected_techniques, 1.0)
+
+    coverage_recovery = round(
+        control_coverage * 0.40 +
+        pass_rate        * 0.30 +
+        path_coverage    * 0.20 +
+        tech_coverage    * 0.10,
+        4
+    )
+
+    # ── 3. Compose base ───────────────────────────────────────────────────────
+    ceiling = 0.995 - complexity_penalty          # [0.745, 0.995]
+    base    = round(
+        min(0.995, max(0.72,
+            0.72 + (ceiling - 0.72) * coverage_recovery
+        )),
+        4
+    )
+
+    breakdown = {
+        "complexity_penalty": complexity_penalty,
+        "coverage_recovery":  coverage_recovery,
+        "signals": {
+            "node_count":         node_count,
+            "edge_count":         edge_count,
+            "path_count":         path_count,
+            "technique_count":    technique_count,
+            "control_coverage":   round(control_coverage, 4),
+            "validation_pass_rate": round(pass_rate, 4),
+        },
+    }
+    return base, breakdown
 
 
 class ThreatAnalyst(AnalystAgent):
@@ -88,15 +159,25 @@ class ThreatAnalyst(AnalystAgent):
         try:
             # Pass ground_truth dict to validator (not arch_name string)
             validation_result = self.validator_module.validate_completeness(ground_truth)
-            # Calculate confidence from validation adjustment
-            base_confidence = 0.995  # Deterministic engine baseline
+            # Complexity-biased base: complex architecture starts penalised;
+            # coverage signals (control %, validation pass rate, path depth) recover it.
+            base_confidence, confidence_breakdown = _compute_base_confidence(ground_truth)
             adjustment = validation_result.get("confidence_adjustment", 1.0)  # 0.0-1.0 scale
             confidence = base_confidence * adjustment
             checks_passed = validation_result.get("checks", {})
+            logger.info(
+                f"{self.role}: Confidence — base={base_confidence:.1%}, "
+                f"validation_adj={adjustment:.3f}, final={confidence:.1%} "
+                f"(complexity_penalty={confidence_breakdown['complexity_penalty']:.3f}, "
+                f"coverage_recovery={confidence_breakdown['coverage_recovery']:.3f})"
+            )
         except Exception as e:
             logger.warning(f"{self.role}: Validation failed: {e}")
+            base_confidence = 0.95
+            adjustment = 1.0
             confidence = 0.95  # Lower confidence if validation fails
             checks_passed = {}
+            confidence_breakdown = {"complexity_penalty": 0.0, "coverage_recovery": 0.0, "signals": {}}
 
         # Extract key data from ground truth
         threats = ground_truth.get("rapids_assessment", {})
@@ -185,6 +266,16 @@ class ThreatAnalyst(AnalystAgent):
             validation_checks=checks_passed,
             pattern_sources=pattern_sources
         )
+
+        # Attach confidence breakdown to result for API consumers
+        result.data["confidence_breakdown"] = {
+            "base":                  base_confidence,
+            "complexity_penalty":    confidence_breakdown["complexity_penalty"],
+            "coverage_recovery":     confidence_breakdown["coverage_recovery"],
+            "validation_adjustment": round(adjustment, 4),
+            "final":                 round(confidence, 4),
+            "signals":               confidence_breakdown["signals"],
+        }
 
         # Add AI assessment to result data if present
         if ai_assessment:

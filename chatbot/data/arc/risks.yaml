@@ -1,0 +1,272 @@
+# ARC Framework Risk Definitions
+# Source: https://govtech-responsibleai.github.io/agentic-risk-capability-framework/
+#
+# Schema per risk category:
+#   arc_id:           ARC risk identifier (e.g. INT-001)
+#   description:      Human-readable risk name
+#   default_risk:     Fallback score (0-100) when no component-specific rule matches
+#   components:       Per-component scoring rules (keyed by component_type)
+#     default_risk:   Base score for this component
+#     missing_controls:   List of rules applied when a control is absent
+#       - controls:   List of control names (any absent → rule fires)
+#         raise_to:   Set risk to at least this value
+#         rationale:  Text appended to rationale
+#         techniques: List of ATLAS technique IDs
+#     present_controls:   List of rules applied when a control is present
+#       - control:    Control name
+#         reduce_by:  Subtract from current risk
+#         rationale:  Text appended to rationale
+#   default_rules:    Minimal rules applied when component has no specific entry
+#     present_controls: (same structure as above)
+#     rationale:      Static rationale string
+
+categories:
+  # ── 1. INTEGRITY ────────────────────────────────────────────────────────────
+  - arc_id: INT
+    name: integrity
+    description: "Hallucination, bias, prompt injection, data poisoning"
+    default_risk: 50
+    components:
+      llm_api:
+        default_risk: 85
+        missing_controls:
+          - controls: [input_validation, prompt_filtering]
+            raise_to: 90
+            rationale: "No input validation (prompt injection risk)"
+            techniques: [AML.T0051, AML.T0051.000]
+          - controls: [output_filtering, content_validation]
+            raise_to: 85
+            rationale: "No output filtering (hallucination risk)"
+            techniques: []
+          - controls: [rag, grounding]
+            raise_to: 80
+            rationale: "No RAG/grounding (factual inaccuracy)"
+            techniques: []
+        present_controls:
+          - control: input_validation
+            reduce_by: 20
+            rationale: "Input validation present (reduces prompt injection)"
+          - control: output_filtering
+            reduce_by: 15
+            rationale: "Output filtering present (reduces hallucination)"
+      prompt_manager:
+        default_risk: 70
+        missing_controls:
+          - controls: [prompt_injection_defense]
+            raise_to: 70
+            rationale: "Prompt manager without injection defense"
+            techniques: [AML.T0051.001]
+        present_controls:
+          - control: prompt_injection_defense
+            reduce_by: 30
+            rationale: "Prompt injection defense present"
+      agent_orchestrator:
+        default_risk: 75
+        missing_controls: []
+        present_controls: []
+        static_rationale: "Agent orchestrator can amplify integrity risks"
+
+  # ── 2. SAFETY ───────────────────────────────────────────────────────────────
+  - arc_id: SAF
+    name: safety
+    description: "Harmful content, autonomous actions, dangerous capabilities"
+    default_risk: 40
+    components:
+      llm_api:
+        default_risk: 75
+        missing_controls:
+          - controls: [content_moderation]
+            raise_to: 85
+            rationale: "No content moderation (harmful content risk)"
+            techniques: [AML.T0051]
+          - controls: [capability_restrictions]
+            raise_to: 70
+            rationale: "No capability restrictions"
+            techniques: []
+        present_controls:
+          - control: content_moderation
+            reduce_by: 30
+            rationale: "Content moderation present"
+      code_execution:
+        default_risk: 90
+        missing_controls:
+          - controls: [sandbox]
+            raise_to: 95
+            rationale: "Code execution without sandbox (critical safety risk)"
+            techniques: [AML.T0054]
+        present_controls:
+          - control: sandbox
+            reduce_by: 40
+            rationale: "Sandbox present (reduces risk)"
+      agent_orchestrator:
+        default_risk: 80
+        missing_controls:
+          - controls: [human_oversight, human_in_loop]
+            raise_to: 85
+            rationale: "Autonomous agent without human oversight"
+            techniques: [AML.T0054]
+        present_controls:
+          - control: human_oversight
+            reduce_by: 25
+            rationale: "Human oversight present"
+          - control: human_in_loop
+            reduce_by: 25
+            rationale: "Human-in-loop present"
+      tool_registry:
+        default_risk: 70
+        missing_controls:
+          - controls: [tool_allowlist]
+            raise_to: 70
+            rationale: "Tool registry without allowlist"
+            techniques: []
+        present_controls:
+          - control: tool_allowlist
+            reduce_by: 20
+            rationale: "Tool allowlist present"
+
+  # ── 3. SECURITY ─────────────────────────────────────────────────────────────
+  - arc_id: SEC
+    name: security
+    description: "Unauthorized access, data breach, API exposure, supply chain"
+    default_risk: 60
+    components:
+      llm_api:
+        default_risk: 70
+        missing_controls:
+          - controls: [api_key_rotation, secrets_management]
+            raise_to: 90
+            rationale: "No API key protection (exposure risk)"
+            techniques: [AML.T0040]
+          - controls: [rate_limiting]
+            raise_to: 75
+            rationale: "No rate limiting (DoS risk)"
+            techniques: [AML.T0029]
+          - controls: [access_control, authentication]
+            raise_to: 80
+            rationale: "No access control"
+            techniques: [AML.T0040]
+        present_controls:
+          - control: rate_limiting
+            reduce_by: 20
+            rationale: "Rate limiting present"
+          - control: access_control
+            reduce_by: 15
+            rationale: "Access control present"
+          - control: authentication
+            reduce_by: 15
+            rationale: "Authentication present"
+          - control: encryption
+            reduce_by: 10
+            rationale: "Encryption present"
+      vector_db:
+        default_risk: 70
+        missing_controls:
+          - controls: [access_control]
+            raise_to: 85
+            rationale: "Vector DB without access control (data breach risk)"
+            techniques: [AML.T0024]
+        present_controls:
+          - control: access_control
+            reduce_by: 25
+            rationale: "Access control present"
+      code_execution:
+        default_risk: 95
+        missing_controls: []
+        present_controls: []
+        static_rationale: "Code execution is high security risk"
+        static_techniques: [AML.T0043]
+
+  # ── 4. PRIVACY ──────────────────────────────────────────────────────────────
+  - arc_id: PRIV
+    name: privacy
+    description: "PII leakage, training data extraction, membership inference"
+    default_risk: 50
+    components:
+      llm_api:
+        default_risk: 75
+        missing_controls:
+          - controls: [pii_detection, data_loss_prevention]
+            raise_to: 85
+            rationale: "No PII detection (leakage risk)"
+            techniques: [AML.T0048]
+          - controls: [data_minimization]
+            raise_to: 70
+            rationale: "No data minimization"
+            techniques: []
+        present_controls:
+          - control: pii_detection
+            reduce_by: 25
+            rationale: "PII detection present"
+          - control: data_loss_prevention
+            reduce_by: 25
+            rationale: "DLP present"
+          - control: differential_privacy
+            reduce_by: 20
+            rationale: "Differential privacy present"
+      vector_db:
+        default_risk: 80
+        missing_controls: []
+        present_controls:
+          - control: encryption
+            reduce_by: 20
+            rationale: "Encryption present"
+          - control: access_control
+            reduce_by: 15
+            rationale: "Access control present"
+        static_rationale: "Vector DB stores embeddings (potential data extraction)"
+        static_techniques: [AML.T0043]
+      embedding_service:
+        default_risk: 65
+        missing_controls: []
+        present_controls: []
+        static_rationale: "Embedding service processes sensitive data"
+
+  # ── 5. TRANSPARENCY ─────────────────────────────────────────────────────────
+  - arc_id: TRANS
+    name: transparency
+    description: "Explainability, audit trails, model cards, hidden reasoning"
+    default_risk: 60
+    simple_rule:
+      if_control_absent: logging
+      absent_risk: 60
+      absent_rationale: "No logging detected"
+      present_risk: 30
+      present_rationale: "Logging present"
+
+  # ── 6. ACCOUNTABILITY ───────────────────────────────────────────────────────
+  - arc_id: ACC
+    name: accountability
+    description: "Human oversight, responsibility attribution, redress mechanisms"
+    default_risk: 70
+    simple_rule:
+      if_control_absent: human_oversight
+      absent_risk: 70
+      absent_rationale: "No human oversight"
+      present_risk: 40
+      present_rationale: "Human oversight present"
+
+  # ── 7. FAIRNESS ─────────────────────────────────────────────────────────────
+  - arc_id: FAIR
+    name: fairness
+    description: "Discrimination, representation bias, disparate impact"
+    default_risk: 50
+    static_rationale: "Fairness controls unknown (default risk)"
+
+  # ── 8. RESILIENCE ───────────────────────────────────────────────────────────
+  - arc_id: RES
+    name: resilience
+    description: "Model degradation, adversarial robustness"
+    default_risk: 60
+    simple_rule:
+      if_control_absent: monitoring
+      absent_risk: 60
+      absent_rationale: "No monitoring"
+      present_risk: 50
+      present_rationale: "Monitoring present"
+
+  # ── 9. SOCIETAL IMPACT ──────────────────────────────────────────────────────
+  - arc_id: SOC
+    name: societal_impact
+    description: "Job displacement, misinformation amplification"
+    default_risk: 30
+    static_rationale: "Standard AI deployment (moderate societal impact)"

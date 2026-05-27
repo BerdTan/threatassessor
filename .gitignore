@@ -1,5 +1,7 @@
-# Exclude MITRE ATT&CK data files
+# Exclude MITRE ATT&CK data files and generated pickle caches
 chatbot/data/*.json
+chatbot/data/*.pkl
+chatbot/data/atlas/*.pkl
 test/data/*.jsonl
 __pycache__/
 *.pyc

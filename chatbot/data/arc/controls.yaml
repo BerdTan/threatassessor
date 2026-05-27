@@ -1,0 +1,114 @@
+# ARC Framework Control Benchmark (88 controls)
+# Source: https://govtech-responsibleai.github.io/agentic-risk-capability-framework/
+#
+# Used by AIPattern.get_arc_control_benchmark() and get_arc_control_gaps().
+# Controls are grouped by ARC risk category.
+
+integrity:
+  - input_validation
+  - prompt_filtering
+  - output_filtering
+  - context_grounding
+  - rag_verification
+  - prompt_injection_defense
+  - factuality_checking
+  - bias_detection
+  - hallucination_detection
+  - model_versioning
+  - drift_monitoring
+
+safety:
+  - content_moderation
+  - sandbox
+  - human_in_loop
+  - capability_restrictions
+  - tool_allowlist
+  - safety_classifier
+  - toxicity_filtering
+  - harm_detection
+  - intent_classification
+  - refusal_mechanisms
+  - safety_guidelines
+  - red_teaming
+
+security:
+  - api_key_rotation
+  - secrets_management
+  - rate_limiting
+  - access_control
+  - encryption
+  - authentication
+  - monitoring
+  - vulnerability_scanning
+  - penetration_testing
+  - threat_modeling
+  - security_headers
+  - input_sanitization
+  - output_encoding
+  - session_management
+  - audit_logging
+
+privacy:
+  - pii_detection
+  - data_loss_prevention
+  - differential_privacy
+  - data_minimization
+  - anonymization
+  - pseudonymization
+  - data_retention_policy
+  - right_to_deletion
+  - consent_management
+  - privacy_impact_assessment
+  - data_classification
+  - secure_data_storage
+
+transparency:
+  - logging
+  - audit_trails
+  - explainability
+  - model_cards
+  - documentation
+  - decision_tracing
+  - version_control
+  - change_management
+  - disclosure_policies
+
+accountability:
+  - human_oversight
+  - incident_response
+  - escalation_procedures
+  - responsibility_assignment
+  - complaint_mechanisms
+  - redress_procedures
+  - governance_framework
+  - ethics_review
+
+fairness:
+  - bias_testing
+  - fairness_metrics
+  - diverse_datasets
+  - representation_analysis
+  - disparate_impact_assessment
+  - fairness_constraints
+  - bias_mitigation
+  - inclusive_design
+  - accessibility_testing
+
+resilience:
+  - monitoring
+  - robustness_testing
+  - adversarial_training
+  - input_validation
+  - anomaly_detection
+  - degradation_monitoring
+  - fallback_mechanisms
+  - redundancy
+  - disaster_recovery
+
+societal_impact:
+  - impact_assessment
+  - stakeholder_engagement
+  - public_consultation
+  - social_benefit_analysis
+  - harm_mitigation_plan
+  - workforce_transition_support

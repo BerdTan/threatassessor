@@ -68,38 +68,6 @@ async def analyze_with_progress(
         # Start analysis
         service = ThreatAnalysisService()
 
-        # Stage 2: MITRE Cache (10-20%) - with incremental updates for large 44MB load
-        progress = tracker.get_progress("mitre", 0.0)
-        yield await SSEStream.send_progress(
-            stage="mitre",
-            progress=progress,
-            message=f"[MITRE] {progress}% - {filename} - Loading MITRE ATT&CK cache (44MB)...",
-            eta_seconds=tracker.get_eta(progress)
-        )
-
-        await asyncio.sleep(0.1)
-
-        # Incremental updates during cache load
-        for i in range(1, 5):
-            progress = tracker.get_progress("mitre", i * 0.2)
-            yield await SSEStream.send_progress(
-                stage="mitre",
-                progress=progress,
-                message=f"[MITRE] {progress}% - {filename} - Loading cache... ({i*25}% complete)",
-                eta_seconds=tracker.get_eta(progress)
-            )
-            await asyncio.sleep(0.05)
-
-        progress = tracker.get_progress("mitre", 0.9)
-        yield await SSEStream.send_progress(
-            stage="mitre",
-            progress=progress,
-            message=f"[MITRE] {progress}% - {filename} - Indexing 14 tactics, 196 techniques...",
-            eta_seconds=tracker.get_eta(progress)
-        )
-
-        await asyncio.sleep(0.1)
-
         # Extract clean architecture name from uploaded filename
         # Remove .mmd extension and sanitize
         clean_arch_name = filename.replace('.mmd', '').replace('.', '_').replace(' ', '_')
@@ -398,7 +366,8 @@ async def analyze_architecture_stream(
 
 
 async def expert_review_with_progress(
-    architecture_name: str
+    architecture_name: str,
+    critic_mode: str = "sequential",
 ) -> AsyncGenerator[str, None]:
     """
     Run MoE Expert Review pipeline with SSE progress updates.
@@ -407,6 +376,7 @@ async def expert_review_with_progress(
 
     Args:
         architecture_name: Architecture name (matches report directory)
+        critic_mode: "sequential" | "parallel" | "auto"
 
     Yields:
         SSE formatted progress events
@@ -426,6 +396,20 @@ async def expert_review_with_progress(
                 detail=f"Run analysis first — ground_truth.json not found for '{architecture_name}'"
             )
             return
+
+        # Read base_confidence from ground_truth so Expert Review chains on the
+        # architecture-adjusted deterministic confidence (not always 99.5)
+        try:
+            with open(gt_path) as _f:
+                _gt = _f.read()
+            import json as _json
+            _gt_data = _json.loads(_gt)
+            _det_conf = _gt_data.get("confidence_breakdown", {}).get("final")
+            if _det_conf is None:
+                _det_conf = _gt_data.get("confidence", 0.995)
+            base_confidence = float(_det_conf) * 100  # convert 0.872 → 87.2
+        except Exception:
+            base_confidence = 99.5
 
         yield await SSEStream.send_progress(
             stage="architect",
@@ -477,7 +461,12 @@ async def expert_review_with_progress(
             result_queue.put_nowait((stage, validation_result))
 
         def _run_pipeline() -> object:
-            return run_moe_pipeline(str(report_dir), progress_callback=_progress_cb)
+            return run_moe_pipeline(
+                str(report_dir),
+                base_confidence=base_confidence,
+                progress_callback=_progress_cb,
+                critic_mode=critic_mode,
+            )
 
         task = loop.run_in_executor(None, _run_pipeline)
 
@@ -528,6 +517,16 @@ async def expert_review_with_progress(
                     )
                     continue
 
+                # parallel_starting: all three critics are now running concurrently
+                if critic_stage == "parallel_starting":
+                    yield await SSEStream.send_progress(
+                        stage="parallel_starting",
+                        progress=5,
+                        message="All three critics running concurrently — results will arrive as each finishes...",
+                        eta_seconds=45
+                    )
+                    continue
+
                 if critic_stage in emitted_critics:
                     continue
                 emitted_critics.add(critic_stage)
@@ -550,9 +549,9 @@ async def expert_review_with_progress(
                 eta_seconds=max(0, int((end_pct - band_progress) * 1.5))
             )
 
-            # Wait up to 3 s; if the pipeline finishes sooner, break immediately
+            # Wait up to 1 s; shorter interval means critic_result cards update faster
             try:
-                result = await asyncio.wait_for(asyncio.shield(task), timeout=3.0)
+                result = await asyncio.wait_for(asyncio.shield(task), timeout=1.0)
             except asyncio.TimeoutError:
                 pass  # still running — loop back for next tick
 
@@ -606,6 +605,10 @@ async def expert_review_stream(
         ...,
         description="Architecture name (must match an existing analysis in report/)"
     ),
+    critic_mode: str = Query(
+        "sequential",
+        description="Critic execution mode: sequential | parallel | auto"
+    ),
     api_key: str = Depends(verify_api_key)
 ):
     """
@@ -648,8 +651,15 @@ async def expert_review_stream(
             detail="Invalid architecture_name"
         )
 
+    # Validate critic_mode
+    if critic_mode not in ("sequential", "parallel", "auto"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="critic_mode must be one of: sequential, parallel, auto"
+        )
+
     return StreamingResponse(
-        expert_review_with_progress(architecture_name),
+        expert_review_with_progress(architecture_name, critic_mode=critic_mode),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

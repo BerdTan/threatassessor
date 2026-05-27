@@ -147,11 +147,10 @@ class ProgressTracker:
     """
 
     STAGE_PROGRESS = {
-        "parsing": (0, 10),
-        "mitre": (10, 20),
-        "rapids": (20, 60),
-        "ai_ml": (60, 80),
-        "validation": (80, 100)
+        "parsing":    (0,  5),
+        "rapids":     (5,  55),
+        "ai_ml":      (55, 80),
+        "validation": (80, 100),
     }
 
     def __init__(self, has_ai_ml: bool = False):
@@ -181,10 +180,9 @@ class ProgressTracker:
 
         start, end = self.STAGE_PROGRESS[stage]
 
-        # If AI/ML not applicable, adjust validation stage range
+        # If AI/ML not applicable, validation starts right after rapids
         if not self.has_ai_ml and stage == "validation":
-            # Compress: rapids ends at 60%, validation at 100%
-            start = 60
+            start = 55
             end = 100
 
         return int(start + (end - start) * stage_percent)

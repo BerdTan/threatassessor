@@ -8,7 +8,22 @@ import json
 import os
 import logging
 
+from chatbot.modules.pickle_cache import dump as _pkl_dump, load as _pkl_load
+
 logger = logging.getLogger(__name__)
+
+
+def _pickle_path(json_path: str) -> str:
+    return json_path + ".pkl"
+
+
+def _is_pickle_fresh(json_path: str, pkl_path: str) -> bool:
+    """Return True if the signed pickle exists and is newer than the JSON source."""
+    try:
+        return (os.path.exists(pkl_path) and
+                os.path.getmtime(pkl_path) > os.path.getmtime(json_path))
+    except OSError:
+        return False
 
 # Module-level singleton — loaded once, shared across all callers
 _instance = None
@@ -38,56 +53,104 @@ class MitreHelper:
         if use_local:
             if not local_path:
                 local_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'enterprise-attack.json')
+            local_path = os.path.abspath(local_path)
+            pkl_path = _pickle_path(local_path)
             try:
-                with open(local_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-
-                for obj in data.get('objects', []):
-                    obj_id   = obj.get('id')
-                    obj_type = obj.get('type')
-
-                    if obj_id:
-                        self.data_objects[obj_id] = obj
-
-                    if obj_type == 'attack-pattern':
-                        self.techniques.append(obj)
-                        # Build ext-id and name indexes
-                        for ref in obj.get('external_references', []):
-                            ext_id = ref.get('external_id', '')
-                            if ext_id:
-                                self._technique_by_ext_id[ext_id.upper()] = obj
-                        name = obj.get('name', '')
-                        if name:
-                            self._technique_by_name[name.lower()] = obj
-
-                    elif obj_type == 'x-mitre-tactic':
-                        self.tactics.append(obj)
-                    elif obj_type == 'course-of-action':
-                        self.mitigations.append(obj)
-                        for ref in obj.get('external_references', []):
-                            ext_id = ref.get('external_id', '')
-                            if ext_id and ext_id.startswith('M'):
-                                self._mitigation_by_ext_id[ext_id.upper()] = obj
-                    elif obj_type == 'relationship':
-                        self.relationships.append(obj)
-
-                # Build relationships index: technique internal_id → mitigations
-                for rel in self.relationships:
-                    if (rel.get('relationship_type') == 'mitigates'
-                            and not rel.get('revoked', False)):
-                        target = rel.get('target_ref')   # attack-pattern internal id
-                        if target:
-                            self._mitigations_by_technique.setdefault(target, []).append(rel)
-
-                logger.info(
-                    f"MITRE cache loaded: {len(self.techniques)} techniques, "
-                    f"{len(self.tactics)} tactics, {len(self.mitigations)} mitigations, "
-                    f"{len(self.relationships)} relationships"
-                )
+                if _is_pickle_fresh(local_path, pkl_path):
+                    try:
+                        self._load_from_pickle(pkl_path)
+                        return
+                    except ValueError as e:
+                        # MAC failure or corrupt file — log and fall through to JSON
+                        logger.warning(f"MITRE pickle cache rejected ({e}); reloading from JSON")
+                self._load_from_json(local_path)
+                self._save_pickle(pkl_path)
             except Exception as e:
                 logger.error(f"Error loading local MITRE ATT&CK data: {e}")
         else:
             logger.warning("Online MITRE ATT&CK data loading not implemented yet.")
+
+    def _load_from_pickle(self, pkl_path: str):
+        """Load pre-built indexes from signed pickle (3× faster than JSON parse)."""
+        state = _pkl_load(pkl_path)
+        self.techniques                  = state['techniques']
+        self.tactics                     = state['tactics']
+        self.mitigations                 = state['mitigations']
+        self.relationships               = state['relationships']
+        self.data_objects                = state['data_objects']
+        self._technique_by_ext_id        = state['_technique_by_ext_id']
+        self._technique_by_name          = state['_technique_by_name']
+        self._mitigation_by_ext_id       = state['_mitigation_by_ext_id']
+        self._mitigations_by_technique   = state['_mitigations_by_technique']
+        logger.info(
+            f"MITRE cache loaded from pickle: {len(self.techniques)} techniques, "
+            f"{len(self.tactics)} tactics"
+        )
+
+    def _load_from_json(self, local_path: str):
+        """Parse enterprise-attack.json and build all indexes."""
+        with open(local_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        for obj in data.get('objects', []):
+            obj_id   = obj.get('id')
+            obj_type = obj.get('type')
+
+            if obj_id:
+                self.data_objects[obj_id] = obj
+
+            if obj_type == 'attack-pattern':
+                self.techniques.append(obj)
+                for ref in obj.get('external_references', []):
+                    ext_id = ref.get('external_id', '')
+                    if ext_id:
+                        self._technique_by_ext_id[ext_id.upper()] = obj
+                name = obj.get('name', '')
+                if name:
+                    self._technique_by_name[name.lower()] = obj
+
+            elif obj_type == 'x-mitre-tactic':
+                self.tactics.append(obj)
+            elif obj_type == 'course-of-action':
+                self.mitigations.append(obj)
+                for ref in obj.get('external_references', []):
+                    ext_id = ref.get('external_id', '')
+                    if ext_id and ext_id.startswith('M'):
+                        self._mitigation_by_ext_id[ext_id.upper()] = obj
+            elif obj_type == 'relationship':
+                self.relationships.append(obj)
+
+        for rel in self.relationships:
+            if (rel.get('relationship_type') == 'mitigates'
+                    and not rel.get('revoked', False)):
+                target = rel.get('target_ref')
+                if target:
+                    self._mitigations_by_technique.setdefault(target, []).append(rel)
+
+        logger.info(
+            f"MITRE cache loaded from JSON: {len(self.techniques)} techniques, "
+            f"{len(self.tactics)} tactics, {len(self.mitigations)} mitigations, "
+            f"{len(self.relationships)} relationships"
+        )
+
+    def _save_pickle(self, pkl_path: str):
+        """Persist parsed indexes as a signed pickle for faster subsequent loads."""
+        try:
+            state = {
+                'techniques':                  self.techniques,
+                'tactics':                     self.tactics,
+                'mitigations':                 self.mitigations,
+                'relationships':               self.relationships,
+                'data_objects':                self.data_objects,
+                '_technique_by_ext_id':        self._technique_by_ext_id,
+                '_technique_by_name':          self._technique_by_name,
+                '_mitigation_by_ext_id':       self._mitigation_by_ext_id,
+                '_mitigations_by_technique':   self._mitigations_by_technique,
+            }
+            _pkl_dump(state, pkl_path)
+            logger.info(f"MITRE signed pickle cache saved: {pkl_path}")
+        except Exception as e:
+            logger.warning(f"Could not save MITRE pickle cache: {e}")
 
     def get_techniques(self):
         return self.techniques

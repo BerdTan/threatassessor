@@ -168,6 +168,7 @@ class ThreatAnalysisService(BaseService):
                     "architecture_name": arch_name,
                     "analysis": result_data,
                     "confidence": result_data.get("confidence", 0.995),
+                    "confidence_breakdown": result_data.get("confidence_breakdown"),
                     "patterns_applied": patterns_applied
                 }
             )
@@ -203,7 +204,10 @@ class ThreatAnalysisService(BaseService):
         })
 
         # AI/ML pattern (conditional - check for AI/ML specific data)
-        ai_ml_data = result_data.get("ai_ml_risks") or result_data.get("arc_risks")
+        ai_ml_data = (result_data.get("ai_ml_risks")
+                      or result_data.get("arc_risks")
+                      or result_data.get("ai_ml_assessment")
+                      or result_data.get("ai_controls_recommended"))
         if ai_ml_data:
             # Extract trigger info from architecture
             ai_services = []

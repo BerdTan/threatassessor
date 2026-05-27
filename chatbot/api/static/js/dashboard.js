@@ -40,6 +40,51 @@ class Dashboard {
         // Load theme preference
         const savedTheme = localStorage.getItem('theme') || 'dark';
         document.body.className = `${savedTheme}-theme`;
+
+        // Poll /health until MITRE cache is ready (typically <1s after server start)
+        this._pollReadiness();
+    }
+
+    _pollReadiness() {
+        const uploadBtn = document.getElementById('upload-btn');
+        const dropZone  = document.getElementById('drop-zone');
+
+        const check = async () => {
+            try {
+                const res = await fetch('/health');
+                if (!res.ok) return scheduleNext();
+                const data = await res.json();
+                if (data?.services?.mitre_cache === 'ready') {
+                    // Re-enable upload controls
+                    if (uploadBtn) {
+                        uploadBtn.disabled = false;
+                        uploadBtn.title = '';
+                        if (uploadBtn.dataset.warmup) {
+                            uploadBtn.textContent = uploadBtn.dataset.origLabel || 'Analyze';
+                            delete uploadBtn.dataset.warmup;
+                        }
+                    }
+                    if (dropZone) dropZone.classList.remove('warmup-pending');
+                    this.updateProgress(0, 'Ready to analyze architecture');
+                } else {
+                    // Cache still loading — disable upload and show hint
+                    if (uploadBtn && !uploadBtn.dataset.warmup) {
+                        uploadBtn.dataset.warmup = '1';
+                        uploadBtn.dataset.origLabel = uploadBtn.textContent;
+                        uploadBtn.disabled = true;
+                        uploadBtn.title = 'Initializing threat database…';
+                    }
+                    if (dropZone) dropZone.classList.add('warmup-pending');
+                    this.updateProgress(0, 'Initializing threat database…');
+                    scheduleNext();
+                }
+            } catch (_) {
+                scheduleNext();
+            }
+        };
+
+        const scheduleNext = () => setTimeout(check, 500);
+        check();
     }
 
     initSettings() {
@@ -135,7 +180,7 @@ class Dashboard {
 
     // Tabs that require a completed analysis to be meaningful
     _contentTabs() {
-        return ['attacks', 'controls', 'hardening', 'expert-review'];
+        return ['attacks', 'controls', 'hardening', 'expert-review', 'reports', 'raw-data'];
     }
 
     _setContentTabsDisabled(disabled) {
@@ -509,14 +554,59 @@ class Dashboard {
         const progressText = document.getElementById('progress-text');
         const statusMessage = document.getElementById('status-message');
 
+        // Stop any in-progress animated tick
+        if (this._progressTickTimer) {
+            clearInterval(this._progressTickTimer);
+            this._progressTickTimer = null;
+        }
+
+        this._lastReportedPct = percent;
+        // Store the base message (without % and ETA) for the tick to update
+        this._lastProgressMessage = message;
+        this._lastProgressEta = eta && eta > 0 ? eta : null;
+
         progressFill.style.width = `${percent}%`;
         progressText.textContent = `${percent}%`;
 
-        let statusText = message;
-        if (eta && eta > 0) {
-            statusText += ` (ETA: ${eta}s)`;
+        // Replace inline % in message with live value and append live ETA
+        const _buildStatusText = (pct, msg, etaSecs) => {
+            // Replace "[STAGE] N% -" pattern with current pct
+            let text = msg.replace(/(\[\w+\/?\w*\])\s*\d+%/, `$1 ${Math.round(pct)}%`);
+            if (etaSecs && etaSecs > 0) text += ` (${Math.round(etaSecs)}s)`;
+            return text;
+        };
+        statusMessage.textContent = _buildStatusText(percent, message, this._lastProgressEta);
+
+        // Animated tick: bar inches forward between SSE events; message % + ETA also update
+        if (percent > 0 && percent < 99) {
+            const ceiling = Math.min(percent + 12, 99);
+            let tickEta = this._lastProgressEta;
+            this._progressTickTimer = setInterval(() => {
+                const fill = document.getElementById('progress-fill');
+                const pctEl = document.getElementById('progress-text');
+                const statusEl = document.getElementById('status-message');
+                if (!fill) { clearInterval(this._progressTickTimer); return; }
+                const cur = parseFloat(fill.style.width) || percent;
+                if (cur >= ceiling) {
+                    // Bar frozen at ceiling — keep ETA counting down only
+                    if (tickEta !== null) {
+                        tickEta = Math.max(0, tickEta - 0.6);
+                        if (statusEl && this._lastProgressMessage) {
+                            statusEl.textContent = _buildStatusText(ceiling, this._lastProgressMessage, tickEta);
+                        }
+                    }
+                    return;
+                }
+                const next = Math.min(cur + 0.4, ceiling);
+                fill.style.width = next + '%';
+                if (pctEl) pctEl.textContent = Math.round(next) + '%';
+                // Estimate ETA: count down proportionally as bar advances
+                if (tickEta !== null) tickEta = Math.max(0, tickEta - 0.6);
+                if (statusEl && this._lastProgressMessage) {
+                    statusEl.textContent = _buildStatusText(next, this._lastProgressMessage, tickEta);
+                }
+            }, 600);
         }
-        statusMessage.textContent = statusText;
     }
 
     updateStatusMessage(message) {
@@ -528,7 +618,7 @@ class Dashboard {
 
     updateStages(currentStage) {
         const stages = document.querySelectorAll('.stage');
-        const stageOrder = ['parsing', 'mitre', 'rapids', 'ai_ml', 'validation'];
+        const stageOrder = ['parsing', 'rapids', 'ai_ml', 'validation'];
 
         stages.forEach(stageEl => {
             const stageName = stageEl.dataset.stage;
@@ -622,6 +712,14 @@ class Dashboard {
         let moeImprovTiers = {};
         let moeKnownFindings = [];
         let moeSynthComment = '';
+        // Expert validation signals collected from MoE and Red Team critique files
+        // expertEndorsedControls: control names where ≥1 expert explicitly recommended them
+        // expertWeakenedControls: control names flagged as insufficient or UNSURE-only
+        let expertEndorsedControls = new Set();
+        let expertWeakenedControls = new Set();
+        // Full text corpus from MoE recs — used for substring matching against control names
+        let moeKnownText = '';
+        let moeUnsureText = '';
         try {
             const moeResp = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
             if (moeResp.ok) {
@@ -630,21 +728,65 @@ class Dashboard {
                 moeInterp = moe.confidence?.interpretation ?? '';
                 moeImprovTiers = moe.improvement_options || {};
                 moeSynthComment = (moe.consensus_recommendations || {}).confidence_commentary || '';
-                // Collect KNOWN critical/high for overview summary
                 const cr = moe.consensus_recommendations || {};
                 const allFinds = [...(cr.critical || []), ...(cr.high || [])];
                 moeKnownFindings = allFinds.filter(r =>
                     r.confidence_label === 'KNOWN' || (r.source && r.source.includes('+'))
                 ).slice(0, 3);
+                // Build text corpus from KNOWN vs UNSURE recs for substring matching
+                for (const rec of allFinds) {
+                    if (rec.confidence_label === 'KNOWN' || (rec.source && rec.source.includes('+'))) {
+                        moeKnownText += ' ' + (rec.description || rec.recommendation || '');
+                    }
+                }
+                for (const rec of (cr.review || [])) {
+                    moeUnsureText += ' ' + (rec.description || rec.recommendation || '');
+                }
+                // Also collect names from improvement tier items (control names appear here)
+                for (const tierData of Object.values(moe.improvement_options || {})) {
+                    for (const item of (tierData.items || [])) {
+                        expertEndorsedControls.add(item.toUpperCase().trim());
+                    }
+                }
             }
         } catch (_) {}
 
-        // Top 3 immediate actions: critical first, then high
-        const priority = { critical: 0, high: 1, medium: 2, low: 3 };
+        // Also pull Red Team roadmap requirements (most reliable control name source)
+        try {
+            const rtResp = await fetch(`/api/v1/reports/${archName}/files/06_red_team_critique.json`);
+            if (rtResp.ok) {
+                const rt = await rtResp.json();
+                const roadmap = (rt.breakdown || {}).exploit_mitigation_roadmap || [];
+                for (const tier of roadmap) {
+                    for (const req of (tier.requirements || [])) {
+                        expertEndorsedControls.add(req.toUpperCase().trim());
+                    }
+                }
+            }
+        } catch (_) {}
+
+        // Top 5 controls ranked by composite score:
+        //   base = path_count × risk_score
+        //   ×1.4 boost if expert-endorsed (exact name in RT roadmap / tier items, or mentioned in KNOWN text)
+        //   ×0.8 penalty if mentioned only in UNSURE text (and not in endorsed set)
+        const priorityWeight = { critical: 100, high: 75, medium: 50, low: 25 };
         const top3 = [...controlRecs]
             .filter(c => c.attack_paths && c.attack_paths.length > 0)
-            .sort((a, b) => (priority[a.priority?.toLowerCase()] ?? 9) - (priority[b.priority?.toLowerCase()] ?? 9))
-            .slice(0, 3);
+            .map(c => {
+                const paths = c.attack_paths?.length || 0;
+                const riskScore = c.score ?? (priorityWeight[c.priority?.toLowerCase()] ?? 25);
+                const baseName = (c.control || '').toUpperCase().trim();
+                // Check exact set membership (Red Team roadmap requirements + tier items)
+                const exactEndorsed = expertEndorsedControls.has(baseName);
+                // Check if control name appears in KNOWN expert text (partial match)
+                const textEndorsed = moeKnownText.toUpperCase().includes(baseName);
+                const textUnsure   = !exactEndorsed && !textEndorsed && moeUnsureText.toUpperCase().includes(baseName);
+                const expertBoost = (exactEndorsed || textEndorsed) ? 1.4 : textUnsure ? 0.8 : 1.0;
+                const expertSource = exactEndorsed ? 'roadmap' : textEndorsed ? 'known-text' : textUnsure ? 'unsure-text' : null;
+                return { ...c, _impact: paths * riskScore * expertBoost, _expertBoost: expertBoost, _expertSource: expertSource };
+            })
+            .sort((a, b) => b._impact - a._impact)
+            .slice(0, 5);
 
         // Per-threat exposure rows
         const threatLabels = {
@@ -785,7 +927,9 @@ class Dashboard {
             const mT = (hasMoe && moeKey) ? (moeImprovTiers[moeKey] || {}) : {};
             const costText = mT.cost || t.cost;
             const effortText = mT.effort ? 'Effort: ' + mT.effort : t.timeline;
-            const riskText = mT.risk_reduction || '';
+            // Strip parenthetical explanations from LLM-generated risk text (e.g. "50 → 45 (based on...)")
+            const riskTextRaw = mT.risk_reduction || '';
+            const riskText = riskTextRaw.replace(/\s*\(.*\)/, '').trim();
             const border = t.recommended ? '2px solid var(--secondary-color)' : '1px solid var(--border-color)';
             return `
             <div style="flex:1; min-width:160px; background:var(--card-bg); border:${border}; border-radius:10px; padding:1rem; position:relative;">
@@ -794,7 +938,7 @@ class Dashboard {
                 <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">${t.label}</div>
                 <div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.15rem;">${effortText}</div>
                 <div style="font-size:0.8125rem; color:${hasMoe ? 'var(--text-color)' : 'var(--text-tertiary)'}; font-weight:${hasMoe ? '600' : '400'}; margin-bottom:${riskText ? '0.15rem' : '0.75rem'};">${costText}</div>
-                ${riskText ? `<div style="font-size:0.75rem; color:var(--secondary-color); margin-bottom:0.75rem;">Risk: ${riskText}</div>` : ''}
+                ${riskText ? `<div style="font-size:0.75rem; color:var(--secondary-color); margin-bottom:0.25rem;">Attacker score: ${riskText} ↓</div><div style="font-size:0.65rem; color:var(--text-tertiary); margin-bottom:0.75rem;">lower = harder for attacker</div>` : ''}
                 ${hasMoe
                     ? `<button class="btn-secondary tier-diagram-btn" data-file="${t.file}" style="width:100%; padding:0.375rem; font-size:0.8125rem; cursor:pointer;">View Diagram →</button>`
                     : `<div style="font-size:0.75rem; color:var(--text-tertiary); font-style:italic;">Run Expert Review to unlock roadmap</div>`
@@ -831,35 +975,41 @@ class Dashboard {
         container.innerHTML = `
         ${moeOverviewSummary}
         <!-- Confidence + Scores Row -->
-        <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
+        ${(() => {
+            const confDelta = validatedConf !== null ? (validatedConf - foundationConf).toFixed(1) : null;
+            const confDeltaLabel = confDelta !== null
+                ? (parseFloat(confDelta) >= 0
+                    ? `<div style="font-size:0.75rem; color:var(--secondary-color); font-weight:600;">Expert validated: ${validatedConf.toFixed(1)}% (+${confDelta}%)</div>`
+                    : `<div style="font-size:0.75rem; color:var(--warning-color); font-weight:600;">Expert validated: ${validatedConf.toFixed(1)}% (${confDelta}%)</div>`)
+                : `<div style="font-size:0.75rem; color:var(--text-tertiary);">how complete this analysis is · run Expert Review to validate</div>`;
+            return `<div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
             <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Risk Score</div>
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Current Risk ↓</div>
                 <div style="font-size:2rem; font-weight:700; color:${riskColor};">${risk}<span style="font-size:1rem; color:var(--text-secondary);">/100</span></div>
-                <div style="font-size:0.75rem; color:var(--text-tertiary);">lower is better</div>
+                <div style="font-size:0.75rem; color:var(--text-tertiary);">baseline · lower = safer</div>
             </div>
             <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Defensibility</div>
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Recommended Tier ↓</div>
+                <div style="font-size:2rem; font-weight:700; color:var(--secondary-color);">${riskReductionPct}<span style="font-size:1rem;">%</span><span style="font-size:0.8rem; color:var(--text-secondary);"> risk reduction</span></div>
+                <div style="font-size:0.75rem; color:var(--text-tertiary);">\$${implCost}K est. · ${roi}x ROI</div>
+            </div>
+            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Defensibility ↑</div>
                 <div style="font-size:2rem; font-weight:700; color:${defColor};">${def}<span style="font-size:1rem; color:var(--text-secondary);">/100</span></div>
-                <div style="font-size:0.75rem; color:var(--text-tertiary);">higher is better</div>
+                <div style="font-size:0.75rem; color:var(--text-tertiary);">${controlsPresent.length} controls · higher = better</div>
             </div>
             <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
                 <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Threat Paths</div>
                 <div style="font-size:2rem; font-weight:700; color:var(--text-color);">${attackPaths.length}</div>
-                <div style="font-size:0.75rem; color:var(--text-tertiary);">${controlsPresent.length} controls active</div>
+                <div style="font-size:0.75rem; color:var(--text-tertiary);">active attack routes</div>
             </div>
             <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Foundation Score</div>
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Analysis Confidence</div>
                 <div style="font-size:2rem; font-weight:700; color:var(--secondary-color);">${foundationConf.toFixed(1)}<span style="font-size:1rem;">%</span></div>
-                ${validatedConf !== null
-                    ? `<div style="font-size:0.8125rem; color:var(--primary-color); font-weight:600;">Validated: ${validatedConf.toFixed(1)}%</div>`
-                    : `<div style="font-size:0.75rem; color:var(--text-tertiary);">Expert Review pending</div>`}
+                ${confDeltaLabel}
             </div>
-            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Risk Reduction</div>
-                <div style="font-size:2rem; font-weight:700; color:var(--secondary-color);">${riskReductionPct}<span style="font-size:1rem;">%</span></div>
-                <div style="font-size:0.75rem; color:var(--text-tertiary);">\$${implCost}K · ${roi}x ROI</div>
-            </div>
-        </div>
+        </div>`;
+        })()}
 
         <!-- Two-column: Residual Risk + Top Actions -->
         <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
@@ -889,29 +1039,38 @@ class Dashboard {
                     See <strong style="color:var(--primary-color); cursor:pointer;" onclick="window.dashboard?.switchTab('controls')">Mitigations tab</strong> for the full prioritised list.
                 </div>
             </div>
-            <!-- Top 3 Actions -->
+            <!-- Top Actions by Risk Impact -->
             <div style="flex:1; min-width:240px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem;">
-                <h3 style="margin:0 0 0.375rem; font-size:0.9375rem; color:var(--text-color);">⚡ Start Here</h3>
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:1rem;">Highest-coverage controls across all threat categories</div>
+                <h3 style="margin:0 0 0.2rem; font-size:0.9375rem; color:var(--text-color);">⚡ Highest Impact Controls</h3>
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:1rem;">Ranked by paths covered × risk score${validatedConf !== null ? ' · expert-validated boost applied' : ''}</div>
                 ${top3.length > 0 ? top3.map((c, i) => {
                     const priColor = c.priority === 'critical' ? 'var(--danger-color)' : c.priority === 'high' ? 'var(--warning-color)' : 'var(--primary-color)';
+                    const riskScore = c.score ?? null;
+                    const paths = c.attack_paths?.length || 0;
+                    const expertTag = c._expertBoost > 1
+                        ? `<span style="font-size:0.65rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:3px; padding:1px 4px;">✓ Expert validated</span>`
+                        : c._expertBoost < 1
+                        ? `<span style="font-size:0.65rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:3px; padding:1px 4px;">⚠ Expert uncertain</span>`
+                        : '';
                     return `
-                <div style="padding:0.75rem 0; border-bottom:1px solid var(--border-color);">
+                <div style="padding:0.625rem 0; border-bottom:1px solid var(--border-color);">
                     <div style="display:flex; align-items:flex-start; gap:0.5rem;">
-                        <div style="width:22px; height:22px; border-radius:50%; background:${priColor}; color:#fff; font-size:0.75rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${i+1}</div>
+                        <div style="width:20px; height:20px; border-radius:50%; background:${priColor}; color:#fff; font-size:0.7rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">${i+1}</div>
                         <div style="flex:1;">
-                            <div style="font-weight:600; color:var(--text-color); font-size:0.875rem; text-transform:uppercase;">${c.control}</div>
-                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.2rem;">
-                                Covers ${c.attack_paths?.length || 0} threat path${(c.attack_paths?.length || 0) !== 1 ? 's' : ''}
-                                <span style="margin-left:0.5rem; padding:0.1rem 0.35rem; background:${priColor}22; color:${priColor}; border-radius:3px; font-size:0.7rem; font-weight:700;">${c.priority}</span>
+                            <div style="font-weight:600; color:var(--text-color); font-size:0.8125rem; text-transform:uppercase;">${c.control}</div>
+                            <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-top:0.2rem;">
+                                <span style="font-size:0.7rem; color:var(--text-secondary);">${paths} path${paths !== 1 ? 's' : ''}</span>
+                                ${riskScore !== null ? `<span style="font-size:0.7rem; color:var(--text-tertiary);">·</span><span style="font-size:0.7rem; color:${priColor}; font-weight:600;">risk ${riskScore}/100</span>` : ''}
+                                ${expertTag}
+                                <span style="margin-left:auto; padding:0.1rem 0.3rem; background:${priColor}22; color:${priColor}; border-radius:3px; font-size:0.65rem; font-weight:700;">${c.priority}</span>
                             </div>
                         </div>
                     </div>
                 </div>`}).join('') : '<div style="color:var(--text-tertiary); font-size:0.875rem;">No critical actions identified</div>'}
                 ${top3.length > 0 ? `
                 <div style="margin-top:0.75rem; font-size:0.75rem; color:var(--text-tertiary); font-style:italic;">
-                    These are Quick Win candidates. The full action plan is in the
-                    <strong style="color:var(--primary-color); cursor:pointer;" onclick="window.dashboard?.switchTab('controls')">Mitigations tab</strong>.
+                    Full prioritised list →
+                    <strong style="color:var(--primary-color); cursor:pointer;" onclick="window.dashboard?.switchTab('controls')">Mitigations tab</strong>
                 </div>` : ''}
             </div>
         </div>
@@ -1498,7 +1657,7 @@ class Dashboard {
         }, 100);
     }
 
-    loadControlsTab() {
+    async loadControlsTab() {
         const tableContainer = document.getElementById('controls-table');
 
         if (!this.analysisData) {
@@ -1508,7 +1667,66 @@ class Dashboard {
 
         // Extract control recommendations from nested analysis object
         const analysis = this.analysisData.analysis || {};
-        const controlRecs = analysis.control_recommendations || [];
+        const rawControls = analysis.control_recommendations || [];
+
+        // Build expert endorsement sets (same logic as loadOverviewTab) for sort ordering
+        let endorsedControls = new Set();
+        let knownText = '';
+        let unsureText = '';
+        const archName = this.analysisData?.architecture_name || this.currentArchName;
+        try {
+            const moeResp = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
+            if (moeResp.ok) {
+                const moe = await moeResp.json();
+                const cr = moe.consensus_recommendations || {};
+                const allFinds = [...(cr.critical || []), ...(cr.high || [])];
+                for (const rec of allFinds) {
+                    if (rec.confidence_label === 'KNOWN' || (rec.source && rec.source.includes('+'))) {
+                        knownText += ' ' + (rec.description || rec.recommendation || '');
+                    }
+                }
+                for (const rec of (cr.review || [])) {
+                    unsureText += ' ' + (rec.description || rec.recommendation || '');
+                }
+                for (const tierData of Object.values(moe.improvement_options || {})) {
+                    for (const item of (tierData.items || [])) {
+                        endorsedControls.add(item.toUpperCase().trim());
+                    }
+                }
+            }
+        } catch (_) {}
+        try {
+            const rtResp = await fetch(`/api/v1/reports/${archName}/files/06_red_team_critique.json`);
+            if (rtResp.ok) {
+                const rt = await rtResp.json();
+                const roadmap = (rt.breakdown || {}).exploit_mitigation_roadmap || [];
+                for (const tier of roadmap) {
+                    for (const req of (tier.requirements || [])) {
+                        endorsedControls.add(req.toUpperCase().trim());
+                    }
+                }
+            }
+        } catch (_) {}
+
+        // Sort by same _impact formula used in Overview top controls
+        const priorityWeight = { critical: 100, high: 75, medium: 50, low: 25 };
+        const controlRecs = [...rawControls].map(c => {
+            const paths = (c.attack_paths || []).length;
+            const riskScore = c.score ?? (priorityWeight[c.priority?.toLowerCase()] ?? 25);
+            const baseName = (c.control || '').toUpperCase().trim();
+            const exactEndorsed = endorsedControls.has(baseName);
+            const textEndorsed = knownText.toUpperCase().includes(baseName);
+            const textUnsure = !exactEndorsed && !textEndorsed && unsureText.toUpperCase().includes(baseName);
+            const expertBoost = (exactEndorsed || textEndorsed) ? 1.4 : textUnsure ? 0.8 : 1.0;
+            return { ...c, _impact: paths * riskScore * expertBoost, _expertBoost: expertBoost };
+        }).sort((a, b) => {
+            // Primary: priority tier (critical > high > medium > low)
+            const pw = { critical: 3, high: 2, medium: 1, low: 0 };
+            const pDiff = (pw[b.priority] ?? 0) - (pw[a.priority] ?? 0);
+            if (pDiff !== 0) return pDiff;
+            // Secondary: _impact score
+            return b._impact - a._impact;
+        });
 
         if (controlRecs.length === 0) {
             tableContainer.innerHTML = `
@@ -1557,7 +1775,15 @@ class Dashboard {
                     <div><strong style="color: var(--danger-color);">CRITICAL</strong> - High-risk threats requiring immediate action</div>
                     <div><strong style="color: var(--warning-color);">HIGH</strong> - Important improvements, prioritise soon</div>
                     <div><strong style="color: var(--primary-color);">MEDIUM</strong> - Recommended enhancements, plan for deployment</div>
-                    <div style="margin-top: 0.4rem; color: var(--text-tertiary);"><em>Score: threat severity (RAPIDS) × attack path coverage × technique count. Click any control to view full details in right pane.</em></div>
+                    <div style="margin-top:0.5rem; display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center;">
+                        <span style="padding:1px 6px; background:var(--primary-color)18; border:1px solid var(--primary-color)55; border-radius:4px; font-size:0.7rem; font-weight:700; color:var(--primary-color);">RAPIDS</span>
+                        <span style="font-size:0.75rem; color:var(--text-tertiary);">MITRE Enterprise ATT&CK — 6 threat categories (ransomware, app vulns, phishing, insider, DoS, supply chain)</span>
+                    </div>
+                    <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-top:0.2rem;">
+                        <span style="padding:1px 6px; background:#7c3aed18; border:1px solid #7c3aed55; border-radius:4px; font-size:0.7rem; font-weight:700; color:#a78bfa;">ARC+ATLAS</span>
+                        <span style="font-size:0.75rem; color:var(--text-tertiary);">MITRE ATLAS AI/ML techniques — ARC Framework (9 categories, 46 risks, 88 controls). Only shown for AI/agentic architectures.</span>
+                    </div>
+                    <div style="margin-top: 0.4rem; color: var(--text-tertiary);"><em>Score: threat severity × path coverage × technique depth. Click any control for full details.</em></div>
                 </div>
             </div>
             <div id="controls-list"></div>
@@ -1578,6 +1804,16 @@ class Dashboard {
                     control.priority === 'critical' ? 'var(--danger-color)' :
                     control.priority === 'high' ? 'var(--warning-color)' :
                     'var(--primary-color)';
+                // Detect control source: ATLAS technique IDs start with "AML.", ARC rationale has "AI/ML (ARC):"
+                const isArc = (control.techniques || []).some(t => t.startsWith('AML.'))
+                           || (control.rationale || '').includes('AI/ML (ARC)');
+                const isRapids = !isArc || (control.rapids_threats || []).some(t => !t.startsWith('AI/ML'));
+                // Extract ARC categories from rationale ("AI/ML (ARC): Safety, Privacy") and annotate with arc_id
+                const arcCatMatch = (control.rationale || '').match(/AI\/ML \(ARC\):\s*([^|]+)/);
+                const arcCats = arcCatMatch ? this._formatArcCats(arcCatMatch[1].trim()) : '';
+                const sourceTag = isArc
+                    ? `<span style="padding:1px 5px; background:#7c3aed18; border:1px solid #7c3aed55; border-radius:3px; font-size:0.65rem; font-weight:700; color:#a78bfa; flex-shrink:0;">ARC+ATLAS</span>`
+                    : `<span style="padding:1px 5px; background:var(--primary-color)18; border:1px solid var(--primary-color)44; border-radius:3px; font-size:0.65rem; font-weight:700; color:var(--primary-color); flex-shrink:0;">RAPIDS</span>`;
 
                 const card = document.createElement('div');
                 card.className = 'list-item';
@@ -1595,19 +1831,19 @@ class Dashboard {
                 card.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: start;">
                         <div style="flex: 1;">
-                            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap:wrap;">
                                 <strong style="font-size: 1rem; color: var(--primary-color);">${control.control}</strong>
-                                <span style="padding: 0.25rem 0.75rem; background: ${priorityColor}22; color: ${priorityColor}; border-radius: 12px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">
-                                    ${control.priority}
-                                </span>
+                                <span style="padding: 0.2rem 0.6rem; background: ${priorityColor}22; color: ${priorityColor}; border-radius: 10px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;">${control.priority}</span>
+                                ${sourceTag}
                             </div>
+                            ${arcCats ? `<div style="font-size:0.75rem; color:#a78bfa; margin-bottom:0.35rem;">ARC categories: ${arcCats}</div>` : ''}
                             <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
                                 ${control.rationale}
                             </div>
-                            <div style="display: flex; gap: 1rem; font-size: 0.8125rem; color: var(--text-tertiary); margin-bottom: 0.5rem;">
-                                <span>📍 ${control.attack_paths ? control.attack_paths.length : 0} attack paths</span>
-                                <span>🎯 ${control.techniques ? control.techniques.length : 0} techniques</span>
-                                <span>🛡️ ${control.mitigations ? control.mitigations.length : 0} MITRE mitigations</span>
+                            <div style="display: flex; gap: 1rem; font-size: 0.8125rem; color: var(--text-tertiary); margin-bottom: 0.5rem; flex-wrap:wrap;">
+                                <span>📍 ${control.attack_paths ? control.attack_paths.length : 0} paths</span>
+                                <span>🎯 ${control.techniques ? control.techniques.length : 0} ${isArc ? 'ATLAS' : 'Enterprise'} techniques</span>
+                                <span>🛡️ ${control.mitigations ? control.mitigations.length : 0} mitigations</span>
                             </div>
                             ${control.control_type ? `
                                 <div style="font-size: 0.8125rem; color: var(--text-tertiary); padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
@@ -1663,6 +1899,24 @@ class Dashboard {
             checkboxes.forEach(cb => cb.checked = false);
             renderControls([]);
         });
+    }
+
+    // Convert "Safety, Accountability" → arc_id-annotated badges
+    _formatArcCats(catStr) {
+        const ARC_IDS = {
+            integrity: 'INT', safety: 'SAF', security: 'SEC', privacy: 'PRIV',
+            transparency: 'TRANS', accountability: 'ACC', fairness: 'FAIR',
+            resilience: 'RES', societal_impact: 'SOC'
+        };
+        const cats = catStr.split(',').map(s => s.trim()).filter(Boolean);
+        const badges = cats.map(cat => {
+            const key = cat.toLowerCase().replace(/\s+/g, '_');
+            const id = ARC_IDS[key];
+            return id
+                ? `<span style="display:inline-flex; align-items:center; gap:0.2rem; padding:1px 5px; background:#7c3aed18; border:1px solid #7c3aed44; border-radius:4px; font-size:0.68rem; font-weight:700; color:#a78bfa;"><span style="opacity:0.7;">${id}</span> ${cat}</span>`
+                : `<span style="font-size:0.75rem; color:#a78bfa;">${cat}</span>`;
+        });
+        return badges.length ? `<span style="display:inline-flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">ARC: ${badges.join('')}</span>` : '';
     }
 
     async showControlDetail(control) {
@@ -1738,19 +1992,39 @@ class Dashboard {
             </div>
 
             <div style="margin-bottom: 1.5rem;">
+                ${(() => {
+                    const isArcCtrl = techs.some(t => t.startsWith('AML.'));
+                    const arcCatM = (control.rationale || '').match(/AI\/ML \(ARC\):\s*([^|]+)/);
+                    const arcCatsStr = arcCatM ? this._formatArcCats(arcCatM[1].trim()) : '';
+                    if (!isArcCtrl) return '';
+                    return `<div style="margin-bottom:0.75rem; padding:0.625rem 0.875rem; background:#7c3aed12; border:1px solid #7c3aed44; border-radius:8px;">
+                        <div style="font-size:0.8125rem; font-weight:700; color:#a78bfa; margin-bottom:0.2rem;">🤖 ARC Framework + MITRE ATLAS</div>
+                        <div style="font-size:0.8125rem; color:var(--text-secondary);">This control was recommended by the <strong>ARC Framework</strong> (AI Risk & Control) for AI/agentic architectures, mapped to <strong>MITRE ATLAS</strong> AI/ML adversarial techniques — not covered by standard MITRE Enterprise ATT&CK.</div>
+                        ${arcCatsStr ? `<div style="font-size:0.75rem; color:#a78bfa; margin-top:0.35rem;">${arcCatsStr}</div>` : ''}
+                    </div>`;
+                })()}
                 <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--primary-color);">🔬 Techniques & Mitigations</h4>
                 ${techs.length > 0 ? `
                     ${techs.map(tech => {
+                        const isAtlas = tech.startsWith('AML.');
+                        const techColor = isAtlas ? '#a78bfa' : 'var(--primary-color)';
+                        const techBadge = isAtlas
+                            ? `<span style="padding:1px 5px; background:#7c3aed18; border:1px solid #7c3aed55; border-radius:3px; font-size:0.65rem; font-weight:700; color:#a78bfa; margin-left:0.4rem;">ATLAS</span>`
+                            : `<span style="padding:1px 5px; background:var(--primary-color)18; border:1px solid var(--primary-color)44; border-radius:3px; font-size:0.65rem; font-weight:700; color:var(--primary-color); margin-left:0.4rem;">ATT&CK</span>`;
+                        const atlasUrl = isAtlas
+                            ? `https://atlas.mitre.org/techniques/${tech}/`
+                            : `https://attack.mitre.org/techniques/${tech}/`;
                         const techName = techniqueNames[tech] || tech;
                         const mits = sortedMits(techMitMappings[tech] || []);
                         return `
                         <div style="margin-bottom: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; background: var(--nav-hover-bg); border-left: 3px solid var(--primary-color);">
-                                <div>
-                                    <code style="font-weight: 700; color: var(--primary-color); font-size: 0.875rem;">${tech}</code>
-                                    ${techName !== tech ? `<span style="margin-left: 0.5rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">· ${techName}</span>` : ''}
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; background: var(--nav-hover-bg); border-left: 3px solid ${techColor};">
+                                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.25rem;">
+                                    <code style="font-weight: 700; color: ${techColor}; font-size: 0.875rem;">${tech}</code>
+                                    ${techBadge}
+                                    ${techName !== tech ? `<span style="margin-left: 0.25rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">· ${techName}</span>` : ''}
                                 </div>
-                                <a href="https://attack.mitre.org/techniques/${tech}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">🔗</a>
+                                <a href="${atlasUrl}" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">🔗</a>
                             </div>
                             ${mits.length > 0 ? `
                                 <div style="background: var(--card-bg); border-top: 1px solid var(--border-color);">
@@ -1760,12 +2034,18 @@ class Dashboard {
                                     ${mits.map((m, idx) => {
                                         const cov = mitCoverage[m] || 1;
                                         const covLabel = techs.length > 1 ? `covers ${cov}/${techs.length} technique${cov !== 1 ? 's' : ''}` : '';
+                                        const isAtlasMit = m.startsWith('AML.');
+                                        const mitUrl = isAtlasMit
+                                            ? `https://atlas.mitre.org/mitigations/${m}/`
+                                            : `https://attack.mitre.org/mitigations/${m}/`;
+                                        const mitColor = isAtlasMit ? '#a78bfa' : 'var(--secondary-color)';
                                         return `
-                                        <a href="https://attack.mitre.org/mitigations/${m}/" target="_blank"
+                                        <a href="${mitUrl}" target="_blank"
                                            style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.75rem; border-bottom:${idx < mits.length - 1 ? '1px solid var(--border-color)' : 'none'}; text-decoration:none; transition:background 0.15s;"
                                            onmouseover="this.style.background='var(--nav-hover-bg)'" onmouseout="this.style.background='transparent'">
-                                            <code style="color:var(--secondary-color); font-weight:700; font-size:0.8125rem; flex-shrink:0;">${m}</code>
+                                            <code style="color:${mitColor}; font-weight:700; font-size:0.8125rem; flex-shrink:0;">${m}</code>
                                             <span style="color:var(--text-secondary); font-size:0.8125rem; flex:1;">${mitigationNames[m] || ''}</span>
+                                            ${isAtlasMit ? `<span style="padding:1px 4px; background:#7c3aed18; border:1px solid #7c3aed44; border-radius:3px; font-size:0.6rem; font-weight:700; color:#a78bfa; flex-shrink:0;">ATLAS</span>` : ''}
                                             ${covLabel ? `<span style="font-size:0.7rem; color:var(--text-tertiary); flex-shrink:0; white-space:nowrap;">${covLabel}</span>` : ''}
                                             <span style="font-size:0.7rem; color:var(--text-tertiary); flex-shrink:0;">↗</span>
                                         </a>
@@ -3320,12 +3600,27 @@ class Dashboard {
             </div>`;
         }
         // idle
-        return `<div id="erp-btn-row" style="display:inline-flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; flex-wrap:wrap; justify-content:center;">
-            <button id="run-expert-review-btn" onclick="window.dashboard.runExpertReview('${archName}')"
-                style="background:var(--primary-color); color:#fff; border:none; border-radius:8px;
-                       padding:0.75rem 1.75rem; font-size:0.9375rem; font-weight:600; cursor:pointer;">
-                Run Expert Review (~90 s)
-            </button>
+        return `<div id="erp-btn-row" style="display:flex; flex-direction:column; align-items:center; gap:0.75rem; margin-bottom:1.5rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem; font-size:0.8125rem; color:var(--text-secondary);">
+                <label for="erp-mode-select" style="font-weight:600; white-space:nowrap;">Critic Mode:</label>
+                <select id="erp-mode-select"
+                    style="background:#1e1e2e; color:#e2e8f0; border:1px solid var(--border-color);
+                           border-radius:6px; padding:0.3rem 0.6rem; font-size:0.8125rem; cursor:pointer;"
+                    onchange="window.dashboard._erpShowModeHint(this.value)">
+                    <option value="sequential" selected style="background:#1e1e2e; color:#e2e8f0;">Sequential (Recommended)</option>
+                    <option value="auto" style="background:#1e1e2e; color:#e2e8f0;">Auto (Complexity-Adaptive)</option>
+                    <option value="parallel" style="background:#1e1e2e; color:#e2e8f0;">Parallel (Fast)</option>
+                </select>
+                <div id="erp-mode-hint" style="max-width:380px; margin-top:0.5rem; padding:0.5rem 0.75rem; border-radius:6px;
+                     background:var(--nav-hover-bg); border:1px solid var(--border-color); font-size:0.75rem; color:var(--text-secondary); text-align:left;"></div>
+            </div>
+            <div style="display:inline-flex; align-items:center; gap:0.6rem; flex-wrap:wrap; justify-content:center;">
+                <button id="run-expert-review-btn" onclick="window.dashboard.runExpertReview('${archName}')"
+                    style="background:var(--primary-color); color:#fff; border:none; border-radius:8px;
+                           padding:0.75rem 1.75rem; font-size:0.9375rem; font-weight:600; cursor:pointer;">
+                    Run Expert Review (~90 s)
+                </button>
+            </div>
         </div>`;
     }
 
@@ -3345,6 +3640,45 @@ class Dashboard {
                        : erpState === 'paused'  ? 'Analysis is paused. Previously completed critics are saved. Resume to continue from where it stopped.'
                        : 'The expert panel (Architecture Review, Coverage Audit, Exploit Analysis) has not reviewed this assessment yet. Running it adjusts confidence from the Foundation Score and unlocks the Improvement Roadmap.';
         const progressDisplay = isActive ? 'block' : 'none';
+        // Parallel/auto mode uses per-critic bars instead of a single sequential bar
+        const parallelMode = this._erpState && (this._erpState.criticMode === 'parallel' || this._erpState.criticMode === 'auto');
+        const progressBarHtml = parallelMode ? `
+            <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span id="erp-stage-label" style="font-size:0.875rem; color:var(--text-secondary);">Parallel critics running…</span>
+                <span id="erp-pct" style="font-size:0.875rem; font-weight:600; color:var(--primary-color);">0%</span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0.35rem; margin-bottom:0.5rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span style="font-size:0.7rem; width:58px; color:var(--text-tertiary);">🏛️ Architect</span>
+                    <div style="flex:1; background:var(--nav-hover-bg); border-radius:3px; height:5px; overflow:hidden;"><div id="erp-bar-architect" style="height:100%; width:0%; background:var(--primary-color); transition:width 0.4s ease;"></div></div>
+                    <span id="erp-pct-architect" style="font-size:0.65rem; width:28px; color:var(--text-tertiary); text-align:right;">0%</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span style="font-size:0.7rem; width:58px; color:var(--text-tertiary);">🔬 Tester</span>
+                    <div style="flex:1; background:var(--nav-hover-bg); border-radius:3px; height:5px; overflow:hidden;"><div id="erp-bar-tester" style="height:100%; width:0%; background:var(--primary-color); transition:width 0.4s ease;"></div></div>
+                    <span id="erp-pct-tester" style="font-size:0.65rem; width:28px; color:var(--text-tertiary); text-align:right;">0%</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span style="font-size:0.7rem; width:58px; color:var(--text-tertiary);">🎯 Red Team</span>
+                    <div style="flex:1; background:var(--nav-hover-bg); border-radius:3px; height:5px; overflow:hidden;"><div id="erp-bar-red_team" style="height:100%; width:0%; background:var(--primary-color); transition:width 0.4s ease;"></div></div>
+                    <span id="erp-pct-red_team" style="font-size:0.65rem; width:28px; color:var(--text-tertiary); text-align:right;">0%</span>
+                </div>
+            </div>
+            <!-- Single bar stub for synthesis phase (reuses erp-bar id) -->
+            <div id="erp-synthesis-bar-row" style="display:none; flex-direction:column; gap:0.2rem; margin-bottom:0.3rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span style="font-size:0.7rem; width:58px; color:var(--text-tertiary);">⚙️ Synthesis</span>
+                    <div style="flex:1; background:var(--nav-hover-bg); border-radius:3px; height:5px; overflow:hidden;"><div id="erp-bar" style="height:100%; width:0%; background:var(--secondary-color); transition:width 0.4s ease;"></div></div>
+                    <span id="erp-pct-synthesis" style="font-size:0.65rem; width:28px; color:var(--text-tertiary); text-align:right;">0%</span>
+                </div>
+            </div>` : `
+            <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span id="erp-stage-label" style="font-size:0.875rem; color:var(--text-secondary);">Starting...</span>
+                <span id="erp-pct" style="font-size:0.875rem; font-weight:600; color:var(--primary-color);">0%</span>
+            </div>
+            <div style="background:var(--nav-hover-bg); border-radius:4px; height:6px; overflow:hidden;">
+                <div id="erp-bar" style="height:100%; width:0%; background:var(--primary-color); transition:width 0.4s ease;"></div>
+            </div>`;
         return `
             <div style="text-align: center; padding: 3rem 2rem;">
                 <div style="font-size: 3rem; margin-bottom: 1rem;">🧑‍🏫</div>
@@ -3353,13 +3687,7 @@ class Dashboard {
                 ${this._erpButtonRowHtml(archName, erpState)}
                 <div id="expert-review-progress" style="display:${progressDisplay}; max-width: 520px; margin: 0 auto; text-align: left;">
                     <div style="background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); padding: 1rem;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                            <span id="erp-stage-label" style="font-size:0.875rem; color: var(--text-secondary);">Starting...</span>
-                            <span id="erp-pct" style="font-size:0.875rem; font-weight:600; color:var(--primary-color);">0%</span>
-                        </div>
-                        <div style="background: var(--nav-hover-bg); border-radius: 4px; height: 6px; overflow: hidden;">
-                            <div id="erp-bar" style="height:100%; width:0%; background: var(--primary-color); transition: width 0.4s ease;"></div>
-                        </div>
+                        ${progressBarHtml}
                         <div id="erp-message" style="font-size:0.8125rem; color:var(--text-tertiary); margin-top:0.5rem; min-height:1.2em;"></div>
                         <!-- Progressive agent status cards -->
                         <div style="display:flex; gap:0.5rem; margin-top:0.875rem; flex-wrap:wrap;">
@@ -3399,14 +3727,39 @@ class Dashboard {
     _erpRestoreState() {
         const s = this._erpState;
         if (!s) return;
-        const bar = document.getElementById('erp-bar');
         const pct = document.getElementById('erp-pct');
         const stageLabel = document.getElementById('erp-stage-label');
         const message = document.getElementById('erp-message');
-        if (bar) bar.style.width = (s.pct || 0) + '%';
-        if (pct) pct.textContent = (s.pct || 0) + '%';
         const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
-        if (stageLabel) stageLabel.textContent = stageMap[s.stage] || (s.stage || 'Starting...');
+        const parallelModeR = s.criticMode === 'parallel' || s.criticMode === 'auto';
+        if (parallelModeR) {
+            if (pct) pct.textContent = (s.pct || 0) + '%';
+            if (stageLabel) stageLabel.textContent = s.stage === 'synthesis' ? '⚙️ Synthesising…' : 'Parallel critics running…';
+            // Restore per-critic bars from cardStates
+            for (const c of ['architect', 'tester', 'red_team']) {
+                const cs = s.cardStates && s.cardStates[c];
+                const cBar = document.getElementById('erp-bar-' + c);
+                const cPct = document.getElementById('erp-pct-' + c);
+                if (cs && cs.isCriticResult) {
+                    if (cBar) { cBar.style.width = '100%'; cBar.style.background = cs.statusColor; }
+                    if (cPct) { cPct.textContent = '✓'; cPct.style.color = cs.statusColor; }
+                } else {
+                    if (cBar) cBar.style.width = '5%';
+                    if (cPct) cPct.textContent = '5%';
+                }
+            }
+            if (s.stage === 'synthesis') {
+                const synthRow = document.getElementById('erp-synthesis-bar-row');
+                if (synthRow) synthRow.style.display = 'flex';
+                const bar = document.getElementById('erp-bar');
+                if (bar) bar.style.width = (s.pct || 0) + '%';
+            }
+        } else {
+            const bar = document.getElementById('erp-bar');
+            if (bar) bar.style.width = (s.pct || 0) + '%';
+            if (pct) pct.textContent = (s.pct || 0) + '%';
+            if (stageLabel) stageLabel.textContent = stageMap[s.stage] || (s.stage || 'Starting...');
+        }
         if (message) message.textContent = s.message || '';
         // Restore each critic card from saved cardStates
         const agentOrder = ['architect', 'tester', 'red_team', 'synthesis'];
@@ -3468,6 +3821,7 @@ class Dashboard {
         if (!s) return;
         if (s.abortController) s.abortController.abort();
         const archName = s.archName;
+        this._clearErpTimers();
         this._erpState = null;
 
         // Delete partial critic files so a fresh run starts clean
@@ -3511,6 +3865,7 @@ class Dashboard {
             const response = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
             if (!response.ok) {
                 container.innerHTML = this._erpProgressShell(archName, 'idle');
+                this._erpShowModeHint('sequential');
                 return;
             }
 
@@ -3528,6 +3883,8 @@ class Dashboard {
             const synthComment = consensusRecsRaw.confidence_commentary || '';
             const isFallback = synthQuality === 'FALLBACK';
             const synthBorderColor = isFallback ? 'var(--warning-color)' : 'var(--border-color)';
+            const runCriticMode = moe.critic_mode || 'sequential';
+            const isParallelResult = runCriticMode === 'parallel' || runCriticMode === 'partial_parallel';
 
             // Build blindspots HTML
             let blindspotsHtml = '';
@@ -3589,18 +3946,28 @@ class Dashboard {
                     + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + cards + '</div>'
                     + '</div>';
             } else {
-                // No contradictions — always show this section so users know the experts agreed
-                contradictionsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
-                    + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
-                    + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">✅ Expert Disagreements</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">No contradictions — all three critics are in agreement on this assessment.</p></div>'
-                    + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;"> ⌄</span>'
-                    + '</div>'
-                    + '<div class="er-panel-body" style="padding: 0.75rem 1.25rem 1rem;">'
-                    + '<div style="padding:0.65rem 1rem; background:var(--secondary-color)14; border:1px solid var(--secondary-color)44; border-radius:8px; font-size:0.875rem; color:var(--secondary-color);">'
-                    + 'Architect, Tester, and Red Team reached consensus — no conflicting findings to resolve.'
-                    + '</div></div>'
-                    + '</div>';
+                if (isParallelResult) {
+                    // Parallel mode: contradiction detection is structurally N/A — grey out the panel
+                    contradictionsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden; opacity:0.55;">'
+                        + '<div style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center;">'
+                        + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-tertiary); font-size: 1rem;">— Expert Disagreements (N/A)</h3>'
+                        + '<p style="font-size: 0.875rem; color: var(--text-tertiary); margin: 0;">Not applicable — <strong>' + runCriticMode + '</strong> mode critics ran independently and did not read each other\'s output. Cross-critic disagreement detection requires Sequential mode.</p></div>'
+                        + '</div>'
+                        + '</div>';
+                } else {
+                    // Sequential / auto-resolved-sequential: genuine consensus
+                    const modeLabel = runCriticMode === 'auto' ? 'Auto (resolved to Sequential)' : 'Sequential';
+                    contradictionsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                        + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
+                        + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">✅ Expert Disagreements</h3>'
+                        + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">No contradictions found.</p></div>'
+                        + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;"> ⌄</span>'
+                        + '</div>'
+                        + '<div class="er-panel-body" style="padding: 0.75rem 1.25rem 1rem;">'
+                        + '<div style="padding:0.65rem 1rem; background:var(--secondary-color)14; border:1px solid var(--secondary-color)44; border-radius:8px; font-size:0.875rem; color:var(--secondary-color);">All three critics read each other\'s output and found no conflicting positions — this is genuine consensus.</div>'
+                        + '<div style="margin-top:0.5rem; font-size:0.8125rem; color:var(--text-tertiary);">Mode used: <strong>' + modeLabel + '</strong>. Critics did cross-reference each other, so this absence reflects actual agreement.</div>'
+                        + '</div></div>';
+                }
             }
 
             // Build synthesis footer outside template literal
@@ -3643,7 +4010,7 @@ class Dashboard {
                         + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; font-size:0.8125rem; margin-bottom:0.5rem;">'
                         + '<div><span style="color:var(--text-tertiary);">Cost:</span> ' + (t.cost || 'cost not estimated') + '</div>'
                         + '<div><span style="color:var(--text-tertiary);">Effort:</span> ' + (t.effort || 'not estimated') + '</div>'
-                        + '<div><span style="color:var(--text-tertiary);">Risk:</span> ' + (t.risk_reduction || '—') + '</div>'
+                        + '<div><span style="color:var(--text-tertiary);">Attacker score ↓:</span> ' + (t.risk_reduction || '—').replace(/\s*\(.*\)/, '').trim() + ' <span style="font-size:0.7rem; color:var(--text-tertiary);">(lower = harder to exploit)</span></div>'
                         + '</div>'
                         + itemList
                         + residualBlock
@@ -3877,7 +4244,18 @@ class Dashboard {
                     + '</div>';
             }
 
+            const parallelWarningBanner = isParallelResult
+                ? '<div style="background:var(--warning-color)12; border:1px solid var(--warning-color)55; border-radius:8px; padding:0.75rem 1rem; margin-bottom:1rem; display:flex; gap:0.625rem; align-items:flex-start;">'
+                    + '<span style="font-size:1rem; flex-shrink:0;">⚠</span>'
+                    + '<div style="font-size:0.8125rem; color:var(--text-color);">'
+                    + '<strong>Parallel mode tradeoffs:</strong> Critics ran independently — Tester did not validate Architect\'s roadmap, Red Team did not adjust for MITRE mapping errors. '
+                    + 'Cross-expert findings below are each critic\'s independent view, not cross-validated conclusions. '
+                    + '<span style="color:var(--warning-color);">Re-run with Sequential mode for full cross-referencing.</span>'
+                    + '</div></div>'
+                : '';
+
             container.innerHTML = ''
+                + parallelWarningBanner
                 + '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">'
                 + '<h3 style="margin: 0 0 1rem; color: var(--text-color); font-size: 1rem;">Confidence Progression</h3>'
                 + '<div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">'
@@ -3988,8 +4366,23 @@ class Dashboard {
             + '</div>';
     }
 
+    _erpShowModeHint(mode) {
+        const el = document.getElementById('erp-mode-hint');
+        if (!el) return;
+        const hints = {
+            sequential: '<strong style="color:#e2e8f0;">Sequential</strong> — Architect → Tester → Red Team in order. Each critic reads the previous one\'s output, enabling cross-validated reasoning. <span style="color:var(--secondary-color);">Best choice for thorough assessments.</span> Tradeoff: ~90s total.',
+            auto:       '<strong style="color:#e2e8f0;">Auto</strong> — Chooses based on architecture complexity. Simple architectures (few nodes/paths) use partial parallel; complex ones fall back to sequential. Balances speed and rigour automatically.',
+            parallel:   '<strong style="color:#e2e8f0;">Parallel</strong> — All three critics run simultaneously (~30s faster). <span style="color:var(--warning-color);">Blindspot:</span> Tester cannot validate Architect\'s roadmap; Red Team cannot adjust for invalid MITRE mappings. Use when speed matters more than cross-referencing.',
+        };
+        el.innerHTML = hints[mode] || '';
+    }
+
     runExpertReview(archName) {
         if (!archName) return;
+
+        // Read the mode selector (only present when idle)
+        const modeEl = document.getElementById('erp-mode-select');
+        const criticMode = modeEl ? modeEl.value : 'sequential';
 
         // Initialise persistent run state — survives tab switches
         // status: 'running' | 'paused'
@@ -3997,6 +4390,7 @@ class Dashboard {
         this._erpState = {
             status: 'running',
             archName,
+            criticMode,
             stage: 'architect',
             pct: 0,
             message: 'Starting...',
@@ -4024,15 +4418,67 @@ class Dashboard {
         this._erpState.pct = p;
         this._erpState.stage = data.stage || this._erpState.stage;
         this._erpState.message = data.message || '';
-        const bar = document.getElementById('erp-bar');
-        const pctEl = document.getElementById('erp-pct');
-        const stageLabel = document.getElementById('erp-stage-label');
+        const parallelMode = this._erpState.criticMode === 'parallel' || this._erpState.criticMode === 'auto';
         const msgEl = document.getElementById('erp-message');
-        if (bar) bar.style.width = p + '%';
-        if (pctEl) pctEl.textContent = p + '%';
         const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
-        if (stageLabel) stageLabel.textContent = stageMap[data.stage] || data.stage;
         if (msgEl) msgEl.textContent = data.message || '';
+
+        if (parallelMode) {
+            // Per-critic bars: each stage drives its own bar
+            const criticStages = ['architect', 'tester', 'red_team'];
+            if (data.stage === 'parallel_starting') {
+                // Initialise all three critic bars to "started" (5%)
+                for (const c of criticStages) {
+                    const cBar = document.getElementById('erp-bar-' + c);
+                    const cPct = document.getElementById('erp-pct-' + c);
+                    if (cBar && cBar.style.width === '0%') { cBar.style.width = '5%'; }
+                    if (cPct && cPct.textContent === '0%') cPct.textContent = '5%';
+                }
+                // Start per-critic elapsed timer — updates card status every second
+                if (!this._erpState._parallelElapsed) {
+                    this._erpState._parallelElapsed = {};
+                    this._erpState._parallelStartTs = Date.now();
+                    this._erpParallelTimer = setInterval(() => {
+                        if (!this._erpState) { clearInterval(this._erpParallelTimer); return; }
+                        const elapsed = Math.round((Date.now() - this._erpState._parallelStartTs) / 1000);
+                        const criticLabels = { architect: '🏛️ Architect', tester: '🔬 Coverage Audit', red_team: '🎯 Red Team' };
+                        for (const c of ['architect', 'tester', 'red_team']) {
+                            const cs = this._erpState.cardStates[c];
+                            if (cs && cs.isCriticResult) continue; // already done
+                            const statusEl = document.getElementById('erp-card-' + c + '-status');
+                            if (statusEl) {
+                                statusEl.innerHTML = `<span style="color:var(--primary-color);">⟳ Running… ${elapsed}s</span>`;
+                            }
+                        }
+                    }, 1000);
+                }
+            } else if (criticStages.includes(data.stage)) {
+                const criticBar = document.getElementById('erp-bar-' + data.stage);
+                const criticPct = document.getElementById('erp-pct-' + data.stage);
+                if (criticBar) criticBar.style.width = p + '%';
+                if (criticPct) criticPct.textContent = p + '%';
+            } else if (data.stage === 'synthesis') {
+                // Switch to synthesis bar row
+                const synthRow = document.getElementById('erp-synthesis-bar-row');
+                if (synthRow) synthRow.style.display = 'flex';
+                const bar = document.getElementById('erp-bar');
+                const synthPct = document.getElementById('erp-pct-synthesis');
+                if (bar) bar.style.width = p + '%';
+                if (synthPct) synthPct.textContent = p + '%';
+            }
+            // Update overall % label and stage label
+            const pctEl = document.getElementById('erp-pct');
+            const stageLabel = document.getElementById('erp-stage-label');
+            if (pctEl) pctEl.textContent = p + '%';
+            if (stageLabel) stageLabel.textContent = data.stage === 'synthesis' ? '⚙️ Synthesising…' : 'Parallel critics running…';
+        } else {
+            const bar = document.getElementById('erp-bar');
+            const pctEl = document.getElementById('erp-pct');
+            const stageLabel = document.getElementById('erp-stage-label');
+            if (bar) bar.style.width = p + '%';
+            if (pctEl) pctEl.textContent = p + '%';
+            if (stageLabel) stageLabel.textContent = stageMap[data.stage] || data.stage;
+        }
 
         // Derive a compact synthesis sub-step label from the message for the card status
         const synthSubStepLabel = (() => {
@@ -4047,6 +4493,15 @@ class Dashboard {
 
         const agentOrder = ['architect', 'tester', 'red_team', 'synthesis'];
         const currentIdx = agentOrder.indexOf(data.stage);
+        // In parallel/auto mode all three critics run concurrently — show them all as
+        // "Running…" while the batch is in progress (before any critic_result arrives)
+        const criticsDone = ['architect', 'tester', 'red_team'].filter(
+            a => this._erpState.cardStates[a] && this._erpState.cardStates[a].isCriticResult
+        ).length;
+        const totalCritics = 3;
+        // Parallel phase: all critics run concurrently until ALL have returned results
+        const inParallelPhase = parallelMode && criticsDone < totalCritics && data.stage !== 'synthesis';
+
         for (let i = 0; i < agentOrder.length; i++) {
             const agent = agentOrder[i];
             if (this._erpState.cardStates[agent] && this._erpState.cardStates[agent].isCriticResult) continue;
@@ -4054,7 +4509,10 @@ class Dashboard {
             const statusEl = document.getElementById('erp-card-' + agent + '-status');
             if (!card || !statusEl) continue;
             let cs;
-            if (i < currentIdx) {
+            if (inParallelPhase && agent !== 'synthesis') {
+                // Critics running concurrently — show as running until each sends its result
+                cs = { opacity: '1', borderColor: 'var(--primary-color)', statusHtml: '⟳ Running (parallel)...', statusColor: 'var(--primary-color)', isCriticResult: false };
+            } else if (i < currentIdx) {
                 cs = { opacity: '1', borderColor: 'var(--secondary-color)', statusHtml: '✓ Done', statusColor: 'var(--secondary-color)', isCriticResult: false };
             } else if (i === currentIdx) {
                 const runningLabel = agent === 'synthesis' ? synthSubStepLabel : 'Running...';
@@ -4098,6 +4556,23 @@ class Dashboard {
         if (card) { card.style.opacity = '1'; card.style.borderColor = statusColor; }
         if (statusEl) { statusEl.innerHTML = statusHtml; statusEl.style.color = statusColor; }
         if (previewEl) { previewEl.innerHTML = previewHtml; previewEl.style.display = 'block'; }
+        // In parallel mode: mark this critic's bar as 100% (done) with success colour
+        const parallelMode2 = this._erpState.criticMode === 'parallel' || this._erpState.criticMode === 'auto';
+        if (parallelMode2 && ['architect', 'tester', 'red_team'].includes(critic)) {
+            const cBar = document.getElementById('erp-bar-' + critic);
+            const cPct = document.getElementById('erp-pct-' + critic);
+            if (cBar) { cBar.style.width = '100%'; cBar.style.background = statusColor; }
+            if (cPct) { cPct.textContent = '✓'; cPct.style.color = statusColor; }
+        }
+
+        // Stop parallel elapsed timer once all three critics have results
+        const allCriticsDone = ['architect', 'tester', 'red_team'].every(
+            c => this._erpState.cardStates[c] && this._erpState.cardStates[c].isCriticResult
+        );
+        if (allCriticsDone && this._erpParallelTimer) {
+            clearInterval(this._erpParallelTimer);
+            this._erpParallelTimer = null;
+        }
 
         // On resume, the same critic may come back from disk — don't duplicate live cards
         const alreadyShown = this._erpState.liveResults.some(h => h.includes('id="erp-live-' + critic + '"'));
@@ -4109,10 +4584,15 @@ class Dashboard {
         if (liveEl) liveEl.innerHTML = this._erpState.liveResults.join('');
     }
 
+    _clearErpTimers() {
+        if (this._erpParallelTimer) { clearInterval(this._erpParallelTimer); this._erpParallelTimer = null; }
+    }
+
     // Launch (or re-launch for resume) the SSE fetch pump
     _launchErpFetch(archName) {
         const apiKey = localStorage.getItem('tm_api_key') || '';
-        const url = `/api/v1/expert-review?architecture_name=${encodeURIComponent(archName)}`;
+        const criticMode = (this._erpState && this._erpState.criticMode) || 'auto';
+        const url = `/api/v1/expert-review?architecture_name=${encodeURIComponent(archName)}&critic_mode=${encodeURIComponent(criticMode)}`;
         const signal = this._erpState && this._erpState.abortController
             ? this._erpState.abortController.signal : undefined;
 
@@ -4142,13 +4622,13 @@ class Dashboard {
                             } else if (evtType === 'critic_result') {
                                 this._erpApplyCriticResult(data);
                             } else if (evtType === 'complete') {
+                                this._clearErpTimers();
                                 this._erpState = null;
                                 setTimeout(() => this.loadExpertReviewTab(), 600);
-                                setTimeout(() => {
-                                    if (this.currentTab === 'overview') this.loadOverviewTab();
-                                }, 1200);
+                                setTimeout(() => this.loadOverviewTab(), 1200);
                             } else if (evtType === 'error') {
                                 const an = this._erpState && this._erpState.archName;
+                                this._clearErpTimers();
                                 this._erpState = null;
                                 this._syncErpButtons(an, 'idle');
                                 const errBox = document.getElementById('expert-review-error');
@@ -4166,6 +4646,7 @@ class Dashboard {
             .catch(err => {
                 if (err.name === 'AbortError') return;  // pause or cancel — not an error
                 const an = this._erpState && this._erpState.archName;
+                this._clearErpTimers();
                 this._erpState = null;
                 this._syncErpButtons(an, 'idle');
                 const errBox = document.getElementById('expert-review-error');

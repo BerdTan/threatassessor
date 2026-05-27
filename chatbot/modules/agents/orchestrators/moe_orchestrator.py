@@ -26,6 +26,8 @@ Date: 2025-05-17
 
 import json
 import logging
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
@@ -132,6 +134,7 @@ class MoEResult:
     blindspots: List[Dict] = None         # Gaps all three critics structurally missed
     contradictions: List[Dict] = None     # Where critics disagree — human must decide
     synthesis_quality: str = "UNKNOWN"    # FULL | FALLBACK
+    critic_mode: str = "sequential"       # sequential | partial_parallel | parallel (resolved)
 
     # Risk transformation (from deterministic)
     current_risk: int = 0
@@ -191,7 +194,8 @@ class MoEResult:
                 "quick_wins": self.quick_wins,
                 "recommended": self.recommended,
                 "maximum": self.maximum
-            }
+            },
+            "critic_mode": self.critic_mode
         }
 
     def _interpret_confidence(self) -> str:
@@ -243,24 +247,44 @@ class MoEOrchestrator:
 
         logger.info("MoEOrchestrator initialized with 3 validation experts")
 
+    @staticmethod
+    def _compute_complexity_score(ground_truth: Dict) -> int:
+        """
+        Compute architecture complexity score for mode selection in auto mode.
+
+        Formula: node_count*2 + edge_count + attack_path_count*3 + technique_count
+        Threshold: >= 60 → sequential, < 60 → partial parallel.
+        """
+        meta   = ground_truth.get("metadata", {})
+        paths  = ground_truth.get("expected_attack_paths", [])
+        nodes  = int(meta.get("node_count", 0))
+        edges  = int(meta.get("edge_count", 0))
+        path_count = len(paths)
+        tech_count = sum(len(p.get("techniques", [])) for p in paths)
+        return nodes * 2 + edges + path_count * 3 + tech_count
+
     def run_pipeline(
         self,
         report_dir: str,
-        base_confidence: float = 99.5
+        base_confidence: float = 99.5,
+        critic_mode: str = "sequential",
     ) -> MoEResult:
         """
         Execute full MoE pipeline with fail-fast validation.
 
         Pipeline:
         1. Layer 1: Check deterministic analysis exists (ground_truth.json)
-        2. Layer 2A: Architect validates threat model
-        3. Layer 2B: Tester validates MITRE + Architect
-        4. Layer 2C: Red Team validates controls + Tester
-        5. Layer 3: Orchestrator synthesizes consensus
+        2. Layer 2A/B/C: Critics run according to critic_mode
+        3. Layer 3: Orchestrator synthesizes consensus
 
         Args:
             report_dir: Path to report directory
             base_confidence: Base confidence from deterministic (default: 99.5%)
+            critic_mode: "sequential" | "parallel" | "auto"
+                - sequential: Architect → Tester(uses arch) → Red Team(uses tester)
+                - parallel:   All three critics run simultaneously (blind, no cross-ref)
+                - auto:       Decides based on architecture complexity score
+                              (complexity < 60 → partial parallel; >= 60 → sequential)
 
         Returns:
             MoEResult with unified assessment
@@ -272,7 +296,7 @@ class MoEOrchestrator:
         architecture_name = report_path.name
 
         logger.info(f"MoE Pipeline: Starting for {architecture_name}")
-        logger.info(f"MoE Pipeline: Base confidence = {base_confidence}%")
+        logger.info(f"MoE Pipeline: Base confidence = {base_confidence}%, critic_mode = {critic_mode}")
 
         # ===== LAYER 1: DETERMINISTIC (REQUIRED) =====
         logger.info("MoE Pipeline: Layer 1 - Checking deterministic analysis...")
@@ -293,72 +317,40 @@ class MoEOrchestrator:
         artifacts = extract_artifacts(report_dir)
         logger.info(f"MoE Pipeline: Extracted {artifacts.completeness['overall']['present']}/10 artifacts")
 
-        # ===== LAYER 2A: ARCHITECT VALIDATION (REQUIRED) =====
-        arch_path = report_path / "04_architect_critique.json"
-        saved_arch = self._load_saved_critique(arch_path)
+        # ===== LAYER 2: CRITIC CHAIN =====
+        complexity_score = self._compute_complexity_score(ground_truth)
 
-        if saved_arch:
-            logger.info("MoE Pipeline: Layer 2A - Loading saved Architect critique (resume)")
-            architect_critique = saved_arch
+        # Resolve auto mode
+        resolved_mode = critic_mode
+        if critic_mode == "auto":
+            resolved_mode = "sequential" if complexity_score >= 60 else "partial_parallel"
+            logger.info(
+                f"MoE Pipeline: complexity_score={complexity_score} → auto resolved to '{resolved_mode}'"
+            )
         else:
-            logger.info("MoE Pipeline: Layer 2A - Running Architect validation...")
-            architect_critique = self.architect.critique(artifacts)
-            self._save_validation(architect_critique, arch_path)
+            logger.info(f"MoE Pipeline: complexity_score={complexity_score}, using explicit mode '{critic_mode}'")
+
+        if resolved_mode == "parallel":
+            architect_critique, tester_critique, red_team_critique = self._run_full_parallel(
+                artifacts, ground_truth, report_path
+            )
+        elif resolved_mode == "partial_parallel":
+            architect_critique, tester_critique, red_team_critique = self._run_partial_parallel(
+                artifacts, ground_truth, report_path
+            )
+        else:
+            architect_critique, tester_critique, red_team_critique = self._run_sequential(
+                artifacts, ground_truth, report_path
+            )
 
         architect_result = self._process_architect_validation(architect_critique)
-        logger.info(f"MoE Pipeline: ✓ Layer 2A complete - {architect_result.validation_status}")
-        logger.info(f"MoE Pipeline:   Confidence adjustment: {architect_result.confidence_adjustment*100:.1f}%")
+        tester_result    = self._process_tester_validation(tester_critique)
+        red_team_result  = self._process_red_team_validation(red_team_critique)
 
-        if self.progress_callback:
-            self.progress_callback("architect", architect_result)
-
-        # ===== LAYER 2B: TESTER VALIDATION (REQUIRED) =====
-        test_path = report_path / "05_tester_critique.json"
-        saved_tester = self._load_saved_critique(test_path)
-
-        if saved_tester:
-            logger.info("MoE Pipeline: Layer 2B - Loading saved Tester critique (resume)")
-            tester_critique = saved_tester
-        else:
-            logger.info("MoE Pipeline: Layer 2B - Running Tester validation...")
-            if not arch_path.exists():
-                raise MissingPrerequisiteError(
-                    missing_file=str(arch_path),
-                    layer="Layer 2B (Tester)"
-                )
-            tester_critique = self.tester.critique(artifacts, architect_critique)
-            self._save_validation(tester_critique, test_path)
-
-        tester_result = self._process_tester_validation(tester_critique)
-        logger.info(f"MoE Pipeline: ✓ Layer 2B complete - {tester_result.validation_status}")
-        logger.info(f"MoE Pipeline:   Confidence adjustment: {tester_result.confidence_adjustment*100:.1f}%")
-
-        if self.progress_callback:
-            self.progress_callback("tester", tester_result)
-
-        # ===== LAYER 2C: RED TEAM VALIDATION (REQUIRED) =====
-        red_path = report_path / "06_red_team_critique.json"
-        saved_red = self._load_saved_critique(red_path)
-
-        if saved_red:
-            logger.info("MoE Pipeline: Layer 2C - Loading saved Red Team critique (resume)")
-            red_team_critique = saved_red
-        else:
-            logger.info("MoE Pipeline: Layer 2C - Running Red Team validation...")
-            if not test_path.exists():
-                raise MissingPrerequisiteError(
-                    missing_file=str(test_path),
-                    layer="Layer 2C (Red Team)"
-                )
-            red_team_critique = self.red_team.critique(artifacts, ground_truth, tester_critique)
-            self._save_validation(red_team_critique, red_path)
-
-        red_team_result = self._process_red_team_validation(red_team_critique)
-        logger.info(f"MoE Pipeline: ✓ Layer 2C complete - {red_team_result.validation_status}")
-        logger.info(f"MoE Pipeline:   Confidence adjustment: {red_team_result.confidence_adjustment*100:.1f}%")
-
-        if self.progress_callback:
-            self.progress_callback("red_team", red_team_result)
+        logger.info(f"MoE Pipeline: ✓ Layer 2 complete ({resolved_mode}) — "
+                    f"Arch={architect_result.validation_status}, "
+                    f"Tester={tester_result.validation_status}, "
+                    f"RedTeam={red_team_result.validation_status}")
 
         # ===== LAYER 3: CONSENSUS SYNTHESIS =====
         logger.info("MoE Pipeline: Layer 3 - Synthesizing consensus...")
@@ -420,6 +412,7 @@ class MoEOrchestrator:
             blindspots=consensus.get("blindspots", []),
             contradictions=consensus.get("contradictions", []),
             synthesis_quality=consensus.get("synthesis_quality", "UNKNOWN"),
+            critic_mode=resolved_mode,
             current_risk=risk_data["current"],
             target_risk=risk_data["target"],
             risk_reduction=risk_data["reduction"],
@@ -477,6 +470,214 @@ class MoEOrchestrator:
         logger.info(f"MoE Pipeline: Generated 16/16 files (ground_truth + 1 dashboard + 6 JSON + 4 MD + 4 MMD)")
 
         return result
+
+    # =========================================================================
+    # LAYER 2 EXECUTION MODES
+    # =========================================================================
+
+    def _run_sequential(
+        self,
+        artifacts: "ArtifactSet",
+        ground_truth: Dict,
+        report_path: Path,
+    ):
+        """Mode A — Architect → Tester(arch) → RedTeam(tester). Full cross-critic reasoning."""
+        arch_path = report_path / "04_architect_critique.json"
+        test_path = report_path / "05_tester_critique.json"
+        red_path  = report_path / "06_red_team_critique.json"
+
+        # 2A: Architect
+        saved_arch = self._load_saved_critique(arch_path)
+        if saved_arch:
+            logger.info("MoE Pipeline: Layer 2A - Loading saved Architect critique (resume)")
+            architect_critique = saved_arch
+        else:
+            logger.info("MoE Pipeline: Layer 2A - Running Architect validation...")
+            architect_critique = self.architect.critique(artifacts)
+            self._save_validation(architect_critique, arch_path)
+        architect_result = self._process_architect_validation(architect_critique)
+        logger.info(f"MoE Pipeline: ✓ Layer 2A complete - {architect_result.validation_status} "
+                    f"({architect_result.confidence_adjustment*100:+.1f}%)")
+        if self.progress_callback:
+            self.progress_callback("architect", architect_result)
+
+        # 2B: Tester (receives Architect critique)
+        saved_tester = self._load_saved_critique(test_path)
+        if saved_tester:
+            logger.info("MoE Pipeline: Layer 2B - Loading saved Tester critique (resume)")
+            tester_critique = saved_tester
+        else:
+            logger.info("MoE Pipeline: Layer 2B - Running Tester validation...")
+            tester_critique = self.tester.critique(artifacts, architect_critique)
+            self._save_validation(tester_critique, test_path)
+        tester_result = self._process_tester_validation(tester_critique)
+        logger.info(f"MoE Pipeline: ✓ Layer 2B complete - {tester_result.validation_status} "
+                    f"({tester_result.confidence_adjustment*100:+.1f}%)")
+        if self.progress_callback:
+            self.progress_callback("tester", tester_result)
+
+        # 2C: Red Team (receives Tester critique)
+        saved_red = self._load_saved_critique(red_path)
+        if saved_red:
+            logger.info("MoE Pipeline: Layer 2C - Loading saved Red Team critique (resume)")
+            red_team_critique = saved_red
+        else:
+            logger.info("MoE Pipeline: Layer 2C - Running Red Team validation...")
+            red_team_critique = self.red_team.critique(artifacts, ground_truth, tester_critique)
+            self._save_validation(red_team_critique, red_path)
+        red_team_result = self._process_red_team_validation(red_team_critique)
+        logger.info(f"MoE Pipeline: ✓ Layer 2C complete - {red_team_result.validation_status} "
+                    f"({red_team_result.confidence_adjustment*100:+.1f}%)")
+        if self.progress_callback:
+            self.progress_callback("red_team", red_team_result)
+
+        return architect_critique, tester_critique, red_team_critique
+
+    def _run_partial_parallel(
+        self,
+        artifacts: "ArtifactSet",
+        ground_truth: Dict,
+        report_path: Path,
+    ):
+        """
+        Mode B — [Architect ∥ Red Team blind] → Tester(arch) → Red Team gap adjustment.
+
+        Architect and a blind Red Team first-pass run concurrently.  Once Architect
+        completes, Tester runs with Architect's output.  Red Team's numeric score is
+        then adjusted post-hoc via _adjust_for_tester_gaps().
+
+        Saves ~20s for simple architectures (complexity < 60).
+        Cross-ref trade-off: Red Team LLM does not see Tester's exact gap phrasing,
+        but the +5-pt-per-critical-gap numeric adjustment still applies.
+        """
+        arch_path = report_path / "04_architect_critique.json"
+        test_path = report_path / "05_tester_critique.json"
+        red_path  = report_path / "06_red_team_critique.json"
+
+        # Check for saved critiques (resume path uses sequential order)
+        saved_arch = self._load_saved_critique(arch_path)
+        saved_red  = self._load_saved_critique(red_path)
+
+        if saved_arch and saved_red:
+            architect_critique = saved_arch
+            red_team_critique  = saved_red
+            logger.info("MoE Pipeline: Partial-parallel — loaded both saved critiques (resume)")
+        elif saved_arch:
+            architect_critique = saved_arch
+            logger.info("MoE Pipeline: Partial-parallel — loaded saved Architect; running Red Team...")
+            red_team_critique = self.red_team.critique(artifacts, ground_truth, tester_critique=None)
+            self._save_validation(red_team_critique, red_path)
+        else:
+            logger.info("MoE Pipeline: Partial-parallel — running Architect ∥ Red Team (blind)...")
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                f_arch = pool.submit(self.architect.critique, artifacts)
+                f_red  = pool.submit(self.red_team.critique, artifacts, ground_truth, None)
+                architect_critique = f_arch.result()
+                red_team_critique  = f_red.result()
+            self._save_validation(architect_critique, arch_path)
+            self._save_validation(red_team_critique, red_path)
+
+        architect_result = self._process_architect_validation(architect_critique)
+        logger.info(f"MoE Pipeline: ✓ Architect (partial-parallel) - {architect_result.validation_status}")
+        if self.progress_callback:
+            self.progress_callback("architect", architect_result)
+
+        # Tester runs with Architect output
+        saved_tester = self._load_saved_critique(test_path)
+        if saved_tester:
+            tester_critique = saved_tester
+        else:
+            logger.info("MoE Pipeline: Partial-parallel — running Tester with Architect output...")
+            tester_critique = self.tester.critique(artifacts, architect_critique)
+            self._save_validation(tester_critique, test_path)
+        tester_result = self._process_tester_validation(tester_critique)
+        logger.info(f"MoE Pipeline: ✓ Tester (partial-parallel) - {tester_result.validation_status}")
+        if self.progress_callback:
+            self.progress_callback("tester", tester_result)
+
+        # Post-hoc gap adjustment on Red Team score
+        original_score = red_team_critique.score
+        adjusted_score = self.red_team._adjust_for_tester_gaps(original_score, tester_critique)
+        if adjusted_score != original_score:
+            logger.info(
+                f"MoE Pipeline: Red Team post-hoc adjustment: {original_score} → {adjusted_score} "
+                f"(tester critical gaps)"
+            )
+            red_team_critique.score = adjusted_score
+
+        red_team_result = self._process_red_team_validation(red_team_critique)
+        logger.info(f"MoE Pipeline: ✓ Red Team (partial-parallel) - {red_team_result.validation_status}")
+        if self.progress_callback:
+            self.progress_callback("red_team", red_team_result)
+
+        return architect_critique, tester_critique, red_team_critique
+
+    def _run_full_parallel(
+        self,
+        artifacts: "ArtifactSet",
+        ground_truth: Dict,
+        report_path: Path,
+    ):
+        """
+        Mode C — All three critics run simultaneously against artifacts only.
+
+        Tester gets no architect roadmap; Red Team gets no tester gaps.
+        The synthesis LLM compensates by receiving all three raw outputs together.
+        Saves ~30s (single wait for the slowest critic) at the cost of cross-referencing.
+        """
+        arch_path = report_path / "04_architect_critique.json"
+        test_path = report_path / "05_tester_critique.json"
+        red_path  = report_path / "06_red_team_critique.json"
+
+        # Resume: load any already-saved critiques; only submit missing ones
+        saved = {
+            "architect": self._load_saved_critique(arch_path),
+            "tester":    self._load_saved_critique(test_path),
+            "red_team":  self._load_saved_critique(red_path),
+        }
+
+        to_run = [k for k, v in saved.items() if v is None]
+        if to_run:
+            logger.info(f"MoE Pipeline: Full-parallel — submitting {to_run} to thread pool...")
+
+        # Signal that all critics are launching in parallel before blocking
+        if self.progress_callback:
+            self.progress_callback("parallel_starting", None)
+
+        _proc_fns = {
+            "architect": self._process_architect_validation,
+            "tester":    self._process_tester_validation,
+            "red_team":  self._process_red_team_validation,
+        }
+        _save_paths = {"architect": arch_path, "tester": test_path, "red_team": red_path}
+
+        results = dict(saved)
+        # Fire callbacks for already-resumed critics immediately
+        for k, v in saved.items():
+            if v is not None:
+                vr = _proc_fns[k](v)
+                logger.info(f"MoE Pipeline: ✓ {k} (resumed from disk)")
+                if self.progress_callback:
+                    self.progress_callback(k, vr)
+
+        if to_run:
+            def _arch():   return self.architect.critique(artifacts)
+            def _tester(): return self.tester.critique(artifacts, architect_critique=None)
+            def _red():    return self.red_team.critique(artifacts, ground_truth, tester_critique=None)
+            fns = {"architect": _arch, "tester": _tester, "red_team": _red}
+
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                futures = {pool.submit(fns[k]): k for k in to_run}
+                for f in as_completed(futures):
+                    k = futures[f]
+                    results[k] = f.result()
+                    self._save_validation(results[k], _save_paths[k])
+                    vr = _proc_fns[k](results[k])
+                    logger.info(f"MoE Pipeline: ✓ {k} (full-parallel) - {vr.validation_status}")
+                    if self.progress_callback:
+                        self.progress_callback(k, vr)
+
+        return results["architect"], results["tester"], results["red_team"]
 
     def _process_architect_validation(self, critique: CritiqueScore) -> ValidationResult:
         """
@@ -763,6 +964,16 @@ class MoEOrchestrator:
             def _roadmap(v: ValidationResult) -> str:
                 return json.dumps(v.recommendations, indent=2) if v.recommendations else "[]"
 
+            # Resolve all technique IDs mentioned by the critics so the synthesis
+            # LLM has authoritative names and cannot generate false DATA_REFERENCE_ERROR
+            # contradictions about valid technique IDs.
+            all_critic_text = (
+                json.dumps(architect.gaps) + json.dumps(architect.recommendations or []) +
+                json.dumps(tester.gaps) + json.dumps(tester.recommendations or []) +
+                json.dumps(red_team.gaps) + json.dumps(red_team.recommendations or [])
+            )
+            tech_grounding_block = self._resolve_technique_ids(all_critic_text)
+
             prompt = f"""
 You are synthesising a security assessment for architecture: "{arch_name}"
 
@@ -792,6 +1003,8 @@ Gaps (exploit feasibility):
 Exploit Mitigation Roadmap (use these cost/effort fields verbatim — do not invent):
 {rt_roadmap_json}
 
+{'═'*59}
+{tech_grounding_block if tech_grounding_block else ''}
 ═══════════════════════════════════════════════════════════
 YOUR SYNTHESIS TASK
 
@@ -867,6 +1080,7 @@ RULES:
 - Never invent cost figures. Quote Red Team roadmap fields exactly or say "cost not estimated".
 - Residual must always be non-empty — controls reduce risk, they do not eliminate it.
 - If critics contradict each other, put it in contradictions, do NOT resolve it yourself.
+- **TECHNIQUE ID VALIDATION**: Before flagging a disagreement about whether a technique ID exists, verify it against the MITRE reference block below. A technique ID that appears in that block is VALID — do NOT generate a contradiction claiming it doesn't exist. Only flag DATA_REFERENCE_ERROR if an ID is genuinely absent from that block.
 """
 
             llm = LLMClient()
@@ -907,6 +1121,31 @@ RULES:
             logger.warning(f"Orchestrator: LLM synthesis exception: {e}")
             return None
 
+    def _resolve_technique_ids(self, text: str) -> str:
+        """
+        Find all T####[.###] IDs in text, look them up in MITRE, and return a
+        grounding block listing each ID with its verified name.  Returns an
+        empty string if no IDs are found or the MITRE helper is unavailable.
+        """
+        ids = list(dict.fromkeys(re.findall(r'\bT\d{4}(?:\.\d{3})?\b', text)))
+        if not ids:
+            return ""
+        try:
+            from chatbot.modules.mitre import get_mitre_helper as _get_mitre
+            mitre = _get_mitre()
+            lines = []
+            for tid in ids:
+                tech = mitre.find_technique(tid)
+                if tech:
+                    lines.append(f"  {tid} — {tech.get('name', 'Unknown')} (VALID in MITRE ATT&CK)")
+                else:
+                    lines.append(f"  {tid} — NOT FOUND in MITRE ATT&CK (invalid or hallucinated ID)")
+            if lines:
+                return "VERIFIED MITRE ATT&CK TECHNIQUE NAMES (authoritative — use these, do not guess):\n" + "\n".join(lines)
+        except Exception:
+            pass
+        return ""
+
     def _reflect_contradictions(
         self,
         contradictions: List[Dict],
@@ -922,15 +1161,26 @@ RULES:
         """
         try:
             items_json = json.dumps(contradictions, indent=2)
+            # Resolve any technique IDs mentioned in the contradictions against
+            # the authoritative MITRE database so the LLM cannot confuse labels
+            tech_grounding = self._resolve_technique_ids(items_json)
+
             prompt = f"""You are a quality-control reviewer for a multi-expert security assessment.
 
 The three expert critics disagreed on the following topics:
 
 {items_json}
+{f'''
+IMPORTANT — VERIFIED TECHNIQUE NAMES (authoritative reference):
+{tech_grounding}
 
+A critic claiming a technique ID "doesn't exist" is WRONG if the verified list above marks it VALID.
+In that case the root cause is CRITIC_HALLUCINATION (the tester/red-team invented a wrong label for a real ID),
+NOT DATA_REFERENCE_ERROR on the part of whoever used the ID.
+''' if tech_grounding else ''}
 For each contradiction, diagnose WHY the disagreement exists.  Consider:
 1. Scope mismatch — each critic only sees their rubric, so one may be correct within their scope and the other correct within theirs
-2. JSON/data reference error — one critic may have read a stale field or misidentified a control
+2. Critic hallucination — a critic incorrectly described or denied a technique ID whose official name contradicts what they claimed
 3. Assessment confidence — one critic may have guessed while the other had direct evidence
 4. Genuine expert disagreement — both are right from different attack angles
 
@@ -940,8 +1190,8 @@ Return a JSON array with the SAME length and order as the input, each item havin
   "architect_view": "<same as input>",
   "tester_or_redteam_view": "<same as input>",
   "resolution": "<original resolution>",
-  "disagreement_root_cause": "SCOPE_MISMATCH | DATA_REFERENCE_ERROR | CONFIDENCE_DIFFERENCE | GENUINE_DISAGREEMENT",
-  "root_cause_explanation": "1-2 sentences explaining specifically why these critics see it differently",
+  "disagreement_root_cause": "SCOPE_MISMATCH | DATA_REFERENCE_ERROR | CRITIC_HALLUCINATION | CONFIDENCE_DIFFERENCE | GENUINE_DISAGREEMENT",
+  "root_cause_explanation": "1-2 sentences explaining specifically why these critics see it differently. If a technique ID is verified VALID above but a critic claimed it doesn't exist, state that the critic hallucinated an incorrect name/description for a real technique.",
   "human_action": "what a human reviewer should do to resolve this (e.g. check field X, run test Y)"
 }}
 
@@ -1114,7 +1364,8 @@ Reply with only the JSON array, no other text.
 def run_moe_pipeline(
     report_dir: str,
     base_confidence: float = 99.5,
-    progress_callback=None
+    progress_callback=None,
+    critic_mode: str = "sequential",
 ) -> MoEResult:
     """
     Convenience function to run full MoE pipeline.
@@ -1124,6 +1375,7 @@ def run_moe_pipeline(
         base_confidence: Base confidence from deterministic (default: 99.5%)
         progress_callback: Optional callable(stage: str, result: ValidationResult)
             called immediately after each critic finishes.  Must be non-blocking.
+        critic_mode: "sequential" | "parallel" | "auto" (see MoEOrchestrator.run_pipeline)
 
     Returns:
         MoEResult with unified assessment
@@ -1136,7 +1388,7 @@ def run_moe_pipeline(
         >>> print(f"Final confidence: {result.final_confidence:.1f}%")
     """
     orchestrator = MoEOrchestrator(progress_callback=progress_callback)
-    return orchestrator.run_pipeline(report_dir, base_confidence)
+    return orchestrator.run_pipeline(report_dir, base_confidence, critic_mode=critic_mode)
 
 
 # ============================================================================

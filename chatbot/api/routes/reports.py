@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, status, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from typing import List, Dict
 from chatbot.modules.mitre import MitreHelper, get_mitre_helper as _get_mitre_singleton
+from chatbot.modules.atlas_helper import get_atlas_helper as _get_atlas_singleton
 
 router = APIRouter(prefix="/api/v1", tags=["reports"])
 
@@ -324,13 +325,15 @@ async def get_mitigation_names(mitigation_ids: str = Query(..., description="Com
             detail="Too many mitigation IDs (max 100)"
         )
 
+    atlas = _get_atlas_singleton()
     result = {}
     for mid in ids:
-        mit = mitre.find_mitigation(mid)
-        if mit:
-            result[mid] = mit.get('name', 'Unknown')
+        if mid.upper().startswith('AML.'):
+            mit = atlas.get_mitigation_by_id(mid)
+            result[mid] = mit.get('name', f"Unknown ({mid})") if mit else f"Unknown ({mid})"
         else:
-            result[mid] = f"Unknown ({mid})"
+            mit = mitre.find_mitigation(mid)
+            result[mid] = mit.get('name', 'Unknown') if mit else f"Unknown ({mid})"
 
     return {"mitigations": result}
 
@@ -349,10 +352,15 @@ async def get_technique_mitigations(technique_ids: str = Query(..., description=
     if not ids or len(ids) > 50:
         raise HTTPException(status_code=400, detail="Provide 1-50 technique IDs")
 
+    atlas = _get_atlas_singleton()
     mappings = {}
     for tid in ids:
-        mits = mitre.get_technique_mitigations(tid)
-        mappings[tid] = [m.get('mitigation_id') for m in mits if m.get('mitigation_id')]
+        if tid.upper().startswith('AML.'):
+            mits = atlas.get_mitigations_for_technique(tid)
+            mappings[tid] = [m.get('id') for m in mits if m.get('id')]
+        else:
+            mits = mitre.get_technique_mitigations(tid)
+            mappings[tid] = [m.get('mitigation_id') for m in mits if m.get('mitigation_id')]
 
     return {"mappings": mappings}
 
@@ -400,12 +408,14 @@ async def get_technique_names(technique_ids: str = Query(..., description="Comma
             detail="Too many technique IDs (max 100)"
         )
 
+    atlas = _get_atlas_singleton()
     result = {}
     for tid in ids:
-        tech = mitre.find_technique(tid)
-        if tech:
-            result[tid] = tech.get('name', 'Unknown')
+        if tid.upper().startswith('AML.'):
+            name = atlas.get_technique_name(tid)
+            result[tid] = name if name != tid else f"Unknown ({tid})"
         else:
-            result[tid] = f"Unknown ({tid})"
+            tech = mitre.find_technique(tid)
+            result[tid] = tech.get('name', 'Unknown') if tech else f"Unknown ({tid})"
 
     return {"techniques": result}

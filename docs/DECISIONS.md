@@ -4,6 +4,148 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-05-27 — ATLAS/ARC technique & mitigation name lookups via AtlasHelper
+
+**What was decided:**
+`/api/v1/techniques`, `/api/v1/mitigations`, and `/api/v1/technique-mitigations` now route `AML.T*` and `AML.M*` IDs to `AtlasHelper` instead of `MitreHelper`. `MitreHelper` only indexes Enterprise ATT&CK; ATLAS IDs are a separate corpus.
+
+**Reasoning:**
+The dashboard right pane was rendering `· Unknown (AML.T0043)` because `MitreHelper.find_technique()` only queries `_technique_by_ext_id` which has no `AML.*` keys. `AtlasHelper.get_technique_name()` and `get_mitigation_by_id()` already load the ATLAS YAML corpus.
+
+**Alternatives rejected:**
+- Merge ATLAS into MitreHelper index: Would conflate two independent frameworks with different ID namespaces.
+
+---
+
+## 2026-05-27 — ARC category arc_id badges in Mitigations tab
+
+**What was decided:**
+ARC category names extracted from the rationale string (`AI/ML (ARC): Safety, Accountability`) are now displayed as `[SAF · Safety] [ACC · Accountability]` pill badges via a client-side `_formatArcCats()` helper with a static name→arc_id lookup (9 categories).
+
+**Reasoning:**
+The `arc_id` short codes (INT, SAF, SEC, PRIV, TRANS, ACC, FAIR, RES, SOC) are not stored in ground truth `control_recommendations` — only the full category names appear in the rationale string. The mapping is static and stable (defined in `risks.yaml`), so a client-side lookup avoids a new API call.
+
+**Alternatives rejected:**
+- Store arc_id in ground truth at generation time: Requires a generator change and re-run of all existing reports.
+
+---
+
+## 2026-05-27 — Parallel Expert Review: per-critic progress bars + elapsed timer
+
+**What was decided:**
+When `critic_mode` is `parallel` or `auto`, the Expert Review progress box renders three individual bars (Architect, Tester, Red Team) instead of a single sequential bar. A per-second interval ticks elapsed time on each still-running card (`⟳ Running… 12s`). Each bar turns its critic's status colour and shows `✓` when that critic's `critic_result` SSE event arrives.
+
+**Reasoning:**
+With concurrent execution a single bar with sequential stage labels is meaningless — the bar would jump from "Architect" to "done" with no intermediate stages for Tester/Red Team. Per-critic bars give the user accurate per-agent feedback and make clear which critics are still outstanding.
+
+**Alternatives rejected:**
+- Keep single bar, just update label to "Running in parallel": Hides which critics are done vs still running.
+
+---
+
+## 2026-05-27 — Upload progress bar: animated tick updates message % and ETA
+
+**What was decided:**
+The animated tick interval (which inches the bar forward between SSE events) now also updates the status message by replacing the inline `[STAGE] N%` percentage with the current animated value and decrementing the ETA counter at 0.6s/tick.
+
+**Reasoning:**
+Previously the tick updated `progress-fill` width and `progress-text` percentage only. The status message (`[PARSING] 5% - arch.mmd - ...`) stayed frozen at the last SSE value while the bar visibly advanced, creating a confusing discrepancy.
+
+**Alternatives rejected:**
+- Remove the inline % from SSE messages: Would require changing the backend message format and lose the stage label context.
+
+---
+
+## 2026-05-27 — Mitigations tab sort order: _impact formula matching Overview
+
+**What was decided:**
+`loadControlsTab()` is now `async` and fetches MoE + Red Team endorsement data to compute the same `_impact = paths × riskScore × expertBoost` formula used by Overview's top controls. Controls are sorted by priority tier first (critical > high > medium), then by `_impact` within each tier.
+
+**Reasoning:**
+Ground truth order is arbitrary (generation order). Users expect the Mitigations list to be consistent with the "Highest Impact Controls" ranking on the Overview dashboard.
+
+**Alternatives rejected:**
+- Sort by `score` field only: Ignores expert validation signals and attack path coverage.
+
+---
+
+## 2026-05-27 — Synthesis/reflection: MITRE technique grounding to prevent false contradictions
+
+**What was decided:**
+Before calling the synthesis LLM and the `_reflect_contradictions` LLM, all `T####[.###]` IDs mentioned in critic outputs are resolved against the MITRE ATT&CK database and injected as a verified name block. A new `CRITIC_HALLUCINATION` root cause category is added to the reflection prompt for cases where a critic incorrectly claimed an ID doesn't exist.
+
+**Reasoning:**
+The Architect LLM hallucinated wrong labels for `T1590.005` ("model extraction") and `T1565.001` ("data poisoning") — their real names are "IP Addresses" and "Stored Data Manipulation". The Tester saw the wrong labels and flagged the IDs as non-existent, generating a false `DATA_REFERENCE_ERROR` contradiction. Grounding both LLM calls with authoritative names prevents this category of error.
+
+**Alternatives rejected:**
+- Post-process contradictions to filter known-valid IDs: Would require running MITRE lookups after the LLM call anyway; better to prevent the false contradiction from being generated.
+- Constrain critic prompts to never mention technique IDs: Too restrictive — technique IDs are legitimate evidence citations.
+
+---
+
+## 2026-05-27 — Parallel critics + dynamic confidence scoring
+
+**What was decided:**
+
+**Dynamic confidence:** Replaced `base_confidence = 0.995` constant in `threat_analyst.py` with `_compute_base_confidence(ground_truth)`. The formula applies a complexity penalty (up to -25%, saturating at 20 nodes / 40 edges) and recovers it via a coverage score (control coverage 40%, validation pass rate 30%, path coverage 20%, technique depth 10%). Range: 0.72–0.995. A `confidence_breakdown` dict (`base`, `complexity_penalty`, `coverage_recovery`, `validation_adjustment`, `final`, `signals`) is now written to `result.data["confidence_breakdown"]` and surfaced in the API response via `ServiceResult.data["confidence_breakdown"]`.
+
+**Parallel critics:** `MoEOrchestrator.run_pipeline()` gained a `critic_mode` param (`"sequential"` | `"parallel"` | `"auto"`). Three private execution methods:
+- `_run_sequential()` — unchanged Architect→Tester(arch)→RedTeam(tester) chain
+- `_run_partial_parallel()` — Architect ∥ Red Team blind first-pass concurrently, then Tester uses Architect output, then Red Team score adjusted post-hoc via `_adjust_for_tester_gaps()`
+- `_run_full_parallel()` — all three critics via `ThreadPoolExecutor(max_workers=3)`, no cross-referencing
+
+**Auto mode threshold:** `complexity_score = node_count*2 + edge_count + path_count*3 + tech_count`. Score ≥ 60 → sequential; < 60 → partial parallel.
+
+**SSE endpoint** (`streaming.py`): Added `?critic_mode=` query param. Reads `confidence_breakdown.final` from `ground_truth.json` to chain the deterministic base into the MoE confidence pipeline (instead of always using 99.5%).
+
+**Dashboard** (`dashboard.js`): Added mode selector (Auto/Sequential/Parallel) above the Run Expert Review button. Selected mode stored in `_erpState.criticMode` and appended to the fetch URL.
+
+**Alternatives rejected:**
+- *Compare mode (sequential + parallel side-by-side):* Requires two full LLM pipeline runs (~180s). Excluded to avoid API quota exhaustion on a single button press; can be added later as a CLI/batch comparison tool.
+- *Parallel critics without auto threshold:* Without complexity-aware dispatch, parallel mode would run on complex architectures where cross-critic reasoning is most needed.
+- *Fixed thread pool size > 3:* The pipeline only has 3 critics; more threads would be idle.
+
+---
+
+## 2026-05-27 — MITRE load latency: background warmup + signed pickle cache
+
+**What was decided:**
+Three-layer approach to eliminate the perceived load delay when uploading an architecture:
+
+1. **Removed fake MITRE progress stage** (`streaming.py` routes) — the 5 SSE messages with `asyncio.sleep()` that pretended to load data already in memory were deleted. Progress stages compressed from `parsing(0-10%), mitre(10-20%), rapids(20-60%)` to `parsing(0-5%), rapids(5-55%)`.
+
+2. **Background thread warmup** (`app.py`) — replaced synchronous `create_app()` preload with a daemon thread. Server is reachable immediately; `/health` returns `mitre_cache: loading` until the thread sets `_warmup_done` (typically <0.4s on pickle-warm boot). Dashboard polls `/health` on load and disables the upload button during the warmup window.
+
+3. **Signed pickle cache** (`pickle_cache.py`, used by `mitre.py` and `atlas_helper.py`) — MITRE JSON parses once, then the result is stored as HMAC-SHA256–signed pickle. Subsequent boots load from pickle (~0.4s vs ~1.0s). ATLAS YAML load drops from ~0.35s to ~0.02s.
+
+**Security: HMAC-SHA256 signing** — `chatbot/modules/pickle_cache.py` prepends `magic(8) + hmac_digest(32)` before the pickle bytes. `hmac.compare_digest()` is checked before `pickle.loads()` is ever called. A tampered file raises `ValueError` and both loaders fall back to JSON/YAML. Signing key prefers `TM_PICKLE_KEY` env var; falls back to a stable app-specific constant if absent.
+
+**Alternatives rejected:**
+- *No signing (raw pickle):* Attacker with write access to `chatbot/data/` could drop a crafted `.pkl` for RCE.
+- *Hash-only (SHA-256 without secret):* An attacker can recompute the hash of their malicious payload — provides no integrity guarantee.
+- *Store pickle outside data dir:* Complicates deployment; the signing approach lets the file stay alongside the source data.
+- *orjson/ujson for faster JSON:* Not installed in environment; pickle is already 2-3× faster and is the right tool for caching parsed Python objects.
+
+---
+
+## 2026-05-27 — AIPattern YAML extraction complete (v1.1 → v1.2)
+
+**What was decided:**
+Extracted all hardcoded risk-scoring logic and control benchmark data from `ai_pattern.py` into two YAML files:
+- `chatbot/data/arc/risks.yaml` — 9 ARC categories with per-component scoring rules (default_risk, missing_controls floors, present_controls reductions, static rationale)
+- `chatbot/data/arc/controls.yaml` — 88-control benchmark grouped by category
+
+`AIPattern` (v1.2) loads these at `__init__` and a single generic `_score_category()` dispatcher handles all three rule patterns (per-component, simple_rule, static). Public API is identical to v1.1.
+
+**Evaluation order in `_score_category`:** present_controls reductions run first, then missing_controls `raise_to` floors. This ensures a critical missing control establishes a minimum floor even when other controls are present (mirrors v1.1 explicit if-chain behaviour).
+
+**Alternatives rejected:**
+- *JSON instead of YAML:* YAML is more readable for multi-line rationale strings and list values without quoting. PyYAML is already in the environment.
+- *Single flat file:* Separating risks from controls keeps each file focused on one concern and makes it easy to edit controls without touching the scoring logic.
+- *Jinja/formula expressions in YAML:* Overkill; the three rule patterns cover all current scoring logic without a mini-language.
+
+---
+
 ## 2026-05-26 — Strategic Roadmap Priority: AIPattern YAML extraction first
 
 **What was decided:**

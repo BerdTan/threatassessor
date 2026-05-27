@@ -492,6 +492,7 @@ You MUST respond with valid JSON in this exact format:
 3. gaps array must have severity (HIGH/MEDIUM/LOW)
 4. improvement_roadmap must include verification_method for Tester
 5. Be specific: cite artifact numbers, control names, path IDs
+6. **TECHNIQUE IDs ONLY FROM ARTIFACTS** — when mentioning MITRE technique IDs (T####.###), only reference IDs that appear verbatim in the artifact data above. Never invent, guess, or describe technique IDs that are not present in the input artifacts. If you want to suggest additional coverage, say "add coverage for [threat type]" without fabricating a technique ID.
 """
 
         return prompt

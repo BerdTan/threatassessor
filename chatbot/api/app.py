@@ -8,6 +8,8 @@ Provides REST API for threat analysis services.
 
 import tempfile
 import os
+import threading
+import logging
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
@@ -22,8 +24,30 @@ from chatbot.services import ThreatAnalysisService
 from chatbot.api.dependencies import verify_api_key
 from chatbot.api.models.responses import AnalyzeResponse, HealthResponse, ErrorResponse
 
+logger = logging.getLogger(__name__)
+
 # Load environment variables
 load_dotenv()
+
+# Warmup event — set when MITRE + ATLAS singletons are ready in memory.
+# The server starts immediately; warmup runs in a background thread (~0.2-0.6s).
+_warmup_done = threading.Event()
+
+
+def _background_warmup():
+    try:
+        from chatbot.modules.mitre import get_mitre_helper
+        from chatbot.modules.pattern_registry import get_pattern_registry
+        mitre = get_mitre_helper()
+        registry = get_pattern_registry()
+        logger.info(
+            f"Warmup complete: {len(mitre.techniques)} MITRE techniques, "
+            f"patterns={registry.list_patterns()}"
+        )
+    except Exception as e:
+        logger.error(f"Warmup failed: {e}")
+    finally:
+        _warmup_done.set()
 
 
 def create_app() -> FastAPI:
@@ -33,17 +57,10 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI app
     """
-    # Preload MITRE cache at startup — initialises singleton shared across all modules
-    from chatbot.modules.mitre import get_mitre_helper
-    print("🔄 Preloading MITRE ATT&CK cache (44MB)...")
-    _preload_cache = get_mitre_helper()
-    print(f"✅ MITRE cache loaded: {len(_preload_cache.techniques)} techniques, {len(_preload_cache.tactics)} tactics")
-
-    # Preload ATLAS + pattern registry — each pattern's __init__ runs once here
-    from chatbot.modules.pattern_registry import get_pattern_registry
-    print("🔄 Preloading pattern registry (ATLAS + RAPIDS + AI/ML)...")
-    _preload_registry = get_pattern_registry()
-    print(f"✅ Pattern registry ready: {_preload_registry.list_patterns()}")
+    # Kick off MITRE + ATLAS preload in a background thread so the server
+    # becomes reachable instantly. The singletons are ready within ~0.2s
+    # (pickle cache hit) or ~1s (first boot JSON parse).
+    threading.Thread(target=_background_warmup, daemon=True, name="mitre-warmup").start()
 
     app = FastAPI(
         title="ThreatAssessor API",
@@ -137,7 +154,7 @@ API key required via `TM-API-KEY` header.
             services={
                 "deterministic_engine": "operational",
                 "service_layer": "operational",
-                "mitre_cache": "ready"
+                "mitre_cache": "ready" if _warmup_done.is_set() else "loading"
             }
         )
 

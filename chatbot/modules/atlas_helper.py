@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 import yaml
 
+from chatbot.modules.pickle_cache import dump as _pkl_dump, load as _pkl_load
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,46 +60,86 @@ class AtlasHelper:
         self._load_data()
 
     def _load_data(self):
-        """Load ATLAS data from YAML files."""
+        """Load ATLAS data, using a pickle cache when the YAMLs are unchanged."""
+        pkl_path = self.data_dir / "atlas_cache.pkl"
+        yaml_paths = [
+            self.data_dir / "techniques.yaml",
+            self.data_dir / "mitigations.yaml",
+            self.data_dir / "tactics.yaml",
+        ]
+
+        if self._pickle_is_fresh(pkl_path, yaml_paths):
+            try:
+                self._load_from_pickle(pkl_path)
+                return
+            except ValueError as e:
+                logger.warning(f"ATLAS pickle cache rejected ({e}); reloading from YAML")
+
         try:
-            # Load techniques
-            techniques_path = self.data_dir / "techniques.yaml"
-            if techniques_path.exists():
-                with open(techniques_path, 'r', encoding='utf-8') as f:
-                    techniques_data = yaml.safe_load(f)
-                    if techniques_data:
-                        for tech in techniques_data:
-                            if 'id' in tech:
-                                self.techniques[tech['id']] = tech
-
-                logger.info(f"Loaded {len(self.techniques)} ATLAS techniques")
-
-            # Load mitigations
-            mitigations_path = self.data_dir / "mitigations.yaml"
-            if mitigations_path.exists():
-                with open(mitigations_path, 'r', encoding='utf-8') as f:
-                    mitigations_data = yaml.safe_load(f)
-                    if mitigations_data:
-                        for mit in mitigations_data:
-                            if 'id' in mit:
-                                self.mitigations[mit['id']] = mit
-
-                logger.info(f"Loaded {len(self.mitigations)} ATLAS mitigations")
-
-            # Load tactics
-            tactics_path = self.data_dir / "tactics.yaml"
-            if tactics_path.exists():
-                with open(tactics_path, 'r', encoding='utf-8') as f:
-                    tactics_data = yaml.safe_load(f)
-                    if tactics_data:
-                        for tac in tactics_data:
-                            if 'id' in tac:
-                                self.tactics[tac['id']] = tac
-
-                logger.info(f"Loaded {len(self.tactics)} ATLAS tactics")
-
+            self._load_from_yaml()
+            self._save_pickle(pkl_path)
         except Exception as e:
             logger.warning(f"Failed to load ATLAS data: {e}")
+
+    @staticmethod
+    def _pickle_is_fresh(pkl_path: Path, yaml_paths: list) -> bool:
+        if not pkl_path.exists():
+            return False
+        pkl_mtime = pkl_path.stat().st_mtime
+        return all(not p.exists() or pkl_mtime > p.stat().st_mtime for p in yaml_paths)
+
+    def _load_from_pickle(self, pkl_path: Path):
+        state = _pkl_load(str(pkl_path))
+        self.techniques  = state['techniques']
+        self.mitigations = state['mitigations']
+        self.tactics     = state['tactics']
+        logger.info(
+            f"ATLAS cache loaded from pickle: {len(self.techniques)} techniques, "
+            f"{len(self.mitigations)} mitigations"
+        )
+
+    def _load_from_yaml(self):
+        techniques_path = self.data_dir / "techniques.yaml"
+        if techniques_path.exists():
+            with open(techniques_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+                if data:
+                    for tech in data:
+                        if 'id' in tech:
+                            self.techniques[tech['id']] = tech
+            logger.info(f"Loaded {len(self.techniques)} ATLAS techniques")
+
+        mitigations_path = self.data_dir / "mitigations.yaml"
+        if mitigations_path.exists():
+            with open(mitigations_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+                if data:
+                    for mit in data:
+                        if 'id' in mit:
+                            self.mitigations[mit['id']] = mit
+            logger.info(f"Loaded {len(self.mitigations)} ATLAS mitigations")
+
+        tactics_path = self.data_dir / "tactics.yaml"
+        if tactics_path.exists():
+            with open(tactics_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+                if data:
+                    for tac in data:
+                        if 'id' in tac:
+                            self.tactics[tac['id']] = tac
+            logger.info(f"Loaded {len(self.tactics)} ATLAS tactics")
+
+    def _save_pickle(self, pkl_path: Path):
+        try:
+            state = {
+                'techniques':  self.techniques,
+                'mitigations': self.mitigations,
+                'tactics':     self.tactics,
+            }
+            _pkl_dump(state, str(pkl_path))
+            logger.info(f"ATLAS signed pickle cache saved: {pkl_path}")
+        except Exception as e:
+            logger.warning(f"Could not save ATLAS pickle cache: {e}")
 
     def get_techniques(self) -> Dict[str, Dict]:
         """
