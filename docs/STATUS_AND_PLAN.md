@@ -1,8 +1,8 @@
 # ThreatAssessor - Status & Action Plan
 
-**Version:** 1.3  
-**Last Updated:** 2026-05-25  
-**Current Status:** ✅ REST API + Dashboard live — Expert Review UX overhaul + Dashboard polish complete
+**Version:** 1.4  
+**Last Updated:** 2026-05-27  
+**Current Status:** ✅ REST API + Dashboard live — Parallel Expert Review, Dynamic Confidence, ATLAS/ARC name resolution, technique hallucination prevention
 
 ---
 
@@ -16,8 +16,15 @@
 | Dashboard UI | ✅ Live | http://localhost:8000/dashboard |
 | Swagger / OpenAPI | ✅ Live | http://localhost:8000/docs + `openapi.yaml` in repo |
 | SSE streaming analysis | ✅ Live | Real-time progress via `/api/v1/analyze-stream` |
-| Expert Review tab | ✅ Live | Progressive streaming, Pause/Resume/Cancel, sub-step synthesis progress |
+| Expert Review tab | ✅ Live | Parallel/Sequential/Auto modes; per-critic bars; Pause/Resume/Cancel |
 | Before/after risk bars | ✅ Live | Honest residual framing, 10% floor |
+| Dynamic confidence scoring | ✅ Live | Architecture-sensitive base (0.72–0.995); complexity penalises, coverage recovers |
+| ATLAS/ARC name resolution | ✅ Live | AML.T* / AML.M* IDs resolve to real names in all three API lookup endpoints |
+| ARC category badges | ✅ Live | arc_id pill badges (SAF·Safety etc.) in Mitigations tab list + right pane |
+| Parallel Expert Review UX | ✅ Live | Per-critic progress bars + per-second elapsed timer; synthesis bar appears on phase switch |
+| Upload progress messages | ✅ Live | Animated tick updates [STAGE] N% inline + counts ETA down |
+| Mitigations tab ordering | ✅ Live | Sorted by _impact formula (paths × risk × expertBoost) matching Overview |
+| Technique hallucination prevention | ✅ Live | MITRE-grounded synthesis + reflection prompts; CRITIC_HALLUCINATION root cause |
 | Residual risk floor | ✅ Fixed | 10% minimum per NIST (was producing 0 for 4+ controls) |
 | Self-validation accuracy | ✅ Fixed | T1212/T1490/T1059/T1213 + 7 other techniques — no more false negatives |
 | Tester scoring | ✅ Fixed | Sub-dimension penalty, critical_gaps override, PASS→MINOR_GAPS correction |
@@ -25,9 +32,48 @@
 | Expert Review UI | ✅ Fixed | Progressive critic cards; Pause/Resume; tab-switch state preserved |
 | Reports tab | ✅ Fixed | Markdown + diagrams only; JSON moved to Raw Data tab |
 | Raw Data tab | ✅ Fixed | Async file-based; Foundation + Expert Review JSON sections; individual downloads |
-| Content tabs disabled | ✅ Fixed | Attacks/Controls/Hardening/Expert Review greyed out until analysis complete |
-| Mitigations legend | ✅ Fixed | Consistent font size with Threat Paths legend |
+| Content tabs disabled | ✅ Fixed | All tabs greyed out before first upload; re-greyed after reset |
 | requirements.txt | ✅ Fixed | FastAPI/uvicorn/pydantic/sse-starlette now pinned |
+
+---
+
+## 📋 Recent Work (May 27, 2026)
+
+### Parallel Expert Review, Dynamic Confidence, ATLAS/ARC Fixes (this session)
+**Commit:** `b2684c3`
+
+#### 1. Parallel Expert Review — Per-Critic Progress Bars
+**Change:** When `critic_mode` is `parallel` or `auto`, the Expert Review progress box renders three individual bars (Architect / Tester / Red Team) instead of one sequential bar. A per-second interval ticks elapsed time on each running card (`⟳ Running… 12s`). Each bar fills and shows `✓` in the critic's status colour when its `critic_result` SSE arrives. Synthesis gets its own bar row that slides in when the parallel phase ends.
+
+#### 2. Upload Progress — Animated Tick Syncs Message % and ETA
+**Change:** The animated tick that inches the bar forward between SSE events now also updates the status message text — replacing the stale `[PARSING] 5%` with the live animated value (e.g. `[PARSING] 9%`) and counting the ETA down by 0.6 s/tick. Previously the message froze while the bar moved.
+
+#### 3. Mitigations Tab — Sorted by _impact Formula
+**Change:** `loadControlsTab()` is now `async` and fetches MoE + Red Team endorsement data to sort controls by `_impact = paths × riskScore × expertBoost`, matching the Overview top-controls ranking. Secondary sort by priority tier (critical → high → medium).
+
+#### 4. ARC Framework — arc_id Pill Badges
+**Change:** ARC category names in control rationales (`AI/ML (ARC): Safety, Accountability`) are displayed as `[SAF · Safety] [ACC · Accountability]` pill badges in both the Mitigations list card and the right-pane detail. Client-side `_formatArcCats()` maps the 9 fixed category names to their `arc_id` short codes from `risks.yaml`.
+
+#### 5. ATLAS/ARC Name Resolution (reports.py)
+**Problem:** Mitigations right-pane showed `· Unknown (AML.T0043)` — `MitreHelper.find_technique()` only indexes Enterprise ATT&CK; `AML.*` IDs are a separate ATLAS corpus.  
+**Fix:** All three lookup endpoints (`/api/v1/techniques`, `/api/v1/mitigations`, `/api/v1/technique-mitigations`) now route `AML.T*` / `AML.M*` IDs to `AtlasHelper` before falling back to `MitreHelper`.
+
+#### 6. Dynamic Confidence Scoring (threat_analyst.py)
+**Change:** `base_confidence` replaced from hardcoded `0.995` with `_compute_base_confidence(ground_truth)`. Formula: start at `0.995 − complexity_penalty` (node/edge count), then recover toward that ceiling proportionally to coverage signals (control coverage 40%, validation pass rate 30%, path coverage 20%, technique depth 10%). Floor at `0.72`. `confidence_breakdown` added to API response.
+
+#### 7. Technique Hallucination Prevention (moe_orchestrator.py, architect_critic.py)
+**Problem:** Architect LLM called `T1590.005` "model extraction" and `T1565.001` "data poisoning" — wrong labels for real, valid MITRE IDs. Tester saw the wrong labels and flagged the IDs as non-existent; synthesis generated a false `DATA_REFERENCE_ERROR` contradiction.  
+**Fix:**
+- `_resolve_technique_ids()` looks up all `T####[.###]` IDs from critic text against MITRE and builds a verified name block
+- Injected into both the synthesis prompt and `_reflect_contradictions` prompt as authoritative grounding
+- `CRITIC_HALLUCINATION` added as a root cause category in the reflection schema
+- Architect critic prompt: rule added requiring technique IDs to come only from artifact data, never invented
+
+#### 8. Parallel Critics Mode (moe_orchestrator.py)
+**Change:** `run_pipeline()` accepts `critic_mode: sequential | parallel | auto`. `_run_full_parallel()` fires per-critic `progress_callback` inside `as_completed()` so each critic card updates the moment it finishes. `parallel_starting` callback signals the frontend before the thread pool blocks. `critic_mode` (resolved) stored in `MoEResult` and written to `07_moe_orchestrator.json`.
+
+#### 9. ARC Framework Data — Committed to Repo
+`chatbot/data/arc/controls.yaml` (88 controls) and `risks.yaml` (9 categories, component rules) are now in the repository. Previously the AI pattern couldn't be reproduced from a fresh clone.
 
 ---
 
@@ -116,7 +162,7 @@
 ### High Priority
 
 #### A. Re-run validation on fixed architectures
-After the `self_validation.py` fixes, reports generated before commit `389e667` (May 24) will still show `overall_valid: False` and Expert Review disagreements. They need to be regenerated to pick up the fixes.
+Reports generated before commit `389e667` (May 24) still show `overall_valid: False` and stale Expert Review contradictions. Regenerate to pick up self-validation + hallucination prevention fixes.
 
 ```bash
 # Re-run specific report
@@ -126,32 +172,23 @@ After the `self_validation.py` fixes, reports generated before commit `389e667` 
 python3 scripts/backtest_all_architectures.py
 ```
 
-Key affected reports: any with `overall_valid: false` in `ground_truth.json` + Expert Review showing "Validation issues" contradiction.
-
-#### ~~B. MFA → T1485 mapping~~ ✅ Fixed (`cf10377`)
-`_check_if_false_positive()` in `tester_critic.py` now queries MITRE ground truth first. M1032 IS a valid T1485 mitigation — no longer reported as a false positive.
-
-#### C. `scripts/backtest_all_architectures.py` — File missing
-`CLAUDE.md` and `Makefile` both reference this script but it doesn't exist at that path.
-
-```bash
-ls scripts/backtest_all_architectures.py  # Not found
-find . -name "backtest*" -not -path "./.git/*"
-```
-
-Resolve before publishing: either create the script or remove references from CLAUDE.md/Makefile.
+#### B. `scripts/backtest_all_architectures.py` — File missing
+`CLAUDE.md` and `Makefile` reference this script but it doesn't exist. Create it or remove references before publishing.
 
 ### Medium Priority
 
-#### D. Expert Review — contradiction resolution quality
-The current contradiction format shows raw Architect vs Red Team views. When the underlying cause is a self-validation false negative (now fixed), the contradiction shouldn't exist. Consider:
-- Add a "RESOLVED" state for contradictions that stem from `overall_valid` status
-- Or: run self-validation check before MoE pipeline and skip validation-related contradictions if `overall_valid: True`
+#### C. Dynamic confidence — validate against real architectures
+Run deterministic on the smallest test arch and on `21_agentic_ai_system` (20 nodes). Confirm:
+- Small arch with poor coverage: `confidence_breakdown.base` < 0.90
+- Complex arch with low coverage: base < 0.80
+- Complex arch with high coverage + all 6 checks: base recovers to ~0.93
+- `confidence_breakdown` present in API response with all fields
+
+#### D. Cloud-specific threat patterns (roadmap item #3)
+No AWS/Azure/GCP-specific threat models yet. The current `cloud_generic` pattern uses MITRE Enterprise as a proxy and explicitly notes its limitations. Cloud pattern would add misconfiguration detection and serverless-specific attack paths.
 
 #### E. Tester scoring — roadmap_validation sub-dimension
-`roadmap_validation` frequently scores 1-6/10 because the Tester LLM evaluates the *Architect's roadmap* and finds it doesn't address the Tester's specific findings. This is structurally expected (they run independently), not a real quality failure. Consider:
-- Exclude `roadmap_validation` from the sub-dimension penalty calculation
-- Or: reduce its weight relative to `validation_checks` and `coverage_metrics`
+`roadmap_validation` scores low because the Tester evaluates the Architect's roadmap against its own findings (structurally expected divergence, not a real quality failure). Consider reducing its weight relative to `validation_checks` and `coverage_metrics`.
 
 ---
 
@@ -243,13 +280,15 @@ The current contradiction format shows raw Architect vs Red Team views. When the
 | Metric | Target | Actual | Status |
 |--------|--------|--------|--------|
 | Validation pass rate | 95%+ | 100% (22/22) | ✅ |
-| Deterministic confidence | 99.5% | 99.5% | ✅ |
+| Deterministic base confidence | architecture-sensitive | 0.72–0.995 | ✅ |
 | MoE final confidence | 93–96% | 93–96% | ✅ |
 | Technique coverage | 100% | 100% | ✅ |
 | Orphan nodes | 0 | 0 | ✅ |
 | Visual clarity | 90%+ | 95% | ✅ |
 | Residual risk floor | ≥10% | ≥10% (NIST) | ✅ |
 | Self-validation false negatives | 0 | 0 (post-fix) | ✅ |
+| ATLAS technique name resolution | 100% | 100% (AML.T*/AML.M*) | ✅ |
+| Synthesis hallucination prevention | n/a | MITRE-grounded prompts | ✅ |
 
 ---
 
@@ -260,8 +299,10 @@ The current contradiction format shows raw Architect vs Red Team views. When the
 | Policy controls (behavioral analysis, audit log) may appear in "Additional recommended" comment | Cosmetic — data correct in ground_truth.json | Accepted |
 | LLM availability (~33% uptime on free tier) | Expert Review unavailable intermittently | Workaround: deterministic-only mode |
 | Large architectures (>30 nodes) may produce cluttered diagrams | Visual complexity | Workaround: use subgraphs |
-| Tester LLM sometimes hallucinates invalid mitigation claims | False finding in Expert Review | MITRE ground-truth post-process now overrides LLM verdict (fixed `cf10377`) |
+| Tester LLM sometimes hallucinates invalid mitigation claims | False finding in Expert Review | MITRE ground-truth post-process overrides LLM verdict (fixed `cf10377`) |
 | Old reports (pre May 24) may still show `overall_valid: False` | Stale self-validation result | Regenerate with `demo_expert_llm.sh` |
+| No AWS/Azure/GCP-specific threat models | Cloud misconfigurations not detected | Partial — `cloud_generic` pattern uses MITRE Enterprise as proxy |
+| Dynamic confidence not yet validated across all 22 architectures | Base confidence formula may need tuning | Pending — run backtests after `b2684c3` |
 
 ---
 
@@ -301,5 +342,5 @@ cat report/your_architecture/00_executive_dashboard.md
 ---
 
 **Single Source of Truth:** This file tracks project status and roadmap  
-**Last Updated:** 2026-05-25  
-**Status:** ✅ REST API + Dashboard live — Expert Review UX overhaul complete
+**Last Updated:** 2026-05-27  
+**Status:** ✅ REST API + Dashboard live — Parallel Expert Review, Dynamic Confidence, ATLAS/ARC resolution complete
