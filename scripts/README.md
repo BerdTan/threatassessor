@@ -1,206 +1,57 @@
-# Scripts Directory
+# Scripts
 
-Integration tests, validation utilities, and data generation scripts organized by purpose.
+Organised by purpose. All scripts use relative paths from repo root unless noted.
 
----
+**Last Updated:** 2026-05-30
 
-## Directory Structure
+## Structure
 
 ```
 scripts/
-├── agent_testing/        # Phase 3C agent framework tests (NEW)
-│   ├── test_architect.sh
-│   └── README.md
-├── integration/          # Integration tests (cross-module validation)
-│   ├── test_llm_providers.py
-│   ├── test_openrouter.py
-│   ├── backtest_all_architectures.py
-│   ├── validate_engine_accuracy.py
-│   └── validate_parser_harness.py
-├── validation/           # Quick validation utilities
-│   ├── check_orphans.py
-│   └── validate_llm_config.py
-└── generation/           # Data generation & demo utilities
-    ├── generate_ground_truth.py
-    ├── batch_generate_ground_truth.sh
-    └── demo_mitre_advice.py
+├── api/              # Server lifecycle (used by Makefile)
+│   ├── api_start.sh
+│   ├── api_stop.sh
+│   ├── api_restart.sh
+│   ├── api_status.sh
+│   └── diagnose_upload.sh
+├── integration/      # Cross-module validation (run manually or in CI)
+│   ├── backtest_all_architectures.py   # Run all 25 .mmd architectures, compare results
+│   ├── validate_engine_accuracy.py     # Accuracy checks against ground truth
+│   ├── validate_parser_harness.py      # Parser validation harness
+│   ├── test_llm_providers.py           # Test OpenRouter + Bedrock providers
+│   └── test_openrouter.py              # OpenRouter API connectivity test
+├── validation/       # Quick one-off checks
+│   ├── check_orphans.py                # Detect orphan nodes in architecture diagrams
+│   └── validate_llm_config.py         # Validate .env LLM config
+├── ingest/           # Data refresh
+│   └── scrape_ssp_catalog.py          # Scrape SG Gov SSP catalog → chatbot/data/ssp/
+├── generation/       # Ground truth and test data generation
+│   ├── generate_ground_truth.py       # Generate ground_truth.json for one architecture
+│   └── batch_generate_ground_truth.sh # Batch generate for all test architectures
+├── docs/
+│   └── generate_html_docs.py          # Regenerate html/ documentation (make docs)
+└── test_demos.sh     # Validate demo_*.sh scripts exist and run correctly
 ```
 
----
-
-## Agent Framework Testing (Phase 3C)
-
-### test_architect.sh
-
-**Purpose:** Validate Architect critic agent on flawed assessment
-
-**Usage:**
-```bash
-./scripts/agent_testing/test_architect.sh
-```
-
-**What it tests:**
-- Agent catches logic contradictions (ransomware backup claim)
-- Agent catches risk-priority mismatches (DoS=80, priority=low)
-- Agent catches coverage gaps (risk=90, 1 technique)
-- Improvement roadmap provides verification methods
-
-**Expected Score:** 20-35/100 (POOR)
-
-**Test Data:** `tests/data/agent_test_cases/test_flawed_assessment.json`
-
-**See:** `scripts/agent_testing/README.md` for upcoming agent tests (Tester, Red Teamer, Orchestrator)
-
----
-
-## Integration Tests
-
-### LLM Provider Testing (`integration/`)
-
-**`test_llm_providers.py`** - Multi-provider LLM integration tests
-```bash
-python3 scripts/integration/test_llm_providers.py                    # All providers
-python3 scripts/integration/test_llm_providers.py --provider bedrock # Specific provider
-python3 scripts/integration/test_llm_providers.py --test-verify      # LLM as Judge
-```
-Results: `tests/results/test_results_llm_providers.json`
-
-**`test_openrouter.py`** - OpenRouter API integration validation
-```bash
-python3 scripts/integration/test_openrouter.py
-```
-
-### Architecture Validation (`integration/`)
-
-**`backtest_all_architectures.py`** - Validate all test architectures
-```bash
-python3 scripts/integration/backtest_all_architectures.py                          # All
-python3 scripts/integration/backtest_all_architectures.py --architectures 10_* 03_* # Specific
-```
-
-**`validate_engine_accuracy.py`** - Engine accuracy against ground truth
-```bash
-python3 scripts/integration/validate_engine_accuracy.py
-```
-
-**`validate_parser_harness.py`** - Parser correctness validation
-```bash
-python3 scripts/integration/validate_parser_harness.py
-```
-
----
-
-## Validation Utilities (`validation/`)
-
-**`check_orphans.py`** - Check for orphan nodes in architectures
-```bash
-python3 scripts/validation/check_orphans.py                     # All architectures
-python3 scripts/validation/check_orphans.py 10_complex 03_aws  # Specific ones
-```
-
-**`validate_llm_config.py`** - Validate LLM provider configuration
-```bash
-python3 scripts/validation/validate_llm_config.py
-```
-
----
-
-## Data Generation (`generation/`)
-
-**`generate_ground_truth.py`** - Semi-automated ground truth generation
-```bash
-python3 scripts/generation/generate_ground_truth.py tests/data/architectures/06_azure_3tier.mmd
-```
-
-**`batch_generate_ground_truth.sh`** - Batch ground truth generation
-```bash
-./scripts/generation/batch_generate_ground_truth.sh
-```
-
-**`demo_mitre_advice.py`** - Demo MITRE helper functionality
-```bash
-python3 scripts/generation/demo_mitre_advice.py
-```
-
----
-
-## Organization Principles
-
-### Directory Purpose
-
-| Directory | Purpose | Examples |
-|-----------|---------|----------|
-| **integration/** | Cross-module integration tests | LLM providers, architecture backtesting |
-| **validation/** | Quick validation checks | Orphan detection, config validation |
-| **generation/** | Data generation & demos | Ground truth generation, MITRE demos |
-
-### scripts/ vs tests/
-
-- **scripts/** - Integration tests, workflows, batch operations
-- **tests/** - Unit tests (pytest), test data, test fixtures
-
-### When to use scripts/
-
-✅ Integration testing (cross-module validation)  
-✅ Workflow automation (batch processing)  
-✅ System validation (end-to-end checks)  
-✅ Data generation utilities  
-✅ Demo/example scripts
-
-### When to use tests/
-
-✅ Unit tests (pytest test_*.py)  
-✅ Test fixtures and utilities (conftest.py, eval_utils.py)  
-✅ Test data (tests/data/)  
-✅ Test results (tests/results/)
-
----
-
-## Running All Validations
+## Common Commands
 
 ```bash
-# 1. Unit tests (pytest)
-pytest tests/ -v
+# Check for orphan nodes in an architecture
+python3 scripts/validation/check_orphans.py <architecture_name>
 
-# 2. Architecture validation
+# Backtest all architectures
 python3 scripts/integration/backtest_all_architectures.py
 
-# 3. LLM provider validation
-python3 scripts/validation/validate_llm_config.py
+# Refresh SSP catalog data
+python3 scripts/ingest/scrape_ssp_catalog.py
 
-# 4. Orphan detection
-python3 scripts/validation/check_orphans.py
+# Generate ground truth for a new architecture
+python3 scripts/generation/generate_ground_truth.py tests/data/architectures/00_safeentry.mmd
 
-# 5. Engine accuracy
-python3 scripts/integration/validate_engine_accuracy.py
+# Validate API server is healthy
+./scripts/api/api_status.sh
 ```
 
----
+## Archive
 
-## Quick Reference
-
-**Integration Testing:**
-```bash
-cd scripts/integration/
-python3 test_llm_providers.py
-python3 backtest_all_architectures.py
-```
-
-**Validation:**
-```bash
-cd scripts/validation/
-python3 check_orphans.py
-python3 validate_llm_config.py
-```
-
-**Data Generation:**
-```bash
-cd scripts/generation/
-python3 generate_ground_truth.py ../tests/data/architectures/your_arch.mmd
-```
-
----
-
-**See Also:**
-- [tests/README.md](../tests/README.md) - Unit test documentation
-- [docs/testing/](../docs/testing/) - Testing strategy and methodology
+Phase 3D README-only stub and `agent_testing/` scripts (phase 3C/3D manual tests) have been moved to `scripts/archive/` (gitignored).
