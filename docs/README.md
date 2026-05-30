@@ -1,234 +1,130 @@
 # ThreatAssessor Documentation
 
-**Last Updated:** 2026-05-22  
-**Version:** 1.3-dev
+**Version:** 1.4 — REST API live, SSP enrichment, MoE expert review  
+**Last Updated:** 2026-05-30
 
 ---
 
-## 🎯 Quick Navigation
+## Quick Navigation
 
-**Understanding Documentation Structure?**
-👉 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) - Documentation hub and navigation guide
-
-**New to This Project?**
-👉 [START_HERE.md](START_HERE.md) - Entry point for all users  
-👉 [../html/index.html](../html/index.html) - Interactive user guide (HTML)
-
-**Returning to Continue Work?**
-👉 [NEXT_STEPS.md](NEXT_STEPS.md) - Stage 2 Phase 2B (FastAPI Router)
-
-**Checking Project Status?**
-👉 [../html/status.html](../html/status.html) - Project dashboard with metrics (HTML)  
-👉 [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Detailed status (Markdown)
-
-**Planning Future Phases?**
-👉 [../html/roadmap.html](../html/roadmap.html) - Strategic roadmap (HTML)
+| If you want to… | Go to |
+|---|---|
+| Get started fast | [START_HERE.md](START_HERE.md) |
+| Understand architecture decisions | [DECISIONS.md](DECISIONS.md) |
+| Check current status and roadmap | [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) |
+| Run the API server | [operations/API_MANAGEMENT.md](operations/API_MANAGEMENT.md) |
+| Troubleshoot issues | [operations/OPERATIONS.md](operations/OPERATIONS.md) |
+| Understand the MoE agent design | [AGENTIC_DESIGN.md](AGENTIC_DESIGN.md) |
+| Browse all docs | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) |
 
 ---
 
-## Quick Start
+## Active Documentation
 
-**Essential Guides:**
-1. [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) - **START HERE** for documentation navigation
-2. [HTML_DOCUMENTATION.md](HTML_DOCUMENTATION.md) - HTML system guide (regeneration, features, troubleshooting)
-3. [START_HERE.md](START_HERE.md) - New/returning users entry point
-4. [NEXT_STEPS.md](NEXT_STEPS.md) - Next phase implementation guide
-5. [ROOT_OVERVIEW.md](ROOT_OVERVIEW.md) - Directory structure + demo scripts
-6. [../html/index.html](../html/index.html) - Interactive user guide (HTML with copy buttons)
-7. [../html/status.html](../html/status.html) - Project status dashboard (HTML with charts)
-8. [../html/roadmap.html](../html/roadmap.html) - Product roadmap (HTML with sidebar nav)
+### Root (this directory)
 
-**Markdown Sources (CLI-friendly):**
-- [../README.md](../README.md) - User quick start guide (source for index.html)
-- [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Project status (source for status.html)
-- [../CLAUDE.md](../CLAUDE.md) - Developer quick reference
-- [specs/MVP_SPECIFICATION.md](specs/MVP_SPECIFICATION.md) - Roadmap source (generates PRODUCT_ROADMAP.html)
+| File | Purpose |
+|---|---|
+| [DECISIONS.md](DECISIONS.md) | Architectural decision log — read at session start |
+| [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) | Current status, feature list, roadmap |
+| [AGENTIC_DESIGN.md](AGENTIC_DESIGN.md) | MoE agent architecture, AgentTools, MCP server design |
+| [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Full directory map |
+| [ROOT_OVERVIEW.md](ROOT_OVERVIEW.md) | Root-level files explained |
+| [START_HERE.md](START_HERE.md) | Entry point for new/returning contributors |
 
-**Architecture Validation:**
-- [operations/ARCHITECTURE_VALIDATION.md](operations/ARCHITECTURE_VALIDATION.md) - Orphan node detection
+### Operations
 
----
+| File | Purpose |
+|---|---|
+| [operations/API_MANAGEMENT.md](operations/API_MANAGEMENT.md) | Start/stop/restart API, health checks |
+| [operations/OPERATIONS.md](operations/OPERATIONS.md) | Troubleshooting common issues |
+| [operations/ARCHITECTURE_VALIDATION.md](operations/ARCHITECTURE_VALIDATION.md) | Orphan node detection workflow |
+| [operations/API_LIFECYCLE.md](operations/API_LIFECYCLE.md) | API process lifecycle |
+| [operations/API_KEY_SETUP.md](operations/API_KEY_SETUP.md) | API key configuration |
+| [operations/CACHE_BUSTING.md](operations/CACHE_BUSTING.md) | MITRE cache management |
 
-## Latest Updates (May 22, 2026)
+### API Reference
 
-### Bug Fix + Hardening Phase ✅ Complete
+| File | Purpose |
+|---|---|
+| [api/API_SPECIFICATION.md](api/API_SPECIFICATION.md) | Endpoint reference |
+| [api/API_INTEGRATION_GUIDE.md](api/API_INTEGRATION_GUIDE.md) | Integration examples |
+| [api/API_AUDIT.md](api/API_AUDIT.md) | API audit log |
 
-**Summary Documents:**
-- [completed/bugfix_phase/BUGFIX_COMPLETE.md](completed/bugfix_phase/BUGFIX_COMPLETE.md) - Bug fix phase summary (3 bugs fixed)
-- [completed/bugfix_phase/GAP_FILLING_CONTROLS.md](completed/bugfix_phase/GAP_FILLING_CONTROLS.md) - Hardening controls explanation
-- [completed/bugfix_phase/PHASE_BUGFIX_HARDENING_COMPLETE.md](completed/bugfix_phase/PHASE_BUGFIX_HARDENING_COMPLETE.md) - Complete phase summary
+### Core Concepts
 
-**Key Changes:**
-1. ✅ Fixed database control coverage (30% → 100%)
-2. ✅ Fixed validator type error (confidence 95% → 99.5%)
-3. ✅ Enhanced gap-filling controls with purple visual distinction
-4. ✅ Tested agentic AI architecture (22/37 AI-specific controls)
-5. ✅ Service layer foundation complete (thread-safe, 6/6 tests)
+| File | Purpose |
+|---|---|
+| [core/V1_FEATURES.md](core/V1_FEATURES.md) | Feature list with examples |
+| [core/CONFIDENCE_METHODOLOGY.md](core/CONFIDENCE_METHODOLOGY.md) | How confidence is calculated |
+| [core/PREVENTION_VS_MITIGATION.md](core/PREVENTION_VS_MITIGATION.md) | Control classification rationale |
+| [core/REFERENCE_ARCHITECTURES.md](core/REFERENCE_ARCHITECTURES.md) | Test architecture descriptions |
 
-**Investigation Details:**
-- [investigation/BUG1_ROOT_CAUSE.md](investigation/BUG1_ROOT_CAUSE.md) - Database coverage deep-dive
-- [investigation/BUG2_NOT_A_BUG.md](investigation/BUG2_NOT_A_BUG.md) - Encryption controls analysis
+### Development
 
----
+| File | Purpose |
+|---|---|
+| [development/ARCHITECTURE.md](development/ARCHITECTURE.md) | System architecture overview |
+| [development/NEXT_STEPS.md](development/NEXT_STEPS.md) | Development backlog |
+| [development/LLM_PROVIDER_ARCHITECTURE.md](development/LLM_PROVIDER_ARCHITECTURE.md) | Multi-provider LLM client design |
+| [development/AGENT_MIGRATION_GUIDE.md](development/AGENT_MIGRATION_GUIDE.md) | Agent refactoring guide |
 
-## Core Documentation
+### AI Pattern
 
-### User Guides
-- [../README.md](../README.md) - Quick start + demo scripts
-- [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Current status + roadmap
-- [core/V1_FEATURES.md](core/V1_FEATURES.md) - Feature list with examples
+| File | Purpose |
+|---|---|
+| [patterns/README.md](patterns/README.md) | AI/ML pattern system overview |
+| [patterns/AI_PATTERN_STATUS.md](patterns/AI_PATTERN_STATUS.md) | ARC + ATLAS pattern status |
+| [patterns/AI_PATTERN_VERIFICATION.md](patterns/AI_PATTERN_VERIFICATION.md) | Pattern verification results |
 
-### Developer Guides
-- [../CLAUDE.md](../CLAUDE.md) - AI assistant context + module paths
-- [operations/OPERATIONS.md](operations/OPERATIONS.md) - Troubleshooting guide
-- [operations/ARCHITECTURE_VALIDATION.md](operations/ARCHITECTURE_VALIDATION.md) - Validation workflow
+### SSP
 
----
+| File | Purpose |
+|---|---|
+| [ssp/cyber.md](ssp/cyber.md) | Singapore Government ICT&SS SSP reference notes |
 
-## Phase Documentation
+### Dashboard / UI
 
-### Phase 3D: Mixture of Experts (MoE) ✅ Complete
-**Location:** [phases/phase3d/](phases/phase3d/)
+| File | Purpose |
+|---|---|
+| [ui/DASHBOARD_GUIDE.md](ui/DASHBOARD_GUIDE.md) | Dashboard user guide |
+| [ui/DASHBOARD_COMPLETE.md](ui/DASHBOARD_COMPLETE.md) | Dashboard implementation summary |
+| [ui/MOE_UI_DESIGN.md](ui/MOE_UI_DESIGN.md) | Expert Review UI design |
 
-**Key Documents:**
-- [PHASE3D_WEEK1_COMPLETE.md](phases/phase3d/PHASE3D_WEEK1_COMPLETE.md) - MoE foundation
-- [PHASE3D_WEEK2_COMPLETE.md](phases/phase3d/PHASE3D_WEEK2_COMPLETE.md) - Expert refactoring
-- [PHASE3D_WEEK3_COMPLETE.md](phases/phase3d/PHASE3D_WEEK3_COMPLETE.md) - Executive dashboard
-- [PHASE3D_TECHNICAL_NOTES.md](phases/phase3d/PHASE3D_TECHNICAL_NOTES.md) - Implementation details
+### Testing
 
-**Result:** 16 files per architecture, 93-96% confidence, coherent dashboard
+| File | Purpose |
+|---|---|
+| [testing/TESTING_STRATEGY.md](testing/TESTING_STRATEGY.md) | Test approach and coverage |
+| [testing/GROUND_TRUTH_GUIDE.md](testing/GROUND_TRUTH_GUIDE.md) | Ground truth generation guide |
+| [testing/DATA_STRATEGY.md](testing/DATA_STRATEGY.md) | Test data strategy |
 
-### Bug Fix + Hardening Phase ✅ Complete
-**Date:** May 22, 2026  
-**Location:** [completed/bugfix_phase/](completed/bugfix_phase/)
+### Phase 3D (MoE) — completed reference
 
-**Summary:**
-- [BUGFIX_COMPLETE.md](completed/bugfix_phase/BUGFIX_COMPLETE.md) - Bug fixes (database, validator, phased diagrams)
-- [GAP_FILLING_CONTROLS.md](completed/bugfix_phase/GAP_FILLING_CONTROLS.md) - Hardening controls enhancement
-- [PHASE_BUGFIX_HARDENING_COMPLETE.md](completed/bugfix_phase/PHASE_BUGFIX_HARDENING_COMPLETE.md) - Complete phase summary
-
-**Files Changed:**
-- `chatbot/modules/threat_report.py` - Hardening labels + purple color
-- `chatbot/modules/mmd_improvement_generator.py` - Hardening in phased diagrams
-- `chatbot/modules/agents/analysts/threat_analyst.py` - Validator fix
-
-**Result:** 100% database coverage, 99.5% confidence, visual hardening distinction
-
-### Stage 2: API Transformation 🚧 In Progress
-**Next Phase:** Phase 2B (FastAPI Router) - 2h estimated
-
-**Service Layer (Phase 2A) ✅ Complete:**
-- `chatbot/services/base_service.py` - Thread-safe foundation
-- `chatbot/services/threat_analysis_service.py` - Team 1 wrapper
-- `chatbot/services/validation_service.py` - Team 2+3 wrapper
-- Tests: 6/6 passing (concurrent, isolation, error handling)
+**Location:** [phases/phase3d/](phases/phase3d/)  
+Contains architecture design, weekly completion notes, and agent-type documentation for the MoE implementation. Read-only reference; work is complete.
 
 ---
 
-## Feature Documentation
+## Archive
 
-### Control Recommendations
-
-**Priority System:**
-- 🔴 **Critical** (red) - Breaks primary attack paths
-- 🟡 **High** (yellow) - Closes validation gaps
-- 🔵 **Medium** (blue) - Defense-in-depth
-- 🟢 **Low** (green) - Baseline hygiene
-- 🟣 **Hardening** (purple) - Gap-filling controls (NEW)
-
-**Documentation:**
-- [completed/bugfix_phase/GAP_FILLING_CONTROLS.md](completed/bugfix_phase/GAP_FILLING_CONTROLS.md) - Hardening controls explanation
-- [core/V1_FEATURES.md](core/V1_FEATURES.md) - Control placement details
-
-### AI/ML Threat Analysis
-
-**Frameworks:**
-- MITRE ATLAS (AML.T####, AML.M####)
-- ARC Framework (Privacy, Safety, Security, etc.)
-
-**Pattern Detection:**
-- `chatbot/modules/patterns/ai_pattern.py` - AI/ML pattern implementation
-- `chatbot/modules/pattern_registry.py` - Pattern registration
-
-**Testing:**
-- `tests/data/architectures/21_agentic_ai_system.mmd` - Agentic AI test case
-- Result: 22/37 controls AI-specific, ATLAS techniques detected
-
-### Validation System
-
-**Completeness Validator:**
-- `chatbot/modules/completeness_validator.py` - 6-check validation
-- Base confidence: 99.5%
-- Adjustment: 0.0-1.0 scale (100% = 1.0)
-
-**MoE Validation:**
-- Layer 1: Architect (structure quality)
-- Layer 2: Tester (technique coverage)
-- Layer 3: Red Team (attack simulation)
-- Sequential with fail-fast enforcement
+Completed-phase docs, investigation snapshots, phase 3B/3C planning files, and superseded specs are in [archive/](archive/). Nothing in `archive/` needs to be read during normal development.
 
 ---
 
-## Investigation Archives
+## Document Count
 
-**Location:** [investigation/](investigation/)
-
-**Bug Analysis:**
-- [BUG1_ROOT_CAUSE.md](investigation/BUG1_ROOT_CAUSE.md) - Database control coverage
-- [BUG2_NOT_A_BUG.md](investigation/BUG2_NOT_A_BUG.md) - Encryption controls
-
-**Status Reports:**
-- [DECISION_SUMMARY.md](investigation/DECISION_SUMMARY.md) - Fix vs API decision
-- [STATUS_CORRECTED.md](investigation/STATUS_CORRECTED.md) - Corrected status analysis
-- [PROGRESS_VISUAL.md](investigation/PROGRESS_VISUAL.md) - Visual progress map
-
----
-
-## Operations Guides
-
-**Location:** [operations/](operations/)
-
-**Validation:**
-- [ARCHITECTURE_VALIDATION.md](operations/ARCHITECTURE_VALIDATION.md) - Orphan detection workflow
-- Scripts: `scripts/validation/check_orphans.py`
-
-**Troubleshooting:**
-- [OPERATIONS.md](operations/OPERATIONS.md) - Common issues + fixes
-- Update MITRE data: Quarterly refresh recommended
-
-**Testing:**
-- `tests/diagnostic_regression.py` - 5 tests (ground truth, validator, service layer)
-- `tests/test_services_concurrent.py` - 6 tests (thread safety, isolation)
-- `tests/test_database_coverage.py` - Database control validation
-
----
-
-## Next Steps
-
-**Stage 2 Phase 2B: FastAPI Router (2h estimated)**
-
-**Files to Create:**
-- `chatbot/api/app.py` - FastAPI factory
-- `chatbot/api/routes/analysis.py` - POST /api/v1/analyze
-- `chatbot/api/routes/critique.py` - POST /api/v1/critique
-- `chatbot/api/routes/orchestration.py` - POST /api/v1/orchestrate
-- `chatbot/api/routes/health.py` - GET /api/v1/health
-- `chatbot/api/models/requests.py` - Pydantic schemas
-- `chatbot/api/models/responses.py` - Response models
-
-**Prerequisites:** ✅ All met (service layer complete, bugs fixed, validation working)
-
----
-
-## Document Status
-
-| Category | Count | Status |
-|----------|-------|--------|
-| Core documentation | 5 | ✅ Current |
-| Phase 3D docs | 7 | ✅ Complete |
-| Bug fix docs | 3 | ✅ Complete |
-| Operations guides | 2 | ✅ Current |
-| Investigation archives | 6 | 📦 Archived |
-| **Total** | **23** | **✅ Organized** |
-
-**Last Audit:** 2026-05-22
+| Area | Files |
+|---|---|
+| Root docs | 6 |
+| operations/ | 6 |
+| api/ | 3 |
+| core/ | 4 |
+| development/ | 4 |
+| patterns/ | 3 |
+| ui/ | 3 |
+| testing/ | 3 |
+| ssp/ | 1 |
+| phases/phase3d/ | 7 |
+| **Active total** | **~44** |
+| archive/ | 100+ |
