@@ -1,141 +1,73 @@
-# ThreatAssessor - Start Here
+# ThreatAssessor — Start Here
 
-**Version:** 1.3-dev  
-**Status:** ✅ Production-Ready - Bug Fix + Hardening Phase Complete
-
----
-
-## 📚 Documentation Quick Links
-
-**Understanding the docs?** Start with [docs/PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) to understand the documentation structure
-
-**User guide?** See [index.html](index.html) for interactive quick start (HTML with copy buttons)
-
-**Current status?** Check [status.html](status.html) for project dashboard (HTML with charts)
-
-**Implementing?** Go to [docs/NEXT_STEPS.md](NEXT_STEPS.md) for Stage 2 Phase 2B guide (FastAPI Router)
-
-**Planning?** See [../html/roadmap.html](../html/roadmap.html) for strategic roadmap
+**Version:** 1.4 — REST API live, SSP enrichment, MoE expert review  
+**Last Updated:** 2026-05-30
 
 ---
 
-## 🎯 I'm New Here
+## I'm new here
 
-### Web Interface (Recommended)
-Open these in your browser for the best experience:
-1. [index.html](index.html) - Interactive user guide with demos
-2. [status.html](status.html) - Project status dashboard
-3. [../html/roadmap.html](../html/roadmap.html) - Product roadmap
-
-### Command Line (Alternative)
-Read these in order:
-1. [README.md](README.md) - Quick start + demo scripts
-2. [docs/ROOT_OVERVIEW.md](docs/ROOT_OVERVIEW.md) - Directory structure
-3. [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Current status
-
----
-
-## 🔄 I'm Returning to This Project
-
-### Quick Status Check
 ```bash
-# Option 1: View HTML dashboard (opens in browser)
-open status.html
-
-# Option 2: CLI status check
-cat docs/STATUS_AND_PLAN.md | head -50
+git clone <repo-url> && cd DEV-TEST
+make install && make setup   # install deps + generate API key in .env
+make start                   # start API server on :8000
+# open http://localhost:8000/dashboard
 ```
 
-### Next Implementation Phase
-```bash
-# 1. Read next steps (Stage 2 Phase 2B - FastAPI Router, 2h)
-cat docs/NEXT_STEPS.md
-
-# 2. View strategic roadmap (opens in browser)
-open ../html/roadmap.html
-
-# 3. Test everything works
-./scripts/test_demos.sh
-```
-
-**Next Phase:** Stage 2 Phase 2B - FastAPI Router (2h)  
-**Details:** [docs/NEXT_STEPS.md](NEXT_STEPS.md) (tactical) | [../html/roadmap.html](../html/roadmap.html) (strategic)
+Full quick start: [../README.md](../README.md)
 
 ---
 
-## 🧪 I Want to Test It
+## I'm returning to continue work
 
 ```bash
-# Quick test (30s, no LLM)
+# Read architectural decisions first
+cat docs/DECISIONS.md | tail -80
+
+# Check current status and roadmap
+cat docs/STATUS_AND_PLAN.md | head -60
+
+# Start API server
+make start
+```
+
+---
+
+## I want to run a quick test
+
+```bash
+# Deterministic only (~30 s, no LLM key needed)
 ./demo_deterministic_engine.sh tests/data/architectures/00_safeentry.mmd
 
-# Full test (2 min, with LLM critics)
+# Full MoE pipeline (~2 min, requires OPENROUTER_API_KEY in .env)
 ./demo_expert_llm.sh tests/data/architectures/21_agentic_ai_system.mmd
 
-# View results
-cat report/00_safeentry/00_executive_dashboard.md
+# Unit tests
+make test
 ```
 
 ---
 
-## 📚 I Need Documentation
+## I need documentation
 
-**Core Docs (root folder):**
-- [README.md](README.md) - User guide
-- [docs/STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) - Project status
-- [CLAUDE.md](CLAUDE.md) - Developer reference
-
-**Detailed Docs (docs/ folder):**
-- [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md) - Next phase guide
-- [docs/ROOT_OVERVIEW.md](docs/ROOT_OVERVIEW.md) - Directory structure
-- [docs/README.md](docs/README.md) - Documentation index
-
----
-
-## 🛠️ Root Folder Contents
-
-```
-📄 START_HERE.md           ← This file
-📄 README.md               ← User quick start
-📄 CLAUDE.md               ← Developer reference
-
-🔧 demo_deterministic_engine.sh   ← Fast analysis (no LLM, 30s)
-🔧 demo_expert_llm.sh             ← Full MoE pipeline (2 min)
-
-📁 docs/
-   📄 STATUS_AND_PLAN.md    ← Current status + roadmap
-
-📁 scripts/
-   🔧 test_demos.sh         ← Test both demo scripts
-
-📁 chatbot/                ← Application code
-📁 docs/                   ← Documentation (start with NEXT_STEPS.md)
-📁 tests/                  ← Test suites
-📁 scripts/                ← Utility scripts
-📁 archive/                ← Historical files
-```
+| Need | File |
+|------|------|
+| Architecture decisions | [docs/DECISIONS.md](DECISIONS.md) |
+| Current status + roadmap | [docs/STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) |
+| Developer quick reference | [../CLAUDE.md](../CLAUDE.md) |
+| MoE agent design | [docs/AGENTIC_DESIGN.md](AGENTIC_DESIGN.md) |
+| API operations | [docs/operations/API_MANAGEMENT.md](operations/API_MANAGEMENT.md) |
+| All docs | [docs/README.md](README.md) |
 
 ---
 
-## ✅ Current Status
+## Current status (v1.4)
 
-**Completed:**
-- Phase 3D: Mixture of Experts (MoE) validation ✅
-- Bug Fix Phase: Database coverage + validator ✅
-- Hardening Phase: Gap-filling controls (purple) ✅
-- Service Layer (Phase 2A): Thread-safe foundation ✅
+- REST API live with SSE streaming and Swagger UI
+- SSP enrichment: Singapore Government ICT&SS policy baseline per architecture
+- MoE expert review: Architect + Tester + Red Team critics (parallel or sequential)
+- Dashboard: upload, history dropdown, reload/re-run past analyses
+- 25 test architectures, 16 output files per analysis
 
-**Next:**
-- Stage 2 Phase 2B: FastAPI Router (2h estimated)
-
-**Quality:**
-- 99.5% deterministic confidence
-- 93-96% MoE final confidence
-- 100% database coverage
-- 5/5 diagnostic tests passing
-- 6/6 service layer tests passing
-
----
-
-**Questions?** See [docs/README.md](docs/README.md)  
-**Continue work?** See [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)
+**Next priorities:** backtest script, CloudPattern, AgentTools  
+See [docs/STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) for full roadmap.

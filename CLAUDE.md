@@ -182,9 +182,6 @@ python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.
 
 **Navigation:**
 - [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) - Start here for doc overview
-- [html/index.html](html/index.html) - Interactive user guide (open in browser)
-- [html/status.html](html/status.html) - Project status dashboard (open in browser)
-- [docs/specs/PRODUCT_ROADMAP.html](docs/specs/PRODUCT_ROADMAP.html) - Full roadmap (HTML)
 
 **Quick Reference:**
 - Markdown sources: [README.md](README.md), [docs/STATUS_AND_PLAN.md](docs/STATUS_AND_PLAN.md)
@@ -201,4 +198,4 @@ python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.
 ---
 
 **Purpose:** AI assistant context + developer quick reference  
-**Last Updated:** 2026-05-24
+**Last Updated:** 2026-05-30
