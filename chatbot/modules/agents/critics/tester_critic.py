@@ -257,8 +257,13 @@ def format_controls_summary(controls: List[Dict]) -> str:
         techs = control.get("techniques", [])
         priority = control.get("priority", "unknown")
         score = control.get("score", 0)
+        ssp_ctx = control.get("ssp_context")
+        ssp_note = ""
+        if ssp_ctx and ssp_ctx.get("primary"):
+            p = ssp_ctx["primary"]
+            ssp_note = f" | SSP {ssp_ctx['label']} L{p['level']} ({p['level_label']})"
 
-        lines.append(f"  {idx}. {name.upper()} [{priority}] (score: {score:.1f})")
+        lines.append(f"  {idx}. {name.upper()} [{priority}] (score: {score:.1f}){ssp_note}")
 
         # Check for coverage note (explains why no techniques)
         coverage_note = control.get("coverage_note")
@@ -391,6 +396,24 @@ def create_tester_prompt(
     validation = tier1["artifact_4_validation"]
     rapids = tier1["artifact_5_rapids"]
 
+    # Build SSP summary for prompt
+    ssp_recs = [c for c in controls if c.get("ssp_context") and c["ssp_context"].get("primary")]
+    ssp_profile_str = ""
+    ssp_summary_lines = []
+    if ssp_recs:
+        ssp_profile_str = ssp_recs[0]["ssp_context"].get("profile", "unknown").replace("_", " ").title()
+        l0 = [c for c in ssp_recs if c["ssp_context"]["primary"]["level"] == 0]
+        l1 = [c for c in ssp_recs if c["ssp_context"]["primary"]["level"] == 1]
+        if l0:
+            ssp_summary_lines.append(f"  L0 Cardinal ({len(l0)}): " + ", ".join(f"{c['ssp_context']['label']} {c['control'].upper()}" for c in l0[:6]))
+        if l1:
+            ssp_summary_lines.append(f"  L1 Hygiene  ({len(l1)}): " + ", ".join(f"{c['ssp_context']['label']} {c['control'].upper()}" for c in l1[:6]))
+    ssp_block = (
+        f"SSP POLICY BASELINE (Singapore Government ICT&SS — {ssp_profile_str}):\n"
+        + "\n".join(ssp_summary_lines)
+        if ssp_summary_lines else "  (No SSP data)"
+    )
+
     prompt = f"""You are validating a threat assessment with {artifacts.completeness['overall']['present']}/10 artifacts.
 
 {'='*70}
@@ -402,6 +425,8 @@ ATTACK PATHS ({attack_paths['count']} paths):
 
 CONTROLS ({len(controls)} controls):
 {format_controls_summary(controls)}
+
+{ssp_block}
 
 RESIDUAL RISK (BEFORE → AFTER):
   Before: {residual_risk['before']['score']}/100 (Defensibility: {residual_risk['before'].get('defensibility', 'N/A')})

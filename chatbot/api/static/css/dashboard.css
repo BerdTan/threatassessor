@@ -721,3 +721,29 @@ body.dark-theme ::-webkit-scrollbar-thumb:hover {
     border-radius: 8px;
     margin: 1rem 0;
 }
+
+/* SSP profile select — native <option> elements can't inherit CSS variables,
+   so we pin explicit colours that work in both light and dark themes. */
+#ssp-profile-select {
+    background-color: #1e293b;
+    color: #e8e8e8;
+    color-scheme: dark;
+}
+
+#ssp-profile-select option,
+#ssp-profile-select optgroup {
+    background-color: #1e293b;
+    color: #e8e8e8;
+}
+
+body.light-theme #ssp-profile-select {
+    background-color: #ffffff;
+    color: #1a1a1a;
+    color-scheme: light;
+}
+
+body.light-theme #ssp-profile-select option,
+body.light-theme #ssp-profile-select optgroup {
+    background-color: #ffffff;
+    color: #1a1a1a;
+}

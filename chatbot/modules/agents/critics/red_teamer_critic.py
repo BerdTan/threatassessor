@@ -456,6 +456,23 @@ REMEMBER: Low score = hard to exploit = GOOD defense (we want this!)
             paths_text += f"  Techniques: {', '.join(path.get('techniques', [])[:5])}\n"
             paths_text += f"  Hop count: {len(path['path']) - 1}\n"
 
+        # Build SSP context block for exploit difficulty context
+        control_recs = ground_truth.get('control_recommendations', [])
+        ssp_recs = [c for c in control_recs if c.get("ssp_context") and c["ssp_context"].get("primary")]
+        ssp_text = ""
+        if ssp_recs:
+            ssp_profile = ssp_recs[0]["ssp_context"].get("profile", "unknown").replace("_", " ").title()
+            l0_controls = [c for c in ssp_recs if c["ssp_context"]["primary"]["level"] == 0]
+            ssp_text = f"\n## SSP Policy Context (Singapore Government ICT&SS — {ssp_profile})\n\n"
+            ssp_text += "L0 Cardinal controls are the strongest mandated baseline. If any L0 control is MISSING, exploitation is significantly easier.\n\n"
+            if l0_controls:
+                ssp_text += "**L0 Cardinal controls present:**\n"
+                for c in l0_controls:
+                    ssp_text += f"- {c['ssp_context']['label']} {c['control'].upper()} — {c['ssp_context']['primary']['title']}\n"
+            else:
+                ssp_text += "**⚠️ No L0 Cardinal controls identified — maximum exploit ease assumed for mandatory controls.\n"
+            ssp_text += "\n"
+
         # Format Tester validation (if available)
         tester_text = ""
         if tester_critique:
@@ -483,7 +500,7 @@ Adjust your difficulty score accordingly (increase score = easier to exploit).
         prompt = self.prompt_template.format(
             deployed_controls=controls_text,
             attack_paths=paths_text,
-            tester_validation=tester_text
+            tester_validation=ssp_text + tester_text
         )
 
         return prompt

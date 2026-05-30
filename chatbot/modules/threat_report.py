@@ -189,6 +189,35 @@ def generate_executive_summary(ground_truth: Dict) -> str:
     else:
         report += "✅ No direct attack paths identified\n\n"
 
+    # SSP Compliance Posture (for leadership: which mandatory controls are present/missing)
+    control_recs = ground_truth.get("control_recommendations", [])
+    ssp_recs = [r for r in control_recs if r.get("ssp_context") and r["ssp_context"].get("primary")]
+    if ssp_recs:
+        ssp_profile_label = ssp_recs[0]["ssp_context"].get("profile", "")
+        profile_display = ssp_profile_label.replace("_", " ").title() if ssp_profile_label else ""
+        l0_present = [r for r in ssp_recs if r["ssp_context"]["primary"]["level"] == 0]
+        l0_missing_recs = [r for r in control_recs if r.get("control") in ground_truth.get("controls_missing", []) and r.get("ssp_context") and r["ssp_context"].get("primary") and r["ssp_context"]["primary"]["level"] == 0]
+        l1_recs = [r for r in ssp_recs if r["ssp_context"]["primary"]["level"] == 1]
+
+        report += format_section_header("Policy Compliance Posture", "📋", 2)
+        report += f"\n**SSP Baseline:** Singapore Government ICT&SS — {profile_display}\n\n"
+        report += "| Level | Controls Mapped | Governance Implication |\n"
+        report += "|-------|----------------|------------------------|\n"
+        report += f"| **L0 Cardinal** | {len(l0_present)} control(s) | Deviation requires **HQ approval** |\n"
+        report += f"| **L1 Basic Hygiene** | {len(l1_recs)} control(s) | Deviation requires **SC risk acceptance** |\n"
+
+        if l0_present:
+            l0_names = ", ".join(r["ssp_context"]["primary"]["id"] + " " + r["control"].upper() for r in l0_present[:4])
+            report += f"\n**L0 Cardinal controls identified (mandatory — no deviation without HQ approval):**\n"
+            report += f"{l0_names}\n\n"
+
+        if l0_missing_recs:
+            report += f"**⚠️ Mandatory L0 gaps — HQ approval required if deferred:**\n"
+            for r in l0_missing_recs[:3]:
+                ctx = r["ssp_context"]
+                report += f"- [{ctx['label']}] {r['control'].upper()} — {ctx['primary']['title']}\n"
+            report += "\n"
+
     # Residual Risk Assessment (BEFORE and AFTER)
     if residual_before and residual_after:
         before_score = residual_before.get("overall_residual", 0)
@@ -436,8 +465,8 @@ def generate_technical_report(ground_truth: Dict) -> str:
     control_recs = ground_truth.get("control_recommendations", [])
     if control_recs:
         report += "**Recommended Controls:**\n\n"
-        report += "| # | Control | Priority | Confidence | MITRE Mitigations | MITRE Techniques | Threat Context |\n"
-        report += "|---|---------|----------|------------|-------------------|------------------|----------------|\n"
+        report += "| # | Control | Priority | SSP | Confidence | MITRE Mitigations | MITRE Techniques | Threat Context |\n"
+        report += "|---|---------|----------|-----|------------|-------------------|------------------|----------------|\n"
 
         for i, rec in enumerate(control_recs, 1):
             control = rec["control"]
@@ -468,9 +497,47 @@ def generate_technical_report(ground_truth: Dict) -> str:
             else:
                 rationale_short = enhanced_rationale if len(enhanced_rationale) < 50 else enhanced_rationale[:47] + "..."
 
-            report += f"| {i} | **{control.upper()}** | {priority.upper()} | {conf_indicator} {conf_level} ({conf_score:.0%}) | {mitigations_str} | {techniques_str} | {rationale_short} |\n"
+            # Inline SSP badge
+            ssp_ctx = rec.get("ssp_context")
+            if ssp_ctx and ssp_ctx.get("primary"):
+                p = ssp_ctx["primary"]
+                ssp_cell = f"{ssp_ctx['label']} L{p['level']}"
+            else:
+                ssp_cell = "—"
+
+            report += f"| {i} | **{control.upper()}** | {priority.upper()} | {ssp_cell} | {conf_indicator} {conf_level} ({conf_score:.0%}) | {mitigations_str} | {techniques_str} | {rationale_short} |\n"
 
         report += "\n"
+
+        # SSP policy context — detailed block per recommendation
+        ssp_blocks = [
+            rec for rec in control_recs
+            if rec.get("ssp_context") and rec["ssp_context"].get("primary")
+        ]
+        if ssp_blocks:
+            ssp_profile_label = (ssp_blocks[0].get("ssp_context") or {}).get("profile", "")
+            profile_display = ssp_profile_label.replace("_", " ").title() if ssp_profile_label else ""
+            report += f"**Singapore Government SSP Baseline — {profile_display}**\n\n"
+            report += "> L0 = Cardinal (HQ approval required for deviation) | L1 = Basic Hygiene (SC risk acceptance) | L2 = Best Practice (risk-owner acceptance)\n\n"
+            for rec in ssp_blocks:
+                ctx = rec["ssp_context"]
+                primary = ctx["primary"]
+                control_label = rec.get("control", rec.get("name", "")).upper()
+                report += (
+                    f"**{ctx['label']}** `{primary['title']}` — {primary['level_label']}"
+                    f" | *Control:* {control_label}\n\n"
+                )
+                if primary.get("risk_statement"):
+                    report += f"  *Why it matters:* {primary['risk_statement']}\n\n"
+                if primary.get("recommendation"):
+                    report += f"  *How to implement:* {primary['recommendation']}\n\n"
+                # List secondary SSP controls
+                secondaries = ctx.get("secondaries", [])
+                if secondaries:
+                    sec_ids = ", ".join(f"{s['id']} ({s['level_label']})" for s in secondaries)
+                    report += f"  *Also covered by:* {sec_ids}\n\n"
+                report += "---\n\n"
+
     else:
         # Fallback to simple list if detailed recommendations not available
         missing = ground_truth.get("controls_missing", [])
@@ -660,14 +727,21 @@ def generate_action_plan(ground_truth: Dict) -> str:
     gap    = [r for r in control_recs if not r.get("attack_paths")]
 
     def _phase_table(recs, owner, effort, cost, impact, validation):
-        out = "\n| # | Control | Priority | Paths Covered | Owner | Effort | Cost | Impact | Validation |\n"
-        out += "|---|---------|----------|---------------|-------|--------|------|--------|------------|\n"
+        out = "\n| # | Control | Priority | SSP | Paths Covered | Owner | Effort | Cost | Impact | Validation |\n"
+        out += "|---|---------|----------|-----|---------------|-------|--------|------|--------|------------|\n"
         for i, rec in enumerate(recs, 1):
             ctrl = rec["control"].upper()
             pri  = rec.get("priority", "").upper()
             aps  = rec.get("attack_paths", [])
             paths_str = ", ".join([f"AP#{p+1}" for p in aps]) if aps else "Generic hardening"
-            out += f"| {i} | **{ctrl}** | {pri} | {paths_str} | {owner} | {effort} | {cost} | {impact} | {validation} |\n"
+            ssp_ctx = rec.get("ssp_context")
+            if ssp_ctx and ssp_ctx.get("primary"):
+                p = ssp_ctx["primary"]
+                level_stars = {"0": "★★★", "1": "★★☆", "2": "★☆☆"}.get(str(p["level"]), "")
+                ssp_badge = f"{ssp_ctx['label']} L{p['level']} {level_stars}"
+            else:
+                ssp_badge = "—"
+            out += f"| {i} | **{ctrl}** | {pri} | {ssp_badge} | {paths_str} | {owner} | {effort} | {cost} | {impact} | {validation} |\n"
         return out + "\n"
 
     report += format_section_header("Phase 1: Immediate (Week 1) — Critical Path Controls", "⚡", 2)
@@ -767,6 +841,27 @@ def generate_action_plan(ground_truth: Dict) -> str:
     report += "- Prevented breach cost:  $420K (industry average)\n"
     report += "- Implementation cost:    $50K\n"
     report += "- **ROI:**                **840% (8.4x return)**\n\n"
+    # SSP Compliance Checklist (grouped by level)
+    ssp_recs_ap = [r for r in control_recs if r.get("ssp_context") and r["ssp_context"].get("primary")]
+    if ssp_recs_ap:
+        ssp_profile_label_ap = ssp_recs_ap[0]["ssp_context"].get("profile", "")
+        profile_display_ap = ssp_profile_label_ap.replace("_", " ").title() if ssp_profile_label_ap else ""
+        report += format_section_header("SSP Compliance Checklist", "📜", 2)
+        report += f"\n**Policy Baseline:** Singapore Government ICT&SS — {profile_display_ap}\n\n"
+        report += "> L0 = Cardinal (deviation → HQ approval) | L1 = Basic Hygiene (deviation → SC risk acceptance) | L2 = Best Practice (deviation → risk-owner acceptance)\n\n"
+
+        for level in [0, 1, 2]:
+            level_label = {0: "L0 — Cardinal (Mandatory)", 1: "L1 — Basic Hygiene (Baseline)", 2: "L2 — Best Practice (Conditional)"}[level]
+            level_recs = [r for r in ssp_recs_ap if r["ssp_context"]["primary"]["level"] == level]
+            if not level_recs:
+                continue
+            report += f"**{level_label}**\n\n"
+            for r in level_recs:
+                ctx = r["ssp_context"]
+                control_up = r["control"].upper()
+                report += f"- [ ] **{ctx['label']}** {control_up} — {ctx['primary']['title']}\n"
+            report += "\n"
+
     report += format_section_header("Next Steps", "📅", 2)
     report += "\n**Implementation Checklist:**\n\n"
     report += "- [ ] Week 1: Executive approval & budget allocation\n"

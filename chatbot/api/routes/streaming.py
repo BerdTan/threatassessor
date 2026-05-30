@@ -27,7 +27,9 @@ router = APIRouter(prefix="/api/v1", tags=["streaming"])
 async def analyze_with_progress(
     architecture_path: str,
     filename: str,
-    include_validation: bool = True
+    include_validation: bool = True,
+    ssp_profile: str = "low_risk_cloud",
+    enable_ssp: bool = True,
 ) -> AsyncGenerator[str, None]:
     """
     Run analysis with SSE progress updates.
@@ -36,6 +38,8 @@ async def analyze_with_progress(
         architecture_path: Path to architecture file
         filename: Original uploaded filename
         include_validation: Run 6-check validation
+        ssp_profile: User-declared SSP profile for control enrichment
+        enable_ssp: Include SSP context in recommendations
 
     Yields:
         SSE formatted progress events
@@ -72,16 +76,48 @@ async def analyze_with_progress(
         # Remove .mmd extension and sanitize
         clean_arch_name = filename.replace('.mmd', '').replace('.', '_').replace(' ', '_')
 
-        # Run analysis in thread pool to avoid blocking
+        # Run analysis in thread pool; send heartbeat pings so the browser doesn't
+        # interpret the silence as a hang. Messages cycle through realistic stage labels.
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
+        analysis_future = loop.run_in_executor(
             None,
             lambda: service.safe_execute(
                 architecture_path=architecture_path,
                 architecture_name=clean_arch_name,
-                include_validation=include_validation
+                include_validation=include_validation,
+                ssp_profile=ssp_profile,
+                enable_ssp=enable_ssp,
             )
         )
+
+        heartbeat_messages = [
+            (10, "rapids",     "🔍 Loading MITRE ATT&CK knowledge base..."),
+            (18, "rapids",     "🧠 Mapping threat techniques to architecture nodes..."),
+            (28, "rapids",     "⚡ Running RAPIDS threat scoring..."),
+            (38, "rapids",     "🎯 Identifying high-risk attack paths..."),
+            (48, "rapids",     "🛡️ Evaluating existing controls coverage..."),
+            (58, "rapids",     "📊 Scoring residual risk per threat category..."),
+            (65, "validation", "🔒 Generating exhaustive mitigation recommendations..."),
+            (72, "validation", "🏛 Enriching controls with SSP policy baseline..."),
+            (80, "validation", "✅ Validating completeness and coverage..."),
+            (88, "validation", "📝 Finalising analysis results..."),
+        ]
+        ping_idx = 0
+        while not analysis_future.done():
+            await asyncio.sleep(3)
+            if analysis_future.done():
+                break
+            if ping_idx < len(heartbeat_messages):
+                prog, stage, msg = heartbeat_messages[ping_idx]
+                ping_idx += 1
+            else:
+                prog, stage, msg = 92, "validation", "⏳ Completing analysis..."
+            yield await SSEStream.send_progress(
+                stage=stage, progress=prog, message=msg,
+                eta_seconds=max(3, (len(heartbeat_messages) - ping_idx) * 3)
+            )
+
+        result = await analysis_future
 
         if not result.success:
             yield await SSEStream.send_error(
@@ -271,6 +307,8 @@ async def analyze_architecture_stream(
         description="Mermaid diagram file (.mmd format, max 10MB)"
     ),
     include_validation: bool = True,
+    ssp_profile: str = "low_risk_cloud",
+    enable_ssp: bool = True,
     api_key: str = Depends(verify_api_key)
 ):
     """
@@ -351,7 +389,7 @@ async def analyze_architecture_stream(
 
     try:
         return StreamingResponse(
-            analyze_with_progress(tmp_path, architecture_file.filename, include_validation),
+            analyze_with_progress(tmp_path, architecture_file.filename, include_validation, ssp_profile, enable_ssp),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

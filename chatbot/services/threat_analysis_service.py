@@ -99,6 +99,8 @@ class ThreatAnalysisService(BaseService):
         architecture_content: Optional[str] = None,
         architecture_data: Optional[Dict] = None,
         include_validation: bool = True,
+        ssp_profile: str = "low_risk_cloud",
+        enable_ssp: bool = True,
         **kwargs
     ) -> ServiceResult:
         """
@@ -110,6 +112,8 @@ class ThreatAnalysisService(BaseService):
             architecture_content: MMD content as string
             architecture_data: Pre-parsed architecture dict
             include_validation: Run 6-check validation (default: True)
+            ssp_profile: User-declared SSP profile for control enrichment
+            enable_ssp: Include SSP context in recommendations
             **kwargs: Additional options
 
         Returns:
@@ -117,7 +121,10 @@ class ThreatAnalysisService(BaseService):
         """
         try:
             # Build analyst context
-            analyst_context = {}
+            analyst_context = {
+                "ssp_profile": ssp_profile,
+                "enable_ssp": enable_ssp,
+            }
 
             if architecture_path:
                 analyst_context["architecture_path"] = architecture_path

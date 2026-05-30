@@ -5,6 +5,7 @@ Endpoints for accessing generated analysis reports.
 """
 
 import io
+import json
 import zipfile
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, status, Query
@@ -63,14 +64,25 @@ async def list_architectures():
                     files.append(file.name)
 
             if files:  # Only include if has report files
+                # Read ssp_profile from ground_truth metadata
+                ssp_profile = None
+                gt_path = arch_dir / "ground_truth.json"
+                if gt_path.exists():
+                    try:
+                        gt = json.loads(gt_path.read_text())
+                        ssp_profile = (gt.get("metadata") or {}).get("ssp_profile")
+                    except Exception:
+                        pass
                 architectures.append({
                     "name": arch_dir.name,
                     "report_count": len(files),
-                    "files": sorted(files)
+                    "files": sorted(files),
+                    "analysed_at": int(arch_dir.stat().st_mtime),
+                    "ssp_profile": ssp_profile,
                 })
 
-    # Sort by name
-    architectures.sort(key=lambda x: x['name'])
+    # Sort newest first
+    architectures.sort(key=lambda x: x['analysed_at'], reverse=True)
 
     return {
         "architectures": architectures,

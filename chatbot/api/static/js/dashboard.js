@@ -7,6 +7,7 @@ class Dashboard {
         this.sseClient = null;
         this.uploadedFile = null;
         this.techniqueNamesCache = {};
+        this.sspProfile = 'medium_risk_cloud'; // updated from selector at submit time
 
         // Expert Review in-progress state — persists across tab switches
         this._erpState = null;
@@ -43,6 +44,9 @@ class Dashboard {
 
         // Poll /health until MITRE cache is ready (typically <1s after server start)
         this._pollReadiness();
+
+        // Populate architecture history dropdown from existing reports
+        this._loadArchHistory();
     }
 
     _pollReadiness() {
@@ -334,10 +338,17 @@ class Dashboard {
         // Reset progress
         this.updateProgress(0, 'Starting analysis...');
 
+        // Capture SSP profile from selector
+        const sspSelect = document.getElementById('ssp-profile-select');
+        this.sspProfile = sspSelect ? sspSelect.value : 'medium_risk_cloud';
+        this._updateSspBadge();
+
         // Start SSE connection
         const formData = new FormData();
         formData.append('architecture_file', file);
         formData.append('include_validation', 'true');
+        formData.append('ssp_profile', this.sspProfile);
+        formData.append('enable_ssp', 'true');
 
         console.log('[DEBUG] Creating SSEClient for /api/v1/analyze-stream');
         this.sseClient = new SSEClient('/api/v1/analyze-stream', formData);
@@ -456,6 +467,9 @@ class Dashboard {
 
         // Enable content tabs now that analysis data is available
         this._setContentTabsDisabled(false);
+
+        // Refresh history dropdown so new analysis appears at the top
+        this._loadArchHistory();
 
         // Load current tab data
         this.loadTabData(this.currentTab);
@@ -931,6 +945,7 @@ class Dashboard {
             const riskTextRaw = mT.risk_reduction || '';
             const riskText = riskTextRaw.replace(/\s*\(.*\)/, '').trim();
             const border = t.recommended ? '2px solid var(--secondary-color)' : '1px solid var(--border-color)';
+            const moeItems = (mT.items && Array.isArray(mT.items)) ? mT.items : [];
             return `
             <div style="flex:1; min-width:160px; background:var(--card-bg); border:${border}; border-radius:10px; padding:1rem; position:relative;">
                 ${t.recommended ? `<div style="position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:var(--secondary-color); color:#000; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:10px;">RECOMMENDED</div>` : ''}
@@ -943,6 +958,7 @@ class Dashboard {
                     ? `<button class="btn-secondary tier-diagram-btn" data-file="${t.file}" style="width:100%; padding:0.375rem; font-size:0.8125rem; cursor:pointer;">View Diagram →</button>`
                     : `<div style="font-size:0.75rem; color:var(--text-tertiary); font-style:italic;">Run Expert Review to unlock roadmap</div>`
                 }
+                ${this._renderSspTierUpgradeDelta(moeItems, t.label)}
             </div>`;
         }).join('');
 
@@ -1052,6 +1068,14 @@ class Dashboard {
                         : c._expertBoost < 1
                         ? `<span style="font-size:0.65rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:3px; padding:1px 4px;">⚠ Expert uncertain</span>`
                         : '';
+                    const sspCtx = c.ssp_context;
+                    let sspMiniPill = '';
+                    if (sspCtx && sspCtx.primary) {
+                        const lbp = sspCtx.primary.levels_by_profile || {};
+                        const sl = lbp[this.sspProfile] ?? sspCtx.primary.level;
+                        const sc = sl === 0 ? 'var(--danger-color)' : sl === 1 ? 'var(--warning-color)' : 'var(--text-tertiary)';
+                        sspMiniPill = `<span style="padding:1px 4px; background:${sc}15; border:1px solid ${sc}44; border-radius:3px; font-size:0.62rem; font-weight:700; color:${sc};" title="${sspCtx.primary.title}">🏛 L${sl}</span>`;
+                    }
                     return `
                 <div style="padding:0.625rem 0; border-bottom:1px solid var(--border-color);">
                     <div style="display:flex; align-items:flex-start; gap:0.5rem;">
@@ -1062,6 +1086,7 @@ class Dashboard {
                                 <span style="font-size:0.7rem; color:var(--text-secondary);">${paths} path${paths !== 1 ? 's' : ''}</span>
                                 ${riskScore !== null ? `<span style="font-size:0.7rem; color:var(--text-tertiary);">·</span><span style="font-size:0.7rem; color:${priColor}; font-weight:600;">risk ${riskScore}/100</span>` : ''}
                                 ${expertTag}
+                                ${sspMiniPill}
                                 <span style="margin-left:auto; padding:0.1rem 0.3rem; background:${priColor}22; color:${priColor}; border-radius:3px; font-size:0.65rem; font-weight:700;">${c.priority}</span>
                             </div>
                         </div>
@@ -1783,6 +1808,23 @@ class Dashboard {
                         <span style="padding:1px 6px; background:#7c3aed18; border:1px solid #7c3aed55; border-radius:4px; font-size:0.7rem; font-weight:700; color:#a78bfa;">ARC+ATLAS</span>
                         <span style="font-size:0.75rem; color:var(--text-tertiary);">MITRE ATLAS AI/ML techniques — ARC Framework (9 categories, 46 risks, 88 controls). Only shown for AI/agentic architectures.</span>
                     </div>
+                    <div style="margin-top:0.4rem; padding:0.5rem 0.75rem; background:#0891b20a; border:1px solid #0891b233; border-radius:6px;">
+                        <div style="font-size:0.7rem; font-weight:700; color:#06b6d4; margin-bottom:0.35rem;">🏛 Singapore Government SSP Baseline Levels</div>
+                        <div style="display:flex; flex-direction:column; gap:0.2rem;">
+                            <div style="display:flex; align-items:baseline; gap:0.5rem;">
+                                <span style="padding:1px 5px; background:var(--danger-color)18; border:1px solid var(--danger-color)44; border-radius:3px; font-size:0.68rem; font-weight:700; color:var(--danger-color); flex-shrink:0; min-width:2.4rem; text-align:center;">L0</span>
+                                <span style="font-size:0.72rem; color:var(--text-secondary);"><strong>Cardinal — mandatory.</strong> Deviation requires <strong>HQ approval</strong>. Non-negotiable foundational governance.</span>
+                            </div>
+                            <div style="display:flex; align-items:baseline; gap:0.5rem;">
+                                <span style="padding:1px 5px; background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:3px; font-size:0.68rem; font-weight:700; color:var(--warning-color); flex-shrink:0; min-width:2.4rem; text-align:center;">L1</span>
+                                <span style="font-size:0.72rem; color:var(--text-secondary);"><strong>Basic Hygiene — baseline.</strong> Deviation requires <strong>Steering Committee (SC) risk acceptance</strong>.</span>
+                            </div>
+                            <div style="display:flex; align-items:baseline; gap:0.5rem;">
+                                <span style="padding:1px 5px; background:var(--text-tertiary)18; border:1px solid var(--text-tertiary)44; border-radius:3px; font-size:0.68rem; font-weight:700; color:var(--text-tertiary); flex-shrink:0; min-width:2.4rem; text-align:center;">L2</span>
+                                <span style="font-size:0.72rem; color:var(--text-secondary);"><strong>Best Practice — conditional.</strong> Recommended for enhanced posture; risk-owner acceptance sufficient.</span>
+                            </div>
+                        </div>
+                    </div>
                     <div style="margin-top: 0.4rem; color: var(--text-tertiary);"><em>Score: threat severity × path coverage × technique depth. Click any control for full details.</em></div>
                 </div>
             </div>
@@ -1815,6 +1857,25 @@ class Dashboard {
                     ? `<span style="padding:1px 5px; background:#7c3aed18; border:1px solid #7c3aed55; border-radius:3px; font-size:0.65rem; font-weight:700; color:#a78bfa; flex-shrink:0;">ARC+ATLAS</span>`
                     : `<span style="padding:1px 5px; background:var(--primary-color)18; border:1px solid var(--primary-color)44; border-radius:3px; font-size:0.65rem; font-weight:700; color:var(--primary-color); flex-shrink:0;">RAPIDS</span>`;
 
+                // SSP badge — combines policy label and level pill into a single pill
+                const sspCtx = control.ssp_context;
+                let sspBadge = '';
+                if (sspCtx && sspCtx.primary) {
+                    const lbp = sspCtx.primary.levels_by_profile || {};
+                    const currentLevel = lbp[this.sspProfile] ?? sspCtx.primary.level;
+                    const levelColor = currentLevel === 0 ? 'var(--danger-color)' : currentLevel === 1 ? 'var(--warning-color)' : 'var(--text-tertiary)';
+                    const levelLabel = { 0: 'L0', 1: 'L1', 2: 'L2' }[currentLevel] ?? `L${currentLevel}`;
+                    const govTip = {
+                        0: 'L0 Cardinal — MANDATORY. Deviation requires HQ approval.',
+                        1: 'L1 Basic Hygiene — BASELINE. Deviation requires SC risk acceptance.',
+                        2: 'L2 Best Practice — CONDITIONAL. Risk-owner acceptance sufficient.',
+                    }[currentLevel] ?? '';
+                    const title = `${(sspCtx.primary.title || '')} · ${govTip}`;
+                    sspBadge = `<span style="padding:1px 6px; background:#0891b218; border:1px solid #0891b244; border-radius:3px; font-size:0.65rem; font-weight:700; color:#06b6d4; flex-shrink:0; cursor:help;" title="${title}">`
+                        + `${sspCtx.label} <span style="padding:0 3px; background:${levelColor}22; border-radius:2px; color:${levelColor};">${levelLabel}</span>`
+                        + `</span>`;
+                }
+
                 const card = document.createElement('div');
                 card.className = 'list-item';
                 card.dataset.priority = control.priority;
@@ -1835,6 +1896,7 @@ class Dashboard {
                                 <strong style="font-size: 1rem; color: var(--primary-color);">${control.control}</strong>
                                 <span style="padding: 0.2rem 0.6rem; background: ${priorityColor}22; color: ${priorityColor}; border-radius: 10px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;">${control.priority}</span>
                                 ${sourceTag}
+                                ${sspBadge}
                             </div>
                             ${arcCats ? `<div style="font-size:0.75rem; color:#a78bfa; margin-bottom:0.35rem;">ARC categories: ${arcCats}</div>` : ''}
                             <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
@@ -1919,6 +1981,365 @@ class Dashboard {
         return badges.length ? `<span style="display:inline-flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">ARC: ${badges.join('')}</span>` : '';
     }
 
+    // SSP profile upgrade order — each entry lists what comes ABOVE it (higher bars only)
+    // Cloud and on-prem are separate tracks; specialist profiles are standalone.
+    _sspUpgradeChain(profile) {
+        const chains = {
+            'low_risk_cloud':              ['medium_risk_cloud', 'high_risk_cloud_cii'],
+            'medium_risk_cloud':           ['high_risk_cloud_cii'],
+            'high_risk_cloud_cii':         [],
+            'low_risk_onprem':             [],
+            'generative_ai':               [],
+            'digital_services_others':     ['digital_services_high_impact'],
+            'digital_services_high_impact': [],
+            'sandbox':                     [],
+        };
+        return chains[profile] || [];
+    }
+
+    // Update the header SSP profile badge
+    _updateSspBadge() {
+        const badge = document.getElementById('ssp-profile-badge');
+        const label = document.getElementById('ssp-profile-badge-label');
+        if (!badge || !label) return;
+        label.textContent = this._sspProfileLabel(this.sspProfile);
+        badge.style.display = 'inline-flex';
+        badge.style.alignItems = 'center';
+    }
+
+    // Load architecture history dropdown from /api/v1/reports (newest first)
+    async _loadArchHistory() {
+        try {
+            const resp = await fetch('/api/v1/reports');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const archs = data.architectures || [];
+            if (!archs.length) return;
+
+            const wrap = document.getElementById('arch-history-wrap');
+            const sel  = document.getElementById('arch-history-select');
+            if (!wrap || !sel) return;
+
+            sel.innerHTML = '<option value="">— Load previous analysis —</option>';
+            for (const a of archs) {
+                const dt = a.analysed_at
+                    ? new Date(a.analysed_at * 1000).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
+                    : '';
+                const profile = a.ssp_profile ? ` · ${this._sspProfileLabel(a.ssp_profile)}` : '';
+                const opt = document.createElement('option');
+                opt.value = a.name;
+                opt.textContent = `${a.name}  ${dt}${profile}`;
+                sel.appendChild(opt);
+            }
+            wrap.style.display = 'block';
+
+            sel.addEventListener('change', async () => {
+                const name = sel.value;
+                if (!name) return;
+                await this._loadArchFromReports(name);
+                sel.value = name; // keep selection visible
+            });
+        } catch (e) {
+            // Non-critical — silently ignore
+        }
+    }
+
+    // Load a previously analysed architecture from the reports folder into the dashboard
+    async _loadArchFromReports(archName) {
+        try {
+            const resp = await fetch(`/api/v1/reports/${archName}/files/ground_truth.json`);
+            if (!resp.ok) throw new Error('ground_truth.json not found');
+            const gt = await resp.json();
+
+            // Derive sspProfile from metadata if available
+            this.sspProfile = (gt.metadata || {}).ssp_profile || 'medium_risk_cloud';
+            this._updateSspBadge();
+
+            // Wrap in the same shape the analysis SSE result produces
+            this.analysisData = {
+                success: true,
+                architecture_name: archName,
+                analysis: gt,
+                ssp_profile: this.sspProfile,
+            };
+
+            // Show tab content, hide upload form
+            document.getElementById('upload-form-container').style.display = 'none';
+            document.getElementById('tab-content').style.display = 'block';
+            this._setContentTabsDisabled(false);
+            const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
+            if (expertReviewTab) expertReviewTab.style.display = 'block';
+
+            // Show "New Analysis" button
+            const uploadBtn = document.getElementById('upload-btn');
+            const newAnalysisBtn = document.getElementById('new-analysis-btn');
+            if (uploadBtn) uploadBtn.style.display = 'none';
+            if (newAnalysisBtn) newAnalysisBtn.style.display = 'inline-block';
+
+            this.loadTabData(this.currentTab);
+        } catch (e) {
+            console.warn('[ArchHistory] Failed to load', archName, e);
+        }
+    }
+
+    // Profile display label
+    _sspProfileLabel(key) {
+        const labels = {
+            'low_risk_cloud':              'Low Risk — Cloud',
+            'medium_risk_cloud':           'Medium Risk — Cloud',
+            'high_risk_cloud_cii':         'High Risk — Cloud / CII',
+            'low_risk_onprem':             'Low Risk — On-Premises',
+            'generative_ai':               'Generative AI',
+            'digital_services_others':     'Digital Services (under 1M/yr)',
+            'digital_services_high_impact':'Digital Services (1M+/yr)',
+            'sandbox':                     'Sandbox / Pilot',
+        };
+        return labels[key] || key;
+    }
+
+    // Build the SSP section HTML for a control's detail pane.
+    // Shows the matched baseline control + upgrade deltas for higher profiles.
+    _renderSspDetailSection(control) {
+        const ssp = control.ssp_context;
+        if (!ssp || !ssp.primary) return '';
+
+        const p = ssp.primary;
+        const profileLabel = this._sspProfileLabel(this.sspProfile || ssp.profile);
+        // Always use the level for the currently-selected profile, not the analysis-time level
+        const resolvedLevel = (p.levels_by_profile || {})[this.sspProfile] ?? p.level;
+        const levelColor = resolvedLevel === 0 ? 'var(--danger-color)' : resolvedLevel === 1 ? 'var(--warning-color)' : 'var(--primary-color)';
+
+        // Baseline block (wrapped in a collapsible <details> element)
+        let html = `
+        <details style="margin-bottom:1.5rem;">
+          <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem; padding:0.6rem 0.875rem; background:#0891b20e; border:1px solid #0891b244; border-radius:8px; font-size:0.8125rem; font-weight:700; color:#06b6d4; user-select:none;">
+            <span>🏛</span>
+            <span>SSP Baseline — ${p.id}: ${p.title}</span>
+            <span style="padding:1px 5px; background:${levelColor}18; border:1px solid ${levelColor}44; border-radius:3px; font-size:0.68rem; font-weight:700; color:${levelColor};">${{ 0:'L0 — Cardinal', 1:'L1 — Basic Hygiene', 2:'L2 — Best Practice' }[resolvedLevel] ?? `L${resolvedLevel}`}</span>
+            <span style="margin-left:auto; font-size:0.75rem; color:var(--text-tertiary);">▼ expand</span>
+          </summary>
+          <div style="padding:1rem; background:#0891b20e; border:1px solid #0891b244; border-top:none; border-radius:0 0 8px 8px;">
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem; flex-wrap:wrap;">
+                <span style="font-size:0.9375rem; font-weight:700; color:#06b6d4;">🏛 Singapore Government SSP Baseline</span>
+                <span style="margin-left:auto; font-size:0.75rem; color:var(--text-tertiary);">Profile: ${profileLabel}</span>
+            </div>
+            <div style="font-size:0.875rem; font-weight:700; color:var(--text-color); margin-bottom:0.5rem;">${p.id} — ${p.title}</div>
+            ${(() => {
+                const resolvedLevelLabel = { 0:'L0 — Cardinal', 1:'L1 — Basic Hygiene', 2:'L2 — Best Practice' }[resolvedLevel] ?? `L${resolvedLevel}`;
+                const govImplication = resolvedLevel === 0
+                    ? { icon: '🔴', label: 'Cardinal — Mandatory', detail: 'Deviation requires <strong>HQ approval</strong>. This control is non-negotiable for your system profile.', bg: 'var(--danger-color)', }
+                    : resolvedLevel === 1
+                    ? { icon: '🟡', label: 'Basic Hygiene — Baseline', detail: 'Deviation requires <strong>Steering Committee (SC) risk acceptance</strong>. Should be implemented as standard practice.', bg: 'var(--warning-color)', }
+                    : { icon: '⚪', label: 'Best Practice — Conditional', detail: 'Risk-owner acceptance is sufficient to defer. Recommended for enhanced security posture.', bg: 'var(--text-tertiary)', };
+                return `<div style="margin-bottom:0.75rem; padding:0.5rem 0.75rem; background:${govImplication.bg}10; border:1px solid ${govImplication.bg}44; border-radius:6px; display:flex; align-items:flex-start; gap:0.5rem;">
+                    <span style="font-size:1rem; flex-shrink:0;">${govImplication.icon}</span>
+                    <div>
+                        <div style="font-size:0.8rem; font-weight:700; color:${govImplication.bg};">${govImplication.label}</div>
+                        <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem; line-height:1.5;">${govImplication.detail}</div>
+                    </div>
+                    <span style="padding:2px 7px; background:${levelColor}18; border:1px solid ${levelColor}44; border-radius:4px; font-size:0.7rem; font-weight:700; color:${levelColor}; flex-shrink:0; margin-left:auto;">${resolvedLevelLabel}</span>
+                </div>`;
+            })()}
+            ${p.statement ? `<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.5rem; font-style:italic;">${p.statement}</div>` : ''}
+            ${p.risk_statement ? `
+            <div style="margin-top:0.5rem; padding:0.5rem 0.75rem; background:#dc262612; border-left:3px solid var(--danger-color); border-radius:0 4px 4px 0;">
+                <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:0.2rem;">Why it matters</div>
+                <div style="font-size:0.8125rem; color:var(--text-secondary);">${p.risk_statement}</div>
+            </div>` : ''}
+            ${p.recommendation ? `
+            <div style="margin-top:0.5rem; padding:0.5rem 0.75rem; background:#0891b212; border-left:3px solid #06b6d4; border-radius:0 4px 4px 0;">
+                <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:0.2rem;">How to implement</div>
+                <div style="font-size:0.8125rem; color:var(--text-secondary);">${p.recommendation}</div>
+            </div>` : ''}
+            ${(() => {
+                const secs = ssp.secondaries || [];
+                if (!secs.length) return '';
+                const _lc = l => l === 0 ? 'var(--danger-color)' : l === 1 ? 'var(--warning-color)' : 'var(--text-tertiary)';
+                const _ll = { 0: 'L0', 1: 'L1', 2: 'L2' };
+                const rows = secs.map(s => {
+                    const lc = _lc(s.level); const ll = _ll[s.level] ?? `L${s.level}`;
+                    return `<div style="padding:0.5rem 0.625rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:5px; margin-bottom:0.3rem;">
+                        <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.2rem; flex-wrap:wrap;">
+                            <span style="font-size:0.8rem; font-weight:700; color:#06b6d4;">${s.id}</span>
+                            <span style="padding:1px 4px; background:${lc}18; border:1px solid ${lc}44; border-radius:3px; font-size:0.65rem; font-weight:700; color:${lc};">${ll}</span>
+                            <span style="font-size:0.78rem; font-weight:600; color:var(--text-color);">${s.title}</span>
+                        </div>
+                        ${s.statement ? `<div style="font-size:0.75rem; color:var(--text-secondary); font-style:italic; margin-bottom:0.15rem;">${s.statement}</div>` : ''}
+                        ${s.risk_statement ? `<div style="font-size:0.72rem; color:var(--text-tertiary);">⚠ ${s.risk_statement}</div>` : ''}
+                    </div>`;
+                }).join('');
+                return `<details style="margin-top:0.6rem;">
+                    <summary style="cursor:pointer; list-style:none; font-size:0.75rem; font-weight:600; color:var(--text-tertiary); padding:0.3rem 0; user-select:none;">
+                        +${secs.length} related SSP control${secs.length !== 1 ? 's' : ''} also apply ▼
+                    </summary>
+                    <div style="margin-top:0.4rem;">${rows}</div>
+                </details>`;
+            })()}
+          </div>`;
+
+        // Upgrade delta — only show profiles ABOVE the selected one
+        const upgrades = this._sspUpgradeChain(ssp.profile);
+        if (upgrades.length === 0) { html += `</details>`; return html; }
+
+        // Now that levels_by_profile is in p, we can show the exact level change per profile.
+        const levelsByProfile = p.levels_by_profile || {};
+        const levelAtCurrent  = levelsByProfile[ssp.profile] ?? p.level;
+
+        const sspLevelColor = l => l === 0 ? 'var(--danger-color)' : l === 1 ? 'var(--warning-color)' : 'var(--text-tertiary)';
+        const _LEVEL_LABELS = { 0: 'L0 — Cardinal', 1: 'L1 — Basic Hygiene', 2: 'L2 — Best Practice' };
+        const _detailPill = (text, lvl) =>
+            `<span style="padding:1px 5px; background:${sspLevelColor(lvl)}12; border:1px solid ${sspLevelColor(lvl)}44; border-radius:3px; font-size:0.68rem; font-weight:700; color:${sspLevelColor(lvl)};">${text}</span>`;
+        const _DETAIL_LEVEL = { 0: 'L0 — Cardinal', 1: 'L1 — Basic Hygiene', 2: 'L2 — Best Practice' };
+
+        let upgradeHtml = '';
+        for (const nextProfile of upgrades) {
+            const levelAtNext = levelsByProfile[nextProfile];
+            // Only show profiles where the level actually escalates (lower number = stricter).
+            // Skip: not listed, same level, or becomes less mandatory — all noise.
+            if (levelAtNext === undefined || levelAtNext === null) continue;
+            if (levelAtNext >= levelAtCurrent) continue;
+
+            upgradeHtml += `
+            <div style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.75rem; background:var(--warning-color)08; border:1px solid var(--warning-color)44; border-radius:6px; margin-bottom:0.4rem; flex-wrap:wrap;">
+                <span style="font-size:0.8rem;">⚠</span>
+                <div style="flex:1; min-width:180px;">
+                    <div style="font-size:0.8125rem; font-weight:700; color:var(--text-color);">${this._sspProfileLabel(nextProfile)}</div>
+                    <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem;">Escalates from ${_DETAIL_LEVEL[levelAtCurrent] || `L${levelAtCurrent}`} → ${_DETAIL_LEVEL[levelAtNext] || `L${levelAtNext}`} — becomes <strong>more mandatory</strong> at this profile.</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:0.35rem; flex-shrink:0;">
+                    ${_detailPill(_DETAIL_LEVEL[levelAtCurrent] || `L${levelAtCurrent}`, levelAtCurrent)}
+                    <span style="font-size:0.75rem; color:var(--text-secondary);">→</span>
+                    ${_detailPill(_DETAIL_LEVEL[levelAtNext] || `L${levelAtNext}`, levelAtNext)}
+                </div>
+            </div>`;
+        }
+
+        if (upgradeHtml) {
+            html += `
+            <div style="margin-bottom:1.5rem; padding:0.75rem 1rem 0.25rem;">
+                <div style="font-size:0.8125rem; font-weight:700; color:var(--text-color); margin-bottom:0.5rem;">⚠ Escalates at stricter profiles</div>
+                <div style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:0.6rem;">This control becomes more mandatory if the system is classified at a stricter profile.</div>
+                ${upgradeHtml}
+            </div>`;
+        }
+
+        html += `</details>`;
+        return html;
+    }
+
+    // Build an SSP upgrade delta block for a tier card (Overview + Expert Review tiers).
+    //
+    // For EACH profile in the upgrade chain we partition SSP-mapped recommendations into
+    // three buckets per profile:
+    //
+    //   ESCALATED  — control already exists at current profile at level X,
+    //                but at the higher profile it's at a LOWER level number (stricter).
+    //                e.g. AC-1 is L2 at low_risk_cloud → L1 at medium_risk_cloud.
+    //                "This control becomes Basic Hygiene (was Best Practice)"
+    //
+    //   NEW        — control has no level entry at the current profile at all,
+    //                but IS required at the higher profile.
+    //                Genuinely additional controls the user hasn't been asked to implement.
+    //
+    //   SAME / LOWER priority — no change or control becomes less important: skip entirely.
+    //
+    // Within the SAME profile (no chain step needed): controls in OTHER tiers whose SSP level
+    // matches THIS tier's level but whose level escalates to a LOWER number at a higher profile
+    // are already captured by the per-profile loop above. Nothing extra to show within the same
+    // profile that isn't already visible in the recommendation list.
+    //
+    // Only profiles ABOVE the selected one are shown (never lower).
+    //
+    // tierLabel: string like "Quick Wins", "Recommended", "Maximum"
+    // tierItems: string[] of control names in this tier (from MoE improvement_options)
+    _renderSspTierUpgradeDelta(tierItems, tierLabel) {
+        if (!this.analysisData) return '';
+        const analysis = this.analysisData.analysis || {};
+        const recs = analysis.control_recommendations || [];
+        const currentProfile = this.sspProfile || 'medium_risk_cloud';
+        const upgradeProfiles = this._sspUpgradeChain(currentProfile);
+        if (upgradeProfiles.length === 0) return '';
+
+        const tierItemsUpper = (tierItems || []).map(i => i.toUpperCase().trim());
+
+        // Level label constants (mirrors backend _LEVEL_LABELS)
+        const _LEVEL_LABELS = { 0: 'L0 — Cardinal', 1: 'L1 — Basic Hygiene', 2: 'L2 — Best Practice' };
+        const levelColor = l => l === 0 ? 'var(--danger-color)' : l === 1 ? 'var(--warning-color)' : 'var(--text-tertiary)';
+        const _pill = (text, bg, border, color) =>
+            `<span style="padding:1px 5px; background:${bg}; border:1px solid ${border}; border-radius:3px; font-size:0.68rem; font-weight:700; color:${color}; white-space:nowrap;">${text}</span>`;
+
+        // Build per-profile delta.
+        // Structure: { profile: { escalated: [], new_controls: [] } }
+        const deltaByProfile = {};
+
+        for (const nextProfile of upgradeProfiles) {
+            const escalated = [];
+            const newControls = [];
+
+            for (const rec of recs) {
+                const ssp = rec.ssp_context;
+                if (!ssp || !ssp.primary) continue;
+
+                const p = ssp.primary;
+                const levelsByProfile = p.levels_by_profile || {};
+                const levelAtCurrent = levelsByProfile[currentProfile] ?? p.level;   // level at selected profile
+                const levelAtNext    = levelsByProfile[nextProfile];                 // level at higher profile (may be undefined)
+
+                const controlId   = p.id;
+                const controlName = rec.control || rec.name || '';
+                const entry = { name: controlName, id: controlId, title: p.title, label: ssp.label };
+
+                if (levelAtNext === undefined || levelAtNext === null) {
+                    // Not required at the higher profile at all — skip
+                    continue;
+                }
+
+                if (levelAtCurrent === undefined || levelAtCurrent === null) {
+                    // Not required at current profile → genuinely NEW at the higher profile
+                    newControls.push({ ...entry, levelAtNext, levelLabelNext: _LEVEL_LABELS[levelAtNext] || `L${levelAtNext}` });
+                } else if (levelAtNext < levelAtCurrent) {
+                    // ESCALATED: same control becomes MORE mandatory (lower level number = stricter)
+                    escalated.push({
+                        ...entry,
+                        levelAtCurrent,
+                        levelAtNext,
+                        levelLabelCurrent: _LEVEL_LABELS[levelAtCurrent] || `L${levelAtCurrent}`,
+                        levelLabelNext:    _LEVEL_LABELS[levelAtNext]    || `L${levelAtNext}`,
+                    });
+                }
+                // levelAtNext >= levelAtCurrent: no change or relaxed — skip
+            }
+
+            if (escalated.length > 0 || newControls.length > 0) {
+                deltaByProfile[nextProfile] = { escalated, newControls };
+            }
+        }
+
+        if (Object.keys(deltaByProfile).length === 0) return '';
+
+        // Compact summary: one line per upgrade profile showing escalated + new counts
+        let summaryLines = '';
+        for (const [profile, { escalated, newControls }] of Object.entries(deltaByProfile)) {
+            const parts = [];
+            if (escalated.length > 0) parts.push(`${escalated.length} escalate`);
+            if (newControls.length > 0) parts.push(`${newControls.length} new`);
+            if (!parts.length) continue;
+            summaryLines += `<div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.2rem; font-size:0.72rem; flex-wrap:wrap;">
+                <span style="color:var(--text-secondary); font-weight:600;">${this._sspProfileLabel(profile)}:</span>
+                ${parts.map(p => `<span style="padding:1px 5px; background:#0891b215; border:1px solid #0891b244; border-radius:3px; color:#06b6d4; font-weight:700;">${p}</span>`).join('')}
+                <span style="color:var(--text-tertiary);">controls become more mandatory</span>
+            </div>`;
+        }
+
+        if (!summaryLines) return '';
+
+        const html = `<div style="margin-top:0.875rem; padding:0.5rem 0.75rem; background:#0891b20a; border:1px solid #0891b233; border-radius:6px;">
+            <div style="font-size:0.68rem; font-weight:700; color:#06b6d4; margin-bottom:0.35rem; text-transform:uppercase; letter-spacing:.04em;">🏛 SSP at stricter profiles</div>
+            ${summaryLines}
+        </div>`;
+        return html;
+    }
+
     async showControlDetail(control) {
         const rightPane = document.getElementById('right-pane');
         const rightPaneContent = document.getElementById('right-pane-content');
@@ -1976,6 +2397,8 @@ class Dashboard {
                     </div>
                 ` : ''}
             </div>
+
+            ${this._renderSspDetailSection(control)}
 
             <div style="margin-bottom: 1.5rem;">
                 <h4 style="margin-bottom: 0.75rem; font-size: 0.9375rem; color: var(--warning-color);">🎯 Attack Paths Affected</h4>
@@ -2454,8 +2877,8 @@ class Dashboard {
 
                                     await mermaid.run({ nodes: [fullElement] });
                                     console.log('[DEBUG] Full architecture diagram rendered successfully');
-
-                                    // Setup zoom
+                                    await new Promise(r => setTimeout(r, 100));
+                                    this[`fullScale`] = undefined; // reset so auto-fit runs fresh
                                     this.setupDiagramZoom('full');
                                 } else {
                                     console.error('[DEBUG] Failed to fetch after.mmd:', response.status);
@@ -2516,14 +2939,9 @@ class Dashboard {
                                 // Render with mermaid
                                 await mermaid.run({ nodes: [afterElement] });
                                 console.log('[DEBUG] After diagram rendered successfully');
-
-                                // Check final size
-                                const svg = afterElement.querySelector('svg');
-                                if (svg) {
-                                    console.log('[DEBUG] After diagram SVG size:', svg.getAttribute('width'), 'x', svg.getAttribute('height'));
-                                } else {
-                                    console.error('[DEBUG] No SVG created after render');
-                                }
+                                await new Promise(r => setTimeout(r, 100));
+                                this[`afterScale`] = undefined; // reset so auto-fit runs fresh
+                                this.setupDiagramZoom('after');
                             } catch (err) {
                                 console.error('[DEBUG] After diagram render failed:', err);
                                 console.error('[DEBUG] Error details:', err.message);
@@ -2585,20 +3003,9 @@ class Dashboard {
 
                 console.log('[DEBUG] Mermaid rendering complete');
 
-                // Setup zoom controls for both diagrams
+                // Setup zoom for before diagram only — after/full are set up post-render
                 await new Promise(resolve => setTimeout(resolve, 100));
                 this.setupDiagramZoom('before');
-                this.setupDiagramZoom('after');
-
-                // POINT 1: Re-attach zoom controls after tab switch
-                centerPane.querySelectorAll('.visualize-subtab').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        setTimeout(() => {
-                            this.setupDiagramZoom('before');
-                            this.setupDiagramZoom('after');
-                        }, 300);
-                    });
-                });
             } catch (error) {
                 console.error('[DEBUG] Mermaid rendering failed:', error);
                 console.error('[DEBUG] Error details:', error.message, error.stack);
@@ -2688,105 +3095,84 @@ class Dashboard {
     }
 
     setupDiagramZoom(prefix) {
-        // Support both naming conventions: "rp-diagram" (no separate container) and "before"/"after"/"full"
-        const container = document.getElementById(`${prefix}-container`) || document.getElementById(`${prefix}`);
-        const getDiagram = () => container?.querySelector('svg');
-
-        const zoomInBtn = document.getElementById(`${prefix}-zoom-in`);
-        const zoomOutBtn = document.getElementById(`${prefix}-zoom-out`);
-        const zoomResetBtn = document.getElementById(`${prefix}-zoom-reset`);
-        const fitWidthBtn = document.getElementById(`${prefix}-fit-width`);
-        const fitHeightBtn = document.getElementById(`${prefix}-fit-height`);
+        // Container naming: try exact id, then "{prefix}-diagram-container", then "{prefix}-container"
+        const container =
+            document.getElementById(`${prefix}-diagram-container`) ||
+            document.getElementById(`${prefix}-container`) ||
+            document.getElementById(prefix);
 
         if (!container) return;
 
-        let scale = 1;
+        const getSvg = () => container.querySelector('svg');
 
-        // Auto-fit to container width on first load
-        setTimeout(() => {
-            const svg = getDiagram();
-            if (!svg) return;
-
-            const bbox = svg.getBBox();
-            const currentWidth = parseFloat(svg.getAttribute('width')) || bbox.width || 800;
-            const currentHeight = parseFloat(svg.getAttribute('height')) || bbox.height || 600;
-
-            this[`${prefix}OriginalWidth`] = currentWidth;
-            this[`${prefix}OriginalHeight`] = currentHeight;
-
-            // Fit to container width by default (with 32px padding)
-            const containerWidth = container.clientWidth - 32;
-            if (currentWidth > containerWidth) {
-                scale = containerWidth / currentWidth;
-                svg.setAttribute('width', currentWidth * scale);
-                svg.setAttribute('height', currentHeight * scale);
-                svg.style.maxWidth = 'none';
-            } else {
-                // Already fits — ensure no stale max-width constraint
-                svg.style.maxWidth = 'none';
+        // Capture/refresh original dimensions from the live SVG.
+        // Called here and again after deferred renders so zoom math is always correct.
+        const captureSize = () => {
+            const svg = getSvg();
+            if (!svg) return false;
+            const bbox = svg.getBBox ? svg.getBBox() : {};
+            const w = parseFloat(svg.getAttribute('width'))  || bbox.width  || 800;
+            const h = parseFloat(svg.getAttribute('height')) || bbox.height || 600;
+            if (w > 1 && h > 1) {
+                this[`${prefix}OriginalWidth`]  = w;
+                this[`${prefix}OriginalHeight`] = h;
+                return true;
             }
-        }, 150);
+            return false;
+        };
 
-        if (zoomInBtn) {
-            zoomInBtn.addEventListener('click', () => {
-                scale = Math.min(scale + 0.2, 4);
-                const svg = getDiagram();
-                if (svg && this[`${prefix}OriginalWidth`]) {
-                    svg.setAttribute('width', this[`${prefix}OriginalWidth`] * scale);
-                    svg.setAttribute('height', this[`${prefix}OriginalHeight`] * scale);
-                }
-            });
-        }
+        // Scale state lives on the instance so re-calls share state (not accumulate).
+        if (this[`${prefix}Scale`] === undefined) this[`${prefix}Scale`] = 1;
+        const getScale = ()  => this[`${prefix}Scale`];
+        const setScale = (v) => { this[`${prefix}Scale`] = v; };
 
-        if (zoomOutBtn) {
-            zoomOutBtn.addEventListener('click', () => {
-                scale = Math.max(scale - 0.2, 0.1);
-                const svg = getDiagram();
-                if (svg && this[`${prefix}OriginalWidth`]) {
-                    svg.setAttribute('width', this[`${prefix}OriginalWidth`] * scale);
-                    svg.setAttribute('height', this[`${prefix}OriginalHeight`] * scale);
-                }
-            });
-        }
+        const applyScale = (s) => {
+            const svg = getSvg();
+            if (!svg) return;
+            if (!this[`${prefix}OriginalWidth`]) { if (!captureSize()) return; }
+            setScale(s);
+            svg.setAttribute('width',  this[`${prefix}OriginalWidth`]  * s);
+            svg.setAttribute('height', this[`${prefix}OriginalHeight`] * s);
+            svg.style.maxWidth = 'none';
+        };
 
-        if (zoomResetBtn) {
-            zoomResetBtn.addEventListener('click', () => {
-                const svg = getDiagram();
-                if (svg && this[`${prefix}OriginalWidth`]) {
-                    // Reset to fit-width
-                    const containerWidth = container.clientWidth - 32;
-                    scale = Math.min(1, containerWidth / this[`${prefix}OriginalWidth`]);
-                    svg.setAttribute('width', this[`${prefix}OriginalWidth`] * scale);
-                    svg.setAttribute('height', this[`${prefix}OriginalHeight`] * scale);
-                }
-                container.scrollTop = 0;
-                container.scrollLeft = 0;
-            });
-        }
+        // Auto-fit on first setup — wait for Mermaid to finish rendering.
+        setTimeout(() => {
+            if (!captureSize()) return;
+            const containerWidth = container.clientWidth - 32;
+            const fitScale = containerWidth < this[`${prefix}OriginalWidth`]
+                ? containerWidth / this[`${prefix}OriginalWidth`]
+                : 1;
+            applyScale(fitScale);
+        }, 200);
 
-        if (fitWidthBtn) {
-            fitWidthBtn.addEventListener('click', () => {
-                const svg = getDiagram();
-                if (svg && this[`${prefix}OriginalWidth`]) {
-                    const containerWidth = container.clientWidth - 32;
-                    scale = containerWidth / this[`${prefix}OriginalWidth`];
-                    svg.setAttribute('width', this[`${prefix}OriginalWidth`] * scale);
-                    svg.setAttribute('height', this[`${prefix}OriginalHeight`] * scale);
-                }
-            });
-        }
+        // Replace each button with a fresh clone to remove any previous listeners.
+        const wire = (id, handler) => {
+            const old = document.getElementById(id);
+            if (!old) return;
+            const fresh = old.cloneNode(true);
+            old.parentNode.replaceChild(fresh, old);
+            fresh.addEventListener('click', handler);
+        };
 
-        if (fitHeightBtn) {
-            fitHeightBtn.addEventListener('click', () => {
-                const svg = getDiagram();
-                if (svg && this[`${prefix}OriginalHeight`]) {
-                    const containerHeight = container.clientHeight - 32;
-                    scale = containerHeight / this[`${prefix}OriginalHeight`];
-                    svg.setAttribute('width', this[`${prefix}OriginalWidth`] * scale);
-                    svg.setAttribute('height', this[`${prefix}OriginalHeight`] * scale);
-                }
-            });
-        }
+        wire(`${prefix}-zoom-in`,   () => applyScale(Math.min(getScale() + 0.2, 4)));
+        wire(`${prefix}-zoom-out`,  () => applyScale(Math.max(getScale() - 0.2, 0.1)));
+        wire(`${prefix}-zoom-reset`, () => {
+            if (!this[`${prefix}OriginalWidth`]) { captureSize(); }
+            const containerWidth = container.clientWidth - 32;
+            const fitScale = Math.min(1, containerWidth / (this[`${prefix}OriginalWidth`] || 800));
+            applyScale(fitScale);
+            container.scrollTop  = 0;
+            container.scrollLeft = 0;
+        });
+        wire(`${prefix}-fit-width`, () => {
+            if (!this[`${prefix}OriginalWidth`]) { captureSize(); }
+            applyScale((container.clientWidth - 32) / (this[`${prefix}OriginalWidth`] || 800));
+        });
+        wire(`${prefix}-fit-height`, () => {
+            if (!this[`${prefix}OriginalHeight`]) { captureSize(); }
+            applyScale((container.clientHeight - 32) / (this[`${prefix}OriginalHeight`] || 600));
+        });
     }
 
     generateAttackPathDiagram(path) {
@@ -4014,6 +4400,7 @@ class Dashboard {
                         + '</div>'
                         + itemList
                         + residualBlock
+                        + this._renderSspTierUpgradeDelta(items, label)
                         + '</div>';
                 }
                 tiersHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
@@ -4092,7 +4479,8 @@ class Dashboard {
                 const sign = '';
                 const status = v.validation_status || 'UNKNOWN';
                 const color = statusColor[status] || 'var(--text-secondary)';
-                const statusText = status.replace(/_/g, ' ');
+                const gapCount = (v.gaps || []).length;
+                const statusText = status.replace(/_/g, ' ') + (status === 'PASS' && gapCount > 0 ? ` (${gapCount} low finding${gapCount > 1 ? 's' : ''})` : '');
                 const statusExplain = statusDesc[status] || '';
                 const gaps = v.gaps || [];
                 let gapItems = '';

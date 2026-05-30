@@ -4,6 +4,29 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-05-30 — SSP control enrichment: scraper fix, profile levels, dashboard UX
+
+**What was decided:**
+Four related decisions in one session:
+
+1. **Scraper fix** — `_scrape_ssp_profiles()` rewrote from element-walk heuristics to h3-sibling traversal. Each control on the SSP site has `<h3>XX-N: Title</h3>` followed by `<p><b>Profile Level:</b>N</p>` in its siblings. The old code scanned `h2/h3/h4/tr/td/li` elements, missing the `<p>` tags entirely, causing every control to default to L1. Post-fix: 0 mismatches across all 8 profiles vs live site.
+
+2. **SSP profile badge in header, not sidebar** — Sidebar real-estate is reserved for tab navigation and will be needed as the architecture list grows. A compact inline pill (`SSP · Low Risk — Cloud`) in the header-left is always visible and adds no column width.
+
+3. **Architecture history dropdown in header** — `GET /api/v1/reports` now returns `analysed_at` (folder mtime as Unix timestamp) and `ssp_profile` (from `ground_truth.metadata.ssp_profile`). A `<select>` in the header lists all past analyses newest-first with date and profile. Selecting one loads `ground_truth.json` directly, bypassing re-analysis. Refreshes automatically after each new analysis completes.
+
+4. **Coverage Audit PASS + findings** — When tester status is PASS but `gaps[]` is non-empty (LOW severity findings), the header now reads `PASS (N low findings)` so users aren't misled into thinking there is nothing to review.
+
+**Reasoning:**
+Sidebar SSP badge cluttered nav; header keeps it persistent and globally visible. History dropdown avoids re-running expensive LLM analysis to revisit a prior result. PASS-with-findings is a common tester outcome (score ≥ threshold but minor gaps exist) — suppressing the gap count in the header was misleading.
+
+**Alternatives rejected:**
+- Sidebar SSP badge: Takes space needed for future per-architecture nav items.
+- Tab for history: Would need a full list-detail UI; a dropdown is sufficient for ~20 entries.
+- Color-code PASS differently when gaps exist: More complex; appending count is clearer.
+
+---
+
 ## 2026-05-27 — ATLAS/ARC technique & mitigation name lookups via AtlasHelper
 
 **What was decided:**

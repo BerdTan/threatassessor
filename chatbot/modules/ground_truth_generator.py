@@ -1081,7 +1081,9 @@ def refine_control_priorities(
 def generate_ground_truth(
     mmd_file_path: str,
     use_llm: bool = False,
-    llm_model: Optional[str] = None
+    llm_model: Optional[str] = None,
+    ssp_profile: str = "low_risk_cloud",
+    enable_ssp: bool = True,
 ) -> Dict:
     """
     Generate ground truth labels from architecture diagram.
@@ -1090,6 +1092,12 @@ def generate_ground_truth(
         mmd_file_path: Path to .mmd architecture file
         use_llm: Whether to use LLM for enhancement (default: False)
         llm_model: Optional LLM model override (default: uses agentic.llm default)
+        ssp_profile: User-declared target SSP profile for control enrichment.
+            One of: low_risk_cloud, low_risk_onprem, medium_risk_cloud,
+            high_risk_cloud_cii, generative_ai, digital_services_others,
+            digital_services_high_impact, sandbox. This is a planning instrument —
+            it shows what controls are required *if* the system targets that profile.
+        enable_ssp: When False, SSP enrichment is skipped entirely.
 
     Returns:
         Ground truth dict with schema:
@@ -1305,7 +1313,8 @@ def generate_ground_truth(
             "edge_count": len(parsed["edges"]),
             "control_coverage": round(coverage, 2),
             "parsed_nodes": parsed["nodes"],  # Phase 3B: For orphan node detection
-            "parsed_edges": parsed["edges"]   # Phase 3B: For graph validation
+            "parsed_edges": parsed["edges"],  # Phase 3B: For graph validation
+            "ssp_profile": ssp_profile if enable_ssp else None,
         }
     }
 
@@ -1325,6 +1334,14 @@ def generate_ground_truth(
         adjusted_recommendations,
         attack_paths
     )
+
+    # SSP Enrichment: add policy-grounded context to each recommendation (additive, default-on)
+    if enable_ssp:
+        from chatbot.modules.ssp_control_mapper import get_ssp_mapper
+        adjusted_recommendations = get_ssp_mapper().enrich_recommendations(
+            adjusted_recommendations,
+            target_profile=ssp_profile,
+        )
 
     ground_truth["control_recommendations"] = adjusted_recommendations
     ground_truth["validation_report"] = validation_report

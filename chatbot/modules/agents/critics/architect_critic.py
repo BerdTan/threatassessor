@@ -390,6 +390,9 @@ ARTIFACT 1: ATTACK PATHS ({path_count} paths)
 ARTIFACT 2: CONTROL RECOMMENDATIONS ({control_count} controls)
 {self._format_controls(tier1["artifact_2_controls"])}
 
+SSP POLICY CONTEXT (Singapore Government ICT&SS Baseline):
+{self._format_ssp_context(tier1["artifact_2_controls"])}
+
 ARTIFACT 3: RESIDUAL RISK (BEFORE → AFTER)
 {self._format_residual_risk(tier1["artifact_3_residual_risk"])}
 
@@ -439,6 +442,7 @@ Focus on:
 3. Control appropriateness for architecture
 4. Defense-in-depth coverage
 5. RAPIDS threat alignment
+6. **SSP policy alignment** — are L0 cardinal controls present? Are any L0 gaps present that would require HQ approval to defer?
 
 {'='*70}
 OUTPUT FORMAT (JSON REQUIRED)
@@ -522,13 +526,40 @@ You MUST respond with valid JSON in this exact format:
             priority = control.get("priority", "unknown")
             score = control.get("score", 0)
             paths = control.get("attack_paths", [])
+            ssp_ctx = control.get("ssp_context")
+            ssp_note = ""
+            if ssp_ctx and ssp_ctx.get("primary"):
+                p = ssp_ctx["primary"]
+                ssp_note = f" [SSP: {ssp_ctx['label']} L{p['level']}]"
 
-            lines.append(f"  {idx+1}. {name.upper()} [{priority}] (score: {score:.1f})")
+            lines.append(f"  {idx+1}. {name.upper()} [{priority}] (score: {score:.1f}){ssp_note}")
             lines.append(f"     Affects paths: {paths}")
 
         if len(controls) > 10:
             lines.append(f"  ... +{len(controls) - 10} more controls")
 
+        return "\n".join(lines)
+
+    def _format_ssp_context(self, artifact: Dict) -> str:
+        """Format SSP policy context summary for the critic prompt."""
+        controls = artifact["controls"]
+        ssp_recs = [c for c in controls if c.get("ssp_context") and c["ssp_context"].get("primary")]
+        if not ssp_recs:
+            return "  (No SSP enrichment data available)"
+
+        profile = ssp_recs[0]["ssp_context"].get("profile", "unknown").replace("_", " ").title()
+        lines = [f"  Profile: {profile}"]
+        lines.append("  L0=Cardinal(HQ approval if skipped) | L1=Basic Hygiene(SC risk acceptance) | L2=Best Practice(risk-owner acceptance)")
+        lines.append("")
+        l0 = [c for c in ssp_recs if c["ssp_context"]["primary"]["level"] == 0]
+        l1 = [c for c in ssp_recs if c["ssp_context"]["primary"]["level"] == 1]
+        l2 = [c for c in ssp_recs if c["ssp_context"]["primary"]["level"] == 2]
+        if l0:
+            lines.append(f"  L0 Cardinal ({len(l0)}): " + ", ".join(f"{c['ssp_context']['label']} {c['control'].upper()}" for c in l0[:5]))
+        if l1:
+            lines.append(f"  L1 Hygiene  ({len(l1)}): " + ", ".join(f"{c['ssp_context']['label']} {c['control'].upper()}" for c in l1[:5]))
+        if l2:
+            lines.append(f"  L2 Practice ({len(l2)}): " + ", ".join(f"{c['ssp_context']['label']} {c['control'].upper()}" for c in l2[:5]))
         return "\n".join(lines)
 
     def _format_residual_risk(self, artifact: Dict) -> str:

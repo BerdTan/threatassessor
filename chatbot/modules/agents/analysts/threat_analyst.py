@@ -149,8 +149,13 @@ class ThreatAnalyst(AnalystAgent):
 
         # Generate ground truth using deterministic engine
         try:
-            # Call the generate function directly
-            ground_truth = self.generator_module.generate_ground_truth(architecture_path)
+            ssp_profile = validated_context.get("ssp_profile", "low_risk_cloud")
+            enable_ssp  = validated_context.get("enable_ssp", True)
+            ground_truth = self.generator_module.generate_ground_truth(
+                architecture_path,
+                ssp_profile=ssp_profile,
+                enable_ssp=enable_ssp,
+            )
         except Exception as e:
             logger.error(f"{self.role}: Ground truth generation failed: {e}")
             raise
