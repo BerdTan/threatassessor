@@ -4,6 +4,52 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-05-30 — Dashboard UX: meaningful filenames, duplicate dedup, history icons, action buttons
+
+**What was decided:**
+Four related dashboard improvements in one session:
+
+1. **Meaningful report folder names + duplicate dedup** — `streaming.py` now derives the report folder name from the uploaded filename (strip `.mmd`, replace `.`/` ` with `_`) rather than using a generic name. If the folder already exists, it appends `_2`, `_3`, etc. to avoid clobbering prior results.
+
+2. **History dropdown: 👁 reload and ▶ re-run icons** — Each entry in the architecture history dropdown now shows two icon buttons alongside the row. 👁 loads the previous analysis result from `ground_truth.json` (no re-analysis). ▶ fetches the saved `before.mmd`, pre-fills the SSP profile, and triggers a fresh analysis. New `_rerunArchAnalysis()` method handles the re-run flow.
+
+3. **Upload form: Clear / Upload / Analyse button row** — The upload form now has three explicit action buttons: `✕ Clear` (resets file input and drop-zone label), `📂 Upload File` (opens file picker), `🔍 Analyse` (submits). Drop-zone label updates to show the selected filename once a file is chosen.
+
+4. **`btn-secondary` CSS class** — Added outlined/ghost button style for use alongside `btn-primary`.
+
+**Reasoning:**
+Previously every upload used the same folder name if the same `.mmd` filename was re-used, silently overwriting prior reports. Explicit action buttons replace a single implicit "click drop-zone to pick + submit" gesture that was not obvious. The reload/re-run icons surface two previously hidden actions (history load vs fresh analysis) that users were unaware of.
+
+**Alternatives rejected:**
+- Timestamp suffix on all folder names: Makes history dropdown entries unreadable (names would include a timestamp always, not just on collision).
+- Single "Re-analyse" icon replacing row click: Separating view (👁) from re-run (▶) avoids accidental expensive re-analysis when the user only wants to review.
+- Modal for action buttons: Overkill for three simple actions; inline row is sufficient.
+
+---
+
+## 2026-05-30 — Skills overhaul: agentskills.io folder structure, 3 new skills, 3 retired
+
+**What was decided:**
+Converted all `.claude/skills/` from flat `.md` files to the agentskills.io spec (`skill-name/SKILL.md` + optional `scripts/` subfolder). Heavy bash extracted to `scripts/` files; `SKILL.md` bodies kept lean (<100 lines).
+
+Three new skills:
+- **`repo-organise`** — read-only audit of `/docs`, `/tests`, `/scripts`, `/report`; proposes moves/prunes for user approval, never auto-executes.
+- **`update-data`** — quarterly refresh for MITRE ATT&CK, ATLAS YAML, SSP catalog (via existing scraper), and ARC risk register from GovTech GitHub (`govtech-responsibleai/agentic-risk-capability-framework`).
+- **`docs-health`** — audits `CLAUDE.md`, `docs/DECISIONS.md`, and memory files; outputs ✅/⚠/❌ health table with proposed edits, no auto-writes.
+
+Three converted (flat → folder): `build-embeddings-cache`, `check-deprecation` (module list expanded with `ssp_mapper`, `ai_pattern`, `streaming`), `quick-test` (MITRE count updated to ≥835).
+
+Three retired: `housekeep-docs` (replaced by `repo-organise`; removed risky `sed -i` in-place writes), `update-mitre-data` (absorbed into `update-data`), `validate-integration` (references moved file).
+
+**Reasoning:**
+Flat `.md` files didn't follow the agentskills.io spec — no `name:` frontmatter, no folder structure, scripts embedded inline making bodies >600 lines. Separation into `SKILL.md` + `scripts/` keeps activation token cost low (<5000 tokens) while keeping scripts executable and testable independently. ARC data source confirmed as GovTech GitHub (5 YAML files: capabilities, components, controls, design, risks).
+
+**Alternatives rejected:**
+- Keep flat files with corrected frontmatter only: Doesn't resolve the token-bloat problem for large skills like `check-deprecation` (650 lines).
+- Single combined `update-data` + `build-embeddings-cache`: Embeddings rebuild is optional (only needed after MITRE update) and takes 3 min — keeping it separate avoids blocking the other data updates.
+
+---
+
 ## 2026-05-30 — SSP control enrichment: scraper fix, profile levels, dashboard UX
 
 **What was decided:**
