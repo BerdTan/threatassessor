@@ -68,7 +68,7 @@
                 <h2>Upload Architecture Diagram</h2>
                 <form id="upload-form" class="upload-form">
                     <div class="file-drop-zone" id="drop-zone">
-                        <p>Drag & drop .mmd file here or click to browse</p>
+                        <p id="drop-zone-label">Drag &amp; drop .mmd file here or click to browse</p>
                         <input type="file" id="file-input" accept=".mmd" required>
                     </div>
 
@@ -76,7 +76,7 @@
                     <div style="margin-top:1rem;">
                         <label for="ssp-profile-select" style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem; color:var(--text-color);">
                             System Security Plan (SSP)
-                            <span style="font-size:0.75rem; font-weight:400; color:var(--text-tertiary); margin-left:0.4rem;">(Singapore Government ICT&SS baseline)</span>
+                            <span style="font-size:0.75rem; font-weight:400; color:var(--text-tertiary); margin-left:0.4rem;">(Singapore Government ICT&amp;SS baseline)</span>
                         </label>
                         <select id="ssp-profile-select" style="width:100%; padding:0.5rem 0.75rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; cursor:pointer;">
                             <optgroup label="Cloud Systems">
@@ -99,7 +99,12 @@
                         </p>
                     </div>
 
-                    <button type="submit" class="btn-primary btn-large" style="margin-top:1rem;">Analyze Architecture</button>
+                    <!-- Action buttons row: Clear · Upload · Analyse -->
+                    <div style="display:flex; gap:0.75rem; margin-top:1rem; align-items:center;">
+                        <button type="button" id="clear-file-btn" class="btn-secondary" title="Clear selected file" style="flex:0 0 auto;">✕ Clear</button>
+                        <button type="button" id="pick-file-btn" class="btn-secondary" style="flex:1;">📂 Upload File</button>
+                        <button type="submit" id="analyse-btn" class="btn-primary btn-large" style="flex:1;">🔍 Analyse</button>
+                    </div>
                 </form>
             </div>
 

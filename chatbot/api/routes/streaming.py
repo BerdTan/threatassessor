@@ -74,7 +74,15 @@ async def analyze_with_progress(
 
         # Extract clean architecture name from uploaded filename
         # Remove .mmd extension and sanitize
-        clean_arch_name = filename.replace('.mmd', '').replace('.', '_').replace(' ', '_')
+        base_name = filename.replace('.mmd', '').replace('.', '_').replace(' ', '_')
+
+        # Avoid clobbering existing reports: append _2, _3, … if folder already exists
+        report_dir = Path(__file__).parent.parent.parent.parent / "report"
+        clean_arch_name = base_name
+        counter = 2
+        while (report_dir / clean_arch_name).exists():
+            clean_arch_name = f"{base_name}_{counter}"
+            counter += 1
 
         # Run analysis in thread pool; send heartbeat pings so the browser doesn't
         # interpret the silence as a hang. Messages cycle through realistic stage labels.

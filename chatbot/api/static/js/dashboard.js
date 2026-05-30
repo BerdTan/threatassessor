@@ -253,12 +253,12 @@ class Dashboard {
         const fileInput = document.getElementById('file-input');
         const dropZone = document.getElementById('drop-zone');
 
-        // Upload button click
+        // Header upload button — shows file picker when no analysis is active
         uploadBtn.addEventListener('click', () => {
             fileInput.click();
         });
 
-        // New analysis button click
+        // New analysis button click (header, shown after analysis)
         if (newAnalysisBtn) {
             newAnalysisBtn.addEventListener('click', () => {
                 this.resetForNewAnalysis();
@@ -273,15 +273,41 @@ class Dashboard {
             });
         }
 
+        // Form-level action buttons: Clear · Upload · Analyse
+        const clearFileBtn = document.getElementById('clear-file-btn');
+        const pickFileBtn  = document.getElementById('pick-file-btn');
+
+        if (clearFileBtn) {
+            clearFileBtn.addEventListener('click', () => {
+                fileInput.value = '';
+                const label = document.getElementById('drop-zone-label');
+                if (label) label.textContent = 'Drag & drop .mmd file here or click to browse';
+            });
+        }
+
+        if (pickFileBtn) {
+            pickFileBtn.addEventListener('click', () => {
+                fileInput.click();
+            });
+        }
+
+        // Update drop-zone label when a file is selected via any path
+        fileInput.addEventListener('change', () => {
+            const label = document.getElementById('drop-zone-label');
+            if (label && fileInput.files.length) {
+                label.textContent = `📄 ${fileInput.files[0].name}`;
+            }
+        });
+
         // Form submit
         uploadForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             await this.startAnalysis();
         });
 
-        // Drag and drop
-        dropZone.addEventListener('click', () => {
-            fileInput.click();
+        // Drag and drop — clicking drop zone now only opens picker if no dedicated button clicked
+        dropZone.addEventListener('click', (e) => {
+            if (!e.target.closest('button')) fileInput.click();
         });
 
         dropZone.addEventListener('dragover', (e) => {
@@ -299,8 +325,11 @@ class Dashboard {
 
             const files = e.dataTransfer.files;
             if (files.length > 0) {
-                fileInput.files = files;
-                uploadForm.dispatchEvent(new Event('submit'));
+                const dt = new DataTransfer();
+                dt.items.add(files[0]);
+                fileInput.files = dt.files;
+                const label = document.getElementById('drop-zone-label');
+                if (label) label.textContent = `📄 ${files[0].name}`;
             }
         });
     }
@@ -497,9 +526,11 @@ class Dashboard {
         this.updateProgress(0, 'Ready to analyze architecture');
         this.updateStages('parsing');
 
-        // Reset file input
+        // Reset file input and drop-zone label
         const fileInput = document.getElementById('file-input');
         if (fileInput) fileInput.value = '';
+        const dropZoneLabel = document.getElementById('drop-zone-label');
+        if (dropZoneLabel) dropZoneLabel.textContent = 'Drag & drop .mmd file here or click to browse';
 
         // Reset pattern badges
         const patternBadges = document.getElementById('pattern-badges');
@@ -2069,6 +2100,8 @@ class Dashboard {
             const hoverOn  = e => e.currentTarget.style.background = '#4da6ff18';
             const hoverOff = e => e.currentTarget.style.background = 'transparent';
 
+            const iconBtnStyle = `background:transparent; border:none; cursor:pointer; padding:2px 5px; border-radius:4px; font-size:0.85rem; color:#94a3b8; flex-shrink:0; line-height:1; transition:color 0.15s, background 0.15s;`;
+
             const makeItem = (a, lazy) => {
                 const dt = a.analysed_at
                     ? new Date(a.analysed_at * 1000).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
@@ -2082,14 +2115,35 @@ class Dashboard {
                 div.innerHTML = `<span style="font-size:0.9rem; flex-shrink:0;">📄</span>`
                     + `<span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;">${a.name}</span>`
                     + `<span style="font-size:0.72rem; color:#94a3b8; flex-shrink:0;">${dt}</span>`
-                    + profilePill;
+                    + profilePill
+                    + `<button class="arch-item-reload" title="View previous analysis" style="${iconBtnStyle}">👁</button>`
+                    + `<button class="arch-item-rerun" title="Re-run analysis" style="${iconBtnStyle}">▶</button>`;
                 div.addEventListener('mouseover', hoverOn);
                 div.addEventListener('mouseout',  hoverOff);
-                div.addEventListener('click', async () => {
+
+                // Click on row body → load previous analysis
+                div.addEventListener('click', async (e) => {
+                    if (e.target.closest('.arch-item-reload') || e.target.closest('.arch-item-rerun')) return;
                     document.getElementById('arch-history-btn-label').textContent = `📄 ${a.name}`;
                     this._closeArchDropdown();
                     await this._loadArchFromReports(a.name);
                 });
+
+                // Reload icon → same as row click
+                div.querySelector('.arch-item-reload').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    document.getElementById('arch-history-btn-label').textContent = `📄 ${a.name}`;
+                    this._closeArchDropdown();
+                    await this._loadArchFromReports(a.name);
+                });
+
+                // Re-analysis icon → fetch saved before.mmd and trigger fresh analysis
+                div.querySelector('.arch-item-rerun').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    this._closeArchDropdown();
+                    await this._rerunArchAnalysis(a.name, a.ssp_profile);
+                });
+
                 return div;
             };
 
@@ -2174,6 +2228,39 @@ class Dashboard {
             this.loadTabData(this.currentTab);
         } catch (e) {
             console.warn('[ArchHistory] Failed to load', archName, e);
+        }
+    }
+
+    // Re-run analysis for an architecture by fetching its saved before.mmd
+    async _rerunArchAnalysis(archName, sspProfile) {
+        try {
+            const resp = await fetch(`/api/v1/reports/${archName}/files/before.mmd`);
+            if (!resp.ok) throw new Error('before.mmd not found');
+            const mmdText = await resp.text();
+
+            // Build a File object from the saved content so startAnalysis can use it
+            const blob = new Blob([mmdText], { type: 'text/plain' });
+            const file = new File([blob], `${archName}.mmd`, { type: 'text/plain' });
+
+            // Pre-fill state then trigger analysis
+            this.resetForNewAnalysis();
+
+            // Set SSP profile if known
+            if (sspProfile) {
+                const sspSelect = document.getElementById('ssp-profile-select');
+                if (sspSelect) sspSelect.value = sspProfile;
+            }
+
+            // Inject file into the input and submit
+            const fileInput = document.getElementById('file-input');
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            fileInput.files = dt.files;
+
+            await this.startAnalysis();
+        } catch (e) {
+            console.warn('[ArchHistory] Re-analysis failed for', archName, e);
+            this.updateStatusMessage(`⚠️ Could not reload ${archName} for re-analysis`);
         }
     }
 

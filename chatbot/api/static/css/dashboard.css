@@ -375,6 +375,24 @@ body {
     box-shadow: 0 4px 16px rgba(0, 212, 255, 0.5);
 }
 
+.btn-secondary {
+    background: transparent;
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    padding: 0.625rem 1.25rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+    background: var(--nav-hover-bg);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
 .btn-large {
     padding: 0.875rem 2rem;
     font-size: 1rem;
