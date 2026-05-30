@@ -747,3 +747,23 @@ body.light-theme #ssp-profile-select optgroup {
     background-color: #ffffff;
     color: #1a1a1a;
 }
+
+/* Arch history dropdown panel scrollbar */
+#arch-history-list::-webkit-scrollbar { width: 5px; }
+#arch-history-list::-webkit-scrollbar-track { background: transparent; }
+#arch-history-list::-webkit-scrollbar-thumb { background: #4da6ff44; border-radius: 3px; }
+
+/* Light theme: arch history button text must stay dark */
+body.light-theme #arch-history-btn {
+    background: #f1f5f9;
+    color: #1a1a1a;
+    border-color: var(--border-color);
+}
+body.light-theme #arch-history-panel {
+    background: #ffffff;
+    border-color: #d0d7de;
+    box-shadow: 0 8px 24px #00000022;
+}
+body.light-theme #arch-history-list div {
+    color: #1a1a1a;
+}

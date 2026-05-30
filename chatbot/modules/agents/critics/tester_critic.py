@@ -33,6 +33,7 @@ VERSION: 3.0 - Phase 3D Week 2 (Validation-only refactor)
 
 import json
 import logging
+import re
 from typing import Dict, List, Optional
 
 from chatbot.modules.agent_framework import CriticAgent
@@ -869,17 +870,18 @@ class TesterCritic:
             desc = gap.get("description", "").lower()
 
             if "claims" in desc and ("mitigation" in desc or "technique" in desc):
-                # Extract control name, technique, mitigation from description
-                # e.g., "LEAST PRIVILEGE claims M1016 for T1213"
+                # Pattern A: "CONTROL claims M#### mitigates T####"
                 is_false_positive = self._check_if_false_positive(gap, controls, mitre)
-
-                if is_false_positive:
-                    false_positives.append(gap)
-                    logger.warning(f"Tester: Removed false positive gap: {gap['description'][:100]}...")
-                else:
-                    validated_gaps.append(gap)
+            elif re.search(r'\b(T\d{4})\b', gap.get("description", "")):
+                # Pattern B: "no controls address T####" — verify against actual recommendations
+                is_false_positive = self._check_coverage_gap_false_positive(gap, controls)
             else:
-                # Non-validation gap, keep as-is
+                is_false_positive = False
+
+            if is_false_positive:
+                false_positives.append(gap)
+                logger.warning(f"Tester: Removed false positive gap: {gap['description'][:100]}...")
+            else:
                 validated_gaps.append(gap)
 
         if false_positives:
@@ -916,7 +918,6 @@ class TesterCritic:
 
         Returns True if the gap claims invalid mapping but mapping is actually valid.
         """
-        import re
 
         desc = gap.get("description", "")
 
@@ -991,6 +992,36 @@ class TesterCritic:
                     return True
 
         # Truly invalid mapping
+        return False
+
+    def _check_coverage_gap_false_positive(self, gap: Dict, controls: List[Dict]) -> bool:
+        """
+        Check if a "no controls address T####" gap is a false positive by
+        verifying whether any recommended control actually covers those techniques.
+
+        The tester LLM sometimes claims a technique has no coverage even when
+        the deterministic engine has already recommended a control for it.
+        The ground truth is authoritative — if the control is in the recommendations
+        with that technique in its technique_coverage, the gap is a hallucination.
+        """
+        desc = gap.get("description", "")
+        technique_ids = re.findall(r'\b(T\d{4})\b', desc)
+        if not technique_ids:
+            return False
+
+        for ctrl in controls:
+            tc = ctrl.get("technique_coverage", {})
+            covered = set(tc.keys())
+            # Also check the flat techniques list as fallback
+            covered |= set(ctrl.get("techniques", []))
+            if any(t in covered for t in technique_ids):
+                logger.info(
+                    f"False positive: '{ctrl['control']}' already covers "
+                    f"{[t for t in technique_ids if t in covered]} — "
+                    f"tester claim '{desc[:80]}' is incorrect"
+                )
+                return True
+
         return False
 
 

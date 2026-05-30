@@ -2007,6 +2007,43 @@ class Dashboard {
         badge.style.alignItems = 'center';
     }
 
+    // Toggle the custom arch history dropdown panel
+    _toggleArchDropdown() {
+        const panel   = document.getElementById('arch-history-panel');
+        const chevron = document.getElementById('arch-history-chevron');
+        if (!panel) return;
+        const open = panel.style.display !== 'none';
+        panel.style.display = open ? 'none' : 'block';
+        if (chevron) chevron.textContent = open ? '▼' : '▲';
+        if (!open) this._initArchPanelScroll();
+    }
+
+    // Close dropdown when clicking outside
+    _closeArchDropdown() {
+        const panel   = document.getElementById('arch-history-panel');
+        const chevron = document.getElementById('arch-history-chevron');
+        if (panel) panel.style.display = 'none';
+        if (chevron) chevron.textContent = '▼';
+    }
+
+    // Wire an intersection observer on the "older" items so they reveal one-by-one on scroll
+    _initArchPanelScroll() {
+        const list = document.getElementById('arch-history-list');
+        if (!list) return;
+        const hidden = list.querySelectorAll('.arch-item-lazy');
+        if (!hidden.length) return;
+        const obs = new IntersectionObserver(entries => {
+            entries.forEach(e => {
+                if (e.isIntersecting) {
+                    e.target.style.opacity = '1';
+                    e.target.style.transform = 'translateY(0)';
+                    obs.unobserve(e.target);
+                }
+            });
+        }, { root: list, threshold: 0.1 });
+        hidden.forEach(el => obs.observe(el));
+    }
+
     // Load architecture history dropdown from /api/v1/reports (newest first)
     async _loadArchHistory() {
         try {
@@ -2017,28 +2054,86 @@ class Dashboard {
             if (!archs.length) return;
 
             const wrap = document.getElementById('arch-history-wrap');
-            const sel  = document.getElementById('arch-history-select');
-            if (!wrap || !sel) return;
+            const list = document.getElementById('arch-history-list');
+            if (!wrap || !list) return;
 
-            sel.innerHTML = '<option value="">— Load previous analysis —</option>';
-            for (const a of archs) {
+            // "Recent" = current calendar week (Mon 00:00 to now)
+            const now = new Date();
+            const dayOfWeek = (now.getDay() + 6) % 7; // Mon=0 … Sun=6
+            const weekStartMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek).getTime();
+
+            const recent = archs.filter(a => !a.analysed_at || (a.analysed_at * 1000) >= weekStartMs);
+            const older  = archs.filter(a =>  a.analysed_at && (a.analysed_at * 1000)  < weekStartMs);
+
+            const itemStyle = `display:flex; align-items:center; gap:0.6rem; padding:0.55rem 0.9rem; cursor:pointer; transition:background 0.15s; font-size:0.8rem; color:#e8e8e8;`;
+            const hoverOn  = e => e.currentTarget.style.background = '#4da6ff18';
+            const hoverOff = e => e.currentTarget.style.background = 'transparent';
+
+            const makeItem = (a, lazy) => {
                 const dt = a.analysed_at
                     ? new Date(a.analysed_at * 1000).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
                     : '';
-                const profile = a.ssp_profile ? ` · ${this._sspProfileLabel(a.ssp_profile)}` : '';
-                const opt = document.createElement('option');
-                opt.value = a.name;
-                opt.textContent = `${a.name}  ${dt}${profile}`;
-                sel.appendChild(opt);
+                const profilePill = a.ssp_profile
+                    ? `<span style="padding:1px 5px; background:#0891b218; border:1px solid #0891b244; border-radius:3px; font-size:0.65rem; font-weight:700; color:#06b6d4; flex-shrink:0;">${this._sspProfileLabel(a.ssp_profile)}</span>`
+                    : '';
+                const div = document.createElement('div');
+                div.style.cssText = itemStyle + (lazy ? 'opacity:0; transform:translateY(6px); transition:opacity 0.25s, transform 0.25s, background 0.15s;' : '');
+                if (lazy) div.classList.add('arch-item-lazy');
+                div.innerHTML = `<span style="font-size:0.9rem; flex-shrink:0;">📄</span>`
+                    + `<span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;">${a.name}</span>`
+                    + `<span style="font-size:0.72rem; color:#94a3b8; flex-shrink:0;">${dt}</span>`
+                    + profilePill;
+                div.addEventListener('mouseover', hoverOn);
+                div.addEventListener('mouseout',  hoverOff);
+                div.addEventListener('click', async () => {
+                    document.getElementById('arch-history-btn-label').textContent = `📄 ${a.name}`;
+                    this._closeArchDropdown();
+                    await this._loadArchFromReports(a.name);
+                });
+                return div;
+            };
+
+            list.innerHTML = '';
+
+            // Recent section header
+            if (recent.length) {
+                const hdr = document.createElement('div');
+                hdr.style.cssText = 'padding:0.3rem 0.9rem 0.2rem; font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b;';
+                hdr.textContent = 'Recent';
+                list.appendChild(hdr);
+                recent.forEach(a => list.appendChild(makeItem(a, false)));
             }
+
+            // Older section — collapsible, items revealed on scroll
+            if (older.length) {
+                const sep = document.createElement('div');
+                sep.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.45rem 0.9rem; cursor:pointer; border-top:1px solid #4da6ff22; margin-top:0.25rem; font-size:0.72rem; font-weight:700; color:#64748b; user-select:none;';
+                sep.innerHTML = '<span id="older-chevron" style="font-size:0.6rem;">▶</span> Past analyses';
+
+                const olderGroup = document.createElement('div');
+                olderGroup.style.display = 'none';
+                older.forEach(a => olderGroup.appendChild(makeItem(a, true)));
+
+                sep.addEventListener('click', () => {
+                    const open = olderGroup.style.display !== 'none';
+                    olderGroup.style.display = open ? 'none' : 'block';
+                    sep.querySelector('#older-chevron').textContent = open ? '▶' : '▼';
+                    if (!open) this._initArchPanelScroll();
+                });
+
+                list.appendChild(sep);
+                list.appendChild(olderGroup);
+            }
+
+            if (!recent.length && !older.length) return;
             wrap.style.display = 'block';
 
-            sel.addEventListener('change', async () => {
-                const name = sel.value;
-                if (!name) return;
-                await this._loadArchFromReports(name);
-                sel.value = name; // keep selection visible
-            });
+            // Close on outside click
+            document.addEventListener('click', e => {
+                const wrap2 = document.getElementById('arch-history-wrap');
+                if (wrap2 && !wrap2.contains(e.target)) this._closeArchDropdown();
+            }, { capture: true, once: false });
+
         } catch (e) {
             // Non-critical — silently ignore
         }
