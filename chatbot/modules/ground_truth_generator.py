@@ -1084,6 +1084,7 @@ def generate_ground_truth(
     llm_model: Optional[str] = None,
     ssp_profile: str = "low_risk_cloud",
     enable_ssp: bool = True,
+    architecture_name: Optional[str] = None,
 ) -> Dict:
     """
     Generate ground truth labels from architecture diagram.
@@ -1296,7 +1297,7 @@ def generate_ground_truth(
 
     # Build initial ground truth
     ground_truth = {
-        "architecture": Path(mmd_file_path).name,
+        "architecture": architecture_name or Path(mmd_file_path).name,
         "description": f"{arch_type.replace('_', ' ').title()} architecture",
         "controls_present": controls_present,
         "controls_missing": controls_missing_names,

@@ -23,13 +23,25 @@
                     <div id="arch-history-list" style="max-height:360px; overflow-y:auto; padding:0.4rem 0;"></div>
                 </div>
             </div>
-            <!-- SSP profile indicator — shown after analysis -->
-            <div id="ssp-profile-badge" style="display:none; margin-left:0.75rem; padding:0.25rem 0.65rem; background:#0891b20e; border:1px solid #0891b244; border-radius:6px; font-size:0.75rem; color:#06b6d4; white-space:nowrap;">
-                <span style="font-size:0.65rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); margin-right:0.3rem;">SSP</span><span id="ssp-profile-badge-label" style="font-weight:700;"></span>
-            </div>
         </div>
         <div class="header-right">
-            <div class="pattern-badges" id="pattern-badges">
+            <!-- Analysis status bar — hidden until analysis completes -->
+            <div id="analysis-status-bar" style="display:none; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <!-- Architecture name -->
+                <span id="status-arch-name" style="font-size:0.75rem; font-weight:700; color:var(--text-color); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title=""></span>
+                <!-- SSP profile pill -->
+                <div id="ssp-profile-badge" style="padding:0.15rem 0.55rem; background:#0891b20e; border:1px solid #0891b244; border-radius:6px; font-size:0.72rem; color:#06b6d4; white-space:nowrap;">
+                    <span style="font-size:0.63rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); margin-right:0.25rem;">SSP</span><span id="ssp-profile-badge-label" style="font-weight:700;"></span>
+                </div>
+                <!-- Confidence pill -->
+                <div id="status-confidence" style="display:none; padding:0.15rem 0.55rem; background:var(--secondary-color)12; border:1px solid var(--secondary-color)44; border-radius:6px; font-size:0.72rem; color:var(--secondary-color); white-space:nowrap; font-weight:700;"></div>
+                <!-- MoE pill -->
+                <div id="status-moe" style="display:none; padding:0.15rem 0.55rem; background:var(--primary-color)12; border:1px solid var(--primary-color)44; border-radius:6px; font-size:0.72rem; color:var(--primary-color); white-space:nowrap; font-weight:700;"></div>
+                <!-- Pattern badges (RAPIDS / AI-ML) -->
+                <div id="pattern-badges" style="display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;"></div>
+            </div>
+            <!-- Pre-analysis placeholder -->
+            <div id="pattern-badges-placeholder" style="display:flex;">
                 <span class="badge badge-disabled">No analysis yet</span>
             </div>
             <button id="settings-btn" class="btn-icon" title="Settings (API Key)">

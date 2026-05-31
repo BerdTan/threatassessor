@@ -128,7 +128,9 @@ class ThreatAnalysisService(BaseService):
 
             if architecture_path:
                 analyst_context["architecture_path"] = architecture_path
-                arch_name = Path(architecture_path).stem
+                arch_name = kwargs.get("architecture_name") or Path(architecture_path).stem
+                if arch_name:
+                    analyst_context["architecture_name"] = arch_name
             elif architecture_content:
                 analyst_context["architecture_content"] = architecture_content
                 arch_name = kwargs.get("architecture_name", "unknown")

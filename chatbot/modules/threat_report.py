@@ -1513,7 +1513,7 @@ def generate_report_package(
 
     Returns dict with paths to all generated files.
     """
-    arch_name = Path(original_mmd_path).stem
+    arch_name = Path(ground_truth.get("architecture", original_mmd_path)).stem
     report_base = Path(output_dir) / arch_name
     report_base.mkdir(parents=True, exist_ok=True)
 

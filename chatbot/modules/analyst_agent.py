@@ -174,11 +174,11 @@ class AnalystAgent(BaseAgent):
         Returns:
             Architecture name (filename without extension or custom name)
         """
-        if "architecture_path" in context:
+        if "architecture_name" in context:
+            return context["architecture_name"]
+        elif "architecture_path" in context:
             from pathlib import Path
             return Path(context["architecture_path"]).stem
-        elif "architecture_name" in context:
-            return context["architecture_name"]
         else:
             return "unknown_architecture"
 

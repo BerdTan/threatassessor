@@ -50,3 +50,6 @@ test_results_*.json
 !report_samples/
 scripts/personal/
 baseline_refactoring/
+
+# Blog draft (publish externally, not in repo)
+docs/blog_draft.md

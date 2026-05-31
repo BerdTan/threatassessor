@@ -10,7 +10,7 @@ import tempfile
 import asyncio
 import concurrent.futures
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status, Query
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator
 
@@ -314,9 +314,9 @@ async def analyze_architecture_stream(
         ...,
         description="Mermaid diagram file (.mmd format, max 10MB)"
     ),
-    include_validation: bool = True,
-    ssp_profile: str = "low_risk_cloud",
-    enable_ssp: bool = True,
+    include_validation: bool = Form(True),
+    ssp_profile: str = Form("low_risk_cloud"),
+    enable_ssp: bool = Form(True),
     api_key: str = Depends(verify_api_key)
 ):
     """

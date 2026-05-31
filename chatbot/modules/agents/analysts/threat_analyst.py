@@ -155,6 +155,7 @@ class ThreatAnalyst(AnalystAgent):
                 architecture_path,
                 ssp_profile=ssp_profile,
                 enable_ssp=enable_ssp,
+                architecture_name=architecture_name,
             )
         except Exception as e:
             logger.error(f"{self.role}: Ground truth generation failed: {e}")

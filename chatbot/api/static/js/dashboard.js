@@ -497,6 +497,9 @@ class Dashboard {
         // Enable content tabs now that analysis data is available
         this._setContentTabsDisabled(false);
 
+        // Show analysis status bar
+        this._updateAnalysisStatusBar();
+
         // Refresh history dropdown so new analysis appears at the top
         this._loadArchHistory();
 
@@ -532,11 +535,15 @@ class Dashboard {
         const dropZoneLabel = document.getElementById('drop-zone-label');
         if (dropZoneLabel) dropZoneLabel.textContent = 'Drag & drop .mmd file here or click to browse';
 
-        // Reset pattern badges
+        // Reset analysis status bar
+        const statusBar = document.getElementById('analysis-status-bar');
+        if (statusBar) statusBar.style.display = 'none';
+        const statusPlaceholder = document.getElementById('pattern-badges-placeholder');
+        if (statusPlaceholder) statusPlaceholder.style.display = 'flex';
         const patternBadges = document.getElementById('pattern-badges');
-        if (patternBadges) {
-            patternBadges.innerHTML = '<span class="badge badge-disabled">No analysis yet</span>';
-        }
+        if (patternBadges) patternBadges.innerHTML = '';
+        const moeEl = document.getElementById('status-moe');
+        if (moeEl) moeEl.style.display = 'none';
 
         // Hide Expert Review tab until MoE data confirmed
         const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
@@ -1944,12 +1951,15 @@ class Dashboard {
                                 </div>
                             ` : ''}
                         </div>
-                        <div style="text-align: right;">
-                            <div style="font-size: 1.25rem; font-weight: 700; color: ${priorityColor};">
-                                ${control.score ? control.score.toFixed(1) : 'N/A'}
+                        <div style="text-align: right; min-width: 72px;">
+                            <div style="font-size: 1.1rem; font-weight: 700; color: ${priorityColor}; white-space:nowrap;">
+                                ${control.score ? control.score.toFixed(1) : 'N/A'}<span style="font-size:0.7rem; font-weight:400; color:var(--text-tertiary);"> / 100</span>
                             </div>
-                            <div style="font-size: 0.75rem; color: var(--text-secondary);">
-                                score
+                            <div style="margin: 3px 0; height: 4px; background: var(--border-color); border-radius: 2px; overflow:hidden;">
+                                <div style="height:100%; width:${Math.min(100, (control.score || 0))}%; background:${priorityColor}; border-radius:2px;"></div>
+                            </div>
+                            <div style="font-size: 0.68rem; color: var(--text-tertiary); white-space:nowrap;">
+                                ${(control.score || 0) >= 20 ? 'high impact' : (control.score || 0) >= 10 ? 'medium impact' : 'lower impact'}
                             </div>
                         </div>
                     </div>
@@ -2028,14 +2038,54 @@ class Dashboard {
         return chains[profile] || [];
     }
 
-    // Update the header SSP profile badge
+    // Update the header SSP profile badge (legacy — now driven by _updateAnalysisStatusBar)
     _updateSspBadge() {
-        const badge = document.getElementById('ssp-profile-badge');
         const label = document.getElementById('ssp-profile-badge-label');
-        if (!badge || !label) return;
+        if (!label) return;
         label.textContent = this._sspProfileLabel(this.sspProfile);
-        badge.style.display = 'inline-flex';
-        badge.style.alignItems = 'center';
+    }
+
+    // Populate the analysis status bar in header-right after analysis completes
+    _updateAnalysisStatusBar(moeConf) {
+        const bar = document.getElementById('analysis-status-bar');
+        const placeholder = document.getElementById('pattern-badges-placeholder');
+        if (!bar || !this.analysisData) return;
+
+        // Architecture name
+        const archName = this.analysisData.architecture_name || this.analysisData.architecture || '';
+        const nameEl = document.getElementById('status-arch-name');
+        if (nameEl) { nameEl.textContent = archName; nameEl.title = archName; }
+
+        // SSP pill
+        this._updateSspBadge();
+
+        // Foundation confidence pill
+        const confEl = document.getElementById('status-confidence');
+        if (confEl) {
+            const confPct = ((this.analysisData.confidence ?? 0.995) * 100).toFixed(1);
+            confEl.textContent = confPct + '% confidence';
+            confEl.style.display = 'inline-flex';
+        }
+
+        // MoE pill — updated when MoE completes; hidden until then
+        this._updateMoePill(moeConf);
+
+        // Show bar, hide placeholder
+        bar.style.display = 'flex';
+        if (placeholder) placeholder.style.display = 'none';
+    }
+
+    // Call after MoE completes to update the MoE status pill with final confidence + mode
+    _updateMoePill(moeData) {
+        const moeEl = document.getElementById('status-moe');
+        if (!moeEl) return;
+        if (!moeData) { moeEl.style.display = 'none'; return; }
+        const finalConf = typeof moeData === 'number' ? moeData.toFixed(1)
+            : (moeData.confidence?.final ?? 0).toFixed(1);
+        const mode = typeof moeData === 'number' ? '' : (moeData.critic_mode || '');
+        const modeLabel = mode === 'sequential' ? 'seq' : mode === 'parallel' ? 'par' : mode === 'partial_parallel' ? 'auto' : mode;
+        moeEl.textContent = '🧠 MoE ' + finalConf + '%' + (modeLabel ? ' · ' + modeLabel : '');
+        moeEl.style.display = 'inline-flex';
     }
 
     // Toggle the custom arch history dropdown panel
@@ -2046,7 +2096,13 @@ class Dashboard {
         const open = panel.style.display !== 'none';
         panel.style.display = open ? 'none' : 'block';
         if (chevron) chevron.textContent = open ? '▼' : '▲';
-        if (!open) this._initArchPanelScroll();
+        if (!open) {
+            // Refresh list from server every time the dropdown opens so deleted
+            // or newly added analyses are immediately reflected.
+            const list = document.getElementById('arch-history-list');
+            if (list) list.innerHTML = '<div style="padding:0.75rem 1rem; font-size:0.8rem; color:var(--text-tertiary);">Refreshing…</div>';
+            this._loadArchHistory().then(() => this._initArchPanelScroll());
+        }
     }
 
     // Close dropdown when clicking outside
@@ -2082,11 +2138,16 @@ class Dashboard {
             if (!resp.ok) return;
             const data = await resp.json();
             const archs = data.architectures || [];
-            if (!archs.length) return;
 
             const wrap = document.getElementById('arch-history-wrap');
             const list = document.getElementById('arch-history-list');
             if (!wrap || !list) return;
+
+            if (!archs.length) {
+                list.innerHTML = '<div style="padding:0.75rem 1rem; font-size:0.8rem; color:var(--text-tertiary); font-style:italic;">No analyses yet</div>';
+                wrap.style.display = 'none';
+                return;
+            }
 
             // "Recent" = current calendar week (Mon 00:00 to now)
             const now = new Date();
@@ -2179,7 +2240,6 @@ class Dashboard {
                 list.appendChild(olderGroup);
             }
 
-            if (!recent.length && !older.length) return;
             wrap.style.display = 'block';
 
             // Close on outside click
@@ -2202,7 +2262,6 @@ class Dashboard {
 
             // Derive sspProfile from metadata if available
             this.sspProfile = (gt.metadata || {}).ssp_profile || 'medium_risk_cloud';
-            this._updateSspBadge();
 
             // Wrap in the same shape the analysis SSE result produces
             this.analysisData = {
@@ -2224,6 +2283,11 @@ class Dashboard {
             const newAnalysisBtn = document.getElementById('new-analysis-btn');
             if (uploadBtn) uploadBtn.style.display = 'none';
             if (newAnalysisBtn) newAnalysisBtn.style.display = 'inline-block';
+
+            // Update status bar (fetch moe json for pill if it exists)
+            this._updateAnalysisStatusBar();
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/07_moe_orchestrator.json`)
+                .then(r => r.ok ? r.json() : null).then(m => { if (m) this._updateMoePill(m); }).catch(() => {});
 
             this.loadTabData(this.currentTab);
         } catch (e) {
@@ -2621,16 +2685,23 @@ class Dashboard {
                             : `https://attack.mitre.org/techniques/${tech}/`;
                         const techName = techniqueNames[tech] || tech;
                         const mits = sortedMits(techMitMappings[tech] || []);
+                        const mitBodyId = `mit-body-${tech.replace(/\./g, '_')}`;
                         return `
                         <div style="margin-bottom: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; background: var(--nav-hover-bg); border-left: 3px solid ${techColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; background: var(--nav-hover-bg); border-left: 3px solid ${techColor}; cursor:pointer; user-select:none;"
+                                 onclick="(function(h){var b=document.getElementById('${mitBodyId}');var c=h.querySelector('.tech-chevron');if(!b)return;var open=b.style.display!=='none';b.style.display=open?'none':'block';c.textContent=open?'›':'⌄';})(this)">
                                 <div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.25rem;">
                                     <code style="font-weight: 700; color: ${techColor}; font-size: 0.875rem;">${tech}</code>
                                     ${techBadge}
                                     ${techName !== tech ? `<span style="margin-left: 0.25rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">· ${techName}</span>` : ''}
+                                    ${mits.length > 0 ? `<span style="font-size:0.7rem; color:var(--text-tertiary); margin-left:0.25rem;">${mits.length} mitigation${mits.length !== 1 ? 's' : ''}</span>` : ''}
                                 </div>
-                                <a href="${atlasUrl}" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">🔗</a>
+                                <div style="display:flex; align-items:center; gap:0.5rem; flex-shrink:0;">
+                                    <a href="${atlasUrl}" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none;" onclick="event.stopPropagation()">🔗</a>
+                                    <span class="tech-chevron" style="font-size:1rem; color:var(--text-tertiary); min-width:0.75rem; text-align:center;">›</span>
+                                </div>
                             </div>
+                            <div id="${mitBodyId}" style="display:none;">
                             ${mits.length > 0 ? `
                                 <div style="background: var(--card-bg); border-top: 1px solid var(--border-color);">
                                     <div style="padding: 0.375rem 0.75rem; font-size: 0.6875rem; color: var(--text-tertiary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border-color);">
@@ -2657,6 +2728,7 @@ class Dashboard {
                                     `}).join('')}
                                 </div>
                             ` : `<div style="padding:0.5rem 0.75rem; background:var(--card-bg); border-top:1px solid var(--border-color); font-size:0.75rem; color:var(--text-tertiary); font-style:italic;">No mitigations mapped for this technique</div>`}
+                            </div>
                         </div>`;
                     }).join('')}
                 ` : '<p style="color: var(--text-tertiary); font-style: italic;">No techniques mapped</p>'}
@@ -4407,6 +4479,22 @@ class Dashboard {
         this.loadExpertReviewTab();
     }
 
+    async _rerunMoE(archName, mode) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        // Purge existing MoE critic + orchestrator files so the pipeline runs fresh
+        try {
+            await fetch(`/api/v1/expert-review/cancel?architecture_name=${encodeURIComponent(archName)}`, {
+                method: 'DELETE',
+                headers: { 'TM-API-KEY': apiKey }
+            });
+        } catch (_) {}
+        // Sync the main mode selector if it exists, then kick off the run
+        const mainSel = document.getElementById('erp-mode-select');
+        if (mainSel) mainSel.value = mode;
+        this._erpState = null;
+        this.runExpertReview(archName, mode);
+    }
+
     async loadExpertReviewTab() {
         const container = document.getElementById('expert-review-content');
         if (!this.analysisData) {
@@ -4824,7 +4912,22 @@ class Dashboard {
                     + '</div></div>'
                 : '';
 
+            const rerunRowHtml = '<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; padding:0.75rem 1rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px;">'
+                + '<span style="font-size:0.8125rem; color:var(--text-secondary); flex:1;">Ran with: <strong style="color:var(--text-color);">'
+                + runCriticMode.charAt(0).toUpperCase() + runCriticMode.slice(1)
+                + '</strong> mode</span>'
+                + '<label for="erp-rerun-mode-select" style="font-size:0.8125rem; font-weight:600; white-space:nowrap; color:var(--text-secondary);">Re-run as:</label>'
+                + '<select id="erp-rerun-mode-select" style="font-size:0.8125rem; padding:0.2rem 0.4rem; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg,var(--card-bg)); color:var(--text-color); cursor:pointer;">'
+                + '<option value="sequential"' + (runCriticMode === 'sequential' ? ' selected' : '') + '>Sequential</option>'
+                + '<option value="auto"' + (runCriticMode === 'auto' ? ' selected' : '') + '>Auto</option>'
+                + '<option value="parallel"' + (runCriticMode === 'parallel' || runCriticMode === 'partial_parallel' ? ' selected' : '') + '>Parallel</option>'
+                + '</select>'
+                + '<button onclick="(function(){var sel=document.getElementById(\'erp-rerun-mode-select\');var mode=sel?sel.value:\'sequential\';window.dashboard._rerunMoE(\'' + archName + '\',mode);})();"'
+                + ' style="font-size:0.8125rem; padding:0.25rem 0.875rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; white-space:nowrap;">▶ Re-run MoE</button>'
+                + '</div>';
+
             container.innerHTML = ''
+                + rerunRowHtml
                 + parallelWarningBanner
                 + '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">'
                 + '<h3 style="margin: 0 0 1rem; color: var(--text-color); font-size: 1rem;">Confidence Progression</h3>'
@@ -4947,12 +5050,12 @@ class Dashboard {
         el.innerHTML = hints[mode] || '';
     }
 
-    runExpertReview(archName) {
+    runExpertReview(archName, forcedMode) {
         if (!archName) return;
 
-        // Read the mode selector (only present when idle)
+        // Accept forcedMode (from _rerunMoE), otherwise read the idle-state selector
         const modeEl = document.getElementById('erp-mode-select');
-        const criticMode = modeEl ? modeEl.value : 'sequential';
+        const criticMode = forcedMode || (modeEl ? modeEl.value : 'sequential');
 
         // Initialise persistent run state — survives tab switches
         // status: 'running' | 'paused'
@@ -5194,7 +5297,15 @@ class Dashboard {
                             } else if (evtType === 'complete') {
                                 this._clearErpTimers();
                                 this._erpState = null;
-                                setTimeout(() => this.loadExpertReviewTab(), 600);
+                                // Update header MoE pill with final confidence from the complete event
+                                if (data && data.moe_result) this._updateMoePill(data.moe_result);
+                                setTimeout(() => {
+                                    this.loadExpertReviewTab();
+                                    // Fetch moe json to update pill if not in complete payload
+                                    const an = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+                                    if (an) fetch(`/api/v1/reports/${encodeURIComponent(an)}/files/07_moe_orchestrator.json`)
+                                        .then(r => r.ok ? r.json() : null).then(m => { if (m) this._updateMoePill(m); }).catch(() => {});
+                                }, 600);
                                 setTimeout(() => this.loadOverviewTab(), 1200);
                             } else if (evtType === 'error') {
                                 const an = this._erpState && this._erpState.archName;
