@@ -53,3 +53,6 @@ baseline_refactoring/
 
 # Blog draft (publish externally, not in repo)
 docs/blog_draft.md
+
+# Private decision log (personal reference, not for public repo)
+docs/DECISIONS.md
