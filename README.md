@@ -112,6 +112,16 @@ Makefile          Developer entry point (make help for all targets)
 openapi.yaml      OpenAPI 3.0 spec
 ```
 
+## Read more
+
+Curious how the whole pipeline fits together — RAPIDS, MoE critics, SSP enrichment, and the design decisions behind them? The full walkthrough is on Medium:
+
+> **[From Diagram to Threat Model Report in Minutes: Building an AI-Assisted Threat Model Assessor](https://medium.com/@breadtan/from-diagram-to-threat-model-report-in-minutes-building-an-ai-assisted-threat-model-assessor-b730d9f91459)**
+>
+> Covers: MITRE ATT&CK + ATLAS + ARC Framework + Singapore SSP — four authoritative sources, one architecture diagram, under two minutes.
+
+---
+
 ## Links
 
 - **Dashboard** — http://localhost:8000/dashboard
