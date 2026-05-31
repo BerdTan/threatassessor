@@ -4,6 +4,35 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-05-31 — Report naming root cause fix, SSP Form binding, dashboard header + UX pass
+
+**What was decided:**
+Six related fixes and improvements in one session:
+
+1. **Report folder naming — 4-layer chain fix** — The temp path was leaking through the entire stack. Root cause was `analyst_agent._extract_architecture_name()` preferring `architecture_path` stem over the `architecture_name` kwarg. Fixed by: (a) reversing priority in `analyst_agent.py`, (b) adding `architecture_name` param to `generate_ground_truth()` and storing it in `ground_truth["architecture"]`, (c) passing it through in `threat_analyst.execute()`, (d) deriving the report folder from `ground_truth["architecture"]` in `threat_report.generate_report_package()` rather than from `original_mmd_path` stem.
+
+2. **SSP profile always defaulting to `low_risk_cloud`** — `ssp_profile`, `enable_ssp`, and `include_validation` were declared as plain `str`/`bool` params on `POST /analyze-stream`. FastAPI treats those as query parameters on a POST route, ignoring the multipart form body. Fixed by importing `Form` and declaring them as `Form(...)` fields.
+
+3. **Dynamic analysis status bar in header** — Replaced the static "MITRE ATT&CK" pattern-badges pill and the buried SSP badge (hidden below the history dropdown) with a compact status bar in `header-right`. After analysis: shows arch name, SSP profile pill, foundation confidence pill, and a MoE pill (`🧠 MoE 70.3% · seq`) that appears once Expert Review completes. Populates on fresh analysis and history reload; resets on new analysis.
+
+4. **History dropdown live refresh** — Dropdown now calls `_loadArchHistory()` on every open rather than relying on a cached list. Shows "No analyses yet" and hides the button when all reports have been deleted. Previously left stale "Refreshing…" text on empty state.
+
+5. **Mitigations score card** — Score now displayed as `N / 100` with a 4px mini progress bar and a plain-English label (`high impact` ≥20, `medium impact` ≥10, `lower impact` <10). Previously showed a bare number with label "score" that was opaque to non-security users.
+
+6. **Technique rows collapsed by default in control detail** — Each technique row in the control detail right-pane now defaults to collapsed. Click the header to expand the mitigations list. Chevron (`›`/`⌄`) and inline mitigation count give affordance. Prevents the pane from being overwhelmed when a control maps to many techniques with long mitigation lists.
+
+7. **MoE re-run from completed results** — A re-run row (mode selector + `▶ Re-run MoE` button) is now rendered at the top of the completed Expert Review view. Calls `_rerunMoE(archName, mode)` which purges the existing critic files via the cancel endpoint then calls `runExpertReview()` with the selected mode. Previously the only way to re-run MoE with a different mode was to restart the full analysis.
+
+**Reasoning:**
+The naming bug meant every upload via the API created a `tmp*` folder regardless of the DECISIONS.md entry from 2026-05-30 which fixed it at the route level — the fix only reached `streaming.py` but not the service/analyst/generator/report chain. The SSP form bug meant compliance data was silently wrong in all prior runs. The header changes address consistent user feedback that the SSP selection was not visible after analysis and the MITRE pill was static noise. Collapse-by-default on techniques follows the principle that detail should be accessible but not overwhelming on first view.
+
+**Alternatives rejected:**
+- Timestamp-based unique IDs for report folders: Addressed in 2026-05-30 entry — unreadable in dropdown.
+- Single confidence number without breakdown: The `confidence_breakdown` object already exists; surfacing it in the header gives users a quick signal without opening a tab.
+- MoE re-run as a separate page/modal: Inline row in the results view is the minimal surface — same pattern as the history item re-run button.
+
+---
+
 ## 2026-05-30 — Dashboard UX: meaningful filenames, duplicate dedup, history icons, action buttons
 
 **What was decided:**
