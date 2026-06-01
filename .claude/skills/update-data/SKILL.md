@@ -46,6 +46,54 @@ bash .claude/skills/update-data/scripts/update-arc.sh
 
 Fetches 5 YAML files (capabilities, components, controls, design, risks) from `govtech-responsibleai/agentic-risk-capability-framework/arc-risk-register` into `chatbot/data/arc/`. Validates YAML parse. Note: ARC is a living standard — review release notes before replacing `controls.yaml` as local customisations may exist.
 
+## 5 — CAVEAT (Cloud Adversarial, Vulnerability, Exploitation, and Threat)
+
+```bash
+cd /mnt/c/BACKUP/DEV-TEST
+python3 scripts/data/fetch_caveat.py
+```
+
+Fetches `CAVEaT-all-entries.md` from `CloudSecurityAlliance-WG/CAVEaT` GitHub (CC0-1.0),
+parses 60+ cloud attack techniques with CSP-specific mitigations/detection (AWS/Azure/GCP),
+and writes `chatbot/data/caveat/caveat_techniques.yaml` (git-ignored, backed up before replace).
+
+Verify output:
+```bash
+python3 -c "
+import yaml
+d = yaml.safe_load(open('chatbot/data/caveat/caveat_techniques.yaml'))
+print(f\"{d['count']} CAVEAT techniques loaded\")
+print('First:', d['techniques'][0]['title'])
+"
+```
+
+Note: `chatbot/data/caveat/caveat_mitre_mapping.yaml` is hand-authored and committed to git.
+Do NOT overwrite it with the fetch script.
+
+## 6 — CCM (CSA Cloud Controls Matrix → ATT&CK Mapping)
+
+```bash
+cd /mnt/c/BACKUP/DEV-TEST
+python3 scripts/data/fetch_ccm.py
+```
+
+Fetches the CTID Mappings Explorer CSA CCM v4.1 → ATT&CK Enterprise YAML (Apache 2.0),
+indexes 792 `mitigates` entries into two output files in `chatbot/data/ccm/` (git-ignored):
+- `ccm_by_technique.yaml` — T#### → [{ccm_id, description, group, comments}]
+- `ccm_by_control.yaml`   — ccm_id → {description, group, techniques}
+
+Verify output:
+```bash
+python3 -c "
+import yaml
+d = yaml.safe_load(open('chatbot/data/ccm/ccm_by_technique.yaml'))
+print(f\"{d['technique_count']} techniques mapped\")
+import yaml
+d2 = yaml.safe_load(open('chatbot/data/ccm/ccm_by_control.yaml'))
+print(f\"{d2['control_count']} CCM controls indexed\")
+"
+```
+
 ## After Full Refresh
 
 ```
@@ -53,4 +101,6 @@ MITRE updated  → run /build-embeddings-cache (regenerates 45 MB embeddings, ~3
 ATLAS updated  → atlas_cache.pkl deleted; cache auto-rebuilds on next API start
 SSP updated    → no further action needed
 ARC updated    → review new RISK-* entries for relevance to ai_pattern.py
+CAVEAT updated → no further action; CloudPattern loads from YAML at startup
+CCM updated    → no further action; CcmHelper loads from YAML at startup
 ```

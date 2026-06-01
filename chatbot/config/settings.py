@@ -173,8 +173,8 @@ class SystemSettings(BaseModel):
 
 class PatternsSettings(BaseModel):
     enabled_patterns: List[str] = Field(
-        default=["ai_ml_arc"],
-        description="Pattern IDs to register and run during analysis. Only 'ai_ml_arc' is currently active."
+        default=["ai_ml_arc", "cloud"],
+        description="Pattern IDs to register and run during analysis. Active: ai_ml_arc, cloud."
     )
 
     @model_validator(mode="after")
@@ -183,6 +183,142 @@ class PatternsSettings(BaseModel):
         unknown = [p for p in self.enabled_patterns if p not in AVAILABLE_PATTERNS]
         if unknown:
             raise ValueError(f"Unknown pattern ID(s): {unknown}. Valid: {list(AVAILABLE_PATTERNS)}")
+        return self
+
+
+class AIPatternSettings(BaseModel):
+    """
+    Control recommendation thresholds for the AIPattern (ARC Framework + MITRE ATLAS).
+
+    These thresholds govern when a risk score is high enough to recommend a control
+    as 'priority' vs 'medium'. The per-component base risks live in
+    chatbot/data/arc/risks.yaml and are not exposed here — change the YAML for
+    fine-grained per-component tuning.
+
+    Raise thresholds to reduce noise (fewer priority flags) in low-sensitivity
+    environments. Lower them for high-sensitivity or regulated AI deployments.
+    """
+
+    # ── Category entry threshold (applies to all ARC categories) ─────────────
+    category_entry_threshold: int = Field(default=50, ge=0, le=100,
+        description="Minimum risk score for a category to produce any control recommendation. "
+                    "Categories scoring below this are silently skipped.")
+
+    # ── Per-category priority thresholds ─────────────────────────────────────
+    priority_threshold_integrity: int = Field(default=80, ge=0, le=100,
+        description="Integrity risk score at or above which input_validation and prompt_filtering "
+                    "are recommended as priority controls.")
+    priority_threshold_safety: int = Field(default=85, ge=0, le=100,
+        description="Safety risk score at or above which content_moderation and sandbox "
+                    "are recommended as priority controls.")
+    priority_threshold_security: int = Field(default=85, ge=0, le=100,
+        description="Security risk score at or above which api_key_rotation and secrets_management "
+                    "are recommended as priority controls.")
+    priority_threshold_privacy: int = Field(default=80, ge=0, le=100,
+        description="Privacy risk score at or above which pii_detection and data_loss_prevention "
+                    "are recommended as priority controls.")
+    floor_threshold_transparency: int = Field(default=60, ge=0, le=100,
+        description="Transparency risk score at or above which logging and audit_trails are recommended.")
+    floor_threshold_accountability: int = Field(default=70, ge=0, le=100,
+        description="Accountability risk score at or above which human_oversight and incident_response "
+                    "are recommended.")
+    floor_threshold_resilience: int = Field(default=60, ge=0, le=100,
+        description="Resilience risk score at or above which monitoring and robustness_testing "
+                    "are recommended.")
+
+
+class CloudPatternSettings(BaseModel):
+    """
+    Risk scoring parameters for the CloudPattern (CAVEAT + CCM).
+
+    Base risks are the starting score (0-100) per threat category before any
+    control reductions are applied. Control reduction values are subtracted when
+    the named control is present. Floor values set the minimum risk when the
+    listed controls are ALL absent.
+
+    Adjust base risks upward for high-sensitivity environments (e.g. CII) or
+    downward for environments with strong compensating controls already in place.
+    """
+
+    # ── Base risks per category ───────────────────────────────────────────
+    base_risk_iam_abuse: int = Field(default=80, ge=0, le=100,
+        description="Starting risk score for IAM abuse (privilege escalation, credential theft)")
+    base_risk_data_exposure: int = Field(default=75, ge=0, le=100,
+        description="Starting risk score for data exposure (storage misconfiguration, object ACL)")
+    base_risk_api_abuse: int = Field(default=70, ge=0, le=100,
+        description="Starting risk score for API abuse (gateway abuse, metadata SSRF, session theft)")
+    base_risk_compute_abuse: int = Field(default=65, ge=0, le=100,
+        description="Starting risk score for compute abuse (serverless, container escape, cryptomining)")
+    base_risk_network_lateral: int = Field(default=60, ge=0, le=100,
+        description="Starting risk score for lateral movement (VPC peering, cross-account trust)")
+    base_risk_supply_chain: int = Field(default=65, ge=0, le=100,
+        description="Starting risk score for supply chain (image poisoning, pipeline compromise)")
+    base_risk_logging_gaps: int = Field(default=60, ge=0, le=100,
+        description="Starting risk score for logging gaps (audit log tampering, CloudTrail disable)")
+
+    # ── Control reduction amounts ─────────────────────────────────────────
+    reduce_mfa: int = Field(default=20, ge=0, le=50,
+        description="Risk reduction for iam_abuse when MFA is present")
+    reduce_least_privilege: int = Field(default=15, ge=0, le=50,
+        description="Risk reduction for iam_abuse when least_privilege is present")
+    reduce_privileged_access_management: int = Field(default=15, ge=0, le=50,
+        description="Risk reduction for iam_abuse when PAM is present")
+    reduce_iam_audit: int = Field(default=10, ge=0, le=50,
+        description="Risk reduction for iam_abuse when iam_audit is present")
+    reduce_encryption: int = Field(default=15, ge=0, le=50,
+        description="Risk reduction for data_exposure when encryption is present")
+    reduce_bucket_policy: int = Field(default=20, ge=0, le=50,
+        description="Risk reduction for data_exposure when bucket_policy is present")
+    reduce_dlp: int = Field(default=10, ge=0, le=50,
+        description="Risk reduction for data_exposure when DLP is present")
+    reduce_waf: int = Field(default=15, ge=0, le=50,
+        description="Risk reduction for api_abuse when WAF is present")
+    reduce_api_gateway_auth: int = Field(default=20, ge=0, le=50,
+        description="Risk reduction for api_abuse when api_gateway_auth is present")
+    reduce_network_segmentation: int = Field(default=20, ge=0, le=50,
+        description="Risk reduction for network_lateral when network_segmentation is present")
+    reduce_cloudtrail: int = Field(default=20, ge=0, le=50,
+        description="Risk reduction for logging_gaps when CloudTrail is present")
+    reduce_siem: int = Field(default=10, ge=0, le=50,
+        description="Risk reduction for logging_gaps when SIEM is present")
+
+    # ── Missing-control risk floors ───────────────────────────────────────
+    floor_iam_no_mfa_pam: int = Field(default=75, ge=0, le=100,
+        description="Minimum iam_abuse risk when both MFA and PAM are absent")
+    floor_data_no_encryption_policy: int = Field(default=70, ge=0, le=100,
+        description="Minimum data_exposure risk when both encryption and bucket_policy are absent")
+    floor_logging_no_trail_siem: int = Field(default=60, ge=0, le=100,
+        description="Minimum logging_gaps risk when both CloudTrail and SIEM are absent")
+
+    # ── Control recommendation thresholds ────────────────────────────────
+    priority_threshold_iam: int = Field(default=75, ge=0, le=100,
+        description="IAM risk score at or above which MFA/PAM controls are recommended as priority")
+    priority_threshold_data: int = Field(default=70, ge=0, le=100,
+        description="Data exposure risk score at or above which encryption/policy are priority")
+    priority_threshold_api: int = Field(default=65, ge=0, le=100,
+        description="API abuse risk score at or above which auth/WAF controls are priority")
+    priority_threshold_compute: int = Field(default=60, ge=0, le=100,
+        description="Compute abuse risk score at or above which scanning/runtime controls are priority")
+    priority_threshold_network: int = Field(default=60, ge=0, le=100,
+        description="Network lateral risk score at or above which segmentation is recommended")
+    priority_threshold_logging: int = Field(default=55, ge=0, le=100,
+        description="Logging gaps risk score at or above which CloudTrail is recommended")
+
+    @model_validator(mode="after")
+    def check_floors_vs_bases(self) -> "CloudPatternSettings":
+        pairs = [
+            ("floor_iam_no_mfa_pam", "base_risk_iam_abuse"),
+            ("floor_data_no_encryption_policy", "base_risk_data_exposure"),
+            ("floor_logging_no_trail_siem", "base_risk_logging_gaps"),
+        ]
+        for floor_field, base_field in pairs:
+            floor_val = getattr(self, floor_field)
+            base_val = getattr(self, base_field)
+            if floor_val > base_val:
+                raise ValueError(
+                    f"{floor_field} ({floor_val}) must not exceed {base_field} ({base_val}) — "
+                    "a floor above the base would always dominate, making the base meaningless"
+                )
         return self
 
 
@@ -195,6 +331,8 @@ class AppSettings(BaseModel):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     system: SystemSettings = Field(default_factory=SystemSettings)
     patterns: PatternsSettings = Field(default_factory=PatternsSettings)
+    ai_pattern: AIPatternSettings = Field(default_factory=AIPatternSettings)
+    cloud_pattern: CloudPatternSettings = Field(default_factory=CloudPatternSettings)
 
 
 # ---------------------------------------------------------------------------
@@ -256,14 +394,17 @@ def update_settings(partial: dict) -> AppSettings:
     """Merge a partial dict into current settings, validate, persist, and reload singleton."""
     current = get_settings().model_dump()
     patterns_changed = "patterns" in partial
+    cloud_pattern_changed = "cloud_pattern" in partial
+    ai_pattern_changed = "ai_pattern" in partial
     for section, values in partial.items():
         if section in current and isinstance(values, dict):
             current[section].update(values)
     new_settings = AppSettings.model_validate(current)
     save_settings(new_settings)
-    # Invalidate the pattern registry singleton when pattern settings change
-    # so create_default_registry() picks up the new enabled_patterns list.
-    if patterns_changed:
+    # Invalidate the pattern registry singleton when pattern list or cloud scoring
+    # parameters change — forces CloudPattern to re-read its scoring tables from
+    # the new settings on next instantiation.
+    if patterns_changed or cloud_pattern_changed or ai_pattern_changed:
         try:
             from chatbot.modules.pattern_registry import reset_pattern_registry
             reset_pattern_registry()

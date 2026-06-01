@@ -22,16 +22,22 @@ AVAILABLE_PATTERNS: dict = {
         "default_enabled": True,
     },
     "cloud": {
-        "name": "Cloud Infrastructure",
-        "status": "planned",
-        "arch_types": ["cloud", "web_app"],
-        "requires": [],
+        "name": "Cloud Infrastructure (CAVEAT + CCM)",
+        "status": "active",
+        "arch_types": ["cloud", "cloud_native", "web_app", "hybrid_cloud"],
+        "requires": [
+            "CAVEAT data (chatbot/data/caveat/) — python3 scripts/data/fetch_caveat.py",
+            "CCM mapping (chatbot/data/ccm/) — python3 scripts/data/fetch_ccm.py",
+        ],
         "description": (
-            "Detects cloud-specific misconfigurations: IAM privilege escalation, "
-            "S3/blob exposure, API gateway abuse, serverless cold-start attacks, "
-            "and cross-account trust exploitation. Coming in a future release."
+            "Detects cloud-specific threats using the CSA CAVEAT framework: "
+            "IAM abuse, storage exposure, API/session hijacking, serverless/container "
+            "abuse, lateral movement, supply chain compromise, and audit log tampering. "
+            "Provides AWS/Azure/GCP-targeted mitigations, MITRE ATT&CK cloud sub-technique "
+            "mapping, and CSA CCM v4.1 compliance controls (CTID mapping) with SSRM layer "
+            "(shared/CSP/CSC) and SG SSP control cross-reference."
         ),
-        "default_enabled": False,
+        "default_enabled": True,
     },
     "ics": {
         "name": "ICS / OT / SCADA",

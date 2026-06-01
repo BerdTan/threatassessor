@@ -5679,7 +5679,7 @@ class Dashboard {
             container.innerHTML = this._renderAllConfigSections(this._configData);
             this._attachConfigListeners();
             // Restore previously-active filter (default 'quick')
-            this._filterConfig(this._cfgFilter || 'quick');
+            this._filterConfig(this._cfgFilter || 'patterns');
         } catch (err) {
             container.innerHTML = `<p class="placeholder" style="color:var(--danger-color);">Failed to load configuration: ${err.message}</p>`;
         }
@@ -5779,7 +5779,7 @@ class Dashboard {
             if (container) {
                 container.innerHTML = this._renderAllConfigSections(this._configData);
                 this._attachConfigListeners();
-                this._filterConfig(this._cfgFilter || 'quick');
+                this._filterConfig(this._cfgFilter || 'patterns');
             }
             this._showConfigStatus('success', 'All settings reset to defaults.');
         } catch (err) {
@@ -5810,6 +5810,19 @@ class Dashboard {
             'red_team_hard_threshold','red_team_medium_threshold','red_team_easy_threshold',
             'accept_threshold','monitor_threshold','max_tokens','max_file_size_mb',
             'path_risk_per_path','path_risk_cap',
+            // ai_pattern thresholds
+            'category_entry_threshold','priority_threshold_integrity','priority_threshold_safety',
+            'priority_threshold_security','priority_threshold_privacy',
+            'floor_threshold_transparency','floor_threshold_accountability','floor_threshold_resilience',
+            // cloud_pattern thresholds
+            'base_risk_iam_abuse','base_risk_data_exposure','base_risk_api_abuse',
+            'base_risk_compute_abuse','base_risk_network_lateral','base_risk_supply_chain','base_risk_logging_gaps',
+            'reduce_mfa','reduce_least_privilege','reduce_privileged_access_management','reduce_iam_audit',
+            'reduce_encryption','reduce_bucket_policy','reduce_dlp','reduce_waf','reduce_api_gateway_auth',
+            'reduce_network_segmentation','reduce_cloudtrail','reduce_siem',
+            'floor_iam_no_mfa_pam','floor_data_no_encryption_policy','floor_logging_no_trail_siem',
+            'priority_threshold_iam','priority_threshold_data','priority_threshold_api',
+            'priority_threshold_compute','priority_threshold_network','priority_threshold_logging',
         ]);
         const FLOAT_FIELDS = new Set([
             'weight_target','weight_length','weight_control','weight_entry',
@@ -6419,44 +6432,215 @@ class Dashboard {
 
         // Pattern toggles
         const catalog = data._patterns_catalog || {};
-        const patToggleRows = Object.entries(catalog).map(([pid, p]) => {
-            const isActive  = p.status === 'active';
-            const isEnabled = !!p.enabled;
-            const badgeHtml = isActive
-                ? `<span style="padding:1px 6px; border-radius:3px; font-size:0.68rem; font-weight:700; background:#0d9f6e18; border:1px solid #0d9f6e44; color:#0d9f6e;">Active</span>`
-                : `<span style="padding:1px 6px; border-radius:3px; font-size:0.68rem; font-weight:700; background:#64748b14; border:1px solid #64748b33; color:#64748b;">Coming soon</span>`;
-            const toggleHtml = isActive
-                ? `<label style="position:relative; display:inline-block; width:38px; height:20px; cursor:pointer; flex-shrink:0;" title="${isEnabled?'Enabled — click to disable':'Disabled — click to enable'}">
-                    <input type="checkbox" data-pattern-id="${pid}" ${isEnabled?'checked':''} style="opacity:0; width:0; height:0; position:absolute;"
-                        onchange="window.dashboard._togglePattern('${pid}', this.checked)">
-                    <span style="position:absolute; inset:0; border-radius:20px; background:${isEnabled?'#4da6ff':'#334155'}; transition:background 0.2s;"></span>
-                    <span style="position:absolute; top:2px; left:${isEnabled?'20':'2'}px; width:16px; height:16px; border-radius:50%; background:#fff; transition:left 0.2s;"></span>
-                   </label>`
-                : `<label style="position:relative; display:inline-block; width:38px; height:20px; opacity:0.4; cursor:not-allowed; flex-shrink:0;">
-                    <span style="position:absolute; inset:0; border-radius:20px; background:#334155;"></span>
-                    <span style="position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff;"></span>
-                   </label>`;
-            return `
-            <div style="display:flex; align-items:flex-start; gap:1rem; padding:0.75rem 1.1rem; border-bottom:1px solid var(--border-color);">
-                <div style="flex:1; min-width:0;">
-                    <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-                        <span style="font-weight:600; font-size:0.88rem;">${p.name}</span>
-                        ${badgeHtml}
+        const patToggleRows = (() => {
+            // Per-pattern inline config definitions.
+            // Fields are rendered using the same select/string vtype system as _renderConfigSection.
+            const patternConfigs = {
+                'ai_ml_arc': {
+                    settingsLabel: '⚙ AI/ML Scoring Thresholds',
+                    settingsId: 'pat-cfg-ai_ml_arc',
+                    fields: [
+                        { section:'ai_pattern', field:'category_entry_threshold', label:'Category Entry Threshold',
+                          vtype:'select', options:[
+                            {v:'30', label:'30 — Very sensitive (flag most categories)'},
+                            {v:'40', label:'40 — Sensitive'},
+                            {v:'50', label:'50 — Default (recommended)', rec:true},
+                            {v:'60', label:'60 — Conservative (fewer flags)'},
+                          ],
+                          desc:'Minimum ARC risk score for a category to produce any control recommendation. Categories below this score are skipped entirely.' },
+                        { section:'ai_pattern', field:'priority_threshold_integrity', label:'Priority Threshold — Integrity',
+                          vtype:'select', options:[
+                            {v:'70', label:'70 — Lower bar'},
+                            {v:'75', label:'75 — Moderate'},
+                            {v:'80', label:'80 — Default (recommended)', rec:true},
+                            {v:'90', label:'90 — Strict'},
+                          ],
+                          desc:'Integrity risk at or above which input_validation and prompt_filtering are flagged as priority.' },
+                        { section:'ai_pattern', field:'priority_threshold_safety', label:'Priority Threshold — Safety',
+                          vtype:'select', options:[
+                            {v:'75', label:'75 — Lower bar'},
+                            {v:'80', label:'80 — Moderate'},
+                            {v:'85', label:'85 — Default (recommended)', rec:true},
+                            {v:'90', label:'90 — Strict'},
+                          ],
+                          desc:'Safety risk at or above which content_moderation and sandbox are flagged as priority.' },
+                        { section:'ai_pattern', field:'priority_threshold_security', label:'Priority Threshold — Security',
+                          vtype:'select', options:[
+                            {v:'75', label:'75 — Lower bar'},
+                            {v:'80', label:'80 — Moderate'},
+                            {v:'85', label:'85 — Default (recommended)', rec:true},
+                            {v:'90', label:'90 — Strict'},
+                          ],
+                          desc:'Security risk at or above which api_key_rotation and secrets_management are flagged as priority.' },
+                        { section:'ai_pattern', field:'priority_threshold_privacy', label:'Priority Threshold — Privacy',
+                          vtype:'select', options:[
+                            {v:'70', label:'70 — Lower bar'},
+                            {v:'75', label:'75 — Moderate'},
+                            {v:'80', label:'80 — Default (recommended)', rec:true},
+                            {v:'90', label:'90 — Strict'},
+                          ],
+                          desc:'Privacy risk at or above which pii_detection and data_loss_prevention are flagged as priority.' },
+                        { section:'ai_pattern', field:'floor_threshold_transparency', label:'Floor — Transparency',
+                          vtype:'select', options:[
+                            {v:'50', label:'50 — Lower bar'},
+                            {v:'60', label:'60 — Default (recommended)', rec:true},
+                            {v:'70', label:'70 — Stricter'},
+                          ],
+                          desc:'Transparency risk at or above which logging and audit_trails are recommended.' },
+                        { section:'ai_pattern', field:'floor_threshold_accountability', label:'Floor — Accountability',
+                          vtype:'select', options:[
+                            {v:'60', label:'60 — Lower bar'},
+                            {v:'70', label:'70 — Default (recommended)', rec:true},
+                            {v:'80', label:'80 — Stricter'},
+                          ],
+                          desc:'Accountability risk at or above which human_oversight and incident_response are recommended.' },
+                    ]
+                },
+                'cloud': {
+                    settingsLabel: '⚙ Cloud Risk Thresholds',
+                    settingsId: 'pat-cfg-cloud',
+                    fields: [
+                        { section:'cloud_pattern', field:'base_risk_iam_abuse', label:'Base Risk — IAM Abuse',
+                          vtype:'select', options:[
+                            {v:'60', label:'60 — Low-sensitivity'},
+                            {v:'70', label:'70 — Moderate'},
+                            {v:'80', label:'80 — Default (recommended)', rec:true},
+                            {v:'90', label:'90 — High-sensitivity'},
+                          ],
+                          desc:'Starting risk score for IAM abuse (privilege escalation, credential theft). Applies to IAM, API gateway, and compute nodes — all cloud workloads have attached execution roles.' },
+                        { section:'cloud_pattern', field:'base_risk_data_exposure', label:'Base Risk — Data Exposure',
+                          vtype:'select', options:[
+                            {v:'55', label:'55 — Low-sensitivity'},
+                            {v:'65', label:'65 — Moderate'},
+                            {v:'75', label:'75 — Default (recommended)', rec:true},
+                            {v:'85', label:'85 — High-sensitivity'},
+                          ],
+                          desc:'Starting risk score for data exposure (storage misconfiguration, object ACL). Applies to S3, Blob, GCS, and database nodes.' },
+                        { section:'cloud_pattern', field:'base_risk_api_abuse', label:'Base Risk — API / CDN Abuse',
+                          vtype:'select', options:[
+                            {v:'50', label:'50 — Low'},
+                            {v:'60', label:'60 — Moderate'},
+                            {v:'70', label:'70 — Default (recommended)', rec:true},
+                            {v:'80', label:'80 — High-sensitivity'},
+                          ],
+                          desc:'Starting risk score for API/CDN abuse (metadata SSRF, session theft, WAF bypass). Applies to API gateways, CloudFront, Cloudflare, Akamai, load balancers, and web app nodes.' },
+                        { section:'cloud_pattern', field:'base_risk_compute_abuse', label:'Base Risk — Compute / GenAI Abuse',
+                          vtype:'select', options:[
+                            {v:'45', label:'45 — Low'},
+                            {v:'55', label:'55 — Moderate'},
+                            {v:'65', label:'65 — Default (recommended)', rec:true},
+                            {v:'75', label:'75 — High-sensitivity'},
+                          ],
+                          desc:'Starting risk score for compute abuse (serverless, container escape, cryptomining). Applies to EC2, Lambda, Kubernetes, and generic cloud application nodes.' },
+                        { section:'cloud_pattern', field:'base_risk_network_lateral', label:'Base Risk — Lateral Movement',
+                          vtype:'select', options:[
+                            {v:'40', label:'40 — Low'},
+                            {v:'50', label:'50 — Moderate'},
+                            {v:'60', label:'60 — Default (recommended)', rec:true},
+                            {v:'70', label:'70 — High-sensitivity'},
+                          ],
+                          desc:'Starting risk score for lateral movement (VPC peering, cross-account trust, boundary bridging).' },
+                        { section:'cloud_pattern', field:'base_risk_logging_gaps', label:'Base Risk — Logging Gaps',
+                          vtype:'select', options:[
+                            {v:'50', label:'50 — Low'},
+                            {v:'60', label:'60 — Default (recommended)', rec:true},
+                            {v:'70', label:'70 — High-sensitivity'},
+                          ],
+                          desc:'Starting risk score for logging gaps (audit log tampering, CloudTrail disable). Floor must not exceed this value.' },
+                        { section:'cloud_pattern', field:'floor_iam_no_mfa_pam', label:'Risk Floor — IAM (no MFA + no PAM)',
+                          vtype:'select', options:[
+                            {v:'60', label:'60 — Lenient'},
+                            {v:'70', label:'70 — Moderate'},
+                            {v:'75', label:'75 — Default (recommended)', rec:true},
+                            {v:'80', label:'80 — Strict'},
+                          ],
+                          desc:'Minimum IAM risk when both MFA and privileged access management are absent. Must not exceed Base Risk — IAM Abuse.' },
+                        { section:'cloud_pattern', field:'priority_threshold_iam', label:'Priority Threshold — IAM Controls',
+                          vtype:'select', options:[
+                            {v:'65', label:'65 — Lower bar'},
+                            {v:'70', label:'70 — Moderate'},
+                            {v:'75', label:'75 — Default (recommended)', rec:true},
+                            {v:'80', label:'80 — Higher bar'},
+                          ],
+                          desc:'IAM risk at or above which MFA, least-privilege, and PAM are recommended as priority controls.' },
+                    ]
+                }
+            };
+
+            const inpStyle = `width:100%; padding:0.38rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer; box-sizing:border-box; color-scheme:dark;`;
+
+            const mkPatRow = (f, sectionData) => {
+                const currentVal = sectionData[f.field] !== undefined ? String(sectionData[f.field]) : '';
+                let inputHtml = '';
+                if (f.vtype === 'select') {
+                    const opts = f.options.map(o => {
+                        const sel = (o.v === currentVal) ? 'selected' : '';
+                        const recBadge = o.rec ? ' <span style="color:#0d9f6e; font-size:0.72rem;">(recommended)</span>' : '';
+                        return `<option value="${o.v}" ${sel}>${o.label}${o.rec ? ' ★' : ''}</option>`;
+                    }).join('');
+                    inputHtml = `<select data-section="${f.section}" data-field="${f.field}" style="${inpStyle}" onchange="window.dashboard._onConfigFieldChange(this)">${opts}</select>`;
+                }
+                return `<div style="display:grid; grid-template-columns:minmax(160px,1fr) minmax(180px,240px) minmax(160px,2fr); gap:0.75rem; align-items:start; padding:0.5rem 1.1rem; border-bottom:1px solid var(--border-color)08;">
+                    <div style="font-weight:500; font-size:0.82rem; color:var(--text-color); padding-top:0.3rem;">${f.label}</div>
+                    <div>${inputHtml}</div>
+                    <div style="font-size:0.76rem; color:var(--text-secondary); line-height:1.5; padding-top:0.2rem;">${f.desc}</div>
+                </div>`;
+            };
+
+            return Object.entries(catalog).map(([pid, p]) => {
+                const isActive = p.status === 'active';
+                const badgeHtml = isActive
+                    ? `<span style="padding:1px 6px; border-radius:3px; font-size:0.68rem; font-weight:700; background:#0d9f6e18; border:1px solid #0d9f6e44; color:#0d9f6e;">✓ Active</span>`
+                    : `<span style="padding:1px 6px; border-radius:3px; font-size:0.68rem; font-weight:700; background:#64748b14; border:1px solid #64748b33; color:#64748b;">Coming soon</span>`;
+                const statusDot = isActive
+                    ? `<span style="display:inline-flex; align-items:center; gap:0.3rem; font-size:0.73rem; color:#0d9f6e;"><span style="width:7px;height:7px;border-radius:50%;background:#0d9f6e;flex-shrink:0;"></span>Auto-detected</span>`
+                    : `<span style="display:inline-flex; align-items:center; gap:0.3rem; font-size:0.73rem; color:#64748b;"><span style="width:7px;height:7px;border-radius:50%;background:#334155;border:1px solid #64748b;flex-shrink:0;"></span>Not yet available</span>`;
+
+                const patCfg = patternConfigs[pid];
+                let settingsHtml = '';
+                if (isActive && patCfg) {
+                    const sectionData = data[patCfg.fields[0].section] || {};
+                    // Build config rows using live data
+                    const cfgRows = patCfg.fields.map(f => {
+                        const sd = data[f.section] || {};
+                        return mkPatRow(f, sd);
+                    }).join('');
+                    settingsHtml = `
+                    <div style="border-top:1px solid var(--border-color);">
+                        <div style="display:flex; align-items:center; justify-content:space-between; padding:0.45rem 1.1rem; cursor:pointer; user-select:none; background:#1e293b44;"
+                             onclick="(function(el){var b=el.nextElementSibling;if(!b)return;var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.pat-chev').textContent=open?'▶':'▼';})(this)">
+                            <span style="font-size:0.78rem; color:var(--text-secondary);">${patCfg.settingsLabel}</span>
+                            <span class="pat-chev" style="font-size:0.65rem; color:var(--text-tertiary);">▼</span>
+                        </div>
+                        <div id="${patCfg.settingsId}" style="display:block;">${cfgRows}</div>
+                    </div>`;
+                }
+
+                return `
+                <div style="border-bottom:1px solid var(--border-color);">
+                    <div style="display:flex; align-items:flex-start; gap:1rem; padding:0.75rem 1.1rem;">
+                        <div style="flex:1; min-width:0;">
+                            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                                <span style="font-weight:600; font-size:0.88rem;">${p.name}</span>
+                                ${badgeHtml}
+                                ${statusDot}
+                            </div>
+                            <div style="color:var(--text-secondary); font-size:0.78rem; margin-top:0.25rem; line-height:1.5;">${p.description}</div>
+                            ${p.arch_types && p.arch_types.length ? `<div style="margin-top:0.3rem; display:flex; flex-wrap:wrap; gap:0.25rem;">${p.arch_types.map(t => `<span style="padding:1px 5px; border-radius:3px; font-size:0.68rem; background:#1e293b; border:1px solid #334155; color:#94a3b8;">${t}</span>`).join('')}</div>` : ''}
+                            ${p.requires && p.requires.length ? `<div style="font-size:0.71rem; color:#64748b; margin-top:0.2rem;">Requires: ${p.requires.join(' · ')}</div>` : ''}
+                        </div>
                     </div>
-                    <div style="color:var(--text-secondary); font-size:0.78rem; margin-top:0.25rem; line-height:1.5;">${p.description}</div>
-                    ${p.arch_types && p.arch_types.length ? `<div style="margin-top:0.3rem; font-size:0.72rem; color:#64748b;">Applies to: ${p.arch_types.join(', ')}</div>` : ''}
-                    ${p.requires && p.requires.length ? `<div style="font-size:0.72rem; color:#64748b;">Requires: ${p.requires.join(', ')}</div>` : ''}
-                </div>
-                <div style="flex-shrink:0; padding-top:0.1rem;">${toggleHtml}</div>
-            </div>`;
-        }).join('');
+                    ${settingsHtml}
+                </div>`;
+            }).join('');
+        })();
         const patternsCard = `
             <div class="card" data-cfg-cat="patterns" style="margin-bottom:1rem;">
                 <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1.1rem; cursor:pointer; user-select:none;"
                      onclick="(function(el){var b=document.getElementById('cfg-section-body-patterns');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';})(this)">
                     <div>
                         <span style="font-weight:700; font-size:0.95rem;">🧩 Threat Patterns</span>
-                        <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">Which threat-analysis modules run during assessment</span>
+                        <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">Threat patterns activate automatically when matching architecture components are detected — read only</span>
                     </div>
                     <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">▼</span>
                 </div>

@@ -15,6 +15,7 @@ VERSION: 1.2 - YAML-driven data extraction
 """
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Set
 
@@ -22,6 +23,19 @@ import yaml
 
 from chatbot.modules.pattern_registry import ThreatPattern
 from chatbot.modules.atlas_helper import get_atlas_helper
+
+
+@dataclass
+class _AIPatternDefaults:
+    """Fallback defaults matching AIPatternSettings — used when pydantic unavailable."""
+    category_entry_threshold: int = 50
+    priority_threshold_integrity: int = 80
+    priority_threshold_safety: int = 85
+    priority_threshold_security: int = 85
+    priority_threshold_privacy: int = 80
+    floor_threshold_transparency: int = 60
+    floor_threshold_accountability: int = 70
+    floor_threshold_resilience: int = 60
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +71,15 @@ class AIPattern(ThreatPattern):
         }
 
         self._controls_benchmark: Dict[str, List[str]] = _load_yaml("controls.yaml")
+
+        # Load recommendation thresholds from live settings
+        try:
+            from chatbot.config.settings import get_settings
+            cfg = get_settings().ai_pattern
+        except Exception:
+            cfg = _AIPatternDefaults()
+
+        self._t = cfg  # shorthand; accessed in recommend_controls
 
         logger.info(
             f"{self.name} pattern initialized (ATLAS: {len(self.atlas.get_techniques())} techniques, "
@@ -202,57 +225,59 @@ class AIPattern(ThreatPattern):
 
         priority: List[str] = []
         medium: List[str] = []
+        t = self._t
+        entry = t.category_entry_threshold
 
         # INTEGRITY
-        if "integrity" in threats and threats["integrity"]["risk"] > 50:
+        if "integrity" in threats and threats["integrity"]["risk"] > entry:
             risk = threats["integrity"]["risk"]
-            if risk >= 80:
+            if risk >= t.priority_threshold_integrity:
                 priority.extend(["input_validation", "prompt_filtering"])
-            if risk >= 75:
+            if risk >= t.priority_threshold_integrity - 5:
                 priority.append("output_filtering")
-            if risk >= 70:
+            if risk >= t.priority_threshold_integrity - 10:
                 medium.extend(["context_grounding", "rag_verification"])
 
         # SAFETY
-        if "safety" in threats and threats["safety"]["risk"] > 50:
+        if "safety" in threats and threats["safety"]["risk"] > entry:
             risk = threats["safety"]["risk"]
-            if risk >= 85:
+            if risk >= t.priority_threshold_safety:
                 priority.extend(["content_moderation", "sandbox"])
-            if risk >= 75:
+            if risk >= t.priority_threshold_safety - 10:
                 priority.append("human_in_loop")
-            if risk >= 70:
+            if risk >= t.priority_threshold_safety - 15:
                 medium.extend(["capability_restrictions", "tool_allowlist"])
 
         # SECURITY
-        if "security" in threats and threats["security"]["risk"] > 50:
+        if "security" in threats and threats["security"]["risk"] > entry:
             risk = threats["security"]["risk"]
-            if risk >= 85:
+            if risk >= t.priority_threshold_security:
                 priority.extend(["api_key_rotation", "secrets_management"])
-            if risk >= 70:
+            if risk >= t.priority_threshold_security - 15:
                 priority.extend(["rate_limiting", "access_control"])
-            if risk >= 60:
+            if risk >= t.priority_threshold_security - 25:
                 medium.extend(["encryption", "authentication", "monitoring"])
 
         # PRIVACY
-        if "privacy" in threats and threats["privacy"]["risk"] > 50:
+        if "privacy" in threats and threats["privacy"]["risk"] > entry:
             risk = threats["privacy"]["risk"]
-            if risk >= 80:
+            if risk >= t.priority_threshold_privacy:
                 priority.extend(["pii_detection", "data_loss_prevention"])
-            if risk >= 70:
+            if risk >= t.priority_threshold_privacy - 10:
                 medium.extend(["differential_privacy", "data_minimization"])
-            if risk >= 60:
+            if risk >= t.priority_threshold_privacy - 20:
                 medium.append("anonymization")
 
         # TRANSPARENCY
-        if "transparency" in threats and threats["transparency"]["risk"] > 60:
+        if "transparency" in threats and threats["transparency"]["risk"] >= t.floor_threshold_transparency:
             medium.extend(["logging", "audit_trails"])
 
         # ACCOUNTABILITY
-        if "accountability" in threats and threats["accountability"]["risk"] > 70:
+        if "accountability" in threats and threats["accountability"]["risk"] >= t.floor_threshold_accountability:
             medium.extend(["human_oversight", "incident_response"])
 
         # RESILIENCE
-        if "resilience" in threats and threats["resilience"]["risk"] > 60:
+        if "resilience" in threats and threats["resilience"]["risk"] >= t.floor_threshold_resilience:
             medium.extend(["monitoring", "robustness_testing"])
 
         controls = list(dict.fromkeys(priority + medium))

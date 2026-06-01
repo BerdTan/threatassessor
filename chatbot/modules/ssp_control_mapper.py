@@ -146,7 +146,7 @@ class SspControlMapper:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    # Maps RAPIDS threat category → SSP catalog category prefixes most relevant to that threat.
+    # Maps RAPIDS/Cloud/AI threat category → SSP catalog category prefixes most relevant to that threat.
     _THREAT_CATEGORY_AFFINITY: dict[str, list[str]] = {
         "supply_chain":    ["sc", "sd", "st"],      # Software Supply Chain, Secure Dev, Security Testing
         "app_vulns":       ["as", "sd", "cs"],      # Application Security, Secure Dev, Container Security
@@ -154,6 +154,22 @@ class SspControlMapper:
         "phishing":        ["hr", "ns", "ac"],      # Human Resource, Network Security, Access Control
         "insider_threat":  ["ac", "dp", "lm"],      # Access Control, Data Protection, Logging/Monitoring
         "dos":             ["rs", "ns", "lm"],      # Resiliency, Network Security, Logging/Monitoring
+        # Cloud categories (CloudPattern)
+        "iam_abuse":       ["ac", "is"],            # Access Control, Infrastructure Security
+        "data_exposure":   ["dp", "ck", "ac"],      # Data Protection, Crypto, Access Control
+        "api_abuse":       ["as", "ns", "ac"],      # Application Security, Network, Access Control
+        "compute_abuse":   ["cs", "is", "sc"],      # Container Security, Infra, Supply Chain
+        "network_lateral": ["ns", "ac", "is"],      # Network, Access Control, Infra
+        "logging_gaps":    ["lm"],                  # Logging and Monitoring
+        # AI/ML categories (AIPattern — ga prefix leads so GA-* controls surface first
+        # when enriching under the generative_ai SSP profile)
+        "integrity":       ["ga", "as", "dp"],      # GenAI + App Security + Data Protection
+        "safety":          ["ga", "as"],            # GenAI + App Security
+        "security":        ["ga", "ac", "as"],      # GenAI (leads) + Access Control + App Security
+        "privacy":         ["ga", "dp", "ck"],      # GenAI (leads) + Data Protection + Crypto
+        "transparency":    ["ga", "lm"],            # GenAI + Logging
+        "accountability":  ["ga", "pm", "lm"],      # GenAI + Programme Mgmt + Logging
+        "resilience":      ["rs", "br"],            # Resiliency + Backup
     }
 
     # Maps DIR category → preferred SSP catalog prefixes

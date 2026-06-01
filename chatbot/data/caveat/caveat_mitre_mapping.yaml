@@ -1,0 +1,187 @@
+# CAVEAT → MITRE ATT&CK Cloud Technique Mapping
+#
+# Hand-authored. Maps each CAVEAT technique title to MITRE ATT&CK sub-technique IDs
+# (primarily T1xxx.00x cloud sub-techniques from the Enterprise matrix).
+#
+# caveat_native: true  → no direct MITRE equivalent; technique is CAVEAT-specific.
+# notes              → explains the mapping rationale or gap.
+#
+# MITRE references:
+#   https://attack.mitre.org/techniques/enterprise/  (filter: "cloud" platform)
+#
+# Maintained alongside scripts/data/fetch_caveat.py
+# Last reviewed: 2026-06-01
+
+"IAM Abuse":
+  mitre_techniques: ["T1078.004", "T1098.001", "T1087.004"]
+  notes: "Valid Cloud Accounts + Account Manipulation: Additional Cloud Credentials + Account Discovery: Cloud Account"
+
+"Abuse Queue Services":
+  mitre_techniques: []
+  caveat_native: true
+  notes: "Cloud messaging-specific; closest generic is T1071 (App Layer Protocol) but no cloud sub-technique"
+
+"Account Manipulation":
+  mitre_techniques: ["T1098.001", "T1098.003"]
+  notes: "Account Manipulation: Additional Cloud Credentials + Additional Cloud Roles"
+
+"Acquire Access":
+  mitre_techniques: ["T1650"]
+  notes: "Acquire Access (newly added Enterprise technique)"
+
+"Brute Force":
+  mitre_techniques: ["T1110", "T1110.003", "T1110.004"]
+  notes: "Brute Force + Password Spraying + Credential Stuffing"
+
+"Cloud Service Dashboard":
+  mitre_techniques: ["T1538"]
+  notes: "Cloud Service Dashboard"
+
+"Cloud Service Discovery":
+  mitre_techniques: ["T1526"]
+  notes: "Cloud Service Discovery"
+
+"Compromise Infrastructure":
+  mitre_techniques: ["T1584"]
+  notes: "Compromise Infrastructure (resource development)"
+
+"Container Administration Command":
+  mitre_techniques: ["T1609"]
+  notes: "Container Administration Command"
+
+"Container and Resource Discovery":
+  mitre_techniques: ["T1613"]
+  notes: "Container and Resource Discovery"
+
+"Data from Cloud Storage":
+  mitre_techniques: ["T1530"]
+  notes: "Data from Cloud Storage Object"
+
+"Exfiltration Over Web Service":
+  mitre_techniques: ["T1567"]
+  notes: "Exfiltration Over Web Service"
+
+"Exploit Public-Facing Application":
+  mitre_techniques: ["T1190"]
+  notes: "Exploit Public-Facing Application"
+
+"Implant Internal Image":
+  mitre_techniques: ["T1525"]
+  notes: "Implant Internal Image (cloud container registry)"
+
+"Modify Cloud Compute Infrastructure":
+  mitre_techniques: ["T1578"]
+  notes: "Modify Cloud Compute Infrastructure (and sub-techniques)"
+
+"Network Sniffing":
+  mitre_techniques: ["T1040"]
+  notes: "Network Sniffing"
+
+"OS Credential Dumping":
+  mitre_techniques: ["T1003"]
+  notes: "OS Credential Dumping"
+
+"Permission Groups Discovery":
+  mitre_techniques: ["T1069.003"]
+  notes: "Permission Groups Discovery: Cloud Groups"
+
+"Phishing":
+  mitre_techniques: ["T1566", "T1566.002"]
+  notes: "Phishing + Spearphishing Link"
+
+"Remote Services":
+  mitre_techniques: ["T1021"]
+  notes: "Remote Services (lateral movement)"
+
+"Resource Hijacking":
+  mitre_techniques: ["T1496"]
+  notes: "Resource Hijacking (cryptomining, etc.)"
+
+"Serverless Execution":
+  mitre_techniques: ["T1648"]
+  notes: "Serverless Execution"
+
+"Software Deployment Tools":
+  mitre_techniques: ["T1072"]
+  notes: "Software Deployment Tools (CI/CD abuse)"
+
+"Steal Application Access Token":
+  mitre_techniques: ["T1528"]
+  notes: "Steal Application Access Token"
+
+"Steal Web Session Cookie":
+  mitre_techniques: ["T1539"]
+  notes: "Steal Web Session Cookie"
+
+"Supply Chain Compromise":
+  mitre_techniques: ["T1195", "T1195.001", "T1195.002"]
+  notes: "Supply Chain Compromise + Compromise Software Dependencies + Compromise Software Supply Chain"
+
+"Transfer Data to Cloud Account":
+  mitre_techniques: ["T1537"]
+  notes: "Transfer Data to Cloud Account"
+
+"Unused/Unsupported Cloud Regions":
+  mitre_techniques: ["T1535"]
+  notes: "Unused/Unsupported Cloud Regions"
+
+"Valid Accounts":
+  mitre_techniques: ["T1078.004"]
+  notes: "Valid Accounts: Cloud Accounts"
+
+"Abuse Logging Service":
+  mitre_techniques: []
+  caveat_native: true
+  notes: "CloudTrail/audit log tampering; generic coverage under T1562.008 (Disable Cloud Logs)"
+
+"Disable Cloud Logs":
+  mitre_techniques: ["T1562.008"]
+  notes: "Impair Defenses: Disable Cloud Logs"
+
+"Cloud Storage Object Discovery":
+  mitre_techniques: ["T1619"]
+  notes: "Cloud Storage Object Discovery"
+
+"Abusing Cloud Storage for Access(including S3/Blob manipulation)":
+  mitre_techniques: ["T1530", "T1619"]
+  notes: "Data from Cloud Storage Object + Cloud Storage Object Discovery"
+
+"Accessing Data from Databases":
+  mitre_techniques: ["T1530", "T1213"]
+  notes: "Data from Cloud Storage + Data from Information Repositories"
+
+"Cloud Admin Portal/API":
+  mitre_techniques: ["T1538", "T1526"]
+  notes: "Cloud Service Dashboard + Cloud Service Discovery"
+
+"Cloud Instance Metadata API":
+  mitre_techniques: ["T1552.005"]
+  notes: "Unsecured Credentials: Cloud Instance Metadata API"
+
+"CloudTrail/Logging Exploits":
+  mitre_techniques: ["T1562.008"]
+  notes: "Impair Defenses: Disable Cloud Logs"
+
+"Container Escape":
+  mitre_techniques: ["T1611"]
+  notes: "Escape to Host"
+
+"Cryptomining / Resource Abuse":
+  mitre_techniques: ["T1496"]
+  notes: "Resource Hijacking"
+
+"Forge Web Credentials":
+  mitre_techniques: ["T1606", "T1606.001", "T1606.002"]
+  notes: "Forge Web Credentials + SAML Tokens + Web Cookies"
+
+"Modify Authentication Process":
+  mitre_techniques: ["T1556"]
+  notes: "Modify Authentication Process"
+
+"Multi-Factor Authentication Request Generation":
+  mitre_techniques: ["T1621"]
+  notes: "Multi-Factor Authentication Request Generation (MFA fatigue)"
+
+"Network Boundary Bridging":
+  mitre_techniques: ["T1599"]
+  notes: "Network Boundary Bridging"

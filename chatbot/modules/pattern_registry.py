@@ -316,6 +316,7 @@ def create_default_registry() -> PatternRegistry:
     Falls back to registering AIPattern if config is unavailable.
     """
     from chatbot.modules.patterns.ai_pattern import AIPattern
+    from chatbot.modules.patterns.cloud_pattern import CloudPattern
 
     registry = PatternRegistry()
 
@@ -325,11 +326,12 @@ def create_default_registry() -> PatternRegistry:
         enabled = get_settings().patterns.enabled_patterns
     except Exception:
         # Config not yet available (e.g. CLI use before app startup)
-        enabled = ["ai_ml_arc"]
+        enabled = ["ai_ml_arc", "cloud"]
 
     if "ai_ml_arc" in enabled:
         registry.register(AIPattern())
-    # Future patterns registered here as they become active
+    if "cloud" in enabled:
+        registry.register(CloudPattern())
 
     return registry
 

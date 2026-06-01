@@ -204,6 +204,8 @@ class ThreatAnalyst(AnalystAgent):
         # Check if AI architecture and run AI pattern if available
         pattern_sources = ["RAPIDS"]  # Default
         ai_assessment = {}
+        cloud_assessment = {}
+        nodes: List[str] = []  # shared across AI + Cloud pattern blocks
 
         if self._is_ai_architecture(architecture_path, ground_truth):
             logger.info(f"{self.role}: AI architecture detected, running AI pattern")
@@ -248,6 +250,16 @@ class ThreatAnalyst(AnalystAgent):
                         controls_present
                     )
 
+                    # Enrich AI controls with GenAI SSP profile (GA-1–GA-8)
+                    try:
+                        from chatbot.modules.ssp_control_mapper import get_ssp_mapper
+                        enriched_ai_controls = get_ssp_mapper().enrich_recommendations(
+                            enriched_ai_controls, target_profile="generative_ai"
+                        )
+                        logger.info(f"{self.role}: AI controls enriched with generative_ai SSP profile")
+                    except Exception as _ssp_err:
+                        logger.warning(f"{self.role}: GenAI SSP enrichment failed: {_ssp_err}")
+
                     # Add enriched AI controls to recommendations
                     for enriched_ctrl in enriched_ai_controls:
                         ctrl_name = enriched_ctrl["control"]
@@ -258,6 +270,69 @@ class ThreatAnalyst(AnalystAgent):
 
             except Exception as e:
                 logger.warning(f"{self.role}: AI pattern failed: {e}")
+
+        if self._is_cloud_architecture(architecture_path, ground_truth):
+            logger.info(f"{self.role}: Cloud architecture detected, running Cloud (CAVEAT) pattern")
+
+            try:
+                from chatbot.modules.pattern_registry import get_pattern_registry
+
+                _registry = get_pattern_registry()
+                csp = self._detect_csp(ground_truth)
+
+                if not nodes:
+                    nodes = list({
+                        n for path in attack_paths for n in path.get("path", [])
+                    })
+
+                cloud_context = {
+                    "architecture_type": "cloud",
+                    "controls_present": controls_present,
+                    "csp": csp,
+                    "ground_truth": ground_truth,
+                }
+
+                cloud_results = _registry.assess_all(nodes, cloud_context)
+
+                if "Cloud Infrastructure (CAVEAT)" in cloud_results:
+                    cloud_assessment = cloud_results["Cloud Infrastructure (CAVEAT)"]
+                    pattern_sources.append("Cloud (CAVEAT)")
+
+                    cloud_controls = cloud_assessment.controls_recommended
+                    enriched_cloud_controls = self._enrich_cloud_controls(
+                        cloud_controls,
+                        cloud_assessment.threats,
+                        attack_paths,
+                        nodes,
+                        controls_present,
+                        csp,
+                    )
+
+                    # Enrich cloud controls with SSP cloud profile
+                    try:
+                        from chatbot.modules.ssp_control_mapper import get_ssp_mapper
+                        cloud_ssp_profile = self._infer_cloud_ssp_profile(ground_truth)
+                        enriched_cloud_controls = get_ssp_mapper().enrich_recommendations(
+                            enriched_cloud_controls, target_profile=cloud_ssp_profile
+                        )
+                        logger.info(
+                            f"{self.role}: Cloud controls enriched with SSP profile '{cloud_ssp_profile}'"
+                        )
+                    except Exception as _ssp_err:
+                        logger.warning(f"{self.role}: Cloud SSP enrichment failed: {_ssp_err}")
+
+                    for enriched_ctrl in enriched_cloud_controls:
+                        ctrl_name = enriched_ctrl["control"]
+                        if ctrl_name not in [c.get("control") for c in control_recommendations]:
+                            control_recommendations.append(enriched_ctrl)
+
+                    logger.info(
+                        f"{self.role}: Cloud (CAVEAT) pattern added "
+                        f"{len(cloud_controls)} controls (CSP={csp or 'generic'})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"{self.role}: Cloud pattern failed: {e}")
 
         # Build AnalysisResult (AnalysisResult is a dataclass, not using AgentResult pattern)
         # Note: AnalysisResult doesn't inherit from AgentResult, it's standalone
@@ -308,6 +383,24 @@ class ThreatAnalyst(AnalystAgent):
                 )
             except Exception as e:
                 logger.warning(f"{self.role}: Failed to calculate ARC gaps: {e}")
+
+        # Add Cloud (CAVEAT) assessment to result data if present
+        if cloud_assessment:
+            result.data["cloud_assessment"] = cloud_assessment.threats
+            result.data["cloud_controls_recommended"] = cloud_assessment.controls_recommended
+
+            # Attach CCM compliance controls (additive — keyed off T#### already in threats)
+            try:
+                from chatbot.modules.pattern_registry import get_pattern_registry
+                _cloud_pattern = get_pattern_registry().get_pattern("Cloud Infrastructure (CAVEAT)")
+                if _cloud_pattern:
+                    ccm_controls = _cloud_pattern.get_ccm_controls(cloud_assessment.threats)
+                    result.data["cloud_ccm_controls"] = ccm_controls
+                    logger.info(
+                        f"{self.role}: CCM compliance layer — {len(ccm_controls)} controls mapped"
+                    )
+            except Exception as e:
+                logger.warning(f"{self.role}: CCM enrichment failed: {e}")
 
         logger.info(
             f"{self.role}: Assessment complete - "
@@ -670,6 +763,259 @@ class ThreatAnalyst(AnalystAgent):
                 return True
 
         return False
+
+    def _is_cloud_architecture(self, architecture_path: str, ground_truth: Dict) -> bool:
+        """Detect if architecture contains cloud components."""
+        cloud_keywords = [
+            "aws", "azure", "gcp", "cloud", "s3", "ec2", "lambda", "kubernetes",
+            "k8s", "docker", "container", "serverless", "iam", "vpc", "blob",
+            "fargate", "gke", "aks", "eks", "cloudfront", "cloudtrail",
+        ]
+
+        arch_type = ground_truth.get("metadata", {}).get("architecture_type", "")
+        if arch_type in ["cloud", "cloud_native", "hybrid_cloud"]:
+            logger.info("Cloud architecture detected via metadata")
+            return True
+
+        arch_name = Path(architecture_path).stem.lower()
+        if any(kw in arch_name for kw in cloud_keywords):
+            logger.info(f"Cloud architecture detected via filename: {arch_name}")
+            return True
+
+        description = ground_truth.get("description", "").lower()
+        if any(kw in description for kw in cloud_keywords):
+            logger.info("Cloud architecture detected via description")
+            return True
+
+        attack_paths = ground_truth.get("expected_attack_paths", [])
+        for path in attack_paths:
+            for node in path.get("path", []):
+                node_lower = node.lower()
+                if any(kw in node_lower for kw in cloud_keywords):
+                    logger.info(f"Cloud architecture detected via node name: {node}")
+                    return True
+
+        return False
+
+    def _infer_cloud_ssp_profile(self, ground_truth: Dict) -> str:
+        """
+        Auto-select the most appropriate SSP cloud profile based on architecture cues.
+
+        Priority:
+        1. Explicit ssp_profile in request metadata → respect it
+        2. CII keywords (gov, finance, health, critical) → high_risk_cloud_cii
+        3. Default → low_risk_cloud
+
+        Returns one of the SSP_PROFILES strings.
+        """
+        # Respect explicitly-set profile from API request
+        meta_profile = ground_truth.get("metadata", {}).get("ssp_profile")
+        if meta_profile:
+            return meta_profile
+
+        # Scan description + architecture name for CII indicators
+        cii_keywords = [
+            "government", "gov", "ministry", "finance", "banking", "health",
+            "hospital", "critical", "cii", "utilities", "energy", "transport",
+        ]
+        text = " ".join([
+            ground_truth.get("description", ""),
+            ground_truth.get("metadata", {}).get("architecture_name", ""),
+        ]).lower()
+
+        if any(kw in text for kw in cii_keywords):
+            return "high_risk_cloud_cii"
+
+        return "low_risk_cloud"
+
+    def _detect_csp(self, ground_truth: Dict) -> Optional[str]:
+        """Infer CSP (aws/azure/gcp) from node names and description."""
+        aws_kw = ["aws", "amazon", "ec2", "s3", "lambda", "cloudtrail",
+                  "cloudfront", "cloudwatch", "eks", "fargate"]
+        azure_kw = ["azure", "microsoft", "aks", "blob", "cosmos", "vnet"]
+        gcp_kw = ["gcp", "google", "gke", "spanner", "bigquery", "cloud run"]
+
+        text_parts = [ground_truth.get("description", "").lower()]
+        for path in ground_truth.get("expected_attack_paths", []):
+            text_parts.extend(n.lower() for n in path.get("path", []))
+        combined = " ".join(text_parts)
+
+        aws = sum(1 for kw in aws_kw if kw in combined)
+        azure = sum(1 for kw in azure_kw if kw in combined)
+        gcp = sum(1 for kw in gcp_kw if kw in combined)
+
+        if aws == 0 and azure == 0 and gcp == 0:
+            return None
+        counts = {"aws": aws, "azure": azure, "gcp": gcp}
+        return max(counts, key=lambda k: counts[k])
+
+    def _enrich_cloud_controls(
+        self,
+        cloud_controls: List[str],
+        cloud_threats: Dict,
+        attack_paths: List[Dict],
+        nodes: List[str],
+        controls_present: List[str],
+        csp: Optional[str],
+    ) -> List[Dict]:
+        """Enrich Cloud (CAVEAT) controls to match RAPIDS control structure."""
+        from chatbot.modules.rapids_driven_controls import infer_dir_category
+        from chatbot.modules.caveat_helper import get_caveat_helper
+
+        caveat = get_caveat_helper()
+        enriched = []
+
+        # Category → threat category mapping for Cloud
+        category_for_control = {
+            "mfa": "iam_abuse",
+            "least_privilege": "iam_abuse",
+            "privileged_access_management": "iam_abuse",
+            "iam_audit": "iam_abuse",
+            "session_management": "iam_abuse",
+            "encryption": "data_exposure",
+            "bucket_policy": "data_exposure",
+            "dlp": "data_exposure",
+            "data_classification": "data_exposure",
+            "api_gateway_auth": "api_abuse",
+            "waf": "api_abuse",
+            "rate_limiting": "api_abuse",
+            "tls": "api_abuse",
+            "container_scanning": "compute_abuse",
+            "runtime_security": "compute_abuse",
+            "function_permissions": "compute_abuse",
+            "network_segmentation": "network_lateral",
+            "vpc_flow_logs": "network_lateral",
+            "zero_trust": "network_lateral",
+            "image_signing": "supply_chain",
+            "pipeline_security": "supply_chain",
+            "sbom": "supply_chain",
+            "cloudtrail": "logging_gaps",
+            "log_integrity": "logging_gaps",
+            "siem": "logging_gaps",
+        }
+
+        for ctrl_name in cloud_controls:
+            category = category_for_control.get(ctrl_name, "")
+            threat_data = cloud_threats.get(category, {}) if category else {}
+            risk = threat_data.get("risk", 50) if isinstance(threat_data, dict) else 50
+
+            if risk >= 75:
+                priority = "critical"
+            elif risk >= 65:
+                priority = "high"
+            else:
+                priority = "medium"
+
+            dir_category = infer_dir_category(ctrl_name)
+
+            relevant_paths = [
+                i for i, path in enumerate(attack_paths)
+                if any(n in path.get("path", []) for n in nodes)
+            ]
+
+            # Get CAVEAT mitigation text for this control as rationale
+            caveat_mits: List[str] = []
+            for title in caveat.get_techniques_for_component(
+                _CTRL_TO_COMPONENT.get(ctrl_name, "")
+            )[:2]:
+                mits = caveat.get_mitigations(title, csp=csp)
+                caveat_mits.extend(mits[:1])
+
+            techniques = []
+            if category and category in cloud_threats:
+                techniques = cloud_threats[category].get("techniques", [])
+
+            rationale = (
+                f"Cloud (CAVEAT): {category.replace('_', ' ').title()} | "
+                f"CSP={csp or 'generic'} | "
+                f"Attack path(s) #{', #'.join(str(i + 1) for i in relevant_paths[:3])}"
+            )
+
+            detailed_rationale = [rationale]
+            if caveat_mits:
+                detailed_rationale.append(f"CAVEAT: {caveat_mits[0][:150]}")
+
+            enriched.append({
+                "control": ctrl_name,
+                "priority": priority,
+                "score": risk,
+                "rapids_threats": [f"Cloud:{category}"] if category else [],
+                "attack_paths": relevant_paths,
+                "rationale": rationale,
+                "detailed_rationale": detailed_rationale,
+                "dir_category": dir_category,
+                "layer": _CTRL_LAYER.get(ctrl_name, "application"),
+                "placement": f"At cloud {_CTRL_TO_COMPONENT.get(ctrl_name, 'infrastructure')} layer",
+                "control_type": dir_category.upper(),
+                "techniques": techniques,
+                "mitigations": [],
+                "confidence": {
+                    "score": 0.80,
+                    "level": "HIGH",
+                    "breakdown": {"overall": 0.80, "caveat_validation": 0.80},
+                },
+                "source": "cloud_caveat",
+            })
+
+        return enriched
+
+
+# Control metadata tables for _enrich_cloud_controls
+_CTRL_TO_COMPONENT: Dict[str, str] = {
+    "mfa": "iam",
+    "least_privilege": "iam",
+    "privileged_access_management": "iam",
+    "iam_audit": "iam",
+    "session_management": "api",
+    "encryption": "storage",
+    "bucket_policy": "storage",
+    "dlp": "storage",
+    "data_classification": "storage",
+    "api_gateway_auth": "api",
+    "waf": "api",
+    "rate_limiting": "api",
+    "tls": "api",
+    "container_scanning": "compute",
+    "runtime_security": "compute",
+    "function_permissions": "compute",
+    "network_segmentation": "network",
+    "vpc_flow_logs": "network",
+    "zero_trust": "network",
+    "image_signing": "supply_chain",
+    "pipeline_security": "supply_chain",
+    "sbom": "supply_chain",
+    "cloudtrail": "logging",
+    "log_integrity": "logging",
+    "siem": "logging",
+}
+
+_CTRL_LAYER: Dict[str, str] = {
+    "mfa": "identity",
+    "least_privilege": "identity",
+    "privileged_access_management": "identity",
+    "iam_audit": "identity",
+    "session_management": "identity",
+    "encryption": "data",
+    "bucket_policy": "data",
+    "dlp": "data",
+    "data_classification": "data",
+    "api_gateway_auth": "network",
+    "waf": "network",
+    "rate_limiting": "network",
+    "tls": "network",
+    "container_scanning": "application",
+    "runtime_security": "application",
+    "function_permissions": "application",
+    "network_segmentation": "network",
+    "vpc_flow_logs": "network",
+    "zero_trust": "network",
+    "image_signing": "application",
+    "pipeline_security": "application",
+    "sbom": "application",
+    "cloudtrail": "data",
+    "log_integrity": "data",
+    "siem": "data",
+}
 
 
 # Convenience function for backward compatibility
