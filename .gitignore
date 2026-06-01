@@ -59,8 +59,9 @@ test_results_*.json
 scripts/personal/
 baseline_refactoring/
 
-# Blog draft (publish externally, not in repo)
+# Blog drafts (publish externally, not in repo)
 docs/blog_draft.md
+docs/blog_draft_part2.md
 
 # Private decision log (personal reference, not for public repo)
 docs/DECISIONS.md

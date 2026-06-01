@@ -1,7 +1,12 @@
 flowchart TB
-    Internet((Internet))
-    WebServer[Web Server]
+    Users((Internet Users))
+    WebApp[Web Application]
+    AppServer[Application Server]
     Database[(Database)]
 
-    Internet --> WebServer
-    WebServer --> Database
+    %% No firewall, no WAF — direct internet exposure
+    Users --> WebApp
+
+    %% Flat network — no segmentation between tiers
+    WebApp --> AppServer
+    AppServer --> Database
