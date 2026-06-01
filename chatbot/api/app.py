@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# Load user configuration (must come after dotenv so env vars are available)
+from chatbot.config import load_settings as _load_cfg
+_load_cfg()
+
 # Warmup event — set when MITRE + ATLAS singletons are ready in memory.
 # The server starts immediately; warmup runs in a background thread (~0.2-0.6s).
 _warmup_done = threading.Event()
@@ -133,7 +137,7 @@ API key required via `TM-API-KEY` header.
         CORSMiddleware,
         allow_origins=_allowed_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["TM-API-KEY", "Content-Type"],
     )
 
@@ -242,14 +246,16 @@ Run deterministic threat analysis (Team 1: ThreatAnalysisService).
 
         # Validate file size (10MB limit)
         content = await architecture_file.read()
-        if len(content) > 10 * 1024 * 1024:  # 10MB
+        from chatbot.config import get_settings as _gs_app
+        _max_bytes = _gs_app().system.max_file_size_mb * 1024 * 1024
+        if len(content) > _max_bytes:
             return JSONResponse(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 content={
                     "type": "https://api.threatassessor.example.com/errors/file-too-large",
                     "title": "File too large",
                     "status": 413,
-                    "detail": f"File size {len(content)} bytes exceeds 10MB limit",
+                    "detail": f"File size {len(content)} bytes exceeds {_gs_app().system.max_file_size_mb}MB limit",
                     "instance": "/api/v1/analyze"
                 }
             )
@@ -404,9 +410,10 @@ Run deterministic threat analysis (Team 1: ThreatAnalysisService).
         """
 
     # Include routers
-    from chatbot.api.routes import streaming_router, reports_router
+    from chatbot.api.routes import streaming_router, reports_router, config_router
     app.include_router(streaming_router)
     app.include_router(reports_router)
+    app.include_router(config_router)
 
     # Enrich OpenAPI spec: add server URL and API key security scheme
     from fastapi.openapi.utils import get_openapi

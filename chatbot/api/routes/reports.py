@@ -6,11 +6,13 @@ Endpoints for accessing generated analysis reports.
 
 import io
 import json
+import shutil
 import zipfile
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from typing import List, Dict
+from chatbot.api.dependencies import verify_api_key
 from chatbot.modules.mitre import MitreHelper, get_mitre_helper as _get_mitre_singleton
 from chatbot.modules.atlas_helper import get_atlas_helper as _get_atlas_singleton
 
@@ -22,10 +24,13 @@ def get_mitre_helper() -> MitreHelper:
 
 
 def get_report_dir() -> Path:
-    """Get the base reports directory."""
-    # Assuming reports are in project_root/report/
-    report_dir = Path(__file__).parent.parent.parent.parent / "report"
-    return report_dir
+    """Get the base reports directory (from config, relative to project root or absolute)."""
+    from chatbot.config import get_settings
+    cfg_dir = get_settings().system.report_dir
+    p = Path(cfg_dir)
+    if p.is_absolute():
+        return p
+    return Path(__file__).parent.parent.parent.parent / cfg_dir
 
 
 @router.get("/reports")
@@ -156,6 +161,33 @@ async def list_reports(architecture_name: str):
         "reports": reports,
         "count": len(reports)
     }
+
+
+@router.delete("/reports/{architecture_name}")
+async def delete_report(architecture_name: str, _: str = Depends(verify_api_key)):
+    """
+    Delete the report folder for an architecture.
+
+    Args:
+        architecture_name: Architecture directory name
+
+    Returns:
+        Confirmation message
+
+    Raises:
+        404: If architecture not found
+        400: If name contains path traversal attempts
+    """
+    if '..' in architecture_name or '/' in architecture_name or '\\' in architecture_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid architecture name")
+
+    report_dir = get_report_dir() / architecture_name
+
+    if not report_dir.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Architecture '{architecture_name}' not found")
+
+    shutil.rmtree(report_dir)
+    return {"deleted": architecture_name}
 
 
 @router.get("/reports/{architecture_name}/files/{filename}")

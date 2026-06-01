@@ -70,6 +70,7 @@
                 <button class="nav-tab disabled" data-tab="expert-review" style="display: none;">🧑‍🏫 Expert Review</button>
                 <button class="nav-tab disabled" data-tab="reports">📄 Reports</button>
                 <button class="nav-tab disabled" data-tab="raw-data">💾 Raw Data</button>
+                <button class="nav-tab" id="config-nav-tab" data-tab="config" style="display:none;">⚙️ Configuration</button>
             </nav>
         </aside>
 
@@ -92,8 +93,8 @@
                         </label>
                         <select id="ssp-profile-select" style="width:100%; padding:0.5rem 0.75rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; cursor:pointer;">
                             <optgroup label="Cloud Systems">
-                                <option value="low_risk_cloud">Low Risk — Cloud</option>
-                                <option value="medium_risk_cloud" selected>Medium Risk — Cloud</option>
+                                <option value="low_risk_cloud" selected>Low Risk — Cloud</option>
+                                <option value="medium_risk_cloud">Medium Risk — Cloud</option>
                                 <option value="high_risk_cloud_cii">High Risk — Cloud / CII</option>
                             </optgroup>
                             <optgroup label="On-Premises Systems">
@@ -218,6 +219,27 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Configuration Tab — full main-pane takeover, own scroll -->
+            <div id="config-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:hidden; background:var(--main-bg);">
+                <!-- Sticky header bar -->
+                <div style="flex-shrink:0; display:flex; justify-content:space-between; align-items:center; padding:1rem 1.5rem; border-bottom:1px solid var(--border-color); background:var(--sidebar-bg);">
+                    <div>
+                        <span style="font-size:1.1rem; font-weight:700;">⚙️ Configuration</span>
+                        <span style="margin-left:0.75rem; font-size:0.78rem; color:var(--text-tertiary);">Tunable engine parameters — defaults recommended</span>
+                    </div>
+                    <div style="display:flex; gap:0.75rem;">
+                        <button id="config-reset-btn" style="padding:0.4rem 1rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-color); cursor:pointer; font-size:0.83rem;">↺ Reset to Defaults</button>
+                        <button id="config-save-btn" style="padding:0.4rem 1.1rem; border:none; border-radius:6px; background:#4da6ff; color:#fff; cursor:pointer; font-size:0.83rem; font-weight:600;">💾 Save Changes</button>
+                    </div>
+                </div>
+                <!-- Status banner (success / error feedback) -->
+                <div id="config-status" style="display:none; flex-shrink:0; padding:0.6rem 1.5rem; font-size:0.85rem;"></div>
+                <!-- Scrollable sections body -->
+                <div id="config-sections" style="flex:1; overflow-y:auto; padding:1.25rem 1.5rem;">
+                    <p class="placeholder">Loading configuration…</p>
                 </div>
             </div>
         </main>

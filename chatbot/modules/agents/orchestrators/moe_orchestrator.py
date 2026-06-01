@@ -266,8 +266,8 @@ class MoEOrchestrator:
     def run_pipeline(
         self,
         report_dir: str,
-        base_confidence: float = 99.5,
-        critic_mode: str = "sequential",
+        base_confidence: float = None,
+        critic_mode: str = None,
     ) -> MoEResult:
         """
         Execute full MoE pipeline with fail-fast validation.
@@ -292,6 +292,13 @@ class MoEOrchestrator:
         Raises:
             MissingPrerequisiteError: If any prerequisite file missing
         """
+        from chatbot.config import get_settings as _gs
+        _moe_cfg = _gs().moe
+        if base_confidence is None:
+            base_confidence = _moe_cfg.base_confidence
+        if critic_mode is None:
+            critic_mode = _moe_cfg.critic_mode
+
         report_path = Path(report_dir)
         architecture_name = report_path.name
 
@@ -323,7 +330,7 @@ class MoEOrchestrator:
         # Resolve auto mode
         resolved_mode = critic_mode
         if critic_mode == "auto":
-            resolved_mode = "sequential" if complexity_score >= 60 else "partial_parallel"
+            resolved_mode = "sequential" if complexity_score >= _moe_cfg.complexity_threshold else "partial_parallel"
             logger.info(
                 f"MoE Pipeline: complexity_score={complexity_score} → auto resolved to '{resolved_mode}'"
             )
@@ -690,13 +697,15 @@ class MoEOrchestrator:
         - RAPIDS alignment
         """
         # Determine validation status
-        if critique.score >= 90:
+        from chatbot.config import get_settings as _gs_arch
+        _at = _gs_arch().moe
+        if critique.score >= _at.architect_pass_threshold:
             status = "PASS"
             adjustment = 0.0
-        elif critique.score >= 80:
+        elif critique.score >= _at.architect_minor_gap_threshold:
             status = "MINOR_GAPS"
             adjustment = -0.02  # -2%
-        elif critique.score >= 70:
+        elif critique.score >= _at.architect_major_gap_threshold:
             status = "MINOR_GAPS"
             adjustment = -0.05  # -5%
         else:
@@ -751,13 +760,15 @@ class MoEOrchestrator:
                         f"({sub_score}/{sub_max} = {sub_score/sub_max*100:.0f}%) → -2% penalty"
                     )
 
-        if critique.score >= 85:
+        from chatbot.config import get_settings as _gs_test
+        _tt = _gs_test().moe
+        if critique.score >= _tt.tester_pass_threshold:
             status = "PASS"
             adjustment = 0.0
-        elif critique.score >= 75:
+        elif critique.score >= _tt.tester_minor_gap_threshold:
             status = "MINOR_GAPS"
             adjustment = -0.01  # -1%
-        elif critique.score >= 65:
+        elif critique.score >= _tt.tester_major_gap_threshold:
             status = "MINOR_GAPS"
             adjustment = -0.03  # -3%
         else:
@@ -810,13 +821,15 @@ class MoEOrchestrator:
         # Red Team is INVERTED: low score = hard to exploit = good
         # So high score (easy to exploit) = major gaps
 
-        if critique.score <= 40:  # Hard to exploit
+        from chatbot.config import get_settings as _gs_rt
+        _rt = _gs_rt().moe
+        if critique.score <= _rt.red_team_hard_threshold:  # Hard to exploit
             status = "PASS"
             adjustment = 0.0
-        elif critique.score <= 55:  # Moderate difficulty
+        elif critique.score <= _rt.red_team_medium_threshold:  # Moderate difficulty
             status = "MINOR_GAPS"
             adjustment = -0.03  # -3%
-        elif critique.score <= 70:  # Somewhat easy
+        elif critique.score <= _rt.red_team_easy_threshold:  # Somewhat easy
             status = "MINOR_GAPS"
             adjustment = -0.06  # -6%
         else:  # Easy to exploit
@@ -1083,12 +1096,14 @@ RULES:
 - **TECHNIQUE ID VALIDATION**: Before flagging a disagreement about whether a technique ID exists, verify it against the MITRE reference block below. A technique ID that appears in that block is VALID — do NOT generate a contradiction claiming it doesn't exist. Only flag DATA_REFERENCE_ERROR if an ID is genuinely absent from that block.
 """
 
+            from chatbot.config import get_settings as _gs_synth
+            _synth_cfg = _gs_synth().moe
             llm = LLMClient()
             response = llm.generate(
                 prompt=prompt.strip(),
                 system_message=_ORCHESTRATOR_SYSTEM,
-                temperature=0.2,   # low — we want consistent structured output
-                max_tokens=4000,
+                temperature=_synth_cfg.temperature_synthesis,
+                max_tokens=_synth_cfg.max_tokens_synthesis,
             )
 
             # Parse JSON from response
@@ -1197,11 +1212,13 @@ Return a JSON array with the SAME length and order as the input, each item havin
 
 Reply with only the JSON array, no other text.
 """
+            from chatbot.config import get_settings as _gs_refl
+            _refl_temp = max(0.0, _gs_refl().moe.temperature_synthesis - 0.1)
             llm = LLMClient()
             response = llm.generate(
                 prompt=prompt.strip(),
                 system_message="You are a rigorous security assessment quality reviewer. Return only valid JSON.",
-                temperature=0.1,
+                temperature=_refl_temp,
                 max_tokens=2000,
             )
             content = response.content if hasattr(response, 'content') else str(response)

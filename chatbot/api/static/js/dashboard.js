@@ -7,7 +7,7 @@ class Dashboard {
         this.sseClient = null;
         this.uploadedFile = null;
         this.techniqueNamesCache = {};
-        this.sspProfile = 'medium_risk_cloud'; // updated from selector at submit time
+        this.sspProfile = 'low_risk_cloud'; // updated from selector at submit time
 
         // Expert Review in-progress state — persists across tab switches
         this._erpState = null;
@@ -47,6 +47,11 @@ class Dashboard {
 
         // Populate architecture history dropdown from existing reports
         this._loadArchHistory();
+
+        // Pre-load config tab only if authenticated (key present)
+        if (localStorage.getItem('tm_api_key')) {
+            this.loadConfigTab();
+        }
     }
 
     _pollReadiness() {
@@ -96,6 +101,19 @@ class Dashboard {
         if (settingsBtn) {
             settingsBtn.addEventListener('click', () => this.showSettings());
         }
+        // Show/hide config tab based on whether an API key is already stored
+        this._syncConfigTabVisibility();
+    }
+
+    _syncConfigTabVisibility() {
+        const tab = document.getElementById('config-nav-tab');
+        if (!tab) return;
+        const hasKey = !!localStorage.getItem('tm_api_key');
+        tab.style.display = hasKey ? '' : 'none';
+        // If the config tab is currently active and the key was just removed, go home
+        if (!hasKey && this.currentTab === 'config') {
+            this.switchTab('overview');
+        }
     }
 
     async showSettings() {
@@ -113,13 +131,14 @@ class Dashboard {
 
         if (newKey !== null && newKey.trim() !== '') {
             localStorage.setItem('tm_api_key', newKey.trim());
-            alert('✅ API key saved!\n\nYou can now upload architectures for analysis.');
+            this._syncConfigTabVisibility();
+            alert('✅ API key saved!\n\nYou can now upload architectures for analysis.\nThe Configuration tab is now unlocked.');
         } else if (newKey === '') {
-            // User wants to clear the key
-            const confirmClear = confirm('Clear saved API key?');
+            const confirmClear = confirm('Clear saved API key?\n\nThis will also hide the Configuration tab.');
             if (confirmClear) {
                 localStorage.removeItem('tm_api_key');
-                alert('API key cleared. You will be prompted again on next upload.');
+                this._syncConfigTabVisibility();
+                alert('API key cleared.');
             }
         }
     }
@@ -221,10 +240,28 @@ class Dashboard {
             tab.classList.toggle('active', tab.dataset.tab === tabName);
         });
 
-        // Update tab panes
-        document.querySelectorAll('.tab-pane').forEach(pane => {
-            pane.classList.toggle('active', pane.dataset.tab === tabName);
-        });
+        const isConfig = tabName === 'config';
+        const uploadContainer = document.getElementById('upload-form-container');
+        const tabContent      = document.getElementById('tab-content');
+        const configWrapper   = document.getElementById('config-pane-wrapper');
+
+        if (isConfig) {
+            // Config takes the full main pane — hide everything else
+            if (uploadContainer) uploadContainer.style.display = 'none';
+            if (tabContent)      tabContent.style.display      = 'none';
+            if (configWrapper)   { configWrapper.style.display = 'flex'; configWrapper.style.flexDirection = 'column'; }
+        } else {
+            if (configWrapper) configWrapper.style.display = 'none';
+            // Restore the correct non-config pane
+            if (this.analysisData) {
+                if (tabContent) tabContent.style.display = 'block';
+                document.querySelectorAll('.tab-pane').forEach(pane => {
+                    pane.classList.toggle('active', pane.dataset.tab === tabName);
+                });
+            } else {
+                if (uploadContainer) uploadContainer.style.display = 'block';
+            }
+        }
 
         this.currentTab = tabName;
 
@@ -236,12 +273,14 @@ class Dashboard {
             'hardening': 'Visualise',
             'expert-review': 'Expert Review',
             'reports': 'Reports',
-            'raw-data': 'Raw Data'
+            'raw-data': 'Raw Data',
+            'config': 'Configuration'
         };
         this.updateStatusMessage(`📂 Viewing ${tabNames[tabName] || tabName}`);
 
-        // Load tab-specific data if analysis is complete
-        if (this.analysisData) {
+        if (isConfig) {
+            this.loadConfigTab();
+        } else if (this.analysisData) {
             this.loadTabData(tabName);
         }
     }
@@ -369,7 +408,7 @@ class Dashboard {
 
         // Capture SSP profile from selector
         const sspSelect = document.getElementById('ssp-profile-select');
-        this.sspProfile = sspSelect ? sspSelect.value : 'medium_risk_cloud';
+        this.sspProfile = sspSelect ? sspSelect.value : 'low_risk_cloud';
         this._updateSspBadge();
 
         // Start SSE connection
@@ -2149,13 +2188,12 @@ class Dashboard {
                 return;
             }
 
-            // "Recent" = current calendar week (Mon 00:00 to now)
+            // "Recent" = last 7 days
             const now = new Date();
-            const dayOfWeek = (now.getDay() + 6) % 7; // Mon=0 … Sun=6
-            const weekStartMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek).getTime();
+            const sevenDaysAgoMs = now.getTime() - 7 * 24 * 60 * 60 * 1000;
 
-            const recent = archs.filter(a => !a.analysed_at || (a.analysed_at * 1000) >= weekStartMs);
-            const older  = archs.filter(a =>  a.analysed_at && (a.analysed_at * 1000)  < weekStartMs);
+            const recent = archs.filter(a => !a.analysed_at || (a.analysed_at * 1000) >= sevenDaysAgoMs);
+            const older  = archs.filter(a =>  a.analysed_at && (a.analysed_at * 1000)  < sevenDaysAgoMs);
 
             const itemStyle = `display:flex; align-items:center; gap:0.6rem; padding:0.55rem 0.9rem; cursor:pointer; transition:background 0.15s; font-size:0.8rem; color:#e8e8e8;`;
             const hoverOn  = e => e.currentTarget.style.background = '#4da6ff18';
@@ -2178,13 +2216,14 @@ class Dashboard {
                     + `<span style="font-size:0.72rem; color:#94a3b8; flex-shrink:0;">${dt}</span>`
                     + profilePill
                     + `<button class="arch-item-reload" title="View previous analysis" style="${iconBtnStyle}">👁</button>`
-                    + `<button class="arch-item-rerun" title="Re-run analysis" style="${iconBtnStyle}">▶</button>`;
+                    + `<button class="arch-item-rerun" title="Re-run analysis" style="${iconBtnStyle}">▶</button>`
+                    + `<button class="arch-item-delete" title="Delete report folder" style="${iconBtnStyle}">🗑</button>`;
                 div.addEventListener('mouseover', hoverOn);
                 div.addEventListener('mouseout',  hoverOff);
 
                 // Click on row body → load previous analysis
                 div.addEventListener('click', async (e) => {
-                    if (e.target.closest('.arch-item-reload') || e.target.closest('.arch-item-rerun')) return;
+                    if (e.target.closest('.arch-item-reload') || e.target.closest('.arch-item-rerun') || e.target.closest('.arch-item-delete')) return;
                     document.getElementById('arch-history-btn-label').textContent = `📄 ${a.name}`;
                     this._closeArchDropdown();
                     await this._loadArchFromReports(a.name);
@@ -2205,6 +2244,19 @@ class Dashboard {
                     await this._rerunArchAnalysis(a.name, a.ssp_profile);
                 });
 
+                // Delete icon → confirm then DELETE via API
+                div.querySelector('.arch-item-delete').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (!confirm(`Delete report folder for "${a.name}"?\n\nThis cannot be undone.`)) return;
+                    try {
+                        const r = await fetch(`/api/v1/reports/${encodeURIComponent(a.name)}`, { method: 'DELETE', headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
+                        if (!r.ok) throw new Error(`Server returned ${r.status}`);
+                        div.remove();
+                    } catch (err) {
+                        alert(`Failed to delete "${a.name}": ${err.message}`);
+                    }
+                });
+
                 return div;
             };
 
@@ -2223,7 +2275,7 @@ class Dashboard {
             if (older.length) {
                 const sep = document.createElement('div');
                 sep.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.45rem 0.9rem; cursor:pointer; border-top:1px solid #4da6ff22; margin-top:0.25rem; font-size:0.72rem; font-weight:700; color:#64748b; user-select:none;';
-                sep.innerHTML = '<span id="older-chevron" style="font-size:0.6rem;">▶</span> Past analyses';
+                sep.innerHTML = '<span id="older-chevron" style="font-size:0.6rem;">▶</span> Past analysis';
 
                 const olderGroup = document.createElement('div');
                 olderGroup.style.display = 'none';
@@ -2261,7 +2313,7 @@ class Dashboard {
             const gt = await resp.json();
 
             // Derive sspProfile from metadata if available
-            this.sspProfile = (gt.metadata || {}).ssp_profile || 'medium_risk_cloud';
+            this.sspProfile = (gt.metadata || {}).ssp_profile || 'low_risk_cloud';
 
             // Wrap in the same shape the analysis SSE result produces
             this.analysisData = {
@@ -5598,6 +5650,965 @@ class Dashboard {
             'cloud_generic': 'cloud'
         };
         return classMap[patternId] || 'primary';
+    }
+
+    // =========================================================================
+    // Configuration Tab
+    // =========================================================================
+
+    async loadConfigTab() {
+        const container = document.getElementById('config-sections');
+        if (!container) return;
+        if (!this._configData) {
+            container.innerHTML = '<p class="placeholder">Loading configuration…</p>';
+        }
+        try {
+            const apiKey = localStorage.getItem('tm_api_key') || '';
+            const resp = await fetch('/api/v1/config', { headers: { 'TM-API-KEY': apiKey } });
+            if (resp.status === 401 || resp.status === 422) {
+                container.innerHTML = `
+                    <div style="padding:1.5rem; text-align:center; color:var(--text-secondary);">
+                        <div style="font-size:2rem; margin-bottom:0.75rem;">🔐</div>
+                        <div style="font-weight:600; margin-bottom:0.4rem;">API key required</div>
+                        <div style="font-size:0.85rem;">Enter your TM-API-KEY in Settings (⚙ top-right) to access the configuration panel.</div>
+                    </div>`;
+                return;
+            }
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            this._configData = await resp.json();
+            container.innerHTML = this._renderAllConfigSections(this._configData);
+            this._attachConfigListeners();
+            // Restore previously-active filter (default 'quick')
+            this._filterConfig(this._cfgFilter || 'quick');
+        } catch (err) {
+            container.innerHTML = `<p class="placeholder" style="color:var(--danger-color);">Failed to load configuration: ${err.message}</p>`;
+        }
+    }
+
+    _attachConfigListeners() {
+        const saveBtn  = document.getElementById('config-save-btn');
+        const resetBtn = document.getElementById('config-reset-btn');
+        if (saveBtn)  saveBtn.onclick  = () => this.saveConfig();
+        if (resetBtn) resetBtn.onclick = () => this.resetConfig();
+        // Filter chips
+        document.querySelectorAll('#cfg-filter-chips .cfg-chip').forEach(chip => {
+            chip.addEventListener('click', () => this._filterConfig(chip.dataset.filter));
+        });
+    }
+
+    _filterConfig(filter) {
+        this._cfgFilter = filter;
+        // Update chip active state
+        document.querySelectorAll('#cfg-filter-chips .cfg-chip').forEach(chip => {
+            const isActive = chip.dataset.filter === filter;
+            chip.style.background = isActive ? '#4da6ff' : 'var(--card-bg)';
+            chip.style.color      = isActive ? '#fff'     : 'var(--text-secondary)';
+            chip.style.borderColor = isActive ? '#4da6ff' : 'var(--border-color)';
+            chip.style.fontWeight  = isActive ? '700'     : '400';
+        });
+
+        // Map filter → which section data-cfg-cat values to show
+        const showAll = filter === 'all';
+        const catMap = {
+            'quick':      null,   // special — handled below
+            'all':        null,
+            'engine':     ['engine'],
+            'conf_risk':  ['confidence', 'residual_risk'],
+            'moe':        ['moe'],
+            'llm_system': ['llm_system'],
+            'patterns':   ['patterns'],
+            'provider':   ['provider'],
+        };
+
+        const showQuick = filter === 'quick';
+        const targetCats = catMap[filter] || null;
+
+        // Show/hide the quick-setup card
+        const quickCard = document.getElementById('cfg-quick-card');
+        if (quickCard) quickCard.style.display = showQuick ? 'block' : 'none';
+
+        // Show/hide section cards
+        document.querySelectorAll('#config-sections [data-cfg-cat]').forEach(el => {
+            const cat = el.dataset.cfgCat;
+            if (showQuick) {
+                el.style.display = 'none';           // hide everything except quick card
+            } else if (showAll || !targetCats) {
+                el.style.display = '';
+            } else {
+                el.style.display = targetCats.includes(cat) ? '' : 'none';
+            }
+        });
+    }
+
+    async saveConfig() {
+        const payload = this._collectConfigFormValues();
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            const resp = await fetch('/api/v1/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'TM-API-KEY': apiKey },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                const detail = Array.isArray(data.detail)
+                    ? data.detail.map(e => `${e.loc?.join('.')}: ${e.msg}`).join('; ')
+                    : (data.detail || 'Unknown error');
+                this._showConfigStatus('error', `Save failed: ${detail}`);
+                return;
+            }
+            this._configData = data.config;
+            this._showConfigStatus('success', 'Configuration saved and active in memory. Changes apply to the next analysis run.');
+        } catch (err) {
+            this._showConfigStatus('error', `Save failed: ${err.message}`);
+        }
+    }
+
+    async resetConfig() {
+        if (!confirm('Reset all settings to built-in defaults?\n\nThis cannot be undone.')) return;
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            const resp = await fetch('/api/v1/config/reset', {
+                method: 'POST',
+                headers: { 'TM-API-KEY': apiKey }
+            });
+            const data = await resp.json();
+            if (!resp.ok) { this._showConfigStatus('error', 'Reset failed.'); return; }
+            this._configData = data.config;
+            const container = document.getElementById('config-sections');
+            if (container) {
+                container.innerHTML = this._renderAllConfigSections(this._configData);
+                this._attachConfigListeners();
+                this._filterConfig(this._cfgFilter || 'quick');
+            }
+            this._showConfigStatus('success', 'All settings reset to defaults.');
+        } catch (err) {
+            this._showConfigStatus('error', `Reset failed: ${err.message}`);
+        }
+    }
+
+    _showConfigStatus(type, msg) {
+        const el = document.getElementById('config-status');
+        if (!el) return;
+        const ok = type === 'success';
+        el.style.display = 'block';
+        el.style.background = ok ? '#0d9f6e18' : '#ef444418';
+        el.style.border      = `1px solid ${ok ? '#0d9f6e44' : '#ef444444'}`;
+        el.style.color       = ok ? '#0d9f6e' : '#ef4444';
+        el.textContent = msg;
+        clearTimeout(this._configStatusTimer);
+        this._configStatusTimer = setTimeout(() => { el.style.display = 'none'; }, 6000);
+    }
+
+    _collectConfigFormValues() {
+        // Fields whose values should be sent as numbers (not strings) even from <select>
+        const INT_FIELDS = new Set([
+            'max_paths','top_n','node_saturation','edge_saturation',
+            'complexity_threshold','max_tokens_synthesis','architect_pass_threshold',
+            'architect_minor_gap_threshold','architect_major_gap_threshold',
+            'tester_pass_threshold','tester_minor_gap_threshold','tester_major_gap_threshold',
+            'red_team_hard_threshold','red_team_medium_threshold','red_team_easy_threshold',
+            'accept_threshold','monitor_threshold','max_tokens','max_file_size_mb',
+            'path_risk_per_path','path_risk_cap',
+        ]);
+        const FLOAT_FIELDS = new Set([
+            'weight_target','weight_length','weight_control','weight_entry',
+            'criticality_critical','criticality_high','criticality_medium',
+            'base_confidence_floor','base_confidence_ceiling',
+            'node_penalty_factor','edge_penalty_factor','max_complexity_penalty',
+            'base_confidence','temperature_synthesis','min_failure_probability','temperature',
+            'did_reduction_factor','did_bonus_factor',
+        ]);
+
+        const payload = {};
+        document.querySelectorAll('#config-sections [data-section][data-field]').forEach(el => {
+            const section = el.dataset.section;
+            const field   = el.dataset.field;
+            const raw     = el.value;
+            let value;
+            if (el.dataset.vtype === 'int' || INT_FIELDS.has(field))     value = parseInt(raw, 10);
+            else if (el.dataset.vtype === 'float' || FLOAT_FIELDS.has(field)) value = parseFloat(raw);
+            else value = raw;
+            if (!payload[section]) payload[section] = {};
+            payload[section][field] = value;
+        });
+        return payload;
+    }
+
+    _renderAllConfigSections(data) {
+        const cs = `color:var(--text-secondary); font-size:0.78rem;`;
+        const ef = (acc, rel, sen, perf) =>
+            `<div style="margin-top:0.45rem; display:flex; flex-wrap:wrap; gap:0.3rem; font-size:0.7rem;">` +
+            `<span style="padding:1px 6px; border-radius:3px; background:#4da6ff14; border:1px solid #4da6ff33; color:#4da6ff;">⬡ Accuracy: ${acc}</span>` +
+            `<span style="padding:1px 6px; border-radius:3px; background:#0d9f6e14; border:1px solid #0d9f6e33; color:#0d9f6e;">◈ Relevance: ${rel}</span>` +
+            `<span style="padding:1px 6px; border-radius:3px; background:#f59e0b14; border:1px solid #f59e0b33; color:#f59e0b;">⚡ Sensitivity: ${sen}</span>` +
+            `<span style="padding:1px 6px; border-radius:3px; background:#94a3b814; border:1px solid #94a3b833; color:#94a3b8;">⏱ Perf: ${perf}</span>` +
+            `</div>`;
+
+        // ── Field definitions ─────────────────────────────────────────────────
+        // vtype options:
+        //   'select'  — curated dropdown (options array, value is the raw option string)
+        //   'string'  — free-text input
+        //   'int'     — number input; recMax = practical recommended upper bound (orange badge if exceeded)
+        //   'float'   — same but float step
+        const sections = [
+          {
+            title: '🔍 Analysis Engine',
+            subtitle: 'Attack path discovery depth, path scoring weights, and risk calculation factors.',
+            fields: [
+              { section:'engine', field:'max_paths', label:'Max Attack Paths',
+                vtype:'select',
+                options:[
+                  {v:'5',  label:'5 — Quick scan'},
+                  {v:'10', label:'10 — Default (recommended)', rec:true},
+                  {v:'15', label:'15 — Deeper coverage'},
+                  {v:'25', label:'25 — Thorough (slower BFS)'},
+                ],
+                desc:'Maximum attack paths explored during BFS graph traversal.',
+                effects: ef('Higher = more path coverage','More attack scenarios shown','More verbose results','Higher = slower BFS') },
+
+              { section:'engine', field:'top_n', label:'Top-N Paths Kept',
+                vtype:'select',
+                options:[
+                  {v:'3', label:'3 — Focused (fewest paths)'},
+                  {v:'5', label:'5 — Default (recommended)', rec:true},
+                  {v:'8', label:'8 — Extended view'},
+                  {v:'10',label:'10 — Maximum paths in report'},
+                ],
+                desc:'Top-N critical paths retained after ranking and deduplication.',
+                effects: ef('Neutral (already ranked)','Higher = richer attack view','More paths in report','Minimal') },
+
+              { section:'engine', field:'weight_target', label:'Weight: Target Sensitivity',
+                vtype:'select',
+                options:[
+                  {v:'0.25', label:'0.25 — Low focus on target type'},
+                  {v:'0.30', label:'0.30 — Moderate'},
+                  {v:'0.35', label:'0.35 — Default (recommended)', rec:true},
+                  {v:'0.40', label:'0.40 — Higher crown-jewel focus'},
+                ],
+                desc:'Composite score weight for target node sensitivity (DB > file > generic). All four weights should sum to ~1.0.',
+                effects: ef('Higher = focus on crown-jewel paths','Improves crown-jewel relevance','Neutral','None') },
+
+              { section:'engine', field:'weight_length', label:'Weight: Path Length',
+                vtype:'select',
+                options:[
+                  {v:'0.15', label:'0.15 — Low length preference'},
+                  {v:'0.20', label:'0.20 — Moderate'},
+                  {v:'0.25', label:'0.25 — Default (recommended)', rec:true},
+                  {v:'0.30', label:'0.30 — Strong short-path preference'},
+                ],
+                desc:'Weight for hop count — shorter paths (easier to exploit) score higher. All four weights should sum to ~1.0.',
+                effects: ef('Higher = favours short realistic paths','Short-path bias','May hide indirect paths','None') },
+
+              { section:'engine', field:'weight_control', label:'Weight: Control Coverage',
+                vtype:'select',
+                options:[
+                  {v:'0.15', label:'0.15 — Low defense weighting'},
+                  {v:'0.20', label:'0.20 — Moderate'},
+                  {v:'0.25', label:'0.25 — Default (recommended)', rec:true},
+                  {v:'0.30', label:'0.30 — Strong defense weighting'},
+                ],
+                desc:'Weight for how well-defended the path is — undefended paths score higher. All four weights should sum to ~1.0.',
+                effects: ef('Higher = undefended paths rank worse','Strongly boosts path selection relevance','Raises severity estimates','None') },
+
+              { section:'engine', field:'weight_entry', label:'Weight: Entry Exposure',
+                vtype:'select',
+                options:[
+                  {v:'0.10', label:'0.10 — Low entry focus'},
+                  {v:'0.15', label:'0.15 — Default (recommended)', rec:true},
+                  {v:'0.20', label:'0.20 — Stronger internet-facing focus'},
+                  {v:'0.25', label:'0.25 — Maximum entry focus'},
+                ],
+                desc:'Weight for entry-point exposure level (internet > user > internal). All four weights should sum to ~1.0.',
+                effects: ef('Internet-facing paths more accurate','Higher = internet-facing gets priority','Neutral','None') },
+
+              { section:'engine', field:'criticality_critical', label:'CRITICAL Tier Threshold',
+                vtype:'select',
+                options:[
+                  {v:'0.70', label:'0.70 — Lenient (more CRITICALs)'},
+                  {v:'0.75', label:'0.75 — Moderately lenient'},
+                  {v:'0.80', label:'0.80 — Default (recommended)', rec:true},
+                  {v:'0.85', label:'0.85 — Strict (fewer CRITICALs)'},
+                ],
+                desc:'Minimum composite score to classify a path as CRITICAL. Must be higher than HIGH threshold.',
+                effects: ef('Lower = more CRITICAL findings (may inflate)','CRITICAL label appears more often','Very High','None') },
+
+              { section:'engine', field:'criticality_high', label:'HIGH Tier Threshold',
+                vtype:'select',
+                options:[
+                  {v:'0.50', label:'0.50 — Lenient (more HIGHs)'},
+                  {v:'0.55', label:'0.55'},
+                  {v:'0.60', label:'0.60 — Default (recommended)', rec:true},
+                  {v:'0.65', label:'0.65 — Strict'},
+                ],
+                desc:'Minimum composite score to classify a path as HIGH. Must be between MEDIUM and CRITICAL thresholds.',
+                effects: ef('Affects HIGH tier count','As above','High','None') },
+
+              { section:'engine', field:'criticality_medium', label:'MEDIUM Tier Threshold',
+                vtype:'select',
+                options:[
+                  {v:'0.30', label:'0.30 — Lenient (more MEDIUMs)'},
+                  {v:'0.35', label:'0.35'},
+                  {v:'0.40', label:'0.40 — Default (recommended)', rec:true},
+                  {v:'0.50', label:'0.50 — Strict (more LOWs)'},
+                ],
+                desc:'Minimum composite score for MEDIUM tier. Paths below this are LOW. Must be lower than HIGH threshold.',
+                effects: ef('Affects MEDIUM/LOW split','As above','High','None') },
+
+              { section:'engine', field:'did_reduction_factor', label:'Defence-in-Depth Reduction',
+                vtype:'select',
+                options:[
+                  {v:'25', label:'25 — Conservative (less credit)'},
+                  {v:'35', label:'35 — Moderate'},
+                  {v:'40', label:'40 — Default (recommended)', rec:true},
+                  {v:'50', label:'50 — Generous (more credit for layers)'},
+                ],
+                desc:'Risk reduction points awarded per defence-in-depth tier. Higher = more credit for layered controls.',
+                effects: ef('Lower = more conservative','Lower = higher residual risk shown','High','None') },
+
+              { section:'engine', field:'path_risk_per_path', label:'Risk Pts per Attack Path',
+                vtype:'select',
+                options:[
+                  {v:'1', label:'1 — Minimal path impact'},
+                  {v:'2', label:'2 — Low'},
+                  {v:'3', label:'3 — Default (recommended)', rec:true},
+                  {v:'5', label:'5 — High path impact'},
+                ],
+                desc:'Risk points added per discovered attack path (subject to the cap below).',
+                effects: ef('Lower = paths matter less','Lower impact on overall risk score','Moderate','None') },
+
+              { section:'engine', field:'path_risk_cap', label:'Attack Path Risk Cap',
+                vtype:'select',
+                options:[
+                  {v:'10', label:'10 — Low cap'},
+                  {v:'15', label:'15 — Default (recommended)', rec:true},
+                  {v:'20', label:'20 — Higher cap'},
+                  {v:'25', label:'25 — Maximum allowed'},
+                ],
+                desc:'Maximum total risk points attributable to all attack paths combined.',
+                effects: ef('Lower cap = many paths cannot keep escalating risk','Moderate','Moderate','None') },
+            ]
+          },
+          {
+            title: '📊 Confidence Calculation',
+            subtitle: 'How architecture complexity penalises base confidence and how thoroughness recovers it.',
+            fields: [
+              { section:'confidence', field:'base_confidence_floor', label:'Confidence Floor',
+                vtype:'select',
+                options:[
+                  {v:'0.65', label:'0.65 — Conservative floor'},
+                  {v:'0.70', label:'0.70 — Moderately conservative'},
+                  {v:'0.72', label:'0.72 — Default (recommended)', rec:true},
+                  {v:'0.80', label:'0.80 — Optimistic floor'},
+                ],
+                desc:'Minimum possible base confidence before expert adjustments. Lower = more conservative on complex diagrams.',
+                effects: ef('Higher floor = optimistic baseline','Less distinction for complex diagrams','High','None') },
+
+              { section:'confidence', field:'base_confidence_ceiling', label:'Confidence Ceiling',
+                vtype:'select',
+                options:[
+                  {v:'0.95', label:'0.95 — Conservative ceiling'},
+                  {v:'0.98', label:'0.98 — Moderately conservative'},
+                  {v:'0.995',label:'0.995 — Default (recommended)', rec:true},
+                ],
+                desc:'Maximum possible base confidence. Lowering this makes all assessments start more conservative.',
+                effects: ef('Lower = more conservative maximum','Direct impact on displayed confidence %','Very High','None') },
+
+              { section:'confidence', field:'node_penalty_factor', label:'Node Penalty Factor',
+                vtype:'select',
+                options:[
+                  {v:'0.05', label:'0.05 — Mild node penalty'},
+                  {v:'0.10', label:'0.10 — Moderate'},
+                  {v:'0.15', label:'0.15 — Default (recommended)', rec:true},
+                  {v:'0.20', label:'0.20 — Stronger penalty'},
+                ],
+                desc:'Confidence penalty weight per unit of node-count complexity. Saturates at the node saturation count.',
+                effects: ef('Higher = large diagrams penalised more','Larger diagrams show lower confidence','High','None') },
+
+              { section:'confidence', field:'node_saturation', label:'Node Saturation Count',
+                vtype:'select',
+                options:[
+                  {v:'10', label:'10 — Penalty saturates quickly'},
+                  {v:'15', label:'15'},
+                  {v:'20', label:'20 — Default (recommended)', rec:true},
+                  {v:'30', label:'30 — Penalty kicks in later'},
+                  {v:'50', label:'50 — Large-diagram tolerance'},
+                ],
+                desc:'Node count at which the node complexity penalty is fully applied (linear ramp up to this point).',
+                effects: ef('Higher = penalty kicks in later','More optimistic for large graphs','Moderate','None') },
+
+              { section:'confidence', field:'edge_penalty_factor', label:'Edge Penalty Factor',
+                vtype:'select',
+                options:[
+                  {v:'0.05', label:'0.05 — Mild'},
+                  {v:'0.10', label:'0.10 — Default (recommended)', rec:true},
+                  {v:'0.15', label:'0.15 — Stronger'},
+                ],
+                desc:'Confidence penalty weight per unit of edge-count complexity. Saturates at the edge saturation count.',
+                effects: ef('Higher = dense-edge diagrams penalised more','As above for edge count','Moderate','None') },
+
+              { section:'confidence', field:'edge_saturation', label:'Edge Saturation Count',
+                vtype:'select',
+                options:[
+                  {v:'20', label:'20 — Saturates quickly'},
+                  {v:'30', label:'30'},
+                  {v:'40', label:'40 — Default (recommended)', rec:true},
+                  {v:'60', label:'60 — Tolerates dense graphs'},
+                  {v:'80', label:'80 — Very lenient'},
+                ],
+                desc:'Edge count at which the edge complexity penalty is fully applied.',
+                effects: ef('Higher = dense graphs penalised later','Moderate','Moderate','None') },
+
+              { section:'confidence', field:'max_complexity_penalty', label:'Max Complexity Penalty',
+                vtype:'select',
+                options:[
+                  {v:'0.15', label:'0.15 — Low cap (optimistic)'},
+                  {v:'0.20', label:'0.20'},
+                  {v:'0.25', label:'0.25 — Default (recommended)', rec:true},
+                  {v:'0.30', label:'0.30 — Strict cap'},
+                ],
+                desc:'Cap on the combined node + edge complexity penalty. Prevents very large diagrams from zeroing confidence.',
+                effects: ef('Lower cap = more optimistic for large diagrams','Moderate','Moderate','None') },
+            ]
+          },
+          {
+            title: '🧑‍🏫 MoE / Expert Review',
+            subtitle: 'Mixture-of-Experts pipeline: base confidence, critic execution, LLM settings, and scoring bands.',
+            fields: [
+              { section:'moe', field:'base_confidence', label:'Base Confidence (%)',
+                vtype:'select',
+                options:[
+                  {v:'95.0', label:'95.0 — Conservative start'},
+                  {v:'97.0', label:'97.0 — Moderately conservative'},
+                  {v:'99.5', label:'99.5 — Default (recommended)', rec:true},
+                ],
+                desc:'Starting confidence % before any expert critic adjustments. Critics then apply penalties from this base.',
+                effects: ef('Core starting point for displayed confidence %','Direct','Very High','None') },
+
+              { section:'moe', field:'critic_mode', label:'Critic Execution Mode',
+                vtype:'select',
+                options:[
+                  {v:'sequential', label:'sequential — Cross-referenced, most accurate (recommended)', rec:true},
+                  {v:'parallel',   label:'parallel — Faster, critics run blind (less accurate)'},
+                  {v:'auto',       label:'auto — Decides per complexity score'},
+                ],
+                desc:'How the three expert critics run. Sequential means each critic sees prior results for cross-referencing.',
+                effects: ef('Sequential = more accurate','Sequential = higher quality gaps','High','Parallel = faster') },
+
+              { section:'moe', field:'complexity_threshold', label:'Auto-Mode Complexity Cutoff',
+                vtype:'select',
+                options:[
+                  {v:'40', label:'40 — More architectures go sequential'},
+                  {v:'50', label:'50'},
+                  {v:'60', label:'60 — Default (recommended)', rec:true},
+                  {v:'80', label:'80 — More architectures go parallel'},
+                ],
+                desc:'In "auto" mode: complexity score ≥ this → sequential; below → parallel. Only relevant when critic_mode is "auto".',
+                effects: ef('Lower = more architectures use sequential','Affects when auto mode switches','Moderate','Sequential = slower') },
+
+              { section:'moe', field:'temperature_synthesis', label:'Synthesis Temperature',
+                vtype:'select',
+                options:[
+                  {v:'0.0',  label:'0.0 — Fully deterministic'},
+                  {v:'0.1',  label:'0.1 — Near-deterministic'},
+                  {v:'0.2',  label:'0.2 — Default (recommended)', rec:true},
+                  {v:'0.4',  label:'0.4 — Some variation'},
+                ],
+                desc:'LLM temperature for the Layer-3 orchestrator synthesis call. Lower = more reproducible output.',
+                effects: ef('Lower = more reproducible','Higher = more creative but less consistent','Low','None') },
+
+              { section:'moe', field:'max_tokens_synthesis', label:'Synthesis Max Tokens',
+                vtype:'select',
+                options:[
+                  {v:'2000', label:'2000 — Concise synthesis'},
+                  {v:'3000', label:'3000 — Standard'},
+                  {v:'4000', label:'4000 — Default (recommended)', rec:true},
+                  {v:'6000', label:'6000 — Extended (slower, costlier)'},
+                ],
+                desc:'Max tokens for the synthesis LLM call. 4000 is already generous — values above increase cost and latency without proportional benefit.',
+                effects: ef('Higher = more complete reasoning','Higher = richer executive output','Low','Higher = slower & costlier') },
+
+              { section:'moe', field:'architect_pass_threshold', label:'Architect: PASS Threshold',
+                vtype:'select',
+                options:[
+                  {v:'80', label:'80 — Lenient (easier to PASS)'},
+                  {v:'85', label:'85 — Moderate'},
+                  {v:'90', label:'90 — Default (recommended)', rec:true},
+                  {v:'95', label:'95 — Strict (harder to PASS)'},
+                ],
+                desc:'Architect critic score ≥ this = PASS (no confidence penalty). Must be above the minor-gap threshold.',
+                effects: ef('Higher = stricter architect scoring','Stricter = more gaps flagged','High','None') },
+
+              { section:'moe', field:'architect_minor_gap_threshold', label:'Architect: Minor Gap Cutoff',
+                vtype:'select',
+                options:[
+                  {v:'70', label:'70 — Lenient'},
+                  {v:'75', label:'75'},
+                  {v:'80', label:'80 — Default (recommended)', rec:true},
+                  {v:'85', label:'85 — Strict'},
+                ],
+                desc:'Architect score ≥ this (but < PASS) = MINOR_GAPS (−2% or −5% penalty). Must be between major-gap and PASS thresholds.',
+                effects: ef('Affects MINOR vs MAJOR boundary','Moderate','High','None') },
+
+              { section:'moe', field:'architect_major_gap_threshold', label:'Architect: Major Gap Cutoff',
+                vtype:'select',
+                options:[
+                  {v:'60', label:'60 — Very lenient'},
+                  {v:'65', label:'65'},
+                  {v:'70', label:'70 — Default (recommended)', rec:true},
+                  {v:'75', label:'75 — Strict'},
+                ],
+                desc:'Architect score < this = MAJOR_GAPS (−10% confidence). Must be below the minor-gap threshold.',
+                effects: ef('Lower = more forgiving of architectural gaps','Moderate','High','None') },
+
+              { section:'moe', field:'tester_pass_threshold', label:'Tester: PASS Threshold',
+                vtype:'select',
+                options:[
+                  {v:'75', label:'75 — Lenient'},
+                  {v:'80', label:'80 — Moderate'},
+                  {v:'85', label:'85 — Default (recommended)', rec:true},
+                  {v:'90', label:'90 — Strict'},
+                ],
+                desc:'Tester score ≥ this = PASS. Higher = stricter MITRE technique validation required.',
+                effects: ef('Higher = stricter MITRE mapping','High','High','None') },
+
+              { section:'moe', field:'tester_minor_gap_threshold', label:'Tester: Minor Gap Cutoff',
+                vtype:'select',
+                options:[
+                  {v:'65', label:'65 — Lenient'},
+                  {v:'70', label:'70'},
+                  {v:'75', label:'75 — Default (recommended)', rec:true},
+                  {v:'80', label:'80 — Strict'},
+                ],
+                desc:'Tester score ≥ this (but < PASS) = MINOR_GAPS. Must be between major-gap and PASS thresholds.',
+                effects: ef('Moderate','Moderate','High','None') },
+
+              { section:'moe', field:'tester_major_gap_threshold', label:'Tester: Major Gap Cutoff',
+                vtype:'select',
+                options:[
+                  {v:'55', label:'55 — Very lenient'},
+                  {v:'60', label:'60'},
+                  {v:'65', label:'65 — Default (recommended)', rec:true},
+                  {v:'70', label:'70 — Strict'},
+                ],
+                desc:'Tester score < this = MAJOR_GAPS (−5% confidence). Must be below the minor-gap threshold.',
+                effects: ef('Lower = more forgiving of MITRE gaps','Moderate','High','None') },
+
+              { section:'moe', field:'red_team_hard_threshold', label:'Red Team: Hard-to-Exploit Limit',
+                vtype:'select',
+                options:[
+                  {v:'30', label:'30 — Strict (fewer PASS)'},
+                  {v:'35', label:'35'},
+                  {v:'40', label:'40 — Default (recommended)', rec:true},
+                  {v:'50', label:'50 — Lenient (more PASS)'},
+                ],
+                desc:'Red Team score ≤ this = PASS (hard to exploit, no penalty). Inverted scale — lower Red Team score = better security.',
+                effects: ef('Defines "hard to exploit" boundary','Changes confidence outcome','Very High','None') },
+
+              { section:'moe', field:'red_team_medium_threshold', label:'Red Team: Medium-Exploit Limit',
+                vtype:'select',
+                options:[
+                  {v:'45', label:'45 — Strict'},
+                  {v:'50', label:'50'},
+                  {v:'55', label:'55 — Default (recommended)', rec:true},
+                  {v:'60', label:'60 — Lenient'},
+                ],
+                desc:'Red Team score ≤ this (but > hard threshold) = MINOR_GAPS (−3% to −6%). Must be between hard and easy thresholds.',
+                effects: ef('Moderate','Moderate','Very High','None') },
+
+              { section:'moe', field:'red_team_easy_threshold', label:'Red Team: Easy-Exploit Limit',
+                vtype:'select',
+                options:[
+                  {v:'60', label:'60 — Strict (−10% penalty triggers early)'},
+                  {v:'65', label:'65'},
+                  {v:'70', label:'70 — Default (recommended)', rec:true},
+                  {v:'80', label:'80 — Lenient'},
+                ],
+                desc:'Red Team score > this = MAJOR_GAPS (−10% confidence). Must be above the medium threshold.',
+                effects: ef('Controls when −10% penalty triggers','Controls penalty severity','Very High','None') },
+            ]
+          },
+          {
+            title: '🔒 Residual Risk',
+            subtitle: 'Minimum risk floor and ACCEPT / MONITOR / MITIGATE decision thresholds.',
+            fields: [
+              { section:'residual_risk', field:'min_failure_probability', label:'Min Failure Probability',
+                vtype:'select',
+                options:[
+                  {v:'0.05', label:'0.05 — Very optimistic (5% floor)'},
+                  {v:'0.08', label:'0.08 — Optimistic'},
+                  {v:'0.10', label:'0.10 — Default / NIST standard (recommended)', rec:true},
+                  {v:'0.15', label:'0.15 — Conservative (15% floor)'},
+                  {v:'0.20', label:'0.20 — Very conservative (20% floor)'},
+                ],
+                desc:'Minimum residual failure rate — controls can never reduce risk below this floor (NIST principle). 10% is the industry-standard lower bound.',
+                effects: ef('Lower = more optimistic (riskier)','Higher = more conservative residual risk','Very High','None') },
+
+              { section:'residual_risk', field:'accept_threshold', label:'ACCEPT Threshold',
+                vtype:'select',
+                options:[
+                  {v:'5',  label:'5 — Very strict (few ACCEPTs)'},
+                  {v:'8',  label:'8'},
+                  {v:'10', label:'10 — Default (recommended)', rec:true},
+                  {v:'15', label:'15 — Lenient (more ACCEPTs)'},
+                ],
+                desc:'Residual risk score < this → ACCEPT (low risk, quarterly monitoring only).',
+                effects: ef('Higher = more findings become ACCEPT','Fewer MONITOR/MITIGATE findings','High','None') },
+
+              { section:'residual_risk', field:'monitor_threshold', label:'MONITOR Threshold',
+                vtype:'select',
+                options:[
+                  {v:'15', label:'15 — Strict (more MITIGATEs)'},
+                  {v:'18', label:'18'},
+                  {v:'20', label:'20 — Default (recommended)', rec:true},
+                  {v:'25', label:'25 — Lenient (more MONITORs)'},
+                ],
+                desc:'Residual risk score < this (but ≥ ACCEPT) → MONITOR. Above this → MITIGATE. Must be above ACCEPT threshold.',
+                effects: ef('Higher = more findings become MONITOR','Fewer MITIGATE findings','High','None') },
+            ]
+          },
+          {
+            title: '🤖 LLM & System',
+            subtitle: 'Default LLM behaviour, file upload limits, and report storage path.',
+            fields: [
+              { section:'llm', field:'temperature', label:'LLM Default Temperature',
+                vtype:'select',
+                options:[
+                  {v:'0.3', label:'0.3 — Near-deterministic'},
+                  {v:'0.5', label:'0.5 — Moderately deterministic'},
+                  {v:'0.7', label:'0.7 — Default (recommended)', rec:true},
+                  {v:'1.0', label:'1.0 — More creative / varied output'},
+                ],
+                desc:'Default LLM sampling temperature for analysis calls (synthesis has its own separate temperature setting above).',
+                effects: ef('Lower = more reproducible','Lower = less varied output','Moderate','None') },
+
+              { section:'llm', field:'max_tokens', label:'LLM Default Max Tokens',
+                vtype:'select',
+                options:[
+                  {v:'500',  label:'500 — Brief responses'},
+                  {v:'800',  label:'800'},
+                  {v:'1000', label:'1000 — Default (recommended)', rec:true},
+                  {v:'1500', label:'1500 — Detailed responses'},
+                  {v:'2000', label:'2000 — Extended (slower, costlier)'},
+                ],
+                desc:'Default max tokens per LLM response for non-synthesis calls. 1000 tokens is sufficient for most analysis prompts.',
+                effects: ef('Higher = more complete responses','Higher = richer analysis text','Low','Higher = slower') },
+
+              { section:'system', field:'report_dir', label:'Report Output Directory',
+                vtype:'string',
+                desc:'Path where reports are saved. Use a relative path from the project root (e.g. "report") or an absolute path. Restart not needed — takes effect on next analysis.',
+                effects: ef('N/A','Where reports are written and served from','None','I/O location') },
+
+              { section:'system', field:'max_file_size_mb', label:'Max Upload File Size (MB)',
+                vtype:'select',
+                options:[
+                  {v:'5',  label:'5 MB — Small diagrams only'},
+                  {v:'10', label:'10 MB — Default (recommended)', rec:true},
+                  {v:'20', label:'20 MB — Large diagrams'},
+                  {v:'50', label:'50 MB — Very large (validate server memory)'},
+                ],
+                desc:'Maximum .mmd architecture file size accepted by the API.',
+                effects: ef('N/A','Larger = accepts bigger diagrams','None','None') },
+            ]
+          },
+        ];
+
+        // ── Warning banner ────────────────────────────────────────────────────
+        const warningBanner = `
+            <div style="display:flex; gap:0.9rem; align-items:flex-start; padding:1rem 1.25rem; background:#f59e0b14; border:1px solid #f59e0b44; border-radius:10px; margin-bottom:1.25rem;">
+                <span style="font-size:1.4rem; flex-shrink:0; line-height:1.2;">⚠️</span>
+                <div style="font-size:0.84rem; color:var(--text-color); line-height:1.65;">
+                    <strong style="color:#f59e0b;">Use defaults unless you have a specific reason to change them.</strong><br>
+                    These settings affect how threats are scored, how confidence is calculated, and how the expert panel decides what to flag.
+                    Wrong values can cause the engine to under-report risks, inflate confidence, or produce inconsistent results.<br>
+                    <span style="color:var(--text-secondary); font-size:0.8rem;">
+                        Options marked <strong style="color:#0d9f6e;">(recommended)</strong> are the validated production defaults.
+                        Use <strong>↺ Reset to Defaults</strong> at any time to undo all changes.
+                        Changes take effect on the next analysis — not retroactively on existing reports.
+                    </span>
+                </div>
+            </div>`;
+
+        // ── Provider chain status block ───────────────────────────────────────
+        const pc = data._provider_chain || {};
+        const creds = pc.credentials || {};
+        const notes = pc.notes || {};
+        const flagHtml = (val) => {
+            if (val === 'not_used') return `<span style="color:#64748b; font-size:0.82rem;">— not in chain</span>`;
+            return val === 'set'
+                ? `<span style="color:#0d9f6e; font-weight:700;">✅ Set</span>`
+                : `<span style="color:#ef4444; font-weight:700;">❌ Not set</span>`;
+        };
+        const providerBodyId = 'cfg-section-body-provider';
+        const providerHtml = `
+            <div class="card" style="margin-bottom:1rem;">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1.1rem; cursor:pointer; user-select:none;"
+                     onclick="(function(el){var b=document.getElementById('${providerBodyId}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';})(this)">
+                    <div>
+                        <span style="font-weight:700; font-size:0.95rem;">🔑 LLM Provider Chain</span>
+                        <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">Read-only — configure in .env</span>
+                    </div>
+                    <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">▼</span>
+                </div>
+                <div id="${providerBodyId}" style="border-top:1px solid var(--border-color); padding:0.9rem 1.1rem;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.84rem;">
+                        <tr style="border-bottom:1px solid var(--border-color);">
+                            <td style="padding:0.4rem 0; color:var(--text-secondary); width:210px; vertical-align:top;">Active chain</td>
+                            <td style="font-weight:700; color:var(--primary-color);">${pc.provider_chain || '—'}</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid var(--border-color);">
+                            <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">Verifier / Judge</td>
+                            <td>${pc.verifier_provider || '—'}</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid var(--border-color);">
+                            <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">OpenRouter API Key</td>
+                            <td>${flagHtml(creds.OPENROUTER_API_KEY)}</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid var(--border-color);">
+                            <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">
+                                AWS Bedrock API Key
+                                <div style="font-size:0.7rem; color:#64748b; margin-top:0.15rem;">${notes.AWS_BEDROCK_API_KEY || ''}</div>
+                            </td>
+                            <td>
+                                ${flagHtml(creds.AWS_BEDROCK_API_KEY)}
+                                ${creds.AWS_BEDROCK_API_KEY === 'set' ? `<div style="font-size:0.7rem; color:#64748b; margin-top:0.15rem;">${notes.LLM_FALLBACK_PROVIDERS || ''}</div>` : ''}
+                            </td>
+                        </tr>
+                        <tr style="border-bottom:1px solid var(--border-color);">
+                            <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">Anthropic API Key</td>
+                            <td>${flagHtml(creds.ANTHROPIC_API_KEY)}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">Dashboard API Key</td>
+                            <td>${flagHtml(creds.API_KEY)}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>`;
+
+        // ── Filter chips ──────────────────────────────────────────────────────
+        const chipStyle = `display:inline-flex; align-items:center; padding:0.3rem 0.85rem; border-radius:20px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-secondary); font-size:0.8rem; cursor:pointer; white-space:nowrap; transition:background 0.15s, color 0.15s, border-color 0.15s; user-select:none;`;
+        const chips = [
+            {filter:'quick',      label:'⚡ Quick Setup'},
+            {filter:'all',        label:'📋 All Settings'},
+            {filter:'engine',     label:'🔍 Engine'},
+            {filter:'conf_risk',  label:'📊 Confidence & Risk'},
+            {filter:'moe',        label:'🧑‍🏫 MoE / Experts'},
+            {filter:'llm_system', label:'🤖 LLM & System'},
+            {filter:'patterns',   label:'🧩 Patterns'},
+            {filter:'provider',   label:'🔑 Provider Chain'},
+        ].map(c => `<button class="cfg-chip" data-filter="${c.filter}" style="${chipStyle}">${c.label}</button>`).join('');
+        const filterRow = `<div id="cfg-filter-chips" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">${chips}</div>`;
+
+        // ── Quick Setup card (only shown when filter='quick') ─────────────────
+        const qSec = data.moe || {}, qEng = data.engine || {}, qSys = data.system || {};
+        const qSelStyle = `padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer; width:100%; box-sizing:border-box; color-scheme:dark;`;
+        const qRow = (label, hint, inputHtml) => `
+            <div style="display:grid; grid-template-columns:minmax(160px,1fr) minmax(240px,320px) minmax(200px,2fr); gap:1rem; align-items:start; padding:0.65rem 1.1rem; border-bottom:1px solid var(--border-color);">
+                <div style="font-weight:600; font-size:0.84rem; color:var(--text-color);">${label}</div>
+                <div>${inputHtml}</div>
+                <div style="color:var(--text-secondary); font-size:0.78rem; line-height:1.5;">${hint}</div>
+            </div>`;
+        const mkSel = (section, field, opts, curVal) => {
+            const oHtml = opts.map(o => `<option value="${o.v}" ${curVal===o.v?'selected':''}>${o.label}</option>`).join('');
+            return `<select data-section="${section}" data-field="${field}" data-vtype="string" style="${qSelStyle}">${oHtml}</select>`;
+        };
+        const critModeOpts = [{v:'sequential',label:'sequential (recommended)'},{v:'parallel',label:'parallel (faster)'},{v:'auto',label:'auto'}];
+        const maxPathsOpts = [{v:'5',label:'5'},{v:'10',label:'10 (recommended)'},{v:'15',label:'15'},{v:'25',label:'25'}];
+        const topNOpts     = [{v:'3',label:'3'},{v:'5',label:'5 (recommended)'},{v:'8',label:'8'},{v:'10',label:'10'}];
+
+        // Pattern toggles
+        const catalog = data._patterns_catalog || {};
+        const patToggleRows = Object.entries(catalog).map(([pid, p]) => {
+            const isActive  = p.status === 'active';
+            const isEnabled = !!p.enabled;
+            const badgeHtml = isActive
+                ? `<span style="padding:1px 6px; border-radius:3px; font-size:0.68rem; font-weight:700; background:#0d9f6e18; border:1px solid #0d9f6e44; color:#0d9f6e;">Active</span>`
+                : `<span style="padding:1px 6px; border-radius:3px; font-size:0.68rem; font-weight:700; background:#64748b14; border:1px solid #64748b33; color:#64748b;">Coming soon</span>`;
+            const toggleHtml = isActive
+                ? `<label style="position:relative; display:inline-block; width:38px; height:20px; cursor:pointer; flex-shrink:0;" title="${isEnabled?'Enabled — click to disable':'Disabled — click to enable'}">
+                    <input type="checkbox" data-pattern-id="${pid}" ${isEnabled?'checked':''} style="opacity:0; width:0; height:0; position:absolute;"
+                        onchange="window.dashboard._togglePattern('${pid}', this.checked)">
+                    <span style="position:absolute; inset:0; border-radius:20px; background:${isEnabled?'#4da6ff':'#334155'}; transition:background 0.2s;"></span>
+                    <span style="position:absolute; top:2px; left:${isEnabled?'20':'2'}px; width:16px; height:16px; border-radius:50%; background:#fff; transition:left 0.2s;"></span>
+                   </label>`
+                : `<label style="position:relative; display:inline-block; width:38px; height:20px; opacity:0.4; cursor:not-allowed; flex-shrink:0;">
+                    <span style="position:absolute; inset:0; border-radius:20px; background:#334155;"></span>
+                    <span style="position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff;"></span>
+                   </label>`;
+            return `
+            <div style="display:flex; align-items:flex-start; gap:1rem; padding:0.75rem 1.1rem; border-bottom:1px solid var(--border-color);">
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                        <span style="font-weight:600; font-size:0.88rem;">${p.name}</span>
+                        ${badgeHtml}
+                    </div>
+                    <div style="color:var(--text-secondary); font-size:0.78rem; margin-top:0.25rem; line-height:1.5;">${p.description}</div>
+                    ${p.arch_types && p.arch_types.length ? `<div style="margin-top:0.3rem; font-size:0.72rem; color:#64748b;">Applies to: ${p.arch_types.join(', ')}</div>` : ''}
+                    ${p.requires && p.requires.length ? `<div style="font-size:0.72rem; color:#64748b;">Requires: ${p.requires.join(', ')}</div>` : ''}
+                </div>
+                <div style="flex-shrink:0; padding-top:0.1rem;">${toggleHtml}</div>
+            </div>`;
+        }).join('');
+        const patternsCard = `
+            <div class="card" data-cfg-cat="patterns" style="margin-bottom:1rem;">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1.1rem; cursor:pointer; user-select:none;"
+                     onclick="(function(el){var b=document.getElementById('cfg-section-body-patterns');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';})(this)">
+                    <div>
+                        <span style="font-weight:700; font-size:0.95rem;">🧩 Threat Patterns</span>
+                        <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">Which threat-analysis modules run during assessment</span>
+                    </div>
+                    <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">▼</span>
+                </div>
+                <div id="cfg-section-body-patterns" style="border-top:1px solid var(--border-color);">
+                    ${patToggleRows}
+                </div>
+            </div>`;
+
+        // ── Quick Setup card body ─────────────────────────────────────────────
+        const quickCard = `
+            <div id="cfg-quick-card" style="display:none; margin-bottom:1rem;">
+                <div class="card" style="margin-bottom:0.75rem;">
+                    <div style="padding:0.75rem 1.1rem; border-bottom:1px solid var(--border-color);">
+                        <span style="font-weight:700; font-size:0.95rem;">⚡ Quick Setup</span>
+                        <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">The 5 most impactful settings — change only these if unsure</span>
+                    </div>
+                    ${qRow('Critic Mode', 'Sequential is most accurate. Switch to Parallel to speed up Expert Review.',
+                        mkSel('moe','critic_mode', critModeOpts, String(qSec.critic_mode||'sequential')))}
+                    ${qRow('Max Attack Paths', 'Higher = deeper BFS search, slower analysis.',
+                        mkSel('engine','max_paths', maxPathsOpts, String(qEng.max_paths||'10')))}
+                    ${qRow('Top-N Paths Kept', 'How many ranked paths appear in the report.',
+                        mkSel('engine','top_n', topNOpts, String(qEng.top_n||'5')))}
+                    ${qRow('Report Output Directory',
+                        'Relative to project root or absolute path.',
+                        `<input type="text" data-section="system" data-field="report_dir" data-vtype="string" value="${(qSys.report_dir||'report').replace(/"/g,'&quot;')}" style="${qSelStyle}" />`)}
+                    <div style="padding:0.65rem 1.1rem;">
+                        <div style="font-weight:600; font-size:0.84rem; color:var(--text-color); margin-bottom:0.5rem;">Threat Patterns</div>
+                        ${patToggleRows}
+                    </div>
+                </div>
+            </div>`;
+
+        // Add data-cfg-cat attribute to each section card via wrapper
+        const sectionCatMap = {
+            '🔍 Analysis Engine':        'engine',
+            '📊 Confidence Calculation': 'confidence',
+            '🧑‍🏫 MoE / Expert Review':  'moe',
+            '🔒 Residual Risk':          'residual_risk',
+            '🤖 LLM & System':           'llm_system',
+        };
+
+        const sectionCards = sections.map(s => {
+            const cat = sectionCatMap[s.title] || 'other';
+            const html = this._renderConfigSection(s, data);
+            // Inject data-cfg-cat into the outer div of the card
+            return html.replace('<div class="card"', `<div class="card" data-cfg-cat="${cat}"`);
+        }).join('');
+
+        // Provider card also gets a cat
+        const providerHtmlWithCat = providerHtml.replace(
+            '<div class="card" style="margin-bottom:1rem;">',
+            '<div class="card" data-cfg-cat="provider" style="margin-bottom:1rem;">'
+        );
+
+        return filterRow + warningBanner + quickCard + providerHtmlWithCat + sectionCards + patternsCard;
+    }
+
+    async _togglePattern(patternId, enabled) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        // Build new enabled_patterns list from all currently-checked pattern toggles
+        const allToggles = document.querySelectorAll('[data-pattern-id]');
+        const enabledList = [];
+        allToggles.forEach(t => {
+            // Use the just-changed value for the toggled pattern, current state for others
+            const shouldEnable = t.dataset.patternId === patternId ? enabled : t.checked;
+            if (shouldEnable) enabledList.push(t.dataset.patternId);
+        });
+        try {
+            const resp = await fetch('/api/v1/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'TM-API-KEY': apiKey },
+                body: JSON.stringify({ patterns: { enabled_patterns: enabledList } })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                this._showConfigStatus('error', `Pattern update failed: ${data.detail || 'error'}`);
+                return;
+            }
+            this._configData = data.config;
+            this._showConfigStatus('success', `Pattern "${patternId}" ${enabled ? 'enabled' : 'disabled'}. Takes effect on next analysis.`);
+        } catch (err) {
+            this._showConfigStatus('error', `Pattern update failed: ${err.message}`);
+        }
+    }
+
+    _renderConfigSection(sectionDef, data) {
+        const cs = `color:var(--text-secondary); font-size:0.78rem;`;
+        const sectionId = 'cfg-section-body-' + sectionDef.title.replace(/\W+/g,'').toLowerCase();
+        const inpStyle = `width:100%; padding:0.38rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer; box-sizing:border-box; color-scheme:dark;`;
+
+        const rows = sectionDef.fields.map(f => {
+            const sectionData = data[f.section] || {};
+            const currentVal  = sectionData[f.field] !== undefined ? String(sectionData[f.field]) : '';
+            let inputHtml;
+
+            if (f.vtype === 'select') {
+                // Options format: [{v, label, rec?}]  OR  [string, ...]
+                const opts = f.options.map(o => {
+                    const optVal   = typeof o === 'object' ? o.v   : o;
+                    const optLabel = typeof o === 'object' ? o.label : o;
+                    const isRec    = typeof o === 'object' && o.rec;
+                    // Highlight recommended option label
+                    const display  = isRec
+                        ? optLabel.replace('(recommended)', '<span style="color:#0d9f6e;">(recommended)</span>')
+                        : optLabel;
+                    const sel = (currentVal === optVal || (currentVal === '' && isRec)) ? 'selected' : '';
+                    return `<option value="${optVal}" ${sel}>${optLabel}</option>`;
+                }).join('');
+                inputHtml = `<select data-section="${f.section}" data-field="${f.field}" data-vtype="string" style="${inpStyle}">${opts}</select>`;
+
+            } else if (f.vtype === 'string') {
+                inputHtml = `<input type="text" data-section="${f.section}" data-field="${f.field}" data-vtype="string"
+                    value="${currentVal}" style="${inpStyle}" />`;
+            } else {
+                // int / float — show a free input with recommended cap warning
+                const overRec = f.recMax !== undefined && parseFloat(currentVal) > f.recMax;
+                const recBadge = overRec
+                    ? `<div style="margin-top:0.25rem; font-size:0.7rem; color:#f59e0b;">⚠ Exceeds recommended max (${f.recMax})</div>`
+                    : '';
+                inputHtml = `<input type="number" data-section="${f.section}" data-field="${f.field}" data-vtype="${f.vtype}"
+                    value="${currentVal}" min="${f.min}" max="${f.max}" step="${f.step}"
+                    style="${inpStyle}" />` + recBadge;
+            }
+
+            return `
+            <div style="display:grid; grid-template-columns:minmax(180px,1fr) minmax(240px,320px) minmax(220px,2fr); gap:1rem; align-items:start; padding:0.65rem 1.1rem; border-bottom:1px solid var(--border-color);">
+                <div>
+                    <div style="font-weight:600; font-size:0.84rem; color:var(--text-color);">${f.label}</div>
+                    <div style="${cs} margin-top:0.15rem;">Default: ${currentVal || '—'}</div>
+                </div>
+                <div style="padding-top:0.05rem;">${inputHtml}</div>
+                <div style="${cs} padding-top:0.05rem; line-height:1.55;">
+                    ${f.desc}
+                    ${f.effects || ''}
+                </div>
+            </div>`;
+        }).join('');
+
+        return `
+        <div class="card" style="margin-bottom:1rem;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1.1rem; cursor:pointer; user-select:none;"
+                 onclick="(function(el){var b=document.getElementById('${sectionId}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';})(this)">
+                <div>
+                    <span style="font-weight:700; font-size:0.95rem;">${sectionDef.title}</span>
+                    <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">${sectionDef.subtitle}</span>
+                </div>
+                <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">▼</span>
+            </div>
+            <div id="${sectionId}" style="border-top:1px solid var(--border-color);">
+                ${rows}
+            </div>
+        </div>`;
     }
 }
 

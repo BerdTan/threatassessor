@@ -17,6 +17,16 @@ from typing import AsyncGenerator
 from chatbot.services import ThreatAnalysisService
 from chatbot.api.dependencies import verify_api_key
 from chatbot.api.streaming import SSEStream, ProgressTracker
+from chatbot.config import get_settings as _get_cfg
+
+
+def _report_base_dir() -> Path:
+    """Return the configured reports base directory."""
+    cfg = _get_cfg().system.report_dir
+    p = Path(cfg)
+    if p.is_absolute():
+        return p
+    return Path(__file__).parent.parent.parent.parent / cfg
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +87,7 @@ async def analyze_with_progress(
         base_name = filename.replace('.mmd', '').replace('.', '_').replace(' ', '_')
 
         # Avoid clobbering existing reports: append _2, _3, … if folder already exists
-        report_dir = Path(__file__).parent.parent.parent.parent / "report"
+        report_dir = _report_base_dir()
         clean_arch_name = base_name
         counter = 2
         while (report_dir / clean_arch_name).exists():
@@ -431,7 +441,7 @@ async def expert_review_with_progress(
         run_moe_pipeline, MissingPrerequisiteError
     )
 
-    report_dir = Path(__file__).parent.parent.parent.parent / "report" / architecture_name
+    report_dir = _report_base_dir() / architecture_name
 
     try:
         # Check prerequisites
@@ -730,7 +740,7 @@ async def expert_review_cancel(
     if safe_name != architecture_name or ".." in architecture_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid architecture_name")
 
-    report_dir = Path(__file__).parent.parent.parent.parent / "report" / architecture_name
+    report_dir = _report_base_dir() / architecture_name
     purged = []
     for fname in ("04_architect_critique.json", "05_tester_critique.json", "06_red_team_critique.json",
                   "07_moe_orchestrator.json", "07_orchestrator_report.json"):

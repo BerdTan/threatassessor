@@ -309,15 +309,27 @@ class PatternRegistry:
 # Convenience functions
 def create_default_registry() -> PatternRegistry:
     """
-    Create registry with all available patterns.
+    Create registry with patterns enabled in the live config.
 
-    Returns:
-        PatternRegistry with all built-in patterns registered
+    Only patterns whose ID appears in get_settings().patterns.enabled_patterns
+    and whose status is 'active' in AVAILABLE_PATTERNS are registered.
+    Falls back to registering AIPattern if config is unavailable.
     """
     from chatbot.modules.patterns.ai_pattern import AIPattern
 
     registry = PatternRegistry()
-    registry.register(AIPattern())
+
+    try:
+        from chatbot.config import get_settings
+        from chatbot.config.patterns_catalog import AVAILABLE_PATTERNS
+        enabled = get_settings().patterns.enabled_patterns
+    except Exception:
+        # Config not yet available (e.g. CLI use before app startup)
+        enabled = ["ai_ml_arc"]
+
+    if "ai_ml_arc" in enabled:
+        registry.register(AIPattern())
+    # Future patterns registered here as they become active
 
     return registry
 
@@ -333,4 +345,17 @@ def get_pattern_registry() -> PatternRegistry:
     return _registry_instance
 
 
-__all__ = ['ThreatPattern', 'ThreatAssessment', 'PatternRegistry', 'create_default_registry', 'get_pattern_registry']
+def reset_pattern_registry() -> None:
+    """Invalidate the singleton so the next get_pattern_registry() call rebuilds it.
+
+    Called by update_settings() whenever the patterns section changes, ensuring
+    the registry reflects the new enabled_patterns list on the next analysis.
+    """
+    global _registry_instance
+    _registry_instance = None
+
+
+__all__ = [
+    'ThreatPattern', 'ThreatAssessment', 'PatternRegistry',
+    'create_default_registry', 'get_pattern_registry', 'reset_pattern_registry',
+]

@@ -312,8 +312,8 @@ class LLMClient:
         self,
         prompt: str,
         system_message: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 1000,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
         provider: Optional[LLMProvider] = None,
         model: Optional[str] = None,
         quality: Literal["default", "high_quality", "fast"] = "default",
@@ -338,6 +338,21 @@ class LLMClient:
         Raises:
             RuntimeError: If all providers fail
         """
+        # Apply config defaults when caller didn't specify
+        if temperature is None or max_tokens is None:
+            try:
+                from chatbot.config import get_settings as _gs_llm
+                _llm_cfg = _gs_llm().llm
+                if temperature is None:
+                    temperature = _llm_cfg.temperature
+                if max_tokens is None:
+                    max_tokens = _llm_cfg.max_tokens
+            except Exception:
+                if temperature is None:
+                    temperature = 0.7
+                if max_tokens is None:
+                    max_tokens = 1000
+
         # Determine provider and config
         if provider is None:
             provider = self.primary_provider

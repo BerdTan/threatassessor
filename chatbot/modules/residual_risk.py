@@ -235,18 +235,20 @@ def calculate_residual_risk_for_threat(
     # Independence stacking with 4+ controls drives failure_prob to near-zero,
     # producing residual=0 via int() truncation — physically impossible against a
     # determined attacker.  Cap combined_effectiveness at 90% (floor failure at 10%).
-    MIN_FAILURE_PROBABILITY = 0.10
-    if failure_probability < MIN_FAILURE_PROBABILITY:
-        failure_probability = MIN_FAILURE_PROBABILITY
+    from chatbot.config import get_settings
+    _rr = get_settings().residual_risk
+    min_failure_prob = _rr.min_failure_probability
+    if failure_probability < min_failure_prob:
+        failure_probability = min_failure_prob
         combined_effectiveness = 1.0 - failure_probability
 
     residual_risk = int(initial_risk * failure_probability)
 
     # Determine status based on thresholds
-    if residual_risk < 10:
+    if residual_risk < _rr.accept_threshold:
         status = "ACCEPT"
         rationale = "Low residual risk - acceptable with quarterly monitoring"
-    elif residual_risk < 20:
+    elif residual_risk < _rr.monitor_threshold:
         status = "MONITOR"
         rationale = "Medium residual risk - requires active monitoring and quarterly review"
     else:
@@ -394,10 +396,12 @@ def calculate_residual_risks(
     # Calculate overall residual risk
     overall_residual = sum(residual_risks) / len(residual_risks) if residual_risks else 0
 
-    if overall_residual < 10:
+    from chatbot.config import get_settings
+    _rr_cfg = get_settings().residual_risk
+    if overall_residual < _rr_cfg.accept_threshold:
         overall_status = "ACCEPT"
         summary = "Overall residual risk is LOW - acceptable for production with quarterly monitoring"
-    elif overall_residual < 20:
+    elif overall_residual < _rr_cfg.monitor_threshold:
         overall_status = "MONITOR"
         summary = "Overall residual risk is MEDIUM - requires active monitoring and quarterly reviews"
     else:

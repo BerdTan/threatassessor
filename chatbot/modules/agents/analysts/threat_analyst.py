@@ -52,10 +52,11 @@ def _compute_base_confidence(ground_truth: dict) -> Tuple[float, dict]:
     pass_rate = sum(1 for c in checks if c.get("passed")) / max(len(checks), 1)
 
     # ── 1. Complexity penalty ─────────────────────────────────────────────────
-    # Saturates at node_count=20, edge_count=40; max combined penalty = 0.25
-    node_penalty = min(node_count / 20, 1.0) * 0.15
-    edge_penalty = min(edge_count / 40, 1.0) * 0.10
-    complexity_penalty = round(node_penalty + edge_penalty, 4)
+    from chatbot.config import get_settings as _gs
+    _cc = _gs().confidence
+    node_penalty = min(node_count / _cc.node_saturation, 1.0) * _cc.node_penalty_factor
+    edge_penalty = min(edge_count / _cc.edge_saturation, 1.0) * _cc.edge_penalty_factor
+    complexity_penalty = round(min(node_penalty + edge_penalty, _cc.max_complexity_penalty), 4)
 
     # ── 2. Coverage recovery ──────────────────────────────────────────────────
     # Paths and techniques are normalised against expected minimums for this size.
@@ -73,10 +74,12 @@ def _compute_base_confidence(ground_truth: dict) -> Tuple[float, dict]:
     )
 
     # ── 3. Compose base ───────────────────────────────────────────────────────
-    ceiling = 0.995 - complexity_penalty          # [0.745, 0.995]
-    base    = round(
-        min(0.995, max(0.72,
-            0.72 + (ceiling - 0.72) * coverage_recovery
+    _floor   = _cc.base_confidence_floor
+    _ceiling_cfg = _cc.base_confidence_ceiling
+    ceiling  = _ceiling_cfg - complexity_penalty
+    base     = round(
+        min(_ceiling_cfg, max(_floor,
+            _floor + (ceiling - _floor) * coverage_recovery
         )),
         4
     )
@@ -208,17 +211,18 @@ class ThreatAnalyst(AnalystAgent):
             try:
                 from chatbot.modules.pattern_registry import get_pattern_registry
 
-                # Use shared singleton — built once, reused across all calls
-                if not hasattr(self, 'pattern_registry'):
-                    self.pattern_registry = get_pattern_registry()
-                    logger.info(f"{self.role}: Using shared PatternRegistry singleton")
+                # Always fetch from the module-level singleton rather than caching
+                # on self — reset_pattern_registry() replaces the singleton when
+                # enabled_patterns changes, so a cached self.pattern_registry would
+                # keep running the old set of patterns.
+                _registry = get_pattern_registry()
+                logger.info(f"{self.role}: Using PatternRegistry ({_registry.list_patterns()})")
 
                 # Run AI pattern assessment
-                # Extract node names from ground truth
                 nodes = []
                 for path in attack_paths:
                     nodes.extend(path.get("path", []))
-                nodes = list(set(nodes))  # Unique nodes
+                nodes = list(set(nodes))
 
                 logger.info(f"{self.role}: Extracted {len(nodes)} unique nodes for AI assessment")
 
@@ -228,7 +232,7 @@ class ThreatAnalyst(AnalystAgent):
                     "ground_truth": ground_truth
                 }
 
-                ai_results = self.pattern_registry.assess_all(nodes, context)
+                ai_results = _registry.assess_all(nodes, context)
 
                 if "AI/ML (ARC)" in ai_results:
                     ai_assessment = ai_results["AI/ML (ARC)"]
@@ -291,7 +295,7 @@ class ThreatAnalyst(AnalystAgent):
             # Calculate ARC control gaps (benchmark)
             try:
                 from chatbot.modules.pattern_registry import get_pattern_registry
-                ai_pattern = get_pattern_registry().get_pattern("AI/ML (ARC)")
+                ai_pattern = get_pattern_registry().get_pattern("AI/ML (ARC)")  # fresh fetch
                 arc_gaps = ai_pattern.get_arc_control_gaps(
                     controls_present,
                     ai_assessment.threats

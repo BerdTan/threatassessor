@@ -223,7 +223,7 @@ def validate_orphan_nodes(
 def validate_mitigation_exhaustiveness(
     technique_ids: List[str],
     control_recommendations: List[Dict],
-    threshold: float = 0.80
+    threshold: float = None
 ) -> Tuple[List[ValidationIssue], float]:
     """
     Validate that recommended controls address ≥80% of techniques.
@@ -233,11 +233,15 @@ def validate_mitigation_exhaustiveness(
     Args:
         technique_ids: All unique MITRE techniques from attack paths
         control_recommendations: List of control dicts
-        threshold: Required coverage (0.80 = 80%)
+        threshold: Required coverage (defaults to config value, currently 80%)
 
     Returns:
         (issues, coverage_score)
     """
+    if threshold is None:
+        from chatbot.config import get_settings
+        threshold = get_settings().completeness.technique_coverage_threshold
+
     issues = []
 
     if not technique_ids:

@@ -43,6 +43,7 @@ from chatbot.modules.self_validation import (
     run_self_validation,
     apply_confidence_adjustments
 )
+from chatbot.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -366,12 +367,13 @@ def calculate_path_criticality(
     else:
         entry_score = 0.5  # Internal pivot
 
-    # Weighted composite score
+    # Weighted composite score (weights from live config)
+    _w = get_settings().engine
     criticality = (
-        target_score * 0.35 +
-        path_length_score * 0.25 +
-        control_score * 0.25 +
-        entry_score * 0.15
+        target_score    * _w.weight_target  +
+        path_length_score * _w.weight_length +
+        control_score   * _w.weight_control +
+        entry_score     * _w.weight_entry
     )
 
     return round(criticality, 3)
@@ -395,10 +397,11 @@ def rank_and_deduplicate_paths(
     # Calculate criticality scores
     for ap in attack_paths:
         ap["criticality"] = calculate_path_criticality(ap, nodes, controls_present, edges)
+        _ct = get_settings().engine
         ap["criticality_tier"] = (
-            "CRITICAL" if ap["criticality"] >= 0.8 else
-            "HIGH" if ap["criticality"] >= 0.6 else
-            "MEDIUM" if ap["criticality"] >= 0.4 else
+            "CRITICAL" if ap["criticality"] >= _ct.criticality_critical else
+            "HIGH" if ap["criticality"] >= _ct.criticality_high else
+            "MEDIUM" if ap["criticality"] >= _ct.criticality_medium else
             "LOW"
         )
 
@@ -902,10 +905,11 @@ def calculate_overall_risk_score(
 
     # Defense-in-depth modifier (MAJOR impact)
     did_score = calculate_defense_in_depth_score(controls_present)
-    did_reduction = did_score * 40  # Up to -40 points for strong defense
+    _ec = get_settings().engine
+    did_reduction = did_score * _ec.did_reduction_factor
 
     # Attack path contribution (reduced weight - good defenses mitigate paths)
-    path_risk_modifier = min(attack_path_count * 3, 15)  # Reduced from 5→3, cap 15
+    path_risk_modifier = min(attack_path_count * _ec.path_risk_per_path, _ec.path_risk_cap)
 
     # Control coverage (minor adjustment)
     coverage_risk_modifier = (1.0 - control_coverage) * 20  # Reduced from 30→20
@@ -932,7 +936,7 @@ def calculate_overall_defensibility(
 
     # Defense-in-depth bonus (MAJOR impact)
     did_score = calculate_defense_in_depth_score(controls_present)
-    did_bonus = did_score * 35  # Up to +35 points
+    did_bonus = did_score * get_settings().engine.did_bonus_factor
 
     # Control coverage contribution
     coverage_bonus = control_coverage * 15  # Reduced from 30→15 (less important than quality)
@@ -1167,16 +1171,18 @@ def generate_ground_truth(
     targets = find_sensitive_targets(parsed["nodes"], parsed["edges"])
     logger.info(f"Detected {len(entry_points)} entry points: {entry_points}")
     logger.info(f"Detected {len(targets)} targets: {targets}")
-    attack_paths_raw = find_attack_paths_bfs(parser, entry_points, targets, max_paths=15)
+    _cfg_engine = get_settings().engine
+    attack_paths_raw = find_attack_paths_bfs(parser, entry_points, targets,
+                                             max_paths=_cfg_engine.max_paths * 3 // 2)
     logger.info(f"Found {len(attack_paths_raw)} raw attack paths")
 
-    # Rank and deduplicate paths (keep top 5 most critical)
+    # Rank and deduplicate paths (keep top-N most critical)
     attack_paths = rank_and_deduplicate_paths(
         attack_paths_raw,
         parsed["nodes"],
         controls_present,
         parsed["edges"],
-        top_n=5
+        top_n=_cfg_engine.top_n
     )
     logger.info(f"After ranking: {len(attack_paths)} critical paths")
 
