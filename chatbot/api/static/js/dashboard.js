@@ -2212,7 +2212,7 @@ class Dashboard {
                 div.style.cssText = itemStyle + (lazy ? 'opacity:0; transform:translateY(6px); transition:opacity 0.25s, transform 0.25s, background 0.15s;' : '');
                 if (lazy) div.classList.add('arch-item-lazy');
                 div.innerHTML = `<span style="font-size:0.9rem; flex-shrink:0;">📄</span>`
-                    + `<span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;">${a.name}</span>`
+                    + `<span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;">${a.name}</span>`
                     + `<span style="font-size:0.72rem; color:#94a3b8; flex-shrink:0;">${dt}</span>`
                     + profilePill
                     + `<button class="arch-item-reload" title="View previous analysis" style="${iconBtnStyle}">👁</button>`
@@ -3038,7 +3038,7 @@ class Dashboard {
                             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
                                 ${nodesWithControls.map(node => `
                                     <button class="hardened-node-btn" data-node="${node}" style="padding: 0.5rem 0.75rem; background: var(--secondary-color)22; border: 2px solid var(--secondary-color); border-radius: 8px; color: var(--text-color); cursor: pointer; transition: all 0.2s; font-weight: 600;" onmouseover="this.style.background='var(--secondary-color)44'" onmouseout="this.style.background='var(--secondary-color)22'">
-                                        🛡️ ${node}
+                                        🛡️ ${this._nodeLabelMap?.[node] || node}
                                     </button>
                                 `).join('')}
                             </div>
@@ -3560,7 +3560,7 @@ class Dashboard {
         rightPaneContent.innerHTML = `
             <h3 style="color: var(--secondary-color);">🛡️ Hardened Node</h3>
             <div style="padding: 1rem; background: var(--secondary-color)15; border-radius: 8px; border-left: 4px solid var(--secondary-color); margin-bottom: 1.5rem;">
-                <h4 style="font-size: 1.125rem; margin-bottom: 0.5rem;">${node}</h4>
+                <h4 style="font-size: 1.125rem; margin-bottom: 0.5rem;">${this._nodeLabelMap?.[node] || node}</h4>
                 <div style="font-size: 0.875rem; color: var(--text-secondary);">
                     <div><strong>Controls Applied:</strong> ${nodeControls.length}</div>
                     <div><strong>Path:</strong> ${path.id}</div>
@@ -3625,7 +3625,39 @@ class Dashboard {
 
     groupControlsByNode(controls, path) {
         const grouped = {};
+        this._nodeLabelMap = {};  // nodeId → human-readable label, populated as a side-effect
         const pathIndex = this.getPathIndex(path);
+
+        // Controls that are only applicable to specific node layer types.
+        // Controls NOT listed here are considered broadly applicable (e.g. least privilege, logging, mfa).
+        // 'unknown' is always permissive — unrecognised nodes could be any type.
+        const CONTROL_LAYER_RESTRICTIONS = {
+            // Host-agent controls — valid on any node that runs a real OS/process.
+            // Excluded from: data (managed storage like S3/RDS), network (managed LB/firewall appliances).
+            'edr':                ['device', 'application', 'identity', 'unknown'],
+            'antivirus':          ['device', 'identity', 'unknown'],
+            'device hardening':   ['device', 'identity', 'unknown'],
+
+            // Code-deployment controls — meaningful anywhere software artifacts are built/deployed.
+            // Excluded from: network (LBs/firewalls are not code deployment targets), data (storage buckets).
+            'code signing':       ['application', 'device', 'identity', 'unknown'],
+            'container scanning': ['application', 'device', 'identity', 'network', 'unknown'],
+
+            // Patching — any node running patchable software (OS, runtime, gateway).
+            // Excluded from: data (cloud providers manage S3/RDS patching).
+            'patching':           ['device', 'application', 'identity', 'network', 'unknown'],
+            'patch management':   ['device', 'application', 'identity', 'network', 'unknown'],
+
+            // HTTP/API layer controls — valid on any node that handles HTTP traffic.
+            // Excluded from: data (storage layer, no HTTP endpoint), device (bare OS host layer).
+            'waf':                ['network', 'application', 'identity', 'unknown'],
+            'input validation':   ['application', 'identity', 'network', 'unknown'],
+
+            // Data-layer-only controls — only meaningful on storage/database nodes.
+            'database firewall':  ['data'],
+            'data masking':       ['data'],
+            'query monitoring':   ['data'],
+        };
 
         console.log('[DEBUG] groupControlsByNode - controls count:', controls.length);
         console.log('[DEBUG] groupControlsByNode - pathIndex:', pathIndex);
@@ -3638,14 +3670,29 @@ class Dashboard {
 
             if (pathHops.length > 0) {
                 pathHops.forEach(hop => {
-                    const node = hop.target_label || hop.source_label;
-                    if (node) {
-                        if (!grouped[node]) {
-                            grouped[node] = [];
+                    // Key by node ID (matches path.path entries exactly) for diagram wiring
+                    const nodeKey = hop.target_id || hop.source_id || hop.target_label || hop.source_label;
+                    const nodeLabel = hop.target_label || hop.source_label || nodeKey;
+                    if (nodeKey) {
+                        // Store human label for display (node IDs like "OnPremApp" → "Legacy Application")
+                        if (nodeLabel && nodeLabel !== nodeKey) {
+                            this._nodeLabelMap[nodeKey] = nodeLabel;
+                        }
+                        // Skip controls that are not applicable to this node's layer type
+                        const controlName = (control.control || '').toLowerCase();
+                        const hopLayer = hop.layer || 'unknown';
+                        const allowedLayers = CONTROL_LAYER_RESTRICTIONS[controlName];
+                        if (allowedLayers && !allowedLayers.includes(hopLayer)) {
+                            console.log(`[DEBUG] Skipping "${controlName}" for ${nodeKey} (layer: ${hopLayer}) — not applicable to this node type`);
+                            return;
+                        }
+
+                        if (!grouped[nodeKey]) {
+                            grouped[nodeKey] = [];
                         }
                         // Avoid duplicates
-                        if (!grouped[node].some(c => c.control === control.control)) {
-                            grouped[node].push(control);
+                        if (!grouped[nodeKey].some(c => c.control === control.control)) {
+                            grouped[nodeKey].push(control);
                         }
                     }
                 });
@@ -3671,13 +3718,15 @@ class Dashboard {
     }
 
     findMatchingPathNode(hardenedNode, pathNodes) {
-        // Find a path node that matches the hardened node
-        const normalizedHardened = this.normalizeNodeName(hardenedNode);
+        // Exact match first (hardenedNode is now keyed by node ID, same as pathNodes)
+        if (pathNodes.includes(hardenedNode)) {
+            return hardenedNode;
+        }
 
+        // Fallback: fuzzy normalized match (handles legacy data where key is a label)
+        const normalizedHardened = this.normalizeNodeName(hardenedNode);
         for (const pathNode of pathNodes) {
             const normalizedPath = this.normalizeNodeName(pathNode);
-
-            // Check if names match after normalization
             if (normalizedPath === normalizedHardened ||
                 normalizedPath.includes(normalizedHardened) ||
                 normalizedHardened.includes(normalizedPath)) {

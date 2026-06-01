@@ -86,10 +86,10 @@ async def analyze_with_progress(
         # Remove .mmd extension and sanitize
         base_name = filename.replace('.mmd', '').replace('.', '_').replace(' ', '_')
 
-        # Avoid clobbering existing reports: append _2, _3, … if folder already exists
+        # Avoid clobbering existing reports: append _1, _2, … if folder already exists
         report_dir = _report_base_dir()
         clean_arch_name = base_name
-        counter = 2
+        counter = 1
         while (report_dir / clean_arch_name).exists():
             clean_arch_name = f"{base_name}_{counter}"
             counter += 1
