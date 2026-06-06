@@ -96,6 +96,8 @@ class MoEResult:
     architect_result: ValidationResult
     tester_result: ValidationResult
     red_team_result: ValidationResult
+    blackhat_result: Optional[ValidationResult] = None  # Layer 2D (config-gated)
+    blackhat_adjustment: float = 0.0
 
     # Consensus recommendations (unified)
     critical_recommendations: List[Dict]  # All 3 agree
@@ -129,7 +131,11 @@ class MoEResult:
             "expert_validations": {
                 "architect": self.architect_result.to_dict(),
                 "tester": self.tester_result.to_dict(),
-                "red_team": self.red_team_result.to_dict()
+                "red_team": self.red_team_result.to_dict(),
+                **({"blackhat": self.blackhat_result.to_dict()} if self.blackhat_result else {}),
+            },
+            "adjustments": {
+                "blackhat": self.blackhat_adjustment,
             },
             "consensus_recommendations": {
                 "critical": self.critical_recommendations,
@@ -297,6 +303,70 @@ class MoEOrchestrator:
         logger.info(f"MoE Pipeline: ✓ Layer 2C complete - {red_team_result.validation_status}")
         logger.info(f"MoE Pipeline:   Confidence adjustment: {red_team_result.confidence_adjustment*100:.1f}%")
 
+        # ===== LAYER 2D: BLACKHAT VALIDATION (OPTIONAL) =====
+        blackhat_result: Optional[ValidationResult] = None
+        blackhat_adjustment: float = 0.0
+        blackhat_critique_data: Optional[object] = None
+
+        try:
+            from chatbot.config.settings import get_settings
+            blackhat_enabled = get_settings().blackhat.enabled
+        except Exception:
+            blackhat_enabled = False
+
+        if blackhat_enabled:
+            logger.info("MoE Pipeline: Layer 2D - Running Blackhat cross-path analysis...")
+            try:
+                from chatbot.modules.agents.critics.blackhat_critic import BlackhatCritic
+                blackhat = BlackhatCritic(model=self.model)
+                blackhat_critique_score = blackhat.critique(artifacts, ground_truth, red_team_critique)
+                blackhat_critique_data = blackhat_critique_score
+
+                # Map inverted score to confidence adjustment (same logic as Red Team)
+                bh_score = blackhat_critique_score.score
+                cfg_moe = get_settings().moe
+                if bh_score <= cfg_moe.red_team_hard_threshold:
+                    bh_adj = 0.0
+                elif bh_score <= cfg_moe.red_team_medium_threshold:
+                    bh_adj = -0.03
+                else:
+                    bh_adj = -0.05  # capped lower than red team; chains are speculative
+
+                from dataclasses import asdict
+                blackhat_result = ValidationResult(
+                    expert_name="Blackhat",
+                    validation_status="PASS" if bh_score <= cfg_moe.red_team_hard_threshold else (
+                        "MINOR_GAPS" if bh_score <= cfg_moe.red_team_medium_threshold else "MAJOR_GAPS"
+                    ),
+                    confidence_adjustment=bh_adj,
+                    gaps=blackhat_critique_score.gaps,
+                    strengths=blackhat_critique_score.strengths,
+                    recommendations=[],
+                    original_score=bh_score,
+                )
+                blackhat_adjustment = bh_adj
+
+                # Save 06b_blackhat_critique.json
+                bh_path = report_path / "06b_blackhat_critique.json"
+                bh_data = blackhat_critique_score.to_dict()
+                # Also embed into ground_truth for report generators
+                ground_truth["blackhat_critique"] = {
+                    "score": bh_score,
+                    "rating": blackhat_critique_score.rating,
+                    "shared_nodes": blackhat_critique_score.breakdown.get("shared_nodes", {}),
+                    "chained_exploit_findings": blackhat_critique_score.breakdown.get("chained_exploit_findings", []),
+                    "stealth_score": blackhat_critique_score.breakdown.get("stealth_score", 0),
+                    "stealthy_techniques": blackhat_critique_score.breakdown.get("stealthy_techniques", []),
+                    "least_resistance_paths": blackhat_critique_score.breakdown.get("least_resistance_paths", []),
+                    "mitigation_gaps_for_chains": blackhat_critique_score.breakdown.get("mitigation_gaps_for_chains", []),
+                    "uniqueness_vs_critics": blackhat_critique_score.breakdown.get("uniqueness_vs_critics", {}),
+                }
+                with open(bh_path, "w") as f:
+                    json.dump(bh_data, f, indent=2)
+                logger.info(f"MoE Pipeline: ✓ Layer 2D complete - score={bh_score}, saved to {bh_path}")
+            except Exception as exc:
+                logger.warning(f"MoE Pipeline: Layer 2D skipped due to error: {exc}")
+
         # ===== LAYER 3: CONSENSUS SYNTHESIS =====
         logger.info("MoE Pipeline: Layer 3 - Synthesizing consensus...")
 
@@ -305,7 +375,8 @@ class MoEOrchestrator:
             base_confidence,
             architect_result,
             tester_result,
-            red_team_result
+            red_team_result,
+            blackhat_result,
         )
 
         logger.info(f"MoE Pipeline: Final confidence = {final_confidence:.1f}%")
@@ -334,10 +405,12 @@ class MoEOrchestrator:
             architect_adjustment=architect_result.confidence_adjustment,
             tester_adjustment=tester_result.confidence_adjustment,
             red_team_adjustment=red_team_result.confidence_adjustment,
+            blackhat_adjustment=blackhat_adjustment,
             final_confidence=final_confidence,
             architect_result=architect_result,
             tester_result=tester_result,
             red_team_result=red_team_result,
+            blackhat_result=blackhat_result,
             critical_recommendations=consensus["critical"],
             high_recommendations=consensus["high"],
             review_recommendations=consensus["review"],
@@ -501,12 +574,13 @@ class MoEOrchestrator:
         base: float,
         architect: ValidationResult,
         tester: ValidationResult,
-        red_team: ValidationResult
+        red_team: ValidationResult,
+        blackhat: Optional[ValidationResult] = None,
     ) -> float:
         """
         Calculate final confidence with adjustments.
 
-        Formula: Base × (1 + architect_adj) × (1 + tester_adj) × (1 + red_team_adj)
+        Formula: Base × (1 + architect_adj) × (1 + tester_adj) × (1 + red_team_adj) [× blackhat]
 
         Capped at 100%, floored at 50%.
         """
@@ -514,6 +588,8 @@ class MoEOrchestrator:
         final = final * (1 + architect.confidence_adjustment)
         final = final * (1 + tester.confidence_adjustment)
         final = final * (1 + red_team.confidence_adjustment)
+        if blackhat is not None:
+            final = final * (1 + blackhat.confidence_adjustment)
 
         # Cap and floor
         final = max(50.0, min(100.0, final))

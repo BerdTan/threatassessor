@@ -203,7 +203,7 @@ class Dashboard {
 
     // Tabs that require a completed analysis to be meaningful
     _contentTabs() {
-        return ['attacks', 'controls', 'hardening', 'expert-review', 'reports', 'raw-data'];
+        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data'];
     }
 
     _setContentTabsDisabled(disabled) {
@@ -533,6 +533,10 @@ class Dashboard {
         const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
         if (expertReviewTab) expertReviewTab.style.display = 'block';
 
+        // Show Threat Model tab when analysis is loaded
+        const tmNavTab = document.getElementById('threat-model-nav-tab');
+        if (tmNavTab) tmNavTab.style.display = 'block';
+
         // Enable content tabs now that analysis data is available
         this._setContentTabsDisabled(false);
 
@@ -587,6 +591,9 @@ class Dashboard {
         // Hide Expert Review tab until MoE data confirmed
         const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
         if (expertReviewTab) expertReviewTab.style.display = 'none';
+        // Hide Threat Model tab on reset
+        const tmNavTabReset = document.getElementById('threat-model-nav-tab');
+        if (tmNavTabReset) tmNavTabReset.style.display = 'none';
 
         // Grey out content tabs — no data to show
         this._setContentTabsDisabled(true);
@@ -747,6 +754,9 @@ class Dashboard {
                 break;
             case 'expert-review':
                 this.loadExpertReviewTab();
+                break;
+            case 'threat-model':
+                this.loadThreatModelTab();
                 break;
             case 'reports':
                 this.loadReportsTab();
@@ -2329,6 +2339,8 @@ class Dashboard {
             this._setContentTabsDisabled(false);
             const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
             if (expertReviewTab) expertReviewTab.style.display = 'block';
+            const tmNavTabLoad = document.getElementById('threat-model-nav-tab');
+            if (tmNavTabLoad) tmNavTabLoad.style.display = 'block';
 
             // Show "New Analysis" button
             const uploadBtn = document.getElementById('upload-btn');
@@ -3954,6 +3966,139 @@ class Dashboard {
         }
 
         // Render AI/ML risk chart (similar to threat chart)
+    }
+
+    async loadThreatModelTab() {
+        const gt = this.analysisData && this.analysisData.analysis;
+        const placeholder = document.getElementById('tm-placeholder');
+        if (!gt || !gt.threat_model) {
+            if (placeholder) placeholder.style.display = 'block';
+            return;
+        }
+        if (placeholder) placeholder.style.display = 'none';
+
+        const tm = gt.threat_model || {};
+        const aps = gt.expected_attack_paths || [];
+        const adrs = gt.architecture_decision_records || [];
+        const bh = gt.blackhat_critique || null;
+        const rrs = tm.residual_risk_summary || {};
+
+        // TLDR
+        const tldr = document.getElementById('tm-tldr');
+        const tldrText = document.getElementById('tm-tldr-text');
+        if (tldr && tldrText && tm.highest_risk_scenario) {
+            const rs = tm.highest_risk_scenario;
+            tldrText.textContent = `${rs.threat_actor || '?'} targeting ${rs.targeted_asset || '?'} via ${rs.exploited_vulnerability || '?'} → ${rs.impact || '?'}`;
+            tldr.style.display = 'block';
+        }
+
+        // Legend
+        const legend = document.getElementById('tm-legend');
+        if (legend) legend.style.display = 'flex';
+
+        // Overview
+        const tmOverview = document.getElementById('tm-overview');
+        const tmOverviewContent = document.getElementById('tm-overview-content');
+        if (tmOverview && tmOverviewContent) {
+            const boundaries = (tm.trust_boundaries_at_risk || []).map(n => `<code>${n}</code>`).join(', ') || '—';
+            tmOverviewContent.innerHTML =
+                `<b>Architecture type:</b> ${tm.architecture_type || '?'}<br>` +
+                `<b>Primary threat actor:</b> ${tm.primary_threat_actor || '?'}<br>` +
+                `<b>Bottleneck node:</b> <code>${tm.architecture_weakness || '?'}</code><br>` +
+                `<b>Trust boundaries at risk (no detection):</b> ${boundaries}<br>` +
+                `<br><i>${tm.summary || ''}</i><br>` +
+                (rrs.overall_before ? `<br><b>Overall risk delta:</b> ${rrs.overall_before} → ${rrs.overall_after_controls} (${rrs.status_after}) | Δ −${rrs.risk_reduction_pct}%` : '');
+            tmOverview.style.display = 'block';
+        }
+
+        // Per-AP sections
+        const apContainer = document.getElementById('tm-ap-sections');
+        if (apContainer) {
+            const tierOrder = {CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1};
+            const sortedAps = [...aps].sort((a, b) =>
+                (tierOrder[b.criticality_tier] || 0) - (tierOrder[a.criticality_tier] || 0)
+            );
+            const tierColor = {CRITICAL: '#DC143C', HIGH: '#FF8C00', MEDIUM: '#cc9900', LOW: '#32CD32'};
+            const adrMap = {};
+            adrs.forEach(adr => { adrMap[adr.adr_id] = adr; });
+
+            apContainer.innerHTML = sortedAps.map(ap => {
+                const tier = ap.criticality_tier || 'UNKNOWN';
+                const color = tierColor[tier] || '#888';
+                const path = (ap.path || [ap.entry, ap.target]).slice(0, 5).join(' → ');
+                const rs = ap.risk_scenario || {};
+                const apAdrs = ap.adr_ids || [];
+                const perApR = (rrs.per_ap_residual || []).find(r => r.ap_id === ap.id) || {};
+
+                const rsHtml = rs.threat_actor ? `
+                    <div style="font-size:0.84rem; line-height:1.6; padding:0.5rem 0;">
+                        🎭 <b>Actor:</b> ${rs.threat_actor}<br>
+                        🎯 <b>Asset:</b> ${rs.targeted_asset}<br>
+                        ⚡ <b>Vulnerability:</b> ${rs.exploited_vulnerability}<br>
+                        💥 <b>Impact:</b> ${rs.impact}
+                    </div>` : '<div style="color:var(--text-tertiary);font-size:0.82rem;">Run /generate-narratives to populate risk scenario.</div>';
+
+                const adrHtml = apAdrs.length ? apAdrs.map(adrId => {
+                    const adr = adrMap[adrId];
+                    if (!adr) return '';
+                    const c = adr.consequences || {};
+                    return `<span style="display:inline-block;margin:0.2rem 0.3rem 0.2rem 0;padding:0.15rem 0.5rem;background:#1E90FF22;border:1px solid #1E90FF55;border-radius:4px;font-size:0.76rem;">` +
+                        `<b>${adrId}</b> ${adr.control} · ${adr.priority} · ${c.residual_risk_before}→${c.residual_risk_after}</span>`;
+                }).join('') : '<span style="font-size:0.8rem; color:var(--text-tertiary);">No ADRs linked</span>';
+
+                const residualLine = perApR.residual_after_adrs !== undefined
+                    ? `<div style="font-size:0.8rem; margin-top:0.4rem; color:var(--text-tertiary);">Residual after ADRs: <b>${perApR.residual_after_adrs}</b></div>`
+                    : '';
+
+                return `<details style="margin-bottom:0.6rem; border:1px solid var(--border-color); border-radius:6px; overflow:hidden;">
+                    <summary style="cursor:pointer; padding:0.65rem 1rem; font-weight:600; font-size:0.9rem; background:var(--card-bg); border-left:4px solid ${color};">
+                        ${ap.id} [${tier}]: ${path}
+                    </summary>
+                    <div style="padding:0.75rem 1rem; font-size:0.87rem;">
+                        ${rsHtml}
+                        <div style="margin-top:0.5rem;"><b>ADRs:</b> ${adrHtml}</div>
+                        ${residualLine}
+                    </div>
+                </details>`;
+            }).join('');
+        }
+
+        // Blackhat section
+        const bhEl = document.getElementById('tm-blackhat');
+        const bhContent = document.getElementById('tm-blackhat-content');
+        if (bh && bhEl && bhContent) {
+            const chains = bh.chained_exploit_findings || [];
+            const gaps = bh.mitigation_gaps_for_chains || [];
+            const unique = (bh.uniqueness_vs_critics || {}).new_findings_not_in_redteam || [];
+            bhContent.innerHTML =
+                `<b>Cross-chain score:</b> ${bh.score}/100 (${bh.rating})<br>` +
+                `<b>Stealth score:</b> ${bh.stealth_score} technique(s) — ${(bh.stealthy_techniques || []).join(', ') || 'none'}<br>` +
+                (chains.length ? `<br><b>Chains:</b><ul style="margin:0.3rem 0;padding-left:1.2rem;">${chains.slice(0,5).map(c=>`<li>${c}</li>`).join('')}</ul>` : '') +
+                (gaps.length ? `<b>Mitigation gaps:</b><ul style="margin:0.3rem 0;padding-left:1.2rem;">${gaps.slice(0,5).map(g=>`<li>${g}</li>`).join('')}</ul>` : '') +
+                (unique.length ? `<b>New vs Red Team:</b><ul style="margin:0.3rem 0;padding-left:1.2rem;">${unique.slice(0,3).map(f=>`<li>${f}</li>`).join('')}</ul>` : '');
+            bhEl.style.display = 'block';
+        }
+
+        // 11_final.mmd inline render
+        const archName = (this.analysisData || {}).architecture_name;
+        if (archName) {
+            const diagWrapper = document.getElementById('tm-diagram-wrapper');
+            const diagEl = document.getElementById('tm-diagram');
+            if (diagWrapper && diagEl) {
+                try {
+                    const resp = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/11_final.mmd`);
+                    if (resp.ok) {
+                        const mmdText = await resp.text();
+                        diagEl.innerHTML = mmdText;
+                        diagEl.removeAttribute('data-processed');
+                        if (window.mermaid) {
+                            try { await window.mermaid.run({ nodes: [diagEl] }); } catch(e) { /* ignore render errors */ }
+                        }
+                        diagWrapper.style.display = 'block';
+                    }
+                } catch(e) { /* diagram not yet generated */ }
+            }
+        }
     }
 
     async loadReportsTab() {

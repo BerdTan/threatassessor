@@ -322,6 +322,85 @@ class CloudPatternSettings(BaseModel):
         return self
 
 
+class NarrativesSettings(BaseModel):
+    enabled: bool = Field(default=True,
+        description="Add risk_scenario per AP and mitigation_narrative per control after deterministic analysis")
+    llm_polish: bool = Field(default=False,
+        description="Use LLM to smooth template narratives into prose (default off — zero extra LLM calls)")
+
+
+class ThreatModelSettings(BaseModel):
+    enabled: bool = Field(default=True,
+        description="Build pattern-aware threat_model block in ground_truth and generate 09_threat_model.md")
+    llm_polish: bool = Field(default=False,
+        description="Use LLM to refine the threat model summary (default off)")
+
+
+class ADRSettings(BaseModel):
+    enabled: bool = Field(default=True,
+        description="Generate Architecture Decision Records with risk delta and produce 10_adr_report.md")
+    show_risk_delta: bool = Field(default=True,
+        description="Include before/after/delta risk table in ADR report")
+
+
+class BlackhatRubricWeights(BaseModel):
+    cross_path_chain_feasibility: int = Field(default=30, ge=0, le=100,
+        description="Weight for cross-path chain feasibility (can attacker chain AP-i → AP-j via shared pivot?)")
+    least_resistance_path: int = Field(default=25, ge=0, le=100,
+        description="Weight for least-resistance path (does partial-path combo bypass per-path controls?)")
+    stealth_potential: int = Field(default=25, ge=0, le=100,
+        description="Weight for stealth potential (Defense Evasion techniques → undetectable attacker advantage)")
+    mitigation_chain_coverage: int = Field(default=20, ge=0, le=100,
+        description="Weight for mitigation chain coverage (do per-path mitigations hold against combined chain?)")
+
+    @model_validator(mode="after")
+    def check_weights_sum(self) -> "BlackhatRubricWeights":
+        total = (
+            self.cross_path_chain_feasibility
+            + self.least_resistance_path
+            + self.stealth_potential
+            + self.mitigation_chain_coverage
+        )
+        if total != 100:
+            raise ValueError(f"Blackhat rubric weights must sum to 100 (got {total})")
+        return self
+
+
+class BlackhatSettings(BaseModel):
+    enabled: bool = Field(default=False,
+        description="Enable Blackhat cross-path chain critic (Layer 2D). Requires MoE expert review.")
+    stealth_techniques: List[str] = Field(
+        default=["T1562", "T1070", "T1078", "T1036", "T1027"],
+        description="MITRE technique IDs considered Defense Evasion / stealth indicators for stealth scoring"
+    )
+    rubric_weights: BlackhatRubricWeights = Field(default_factory=BlackhatRubricWeights)
+    rubric_preset: Literal["balanced", "stealth_focused", "chain_focused", "mitigation_stress"] = Field(
+        default="balanced",
+        description=(
+            "Named rubric preset. Setting this overrides rubric_weights: "
+            "balanced=default, stealth_focused=stealth×40, chain_focused=chain×40, mitigation_stress=coverage×40"
+        )
+    )
+
+    @model_validator(mode="after")
+    def apply_preset(self) -> "BlackhatSettings":
+        _presets = {
+            "balanced":          (30, 25, 25, 20),
+            "stealth_focused":   (20, 20, 40, 20),
+            "chain_focused":     (40, 30, 15, 15),
+            "mitigation_stress": (20, 20, 20, 40),
+        }
+        w = _presets.get(self.rubric_preset)
+        if w:
+            self.rubric_weights = BlackhatRubricWeights(
+                cross_path_chain_feasibility=w[0],
+                least_resistance_path=w[1],
+                stealth_potential=w[2],
+                mitigation_chain_coverage=w[3],
+            )
+        return self
+
+
 class AppSettings(BaseModel):
     engine: AnalysisEngineSettings = Field(default_factory=AnalysisEngineSettings)
     confidence: ConfidenceSettings = Field(default_factory=ConfidenceSettings)
@@ -333,6 +412,10 @@ class AppSettings(BaseModel):
     patterns: PatternsSettings = Field(default_factory=PatternsSettings)
     ai_pattern: AIPatternSettings = Field(default_factory=AIPatternSettings)
     cloud_pattern: CloudPatternSettings = Field(default_factory=CloudPatternSettings)
+    narratives: NarrativesSettings = Field(default_factory=NarrativesSettings)
+    threat_model: ThreatModelSettings = Field(default_factory=ThreatModelSettings)
+    adr: ADRSettings = Field(default_factory=ADRSettings)
+    blackhat: BlackhatSettings = Field(default_factory=BlackhatSettings)
 
 
 # ---------------------------------------------------------------------------

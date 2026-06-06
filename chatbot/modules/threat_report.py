@@ -11,7 +11,8 @@ Report Formats:
 """
 
 import json
-from typing import Dict, List
+import logging
+from typing import Dict, List, Optional
 from datetime import datetime
 from pathlib import Path
 
@@ -24,6 +25,8 @@ from chatbot.modules.report_formatter import (
     format_callout,
     remove_ascii_separators
 )
+
+logger = logging.getLogger(__name__)
 
 
 def generate_executive_summary(ground_truth: Dict) -> str:
@@ -1503,6 +1506,316 @@ def save_report(report: str, output_path: str, format_type: str = "md"):
     return output_path
 
 
+def generate_threat_model_report(ground_truth: Dict) -> str:
+    """Generate 09_threat_model.md — per-AP TM sections with risk delta lines."""
+    tm = ground_truth.get("threat_model", {})
+    attack_paths = ground_truth.get("expected_attack_paths", [])
+    rr_summary = tm.get("residual_risk_summary", {})
+    blackhat = ground_truth.get("blackhat_critique", {})
+
+    lines = ["# Threat Model\n"]
+
+    # --- Overview ---
+    lines.append("## Overview\n")
+    lines.append(f"**Architecture type:** {tm.get('architecture_type', 'unknown')}  ")
+    lines.append(f"**Primary threat actor:** {tm.get('primary_threat_actor', 'Unknown')}  ")
+    lines.append(f"**Architecture bottleneck:** `{tm.get('architecture_weakness', 'unknown')}`  ")
+    trust_boundaries = tm.get("trust_boundaries_at_risk", [])
+    if trust_boundaries:
+        lines.append(f"**Trust boundaries at risk (no detection control):** {', '.join(f'`{n}`' for n in trust_boundaries)}  ")
+    lines.append(f"\n{tm.get('summary', '')}\n")
+
+    # Overall risk delta
+    ob = rr_summary.get("overall_before", 0)
+    oa = rr_summary.get("overall_after_controls", 0)
+    pct = rr_summary.get("risk_reduction_pct", 0)
+    status = rr_summary.get("status_after", "MONITOR")
+    lines.append(f"\n**Overall Risk:** {ob} → {oa} ({status}) | Δ −{pct}%\n")
+
+    # --- Per-AP sections ---
+    lines.append("---\n")
+    tier_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+    sorted_aps = sorted(attack_paths, key=lambda ap: tier_order.get(ap.get("criticality_tier", "LOW"), 0), reverse=True)
+
+    for ap in sorted_aps:
+        ap_id = ap.get("id", "?")
+        tier = ap.get("criticality_tier", "UNKNOWN")
+        entry = ap.get("entry", "?")
+        target = ap.get("target", "?")
+        path_str = " → ".join(ap.get("path", [entry, target]))
+        rs = ap.get("risk_scenario", {})
+        adr_ids = ap.get("adr_ids", [])
+
+        lines.append(f"## {ap_id} [{tier}]: {path_str}\n")
+        if rs:
+            lines.append(f"🎭 **Threat Actor:** {rs.get('threat_actor', '?')}  ")
+            lines.append(f"🎯 **Targeted Asset:** {rs.get('targeted_asset', '?')}  ")
+            lines.append(f"⚡ **Exploited Vulnerability:** {rs.get('exploited_vulnerability', '?')}  ")
+            lines.append(f"💥 **Impact:** {rs.get('impact', '?')}  \n")
+
+        # Per-AP residual delta
+        per_ap = next(
+            (r for r in rr_summary.get("per_ap_residual", []) if r.get("ap_id") == ap_id),
+            {}
+        )
+        if per_ap:
+            ap_residual = per_ap.get("residual_after_adrs", "?")
+            lines.append(
+                f"**Risk:** {tier} → ADRs applied: {', '.join(adr_ids) or 'none'} "
+                f"→ Residual: {ap_residual}\n"
+            )
+
+        if adr_ids:
+            lines.append(f"**ADRs:** {', '.join(adr_ids)}\n")
+        lines.append("")
+
+    # --- Blackhat section ---
+    if blackhat:
+        lines.append("---\n")
+        lines.append("## Blackhat Cross-Path Findings\n")
+        chains = blackhat.get("chained_exploit_findings", [])
+        if chains:
+            lines.append(f"**Chained exploits identified:** {len(chains)}\n")
+            for c in chains[:5]:
+                lines.append(f"- {c}\n")
+        stealth = blackhat.get("stealth_score", 0)
+        stealthy_techs = blackhat.get("stealthy_techniques", [])
+        lines.append(f"\n**Stealth score:** {stealth}/100  ")
+        if stealthy_techs:
+            lines.append(f"**Stealthy techniques:** {', '.join(stealthy_techs)}\n")
+        gaps = blackhat.get("mitigation_gaps_for_chains", [])
+        if gaps:
+            lines.append(f"\n**Cross-path mitigation gaps:**\n")
+            for g in gaps[:5]:
+                lines.append(f"- {g}\n")
+
+    return "\n".join(lines)
+
+
+def generate_adr_report(ground_truth: Dict) -> str:
+    """
+    Generate 10_adr_report.md — one master ADR per attack path.
+
+    Each ADR groups its controls by hop so the reader understands exactly
+    which control applies where and why (threat + technique + node).
+    """
+    adrs = ground_truth.get("architecture_decision_records", [])
+
+    if not adrs:
+        return "# Architecture Decision Records\n\n_No ADRs generated (no attack paths found)._\n"
+
+    out = ["# Architecture Decision Records\n"]
+    out.append(
+        f"_{len(adrs)} master ADR(s) — one per attack path. "
+        "Each ADR groups required controls by hop, justifying the risk reduction at that node._\n"
+    )
+    out.append("\n---\n")
+
+    for adr in adrs:
+        adr_id = adr.get("adr_id", "ADR-?")
+        ap_id = adr.get("attack_path_id", "?")
+        tier = adr.get("attack_path_tier", "UNKNOWN")
+        path_str = adr.get("attack_path", "?")
+        status = adr.get("status", "proposed").upper()
+        ctx = adr.get("context", {})
+        con = adr.get("consequences", {})
+        hops: List[Dict] = adr.get("hops", [])
+
+        out.append(f"## {adr_id} — {ap_id} [{tier}]\n")
+        out.append(f"**Path:** {path_str}  ")
+        out.append(f"**Status:** {status}\n")
+
+        # --- Context ---
+        out.append("\n### Context\n")
+        out.append(f"{ctx.get('issue', '')}\n")
+        out.append(f"\n{ctx.get('background', '')}\n")
+
+        # --- Risk Delta (summary table) ---
+        ob = con.get("overall_risk_before", "?")
+        oa = con.get("overall_risk_after", "?")
+        pct = con.get("risk_reduction_pct", "?")
+        out.append("\n### Risk Delta\n")
+        out.append("| Metric | Value |")
+        out.append("|--------|-------|")
+        out.append(f"| Risk before controls | {ob} |")
+        out.append(f"| Risk after controls | {oa} |")
+        out.append(f"| Reduction | **{pct}%** |")
+        out.append("")
+
+        new_risks = con.get("new_risks_introduced", [])
+        if new_risks:
+            for r in new_risks:
+                out.append(f"> ⚠️ **Gap:** {r}\n")
+
+        # --- Hop-by-hop decisions ---
+        out.append("\n### Decisions by Hop\n")
+
+        for hop in hops:
+            node = hop.get("node", "?")
+            node_techs = hop.get("node_techniques", [])
+            controls = hop.get("controls", [])
+            gap_note = hop.get("gap_note")
+
+            tech_str = ", ".join(node_techs[:4]) if node_techs else "no techniques mapped"
+            out.append(f"#### `{node}` — exposed techniques: {tech_str}\n")
+
+            if gap_note:
+                out.append(f"> ⚠️ {gap_note}\n")
+
+            if not controls:
+                out.append("_No control assigned to this hop._\n")
+            else:
+                for ctrl in controls:
+                    priority = ctrl.get("priority", "medium").upper()
+                    cat = ctrl.get("dir_category", "?").title()
+                    out.append(f"**{ctrl['control'].title()}** [{priority}] — {cat}")
+                    out.append(f"> {ctrl['reason']}")
+                    rb = ctrl.get("risk_before", "?")
+                    ra = ctrl.get("risk_after", "?")
+                    red = ctrl.get("risk_reduction", "?")
+                    out.append(f"> Risk: {rb} → {ra} (−{red} pts)\n")
+
+        out.append("\n---\n")
+
+    return "\n".join(out)
+
+
+def _mmd_safe(text: str, max_len: int = 40) -> str:
+    """Sanitise text for use inside a Mermaid label string."""
+    return text.replace('"', "'").replace('\n', ' ')[:max_len]
+
+
+def generate_final_diagram(ground_truth: Dict) -> str:
+    """
+    Generate 11_final.mmd — one subgraph per attack path.
+
+    Each subgraph shows:
+    - The attack path as a node chain
+    - A risk scenario note (actor / asset / technique / impact)
+    - Per-hop control badges attached to the correct node (not all to first hop)
+    - A gap badge on hops with no control (zero-trust: every hop must be verified)
+    - Blackhat pivot annotations if available
+    """
+    attack_paths = ground_truth.get("expected_attack_paths", [])
+    adrs = ground_truth.get("architecture_decision_records", [])
+    blackhat = ground_truth.get("blackhat_critique", {})
+
+    if not attack_paths:
+        return "graph TB\n  note[\"No attack paths found\"]\n"
+
+    # Index master ADRs by AP id
+    adr_by_ap: Dict[str, Dict] = {
+        adr.get("attack_path_id", ""): adr for adr in adrs
+    }
+
+    lines = ["graph LR"]
+    lines.append("")
+    lines.append("  %% Style definitions")
+    lines.append("  classDef scenarioNote fill:#FF8C00,stroke:#c06000,color:#fff,font-size:10px")
+    lines.append("  classDef controlNode fill:#1565C0,stroke:#0D47A1,color:#fff,font-size:9px")
+    lines.append("  classDef gapNode fill:#B71C1C,stroke:#7F0000,color:#fff,font-size:9px,stroke-dasharray:4")
+    lines.append("  classDef pivotNote fill:#6A1B9A,stroke:#4A148C,color:#fff,font-size:9px,stroke-dasharray:4")
+    lines.append("  classDef critPath fill:#DC143C,stroke:#8B0000,color:#fff")
+    lines.append("  classDef highPath fill:#E65100,stroke:#BF360C,color:#fff")
+    lines.append("  classDef medPath  fill:#F57F17,stroke:#E65100,color:#000")
+    lines.append("  classDef lowPath  fill:#2E7D32,stroke:#1B5E20,color:#fff")
+    lines.append("")
+
+    tier_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+    tier_style = {"CRITICAL": "critPath", "HIGH": "highPath", "MEDIUM": "medPath", "LOW": "lowPath"}
+
+    sorted_aps = sorted(
+        attack_paths,
+        key=lambda ap: tier_order.get(ap.get("criticality_tier", "LOW"), 0),
+        reverse=True,
+    )
+
+    for ap in sorted_aps:
+        ap_id = ap.get("id", "?")
+        tier = ap.get("criticality_tier", "UNKNOWN")
+        safe_ap = ap_id.replace("-", "")
+        path_nodes: List[str] = ap.get("path", [])
+        rs = ap.get("risk_scenario", {})
+        node_style = tier_style.get(tier, "lowPath")
+
+        # ── Subgraph header ──
+        path_display = " → ".join(path_nodes)
+        lines.append(f'  subgraph {safe_ap}["{ap_id} [{tier}]: {_mmd_safe(path_display, 60)}"]')
+        lines.append(f'    direction LR')
+
+        # ── Risk scenario note (one line per field, using <br/> for Mermaid) ──
+        actor = _mmd_safe(rs.get("threat_actor", "Unknown actor").split("(")[0].strip(), 35)
+        asset = _mmd_safe(rs.get("targeted_asset", "?").split("(")[0].strip(), 30)
+        vuln  = _mmd_safe(rs.get("exploited_vulnerability", "?"), 35)
+        impact = _mmd_safe(rs.get("impact", "?").split(";")[0].strip(), 35)
+        scenario_label = (
+            f"Actor: {actor}<br/>"
+            f"Asset: {asset}<br/>"
+            f"Via: {vuln}<br/>"
+            f"Impact: {impact}"
+        )
+        lines.append(f'    SC{safe_ap}["{scenario_label}"]:::scenarioNote')
+        lines.append("")
+
+        # ── Path nodes ──
+        node_ids: Dict[str, str] = {}
+        prev_nid = None
+        for ni, node in enumerate(path_nodes):
+            nid = f"{safe_ap}N{ni}"
+            node_ids[node] = nid
+            lines.append(f'    {nid}["{_mmd_safe(node, 25)}"]:::{node_style}')
+            if prev_nid:
+                lines.append(f'    {prev_nid} --> {nid}')
+            prev_nid = nid
+        lines.append("")
+
+        # ── Per-hop control and gap badges ──
+        master_adr = adr_by_ap.get(ap_id)
+        if master_adr:
+            for hop in master_adr.get("hops", []):
+                node = hop.get("node", "")
+                nid = node_ids.get(node)
+                if not nid:
+                    continue
+
+                gap_note = hop.get("gap_note")
+                controls = hop.get("controls", [])
+
+                # Gap badge
+                if gap_note:
+                    gap_id = f"{safe_ap}GAP{node.replace(' ','')}"
+                    gap_short = _mmd_safe(gap_note, 70)
+                    lines.append(f'    {gap_id}["⚠ {gap_short}"]:::gapNode')
+                    lines.append(f'    {gap_id} -.->|"unprotected"| {nid}')
+
+                # One badge per control (all shown — zero-trust: every hop matters)
+                for ci, ctrl in enumerate(controls):
+                    ctrl_id = f"{safe_ap}C{node.replace(' ','')}{ci}"
+                    ctrl_name = _mmd_safe(ctrl["control"].title(), 22)
+                    priority  = ctrl.get("priority", "medium").upper()[0]  # C/H/M/L
+                    cat_short = ctrl.get("dir_category", "?")[:4].upper()
+                    rb = ctrl.get("risk_before", "?")
+                    ra = ctrl.get("risk_after", "?")
+                    techs = ctrl.get("techniques_blocked", [])
+                    tech_str = ", ".join(techs[:2]) if techs else "general"
+                    label = f"{ctrl_name}<br/>[{priority}] {cat_short} | {rb}→{ra}<br/>blocks: {_mmd_safe(tech_str, 20)}"
+                    lines.append(f'    {ctrl_id}["{label}"]:::controlNode')
+                    lines.append(f'    {ctrl_id} -.->|"at {_mmd_safe(node, 15)}"| {nid}')
+
+        lines.append(f'  end')
+        lines.append("")
+
+    # ── Blackhat pivot annotations (outside subgraphs) ──
+    shared_nodes = blackhat.get("shared_nodes", {})
+    for pivot_idx, (node, path_ids) in enumerate(list(shared_nodes.items())[:4]):
+        pivot_id = f"Pivot{pivot_idx}"
+        paths_str = _mmd_safe(", ".join(path_ids[:3]), 40)
+        label = f"PIVOT: {_mmd_safe(node, 20)}<br/>shared: {paths_str}"
+        lines.append(f'  {pivot_id}["{label}"]:::pivotNote')
+
+    return "\n".join(lines) + "\n"
+
+
 def generate_report_package(
     original_mmd_path: str,
     ground_truth: Dict,
@@ -1516,6 +1829,29 @@ def generate_report_package(
     arch_name = Path(ground_truth.get("architecture", original_mmd_path)).stem
     report_base = Path(output_dir) / arch_name
     report_base.mkdir(parents=True, exist_ok=True)
+
+    # --- Enrichment pipeline (deterministic, gated by settings) ---
+    try:
+        from chatbot.config.settings import get_settings
+        settings = get_settings()
+        cfg_narratives = settings.narratives
+        cfg_adr = settings.adr
+        cfg_tm = settings.threat_model
+
+        if cfg_adr.enabled and "architecture_decision_records" not in ground_truth:
+            from chatbot.modules.adr_generator import generate_adrs_from_ground_truth
+            generate_adrs_from_ground_truth(ground_truth)
+
+        if cfg_narratives.enabled:
+            from chatbot.modules.narrative_enricher import enrich_ground_truth
+            enrich_ground_truth(ground_truth)
+
+        if cfg_tm.enabled:
+            from chatbot.modules.threat_model_builder import build_threat_model
+            build_threat_model(ground_truth)
+
+    except Exception as exc:
+        logger.warning(f"Enrichment pipeline skipped due to error: {exc}")
 
     # Generate reports
     exec_report = generate_executive_summary(ground_truth)
@@ -1554,6 +1890,31 @@ def generate_report_package(
         ),
         "readme": str(report_base / "README.md")
     }
+
+    # --- TM / ADR / Final diagram (09 / 10 / 11) ---
+    try:
+        from chatbot.config.settings import get_settings
+        settings = get_settings()
+        if settings.threat_model.enabled and ground_truth.get("threat_model"):
+            tm_report = generate_threat_model_report(ground_truth)
+            paths["threat_model"] = save_report(tm_report, str(report_base / "09_threat_model.md"))
+
+        if settings.adr.enabled and ground_truth.get("architecture_decision_records"):
+            adr_report = generate_adr_report(ground_truth)
+            paths["adr_report"] = save_report(adr_report, str(report_base / "10_adr_report.md"))
+
+        if settings.threat_model.enabled and ground_truth.get("architecture_decision_records"):
+            final_mmd = generate_final_diagram(ground_truth)
+            paths["final_diagram"] = save_report(final_mmd, str(report_base / "11_final.mmd"), "mmd")
+
+        # Re-save ground_truth.json with enriched fields
+        paths["ground_truth"] = save_report(
+            json.dumps(ground_truth, indent=2),
+            str(report_base / "ground_truth.json"),
+            "json"
+        )
+    except Exception as exc:
+        logger.warning(f"09/10/11 generation skipped: {exc}")
 
     # Generate README
     readme_content = f"""# Threat Assessment Report: {arch_name}

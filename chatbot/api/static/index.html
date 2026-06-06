@@ -68,6 +68,7 @@
                 <button class="nav-tab disabled" data-tab="controls">🛡️ Mitigations</button>
                 <button class="nav-tab disabled" data-tab="hardening">🔒 Visualise</button>
                 <button class="nav-tab disabled" data-tab="expert-review" style="display: none;">🧑‍🏫 Expert Review</button>
+                <button class="nav-tab disabled" data-tab="threat-model" id="threat-model-nav-tab" style="display:none;">🗺️ Threat Model</button>
                 <button class="nav-tab disabled" data-tab="reports">📄 Reports</button>
                 <button class="nav-tab disabled" data-tab="raw-data">💾 Raw Data</button>
                 <button class="nav-tab" id="config-nav-tab" data-tab="config" style="display:none;">⚙️ Configuration</button>
@@ -206,6 +207,51 @@
                                 <p class="placeholder">Reports loading...</p>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Threat Model Tab -->
+                <div class="tab-pane" data-tab="threat-model" id="threat-model-pane">
+                    <div id="tm-tldr" style="display:none; margin-bottom:1.25rem; padding:0.9rem 1.2rem; background:var(--card-bg); border-left:4px solid #FF8C00; border-radius:6px;">
+                        <div style="font-size:0.78rem; font-weight:700; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.3rem;">Highest Risk Scenario</div>
+                        <div id="tm-tldr-text" style="font-size:0.95rem;"></div>
+                    </div>
+
+                    <!-- Legend -->
+                    <div id="tm-legend" style="display:none; margin-bottom:1.25rem; padding:0.7rem 1.1rem; background:var(--card-bg); border-radius:6px; border:1px solid var(--border-color); font-size:0.8rem; display:flex; flex-wrap:wrap; gap:1rem;">
+                        <span><span style="display:inline-block;width:12px;height:12px;background:#DC143C;border-radius:2px;margin-right:4px;vertical-align:middle;"></span>CRITICAL</span>
+                        <span><span style="display:inline-block;width:12px;height:12px;background:#FF8C00;border-radius:2px;margin-right:4px;vertical-align:middle;"></span>HIGH</span>
+                        <span><span style="display:inline-block;width:12px;height:12px;background:#FFD700;border-radius:2px;margin-right:4px;vertical-align:middle;"></span>MEDIUM</span>
+                        <span><span style="display:inline-block;width:12px;height:12px;background:#32CD32;border-radius:2px;margin-right:4px;vertical-align:middle;"></span>LOW</span>
+                        <span><span style="display:inline-block;width:12px;height:12px;background:#1E90FF;border-radius:2px;margin-right:4px;vertical-align:middle;"></span>ADR proposed</span>
+                        <span>⚠️ Blackhat pivot</span>
+                    </div>
+
+                    <!-- Threat Model Overview -->
+                    <details id="tm-overview" style="display:none; margin-bottom:1rem;">
+                        <summary style="cursor:pointer; font-weight:600; font-size:0.95rem; padding:0.6rem 0;">Threat Model Overview</summary>
+                        <div id="tm-overview-content" style="padding:0.75rem 0 0 1rem; font-size:0.88rem; color:var(--text-secondary);"></div>
+                    </details>
+
+                    <!-- Per-AP collapsibles -->
+                    <div id="tm-ap-sections"></div>
+
+                    <!-- Blackhat section -->
+                    <details id="tm-blackhat" style="display:none; margin-top:1.5rem; border:1px solid var(--border-color); border-radius:6px; padding:0.75rem 1rem;">
+                        <summary style="cursor:pointer; font-weight:600; font-size:0.95rem;">⚠️ Blackhat Cross-Path Findings</summary>
+                        <div id="tm-blackhat-content" style="padding:0.75rem 0 0 0.5rem; font-size:0.87rem;"></div>
+                    </details>
+
+                    <!-- 11_final.mmd inline render -->
+                    <div id="tm-diagram-wrapper" style="display:none; margin-top:1.5rem;">
+                        <h4 style="margin-bottom:0.5rem; font-size:0.9rem; font-weight:600;">Final Diagram (11_final.mmd)</h4>
+                        <div id="tm-diagram" class="mermaid" style="background:var(--card-bg); border-radius:6px; padding:1rem; overflow-x:auto; min-height:120px;">
+                            <p class="placeholder">Loading diagram…</p>
+                        </div>
+                    </div>
+
+                    <div id="tm-placeholder" style="color:var(--text-tertiary); font-size:0.9rem; padding:2rem 0;">
+                        <p>Run an analysis to generate the Threat Model.</p>
                     </div>
                 </div>
 

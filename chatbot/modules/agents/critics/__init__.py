@@ -48,6 +48,10 @@ from chatbot.modules.agents.critics.red_teamer_critic import (
     RedTeamerCritic,
 )
 
+from chatbot.modules.agents.critics.blackhat_critic import (
+    BlackhatCritic,
+)
+
 __all__ = [
     # Architect
     "EnhancedArchitectCritic",
@@ -64,4 +68,7 @@ __all__ = [
 
     # Red Teamer
     "RedTeamerCritic",
+
+    # Blackhat (Layer 2D)
+    "BlackhatCritic",
 ]
