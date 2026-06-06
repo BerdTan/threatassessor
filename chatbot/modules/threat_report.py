@@ -351,9 +351,10 @@ def generate_technical_report(ground_truth: Dict) -> str:
     report += f"**Generated:** {metadata.get('generated_by', 'parser')} | "
     report += f"**Date:** {datetime.now().strftime('%B %d, %Y')}\n\n"
 
-    # Dashboard reference (Phase 3D)
+    # Navigation
     report += "> 📊 **Primary Report:** See [`01_executive_summary.md`](01_executive_summary.md) for validated analysis.\n"
-    report += "> This file provides detailed technical findings from deterministic analysis.\n\n"
+    report += "> **Threat narrative:** [`09_threat_model.md`](09_threat_model.md) — RAPIDS scoring, threat actors, trust boundaries.\n"
+    report += "> **Control decisions:** [`10_adr_report.md`](10_adr_report.md) — why each control, at which hop, for which threat.\n\n"
     report += "---\n\n"
 
     report += format_section_header("Summary Metrics", "📊", 2)
@@ -704,16 +705,25 @@ def generate_action_plan(ground_truth: Dict) -> str:
     """
     risk = ground_truth["expected_risk_score"]
     missing = ground_truth.get("controls_missing", [])
+    rr_after = ground_truth.get("residual_risks_after", {})
+    residual = rr_after.get("overall_residual", None)
+    residual_status = rr_after.get("overall_status", "")
+    target_str = (
+        f"{residual:.1f}/100 ({residual_status})" if residual is not None
+        else f"{max(20, risk - 40)}/100 (estimated)"
+    )
 
     report = f"# 📋 Security Action Plan\n\n"
     report += f"**Architecture:** {ground_truth['architecture']}  \n"
     report += f"**Current Risk:** {risk}/100  \n"
-    report += f"**Target Risk:** {max(20, risk - 40)}/100 (after implementation)  \n"
+    report += f"**Target Risk (post-controls):** {target_str}  \n"
     report += f"**Timeline:** {'2-4 weeks' if risk >= 60 else '4-8 weeks'}\n\n"
 
-    # Dashboard reference (Phase 3D)
+    # Navigation
     report += "> 📊 **Primary Report:** See [`01_executive_summary.md`](01_executive_summary.md) for validated recommendations.\n"
-    report += "> This file provides implementation roadmap from deterministic analysis.\n\n"
+    report += "> **Threat analysis:** [`09_threat_model.md`](09_threat_model.md) — what is at risk and why.\n"
+    report += "> **Control decisions:** [`10_adr_report.md`](10_adr_report.md) — per-path decision rationale.\n"
+    report += "> **MoE validation:** [`08_improvement_summary.md`](08_improvement_summary.md) — expert-validated priority order.\n\n"
     report += "---\n\n"
 
     # Drive phases from control_recommendations (covers all controls with correct priority)
@@ -1684,8 +1694,9 @@ def generate_adr_report(ground_truth: Dict) -> str:
         f"in {arch_name}. Each ADR explains **what threat is being addressed**, "
         f"**where on the path each control is placed**, and **why that placement reduces risk**. "
         f"Controls are prioritised by RAPIDS threat score — the same scoring used in the "
-        f"[Threat Model](09_threat_model.md). Implementation sequencing is in the "
-        f"[Action Plan](03_action_plan.md).\n"
+        f"[Threat Model](09_threat_model.md). MITRE technique evidence and control confidence scores "
+        f"are in the [Technical Report](02_technical_report.md). "
+        f"Implementation sequencing is in the [Action Plan](03_action_plan.md).\n"
     )
     out.append(f"_{len(adrs)} decision record(s) — one per identified attack path._\n")
     out.append("\n---\n")
