@@ -1507,87 +1507,159 @@ def save_report(report: str, output_path: str, format_type: str = "md"):
 
 
 def generate_threat_model_report(ground_truth: Dict) -> str:
-    """Generate 09_threat_model.md — per-AP TM sections with risk delta lines."""
+    """
+    Generate 09_threat_model.md.
+
+    Structured as a decision-maker narrative: overview of what is at risk and why,
+    per attack path with threat actor / exploited vulnerability / business impact,
+    and a clear bridge to the ADR and Action Plan for next steps.
+    """
     tm = ground_truth.get("threat_model", {})
     attack_paths = ground_truth.get("expected_attack_paths", [])
     rr_summary = tm.get("residual_risk_summary", {})
     blackhat = ground_truth.get("blackhat_critique", {})
+    arch_name = ground_truth.get("architecture", "this architecture")
+    rapids = ground_truth.get("rapids_assessment", {})
 
-    lines = ["# Threat Model\n"]
-
-    # --- Overview ---
-    lines.append("## Overview\n")
-    lines.append(f"**Architecture type:** {tm.get('architecture_type', 'unknown')}  ")
-    lines.append(f"**Primary threat actor:** {tm.get('primary_threat_actor', 'Unknown')}  ")
-    lines.append(f"**Architecture bottleneck:** `{tm.get('architecture_weakness', 'unknown')}`  ")
-    trust_boundaries = tm.get("trust_boundaries_at_risk", [])
-    if trust_boundaries:
-        lines.append(f"**Trust boundaries at risk (no detection control):** {', '.join(f'`{n}`' for n in trust_boundaries)}  ")
-    lines.append(f"\n{tm.get('summary', '')}\n")
-
-    # Overall risk delta
     ob = rr_summary.get("overall_before", 0)
     oa = rr_summary.get("overall_after_controls", 0)
     pct = rr_summary.get("risk_reduction_pct", 0)
     status = rr_summary.get("status_after", "MONITOR")
-    lines.append(f"\n**Overall Risk:** {ob} → {oa} ({status}) | Δ −{pct}%\n")
+    weakness = tm.get("architecture_weakness", "unknown")
+    primary_actor = tm.get("primary_threat_actor", "Unknown threat actor")
+    trust_boundaries = tm.get("trust_boundaries_at_risk", [])
+    tier_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+    lines = [f"# Threat Model — {arch_name}\n"]
+
+    # --- Overview: one narrative block ---
+    lines.append("## Overview\n")
+
+    # RAPIDS threat summary sentence — fallback to per_threat initial_risk if risk_score is null
+    per_threat_before = ground_truth.get("residual_risks_before", {}).get("per_threat", {})
+    scored_threats = sorted(
+        [
+            (
+                cat,
+                int(
+                    (v.get("risk_score") if v.get("risk_score") is not None
+                     else per_threat_before.get(cat, {}).get("initial_risk", 0))
+                    or 0
+                ),
+            )
+            for cat, v in rapids.items()
+            if isinstance(v, dict) and cat != "_metadata"
+        ],
+        key=lambda x: x[1], reverse=True,
+    )
+    scored_threats = [(cat, score) for cat, score in scored_threats if score > 0]
+    top_threat_strs = [f"{cat.replace('_', ' ').title()} ({score}/100)" for cat, score in scored_threats[:3]]
+    rapids_sentence = (
+        f"The dominant threat categories are {', '.join(top_threat_strs)}."
+        if top_threat_strs else ""
+    )
+
+    # How many APs and what tier
+    crit_count = sum(1 for ap in attack_paths if ap.get("criticality_tier") == "CRITICAL")
+    ap_sentence = (
+        f"{len(attack_paths)} attack path(s) identified, "
+        f"{crit_count} CRITICAL."
+        if attack_paths else "No attack paths identified."
+    )
+
+    # Bottleneck and trust boundary sentence
+    tb_sentence = ""
+    if trust_boundaries:
+        tb_sentence = (
+            f"`{weakness}` is the architectural bottleneck — present on most paths. "
+            f"Nodes `{'`, `'.join(trust_boundaries)}` carry traffic across multiple paths "
+            f"with no detection control, making them invisible pivot points for an attacker."
+        )
+    else:
+        tb_sentence = f"`{weakness}` is the architectural bottleneck — present on most paths."
+
+    lines.append(
+        f"{ap_sentence} {rapids_sentence} "
+        f"The primary threat actor is **{primary_actor}**. "
+        f"{tb_sentence}\n"
+    )
+    lines.append(
+        f"With all recommended controls applied, overall risk reduces from "
+        f"**{ob}** to **{oa}/100** (−{pct}%, status: **{status}**). "
+        f"The decisions behind each control placement are in the "
+        f"[Architecture Decision Records](10_adr_report.md). "
+        f"The implementation schedule is in the [Action Plan](03_action_plan.md).\n"
+    )
 
     # --- Per-AP sections ---
     lines.append("---\n")
-    tier_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
-    sorted_aps = sorted(attack_paths, key=lambda ap: tier_order.get(ap.get("criticality_tier", "LOW"), 0), reverse=True)
+    sorted_aps = sorted(
+        attack_paths,
+        key=lambda ap: tier_order.get(ap.get("criticality_tier", "LOW"), 0),
+        reverse=True,
+    )
 
     for ap in sorted_aps:
         ap_id = ap.get("id", "?")
         tier = ap.get("criticality_tier", "UNKNOWN")
-        entry = ap.get("entry", "?")
-        target = ap.get("target", "?")
-        path_str = " → ".join(ap.get("path", [entry, target]))
+        path_str = " → ".join(ap.get("path", [ap.get("entry", "?"), ap.get("target", "?")]))
         rs = ap.get("risk_scenario", {})
         adr_ids = ap.get("adr_ids", [])
 
         lines.append(f"## {ap_id} [{tier}]: {path_str}\n")
-        if rs:
-            lines.append(f"🎭 **Threat Actor:** {rs.get('threat_actor', '?')}  ")
-            lines.append(f"🎯 **Targeted Asset:** {rs.get('targeted_asset', '?')}  ")
-            lines.append(f"⚡ **Exploited Vulnerability:** {rs.get('exploited_vulnerability', '?')}  ")
-            lines.append(f"💥 **Impact:** {rs.get('impact', '?')}  \n")
 
-        # Per-AP residual delta
-        per_ap = next(
-            (r for r in rr_summary.get("per_ap_residual", []) if r.get("ap_id") == ap_id),
-            {}
-        )
-        if per_ap:
-            ap_residual = per_ap.get("residual_after_adrs", "?")
+        if rs:
+            # Render as a mini-narrative, not a field list
+            threat_actor = rs.get("threat_actor", "?")
+            targeted_asset = rs.get("targeted_asset", "?")
+            vuln = rs.get("exploited_vulnerability", "?")
+            impact = rs.get("impact", "?")
             lines.append(
-                f"**Risk:** {tier} → ADRs applied: {', '.join(adr_ids) or 'none'} "
-                f"→ Residual: {ap_residual}\n"
+                f"**{threat_actor}** targets **{targeted_asset}** "
+                f"by exploiting **{vuln}**. "
+                f"If the path is not interrupted, the consequence is: {impact}.\n"
             )
 
+        # Per-AP residual + ADR link
+        per_ap = next(
+            (r for r in rr_summary.get("per_ap_residual", []) if r.get("ap_id") == ap_id),
+            {},
+        )
+        ap_residual = per_ap.get("residual_after_adrs", oa)
         if adr_ids:
-            lines.append(f"**ADRs:** {', '.join(adr_ids)}\n")
+            adr_links = ", ".join(f"[{a}](10_adr_report.md#{a.lower()})" for a in adr_ids)
+            lines.append(
+                f"**Residual risk after controls:** {ap_residual}/100  "
+                f"**Decision record:** {adr_links}\n"
+            )
         lines.append("")
 
     # --- Blackhat section ---
     if blackhat:
         lines.append("---\n")
-        lines.append("## Blackhat Cross-Path Findings\n")
+        lines.append("## Cross-Path Chain Analysis (Blackhat)\n")
         chains = blackhat.get("chained_exploit_findings", [])
-        if chains:
-            lines.append(f"**Chained exploits identified:** {len(chains)}\n")
-            for c in chains[:5]:
-                lines.append(f"- {c}\n")
         stealth = blackhat.get("stealth_score", 0)
         stealthy_techs = blackhat.get("stealthy_techniques", [])
-        lines.append(f"\n**Stealth score:** {stealth}/100  ")
+        gaps = blackhat.get("mitigation_gaps_for_chains", [])
+
+        lines.append(
+            f"The Blackhat critic analysed all paths together for chain-exploitation risk. "
+            f"Stealth score: **{stealth}/100** "
+            f"({'high — attacker can operate without triggering detection' if stealth >= 60 else 'moderate' if stealth >= 30 else 'low'}).\n"
+        )
+        if chains:
+            lines.append(f"**Chained exploits identified ({len(chains)}):**\n")
+            for c in chains[:5]:
+                lines.append(f"- {c}")
+            lines.append("")
         if stealthy_techs:
             lines.append(f"**Stealthy techniques:** {', '.join(stealthy_techs)}\n")
-        gaps = blackhat.get("mitigation_gaps_for_chains", [])
         if gaps:
-            lines.append(f"\n**Cross-path mitigation gaps:**\n")
+            lines.append(f"**Cross-path mitigation gaps:**\n")
             for g in gaps[:5]:
-                lines.append(f"- {g}\n")
+                lines.append(f"- {g}")
+            lines.append("")
 
     return "\n".join(lines)
 
@@ -1596,19 +1668,26 @@ def generate_adr_report(ground_truth: Dict) -> str:
     """
     Generate 10_adr_report.md — one master ADR per attack path.
 
-    Each ADR groups its controls by hop so the reader understands exactly
-    which control applies where and why (threat + technique + node).
+    Narrative-first: context reads as a decision story (what threat, what gap,
+    why these controls) rather than field dumps. Each ADR groups controls by hop.
+    Links back to 09_threat_model.md and forward to 03_action_plan.md.
     """
     adrs = ground_truth.get("architecture_decision_records", [])
+    arch_name = ground_truth.get("architecture", "this architecture")
 
     if not adrs:
         return "# Architecture Decision Records\n\n_No ADRs generated (no attack paths found)._\n"
 
     out = ["# Architecture Decision Records\n"]
     out.append(
-        f"_{len(adrs)} master ADR(s) — one per attack path. "
-        "Each ADR groups required controls by hop, justifying the risk reduction at that node._\n"
+        f"This document records the security decisions made for each attack path identified "
+        f"in {arch_name}. Each ADR explains **what threat is being addressed**, "
+        f"**where on the path each control is placed**, and **why that placement reduces risk**. "
+        f"Controls are prioritised by RAPIDS threat score — the same scoring used in the "
+        f"[Threat Model](09_threat_model.md). Implementation sequencing is in the "
+        f"[Action Plan](03_action_plan.md).\n"
     )
+    out.append(f"_{len(adrs)} decision record(s) — one per identified attack path._\n")
     out.append("\n---\n")
 
     for adr in adrs:
@@ -1620,35 +1699,56 @@ def generate_adr_report(ground_truth: Dict) -> str:
         ctx = adr.get("context", {})
         con = adr.get("consequences", {})
         hops: List[Dict] = adr.get("hops", [])
+        active_threats = ctx.get("active_threats", [])
 
         out.append(f"## {adr_id} — {ap_id} [{tier}]\n")
         out.append(f"**Path:** {path_str}  ")
         out.append(f"**Status:** {status}\n")
 
-        # --- Context ---
-        out.append("\n### Context\n")
-        out.append(f"{ctx.get('issue', '')}\n")
-        out.append(f"\n{ctx.get('background', '')}\n")
+        # --- Threat Scenario (narrative paragraph) ---
+        out.append("\n### What is at risk\n")
+        threat_scenario = ctx.get("threat_scenario", "")
+        if threat_scenario:
+            out.append(f"{threat_scenario}\n")
 
-        # --- Risk Delta (summary table) ---
+        # RAPIDS threat table — show what categories are active and their consequence
+        if active_threats:
+            out.append("\n**Active threat categories on this path:**\n")
+            out.append("| Threat | Score | If exploited |")
+            out.append("|--------|-------|-------------|")
+            for t in active_threats[:5]:
+                score = t.get("score", 0)
+                cat = t.get("category", "").replace("_", " ").title()
+                consequence = t.get("consequence", "—")
+                out.append(f"| {cat} | {score}/100 | {consequence} |")
+            out.append("")
+
+        # --- Gap summary ---
+        gap_summary = ctx.get("gap_summary", "")
+        if gap_summary and gap_summary != "All hops are covered with at least one control.":
+            out.append(f"\n> ⚠️ **Current gaps:** {gap_summary}\n")
+
+        # --- Decision rationale ---
+        decision_rationale = ctx.get("decision_rationale", "")
+        if decision_rationale:
+            out.append(f"\n**Why these controls:** {decision_rationale}\n")
+
+        # --- Risk outcome ---
         ob = con.get("overall_risk_before", "?")
         oa = con.get("overall_risk_after", "?")
         pct = con.get("risk_reduction_pct", "?")
-        out.append("\n### Risk Delta\n")
-        out.append("| Metric | Value |")
-        out.append("|--------|-------|")
-        out.append(f"| Risk before controls | {ob} |")
-        out.append(f"| Risk after controls | {oa} |")
-        out.append(f"| Reduction | **{pct}%** |")
-        out.append("")
-
         new_risks = con.get("new_risks_introduced", [])
-        if new_risks:
-            for r in new_risks:
-                out.append(f"> ⚠️ **Gap:** {r}\n")
+        out.append(f"\n**Risk outcome:** {ob} → {oa}/100 (−{pct}% reduction)\n")
+        for r in new_risks:
+            out.append(f"> ⚠️ **Residual gap:** {r}\n")
 
         # --- Hop-by-hop decisions ---
-        out.append("\n### Decisions by Hop\n")
+        out.append("\n### Control decisions by hop\n")
+        out.append(
+            "_Each hop is listed in traversal order. "
+            "Controls are placed at the node where the attacker's technique is exercised. "
+            "Hops with no control are flagged as gaps._\n"
+        )
 
         for hop in hops:
             node = hop.get("node", "?")
@@ -1657,24 +1757,25 @@ def generate_adr_report(ground_truth: Dict) -> str:
             gap_note = hop.get("gap_note")
 
             tech_str = ", ".join(node_techs[:4]) if node_techs else "no techniques mapped"
-            out.append(f"#### `{node}` — exposed techniques: {tech_str}\n")
+            out.append(f"#### `{node}` — techniques: {tech_str}\n")
 
             if gap_note:
-                out.append(f"> ⚠️ {gap_note}\n")
+                out.append(f"> ⚠️ **{gap_note}**\n")
 
             if not controls:
-                out.append("_No control assigned to this hop._\n")
+                out.append("_No control assigned to this hop — see gap note above._\n")
             else:
                 for ctrl in controls:
                     priority = ctrl.get("priority", "medium").upper()
                     cat = ctrl.get("dir_category", "?").title()
-                    out.append(f"**{ctrl['control'].title()}** [{priority}] — {cat}")
-                    out.append(f"> {ctrl['reason']}")
                     rb = ctrl.get("risk_before", "?")
                     ra = ctrl.get("risk_after", "?")
                     red = ctrl.get("risk_reduction", "?")
+                    out.append(f"**{ctrl['control'].title()}** [{priority}] — {cat}")
+                    out.append(f"> {ctrl['reason']}")
                     out.append(f"> Risk: {rb} → {ra} (−{red} pts)\n")
 
+        out.append(f"\n_Next step: see [Action Plan](03_action_plan.md) for implementation sequencing._\n")
         out.append("\n---\n")
 
     return "\n".join(out)

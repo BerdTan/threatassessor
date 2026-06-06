@@ -20,13 +20,24 @@ from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Arch-type → domain context
-_ARCH_DOMAIN: Dict[str, str] = {
-    "web_app":    "OWASP Top 10 — injection, auth bypass, and RCE are primary vectors",
-    "ai_system":  "ARC Framework / MITRE ATLAS — model integrity, data poisoning, and privacy",
-    "cloud":      "CSA CCM / CAVEAT — misconfiguration, lateral movement, and credential theft",
-    "iot":        "NIST IoT — physical access, protocol abuse, and firmware exploitation",
-    "generic":    "NIST SP 800-53 — broad attack surface across all RAPIDS categories",
+# Arch-type → pattern framing (used in narrative, not compliance standard)
+_ARCH_FRAMING: Dict[str, str] = {
+    "web_app":   "internet-facing web application",
+    "ai_system": "AI/ML system with model and data pipeline",
+    "cloud":     "cloud-hosted system with shared-responsibility boundaries",
+    "iot":       "IoT system with physical and protocol attack surface",
+    "generic":   "system with broad network attack surface",
+}
+
+# RAPIDS threat category → plain-English consequence
+_RAPIDS_CONSEQUENCE: Dict[str, str] = {
+    "ransomware":        "data encryption and service disruption requiring ransom payment",
+    "application_vulns": "exploitation of application flaws for code execution or data theft",
+    "phishing":          "credential theft enabling attacker foothold inside the network",
+    "insider_threat":    "data theft, sabotage, or privilege misuse by authenticated users",
+    "dos":               "service unavailability and SLA breach",
+    "supply_chain":      "persistent backdoor from compromised third-party components",
+    "apt":               "long-term persistence, lateral movement, and covert data exfiltration",
 }
 
 _DIR_FRAMING: Dict[str, str] = {
@@ -242,8 +253,32 @@ def generate_adrs_from_ground_truth(
     attack_paths: List[Dict] = ground_truth.get("expected_attack_paths", [])
     residual_before: Dict = ground_truth.get("residual_risks_before", {})
     residual_after: Dict = ground_truth.get("residual_risks_after", {})
+    rapids: Dict = ground_truth.get("rapids_assessment", {})
     arch_type: str = ground_truth.get("metadata", {}).get("architecture_type", "generic")
-    domain_ctx = _ARCH_DOMAIN.get(arch_type, _ARCH_DOMAIN["generic"])
+    arch_framing = _ARCH_FRAMING.get(arch_type, _ARCH_FRAMING["generic"])
+
+    # Build a ranked list of active RAPIDS threats with scores for narrative.
+    # Primary source: rapids_assessment.risk_score; fallback: residual_risks_before.per_threat.initial_risk
+    per_threat_before: Dict = residual_before.get("per_threat", {})
+    active_threats: List[Dict] = sorted(
+        [
+            {
+                "category": cat,
+                "score": int(
+                    (v.get("risk_score") if v.get("risk_score") is not None
+                     else per_threat_before.get(cat, {}).get("initial_risk", 0))
+                    or 0
+                ),
+                "consequence": _RAPIDS_CONSEQUENCE.get(cat, cat),
+            }
+            for cat, v in rapids.items()
+            if isinstance(v, dict) and cat != "_metadata"
+        ],
+        key=lambda x: x["score"],
+        reverse=True,
+    )
+    # Drop zero-score threats (no data at all)
+    active_threats = [t for t in active_threats if t["score"] > 0]
 
     # Build overall risk values for the ADR summary
     overall_before = int(residual_before.get("overall_residual", 0))
@@ -295,22 +330,18 @@ def generate_adrs_from_ground_truth(
         else:
             vuln = f"unspecified technique at {entry_node}"
 
-        # Context: what is at stake on this path
+        # Context: build structured narrative fields
         entry = path_nodes[0] if path_nodes else "?"
         target = path_nodes[-1] if path_nodes else "?"
         path_str = " → ".join(path_nodes)
+        hop_count = len(path_nodes) - 1
 
-        context_issue = (
-            f"{threat_actor} can traverse {path_str} "
-            f"exploiting {vuln} to compromise {target}. "
-            f"No controls exist on this path today — all hops are implicitly trusted."
-        )
-        context_background = (
-            f"{domain_ctx}. "
-            f"Zero-trust principle: explicit verification required at every hop. "
-            f"Current state: {len([h for h in hops if not h['controls']])} of {len(hops)} "
-            f"hop(s) have no assigned control."
-        )
+        unprotected_hops = [h for h in hops if not h["controls"]]
+        prevention_only_hops = [
+            h for h in hops
+            if h["controls"]
+            and not any(c.get("dir_category") in ("detection", "detect", "response") for c in h["controls"])
+        ]
 
         # Detect detection gap across all hops
         all_dir_cats = {
@@ -318,6 +349,73 @@ def generate_adrs_from_ground_truth(
             for _, cr in relevant_crs
         }
         has_any_detection = any(c in all_dir_cats for c in ("detection", "detect", "response"))
+
+        # Top RAPIDS threats for this AP's controls
+        ap_threat_cats: List[str] = sorted({
+            t for _, cr in relevant_crs for t in cr.get("rapids_threats", [])
+        })
+        ap_active_threats = [t for t in active_threats if t["category"] in ap_threat_cats]
+
+        # Build threat_scenario — one narrative paragraph (no compliance references)
+        top_threat_names = [t["category"].replace("_", " ").title() for t in ap_active_threats[:3]]
+        top_threat_str = (
+            f"{', '.join(top_threat_names[:-1])} and {top_threat_names[-1]}"
+            if len(top_threat_names) > 1
+            else (top_threat_names[0] if top_threat_names else "multiple threats")
+        )
+        # Use impact from risk_scenario if available (set by narrative_enricher); else top RAPIDS consequence
+        rs_impact = rs.get("impact", "")
+        if rs_impact:
+            consequence_str = rs_impact
+        elif ap_active_threats:
+            consequence_str = ap_active_threats[0]["consequence"]
+        else:
+            consequence_str = "data exfiltration and service disruption"
+
+        threat_scenario = (
+            f"An {threat_actor} targets this {arch_framing} by entering at {entry} "
+            f"and traversing {hop_count} hop(s) to reach {target}. "
+            f"The initial foothold exploits {vuln}. "
+            f"If unchecked, the attacker can cause {consequence_str}. "
+            f"This path is the primary vector for {top_threat_str} risk in this architecture."
+        )
+
+        # Gap summary — what is currently unprotected and what that means
+        gap_parts = []
+        if unprotected_hops:
+            nodes_str = ", ".join(h["node"] for h in unprotected_hops)
+            gap_parts.append(
+                f"{len(unprotected_hops)} hop(s) have no control assigned "
+                f"({nodes_str}) — an attacker can traverse these without any verification"
+            )
+        if prevention_only_hops:
+            nodes_str = ", ".join(h["node"] for h in prevention_only_hops)
+            gap_parts.append(
+                f"{len(prevention_only_hops)} hop(s) rely on prevention only with no detection "
+                f"({nodes_str}) — a bypass would be silent"
+            )
+        if not has_any_detection:
+            gap_parts.append(
+                "no detection or response control exists anywhere on this path — "
+                "a successful compromise would remain undetected"
+            )
+        gap_summary = "; ".join(gap_parts) if gap_parts else "All hops are covered with at least one control."
+
+        # Decision rationale — why controls are required and what the outcome is
+        control_count = sum(len(h["controls"]) for h in hops)
+        decision_rationale = (
+            f"The {control_count} control(s) below are required to reduce risk "
+            f"from {overall_before} to {overall_after} across this path. "
+            f"Each control is placed at the hop where the relevant technique is exercised, "
+            f"following the zero-trust principle that every hop must be explicitly verified. "
+            f"Priority is set by RAPIDS threat score — "
+            f"the highest-scoring threat ({ap_active_threats[0]['category'].replace('_',' ')} at "
+            f"{ap_active_threats[0]['score']}/100) drives the most critical controls."
+            if ap_active_threats else
+            f"The {control_count} control(s) below reduce risk from {overall_before} to {overall_after}. "
+            f"Each is placed at the hop where the relevant technique is exercised."
+        )
+
         new_risks = []
         if not has_any_detection:
             new_risks.append(
@@ -332,12 +430,13 @@ def generate_adrs_from_ground_truth(
             "attack_path": path_str,
             "status": "proposed",
             "context": {
-                "issue": context_issue,
-                "background": context_background,
+                "threat_scenario": threat_scenario,
+                "gap_summary": gap_summary,
+                "decision_rationale": decision_rationale,
+                "active_threats": ap_active_threats,
                 "threat_actor": threat_actor,
                 "exploited_vulnerability": vuln,
                 "attack_paths_affected": [ap_id],
-                "domain_context": domain_ctx,
             },
             "hops": hops,
             "consequences": {
