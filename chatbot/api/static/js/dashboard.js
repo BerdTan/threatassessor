@@ -172,7 +172,7 @@ class Dashboard {
                 });
 
                 // Render architecture diagram when switched to (if not already rendered)
-                if (subtabName === 'arch-diagram' && this.uploadedFile && !this.diagramRendered) {
+                if (subtabName === 'arch-diagram' && (this.uploadedFile || this.originalMmdContent) && !this.diagramRendered) {
                     await this.renderArchitectureDiagram();
                     this.diagramRendered = true;
                 }
@@ -1291,158 +1291,168 @@ class Dashboard {
             container.innerHTML = '<p class="placeholder" style="font-size:0.85rem; color:var(--text-tertiary);">⏳ Analysis in progress — Architecture Diagram will appear here once complete.</p>';
             return;
         }
-        if (!this.uploadedFile) return;
+        if (!this.uploadedFile && !this.originalMmdContent) return;
+
+        // If loaded from a previous report (no uploadedFile), use cached originalMmdContent directly
+        if (!this.uploadedFile && this.originalMmdContent) {
+            await this._renderMmdContent(this.originalMmdContent);
+            return;
+        }
 
         try {
             // Read uploaded file
             const reader = new FileReader();
             reader.onload = async (e) => {
-                let mmdContent = e.target.result;
-                this.originalMmdContent = mmdContent; // Store original
-
-                // Create container for mermaid
-                container.innerHTML = `
-                    <div style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem; justify-content: flex-start; align-items: center; flex-wrap: wrap;">
-                        <div style="display: flex; gap: 0.25rem;">
-                            <button id="zoom-in" class="btn-icon" title="Zoom In">🔍+</button>
-                            <button id="zoom-out" class="btn-icon" title="Zoom Out">🔍−</button>
-                            <button id="zoom-reset" class="btn-icon" title="Reset Zoom">↺</button>
-                        </div>
-                        <div style="width: 1px; height: 24px; background: var(--border-color);"></div>
-                        <div style="display: flex; gap: 0.25rem;">
-                            <button id="orient-tb" class="btn-icon" title="Top to Bottom (Portrait)">⬇️ TB</button>
-                            <button id="orient-lr" class="btn-icon" title="Left to Right (Landscape)">➡️ LR</button>
-                        </div>
-                        <div style="width: 1px; height: 24px; background: var(--border-color);"></div>
-                        <div style="display: flex; gap: 0.25rem;">
-                            <button id="fit-width" class="btn-icon" title="Fit to Width">↔️</button>
-                            <button id="fit-height" class="btn-icon" title="Fit to Height">↕️</button>
-                        </div>
-                    </div>
-                    <div id="mermaid-container" style="overflow: auto; max-height: calc(100vh - 280px); width: 100%; padding: 1rem; background: var(--code-bg); border-radius: 8px; border: 1px solid var(--border-color);">
-                        <div class="mermaid" id="mermaid-diagram">${mmdContent}</div>
-                    </div>
-                `;
-
-                // Render mermaid
-                if (window.mermaid) {
-                    await mermaid.run({
-                        querySelector: '#mermaid-container .mermaid'
-                    });
-
-                    // Auto-fit diagram to 50% initial size for better visibility
-                    setTimeout(() => {
-                        const mermaidContainer = document.getElementById('mermaid-container');
-                        const svg = mermaidContainer.querySelector('svg');
-                        if (svg) {
-                            // Store original dimensions
-                            this.originalSvgWidth = svg.getAttribute('width') || svg.getBBox().width;
-                            this.originalSvgHeight = svg.getAttribute('height') || svg.getBBox().height;
-
-                            // Set SVG to 50% of original size initially
-                            svg.setAttribute('width', this.originalSvgWidth * 0.5);
-                            svg.setAttribute('height', this.originalSvgHeight * 0.5);
-                            svg.style.maxWidth = 'none';
-                            svg.style.display = 'block';
-                        }
-                    }, 100);
-
-                    // Controls
-                    let scale = 0.5; // Start at 50%
-                    const mermaidContainer = document.getElementById('mermaid-container');
-                    // After mermaid.run(), the diagram might be SVG or in the .mermaid div
-                    const getDiagram = () => mermaidContainer.querySelector('svg') || mermaidContainer.querySelector('.mermaid');
-
-                    // Zoom controls
-                    const zoomInBtn = document.getElementById('zoom-in');
-                    const zoomOutBtn = document.getElementById('zoom-out');
-                    const zoomResetBtn = document.getElementById('zoom-reset');
-
-                    if (zoomInBtn) {
-                        zoomInBtn.addEventListener('click', () => {
-                            scale = Math.min(scale + 0.2, 3);
-                            const svg = getDiagram();
-                            if (svg && this.originalSvgWidth) {
-                                svg.setAttribute('width', this.originalSvgWidth * scale);
-                                svg.setAttribute('height', this.originalSvgHeight * scale);
-                            }
-                        });
-                    }
-
-                    if (zoomOutBtn) {
-                        zoomOutBtn.addEventListener('click', () => {
-                            scale = Math.max(scale - 0.2, 0.3);
-                            const svg = getDiagram();
-                            if (svg && this.originalSvgWidth) {
-                                svg.setAttribute('width', this.originalSvgWidth * scale);
-                                svg.setAttribute('height', this.originalSvgHeight * scale);
-                            }
-                        });
-                    }
-
-                    if (zoomResetBtn) {
-                        zoomResetBtn.addEventListener('click', () => {
-                            scale = 0.5; // Reset to 50%
-                            const svg = getDiagram();
-                            if (svg && this.originalSvgWidth) {
-                                svg.setAttribute('width', this.originalSvgWidth * scale);
-                                svg.setAttribute('height', this.originalSvgHeight * scale);
-                            }
-                            mermaidContainer.scrollTop = 0;
-                            mermaidContainer.scrollLeft = 0;
-                        });
-                    }
-
-                    // Orientation controls
-                    const orientTB = document.getElementById('orient-tb');
-                    const orientLR = document.getElementById('orient-lr');
-
-                    if (orientTB) {
-                        orientTB.addEventListener('click', async () => {
-                            await this.changeDiagramOrientation('TB');
-                        });
-                    }
-
-                    if (orientLR) {
-                        orientLR.addEventListener('click', async () => {
-                            await this.changeDiagramOrientation('LR');
-                        });
-                    }
-
-                    // Fit controls
-                    const fitWidth = document.getElementById('fit-width');
-                    const fitHeight = document.getElementById('fit-height');
-
-                    if (fitWidth) {
-                        fitWidth.addEventListener('click', () => {
-                            const svg = getDiagram();
-                            if (svg && this.originalSvgWidth) {
-                                const containerWidth = mermaidContainer.clientWidth - 32;
-                                scale = containerWidth / this.originalSvgWidth;
-                                svg.setAttribute('width', this.originalSvgWidth * scale);
-                                svg.setAttribute('height', this.originalSvgHeight * scale);
-                            }
-                        });
-                    }
-
-                    if (fitHeight) {
-                        fitHeight.addEventListener('click', () => {
-                            const svg = getDiagram();
-                            if (svg && this.originalSvgHeight) {
-                                const containerHeight = mermaidContainer.clientHeight - 32;
-                                scale = containerHeight / this.originalSvgHeight;
-                                svg.setAttribute('width', this.originalSvgWidth * scale);
-                                svg.setAttribute('height', this.originalSvgHeight * scale);
-                            }
-                        });
-                    }
-                }
+                this.originalMmdContent = e.target.result;
+                await this._renderMmdContent(this.originalMmdContent);
             };
-
             reader.readAsText(this.uploadedFile);
         } catch (error) {
             console.error('Error rendering architecture diagram:', error);
             container.innerHTML = '<p class="placeholder">Failed to render architecture diagram</p>';
+        }
+    }
+
+    async _renderMmdContent(mmdContent) {
+        const container = document.getElementById('arch-diagram');
+        if (!container) return;
+
+        // Create container for mermaid
+        container.innerHTML = `
+            <div style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem; justify-content: flex-start; align-items: center; flex-wrap: wrap;">
+                <div style="display: flex; gap: 0.25rem;">
+                    <button id="zoom-in" class="btn-icon" title="Zoom In">🔍+</button>
+                    <button id="zoom-out" class="btn-icon" title="Zoom Out">🔍−</button>
+                    <button id="zoom-reset" class="btn-icon" title="Reset Zoom">↺</button>
+                </div>
+                <div style="width: 1px; height: 24px; background: var(--border-color);"></div>
+                <div style="display: flex; gap: 0.25rem;">
+                    <button id="orient-tb" class="btn-icon" title="Top to Bottom (Portrait)">⬇️ TB</button>
+                    <button id="orient-lr" class="btn-icon" title="Left to Right (Landscape)">➡️ LR</button>
+                </div>
+                <div style="width: 1px; height: 24px; background: var(--border-color);"></div>
+                <div style="display: flex; gap: 0.25rem;">
+                    <button id="fit-width" class="btn-icon" title="Fit to Width">↔️</button>
+                    <button id="fit-height" class="btn-icon" title="Fit to Height">↕️</button>
+                </div>
+            </div>
+            <div id="mermaid-container" style="overflow: auto; max-height: calc(100vh - 280px); width: 100%; padding: 1rem; background: var(--code-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                <div class="mermaid" id="mermaid-diagram">${mmdContent}</div>
+            </div>
+        `;
+
+        // Render mermaid
+        if (window.mermaid) {
+            await mermaid.run({
+                querySelector: '#mermaid-container .mermaid'
+            });
+
+            // Auto-fit diagram to 50% initial size for better visibility
+            setTimeout(() => {
+                const mermaidContainer = document.getElementById('mermaid-container');
+                const svg = mermaidContainer.querySelector('svg');
+                if (svg) {
+                    // Store original dimensions
+                    this.originalSvgWidth = svg.getAttribute('width') || svg.getBBox().width;
+                    this.originalSvgHeight = svg.getAttribute('height') || svg.getBBox().height;
+
+                    // Set SVG to 50% of original size initially
+                    svg.setAttribute('width', this.originalSvgWidth * 0.5);
+                    svg.setAttribute('height', this.originalSvgHeight * 0.5);
+                    svg.style.maxWidth = 'none';
+                    svg.style.display = 'block';
+                }
+            }, 100);
+
+            // Controls
+            let scale = 0.5; // Start at 50%
+            const mermaidContainer = document.getElementById('mermaid-container');
+            // After mermaid.run(), the diagram might be SVG or in the .mermaid div
+            const getDiagram = () => mermaidContainer.querySelector('svg') || mermaidContainer.querySelector('.mermaid');
+
+            // Zoom controls
+            const zoomInBtn = document.getElementById('zoom-in');
+            const zoomOutBtn = document.getElementById('zoom-out');
+            const zoomResetBtn = document.getElementById('zoom-reset');
+
+            if (zoomInBtn) {
+                zoomInBtn.addEventListener('click', () => {
+                    scale = Math.min(scale + 0.2, 3);
+                    const svg = getDiagram();
+                    if (svg && this.originalSvgWidth) {
+                        svg.setAttribute('width', this.originalSvgWidth * scale);
+                        svg.setAttribute('height', this.originalSvgHeight * scale);
+                    }
+                });
+            }
+
+            if (zoomOutBtn) {
+                zoomOutBtn.addEventListener('click', () => {
+                    scale = Math.max(scale - 0.2, 0.3);
+                    const svg = getDiagram();
+                    if (svg && this.originalSvgWidth) {
+                        svg.setAttribute('width', this.originalSvgWidth * scale);
+                        svg.setAttribute('height', this.originalSvgHeight * scale);
+                    }
+                });
+            }
+
+            if (zoomResetBtn) {
+                zoomResetBtn.addEventListener('click', () => {
+                    scale = 0.5; // Reset to 50%
+                    const svg = getDiagram();
+                    if (svg && this.originalSvgWidth) {
+                        svg.setAttribute('width', this.originalSvgWidth * scale);
+                        svg.setAttribute('height', this.originalSvgHeight * scale);
+                    }
+                    mermaidContainer.scrollTop = 0;
+                    mermaidContainer.scrollLeft = 0;
+                });
+            }
+
+            // Orientation controls
+            const orientTB = document.getElementById('orient-tb');
+            const orientLR = document.getElementById('orient-lr');
+
+            if (orientTB) {
+                orientTB.addEventListener('click', async () => {
+                    await this.changeDiagramOrientation('TB');
+                });
+            }
+
+            if (orientLR) {
+                orientLR.addEventListener('click', async () => {
+                    await this.changeDiagramOrientation('LR');
+                });
+            }
+
+            // Fit controls
+            const fitWidth = document.getElementById('fit-width');
+            const fitHeight = document.getElementById('fit-height');
+
+            if (fitWidth) {
+                fitWidth.addEventListener('click', () => {
+                    const svg = getDiagram();
+                    if (svg && this.originalSvgWidth) {
+                        const containerWidth = mermaidContainer.clientWidth - 32;
+                        scale = containerWidth / this.originalSvgWidth;
+                        svg.setAttribute('width', this.originalSvgWidth * scale);
+                        svg.setAttribute('height', this.originalSvgHeight * scale);
+                    }
+                });
+            }
+
+            if (fitHeight) {
+                fitHeight.addEventListener('click', () => {
+                    const svg = getDiagram();
+                    if (svg && this.originalSvgHeight) {
+                        const containerHeight = mermaidContainer.clientHeight - 32;
+                        scale = containerHeight / this.originalSvgHeight;
+                        svg.setAttribute('width', this.originalSvgWidth * scale);
+                        svg.setAttribute('height', this.originalSvgHeight * scale);
+                    }
+                });
+            }
         }
     }
 
@@ -1560,7 +1570,21 @@ class Dashboard {
             // Verdict text: use the critic's own "so what" reasoning as primary text.
             // Fall back to a terse gap count + strength summary only if reasoning is absent
             // (legacy assessments run before the reasoning field was added).
-            const reasoning = (v.reasoning || '').trim();
+            let reasoning = (v.reasoning || '').trim();
+            // Fallback for critics with blank reasoning (e.g. tester on older runs)
+            if (!reasoning && def.key === 'tester') {
+                const strengths = v.strengths || [];
+                const bkd = v.breakdown || {};
+                const worstGapNote = Object.values(bkd)
+                    .filter(s => s && typeof s.score === 'number' && s.max && s.reasoning && s.score < s.max)
+                    .sort((a, b) => (a.score / a.max) - (b.score / b.max))
+                    .map(s => s.reasoning.split(/\.\s+/)[0].trim())
+                    .find(Boolean);
+                const parts = [];
+                if (strengths.length) parts.push(strengths[0] + '.');
+                if (worstGapNote) parts.push('Main gap: ' + worstGapNote + '.');
+                reasoning = parts.join(' ');
+            }
             const gapCount  = (v.gaps || []).length;
             const verdictFull = reasoning
                 ? reasoning
@@ -2560,6 +2584,14 @@ class Dashboard {
             if (uploadBtn) uploadBtn.style.display = 'none';
             if (newAnalysisBtn) newAnalysisBtn.style.display = 'inline-block';
 
+            // Fetch before.mmd so the arch-diagram subtab works without an uploadedFile
+            this.originalMmdContent = null;
+            this.diagramRendered = false;
+            try {
+                const mmdResp = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/before.mmd`);
+                if (mmdResp.ok) this.originalMmdContent = await mmdResp.text();
+            } catch (_) {}
+
             // Update status bar (fetch moe json for pill if it exists)
             this._updateAnalysisStatusBar();
             fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/07_moe_orchestrator.json`)
@@ -3016,7 +3048,15 @@ class Dashboard {
 
     loadHardeningTab() {
         const listContainer = document.getElementById('hardening-paths-list');
+        try {
+            this._loadHardeningTabInternal(listContainer);
+        } catch (err) {
+            console.error('[Visualise] loadHardeningTab crashed:', err);
+            if (listContainer) listContainer.innerHTML = '<p class="placeholder" style="color:var(--danger-color);">Visualise failed to render — check console for details.</p>';
+        }
+    }
 
+    _loadHardeningTabInternal(listContainer) {
         if (!this.analysisData) {
             listContainer.innerHTML = '<p class="placeholder">No analysis data available</p>';
             return;
@@ -3051,9 +3091,11 @@ class Dashboard {
         });
 
         // ─── Build pivot node set (BH shared_nodes + pivot_diverge_chains) ─────────
+        // shared_nodes is a dict {NodeName: [AP-IDs, …]} — use Object.keys, not forEach
         const sharedPivotSet = new Set();
         if (blackhat) {
-            (blackhat.shared_nodes || []).forEach(n => sharedPivotSet.add(n));
+            const sn = blackhat.shared_nodes || {};
+            (Array.isArray(sn) ? sn : Object.keys(sn)).forEach(n => sharedPivotSet.add(n));
             (blackhat.pivot_diverge_chains || []).forEach(chain => {
                 if (chain.pivot) sharedPivotSet.add(chain.pivot);
             });
@@ -3104,22 +3146,37 @@ class Dashboard {
             }
         });
 
-        // BH chain edges
+        // BH chain edges — built from pivot_diverge_chains (pivot → each target node name).
+        // least_resistance_paths[].chain holds AP IDs, not node names, so cannot be used for D3 links.
         const bhEdges = [];
-        if (blackhat && blackhat.least_resistance_paths && blackhat.least_resistance_paths.length > 0) {
-            blackhat.least_resistance_paths.forEach(lrp => {
-                const chain = lrp.chain || [];
-                if (chain.length >= 2) {
+        if (blackhat && blackhat.pivot_diverge_chains && blackhat.pivot_diverge_chains.length > 0) {
+            const edgeSetBh = new Set();
+            blackhat.pivot_diverge_chains.forEach(chain => {
+                const pivot = chain.pivot;
+                if (!pivot) return;
+                (chain.targets || []).forEach(tgt => {
+                    const key = pivot + '→' + tgt;
+                    if (edgeSetBh.has(key)) return;
+                    edgeSetBh.add(key);
+                    // Ensure both nodes exist in nodeMap (they may not if BH references nodes not in any AP path)
+                    if (!nodeMap[pivot]) {
+                        nodeMap[pivot] = { id: pivot, label: pivot, aps: [], isSharedPivot: true, isEntry: false, isTarget: false };
+                        nodes.push(nodeMap[pivot]);
+                    }
+                    if (!nodeMap[tgt]) {
+                        nodeMap[tgt] = { id: tgt, label: tgt, aps: [], isSharedPivot: false, isEntry: false, isTarget: true };
+                        nodes.push(nodeMap[tgt]);
+                    }
                     bhEdges.push({
-                        source: chain[0],
-                        target: chain[1],
+                        source: pivot,
+                        target: tgt,
                         apId: 'BH',
-                        pivot: lrp.pivot || '',
-                        criticality: lrp.chain_criticality || '',
+                        pivot: pivot,
+                        criticality: chain.chain_criticality || '',
                         color: BH_COLOR,
                         dashed: true
                     });
-                }
+                });
             });
         }
         const allEdges = edges.concat(bhEdges);
@@ -3151,12 +3208,12 @@ class Dashboard {
         if (hasBH) {
             legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><span style="display:inline-block;width:18px;height:3px;background:${BH_COLOR};border-top:2px dashed ${BH_COLOR};"></span><span style="color:var(--text-secondary);">BH chain</span></span>`;
         }
-        legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="14" height="14" viewBox="-8 -8 16 16"><circle cx="0" cy="0" r="6" fill="#64748b" stroke="#dc2626" stroke-width="2"/></svg><span style="color:var(--text-secondary);">Entry</span></span>`;
-        legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="14" height="14" viewBox="-8 -8 16 16"><circle cx="0" cy="0" r="6" fill="#64748b" stroke="#f97316" stroke-width="2"/></svg><span style="color:var(--text-secondary);">Target</span></span>`;
+        legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="16" height="16" viewBox="-9 -9 18 18"><circle cx="0" cy="0" r="6" fill="#64748b" stroke="#dc2626" stroke-width="2.5"/></svg><span style="color:var(--text-secondary);">Entry</span></span>`;
+        legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="16" height="16" viewBox="-9 -9 18 18"><circle cx="0" cy="0" r="6" fill="#64748b" stroke="#f97316" stroke-width="2.5"/></svg><span style="color:var(--text-secondary);">Target</span></span>`;
         if (sharedPivotSet.size > 0) {
-            legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="14" height="14" viewBox="-8 -8 16 16"><polygon points="0,-7 7,0 0,7 -7,0" fill="none" stroke="${BH_COLOR}" stroke-width="2"/></svg><span style="color:var(--text-secondary);">Pivot node</span></span>`;
+            legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="34" height="16" viewBox="-2 -10 34 20"><circle cx="6" cy="0" r="6" fill="#64748b" stroke="${BH_COLOR}" stroke-width="2.5"/><circle cx="18" cy="-6" r="5" fill="#1e293b" stroke="#475569" stroke-width="1"/><text x="18" y="-6" text-anchor="middle" dominant-baseline="central" font-size="7" font-weight="700" fill="#94a3b8">5</text><polygon points="29,-12 34,-8 29,-4 24,-8" fill="${BH_COLOR}" stroke="#1e293b" stroke-width="1"/></svg><span style="color:var(--text-secondary);">Pivot node — ⬥ badge = cross-path chain risk</span></span>`;
         }
-        legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.5rem;"><svg width="30" height="14" viewBox="0 0 30 14"><circle cx="5" cy="7" r="4" fill="#64748b"/><circle cx="22" cy="7" r="7" fill="#64748b"/></svg><span style="color:var(--text-secondary);">Node size = AP count (larger = more paths)</span></span>`;
+        legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="24" height="16" viewBox="-2 -9 24 18"><circle cx="5" cy="0" r="6" fill="#64748b" stroke="#475569" stroke-width="1.5"/><circle cx="18" cy="-5" r="5" fill="#1e293b" stroke="#475569" stroke-width="1"/><text x="18" y="-5" text-anchor="middle" dominant-baseline="central" font-size="7" font-weight="700" fill="#94a3b8">3</text></svg><span style="color:var(--text-secondary);">Badge = paths through node</span></span>`;
         legendHtml += '</div>';
 
         listContainer.innerHTML = `
@@ -3170,166 +3227,226 @@ class Dashboard {
             </div>
             <div id="vg-pivot-info" style="display:none;margin-top:0.75rem;padding:0.65rem 1rem;background:${BH_COLOR}18;border-left:4px solid ${BH_COLOR};border-radius:6px;font-size:0.82rem;color:var(--text-secondary);"></div>
             <div id="vg-ap-picker" style="display:none;margin-top:0.75rem;padding:0.65rem 1rem;background:var(--nav-hover-bg);border-radius:6px;font-size:0.82rem;"></div>
-            <p style="margin-top:0.5rem;font-size:0.78rem;color:var(--text-tertiary);">Click an <strong>AP chip</strong> to see all its controls in the right pane. Click a <strong>node</strong> to drill into its mitigations across every path that traverses it.</p>
+            ${hasBH ? '<div id="vg-bh-narrative"></div>' : ''}
+            <p style="margin-top:0.5rem;font-size:0.78rem;color:var(--text-tertiary);">Click an <strong>AP chip</strong> to see its controls in the right pane. Click a <strong>node</strong> to drill into its mitigations. <strong>Drag</strong> any node to rearrange.</p>
         `;
 
-        // ─── D3 force graph ──────────────────────────────────────────────────────
+        // ─── Layered DAG layout: topological column (L→R) + centred rows ────────
         const svgEl = document.getElementById('vg-svg');
         const wrap  = document.getElementById('vg-svg-wrap');
-        const W = wrap.clientWidth  || 800;
-        const H = 480;
-        svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+        const svg   = d3.select(svgEl);
 
-        const svg = d3.select(svgEl);
+        const NODE_R      = 18;   // fixed radius — avoids overlap from variable sizes
+        const COL_W       = 190;  // horizontal gap between column centres
+        const ROW_H       = 85;   // vertical gap between node centres in same column
+        const PAD         = 70;   // canvas padding
+        const ENTRY_COLOR = '#dc2626';
+        const TARGET_COLOR = '#f97316';
 
-        // Defs: arrowhead markers per AP color + BH
+        // ── Arrowhead markers (refX=8 → tip at line endpoint) ──────────────────
         const defs = svg.append('defs');
-        const markerColors = Object.values(apColorMap).concat(hasBH ? [BH_COLOR] : []);
-        const uniqueColors = [...new Set(markerColors)];
-        uniqueColors.forEach(color => {
-            const safeId = 'arrow-' + color.replace('#', '');
+        [...new Set(Object.values(apColorMap).concat(hasBH ? [BH_COLOR] : []))].forEach(color => {
             defs.append('marker')
-                .attr('id', safeId)
-                .attr('viewBox', '0 -4 8 8')
-                .attr('refX', 18)
-                .attr('refY', 0)
-                .attr('markerWidth', 6)
+                .attr('id',         'arrow-' + color.replace('#', ''))
+                .attr('viewBox',    '0 -4 8 8')
+                .attr('refX',       8)
+                .attr('refY',       0)
+                .attr('markerWidth',  6)
                 .attr('markerHeight', 6)
-                .attr('orient', 'auto')
+                .attr('orient',     'auto')
               .append('path')
-                .attr('d', 'M0,-4L8,0L0,4')
+                .attr('d',    'M0,-4L8,0L0,4')
                 .attr('fill', color);
         });
 
-        // Link group
+        // ── Topological column via longest-path BFS (AP edges only) ────────────
+        const adjOut = {}, adjIn = {};
+        nodes.forEach(n => { adjOut[n.id] = []; adjIn[n.id] = []; });
+        edges.forEach(e => {
+            if (adjOut[e.source] !== undefined) adjOut[e.source].push(e.target);
+            if (adjIn[e.target]  !== undefined) adjIn[e.target].push(e.source);
+        });
+
+        const col   = {};
+        const inDeg = {};
+        nodes.forEach(n => { col[n.id] = 0; inDeg[n.id] = adjIn[n.id].length; });
+
+        const bfsQ   = nodes.filter(n => inDeg[n.id] === 0).map(n => n.id);
+        const placed = new Set(bfsQ);
+        while (bfsQ.length) {
+            const cur = bfsQ.shift();
+            adjOut[cur].forEach(nxt => {
+                col[nxt] = Math.max(col[nxt], col[cur] + 1);
+                if (--inDeg[nxt] === 0) { bfsQ.push(nxt); placed.add(nxt); }
+            });
+        }
+        // Any BH-only nodes not reached — append after max column
+        const maxCol = nodes.reduce((m, n) => Math.max(m, col[n.id] || 0), 0);
+        nodes.filter(n => !placed.has(n.id)).forEach(n => { col[n.id] = maxCol + 1; });
+
+        // ── Row assignment within each column ───────────────────────────────────
+        const colGroups = {};
+        nodes.forEach(n => {
+            const c = col[n.id];
+            if (!colGroups[c]) colGroups[c] = [];
+            colGroups[c].push(n);
+        });
+        Object.values(colGroups).forEach(grp => {
+            // entry nodes first, target nodes last, alphabetical otherwise
+            grp.sort((a, b) => {
+                if (a.isEntry !== b.isEntry) return a.isEntry ? -1 : 1;
+                if (a.isTarget !== b.isTarget) return b.isTarget ? -1 : 1;
+                return a.id.localeCompare(b.id);
+            });
+        });
+
+        // Assign x/y coordinates (origin at top-left of content area = 0,0)
+        nodes.forEach(n => {
+            const c   = col[n.id];
+            const grp = colGroups[c];
+            const row = grp.indexOf(n);
+            n.x = c * COL_W;
+            n.y = (row - (grp.length - 1) / 2) * ROW_H; // centred within column
+        });
+
+        // ── Draw links first (so nodes render on top) ───────────────────────────
         const linkGroup = svg.append('g').attr('class', 'vg-links');
-        // Node group
         const nodeGroup = svg.append('g').attr('class', 'vg-nodes');
 
-        // Create D3 node/link data (copies for simulation)
-        const simNodes = nodes.map(n => Object.assign({}, n));
+        // Resolve source/target to node objects for direct coordinate access
         const nodeById = {};
-        simNodes.forEach(n => { nodeById[n.id] = n; });
-
+        nodes.forEach(n => { nodeById[n.id] = n; });
         const simEdges = allEdges.map(e => Object.assign({}, e, {
-            source: e.source,
-            target: e.target
+            source: nodeById[e.source] || { id: e.source, x: 0, y: 0 },
+            target: nodeById[e.target] || { id: e.target, x: 0, y: 0 },
         }));
 
-        // Draw links
+        // Compute line endpoints offset to node boundary (keeps arrowhead clean)
+        function edgePts(e) {
+            const dx = e.target.x - e.source.x;
+            const dy = e.target.y - e.source.y;
+            const d  = Math.sqrt(dx * dx + dy * dy) || 1;
+            const ux = dx / d, uy = dy / d;
+            return {
+                x1: e.source.x + ux * (NODE_R + 2),
+                y1: e.source.y + uy * (NODE_R + 2),
+                x2: e.target.x - ux * (NODE_R + 9), // 9 = node edge + arrowhead clearance
+                y2: e.target.y - uy * (NODE_R + 9),
+            };
+        }
+
         const linkEls = linkGroup.selectAll('line')
             .data(simEdges)
             .enter().append('line')
-            .attr('class', d => 'vg-edge vg-ap-' + d.apId)
-            .attr('stroke', d => d.color)
-            .attr('stroke-width', 2)
-            .attr('stroke-dasharray', d => d.dashed ? '6 3' : null)
-            .attr('marker-end', d => {
-                const safeId = 'arrow-' + d.color.replace('#', '');
-                return 'url(#' + safeId + ')';
-            })
-            .attr('opacity', 0.8);
+            .attr('class',           d => 'vg-edge vg-ap-' + d.apId)
+            .attr('stroke',          d => d.color)
+            .attr('stroke-width',    d => d.dashed ? 1.5 : 2)
+            .attr('stroke-dasharray',d => d.dashed ? '6 3' : null)
+            .attr('marker-end',      d => 'url(#arrow-' + d.color.replace('#', '') + ')')
+            .attr('opacity',         0.75);
 
-        // Draw nodes
+        function updateLinks() {
+            linkEls.each(function(d) {
+                const p = edgePts(d);
+                d3.select(this).attr('x1', p.x1).attr('y1', p.y1).attr('x2', p.x2).attr('y2', p.y2);
+            });
+        }
+        updateLinks();
+
+        // ── Draw nodes ──────────────────────────────────────────────────────────
+        const simNodes = nodes.slice(); // alias — same objects, no copy
         const nodeEls = nodeGroup.selectAll('g.vg-node')
             .data(simNodes)
             .enter().append('g')
-            .attr('class', 'vg-node')
-            .style('cursor', 'pointer');
+            .attr('class',     'vg-node')
+            .attr('transform', d => `translate(${d.x},${d.y})`)
+            .style('cursor',   'pointer');
 
-        // Pivot nodes: diamond (polygon) + amber ring; entry nodes: red ring; target nodes: orange ring; regular: circle
-        // Node size: area-proportional to AP count (sqrt) so 4-AP node has 2× the visual area of 1-AP node
-        const ENTRY_COLOR  = '#dc2626'; // red
-        const TARGET_COLOR = '#f97316'; // orange
-        const nodeRadius = d => Math.round(16 * Math.sqrt(d.aps.length));
         nodeEls.each(function(d) {
-            const g = d3.select(this);
+            const g    = d3.select(this);
             const fill = d.aps.length > 1 ? MULTI_COLOR : (apColorMap[d.aps[0]] || MULTI_COLOR);
-            const r = nodeRadius(d);
-            if (d.isSharedPivot) {
-                // Outer amber ring (slightly larger diamond)
-                g.append('polygon')
-                    .attr('points', `0,${-(r+7)} ${r+7},0 0,${r+7} ${-(r+7)},0`)
-                    .attr('fill', 'none')
-                    .attr('stroke', BH_COLOR)
-                    .attr('stroke-width', 3)
-                    .attr('opacity', 0.85);
-                // Inner filled diamond
-                g.append('polygon')
-                    .attr('points', `0,${-r} ${r},0 0,${r} ${-r},0`)
-                    .attr('fill', fill)
-                    .attr('stroke', BH_COLOR)
-                    .attr('stroke-width', 2);
-            } else {
-                const ringColor = d.isEntry ? ENTRY_COLOR : d.isTarget ? TARGET_COLOR : null;
-                if (ringColor) {
-                    // Outer ring for entry/exit
-                    g.append('circle')
-                        .attr('r', r + 4)
-                        .attr('fill', 'none')
-                        .attr('stroke', ringColor)
-                        .attr('stroke-width', 3)
-                        .attr('opacity', 0.9);
-                }
+
+            // Outer ring: entry=red, target=orange, pivot=amber, else none
+            const ringColor = d.isEntry ? ENTRY_COLOR : d.isTarget ? TARGET_COLOR : d.isSharedPivot ? BH_COLOR : null;
+            if (ringColor) {
                 g.append('circle')
-                    .attr('r', r)
-                    .attr('fill', fill)
-                    .attr('stroke', ringColor || 'none')
-                    .attr('stroke-width', ringColor ? 2 : 0);
+                    .attr('r',            NODE_R + 4)
+                    .attr('fill',         'none')
+                    .attr('stroke',       ringColor)
+                    .attr('stroke-width', 2.5)
+                    .attr('opacity',      0.85);
             }
-            // AP-count badge for multi-AP nodes
-            if (d.aps.length > 1) {
+            // Body circle (all node types — no more diamond shape)
+            g.append('circle')
+                .attr('r',            NODE_R)
+                .attr('fill',         fill)
+                .attr('stroke',       ringColor || '#334155')
+                .attr('stroke-width', 1.5);
+
+            // Top-right badges: AP-count circle + pivot diamond, side by side
+            // When both present: AP-count at (NODE_R+2), pivot diamond further right at (NODE_R+18)
+            const hasBadge = d.aps.length > 1;
+            const badgeX   = NODE_R + 2;
+            const pivotX   = hasBadge ? NODE_R + 20 : NODE_R + 2;
+            const badgeY   = -(NODE_R + 2);
+
+            if (hasBadge) {
                 g.append('circle')
-                    .attr('cx', r - 4).attr('cy', -(r - 4))
-                    .attr('r', 8)
-                    .attr('fill', '#1e293b')
-                    .attr('stroke', 'var(--border-color)')
+                    .attr('cx', badgeX).attr('cy', badgeY)
+                    .attr('r',  8)
+                    .attr('fill',         '#1e293b')
+                    .attr('stroke',       '#475569')
                     .attr('stroke-width', 1);
                 g.append('text')
-                    .attr('x', r - 4).attr('y', -(r - 4))
+                    .attr('x', badgeX).attr('y', badgeY)
                     .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
                     .attr('font-size', '9px').attr('font-weight', '700')
                     .attr('fill', '#94a3b8')
                     .style('pointer-events', 'none')
                     .text(d.aps.length);
             }
+
+            // Pivot diamond badge (⬥) at top-right, after the AP-count badge
+            if (d.isSharedPivot) {
+                const bs = 6;
+                g.append('polygon')
+                    .attr('points', `${pivotX},${badgeY - bs} ${pivotX + bs},${badgeY} ${pivotX},${badgeY + bs} ${pivotX - bs},${badgeY}`)
+                    .attr('fill',         BH_COLOR)
+                    .attr('stroke',       '#1e293b')
+                    .attr('stroke-width', 1);
+            }
         });
 
+        // Label below each node
         nodeEls.append('text')
             .text(d => d.label.length > 14 ? d.label.substring(0, 12) + '…' : d.label)
             .attr('text-anchor', 'middle')
-            .attr('dy', d => nodeRadius(d) + (d.isSharedPivot ? 9 : 5) + 11)
-            .attr('font-size', '11px')
-            .attr('fill', 'var(--text-secondary)')
+            .attr('dy',          NODE_R + 14)
+            .attr('font-size',   '11px')
+            .attr('fill',        'var(--text-secondary)')
             .style('pointer-events', 'none')
-            .style('user-select', 'none');
+            .style('user-select',    'none');
 
-        // ─── Simulation (static layout — tick 300 times then stop) ───────────────
-        const simulation = d3.forceSimulation(simNodes)
-            .force('link', d3.forceLink(simEdges).id(d => d.id).distance(110))
-            .force('charge', d3.forceManyBody().strength(-400))
-            .force('center', d3.forceCenter(0, 0))
-            .stop();
+        // ── Drag to reposition ──────────────────────────────────────────────────
+        nodeEls.call(
+            d3.drag()
+                .on('start', function() { d3.select(this).raise(); })
+                .on('drag',  function(event, d) {
+                    d.x = event.x;
+                    d.y = event.y;
+                    d3.select(this).attr('transform', `translate(${d.x},${d.y})`);
+                    updateLinks();
+                })
+        );
 
-        for (let i = 0; i < 300; i++) simulation.tick();
-
-        linkEls
-            .attr('x1', d => d.source.x)
-            .attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x)
-            .attr('y2', d => d.target.y);
-
-        nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
-
-        // ─── Fit-to-content: compute bbox of all positioned nodes and size SVG ───
-        const PAD = 55; // padding around content
+        // ── Fit SVG viewport to the computed content bounds ─────────────────────
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         simNodes.forEach(n => {
-            const r = nodeRadius(n) + (n.isSharedPivot ? 9 : 5) + 14; // include label height
-            if (n.x - r < minX) minX = n.x - r;
-            if (n.y - r < minY) minY = n.y - r;
-            if (n.x + r > maxX) maxX = n.x + r;
-            if (n.y + r > maxY) maxY = n.y + r;
+            const rr = NODE_R + 8;
+            minX = Math.min(minX, n.x - rr);
+            minY = Math.min(minY, n.y - rr);
+            maxX = Math.max(maxX, n.x + rr);
+            maxY = Math.max(maxY, n.y + rr + 16); // +16 for label
         });
         const contentW = maxX - minX + PAD * 2;
         const contentH = maxY - minY + PAD * 2;
@@ -3337,20 +3454,91 @@ class Dashboard {
         const vbY = minY - PAD;
 
         function applyFit() {
-            const availW = wrap.clientWidth || 600;
+            const availW = wrap.clientWidth || 700;
             const scale  = availW / contentW;
-            const dispH  = Math.max(contentH * scale, 240);
+            const dispH  = Math.max(contentH * scale, 200);
             svgEl.setAttribute('viewBox', `${vbX} ${vbY} ${contentW} ${contentH}`);
             svgEl.setAttribute('width',  availW);
             svgEl.setAttribute('height', dispH);
             wrap.style.height = dispH + 'px';
         }
-        applyFit();
+        // Defer to next frame — clientWidth is 0 until the tab pane has laid out
+        requestAnimationFrame(() => {
+            applyFit();
+            if (typeof ResizeObserver !== 'undefined') {
+                const ro = new ResizeObserver(() => applyFit());
+                ro.observe(wrap);
+            }
+        });
 
-        // Refit when container resizes (e.g. right pane opening/closing)
-        if (typeof ResizeObserver !== 'undefined') {
-            const ro = new ResizeObserver(() => applyFit());
-            ro.observe(wrap);
+        // ─── BH narrative block ──────────────────────────────────────────────────
+        if (hasBH && blackhat) {
+            const narrativeEl = document.getElementById('vg-bh-narrative');
+            if (narrativeEl) {
+                const chains     = blackhat.pivot_diverge_chains || [];
+                const stealth    = blackhat.stealth_score || 0;
+                const rating     = (blackhat.rating || '').toUpperCase();
+                const ratingColor = rating === 'CRITICAL' ? 'var(--danger-color)' : rating.startsWith('HIGH') ? 'var(--warning-color)' : BH_COLOR;
+
+                // Build one-sentence chain rows
+                let chainRows = '';
+                chains.forEach(ch => {
+                    const techs   = (ch.techniques || []).join(', ') || '—';
+                    const targets = (ch.targets || []).join(' and ') || '—';
+                    const crit    = ch.chain_criticality || '';
+                    const critCol = crit === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)';
+                    chainRows += `<div style="padding:0.5rem 0.7rem;background:var(--card-bg);border-radius:5px;margin-bottom:0.35rem;border-left:3px solid ${critCol};">`
+                        + `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.2rem;">`
+                        + `<span style="font-size:0.8rem;font-weight:700;color:${BH_COLOR};">⬥ ${ch.pivot}</span>`
+                        + `<span style="font-size:0.68rem;padding:1px 5px;background:${critCol}18;border:1px solid ${critCol}44;border-radius:3px;color:${critCol};font-weight:700;">${crit}</span>`
+                        + `</div>`
+                        + `<div style="font-size:0.78rem;color:var(--text-secondary);line-height:1.5;">`
+                        + `Once <strong>${ch.pivot}</strong> is compromised, an attacker can reach `
+                        + `<strong>${targets}</strong> directly — bypassing the controls placed on the paths `
+                        + `that were supposed to protect those targets. The techniques used to pivot are `
+                        + `<strong>${techs}</strong>.`
+                        + `</div>`
+                        + `</div>`;
+                });
+
+                // Dashed-line explanation
+                const dashedExplain = `The <span style="display:inline-flex;align-items:center;gap:3px;">`
+                    + `<svg width="22" height="6" viewBox="0 0 22 6"><line x1="0" y1="3" x2="22" y2="3" stroke="${BH_COLOR}" stroke-width="1.5" stroke-dasharray="5 3"/></svg>`
+                    + ` dashed amber lines</span> on the graph are Blackhat-generated edges. They do not follow the `
+                    + `normal attack paths — they show where an attacker can <em>jump</em> from a shared node to `
+                    + `a downstream target without traversing any further per-path controls.`;
+
+                // Why per-path controls don't stop this
+                const whyNote = `Standard threat models assess each attack path independently. Per-path controls `
+                    + `(firewall rules, WAF, rate limiting) are placed to stop traversal along <em>that path</em>. `
+                    + `But when two paths share a node, owning that node means you are already inside — `
+                    + `you do not need to traverse the remaining path. The controls positioned further along `
+                    + `each path never see the traffic, so they cannot fire.`;
+
+                narrativeEl.innerHTML = `
+                    <div style="margin-top:1rem;padding:0.75rem 1rem;background:${BH_COLOR}0d;border:1px solid ${BH_COLOR}33;border-radius:8px;">
+                        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">
+                            <span style="font-size:1rem;">⚔️</span>
+                            <span style="font-weight:700;font-size:0.9rem;color:${BH_COLOR};">Blackhat Chain Analysis</span>
+                            <span style="margin-left:auto;font-size:0.72rem;padding:1px 7px;background:${ratingColor}18;border:1px solid ${ratingColor}44;border-radius:4px;color:${ratingColor};font-weight:700;">${rating}</span>
+                            ${stealth > 0 ? `<span style="font-size:0.72rem;padding:1px 7px;background:var(--nav-hover-bg);border:1px solid var(--border-color);border-radius:4px;color:var(--text-secondary);">Stealth ${stealth}/100</span>` : ''}
+                        </div>
+
+                        <p style="margin:0 0 0.65rem;font-size:0.8125rem;color:var(--text-secondary);line-height:1.6;">${dashedExplain}</p>
+
+                        <details style="margin-bottom:0.65rem;">
+                            <summary style="font-size:0.78rem;font-weight:700;color:var(--text-tertiary);cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.35rem;">
+                                ▶ Why don't the existing controls stop this?
+                            </summary>
+                            <p style="margin:0.4rem 0 0;font-size:0.78rem;color:var(--text-secondary);line-height:1.6;padding-left:0.5rem;border-left:2px solid var(--border-color);">${whyNote}</p>
+                        </details>
+
+                        <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin-bottom:0.35rem;">
+                            Pivot nodes found — ${chains.length} chain${chains.length !== 1 ? 's' : ''}
+                        </div>
+                        ${chainRows}
+                    </div>`;
+            }
         }
 
         // ─── Toggle chip logic ────────────────────────────────────────────────────
@@ -3470,7 +3658,7 @@ class Dashboard {
         function _pivotBanner(nodeName) {
             if (!sharedPivotSet.has(nodeName)) return '';
             const chains  = (blackhat && blackhat.pivot_diverge_chains || []).filter(ch => ch.pivot === nodeName);
-            const targets = [...new Set(chains.flatMap(c => c.diverge_targets || []))].join(', ') || '–';
+            const targets = [...new Set(chains.flatMap(c => c.targets || c.diverge_targets || []))].join(', ') || '–';
             return `<div style="margin-bottom:1rem;padding:0.65rem 0.9rem;background:${BH_COLOR}18;border-left:4px solid ${BH_COLOR};border-radius:6px;">
                 <div style="font-weight:700;color:${BH_COLOR};font-size:0.82rem;margin-bottom:0.25rem;">⬥ Pivot Node — Cross-Path Chaining Risk</div>
                 <p style="margin:0;font-size:0.79rem;color:var(--text-secondary);line-height:1.5;">Compromising <strong>${nodeName}</strong> gives forked reach into <strong>${targets}</strong>. Per-path controls cannot stop this branching.</p>
@@ -5805,6 +5993,57 @@ class Dashboard {
                     + '</div>';
             }
 
+            // Pre-populate technique name cache for all T-codes appearing in gaps,
+            // reasoning, and breakdown sub-reasoning (needed for synthesised tester verdict).
+            {
+                const allTcodes = new Set();
+                const _scanText = t => (t || '').match(/T\d{4}(?:\.\d{3})?/g) || [];
+                for (const e of expertDefs) {
+                    const v = expertValidations[e.key];
+                    if (!v) continue;
+                    for (const g of (v.gaps || [])) {
+                        _scanText((g.description || '') + ' ' + (g.recommendation || '')).forEach(t => allTcodes.add(t));
+                    }
+                    _scanText(v.reasoning || '').forEach(t => allTcodes.add(t));
+                    // Also scan breakdown sub-reasoning (tester critic uses this for synthesised verdict)
+                    for (const sub of Object.values(v.breakdown || {})) {
+                        if (sub && sub.reasoning) _scanText(sub.reasoning).forEach(t => allTcodes.add(t));
+                    }
+                    // Scan strengths array
+                    for (const s of (v.strengths || [])) _scanText(s).forEach(t => allTcodes.add(t));
+                }
+                if (allTcodes.size) await this.fetchTechniqueNames([...allTcodes]);
+            }
+
+            // Collect all T-codes from a block of text.
+            const _extractTcodes = (text) => [...new Set((text || '').match(/\bT\d{4}(?:\.\d{3})?\b/g) || [])];
+
+            // Build a compact inline legend for all T-codes found in text strings.
+            // Returns '' if no known T-codes present.
+            const _techLegendHtml = (...texts) => {
+                const seen = new Set();
+                texts.forEach(t => _extractTcodes(t).forEach(id => seen.add(id)));
+                const known = [...seen].filter(id => {
+                    const n = this.techniqueNamesCache[id];
+                    return n && n !== id;
+                });
+                if (!known.length) return '';
+                const rows = known.map(id => {
+                    const name = this.techniqueNamesCache[id];
+                    return '<span style="display:inline-flex;align-items:baseline;gap:0.35rem;white-space:nowrap;">'
+                        + '<code style="font-size:0.72rem;font-weight:700;color:var(--primary-color);background:var(--primary-color)14;padding:1px 5px;border-radius:3px;">' + id + '</code>'
+                        + '<span style="font-size:0.73rem;color:var(--text-secondary);">' + name + '</span>'
+                        + '</span>';
+                }).join('');
+                return '<div style="margin-top:0.5rem;margin-bottom:0.75rem;padding:0.45rem 0.65rem;background:var(--nav-hover-bg);border-radius:6px;border-left:2px solid var(--primary-color)44;">'
+                    + '<div style="font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin-bottom:0.3rem;">MITRE techniques referenced</div>'
+                    + '<div style="display:flex;flex-wrap:wrap;gap:0.4rem 1rem;">' + rows + '</div>'
+                    + '</div>';
+            };
+
+            // Keep _linkTechniques for gap text (still useful as inline markup).
+            const _linkTechniques = (text) => text;
+
             // Build expert panel cards — collapsible, expanded by default
             let expertPanelCards = '';
             for (const e of expertDefs) {
@@ -5916,8 +6155,8 @@ class Dashboard {
                                 + '</div>'
                             : '';
                         catInner += '<div style="padding:0.6rem 0.75rem; background:var(--card-bg); border-radius:5px; margin-bottom:0.35rem; border-left:3px solid ' + borderCol + ';">'
-                            + '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.3rem;">' + (g.description || '') + ' <span style="font-size:0.75rem; color:' + sevCol + '; font-weight:600;">[' + (g.severity || '') + ']</span></div>'
-                            + (g.recommendation ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-bottom:' + (isGov ? '0.25rem' : '0') + ';">→ ' + g.recommendation + '</div>' : '')
+                            + '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.3rem;">' + _linkTechniques(g.description || '') + ' <span style="font-size:0.75rem; color:' + sevCol + '; font-weight:600;">[' + (g.severity || '') + ']</span></div>'
+                            + (g.recommendation ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-bottom:' + (isGov ? '0.25rem' : '0') + ';">→ ' + _linkTechniques(g.recommendation) + '</div>' : '')
                             + sspFallback
                             + '</div>';
                     }
@@ -5962,7 +6201,7 @@ class Dashboard {
                         }
                     }
                     if (stealthTechs.length) {
-                        bhInner += '<div style="font-size:0.76rem; color:var(--text-tertiary); margin-top:0.4rem;">Stealth techniques: ' + stealthTechs.join(', ') + '</div>';
+                        bhInner += '<div style="font-size:0.76rem; color:var(--text-tertiary); margin-top:0.4rem;">Stealth techniques: ' + stealthTechs.map(t => _linkTechniques(t)).join(', ') + '</div>';
                     }
                     if (lrp.length) {
                         bhInner += '<div style="font-size:0.76rem; color:var(--text-tertiary); margin-top:0.2rem;">Least-resistance paths: ' + lrp.slice(0,3).map(p => Array.isArray(p) ? p.join('→') : String(p)).join(' | ') + '</div>';
@@ -6013,16 +6252,37 @@ class Dashboard {
                         + '</div>';
                 }
 
-                const reasoning = (v.reasoning || '').trim();
+                let reasoning = (v.reasoning || '').trim();
+                // Fallback for critics that leave reasoning blank: synthesise from strengths + worst breakdown gap
+                if (!reasoning && e.key === 'tester') {
+                    const strengths = v.strengths || [];
+                    const bkd = v.breakdown || {};
+                    const worstGapNote = Object.values(bkd)
+                        .filter(s => s && typeof s.score === 'number' && s.max && s.reasoning && s.score < s.max)
+                        .sort((a, b) => (a.score / a.max) - (b.score / b.max))
+                        .map(s => s.reasoning.split(/\.\s+/)[0].trim())
+                        .find(Boolean);
+                    const parts = [];
+                    if (strengths.length) parts.push(strengths[0] + '.');
+                    if (worstGapNote) parts.push('Main gap: ' + worstGapNote + '.');
+                    reasoning = parts.join(' ');
+                }
                 const reasoningHtml = reasoning
                     ? '<div style="margin-bottom:0.85rem; padding:0.65rem 0.85rem; background:var(--nav-hover-bg); border-left:3px solid var(--primary-color); border-radius:6px;">'
                         + '<div style="font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--primary-color); margin-bottom:0.3rem;">Critic verdict</div>'
-                        + '<p style="margin:0; font-size:0.8375rem; color:var(--text-color); line-height:1.55;">' + reasoning + '</p>'
+                        + '<p style="margin:0; font-size:0.8375rem; color:var(--text-color); line-height:1.55;">' + _linkTechniques(reasoning) + '</p>'
                         + '</div>'
                     : '';
+                // Collect all T-codes in this critic's verdict + all gap text for the legend
+                const allCriticText = [reasoning]
+                    .concat(gaps.map(g => (g.description || '') + ' ' + (g.recommendation || '')))
+                    .join(' ');
+                const techLegend = _techLegendHtml(allCriticText);
+
                 const bodyHtml = gaps.length > 0
                     ? '<div class="er-panel-body" style="padding: 1rem 1.25rem;">'
                         + reasoningHtml
+                        + techLegend
                         + breakdownBars
                         + '<div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">' + gaps.length + ' finding' + (gaps.length > 1 ? 's' : '') + '</div>'
                         + severityLegend
@@ -6030,6 +6290,7 @@ class Dashboard {
                         + '</div>'
                     : '<div class="er-panel-body" style="padding: 0.75rem 1.25rem;">'
                         + reasoningHtml
+                        + techLegend
                         + breakdownBars
                         + '<div style="font-size:0.8125rem; color:var(--text-tertiary);">No findings — criteria passed.</div>'
                         + '</div>';

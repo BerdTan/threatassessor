@@ -1,7 +1,7 @@
 # ThreatAssessor - Developer Quick Reference
 
-**Version:** 1.3  
-**Status:** ✅ Production-Ready — REST API live, Bug Fix + Hardening complete  
+**Version:** 1.4  
+**Status:** ✅ Production-Ready — REST API live, D3 Visualise tab + Expert Review UX complete  
 **Core Feature:** Architecture diagram → Threat assessment + AI/ML analysis + MoE validation + Hardening controls
 
 ---
@@ -198,4 +198,4 @@ python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.
 ---
 
 **Purpose:** AI assistant context + developer quick reference  
-**Last Updated:** 2026-05-30
+**Last Updated:** 2026-06-07
