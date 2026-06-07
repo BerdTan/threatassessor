@@ -95,9 +95,10 @@ def generate_bh_diagram(report_dir: str) -> Optional[str]:
             style_lines.append(f"    style {nid} {_BH_GAP_NODE_STYLE}")
             bh_gap_node_ids.append(nid)
 
-    # ── 2. Cross-path chain edges (shared pivot nodes → chain) ───────────────
-    least_resistance: List[Dict] = bh.get("least_resistance_paths", [])
-    chained_findings: List[str]  = bh.get("chained_exploit_findings", [])
+    # ── 2. Cross-path chain edges ────────────────────────────────────────────
+    pivot_diverge_chains: List[Dict] = bh.get("pivot_diverge_chains", [])
+    least_resistance: List[Dict]     = bh.get("least_resistance_paths", [])
+    chained_findings: List[str]      = bh.get("chained_exploit_findings", [])
 
     overlay_lines.append("")
     overlay_lines.append("    %% ━━ BLACKHAT: CROSS-PATH PIVOT EDGES ━━")
@@ -105,24 +106,49 @@ def generate_bh_diagram(report_dir: str) -> Optional[str]:
 
     added_edges: set = set()
 
-    # From structured least_resistance_paths (dicts with chain/pivot/chain_criticality)
+    # Pivot-diverge chains: draw pivot → each diverge target using actual node names.
+    # These show the fan-out: one compromised pivot reaches multiple distinct targets.
+    for pd in pivot_diverge_chains[:6]:
+        if not isinstance(pd, dict):
+            continue
+        pivot       = pd.get("pivot", "")
+        targets     = pd.get("targets", [])
+        criticality = pd.get("chain_criticality", "HIGH").upper()
+        if not pivot or not targets:
+            continue
+        pivot_id = _node_id(pivot)
+        edge_style = _CHAIN_EDGE_CRITICAL if criticality == "CRITICAL" else (
+            _CHAIN_EDGE_HIGH if criticality == "HIGH" else _CHAIN_EDGE_DEFAULT
+        )
+        for target in targets[:4]:
+            target_id = _node_id(target)
+            edge_key  = f"pd_{pivot_id}_{target_id}"
+            if edge_key in added_edges:
+                continue
+            added_edges.add(edge_key)
+            overlay_lines.append(f'    {pivot_id} -.->|"⚔️ pivot→{target}"| {target_id}')
+            link_styles.append(f"    linkStyle {link_counter} {edge_style}")
+            link_counter += 1
+
+    # Sequential chains from least_resistance_paths (chain_type == sequential).
+    # Only use entries whose "chain" list contains actual diagram node names,
+    # not AP IDs — skip pivot_diverge entries (they are handled above).
     for chain_entry in least_resistance[:6]:
         if not isinstance(chain_entry, dict):
             continue
-        chain_aps  = chain_entry.get("chain", [])
-        pivot      = chain_entry.get("pivot", "")
+        if chain_entry.get("chain_type") == "pivot_diverge":
+            continue  # already handled via pivot_diverge_chains above
+        chain_aps   = chain_entry.get("chain", [])
+        pivot       = chain_entry.get("pivot", "")
         criticality = chain_entry.get("chain_criticality", "MEDIUM").upper()
         if len(chain_aps) < 2:
             continue
-
-        # Draw AP-i → AP-j edge through the pivot node
         src_id  = _node_id(chain_aps[0])
-        dst_id  = _node_id(chain_aps[1])
-        edge_key = f"{src_id}_{dst_id}"
+        dst_id  = _node_id(chain_aps[-1])
+        edge_key = f"seq_{src_id}_{dst_id}"
         if edge_key in added_edges:
             continue
         added_edges.add(edge_key)
-
         pivot_label = f"via {pivot}" if pivot else "chain"
         overlay_lines.append(f'    {src_id} -.->|"⚔️ {pivot_label}"| {dst_id}')
         edge_style = _CHAIN_EDGE_CRITICAL if criticality == "CRITICAL" else (
@@ -131,27 +157,22 @@ def generate_bh_diagram(report_dir: str) -> Optional[str]:
         link_styles.append(f"    linkStyle {link_counter} {edge_style}")
         link_counter += 1
 
-    # From string findings "AP-i → AP-j via `pivot` [CRITICALITY]"
+    # String findings "AP-i → AP-j via `pivot` [CRITICALITY]" (sequential only)
     _finding_re = re.compile(r"(AP-\w+)\s*→\s*(AP-\w+)\s*via\s*`([^`]+)`\s*\[([A-Z]+)\]")
     for finding in chained_findings[:6]:
         m = _finding_re.search(str(finding))
         if not m:
             continue
-        ap_src, ap_dst, pivot, criticality = m.groups()
-        # Map AP IDs to path first-node (rough anchor)
-        src_id  = _node_id(ap_src)
-        dst_id  = _node_id(ap_dst)
-        edge_key = f"{src_id}_{dst_id}_f"
+        _, _, pivot, criticality = m.groups()
+        # Draw pivot → itself is meaningless; anchor to the actual pivot node instead
+        pivot_id = _node_id(pivot)
+        edge_key = f"find_{pivot_id}"
         if edge_key in added_edges:
             continue
         added_edges.add(edge_key)
-
-        overlay_lines.append(f'    {src_id} -.->|"⚔️ via {pivot}"| {dst_id}')
-        edge_style = _CHAIN_EDGE_CRITICAL if criticality == "CRITICAL" else (
-            _CHAIN_EDGE_HIGH if criticality == "HIGH" else _CHAIN_EDGE_DEFAULT
-        )
-        link_styles.append(f"    linkStyle {link_counter} {edge_style}")
-        link_counter += 1
+        # Annotate the pivot node with a self-note label (invisible self-loop avoided;
+        # instead skip — string findings are already captured via pivot_diverge above)
+        # Nothing to render here that isn't already covered by the pivot_diverge block.
 
     # ── 3. Anchor gap nodes to their shared pivot nodes ──────────────────────
     if bh_gap_node_ids and shared_nodes:
