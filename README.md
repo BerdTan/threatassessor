@@ -10,7 +10,7 @@ Upload a Mermaid (`.mmd`) architecture diagram and receive a full, MITRE-mapped 
 - Runs AI/ML threat pattern detection using the ARC Framework and MITRE ATLAS (AI/ML techniques) on top of the deterministic RAPIDS threat engine. ARC control recommendations are annotated with category badges (SAF, SEC, PRIV, etc.) and linked to ATLAS techniques with full name resolution.
 - Enriches controls with the Singapore Government ICT&SS Security Standards for Providers (SSP) baseline — selectable profile (Low/Medium/High Risk Cloud, On-Premises, Generative AI, Digital Services, Sandbox) surfaces the mandatory controls your architecture must meet.
 - Calculates architecture-sensitive confidence: complex architectures start with a lower base confidence that recovers only when coverage signals (control coverage, validation pass rate, attack path depth) prove the surface was thoroughly mapped. Final confidence is reported as a `confidence_breakdown` object.
-- Validates findings through a Mixture of Experts (MoE) review — three independent critic agents (Architect, Tester, Red Team) running sequentially or in parallel — and produces 16 output files including an executive summary, technical report, 8-week action plan, and three phased architecture diagrams.
+- Validates findings through a Mixture of Experts (MoE) review — five critic agents running in a fixed sequence: Architect (2A) → Coverage Auditor (2B) → Exploit Analyst (2C) → Purple Team (2D) → Blackhat (2E). The core three (2A–2C) always run; Purple Team and Blackhat are optional toggles. Blackhat is the supreme critic — it sees all prior critique output and performs cross-path chain exploitation and pivot-diverge analysis. Produces 16 output files including an executive summary, technical report, 8-week action plan, and three phased architecture diagrams.
 
 ## Quick Start
 
@@ -53,7 +53,7 @@ ThreatAssessor parses the Mermaid diagram into a graph, then the RAPIDS engine w
 
 Confidence is architecture-sensitive: a complex multi-tier architecture starts at a lower base than a small demo diagram, recovering toward the ceiling only when control coverage, validation pass rate, and attack path depth prove the surface was thoroughly mapped.
 
-When Expert Review is enabled, three MoE critic agents (Architect, Tester, Red Team) audit the findings independently, either sequentially for maximum cross-critic reasoning or in parallel for speed. The synthesis step is grounded against the MITRE ATT&CK database so technique-ID disputes between critics are resolved against authoritative names. The dashboard history dropdown lets you reload any past analysis without re-running the pipeline.
+When Expert Review is enabled, up to five MoE critic agents audit the findings in sequence. The core three (Architect, Coverage Auditor, Exploit Analyst) always run. Purple Team adds detection-depth and SOC operability analysis across three lenses (coverage, assume-breach, ADR operability). Blackhat — the supreme critic — runs last and performs cross-path chain exploitation, surfacing pivot-diverge chains as synthetic BH-N attack paths in the Threat Model; it short-circuits if fewer than two attack paths are present. The synthesis step is grounded against the MITRE ATT&CK database so technique-ID disputes between critics are resolved against authoritative names. The dashboard history dropdown lets you reload any past analysis without re-running the pipeline.
 
 ## API usage
 
@@ -84,6 +84,7 @@ Set `API_KEY` in your `.env` file; the server reads it on startup.
 | POST | `/api/v1/analyze-stream` | Same analysis with SSE progress events |
 | GET | `/api/v1/expert-review` | SSE stream for MoE validation (`?critic_mode=parallel`) |
 | GET | `/api/v1/reports` | List generated report directories |
+| GET | `/api/v1/reports/{name}/briefing` | Self-contained Markdown two-pager (`?fmt=md`) for offline sharing |
 | GET | `/api/v1/reports/{name}/download` | Download report as ZIP |
 
 ## Repository layout

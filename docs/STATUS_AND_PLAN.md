@@ -1,12 +1,12 @@
 # ThreatAssessor - Status & Action Plan
 
-**Version:** 1.4  
-**Last Updated:** 2026-05-27  
-**Current Status:** ✅ REST API + Dashboard live — Parallel Expert Review, Dynamic Confidence, ATLAS/ARC name resolution, technique hallucination prevention
+**Version:** 1.5  
+**Last Updated:** 2026-06-07  
+**Current Status:** ✅ REST API + Dashboard live — 5-Critic MoE Pipeline (Purple Team + Blackhat), Cross-Path Chain Analysis, Briefing Export, Sensitivity Presets
 
 ---
 
-## 🎯 Current Status (May 2026)
+## 🎯 Current Status (June 2026)
 
 ### What's Working Now
 
@@ -34,6 +34,46 @@
 | Raw Data tab | ✅ Fixed | Async file-based; Foundation + Expert Review JSON sections; individual downloads |
 | Content tabs disabled | ✅ Fixed | All tabs greyed out before first upload; re-greyed after reset |
 | requirements.txt | ✅ Fixed | FastAPI/uvicorn/pydantic/sse-starlette now pinned |
+| Purple Team Critic (2D) | ✅ Live | Detection depth, coverage gaps, ADR operability — 3 lenses; output: `06b_purple_team_critique.json` |
+| Blackhat Critic (2E) | ✅ Live | Cross-path chain exploitation, pivot-diverge chains, stealth scoring; supreme critic; output: `06c_blackhat_critique.json`; short-circuits if <2 APs |
+| BH-N synthetic APs | ✅ Live | Blackhat pivot chains surfaced as BH-N attack paths in ThreatModel |
+| Expert Consensus cards | ✅ Live | Expandable/collapsible per-critic cards in dashboard Expert Review tab |
+| Analysis-in-progress state | ✅ Live | Dashboard correctly reflects running state and disables inputs during analysis |
+| Blindspot Act/Note classification | ✅ Live | Blindspots tagged ⚠Act (actionable) or 📋Note (informational) |
+| Export Briefing endpoint | ✅ Live | `GET /api/v1/reports/{name}/briefing?fmt=md` — self-contained Markdown two-pager |
+| Config sensitivity presets | ✅ Live | Architect/Tester/Red Team accept `sensitivity: lenient \| balanced \| strict` instead of raw numeric thresholds |
+| Completeness Check 7 | ✅ Live | Behavioral analytics / API Gateway detection gap check |
+| Completeness Check 8 | ✅ Live | Supply chain / BCP coverage check |
+
+---
+
+## 📋 Recent Work (June 7, 2026)
+
+### 5-Critic MoE Pipeline — Purple Team + Blackhat (this session)
+**Commit:** `9eef4e3`
+
+#### 1. Purple Team Critic (2D) — `purple_teamer_critic.py`
+**Change:** New critic added as the fourth stage in the MoE pipeline. Evaluates findings across three lenses: (a) **coverage** — detection coverage gaps across the attack surface; (b) **assume-breach** — post-compromise lateral movement and persistence detection depth; (c) **SOC operability** — ADR operability and alert actionability. Output saved to `06b_purple_team_critique.json`. Optional toggle; off by default.
+
+#### 2. Blackhat Critic (2E) — Supreme Critic
+**Change:** New fifth-stage critic that runs last and receives all prior critique output (ground truth + critics 2A–2D). Focuses on cross-path chain exploitation — identifying multi-step pivot-diverge chains that individual path-scoped critics miss. Produces stealth scoring per chain. Short-circuits with a warning if fewer than two attack paths are present. Pivot chains are surfaced as **BH-N synthetic attack paths** in the ThreatModel output. Output saved to `06c_blackhat_critique.json`. Optional toggle; off by default. New file: `bh_diagram_generator.py`.
+
+#### 3. MoE Pipeline Ordering
+**Change:** Fixed pipeline sequence: Architect (2A) → Coverage Auditor (2B) → Exploit Analyst (2C) → Purple Team (2D) → Blackhat (2E). Core three (2A–2C) always execute. PT and BH are gated by `enable_purple_team` and `enable_blackhat` config flags.
+
+#### 4. Config — Sensitivity Presets
+**Change:** Architect, Tester, and Red Team critics now accept a `sensitivity` enum (`lenient | balanced | strict`) instead of raw numeric threshold parameters. The preset maps to internal scoring weights, reducing misconfiguration risk when customising critic aggressiveness.
+
+#### 5. Completeness Validator — Checks 7 and 8
+**Change:** Two new checks added to `completeness_validator.py`:
+- **Check 7:** Behavioral analytics / API Gateway — detects architectures that lack monitoring coverage on gateway-tier components.
+- **Check 8:** Supply chain / BCP — flags missing continuity or third-party risk controls.
+
+#### 6. Export Briefing Endpoint
+**Change:** New endpoint `GET /api/v1/reports/{name}/briefing?fmt=md` returns a self-contained Markdown two-pager suitable for offline sharing or executive distribution. `openapi.yaml` updated accordingly.
+
+#### 7. Dashboard — Expert Consensus + Blindspot Classification
+**Change:** Expert Consensus section cards are now expandable/collapsible. Analysis-in-progress state correctly disables upload and run controls. Blindspots are now classified as **⚠Act** (actionable gap requiring remediation) or **📋Note** (informational observation).
 
 ---
 
@@ -161,33 +201,36 @@
 
 ### High Priority
 
-#### A. Re-run validation on fixed architectures
-Reports generated before commit `389e667` (May 24) still show `overall_valid: False` and stale Expert Review contradictions. Regenerate to pick up self-validation + hallucination prevention fixes.
+#### A. End-to-end test of 5-critic pipeline across all architectures
+The Purple Team (2D) and Blackhat (2E) critics have not yet been validated across all 22 test architectures. Run the full pipeline with both optional critics enabled and confirm no regressions.
 
 ```bash
-# Re-run specific report
+# Full MoE with PT + BH enabled
 ./demo_expert_llm.sh tests/data/architectures/<arch>.mmd
 
-# Or batch re-run all 22
+# Or batch re-run all 22 (once script exists — see item B)
 python3 scripts/backtest_all_architectures.py
 ```
 
 #### B. `scripts/backtest_all_architectures.py` — File missing
 `CLAUDE.md` and `Makefile` reference this script but it doesn't exist. Create it or remove references before publishing.
 
+#### C. BH-N synthetic AP ADR coverage
+Blackhat pivot chains are surfaced as BH-N synthetic attack paths in the ThreatModel but ADR generation does not yet produce a corresponding decision record for them. Extend `adr_generator.py` to handle BH-N entries.
+
 ### Medium Priority
 
-#### C. Dynamic confidence — validate against real architectures
+#### D. Dynamic confidence — validate against real architectures
 Run deterministic on the smallest test arch and on `21_agentic_ai_system` (20 nodes). Confirm:
 - Small arch with poor coverage: `confidence_breakdown.base` < 0.90
 - Complex arch with low coverage: base < 0.80
-- Complex arch with high coverage + all 6 checks: base recovers to ~0.93
+- Complex arch with high coverage + all 8 checks: base recovers to ~0.93
 - `confidence_breakdown` present in API response with all fields
 
-#### D. Cloud-specific threat patterns (roadmap item #3)
+#### E. Cloud-specific threat patterns (roadmap item #3)
 No AWS/Azure/GCP-specific threat models yet. The current `cloud_generic` pattern uses MITRE Enterprise as a proxy and explicitly notes its limitations. Cloud pattern would add misconfiguration detection and serverless-specific attack paths.
 
-#### E. Tester scoring — roadmap_validation sub-dimension
+#### F. Tester scoring — roadmap_validation sub-dimension
 `roadmap_validation` scores low because the Tester evaluates the Architect's roadmap against its own findings (structurally expected divergence, not a real quality failure). Consider reducing its weight relative to `validation_checks` and `coverage_metrics`.
 
 ---
@@ -302,7 +345,9 @@ No AWS/Azure/GCP-specific threat models yet. The current `cloud_generic` pattern
 | Tester LLM sometimes hallucinates invalid mitigation claims | False finding in Expert Review | MITRE ground-truth post-process overrides LLM verdict (fixed `cf10377`) |
 | Old reports (pre May 24) may still show `overall_valid: False` | Stale self-validation result | Regenerate with `demo_expert_llm.sh` |
 | No AWS/Azure/GCP-specific threat models | Cloud misconfigurations not detected | Partial — `cloud_generic` pattern uses MITRE Enterprise as proxy |
-| Dynamic confidence not yet validated across all 22 architectures | Base confidence formula may need tuning | Pending — run backtests after `b2684c3` |
+| Dynamic confidence not yet validated across all 22 architectures | Base confidence formula may need tuning | Pending — run backtests |
+| BH-N synthetic APs not yet covered by ADR generation | Blackhat pivot chains produce ThreatModel entries but no corresponding ADR | Pending |
+| 5-critic pipeline not yet e2e tested across all 22 architectures | Regressions from PT/BH addition possible | Pending — run `backtest_all_architectures.py` |
 
 ---
 
@@ -342,5 +387,5 @@ cat report/your_architecture/00_executive_dashboard.md
 ---
 
 **Single Source of Truth:** This file tracks project status and roadmap  
-**Last Updated:** 2026-05-27  
-**Status:** ✅ REST API + Dashboard live — Parallel Expert Review, Dynamic Confidence, ATLAS/ARC resolution complete
+**Last Updated:** 2026-06-07  
+**Status:** ✅ REST API + Dashboard live — 5-Critic MoE Pipeline (Purple Team + Blackhat), Cross-Path Chain Analysis, Briefing Export, Sensitivity Presets
