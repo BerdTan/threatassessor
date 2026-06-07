@@ -231,14 +231,19 @@ class BlackhatCritic(CriticAgent):
 
         ap_by_id = {ap.get("id", f"AP-{i}"): ap for i, ap in enumerate(paths)}
         for chain in chains:
+            # Sequential chains use "chain": [ap_id_i, ap_id_j]
+            # Pivot-diverge chains use "ap_ids": [ap_id, ...]
+            ap_ids = chain.get("chain") or chain.get("ap_ids", [])
+            pivot = chain.get("pivot", "?")
             combined_techs: List[str] = []
-            for ap_id in chain["chain"]:
+            for ap_id in ap_ids:
                 ap = ap_by_id.get(ap_id, {})
                 combined_techs.extend(ap.get("techniques", []))
             uncovered = [t for t in set(combined_techs) if not tech_to_controls.get(t)]
             if uncovered:
+                chain_label = " → ".join(ap_ids) if ap_ids else pivot
                 gaps.append(
-                    f"Chain {' → '.join(chain['chain'])} via `{chain['pivot']}`: "
+                    f"Chain {chain_label} via `{pivot}`: "
                     f"uncovered techniques: {', '.join(uncovered[:5])}"
                 )
         return gaps
@@ -393,7 +398,13 @@ class BlackhatCritic(CriticAgent):
         raw_score.breakdown["stealth_score"] = stealth_score
         raw_score.breakdown["stealthy_techniques"] = stealthy_techs
         raw_score.breakdown["least_resistance_paths"] = [
-            c for c in all_chains if c.get("chain_criticality") in ("CRITICAL", "HIGH")
+            {
+                "chain": c.get("chain") or c.get("ap_ids", []),
+                "pivot": c.get("pivot", "?"),
+                "chain_type": c.get("chain_type", "unknown"),
+                "chain_criticality": c.get("chain_criticality", "UNKNOWN"),
+            }
+            for c in all_chains if c.get("chain_criticality") in ("CRITICAL", "HIGH")
         ]
         raw_score.breakdown["mitigation_gaps_for_chains"] = chain_gaps
         raw_score.breakdown["pt_blind_pivot_nodes"] = pt_blind_nodes
