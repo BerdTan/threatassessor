@@ -497,6 +497,15 @@ async def expert_review_with_progress(
             "MAJOR_GAPS": "var(--danger-color)",
         }
 
+        # Determine which optional critics are enabled via server config.
+        # Call load_settings() here (not the cached singleton) so any
+        # user_config.json changes are picked up without an API restart.
+        from chatbot.config import get_settings as _gs_bands
+        from chatbot.config.settings import load_settings as _reload_cfg
+        _cfg_bands = _reload_cfg()
+        _bh_enabled = getattr(getattr(_cfg_bands, 'blackhat', None), 'enabled', False)
+        _pt_enabled = getattr(getattr(_cfg_bands, 'purple_team', None), 'enabled', True)
+
         def _critic_sse(critic_stage: str, vr) -> str:
             top_gaps = [
                 {"severity": g.get("severity", ""), "description": g.get("description", "")[:120]}
@@ -524,15 +533,10 @@ async def expert_review_with_progress(
                 base_confidence=base_confidence,
                 progress_callback=_progress_cb,
                 critic_mode=critic_mode,
+                run_blackhat=_bh_enabled,
             )
 
         task = loop.run_in_executor(None, _run_pipeline)
-
-        # Determine which optional critics are enabled via server config
-        from chatbot.config import get_settings as _gs_bands
-        _cfg_bands = _gs_bands()
-        _bh_enabled = getattr(getattr(_cfg_bands, 'blackhat', None), 'enabled', False)
-        _pt_enabled = getattr(getattr(_cfg_bands, 'purple_team', None), 'enabled', True)
 
         # Per-critic progress bands: (start_pct, end_pct, stage_label, message)
         # Timed progress messages play within each band until the real

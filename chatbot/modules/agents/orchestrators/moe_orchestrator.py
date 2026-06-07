@@ -569,7 +569,9 @@ class MoEOrchestrator:
                     self.progress_callback("blackhat", blackhat_result)
 
             except Exception as exc:
+                import traceback
                 logger.warning(f"MoE Pipeline: Layer 2E skipped due to error: {exc}")
+                logger.debug(f"MoE Pipeline: Layer 2E traceback:\n{traceback.format_exc()}")
 
         # ===== LAYER 3: CONSENSUS SYNTHESIS =====
         logger.info("MoE Pipeline: Layer 3 - Synthesizing consensus...")
