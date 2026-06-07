@@ -60,6 +60,7 @@ class CritiqueScore:
     gaps: List[Dict]  # Identified gaps/issues
     strengths: List[str]  # What was done well
     improvement_roadmap: List[Dict]  # How to increase score (priority-ordered)
+    reasoning: str = ""  # 2-3 sentence "so what" from the LLM — shown as topliner in UI
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -185,7 +186,8 @@ class CriticAgent(BaseAgent):
             breakdown=critique_data.get("breakdown", {}),
             gaps=critique_data.get("gaps", []),
             strengths=critique_data.get("strengths", []),
-            improvement_roadmap=normalized_roadmap
+            improvement_roadmap=normalized_roadmap,
+            reasoning=critique_data.get("reasoning", ""),
         )
 
         logger.info(f"{self.role}: Critique complete - Score: {score.score}/{score.max_score} ({score.rating})")
@@ -312,7 +314,8 @@ OUTPUT FORMAT (JSON):
 {{
   "score": 92,
   "max_score": 100,
-  "rating": "EXCELLENT",
+  "rating": "GOOD",
+  "reasoning": "1-2 plain sentences stating the single most important finding from this review and its direct consequence for the architecture. State facts, not grades. Do not use terms like 'excellent', 'impressive', or 'great'. Do not reference the assessor tool, your role, or the organisation's context unless directly relevant to the finding.",
   "breakdown": {{
     "category_1": {{"score": 38, "max": 40, "gaps": [...]}},
     "category_2": {{"score": 28, "max": 30, "gaps": [...]}}

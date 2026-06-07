@@ -361,6 +361,7 @@ class PurpleTeamerCritic(CriticAgent):
             gaps=data.get("gaps", []),
             strengths=data.get("strengths", []),
             improvement_roadmap=data.get("improvement_roadmap", []),
+            reasoning=data.get("reasoning", ""),
         )
 
     # ------------------------------------------------------------------
@@ -501,7 +502,7 @@ Context: {mode_context}
     "detection_chain": <int 0-35>,
     "adr_tm_coherence": <int 0-30>
   }},
-  "reasoning": "<2-3 sentences: what is the most critical gap and its operational impact>",
+  "reasoning": "<1-2 sentences: name the most critical detection gap, which node or technique it affects, and the direct operational consequence. State facts only — no evaluative adjectives>",
   "gaps": [
     {{
       "lens": "<A/B/C>",

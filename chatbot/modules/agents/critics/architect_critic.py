@@ -455,6 +455,7 @@ You MUST respond with valid JSON in this exact format:
   "score": 85,
   "max_score": 100,
   "rating": "GOOD",
+  "reasoning": "1-2 sentences naming the single most important structural finding and its direct consequence. State facts — name the specific component or path. Do not use evaluative adjectives like 'excellent' or 'impressive'. Do not reference tool names, frameworks, or country context unless directly relevant to the finding.",
   "breakdown": {{
     "threat_completeness": {{"score": 25, "max": 30, "reasoning": "..."}},
     "control_appropriateness": {{"score": 22, "max": 25, "reasoning": "..."}},

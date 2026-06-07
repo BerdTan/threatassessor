@@ -109,6 +109,7 @@ class ValidationResult:
     recommendations: List[Dict]
     original_score: int  # Original expert score (for reference)
     breakdown: Dict = None  # Sub-dimension scores (for UI display)
+    reasoning: str = ""  # 2-3 sentence "so what" topliner for the dashboard card
 
     def __post_init__(self):
         if self.breakdown is None:
@@ -455,6 +456,7 @@ class MoEOrchestrator:
                 recommendations=[],
                 original_score=pt_score,
                 breakdown=purple_team_critique_score.breakdown or {},
+                reasoning=purple_team_critique_score.reasoning or "",
             )
             purple_team_adjustment = pt_adj
 
@@ -524,6 +526,7 @@ class MoEOrchestrator:
                     recommendations=[],
                     original_score=bh_score,
                     breakdown=blackhat_critique_score.breakdown or {},
+                    reasoning=blackhat_critique_score.reasoning or "",
                 )
                 blackhat_adjustment = bh_adj
 
@@ -948,7 +951,8 @@ class MoEOrchestrator:
             gaps=critique.gaps,
             strengths=critique.strengths,
             recommendations=recommendations,
-            original_score=critique.score
+            original_score=critique.score,
+            reasoning=critique.reasoning or "",
         )
 
     def _process_tester_validation(self, critique: CritiqueScore) -> ValidationResult:
@@ -1026,6 +1030,7 @@ class MoEOrchestrator:
             recommendations=recommendations,
             original_score=critique.score,
             breakdown=raw_breakdown,
+            reasoning=critique.reasoning or "",
         )
 
     def _process_red_team_validation(self, critique: CritiqueScore) -> ValidationResult:
@@ -1074,7 +1079,8 @@ class MoEOrchestrator:
             gaps=critique.gaps,
             strengths=critique.strengths,
             recommendations=recommendations,
-            original_score=critique.score
+            original_score=critique.score,
+            reasoning=critique.reasoning or "",
         )
 
     def _calculate_final_confidence(

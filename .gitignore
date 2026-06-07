@@ -62,6 +62,7 @@ baseline_refactoring/
 # Blog drafts (publish externally, not in repo)
 docs/blog_draft.md
 docs/blog_draft_part2.md
+docs/blog_draft_part3.md
 
 # Private decision log (personal reference, not for public repo)
 docs/DECISIONS.md

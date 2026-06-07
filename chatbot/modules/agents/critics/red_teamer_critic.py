@@ -312,7 +312,7 @@ Provide your assessment in this JSON format:
     "defense_evasion": <int 0-30>,
     "attack_path_realism": <int 0-30>
   }},
-  "reasoning": "<1-2 sentences explaining the score>",
+  "reasoning": "<1-2 sentences naming the specific path or control that most affects exploitability and the direct consequence for an attacker. State facts — name the technique, node, or bypass. No evaluative adjectives>",
   "path_assessments": [
     {{
       "path_id": <int>,
@@ -540,9 +540,6 @@ Adjust your difficulty score accordingly (increase score = easier to exploit).
         if "path_assessments" in data:
             breakdown["path_assessments"] = data["path_assessments"]
 
-        if "reasoning" in data:
-            breakdown["reasoning"] = data["reasoning"]
-
         score = CritiqueScore(
             role=self.role,
             score=data.get("score", 50),
@@ -551,7 +548,8 @@ Adjust your difficulty score accordingly (increase score = easier to exploit).
             breakdown=breakdown,
             gaps=data.get("gaps", []),
             strengths=data.get("strengths", []),
-            improvement_roadmap=[]  # Red Team uses exploit_mitigation_roadmap instead
+            improvement_roadmap=[],  # Red Team uses exploit_mitigation_roadmap instead
+            reasoning=data.get("reasoning", ""),
         )
 
         return score

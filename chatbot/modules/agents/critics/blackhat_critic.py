@@ -452,6 +452,7 @@ class BlackhatCritic(CriticAgent):
             gaps=data.get("gaps", []),
             strengths=data.get("strengths", []),
             improvement_roadmap=[],
+            reasoning=data.get("reasoning", ""),
         )
 
     # ------------------------------------------------------------------
@@ -599,7 +600,7 @@ without needing separate entry points. Per-path mitigations cannot stop this.)
     "stealth_potential": <int 0-{weights['stealth_potential']}>,
     "mitigation_chain_coverage": <int 0-{weights['mitigation_chain_coverage']}>
   }},
-  "reasoning": "<2-3 sentences: what is the most dangerous chain and why>",
+  "reasoning": "<1-2 sentences: name the most dangerous chain, which node it pivots on, and the concrete consequence. State facts only — no evaluative adjectives>",
   "gaps": [
     {{"severity": "<LOW/MEDIUM/HIGH/CRITICAL>", "description": "<specific cross-path chain gap, name the pivot node>"}}
   ],

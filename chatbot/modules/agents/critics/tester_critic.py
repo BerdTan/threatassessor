@@ -155,6 +155,7 @@ Return valid JSON with this structure:
   "score": 75,
   "max_score": 100,
   "rating": "FAIR",
+  "reasoning": "1-2 sentences identifying the single most important mapping or coverage gap and its direct consequence. Name the specific technique ID, control, or path involved. State facts only — no evaluative adjectives.",
   "breakdown": {
     "validation_checks": {"score": 35, "max": 40, "reasoning": "..."},
     "coverage_metrics": {"score": 20, "max": 30, "reasoning": "..."},
@@ -856,10 +857,13 @@ class TesterCritic:
         Post-process gaps to remove false positives (LLM hallucinations).
 
         Checks if gap claims invalid mappings that are actually valid.
+        Also reclassifies chain-prerequisite gaps (e.g. MFA → T1485 via T1078)
+        as informational rather than scoring penalties.
         """
         from chatbot.modules.mitre import get_mitre_helper
 
         controls = artifacts.tier1_critical["artifact_2_controls"]["controls"]
+        attack_paths = artifacts.tier1_critical["artifact_1_attack_paths"]["paths"]
         mitre = get_mitre_helper()
 
         validated_gaps = []
@@ -872,6 +876,11 @@ class TesterCritic:
             if "claims" in desc and ("mitigation" in desc or "technique" in desc):
                 # Pattern A: "CONTROL claims M#### mitigates T####"
                 is_false_positive = self._check_if_false_positive(gap, controls, mitre)
+                if not is_false_positive:
+                    # Secondary: check if this is a chain-prerequisite (indirect defence)
+                    is_false_positive = self._check_chain_prerequisite(gap, attack_paths, mitre)
+                    if is_false_positive:
+                        gap["_chain_prerequisite"] = True
             elif re.search(r'\b(T\d{4})\b', gap.get("description", "")):
                 # Pattern B: "no controls address T####" — verify against actual recommendations
                 is_false_positive = self._check_coverage_gap_false_positive(gap, controls)
@@ -992,6 +1001,66 @@ class TesterCritic:
                     return True
 
         # Truly invalid mapping
+        return False
+
+    def _check_chain_prerequisite(self, gap: Dict, attack_paths: List[Dict], mitre: MitreHelper) -> bool:
+        """
+        Determine whether M#### → T#### is an indirect (chain-prerequisite) defence.
+
+        A control is a chain prerequisite when its mitigation covers a technique that
+        appears earlier in the same attack path as the flagged technique. Blocking the
+        upstream technique breaks the chain before the flagged technique is reached,
+        making the control a valid indirect defence even though MITRE does not list it
+        as a direct mitigation for that technique.
+
+        Example: M1032 (MFA) mitigates T1078 (Valid Accounts). T1078 often precedes
+        T1485 (Data Destruction) in the same path. MFA therefore prevents the attacker
+        reaching T1485 — a chain prerequisite, not a direct prevention.
+
+        Returns True (suppress the gap) when a chain-prerequisite relationship is found.
+        """
+        desc = gap.get("description", "")
+        m_mit = re.search(r'\b(M\d{4})\b', desc, re.IGNORECASE)
+        m_tec = re.search(r'\b(T\d{4})\b', desc, re.IGNORECASE)
+        if not m_mit or not m_tec:
+            return False
+
+        mitigation_id = m_mit.group(1).upper()
+        target_tech_id = m_tec.group(1).upper()
+
+        # Collect all technique IDs in the attack paths that co-occur before target_tech_id
+        upstream_candidates: set = set()
+        for path in attack_paths:
+            techs = []
+            for t in path.get("techniques", []):
+                if isinstance(t, str):
+                    techs.append(t.upper())
+                else:
+                    tid = (t.get("id") or t.get("technique_id") or "").upper()
+                    if tid:
+                        techs.append(tid)
+            if target_tech_id not in techs:
+                continue
+            target_pos = techs.index(target_tech_id)
+            upstream_candidates.update(techs[:target_pos])
+
+        if not upstream_candidates:
+            return False
+
+        # For each upstream technique, check if M#### is one of its MITRE mitigations
+        for upstream_tech in upstream_candidates:
+            try:
+                mit_list = mitre.get_technique_mitigations(upstream_tech)
+            except Exception:
+                continue
+            mit_ids = [m["mitigation_id"].upper() for m in mit_list]
+            if mitigation_id in mit_ids:
+                logger.info(
+                    f"Chain prerequisite: {mitigation_id} mitigates upstream {upstream_tech} "
+                    f"which precedes {target_tech_id} — indirect defence, not a mapping error"
+                )
+                return True
+
         return False
 
     def _check_coverage_gap_false_positive(self, gap: Dict, controls: List[Dict]) -> bool:

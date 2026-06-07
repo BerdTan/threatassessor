@@ -512,6 +512,7 @@ async def expert_review_with_progress(
                 "top_gaps": top_gaps,
                 "top_strengths": (vr.strengths or [])[:2],
                 "status_color": _CRITIC_STATUS_COLORS.get(vr.validation_status, "var(--text-secondary)"),
+                "reasoning": (getattr(vr, "reasoning", "") or "")[:400],
             })
 
         def _progress_cb(stage: str, validation_result) -> None:

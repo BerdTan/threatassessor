@@ -307,6 +307,28 @@ class Dashboard {
         }
     }
 
+    // Switch to Expert Review tab and scroll to a specific critic panel, collapsing all others
+    openCriticInReview(criticKey) {
+        this.switchTab('expert-review');
+        // Defer until the tab content is rendered (tab switch may be async on first load)
+        const _focus = () => {
+            const targetPanel = document.getElementById('er-panel-' + criticKey);
+            if (!targetPanel) return;
+            // Collapse all er-panel-body panels and reset chevrons
+            document.querySelectorAll('.er-panel-body').forEach(b => { b.style.display = 'none'; });
+            document.querySelectorAll('.er-chevron').forEach(c => { c.textContent = '›'; });
+            // Expand only the target
+            const targetBody = targetPanel.querySelector('.er-panel-body');
+            const targetChev = targetPanel.querySelector('.er-chevron');
+            if (targetBody) targetBody.style.display = 'block';
+            if (targetChev) targetChev.textContent = ' ⌄';
+            // Scroll into view with a small top offset
+            setTimeout(() => targetPanel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+        };
+        // Give the tab render a tick to finish
+        setTimeout(_focus, 120);
+    }
+
     initUpload() {
         const uploadForm = document.getElementById('upload-form');
         const uploadBtn = document.getElementById('upload-btn');
@@ -1535,14 +1557,17 @@ class Dashboard {
             const adjStr = adjPct === 0 ? '±0%' : (adjPct > 0 ? '+' : '') + adjPct + '%';
             const adjColor = adjPct < 0 ? 'var(--warning-color)' : adjPct === 0 ? 'var(--text-tertiary)' : 'var(--secondary-color)';
             const score  = v.original_score ?? '–';
-            // Full verdict text — all gaps listed, or strengths fallback
-            const allGaps = (v.gaps && v.gaps.length > 0)
-                ? v.gaps.map(g => g.description || '').filter(Boolean)
-                : [];
-            const verdictFull = allGaps.length > 0
-                ? allGaps.join(' · ')
-                : (v.strengths && v.strengths.length > 0 ? 'Strengths confirmed; no critical gaps.' : def.desc);
-            const PREVIEW_LEN = 120;
+            // Verdict text: use the critic's own "so what" reasoning as primary text.
+            // Fall back to a terse gap count + strength summary only if reasoning is absent
+            // (legacy assessments run before the reasoning field was added).
+            const reasoning = (v.reasoning || '').trim();
+            const gapCount  = (v.gaps || []).length;
+            const verdictFull = reasoning
+                ? reasoning
+                : gapCount > 0
+                    ? gapCount + ' finding' + (gapCount !== 1 ? 's' : '') + ' identified — open full review for detail.'
+                    : (v.strengths && v.strengths.length > 0 ? 'No significant findings.' : def.desc);
+            const PREVIEW_LEN = 160;
             const needsExpand = verdictFull.length > PREVIEW_LEN;
             const verdictPreview = needsExpand ? verdictFull.slice(0, PREVIEW_LEN).trimEnd() + '…' : verdictFull;
             const cardId = 'ec-card-' + def.key;
@@ -1563,7 +1588,7 @@ class Dashboard {
                         ${needsExpand ? `<span class="ec-full" style="display:none;">${verdictFull}</span>
                         <a href="#" style="display:inline-block;margin-top:0.2rem;font-size:0.72rem;color:var(--primary-color);text-decoration:none;" onclick="(function(a){var card=a.closest('[id^=ec-card-]');var pre=card.querySelector('.ec-preview');var full=card.querySelector('.ec-full');var isExpanded=full.style.display!=='none';pre.style.display=isExpanded?'':'none';full.style.display=isExpanded?'none':'';a.textContent=isExpanded?'…more':'less ↑';})(this);return false;">…more</a>` : ''}
                     </div>
-                    <div style="margin-top:0.55rem;padding-top:0.45rem;border-top:1px solid var(--border-color);font-size:0.71rem;color:var(--text-tertiary);cursor:pointer;" onclick="window.dashboard?.switchTab('expert-review')" title="Open Expert Review">
+                    <div style="margin-top:0.55rem;padding-top:0.45rem;border-top:1px solid var(--border-color);font-size:0.71rem;color:var(--primary-color);cursor:pointer;font-weight:600;" onclick="window.dashboard?.openCriticInReview('${def.key}')" title="Open this critic's full findings">
                         Open full review →
                     </div>
                 </div>`;
@@ -3129,8 +3154,9 @@ class Dashboard {
         legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="14" height="14" viewBox="-8 -8 16 16"><circle cx="0" cy="0" r="6" fill="#64748b" stroke="#dc2626" stroke-width="2"/></svg><span style="color:var(--text-secondary);">Entry</span></span>`;
         legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="14" height="14" viewBox="-8 -8 16 16"><circle cx="0" cy="0" r="6" fill="#64748b" stroke="#f97316" stroke-width="2"/></svg><span style="color:var(--text-secondary);">Target</span></span>`;
         if (sharedPivotSet.size > 0) {
-            legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="14" height="14" viewBox="-8 -8 16 16"><polygon points="0,-7 7,0 0,7 -7,0" fill="none" stroke="${BH_COLOR}" stroke-width="2"/></svg><span style="color:var(--text-secondary);">Pivot node (diamond + amber ring)</span></span>`;
+            legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="14" height="14" viewBox="-8 -8 16 16"><polygon points="0,-7 7,0 0,7 -7,0" fill="none" stroke="${BH_COLOR}" stroke-width="2"/></svg><span style="color:var(--text-secondary);">Pivot node</span></span>`;
         }
+        legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.5rem;"><svg width="30" height="14" viewBox="0 0 30 14"><circle cx="5" cy="7" r="4" fill="#64748b"/><circle cx="22" cy="7" r="7" fill="#64748b"/></svg><span style="color:var(--text-secondary);">Node size = AP count (larger = more paths)</span></span>`;
         legendHtml += '</div>';
 
         listContainer.innerHTML = `
@@ -3140,11 +3166,11 @@ class Dashboard {
                 <div id="vg-legend" style="margin-bottom:0.6rem;">${legendHtml}</div>
             </div>
             <div id="vg-svg-wrap" style="width:100%;border-radius:8px;border:1px solid var(--border-color);background:var(--code-bg);overflow:hidden;">
-                <svg id="vg-svg" width="100%" height="480" style="display:block;"></svg>
+                <svg id="vg-svg" width="100%" style="display:block;"></svg>
             </div>
             <div id="vg-pivot-info" style="display:none;margin-top:0.75rem;padding:0.65rem 1rem;background:${BH_COLOR}18;border-left:4px solid ${BH_COLOR};border-radius:6px;font-size:0.82rem;color:var(--text-secondary);"></div>
             <div id="vg-ap-picker" style="display:none;margin-top:0.75rem;padding:0.65rem 1rem;background:var(--nav-hover-bg);border-radius:6px;font-size:0.82rem;"></div>
-            <p style="margin-top:0.5rem;font-size:0.78rem;color:var(--text-tertiary);">Click a node to drill into its attack path and control placement.</p>
+            <p style="margin-top:0.5rem;font-size:0.78rem;color:var(--text-tertiary);">Click an <strong>AP chip</strong> to see all its controls in the right pane. Click a <strong>node</strong> to drill into its mitigations across every path that traverses it.</p>
         `;
 
         // ─── D3 force graph ──────────────────────────────────────────────────────
@@ -3212,16 +3238,18 @@ class Dashboard {
             .style('cursor', 'pointer');
 
         // Pivot nodes: diamond (polygon) + amber ring; entry nodes: red ring; target nodes: orange ring; regular: circle
+        // Node size: area-proportional to AP count (sqrt) so 4-AP node has 2× the visual area of 1-AP node
         const ENTRY_COLOR  = '#dc2626'; // red
         const TARGET_COLOR = '#f97316'; // orange
+        const nodeRadius = d => Math.round(16 * Math.sqrt(d.aps.length));
         nodeEls.each(function(d) {
             const g = d3.select(this);
             const fill = d.aps.length > 1 ? MULTI_COLOR : (apColorMap[d.aps[0]] || MULTI_COLOR);
+            const r = nodeRadius(d);
             if (d.isSharedPivot) {
-                const r = 26;
                 // Outer amber ring (slightly larger diamond)
                 g.append('polygon')
-                    .attr('points', `0,${-(r+5)} ${r+5},0 0,${r+5} ${-(r+5)},0`)
+                    .attr('points', `0,${-(r+7)} ${r+7},0 0,${r+7} ${-(r+7)},0`)
                     .attr('fill', 'none')
                     .attr('stroke', BH_COLOR)
                     .attr('stroke-width', 3)
@@ -3237,40 +3265,54 @@ class Dashboard {
                 if (ringColor) {
                     // Outer ring for entry/exit
                     g.append('circle')
-                        .attr('r', 24)
+                        .attr('r', r + 4)
                         .attr('fill', 'none')
                         .attr('stroke', ringColor)
                         .attr('stroke-width', 3)
                         .attr('opacity', 0.9);
                 }
                 g.append('circle')
-                    .attr('r', 20)
+                    .attr('r', r)
                     .attr('fill', fill)
                     .attr('stroke', ringColor || 'none')
                     .attr('stroke-width', ringColor ? 2 : 0);
+            }
+            // AP-count badge for multi-AP nodes
+            if (d.aps.length > 1) {
+                g.append('circle')
+                    .attr('cx', r - 4).attr('cy', -(r - 4))
+                    .attr('r', 8)
+                    .attr('fill', '#1e293b')
+                    .attr('stroke', 'var(--border-color)')
+                    .attr('stroke-width', 1);
+                g.append('text')
+                    .attr('x', r - 4).attr('y', -(r - 4))
+                    .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+                    .attr('font-size', '9px').attr('font-weight', '700')
+                    .attr('fill', '#94a3b8')
+                    .style('pointer-events', 'none')
+                    .text(d.aps.length);
             }
         });
 
         nodeEls.append('text')
             .text(d => d.label.length > 14 ? d.label.substring(0, 12) + '…' : d.label)
             .attr('text-anchor', 'middle')
-            .attr('dy', d => (d.isSharedPivot ? 32 : 22) + 12)
+            .attr('dy', d => nodeRadius(d) + (d.isSharedPivot ? 9 : 5) + 11)
             .attr('font-size', '11px')
             .attr('fill', 'var(--text-secondary)')
             .style('pointer-events', 'none')
             .style('user-select', 'none');
 
-        // ─── Simulation (static layout — tick 200 times then stop) ───────────────
+        // ─── Simulation (static layout — tick 300 times then stop) ───────────────
         const simulation = d3.forceSimulation(simNodes)
-            .force('link', d3.forceLink(simEdges).id(d => d.id).distance(120))
-            .force('charge', d3.forceManyBody().strength(-300))
-            .force('center', d3.forceCenter(W / 2, H / 2))
+            .force('link', d3.forceLink(simEdges).id(d => d.id).distance(110))
+            .force('charge', d3.forceManyBody().strength(-400))
+            .force('center', d3.forceCenter(0, 0))
             .stop();
 
-        // Run ticks synchronously
-        for (let i = 0; i < 200; i++) simulation.tick();
+        for (let i = 0; i < 300; i++) simulation.tick();
 
-        // Apply positions
         linkEls
             .attr('x1', d => d.source.x)
             .attr('y1', d => d.source.y)
@@ -3278,6 +3320,38 @@ class Dashboard {
             .attr('y2', d => d.target.y);
 
         nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
+
+        // ─── Fit-to-content: compute bbox of all positioned nodes and size SVG ───
+        const PAD = 55; // padding around content
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        simNodes.forEach(n => {
+            const r = nodeRadius(n) + (n.isSharedPivot ? 9 : 5) + 14; // include label height
+            if (n.x - r < minX) minX = n.x - r;
+            if (n.y - r < minY) minY = n.y - r;
+            if (n.x + r > maxX) maxX = n.x + r;
+            if (n.y + r > maxY) maxY = n.y + r;
+        });
+        const contentW = maxX - minX + PAD * 2;
+        const contentH = maxY - minY + PAD * 2;
+        const vbX = minX - PAD;
+        const vbY = minY - PAD;
+
+        function applyFit() {
+            const availW = wrap.clientWidth || 600;
+            const scale  = availW / contentW;
+            const dispH  = Math.max(contentH * scale, 240);
+            svgEl.setAttribute('viewBox', `${vbX} ${vbY} ${contentW} ${contentH}`);
+            svgEl.setAttribute('width',  availW);
+            svgEl.setAttribute('height', dispH);
+            wrap.style.height = dispH + 'px';
+        }
+        applyFit();
+
+        // Refit when container resizes (e.g. right pane opening/closing)
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(() => applyFit());
+            ro.observe(wrap);
+        }
 
         // ─── Toggle chip logic ────────────────────────────────────────────────────
         const self = this;
@@ -3311,6 +3385,13 @@ class Dashboard {
                     chip.style.opacity = '1';
                 }
                 applyToggles();
+                // Update right pane: show all active non-BH APs together, or no-selection
+                const activeNonBh = [...activeAps].filter(id => id !== 'BH');
+                if (activeNonBh.length === 0) {
+                    showNoSelection();
+                } else {
+                    showActiveApsDetail(activeNonBh, null);
+                }
             });
         });
 
@@ -3327,6 +3408,7 @@ class Dashboard {
                     chip.style.opacity = '1';
                 });
                 applyToggles();
+                showActiveApsDetail(chipIds, null);
             });
         }
 
@@ -3339,171 +3421,253 @@ class Dashboard {
                     chip.style.opacity = '0.45';
                 });
                 applyToggles();
+                showNoSelection();
             });
         }
 
-        // ─── Node click handler ───────────────────────────────────────────────────
+        // ─── Right-pane interaction ───────────────────────────────────────────────
         const pivotInfo  = document.getElementById('vg-pivot-info');
         const apPicker   = document.getElementById('vg-ap-picker');
 
-        function showNodeDetail(nodeName, ap) {
-            const rightPane        = document.getElementById('right-pane');
-            const rightPaneContent = document.getElementById('right-pane-content');
-            if (!rightPane || !rightPaneContent) return;
+        const PRIO_ORDER = ['critical', 'high', 'medium', 'low', 'baseline'];
+        const prioRank   = p => { const i = PRIO_ORDER.indexOf((p||'baseline').toLowerCase()); return i < 0 ? 99 : i; };
+        const prioColor  = p => {
+            const k = (p||'').toLowerCase();
+            return k === 'critical' ? 'var(--danger-color)' : k === 'high' ? 'var(--warning-color)' : k === 'medium' ? 'var(--primary-color)' : 'var(--text-tertiary)';
+        };
 
+        const PRIO_LEGEND = `<div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.85rem;font-size:0.7rem;">
+            <span style="color:var(--text-tertiary);">Priority:</span>
+            ${['critical','high','medium','low'].map(p => `<span style="padding:1px 7px;border-radius:4px;background:${prioColor(p)}22;color:${prioColor(p)};border:1px solid ${prioColor(p)}44;font-weight:700;">${p.toUpperCase()}</span>`).join('')}
+        </div>`;
+
+        function _nodeControlsForAp(nodeName, ap) {
             const apIndex      = attackPaths.indexOf(ap);
             const pathControls = controlRecs.filter(c => c.attack_paths && c.attack_paths.includes(apIndex));
-
-            // Per-node techniques from ground_truth per_node_techniques
-            const perNodeTech = (self.analysisData?.analysis?.per_node_techniques || {})[nodeName] || [];
-
-            // Controls specifically targeting this node (strict match — avoid laundry list)
             const nodeControls = pathControls.filter(c => {
                 const targets = c.node_targets || c.apply_to_nodes || [];
-                if (targets.length === 0) return false; // skip broadly-scoped controls with no node assignment
+                if (targets.length === 0) return false;
                 return targets.some(t => t === nodeName || t.includes(nodeName) || nodeName.includes(t));
             });
-            // Fallback: if no node-targeted controls exist, show all AP controls (broad coverage only)
-            const displayControls = nodeControls.length > 0 ? nodeControls : pathControls;
+            const list = nodeControls.length > 0 ? nodeControls : pathControls;
+            return { controls: [...list].sort((a,b) => prioRank(a.priority) - prioRank(b.priority)), isBroad: nodeControls.length === 0 };
+        }
 
-            const isPivot = sharedPivotSet.has(nodeName);
-            const pivotChains = isPivot
-                ? (blackhat && blackhat.pivot_diverge_chains || []).filter(ch => ch.pivot === nodeName)
-                : [];
+        function _renderControlList(controls, apId, isBroad) {
+            if (controls.length === 0) return `<p style="font-size:0.82rem;color:var(--warning-color);">No controls mapped for ${apId}.</p>`;
+            let html = '';
+            if (isBroad) html += `<div style="font-size:0.72rem;color:var(--text-tertiary);margin-bottom:0.5rem;font-style:italic;">No node-specific controls — showing all ${apId} path controls.</div>`;
+            controls.forEach(c => {
+                const pc  = (c.priority || 'baseline').toUpperCase();
+                const col = prioColor(c.priority);
+                html += `<div style="margin-bottom:0.55rem;padding:0.55rem 0.8rem;background:var(--nav-hover-bg);border-radius:7px;border-left:3px solid ${col};">`;
+                html += `<div style="display:flex;align-items:center;gap:0.45rem;margin-bottom:0.2rem;"><span style="padding:0.1rem 0.4rem;background:${col}22;color:${col};border-radius:4px;font-size:0.68rem;font-weight:700;">${pc}</span><strong style="font-size:0.82rem;color:var(--text-color);">${c.control}</strong></div>`;
+                html += `<p style="margin:0;font-size:0.79rem;color:var(--text-secondary);line-height:1.45;">${c.rationale || ''}</p></div>`;
+            });
+            return html;
+        }
 
-            const critColor = ap.criticality_tier === 'CRITICAL' ? 'var(--danger-color)'
-                : ap.criticality_tier === 'HIGH' ? 'var(--warning-color)'
-                : 'var(--primary-color)';
+        function _pivotBanner(nodeName) {
+            if (!sharedPivotSet.has(nodeName)) return '';
+            const chains  = (blackhat && blackhat.pivot_diverge_chains || []).filter(ch => ch.pivot === nodeName);
+            const targets = [...new Set(chains.flatMap(c => c.diverge_targets || []))].join(', ') || '–';
+            return `<div style="margin-bottom:1rem;padding:0.65rem 0.9rem;background:${BH_COLOR}18;border-left:4px solid ${BH_COLOR};border-radius:6px;">
+                <div style="font-weight:700;color:${BH_COLOR};font-size:0.82rem;margin-bottom:0.25rem;">⬥ Pivot Node — Cross-Path Chaining Risk</div>
+                <p style="margin:0;font-size:0.79rem;color:var(--text-secondary);line-height:1.5;">Compromising <strong>${nodeName}</strong> gives forked reach into <strong>${targets}</strong>. Per-path controls cannot stop this branching.</p>
+            </div>`;
+        }
 
-            // Pivot section
-            let pivotSection = '';
-            if (isPivot) {
-                const divergeTargets = pivotChains.flatMap(c => c.diverge_targets || []).join(', ') || ap.aps ? ap.aps.join(', ') : '–';
-                pivotSection = `
-                    <div style="margin-bottom:1.25rem;padding:0.75rem 1rem;background:${BH_COLOR}18;border-left:4px solid ${BH_COLOR};border-radius:6px;">
-                        <div style="font-weight:700;color:${BH_COLOR};margin-bottom:0.35rem;">⬥ Pivot Node — Cross-Path Chaining Risk</div>
-                        <p style="margin:0;font-size:0.85rem;color:var(--text-secondary);line-height:1.55;">
-                            Compromising <strong>${nodeName}</strong> gives an attacker forked reach into
-                            <strong>${divergeTargets}</strong>. Per-path controls cannot stop this branching —
-                            a single breach here expands the blast radius across multiple attack paths simultaneously.
-                        </p>
-                    </div>`;
+        // Multiple active APs — show each as a collapsible section stacked in the right pane
+        // focusNode: if set, that node's section is pre-expanded inside each AP that contains it
+        function showActiveApsDetail(apIds, focusNode) {
+            const rightPane = document.getElementById('right-pane');
+            const rpc       = document.getElementById('right-pane-content');
+            if (!rightPane || !rpc) return;
+            if (!apIds || apIds.length === 0) { showNoSelection(); return; }
+
+            let html = '';
+            // If only one AP active, use the single-AP layout (no outer collapse wrapper)
+            if (apIds.length === 1) {
+                showApDetail(apIds[0], focusNode);
+                return;
             }
 
-            // Technique-control pairs
-            let pairsHtml = '';
-            if (perNodeTech.length > 0) {
-                pairsHtml = '<h4 style="margin:0 0 0.65rem;font-size:0.9rem;color:var(--text-color);">Attack techniques at this node</h4>';
-                self.fetchTechniqueNames(perNodeTech).then(techNames => {
-                    const pairsContainer = document.getElementById('vg-tech-pairs');
-                    if (!pairsContainer) return;
-                    let html = '';
-                    perNodeTech.forEach(techId => {
-                        const techName = techNames[techId] || techId;
-                        // Use displayControls (node-specific if available, else AP-broad)
-                        const mitigating = displayControls.filter(c =>
-                            (c.techniques || []).includes(techId)
-                        );
-                        const prioColor = mitigating.length > 0 ? 'var(--secondary-color)' : 'var(--warning-color)';
-                        html += `<div style="margin-bottom:0.9rem;padding:0.75rem 0.9rem;background:var(--nav-hover-bg);border-radius:8px;border-left:3px solid ${prioColor};">`;
-                        html += `<div style="font-size:0.82rem;font-weight:700;color:var(--text-color);margin-bottom:0.3rem;">${techId} — ${techName}</div>`;
-                        if (mitigating.length > 0) {
-                            mitigating.forEach(c => {
-                                const pc = c.priority ? c.priority.toUpperCase() : 'BASELINE';
-                                const pColor = pc === 'CRITICAL' ? 'var(--danger-color)' : pc === 'HIGH' ? 'var(--warning-color)' : 'var(--primary-color)';
-                                html += `<div style="margin-top:0.35rem;display:flex;align-items:flex-start;gap:0.5rem;">`;
-                                html += `<span style="padding:0.1rem 0.45rem;background:${pColor}22;color:${pColor};border-radius:4px;font-size:0.7rem;font-weight:700;white-space:nowrap;">${pc}</span>`;
-                                html += `<span style="font-size:0.82rem;color:var(--text-secondary);line-height:1.5;">${c.control} — ${c.rationale || ''}</span>`;
-                                html += `</div>`;
-                            });
-                        } else {
-                            html += `<div style="font-size:0.8rem;color:var(--warning-color);margin-top:0.3rem;">⚠ No control mapped to this technique at this node</div>`;
-                        }
-                        html += `</div>`;
-                    });
-                    pairsContainer.innerHTML = html;
+            html += `<p style="font-size:0.75rem;color:var(--text-tertiary);margin:0 0 0.75rem;">${apIds.length} paths active — expand a path to explore its controls.</p>`;
+
+            apIds.forEach(apId => {
+                const ap = attackPaths.find(a => a.id === apId);
+                if (!ap) return;
+                const color   = apColorMap[apId] || AP_PALETTE[0];
+                const critCol = ap.criticality_tier === 'CRITICAL' ? 'var(--danger-color)' : ap.criticality_tier === 'HIGH' ? 'var(--warning-color)' : 'var(--primary-color)';
+                const isOpen  = apIds.length === 1; // only auto-open when single AP
+                const secId   = 'vgma-' + apId.replace(/\W/g,'_');
+
+                // Outer collapsible card per AP
+                html += `<div style="margin-bottom:0.6rem;border:1px solid ${color}44;border-radius:8px;overflow:hidden;">`;
+                html += `<div onclick="(function(el){var b=document.getElementById('${secId}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.vg-chev').textContent=open?'›':'⌄';})(this)"
+                    style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0.8rem;cursor:pointer;user-select:none;background:${color}14;">`;
+                html += `<div style="display:flex;align-items:center;gap:0.45rem;">`;
+                html += `<span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span>`;
+                html += `<span style="font-size:0.88rem;font-weight:700;color:${color};">${ap.id}</span>`;
+                html += `<span style="font-size:0.7rem;padding:1px 5px;border-radius:3px;background:${critCol}22;color:${critCol};font-weight:700;">${ap.criticality_tier||''}</span>`;
+                html += `<span style="font-size:0.72rem;color:var(--text-tertiary);">${ap.entry||'?'} → ${ap.target||'?'}</span>`;
+                html += `</div><span class="vg-chev" style="font-size:0.8rem;color:var(--text-tertiary);">${isOpen?'⌄':'›'}</span>`;
+                html += `</div>`;
+
+                // Body: list of nodes in this AP, collapsible per node
+                html += `<div id="${secId}" style="display:${isOpen?'block':'none'};padding:0.5rem 0.6rem;">`;
+                html += PRIO_LEGEND;
+                (ap.path || []).forEach(nodeName => {
+                    const { controls, isBroad } = _nodeControlsForAp(nodeName, ap);
+                    const isFocus = nodeName === focusNode;
+                    const isPiv   = sharedPivotSet.has(nodeName);
+                    const pathPos = (ap.path||[]).indexOf(nodeName);
+                    const posLabel = pathPos === 0 ? 'Entry' : pathPos === (ap.path||[]).length-1 ? 'Target' : `Step ${pathPos+1}`;
+                    const nSecId  = 'vgman-' + apId.replace(/\W/g,'_') + '_' + nodeName.replace(/\W/g,'_');
+
+                    html += `<div id="${nSecId}" style="margin-bottom:0.45rem;border:1px solid var(--border-color);border-radius:6px;overflow:hidden;">`;
+                    html += `<div onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.vg-chev').textContent=open?'›':'⌄';})(this)" style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0.6rem;cursor:pointer;user-select:none;background:var(--nav-hover-bg);">`;
+                    html += `<div style="display:flex;align-items:center;gap:0.35rem;">`;
+                    if (isPiv) html += `<span style="color:${BH_COLOR};font-size:0.78rem;">⬥</span>`;
+                    html += `<span style="font-size:0.8rem;font-weight:600;color:var(--text-color);">${nodeName}</span>`;
+                    html += `<span style="font-size:0.66rem;color:var(--text-tertiary);">${posLabel}</span>`;
+                    if (controls.length) html += `<span style="font-size:0.63rem;padding:0 4px;background:var(--primary-color)22;color:var(--primary-color);border-radius:3px;">${controls.length}</span>`;
+                    html += `</div><span class="vg-chev" style="font-size:0.75rem;color:var(--text-tertiary);">${isFocus?'⌄':'›'}</span>`;
+                    html += `</div>`;
+                    html += `<div style="display:${isFocus?'block':'none'};padding:0.5rem 0.6rem;">${_pivotBanner(nodeName)}${_renderControlList(controls, ap.id, isBroad)}</div>`;
+                    html += `</div>`;
                 });
-            } else if (displayControls.length > 0) {
-                // No per-node techniques but controls exist — show controls directly
-                const isBroadFallback = nodeControls.length === 0;
-                pairsHtml = `<h4 style="margin:0 0 0.65rem;font-size:0.9rem;color:var(--text-color);">${isBroadFallback ? 'Controls for this attack path' : 'Controls at this node'}</h4>`;
-                if (isBroadFallback) {
-                    pairsHtml += `<div style="font-size:0.75rem;color:var(--text-tertiary);margin-bottom:0.65rem;font-style:italic;">No node-specific controls assigned — showing all ${ap.id} path controls.</div>`;
-                }
-                displayControls.forEach(c => {
-                    const pc = c.priority ? c.priority.toUpperCase() : 'BASELINE';
-                    const pColor = pc === 'CRITICAL' ? 'var(--danger-color)' : pc === 'HIGH' ? 'var(--warning-color)' : 'var(--primary-color)';
-                    pairsHtml += `<div style="margin-bottom:0.75rem;padding:0.65rem 0.9rem;background:var(--nav-hover-bg);border-radius:8px;border-left:3px solid ${pColor};">`;
-                    pairsHtml += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;"><span style="padding:0.1rem 0.45rem;background:${pColor}22;color:${pColor};border-radius:4px;font-size:0.7rem;font-weight:700;">${pc}</span><strong style="font-size:0.85rem;">${c.control}</strong></div>`;
-                    pairsHtml += `<p style="margin:0;font-size:0.82rem;color:var(--text-secondary);line-height:1.5;">${c.rationale || ''}</p>`;
-                    pairsHtml += `</div>`;
-                });
-            } else {
-                pairsHtml = `<p style="font-size:0.85rem;color:var(--warning-color);">⚠ No controls mapped to this node in ${ap.id}.</p>`;
+                html += `</div></div>`;
+            });
+
+            rpc.innerHTML = html;
+            rightPane.classList.add('visible');
+        }
+
+        // No selection — show all AP descriptions
+        function showNoSelection() {
+            const rightPane = document.getElementById('right-pane');
+            const rpc       = document.getElementById('right-pane-content');
+            if (!rightPane || !rpc) return;
+            let html = `<h3 style="margin:0 0 0.6rem;font-size:0.95rem;color:var(--text-color);">Attack Paths</h3>
+                <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:1rem;">Select an AP chip or click a node to explore its mitigations.</p>`;
+            attackPaths.forEach((ap, i) => {
+                const color   = AP_PALETTE[i % AP_PALETTE.length];
+                const critCol = ap.criticality_tier === 'CRITICAL' ? 'var(--danger-color)' : ap.criticality_tier === 'HIGH' ? 'var(--warning-color)' : 'var(--primary-color)';
+                html += `<div style="margin-bottom:0.7rem;padding:0.65rem 0.9rem;background:var(--nav-hover-bg);border-radius:8px;border-left:4px solid ${color};">`;
+                html += `<div style="display:flex;align-items:center;gap:0.45rem;margin-bottom:0.25rem;"><span style="font-weight:700;font-size:0.86rem;color:${color};">${ap.id}</span><span style="font-size:0.7rem;padding:1px 5px;border-radius:3px;background:${critCol}22;color:${critCol};font-weight:700;">${ap.criticality_tier || ''}</span></div>`;
+                html += `<div style="font-size:0.78rem;color:var(--text-secondary);">${ap.entry || '?'} → ${ap.target || '?'}</div>`;
+                if (ap.description) html += `<p style="margin:0.35rem 0 0;font-size:0.78rem;color:var(--text-secondary);line-height:1.45;">${ap.description}</p>`;
+                html += `<div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:0.3rem;">${(ap.path || []).join(' → ')}</div>`;
+                html += `</div>`;
+            });
+            rpc.innerHTML = html;
+            rightPane.classList.add('visible');
+        }
+
+        // AP chip click — show all nodes in that AP with collapsible mitigations
+        function showApDetail(apId, focusNode) {
+            const rightPane = document.getElementById('right-pane');
+            const rpc       = document.getElementById('right-pane-content');
+            if (!rightPane || !rpc) return;
+            const ap = attackPaths.find(a => a.id === apId);
+            if (!ap) return;
+            const color   = apColorMap[apId] || AP_PALETTE[0];
+            const critCol = ap.criticality_tier === 'CRITICAL' ? 'var(--danger-color)' : ap.criticality_tier === 'HIGH' ? 'var(--warning-color)' : 'var(--primary-color)';
+
+            let html = `<div style="margin-bottom:0.85rem;"><div style="display:flex;align-items:center;gap:0.45rem;margin-bottom:0.2rem;"><span style="font-weight:700;font-size:0.95rem;color:${color};">${ap.id}</span><span style="font-size:0.7rem;padding:1px 5px;border-radius:3px;background:${critCol}22;color:${critCol};font-weight:700;">${ap.criticality_tier||''}</span></div>`;
+            html += `<div style="font-size:0.79rem;color:var(--text-secondary);">${ap.entry||'?'} → ${ap.target||'?'}</div>`;
+            if (ap.description) html += `<p style="margin:0.3rem 0 0;font-size:0.78rem;color:var(--text-secondary);line-height:1.45;">${ap.description}</p></div>`;
+            else html += `</div>`;
+            html += PRIO_LEGEND;
+
+            (ap.path || []).forEach(nodeName => {
+                const { controls, isBroad } = _nodeControlsForAp(nodeName, ap);
+                const isFocus = nodeName === focusNode;
+                const isPiv   = sharedPivotSet.has(nodeName);
+                const pathPos = (ap.path||[]).indexOf(nodeName);
+                const posLabel = pathPos === 0 ? 'Entry' : pathPos === (ap.path||[]).length-1 ? 'Target' : `Step ${pathPos+1}`;
+                const secId   = 'vgas-' + nodeName.replace(/\W/g,'_');
+
+                html += `<div id="${secId}" style="margin-bottom:0.5rem;border:1px solid var(--border-color);border-radius:7px;overflow:hidden;">`;
+                html += `<div onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.vg-chev').textContent=open?'›':'⌄';})(this)" style="display:flex;align-items:center;justify-content:space-between;padding:0.45rem 0.7rem;cursor:pointer;user-select:none;background:var(--nav-hover-bg);">`;
+                html += `<div style="display:flex;align-items:center;gap:0.4rem;">`;
+                if (isPiv) html += `<span style="color:${BH_COLOR};font-size:0.8rem;">⬥</span>`;
+                html += `<span style="font-size:0.82rem;font-weight:600;color:var(--text-color);">${nodeName}</span>`;
+                html += `<span style="font-size:0.68rem;color:var(--text-tertiary);">${posLabel}</span>`;
+                if (controls.length) html += `<span style="font-size:0.65rem;padding:0 4px;background:var(--primary-color)22;color:var(--primary-color);border-radius:3px;">${controls.length}</span>`;
+                html += `</div><span class="vg-chev" style="font-size:0.78rem;color:var(--text-tertiary);">${isFocus?'⌄':'›'}</span></div>`;
+                html += `<div style="display:${isFocus?'block':'none'};padding:0.6rem 0.7rem;">${_pivotBanner(nodeName)}${_renderControlList(controls, ap.id, isBroad)}</div>`;
+                html += `</div>`;
+            });
+
+            rpc.innerHTML = html;
+            rightPane.classList.add('visible');
+            if (focusNode) {
+                const el = rpc.querySelector('#vgas-' + focusNode.replace(/\W/g,'_'));
+                if (el) el.scrollIntoView({ behavior:'smooth', block:'nearest' });
             }
+        }
 
-            // Node position in path
-            const pathPos = ap.path ? ap.path.indexOf(nodeName) : -1;
-            const posLabel = pathPos === 0 ? 'Entry Point' : pathPos === (ap.path || []).length - 1 ? 'Target' : `Traversal node (step ${pathPos + 1})`;
+        // Node click — show all APs traversing this node, grouped and sorted
+        function showNodeDetail(nodeName, focusApId) {
+            const rightPane = document.getElementById('right-pane');
+            const rpc       = document.getElementById('right-pane-content');
+            if (!rightPane || !rpc) return;
 
-            rightPaneContent.innerHTML = `
-                <div style="margin-bottom:1rem;">
-                    <div style="font-size:0.75rem;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">${ap.id} · ${posLabel}</div>
-                    <h3 style="margin:0 0 0.25rem;font-size:1.05rem;color:var(--text-color);">${nodeName}</h3>
-                    <div style="font-size:0.82rem;color:var(--text-secondary);">${ap.entry || ''} → ${ap.target || ''}</div>
-                    <span style="display:inline-block;margin-top:0.4rem;padding:0.15rem 0.6rem;background:${critColor}22;color:${critColor};border-radius:4px;font-size:0.72rem;font-weight:700;">${ap.criticality_tier || ''}</span>
-                </div>
-                ${pivotSection}
-                <div id="vg-tech-pairs">${pairsHtml}</div>
-            `;
+            const nodeAps = attackPaths.filter(ap => (ap.path||[]).includes(nodeName));
+            let html = `<div style="margin-bottom:0.7rem;"><h3 style="margin:0 0 0.15rem;font-size:0.95rem;color:var(--text-color);">${nodeName}</h3>`;
+            if (nodeAps.length > 1) html += `<div style="font-size:0.75rem;color:var(--text-tertiary);">Traversed by ${nodeAps.length} attack paths</div>`;
+            html += `</div>${PRIO_LEGEND}`;
+            html += _pivotBanner(nodeName);
+
+            nodeAps.forEach(ap => {
+                const { controls, isBroad } = _nodeControlsForAp(nodeName, ap);
+                const color   = apColorMap[ap.id] || AP_PALETTE[0];
+                const critCol = ap.criticality_tier === 'CRITICAL' ? 'var(--danger-color)' : ap.criticality_tier === 'HIGH' ? 'var(--warning-color)' : 'var(--primary-color)';
+                const pathPos = (ap.path||[]).indexOf(nodeName);
+                const posLabel = pathPos === 0 ? 'Entry' : pathPos === (ap.path||[]).length-1 ? 'Target' : `Step ${pathPos+1}`;
+                const isFocus = ap.id === focusApId || nodeAps.length === 1;
+                const secId   = 'vgnd-' + ap.id.replace(/\W/g,'_');
+
+                html += `<div style="margin-bottom:0.55rem;border:1px solid ${color}44;border-radius:7px;overflow:hidden;">`;
+                html += `<div onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.vg-chev').textContent=open?'›':'⌄';})(this)" style="display:flex;align-items:center;justify-content:space-between;padding:0.45rem 0.7rem;cursor:pointer;user-select:none;background:${color}14;">`;
+                html += `<div style="display:flex;align-items:center;gap:0.4rem;"><span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span><span style="font-size:0.82rem;font-weight:700;color:${color};">${ap.id}</span><span style="font-size:0.68rem;color:var(--text-tertiary);">${posLabel}</span><span style="font-size:0.68rem;padding:1px 4px;border-radius:3px;background:${critCol}22;color:${critCol};font-weight:700;">${ap.criticality_tier||''}</span>`;
+                if (controls.length) html += `<span style="font-size:0.65rem;padding:0 4px;background:${color}22;color:${color};border-radius:3px;">${controls.length}</span>`;
+                html += `</div><span class="vg-chev" style="font-size:0.78rem;color:var(--text-tertiary);">${isFocus?'⌄':'›'}</span></div>`;
+                html += `<div id="${secId}" style="display:${isFocus?'block':'none'};padding:0.6rem 0.7rem;">${_renderControlList(controls, ap.id, isBroad)}</div>`;
+                html += `</div>`;
+            });
+
+            rpc.innerHTML = html;
             rightPane.classList.add('visible');
         }
 
         nodeEls.on('click', function(event, d) {
             event.stopPropagation();
+            if (pivotInfo) pivotInfo.style.display = 'none';
+            if (apPicker) apPicker.style.display   = 'none';
 
-            // Hide stale panels
-            pivotInfo.style.display = 'none';
-            apPicker.style.display  = 'none';
-
-            // Highlight selected node
-            nodeEls.selectAll('circle,polygon').attr('opacity', n => n.id === d.id ? 1 : 0.55);
+            nodeEls.selectAll('circle,polygon').attr('opacity', n => n.id === d.id ? 1 : 0.45);
             d3.select(this).selectAll('circle,polygon').attr('opacity', 1);
 
-            if (d.aps.length === 1) {
-                const ap = attackPaths.find(a => a.id === d.aps[0]);
-                if (!ap) return;
-                showNodeDetail(d.id, ap);
-            } else {
-                // Multi-AP node — show inline picker
-                let pickerHtml = `<p style="margin:0 0 0.4rem;font-weight:600;color:var(--text-color);">
-                    <strong>${d.id}</strong> appears in ${d.aps.length} attack paths — choose one to explore:</p>
-                    <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">`;
-                d.aps.forEach(apId => {
-                    const color = apColorMap[apId] || AP_PALETTE[0];
-                    pickerHtml += `<button class="vg-picker-btn" data-apid="${apId}" style="padding:0.25rem 0.75rem;border-radius:8px;border:2px solid ${color};background:${color}22;color:${color};font-size:0.8rem;font-weight:700;cursor:pointer;">${apId}</button>`;
-                });
-                pickerHtml += `</div>`;
-                apPicker.innerHTML = pickerHtml;
-                apPicker.style.display = 'block';
-
-                apPicker.querySelectorAll('.vg-picker-btn').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        apPicker.style.display = 'none';
-                        const ap = attackPaths.find(a => a.id === btn.dataset.apid);
-                        if (!ap) return;
-                        showNodeDetail(d.id, ap);
-                    });
-                });
-            }
+            // Prefer the active chip's AP if this node has it; otherwise first AP
+            const focusApId = d.aps.find(id => activeAps.has(id)) || d.aps[0];
+            showNodeDetail(d.id, focusApId);
         });
 
-        // Click on SVG background to deselect
+        // Click on SVG background → deselect node highlight; restore active-AP right pane
         d3.select(svgEl).on('click', () => {
             nodeEls.selectAll('circle,polygon').attr('opacity', 1);
-            pivotInfo.style.display = 'none';
-            apPicker.style.display  = 'none';
+            if (pivotInfo) pivotInfo.style.display = 'none';
+            if (apPicker) apPicker.style.display   = 'none';
+            const activeNonBh = [...activeAps].filter(id => id !== 'BH');
+            if (activeNonBh.length === 0) showNoSelection();
+            else showActiveApsDetail(activeNonBh, null);
         });
+
+        // Initialise right pane — all chips are on by default, show all APs
+        showActiveApsDetail(chipIds, null);
     }
 
     // ─── Fallback card list (used when D3 is unavailable) ────────────────────
@@ -5451,7 +5615,7 @@ class Dashboard {
                 blindspotsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">🔍 Blindspots</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Gaps all ' + criticCountLabel + ' structurally could not see. <strong>⚠ Act</strong> = actionable now. <strong>📋 Note</strong> = awareness only.</p></div>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Gaps all ' + criticCountLabel + ' structurally could not see. <strong style="color:var(--warning-color);">⚠ Act</strong> = actionable now. <strong style="color:var(--text-tertiary);">📋 Note</strong> = awareness only.</p></div>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
                     + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + cards + '</div>'
@@ -5673,15 +5837,100 @@ class Dashboard {
                 const statusText = status.replace(/_/g, ' ') + (status === 'PASS' && gapCount > 0 ? ` (${gapCount} low finding${gapCount > 1 ? 's' : ''})` : '');
                 const statusExplain = statusDesc[status] || '';
                 const gaps = v.gaps || [];
-                let gapItems = '';
+                // SSP governance keywords — controls that have no MITRE runtime technique but
+                // ARE addressed by the Singapore Government SSP baseline (process/people controls)
+                // SSP control mapping: keyword → specific NIST 800-53 control IDs
+                // Keywords must be unambiguous governance/people/process phrases — never bare technical words
+                // like 'process', 'policy', 'documentation' that appear in technical recommendations too.
+                const _SSP_CONTROL_MAP = [
+                    { keywords: ['user training', 'security training', 'security awareness', 'phishing simulation', 'awareness program'],
+                      controls: ['AT-2 (Security Awareness Training)', 'AT-3 (Role-Based Training)'] },
+                    { keywords: ['security policy', 'acceptable use policy', 'governance policy', 'information security policy'],
+                      controls: ['PL-1 (Policy & Procedures)', 'PM-1 (Information Security Program Plan)'] },
+                    { keywords: ['access review', 'role review', 'entitlement review', 'privilege review'],
+                      controls: ['AC-2 (Account Management)', 'AC-6 (Least Privilege)'] },
+                    { keywords: ['vendor management', 'supply chain risk', 'third-party risk', 'third party risk', 'third-party security'],
+                      controls: ['SA-9 (External Information System Services)', 'SR-3 (Supply Chain Controls)'] },
+                    { keywords: ['bcp', 'business continuity', 'disaster recovery', 'dr plan'],
+                      controls: ['CP-2 (Contingency Plan)', 'CP-9 (System Backup)', 'CP-10 (System Recovery)'] },
+                    { keywords: ['incident response plan', 'incident management plan', 'ir plan'],
+                      controls: ['IR-1 (Policy & Procedures)', 'IR-4 (Incident Handling)', 'IR-8 (Incident Response Plan)'] },
+                    { keywords: ['change management', 'change control process', 'change advisory'],
+                      controls: ['CM-3 (Configuration Change Control)', 'SA-10 (Developer Config Mgmt)'] },
+                    { keywords: ['personnel screening', 'staff onboarding', 'employee offboarding', 'background check'],
+                      controls: ['PS-3 (Personnel Screening)', 'PS-4 (Personnel Termination)'] },
+                    { keywords: ['access agreement', 'acceptable use agreement', 'user agreement'],
+                      controls: ['PS-6 (Access Agreements)', 'AC-2 (Account Management)'] },
+                ];
+                const _isGovernanceGap = desc => {
+                    const d = (desc || '').toLowerCase();
+                    return _SSP_CONTROL_MAP.some(entry => entry.keywords.some(kw => d.includes(kw)));
+                };
+                const _sspControls = desc => {
+                    const d = (desc || '').toLowerCase();
+                    const matched = new Set();
+                    for (const entry of _SSP_CONTROL_MAP) {
+                        if (entry.keywords.some(kw => d.includes(kw))) {
+                            entry.controls.forEach(c => matched.add(c));
+                        }
+                    }
+                    return matched.size > 0 ? [...matched] : ['AC-2', 'AT-2', 'IR-4', 'PL-1', 'SA-9'];
+                };
+                // Group gaps by category for collapsible sections
+                const _gapsByCat = {};
                 for (const g of gaps) {
-                    const sev = (g.severity || '').toUpperCase();
-                    const borderCol = severityColor[sev] || 'var(--border-color)';
-                    const sevCol = severityColor[sev] || 'var(--text-tertiary)';
-                    gapItems += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid ' + borderCol + ';">'
-                        + '<div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-color); margin-bottom: 0.25rem;">' + (g.category ? g.category.replace(/_/g, ' ').toUpperCase() : '') + ' · <span style="color: ' + sevCol + ';">' + (g.severity || '') + '</span></div>'
-                        + '<div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">' + (g.description || '') + '</div>'
-                        + (g.recommendation ? '<div style="font-size: 0.8125rem; color: var(--secondary-color);">→ ' + g.recommendation + '</div>' : '')
+                    const cat = g.category || 'general';
+                    if (!_gapsByCat[cat]) _gapsByCat[cat] = [];
+                    _gapsByCat[cat].push(g);
+                }
+                // Severity-order within each category: critical > high > medium > low
+                const _sevRank = s => ({CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3}[(s||'').toUpperCase()] ?? 4);
+                // Sort categories by worst severity in each group
+                const _catOrder = Object.keys(_gapsByCat).sort((a, b) => {
+                    const worstA = Math.min(..._gapsByCat[a].map(g => _sevRank(g.severity)));
+                    const worstB = Math.min(..._gapsByCat[b].map(g => _sevRank(g.severity)));
+                    return worstA - worstB;
+                });
+                const _erUid = 'er_' + e.key + '_' + Date.now();
+                let gapItems = '';
+                for (const cat of _catOrder) {
+                    const catGaps = _gapsByCat[cat];
+                    const catLabel = cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    const worstSev = catGaps.reduce((best, g) => _sevRank(g.severity) < _sevRank(best) ? g.severity : best, catGaps[0].severity);
+                    const worstSevCol = severityColor[(worstSev||'').toUpperCase()] || 'var(--border-color)';
+                    const catId = _erUid + '_' + cat.replace(/\W/g, '_');
+                    let catInner = '';
+                    for (const g of catGaps) {
+                        const sev = (g.severity || '').toUpperCase();
+                        const borderCol = severityColor[sev] || 'var(--border-color)';
+                        const sevCol = severityColor[sev] || 'var(--text-tertiary)';
+                        const combined = (g.description || '') + ' ' + (g.recommendation || '');
+                        const isGov = _isGovernanceGap(combined);
+                        const sspCtrlList = isGov ? _sspControls(combined) : [];
+                        const sspFallback = isGov
+                            ? '<div style="margin-top:0.4rem; padding:0.35rem 0.55rem; background:#06b6d418; border-radius:4px; border-left:2px solid #06b6d4; font-size:0.775rem; color:#06b6d4;">'
+                                + '🏛 <strong>SSP coverage:</strong> This is a process/people control — MITRE ATT&CK does not define a runtime mitigation for it. '
+                                + 'Validate against: '
+                                + sspCtrlList.map(c => '<strong>' + c + '</strong>').join(' · ')
+                                + ' in your applicable SSP baseline.'
+                                + '</div>'
+                            : '';
+                        catInner += '<div style="padding:0.6rem 0.75rem; background:var(--card-bg); border-radius:5px; margin-bottom:0.35rem; border-left:3px solid ' + borderCol + ';">'
+                            + '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.3rem;">' + (g.description || '') + ' <span style="font-size:0.75rem; color:' + sevCol + '; font-weight:600;">[' + (g.severity || '') + ']</span></div>'
+                            + (g.recommendation ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-bottom:' + (isGov ? '0.25rem' : '0') + ';">→ ' + g.recommendation + '</div>' : '')
+                            + sspFallback
+                            + '</div>';
+                    }
+                    gapItems += '<div style="margin-bottom:0.4rem;">'
+                        + '<div onclick="(function(h){var b=document.getElementById(\'' + catId + '\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';h.querySelector(\'.er-cat-chev\').textContent=open?\'›\':\' ⌄\';})(this)" '
+                        + 'style="display:flex; justify-content:space-between; align-items:center; padding:0.45rem 0.65rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid ' + worstSevCol + '; cursor:pointer; user-select:none;">'
+                        + '<span style="font-size:0.8125rem; font-weight:600; color:var(--text-color);">' + catLabel + '</span>'
+                        + '<span style="display:flex; align-items:center; gap:0.6rem;">'
+                        + '<span style="font-size:0.72rem; color:var(--text-tertiary);">' + catGaps.length + ' finding' + (catGaps.length !== 1 ? 's' : '') + '</span>'
+                        + '<span class="er-cat-chev" style="font-size:1rem; color:var(--text-tertiary);"> ⌄</span>'
+                        + '</span>'
+                        + '</div>'
+                        + '<div id="' + catId + '" style="padding:0.35rem 0 0 0;">' + catInner + '</div>'
                         + '</div>';
                 }
                 // Sub-dimension breakdown (tester only) — compact score chips + gaps-only reasoning
@@ -5721,10 +5970,9 @@ class Dashboard {
                     if (chainGaps.length) {
                         bhInner += '<div style="font-size:0.76rem; color:var(--warning-color); margin-top:0.3rem;">Chain mitigation gaps: ' + chainGaps.slice(0,4).join(', ') + '</div>';
                     }
-                    // Link to after_bh.mmd in Reports tab
-                    bhInner += '<div style="margin-top:0.65rem; padding-top:0.5rem; border-top:1px solid var(--border-color);">'
-                        + '<span style="font-size:0.78rem; color:var(--text-tertiary);">Cross-path chains visible in </span>'
-                        + '<button onclick="window.dashboard._openBhDiagram()" style="font-size:0.78rem; color:#ff8c00; background:transparent; border:1px solid #ff8c0044; border-radius:6px; padding:2px 8px; cursor:pointer; margin-left:0.35rem;">⚔️ BH Chain Diagram →</button>'
+                    // Tip: direct user to Visualise tab for cross-path chain exploration
+                    bhInner += '<div style="margin-top:0.65rem; padding-top:0.5rem; border-top:1px solid var(--border-color); font-size:0.76rem; color:var(--text-tertiary);">'
+                        + '💡 <strong style="color:var(--text-secondary);">Tip:</strong> Switch to the <strong style="color:#ff8c00;">Visualise</strong> tab and enable BH-N attack paths to see cross-path chains on the interactive graph.'
                         + '</div>';
                     breakdownBars = '<div style="margin-bottom:0.75rem; padding:0.65rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px;">' + bhInner + '</div>';
                 }
@@ -5765,23 +6013,34 @@ class Dashboard {
                         + '</div>';
                 }
 
+                const reasoning = (v.reasoning || '').trim();
+                const reasoningHtml = reasoning
+                    ? '<div style="margin-bottom:0.85rem; padding:0.65rem 0.85rem; background:var(--nav-hover-bg); border-left:3px solid var(--primary-color); border-radius:6px;">'
+                        + '<div style="font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--primary-color); margin-bottom:0.3rem;">Critic verdict</div>'
+                        + '<p style="margin:0; font-size:0.8375rem; color:var(--text-color); line-height:1.55;">' + reasoning + '</p>'
+                        + '</div>'
+                    : '';
                 const bodyHtml = gaps.length > 0
                     ? '<div class="er-panel-body" style="padding: 1rem 1.25rem;">'
+                        + reasoningHtml
                         + breakdownBars
                         + '<div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">' + gaps.length + ' finding' + (gaps.length > 1 ? 's' : '') + '</div>'
                         + severityLegend
                         + '<div style="margin-top:0.75rem;">' + gapItems + '</div>'
                         + '</div>'
-                    : '<div class="er-panel-body" style="padding: 0.75rem 1.25rem; font-size:0.8125rem; color:var(--text-tertiary);">'
+                    : '<div class="er-panel-body" style="padding: 0.75rem 1.25rem;">'
+                        + reasoningHtml
                         + breakdownBars
-                        + 'No findings — criteria passed.</div>';
+                        + '<div style="font-size:0.8125rem; color:var(--text-tertiary);">No findings — criteria passed.</div>'
+                        + '</div>';
 
-                expertPanelCards += '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">'
+                // Header subtitle: always shows what this critic looks out for (role); verdict is in the body
+                expertPanelCards += '<div class="er-panel" data-critic-key="' + e.key + '" id="er-panel-' + e.key + '" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select:none;">'
                     + '<div style="display: flex; align-items: center; gap: 0.75rem;">'
                     + '<span style="font-size: 1.5rem;">' + e.icon + '</span>'
                     + '<div><div style="font-weight: 700; color: var(--text-color);">' + e.label + '</div>'
-                    + '<div style="font-size: 0.8125rem; color: var(--text-secondary);">' + e.role + '</div></div>'
+                    + '<div style="font-size: 0.8125rem; color: var(--text-secondary); line-height:1.4; max-width:38rem;">' + e.role + '</div></div>'
                     + '</div>'
                     + '<div style="display:flex; align-items:center; gap:1rem;">'
                     + '<div style="text-align: right;">'
@@ -5809,77 +6068,84 @@ class Dashboard {
                 return r.source && r.source.includes('+');
             }
 
+            // Helper: build a collapsible priority group inside Cross-Expert Findings
+            function _cefGroup(uid, label, color, items, renderItem) {
+                if (!items.length) return '';
+                const gid = 'cef_' + uid;
+                let itemsHtml = '';
+                for (const r of items) { itemsHtml += renderItem(r); }
+                return '<div style="margin-bottom:0.5rem;">'
+                    + '<div onclick="(function(h){var b=document.getElementById(\'' + gid + '\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';h.querySelector(\'.cef-chev\').textContent=open?\'›\':\' ⌄\';})(this)" '
+                    + 'style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.65rem; background:' + color + '12; border-radius:6px; border-left:3px solid ' + color + '; cursor:pointer; user-select:none; margin-bottom:0.15rem;">'
+                    + '<span style="font-size:0.8125rem; font-weight:700; color:' + color + '; text-transform:uppercase; letter-spacing:0.04em;">' + label + '</span>'
+                    + '<span style="display:flex; align-items:center; gap:0.5rem;">'
+                    + '<span style="font-size:0.72rem; color:' + color + ';">' + items.length + ' finding' + (items.length !== 1 ? 's' : '') + '</span>'
+                    + '<span class="cef-chev" style="font-size:1rem; color:' + color + ';"> ⌄</span>'
+                    + '</span>'
+                    + '</div>'
+                    + '<div id="' + gid + '" style="padding-top:0.25rem;">' + itemsHtml + '</div>'
+                    + '</div>';
+            }
+
             // Build consensus section — per-item KNOWN/UNSURE badge, not per-group header
             let consensusHtml = '';
             if (consensusCritical.length + consensusHigh.length + consensusReview.length > 0) {
-                let inner = '';
-                if (consensusCritical.length > 0) {
-                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--danger-color); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.5rem;">Critical</div>';
-                    for (const r of consensusCritical) {
-                        const known = isKnown(r);
-                        const badge = known
-                            ? '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>'
-                            : '<span style="font-size:0.7rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
-                        inner += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--danger-color);">'
-                            + '<div style="font-size: 0.875rem; color: var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
-                            + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
-                            + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
-                            + '</div>';
-                    }
-                }
-                if (consensusHigh.length > 0) {
-                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--warning-color); text-transform:uppercase; letter-spacing:0.04em; margin: 0.75rem 0 0.5rem;">High</div>';
-                    for (const r of consensusHigh) {
-                        const known = isKnown(r);
-                        const badge = known
-                            ? '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>'
-                            : '<span style="font-size:0.7rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
-                        inner += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--warning-color);">'
-                            + '<div style="font-size: 0.875rem; color: var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
-                            + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
-                            + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
-                            + '</div>';
-                    }
-                }
-                if (consensusReview.length > 0) {
-                    inner += '<div style="margin: 0.75rem 0 0.5rem;">'
-                        + '<div style="font-size:0.8125rem; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.04em;">For Review</div>'
-                        + '<div style="font-size:0.72rem; color:var(--text-tertiary); margin-top:0.15rem;">UNSURE = raised by a single critic only. No second critic confirmed or refuted it — review and decide whether to act.</div>'
+                const _knownBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>';
+                const _unsureBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
+                const _unsureReviewBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--text-tertiary); background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
+
+                const renderCritical = r => {
+                    const badge = isKnown(r) ? _knownBadge : _unsureBadge;
+                    return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px; margin-bottom:0.4rem; border-left:3px solid var(--danger-color);">'
+                        + '<div style="font-size:0.875rem; color:var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
+                        + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
+                        + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
                         + '</div>';
-                    for (const r of consensusReview) {
-                        const known = isKnown(r);
-                        const badge = known
-                            ? '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>'
-                            : '<span style="font-size:0.7rem; font-weight:700; color:var(--text-tertiary); background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
-                        const src = (r.source || '').toLowerCase();
-                        let actionHint = '';
-                        if (src.includes('architect')) {
-                            actionHint = 'Architecture concern — verify whether this applies to your specific design. If the finding describes a generic gap rather than a confirmed path, document as accepted risk or revisit on a more complex architecture diagram.';
-                        } else if (src.includes('tester') || src.includes('coverage')) {
-                            actionHint = 'Control coverage gap — check whether the flagged control exists and is correctly mapped. If the gap is real, add the missing control to the ADR.';
-                        } else if (src.includes('red_team') || src.includes('red team') || src.includes('exploit')) {
-                            actionHint = 'Exploit feasibility concern — assess whether this bypass path is realistic for your threat model. If confirmed, escalate to the Red Team improvement tier.';
-                        } else if (src.includes('purple') || src.includes('detection')) {
-                            actionHint = 'Detection gap — if this technique is in scope, add the suggested behavioral analytics or detection control (UEBA, DAM, anomaly detection) to the relevant ADR.';
-                        } else if (src.includes('blackhat')) {
-                            actionHint = 'Cross-path chain concern — review whether the identified pivot nodes are reachable in practice. If confirmed, treat as a high-priority chaining risk.';
-                        } else {
-                            actionHint = 'Review this finding: if it describes a real gap in your architecture, add a control to the relevant ADR. If it does not apply, document as accepted risk.';
-                        }
-                        inner += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--border-color);">'
-                            + '<div style="font-size: 0.875rem; color: var(--text-secondary); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
-                            + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.2rem;">Raised by: ' + r.source + '</div>' : '')
-                            + '<div style="font-size:0.75rem; color:var(--primary-color); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">→ ' + actionHint + '</div>'
-                            + '</div>';
+                };
+                const renderHigh = r => {
+                    const badge = isKnown(r) ? _knownBadge : _unsureBadge;
+                    return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px; margin-bottom:0.4rem; border-left:3px solid var(--warning-color);">'
+                        + '<div style="font-size:0.875rem; color:var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
+                        + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
+                        + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
+                        + '</div>';
+                };
+                const renderReview = r => {
+                    const badge = isKnown(r) ? _knownBadge : _unsureReviewBadge;
+                    const src = (r.source || '').toLowerCase();
+                    let actionHint = '';
+                    if (src.includes('architect')) {
+                        actionHint = 'Architecture concern — verify whether this applies to your specific design. If the finding describes a generic gap rather than a confirmed path, document as accepted risk or revisit on a more complex architecture diagram.';
+                    } else if (src.includes('tester') || src.includes('coverage')) {
+                        actionHint = 'Control coverage gap — check whether the flagged control exists and is correctly mapped. If the gap is real, add the missing control to the ADR.';
+                    } else if (src.includes('red_team') || src.includes('red team') || src.includes('exploit')) {
+                        actionHint = 'Exploit feasibility concern — assess whether this bypass path is realistic for your threat model. If confirmed, escalate to the Red Team improvement tier.';
+                    } else if (src.includes('purple') || src.includes('detection')) {
+                        actionHint = 'Detection gap — if this technique is in scope, add the suggested behavioral analytics or detection control (UEBA, DAM, anomaly detection) to the relevant ADR.';
+                    } else if (src.includes('blackhat')) {
+                        actionHint = 'Cross-path chain concern — review whether the identified pivot nodes are reachable in practice. If confirmed, treat as a high-priority chaining risk.';
+                    } else {
+                        actionHint = 'Review this finding: if it describes a real gap in your architecture, add a control to the relevant ADR. If it does not apply, document as accepted risk.';
                     }
-                }
+                    return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px; margin-bottom:0.4rem; border-left:3px solid var(--border-color);">'
+                        + '<div style="font-size:0.875rem; color:var(--text-secondary); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
+                        + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.2rem;">Raised by: ' + r.source + '</div>' : '')
+                        + '<div style="font-size:0.75rem; color:var(--primary-color); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">→ ' + actionHint + '</div>'
+                        + '</div>';
+                };
+
+                const _cefUid = Date.now();
+                const inner = _cefGroup(_cefUid + '_crit', 'Critical', 'var(--danger-color)', consensusCritical, renderCritical)
+                    + _cefGroup(_cefUid + '_high', 'High', 'var(--warning-color)', consensusHigh, renderHigh)
+                    + _cefGroup(_cefUid + '_rev', 'For Review', 'var(--text-tertiary)', consensusReview, renderReview);
+
                 consensusHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">Cross-Expert Findings</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;"><strong>KNOWN</strong> = confirmed by ≥2 critics — act on these. <strong>UNSURE</strong> = single critic raised it, no second opinion yet — needs human review, not necessarily wrong.</p></div>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;"><strong style="color:var(--secondary-color);">KNOWN</strong> = confirmed by ≥2 critics — act on these. <strong style="color:var(--warning-color);">UNSURE</strong> = single critic raised it, no second opinion yet — needs human review, not necessarily wrong.</p></div>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
-                    + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + inner + '</div>'
+                    + '<div class="er-panel-body" style="padding: 0.75rem 1.25rem 1.25rem;">' + inner + '</div>'
                     + '</div>';
             }
 
@@ -5977,31 +6243,80 @@ class Dashboard {
         this.showRightPane('⚠️ ' + (c.topic || 'Disagreement'), content);
     }
 
-    // Open after_bh.mmd in the Reports tab (right pane viewer)
-    async _openBhDiagram() {
-        const archName = this.analysisData?.architecture_name || this.analysisData?.architecture;
-        if (!archName) return;
-        try {
-            const resp = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/after_bh.mmd`);
-            if (!resp.ok) {
-                this.showRightPane('⚔️ BH Chain Diagram', '<p style="color:var(--text-tertiary); padding:1rem;">after_bh.mmd not found — re-run Expert Review with Blackhat enabled.</p>');
-                return;
-            }
-            const mmdContent = await resp.text();
-            this.showRightPane('⚔️ Blackhat Cross-Path Chain Overlay', `
-                <p style="font-size:0.8125rem; color:var(--text-secondary); margin:0 0 0.75rem;">
-                    Cross-path chain edges (dashed orange/red) and gap controls (pink) overlaid on the hardened architecture.
-                    Edges show pivot routes BH identified across multiple attack paths.
-                </p>
-                <div id="bh-diag-container" style="overflow:auto; max-height:calc(100vh - 260px); background:var(--code-bg); border-radius:8px; border:1px solid var(--border-color); padding:1rem;">
-                    <div class="mermaid">${mmdContent}</div>
-                </div>`);
-            if (window.mermaid) {
-                setTimeout(() => mermaid.run({ querySelector: '#bh-diag-container .mermaid' }).catch(() => {}), 50);
-            }
-        } catch (err) {
-            this.showRightPane('⚔️ BH Chain Diagram', `<p style="color:var(--danger-color); padding:1rem;">${err.message}</p>`);
+    // Open BH cross-path chain summary and guide user to Visualise tab
+    _openBhDiagram() {
+        const BH_COLOR = '#ff8c00';
+        const moe = this.analysisData?.analysis?.moe_validation || {};
+        const bh  = moe.expert_validations?.blackhat?.breakdown || {};
+        const chains   = bh.chained_exploit_findings || [];
+        const pivots   = bh.shared_nodes ? Object.keys(bh.shared_nodes) : [];
+        const lrp      = bh.least_resistance_paths || [];
+        const unique   = (bh.uniqueness_vs_critics || {}).new_findings_not_in_redteam || [];
+
+        // BH-derived AP IDs from the analysis (BH-1, BH-2 …)
+        const bhAps = (this.analysisData?.analysis?.attack_paths || [])
+            .filter(ap => (ap.id || '').startsWith('BH-'))
+            .map(ap => ap.id);
+
+        let html = `<div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:0.9rem; line-height:1.55;">
+            Blackhat analysis synthesises cross-path pivot chains — attack routes that bridge
+            multiple APs via shared infrastructure nodes. These chains are visualised interactively
+            in the <strong>Visualise</strong> tab: pivot nodes are shown as diamonds, and their
+            cross-AP reach is encoded in node size.
+        </div>`;
+
+        // Visualise tab shortcut
+        if (bhAps.length > 0) {
+            html += `<div style="margin-bottom:1rem; padding:0.65rem 0.9rem; background:${BH_COLOR}18; border-left:4px solid ${BH_COLOR}; border-radius:6px;">`;
+            html += `<div style="font-weight:700; color:${BH_COLOR}; font-size:0.82rem; margin-bottom:0.35rem;">⚔️ BH-discovered paths found</div>`;
+            html += `<p style="margin:0 0 0.5rem; font-size:0.8rem; color:var(--text-secondary);">Switch to the <strong>Visualise</strong> tab and select the following chips to explore BH chains on the graph:</p>`;
+            html += `<div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.35rem;">`;
+            bhAps.forEach(id => {
+                html += `<span style="padding:2px 10px; border-radius:10px; border:2px solid ${BH_COLOR}; background:${BH_COLOR}22; color:${BH_COLOR}; font-size:0.78rem; font-weight:700;">${id}</span>`;
+            });
+            html += `</div>`;
+            html += `<div style="font-size:0.75rem; color:var(--text-tertiary);">Each BH chip shows the pivot-and-diverge route as edges in the graph. Pivot nodes appear as diamonds — clicking one shows mitigations across all APs it spans.</div>`;
+            html += `</div>`;
         }
+
+        // Pivot node summary
+        if (pivots.length > 0) {
+            html += `<h4 style="margin:0 0 0.45rem; font-size:0.85rem; color:var(--text-color);">Pivot nodes (${pivots.length})</h4>`;
+            pivots.forEach(node => {
+                const nodeData = bh.shared_nodes[node] || {};
+                const apList   = Array.isArray(nodeData) ? nodeData : (nodeData.aps || []);
+                html += `<div style="margin-bottom:0.45rem; padding:0.5rem 0.7rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid ${BH_COLOR};">`;
+                html += `<span style="font-weight:600; font-size:0.82rem; color:var(--text-color);">${node}</span>`;
+                if (apList.length) html += ` <span style="font-size:0.72rem; color:var(--text-tertiary);">spans: ${apList.join(', ')}</span>`;
+                html += `</div>`;
+            });
+        }
+
+        // Cross-path chains
+        if (chains.length > 0) {
+            html += `<h4 style="margin:0.75rem 0 0.45rem; font-size:0.85rem; color:var(--text-color);">Cross-path chains (${chains.length})</h4>`;
+            chains.slice(0, 6).forEach(ch => {
+                html += `<div style="margin-bottom:0.4rem; padding:0.5rem 0.7rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid var(--warning-color); font-size:0.8rem; color:var(--text-secondary);">`
+                    + (ch.chain || ch.description || JSON.stringify(ch)) + `</div>`;
+            });
+        }
+
+        // Least-resistance paths
+        if (lrp.length > 0) {
+            html += `<div style="margin-top:0.65rem; font-size:0.78rem; color:var(--text-tertiary);">`;
+            html += `<strong>Least-resistance:</strong> ` + lrp.slice(0,3).map(p => Array.isArray(p) ? p.join(' → ') : String(p)).join(' | ');
+            html += `</div>`;
+        }
+
+        if (unique.length > 0) {
+            html += `<div style="margin-top:0.4rem; font-size:0.78rem; color:var(--warning-color);">${unique.length} unique finding${unique.length>1?'s':''} not surfaced by Red Team</div>`;
+        }
+
+        if (!chains.length && !pivots.length && !bhAps.length) {
+            html += `<p style="color:var(--text-tertiary); font-size:0.82rem;">No BH chain data available — re-run Expert Review with Blackhat enabled.</p>`;
+        }
+
+        this.showRightPane('⚔️ Blackhat Cross-Path Analysis', html);
     }
 
     // Build a live critic result card HTML from a critic_result SSE event payload
@@ -6034,14 +6349,21 @@ class Dashboard {
             strengthRows += '<div style="font-size:0.8rem; color:var(--secondary-color); margin-bottom:0.2rem;">✓ ' + s + '</div>';
         }
 
+        const liveReasoning = (data.reasoning || '').trim();
+        const liveReasoningHtml = liveReasoning
+            ? '<div style="margin:0.4rem 0 0.6rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-left:3px solid var(--primary-color); border-radius:5px;">'
+                + '<p style="margin:0; font-size:0.8125rem; color:var(--text-color); line-height:1.5;">' + liveReasoning + '</p>'
+                + '</div>'
+            : '';
         return '<div style="background:var(--card-bg); border:1px solid ' + statusColor + '44; border-left:3px solid ' + statusColor + '; border-radius:8px; padding:0.875rem 1rem; margin-bottom:0.75rem;">'
-            + '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.25rem;">'
+            + '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.25rem; flex-wrap:wrap; gap:0.25rem;">'
             + '<div style="font-weight:700; color:var(--text-color); font-size:0.9375rem;">' + (labels[data.critic] || data.critic) + ' <span style="font-weight:400; font-size:0.8125rem; color:var(--text-tertiary);">' + (roles[data.critic] || '') + '</span></div>'
             + '<div style="display:flex; align-items:center; gap:0.75rem; flex-shrink:0;">'
             + '<span style="font-size:0.8125rem; color:var(--text-secondary);">' + data.score + '/100</span>'
             + '<span style="font-size:0.8125rem; font-weight:600; color:' + adjColor + ';">' + adjLabel + '</span>'
             + '<span style="font-size:0.8rem; font-weight:700; color:' + statusColor + '; background:' + statusColor + '18; border:1px solid ' + statusColor + '44; border-radius:6px; padding:1px 7px;">' + statusText + '</span>'
             + '</div></div>'
+            + liveReasoningHtml
             + (gapRows ? '<div style="margin-bottom:0.4rem;">' + gapRows + moreGaps + '</div>' : '')
             + (strengthRows ? '<div style="border-top:1px solid var(--border-color); padding-top:0.4rem; margin-top:0.4rem;">' + strengthRows + '</div>' : '')
             + '</div>';
