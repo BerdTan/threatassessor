@@ -5,23 +5,27 @@ Architecture:
     Layer 1: Deterministic Expert (Source of Truth)
         └─> ground_truth.json (99.5% confidence)
 
-    Layer 2: Sequential Expert Chain (LLM Validation)
+    Layer 2: Expert Chain (LLM Validation)
         └─> 2A: Architect validates threat model
         └─> 2B: Tester validates MITRE + Architect
         └─> 2C: Red Team validates controls + Tester
+        └─> 2D: Purple Team validates coverage, detection chain, TM/ADR operability
+        └─> 2E: Blackhat cross-path chain analysis (runs last — has all prior context, supreme critic)
 
-    Layer 3: Orchestrator (Consensus & Coherence)
-        └─> 00_executive_dashboard.md (unified report)
+    Layer 3: Orchestrator (Impartial Whitehat Synthesis)
+        └─> Consensus across all 5 critics, KNOWN/UNSURE distinction
+        └─> Three investment tiers: Quick Win / Recommended / Maximum
+        └─> Mode tradeoffs surfaced explicitly
 
 Key Principles:
 1. FAIL FAST: Missing prerequisite = abort (quality over quantity)
-2. SEQUENTIAL: Each expert requires previous outputs
+2. SEQUENTIAL: Each expert receives prior outputs (mode determines depth)
 3. VALIDATION ONLY: LLM experts adjust confidence, not parallel recommendations
 4. SINGLE SCORING: Base 99.5% ± adjustments (not composite scores)
-5. CONSENSUS: Unified recommendations only
+5. CONSENSUS: Orchestrator is impartial — surfaces contradictions, never hides them
+6. BH LAST: Blackhat has the most context (all 4 critics) to find what others missed
 
-Version: 1.0 (Phase 3D foundation)
-Date: 2025-05-17
+Version: 2.0 (Phase 3E — Purple Team + BH pivot-diverge)
 """
 
 import json
@@ -35,6 +39,7 @@ from dataclasses import dataclass, asdict
 from chatbot.modules.agents.critics.architect_critic import EnhancedArchitectCritic
 from chatbot.modules.agents.critics.tester_critic import TesterCritic
 from chatbot.modules.agents.critics.red_teamer_critic import RedTeamerCritic
+from chatbot.modules.agents.critics.purple_teamer_critic import PurpleTeamerCritic
 from chatbot.modules.artifact_extractor import extract_artifacts, ArtifactSet
 from chatbot.modules.agent_framework import CritiqueScore
 from agentic.llm_client import LLMClient
@@ -44,23 +49,30 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Orchestrator system prompt — defines the synthesis role precisely
 # ---------------------------------------------------------------------------
-_ORCHESTRATOR_SYSTEM = """You are the Layer 3 Orchestrator in a Mixture-of-Experts security assessment pipeline.
+_ORCHESTRATOR_SYSTEM = """You are the Layer 3 Orchestrator — the impartial Whitehat — in a Mixture-of-Experts security assessment pipeline.
 
-Your role is SYNTHESIS, not generation. Three expert agents have already reviewed a deterministic threat assessment:
-- Architect (2A): assessed design quality and threat model completeness
-- Tester (2B):    validated MITRE technique mappings and internal consistency
-- Red Team (2C):  assessed exploit difficulty and control bypass feasibility
+Your role is SYNTHESIS, not generation. Up to five expert critics have reviewed a deterministic threat assessment:
+- Architect (2A):     design quality and threat model completeness
+- Tester (2B):        MITRE technique mappings and internal consistency
+- Red Team (2C):      exploit difficulty and control bypass feasibility
+- Purple Team (2E):   coverage gaps, detection chain, TM/ADR operability (may not be present)
+- Blackhat (2D):      cross-path chain exploitation via pivot nodes (may not be present)
 
-Your job is to produce a balanced, grounded final view that the human decision-maker can act on.
+Your job: produce a balanced, transparent, actionable view the human decision-maker can act on.
+You are impartial — you do not favour any single critic. You tap each critic's strength and are
+explicitly wary of their structural blindspots (Architect misses operational gaps, Red Team misses
+coverage completeness, Blackhat misses single-path issues, etc.).
 
 Rules you must follow:
-1. CITE YOUR EVIDENCE — every finding must reference which critic raised it or which field in ground_truth supports it.
-2. DISTINGUISH KNOWN vs UNSURE — if only one critic raised a finding, mark it UNSURE. If all three agree, mark it KNOWN.
-3. NEVER INVENT COSTS — use the Red Team's exploit_mitigation_roadmap cost/effort fields verbatim. If no cost data exists, say "cost not estimated".
-4. CALL OUT CONTRADICTIONS — where critics disagree, surface the contradiction rather than picking a side.
-5. CALL OUT BLINDSPOTS — identify what ALL THREE critics structurally could not see (e.g. a whole threat category with zero controls).
-6. ROI BALANCE — Quick Win = highest security gain per unit effort, lowest user friction. Recommended = balanced security/usability/cost. Max = full coverage including diminishing-return items.
-7. RESIDUAL IS REAL — never claim a tier eliminates risk. State what residual remains and why (misconfiguration, human error, zero-days, implementation drift).
+1. CITE YOUR EVIDENCE — every finding must name which critic raised it or which ground_truth field supports it.
+2. DISTINGUISH KNOWN vs UNSURE — ≥2 critics agree → KNOWN. Single critic → UNSURE unless Red Team exploit data corroborates.
+3. NEVER INVENT COSTS — use Red Team's exploit_mitigation_roadmap cost/effort verbatim. If absent, say "cost not estimated".
+4. CALL OUT CONTRADICTIONS — where critics disagree, surface the contradiction and explain WHY it exists (different lenses). Do not resolve it yourself.
+5. CALL OUT BLINDSPOTS — identify what ALL critics structurally could not see. Name the mode tradeoff if cross-referencing was limited.
+6. ROI BALANCE — Quick Win = highest gain per unit effort, lowest friction. Recommended = balanced. Max = full coverage including diminishing returns.
+7. RESIDUAL IS REAL — never claim any tier eliminates risk. State what residual remains (misconfiguration, human error, zero-days, implementation drift).
+8. IMPROVEMENT TIERS MUST CONNECT — each tier's items must trace back to specific critic findings. No generic recommendations.
+9. MODE TRANSPARENCY — if the run mode limited cross-referencing (parallel/partial-parallel), explicitly note which cross-critic findings are less certain as a result.
 """
 
 
@@ -130,11 +142,20 @@ class MoEResult:
     high_recommendations: List[Dict]      # 1 critic + corroborated (UNSURE)
     review_recommendations: List[Dict]    # 1 critic only (UNSURE)
 
+    # Layer 2D Purple Team (config-gated, optional — must follow non-default fields)
+    purple_team_result: Optional[ValidationResult] = None
+    purple_team_adjustment: float = 0.0
+
+    # Layer 2E Blackhat (config-gated, optional — must follow non-default fields)
+    blackhat_result: Optional[ValidationResult] = None
+    blackhat_adjustment: float = 0.0
+
     # Synthesis extras
-    blindspots: List[Dict] = None         # Gaps all three critics structurally missed
+    blindspots: List[Dict] = None         # Gaps all critics structurally missed
     contradictions: List[Dict] = None     # Where critics disagree — human must decide
     synthesis_quality: str = "UNKNOWN"    # FULL | FALLBACK
     critic_mode: str = "sequential"       # sequential | partial_parallel | parallel (resolved)
+    mode_tradeoffs: List[str] = None      # Plain-English sentences explaining cross-ref limits
 
     # Risk transformation (from deterministic)
     current_risk: int = 0
@@ -151,6 +172,8 @@ class MoEResult:
             self.blindspots = []
         if self.contradictions is None:
             self.contradictions = []
+        if self.mode_tradeoffs is None:
+            self.mode_tradeoffs = []
         if self.quick_wins is None:
             self.quick_wins = {}
         if self.recommended is None:
@@ -160,23 +183,35 @@ class MoEResult:
 
     def to_dict(self) -> Dict:
         """Convert to dictionary."""
+        adjustments = {
+            "architect": self.architect_adjustment,
+            "tester": self.tester_adjustment,
+            "red_team": self.red_team_adjustment,
+        }
+        if self.purple_team_result is not None:
+            adjustments["purple_team"] = self.purple_team_adjustment
+        if self.blackhat_result is not None:
+            adjustments["blackhat"] = self.blackhat_adjustment
+
+        expert_validations = {
+            "architect": self.architect_result.to_dict(),
+            "tester": self.tester_result.to_dict(),
+            "red_team": self.red_team_result.to_dict(),
+        }
+        if self.purple_team_result is not None:
+            expert_validations["purple_team"] = self.purple_team_result.to_dict()
+        if self.blackhat_result is not None:
+            expert_validations["blackhat"] = self.blackhat_result.to_dict()
+
         return {
             "architecture": self.architecture_name,
             "confidence": {
                 "base": self.base_confidence,
-                "adjustments": {
-                    "architect": self.architect_adjustment,
-                    "tester": self.tester_adjustment,
-                    "red_team": self.red_team_adjustment
-                },
+                "adjustments": adjustments,
                 "final": self.final_confidence,
                 "interpretation": self._interpret_confidence()
             },
-            "expert_validations": {
-                "architect": self.architect_result.to_dict(),
-                "tester": self.tester_result.to_dict(),
-                "red_team": self.red_team_result.to_dict()
-            },
+            "expert_validations": expert_validations,
             "consensus_recommendations": {
                 "critical": self.critical_recommendations,
                 "high": self.high_recommendations,
@@ -195,7 +230,8 @@ class MoEResult:
                 "recommended": self.recommended,
                 "maximum": self.maximum
             },
-            "critic_mode": self.critic_mode
+            "critic_mode": self.critic_mode,
+            "mode_tradeoffs": self.mode_tradeoffs,
         }
 
     def _interpret_confidence(self) -> str:
@@ -244,8 +280,9 @@ class MoEOrchestrator:
         self.architect = EnhancedArchitectCritic(model=model)
         self.tester = TesterCritic(model=model)
         self.red_team = RedTeamerCritic(model=model)
+        self.purple_team = PurpleTeamerCritic(model=model)
 
-        logger.info("MoEOrchestrator initialized with 3 validation experts")
+        logger.info("MoEOrchestrator initialized with 4 validation experts (2A/2B/2C/2D) + Blackhat (2E)")
 
     @staticmethod
     def _compute_complexity_score(ground_truth: Dict) -> int:
@@ -268,6 +305,7 @@ class MoEOrchestrator:
         report_dir: str,
         base_confidence: float = None,
         critic_mode: str = None,
+        run_blackhat: Optional[bool] = None,
     ) -> MoEResult:
         """
         Execute full MoE pipeline with fail-fast validation.
@@ -283,6 +321,7 @@ class MoEOrchestrator:
             critic_mode: "sequential" | "parallel" | "auto"
                 - sequential: Architect → Tester(uses arch) → Red Team(uses tester)
                 - parallel:   All three critics run simultaneously (blind, no cross-ref)
+            run_blackhat: Override blackhat.enabled setting. None = use config setting.
                 - auto:       Decides based on architecture complexity score
                               (complexity < 60 → partial parallel; >= 60 → sequential)
 
@@ -354,10 +393,180 @@ class MoEOrchestrator:
         tester_result    = self._process_tester_validation(tester_critique)
         red_team_result  = self._process_red_team_validation(red_team_critique)
 
-        logger.info(f"MoE Pipeline: ✓ Layer 2 complete ({resolved_mode}) — "
+        logger.info(f"MoE Pipeline: ✓ Layer 2A/B/C complete ({resolved_mode}) — "
                     f"Arch={architect_result.validation_status}, "
                     f"Tester={tester_result.validation_status}, "
                     f"RedTeam={red_team_result.validation_status}")
+
+        # Deterministic mode tradeoff strings — surfaced in UI and synthesis
+        mode_tradeoffs: List[str] = self._compute_mode_tradeoffs(resolved_mode, critic_mode)
+
+        # ===== LAYER 2E: PURPLE TEAM (always runs after 2A/B/C) =====
+        purple_team_result: Optional[ValidationResult] = None
+        purple_team_adjustment: float = 0.0
+        purple_team_critique_score = None
+
+        try:
+            logger.info("MoE Pipeline: Layer 2D — Running Purple Team assessment...")
+            pt_path = report_path / "06b_purple_team_critique.json"
+            saved_pt = self._load_saved_critique(pt_path)
+            if saved_pt:
+                logger.info("MoE Pipeline: Layer 2D — Loading saved Purple Team critique (resume)")
+                purple_team_critique_score = saved_pt
+            else:
+                purple_team_critique_score = self.purple_team.critique(
+                    artifacts, ground_truth,
+                    architect_critique=architect_critique,
+                    tester_critique=tester_critique,
+                    red_team_critique=red_team_critique,
+                )
+                self._save_validation(purple_team_critique_score, pt_path)
+
+            pt_score = purple_team_critique_score.score
+            # PT scoring is FORWARD (high = good), convert to adjustment:
+            # score 90-100 → 0%, 75-89 → -0.01, 60-74 → -0.02, <60 → -0.04
+            if pt_score >= 90:
+                pt_adj = 0.0
+            elif pt_score >= 75:
+                pt_adj = -0.01
+            elif pt_score >= 60:
+                pt_adj = -0.02
+            else:
+                pt_adj = -0.04
+
+            try:
+                from chatbot.config.settings import get_settings as _gs_pt
+                _moe_pt = _gs_pt().moe
+                pt_status = (
+                    "PASS" if pt_score >= 90 else
+                    "MINOR_GAPS" if pt_score >= 75 else
+                    "NEEDS_REVIEW" if pt_score >= 60 else
+                    "MAJOR_GAPS"
+                )
+            except Exception:
+                pt_status = "PASS" if pt_score >= 75 else "NEEDS_REVIEW"
+
+            purple_team_result = ValidationResult(
+                expert_name="PurpleTeam",
+                validation_status=pt_status,
+                confidence_adjustment=pt_adj,
+                gaps=purple_team_critique_score.gaps,
+                strengths=purple_team_critique_score.strengths,
+                recommendations=[],
+                original_score=pt_score,
+                breakdown=purple_team_critique_score.breakdown or {},
+            )
+            purple_team_adjustment = pt_adj
+
+            # Embed summary into ground_truth for downstream use
+            pt_bd = purple_team_critique_score.breakdown or {}
+            ground_truth["purple_team_critique"] = {
+                "score": pt_score,
+                "rating": purple_team_critique_score.rating,
+                "coverage_gaps": pt_bd.get("coverage_gaps", []),
+                "detection_blindspots": pt_bd.get("detection_blindspots", []),
+                "adr_coherence_failures": pt_bd.get("adr_coherence_failures", []),
+                "summary_counts": pt_bd.get("summary_counts", {}),
+            }
+            with open(gt_path, "w") as f:
+                json.dump(ground_truth, f, indent=2)
+
+            if self.progress_callback:
+                self.progress_callback("purple_team", purple_team_result)
+
+            logger.info(f"MoE Pipeline: ✓ Layer 2D complete — score={pt_score}, adj={pt_adj*100:.1f}%")
+
+        except Exception as exc:
+            logger.warning(f"MoE Pipeline: Layer 2D skipped due to error: {exc}")
+
+        # ===== LAYER 2D: BLACKHAT (runs last — has all prior context) =====
+        blackhat_result: Optional[ValidationResult] = None
+        blackhat_adjustment: float = 0.0
+
+        if run_blackhat is not None:
+            _bh_enabled = run_blackhat
+        else:
+            try:
+                from chatbot.config.settings import get_settings as _gs_bh
+                _bh_enabled = _gs_bh().blackhat.enabled
+            except Exception:
+                _bh_enabled = False
+
+        if _bh_enabled:
+            logger.info("MoE Pipeline: Layer 2E — Running Blackhat (has all prior critic context — supreme critic)...")
+            try:
+                from chatbot.modules.agents.critics.blackhat_critic import BlackhatCritic
+                blackhat_critic = BlackhatCritic(model=self.model)
+                blackhat_critique_score = blackhat_critic.critique(
+                    artifacts, ground_truth,
+                    red_team_critique=red_team_critique,
+                    purple_team_critique=purple_team_critique_score,
+                )
+
+                bh_score = blackhat_critique_score.score
+                # BH is INVERTED: high score = bad. Thresholds: ≤30 PASS, ≤60 MINOR, >60 MAJOR
+                if bh_score <= 30:
+                    bh_adj = 0.0
+                    bh_status = "PASS"
+                elif bh_score <= 60:
+                    bh_adj = -0.03
+                    bh_status = "MINOR_GAPS"
+                else:
+                    bh_adj = -0.05
+                    bh_status = "MAJOR_GAPS"
+
+                blackhat_result = ValidationResult(
+                    expert_name="Blackhat",
+                    validation_status=bh_status,
+                    confidence_adjustment=bh_adj,
+                    gaps=blackhat_critique_score.gaps,
+                    strengths=blackhat_critique_score.strengths,
+                    recommendations=[],
+                    original_score=bh_score,
+                    breakdown=blackhat_critique_score.breakdown or {},
+                )
+                blackhat_adjustment = bh_adj
+
+                # Embed into ground_truth for downstream report generators
+                ground_truth["blackhat_critique"] = {
+                    "score": bh_score,
+                    "rating": blackhat_critique_score.rating,
+                    "shared_nodes": blackhat_critique_score.breakdown.get("shared_nodes", {}),
+                    "chained_exploit_findings": blackhat_critique_score.breakdown.get("chained_exploit_findings", []),
+                    "pivot_diverge_chains": blackhat_critique_score.breakdown.get("pivot_diverge_chains", []),
+                    "stealth_score": blackhat_critique_score.breakdown.get("stealth_score", 0),
+                    "stealthy_techniques": blackhat_critique_score.breakdown.get("stealthy_techniques", []),
+                    "least_resistance_paths": blackhat_critique_score.breakdown.get("least_resistance_paths", []),
+                    "mitigation_gaps_for_chains": blackhat_critique_score.breakdown.get("mitigation_gaps_for_chains", []),
+                    "uniqueness_vs_critics": blackhat_critique_score.breakdown.get("uniqueness_vs_critics", {}),
+                }
+
+                # Save 06c_blackhat_critique.json
+                bh_path = report_path / "06c_blackhat_critique.json"
+                with open(bh_path, "w") as f:
+                    json.dump(blackhat_critique_score.to_dict(), f, indent=2)
+
+                # Persist blackhat_critique back into ground_truth.json so diagram
+                # generators and future runs can read it without re-running BH
+                with open(gt_path, "w") as f:
+                    json.dump(ground_truth, f, indent=2)
+
+                logger.info(f"MoE Pipeline: ✓ Layer 2E complete — score={bh_score}, adj={bh_adj*100:.1f}%")
+
+                # Generate after_bh.mmd — cross-path chain overlay on after.mmd
+                try:
+                    from chatbot.modules.bh_diagram_generator import generate_bh_diagram
+                    bh_diag = generate_bh_diagram(str(report_path))
+                    if bh_diag:
+                        logger.info(f"MoE Pipeline: ✓ Generated BH chain diagram: {bh_diag}")
+                except Exception as diag_exc:
+                    logger.warning(f"MoE Pipeline: BH diagram generation failed: {diag_exc}")
+
+                if self.progress_callback:
+                    self.progress_callback("blackhat", blackhat_result)
+
+            except Exception as exc:
+                logger.warning(f"MoE Pipeline: Layer 2E skipped due to error: {exc}")
 
         # ===== LAYER 3: CONSENSUS SYNTHESIS =====
         logger.info("MoE Pipeline: Layer 3 - Synthesizing consensus...")
@@ -365,12 +574,14 @@ class MoEOrchestrator:
         if self.progress_callback:
             self.progress_callback("synthesis:confidence", None)
 
-        # Calculate final confidence
+        # Calculate final confidence (PT adjustment included)
         final_confidence = self._calculate_final_confidence(
             base_confidence,
             architect_result,
             tester_result,
-            red_team_result
+            red_team_result,
+            blackhat_result,
+            purple_team_result=purple_team_result,
         )
 
         logger.info(f"MoE Pipeline: Final confidence = {final_confidence:.1f}%")
@@ -378,8 +589,7 @@ class MoEOrchestrator:
         if self.progress_callback:
             self.progress_callback("synthesis:llm", None)
 
-        # Synthesize consensus recommendations (LLM call — passes raw CritiqueScore
-        # objects so the synthesiser can read Red Team's exploit_mitigation_roadmap)
+        # Synthesize consensus — all 5 critics passed, orchestrator uses what's available
         consensus = self._synthesize_consensus(
             ground_truth,
             architect_result,
@@ -388,6 +598,10 @@ class MoEOrchestrator:
             architect_raw=architect_critique,
             tester_raw=tester_critique,
             red_team_raw=red_team_critique,
+            purple_team_result=purple_team_result,
+            purple_team_raw=purple_team_critique_score,
+            blackhat_result=blackhat_result,
+            mode_tradeoffs=mode_tradeoffs,
         )
 
         if self.progress_callback:
@@ -409,10 +623,14 @@ class MoEOrchestrator:
             architect_adjustment=architect_result.confidence_adjustment,
             tester_adjustment=tester_result.confidence_adjustment,
             red_team_adjustment=red_team_result.confidence_adjustment,
+            purple_team_adjustment=purple_team_adjustment,
+            blackhat_adjustment=blackhat_adjustment,
             final_confidence=final_confidence,
             architect_result=architect_result,
             tester_result=tester_result,
             red_team_result=red_team_result,
+            purple_team_result=purple_team_result,
+            blackhat_result=blackhat_result,
             critical_recommendations=consensus["critical"],
             high_recommendations=consensus["high"],
             review_recommendations=consensus["review"],
@@ -420,6 +638,7 @@ class MoEOrchestrator:
             contradictions=consensus.get("contradictions", []),
             synthesis_quality=consensus.get("synthesis_quality", "UNKNOWN"),
             critic_mode=resolved_mode,
+            mode_tradeoffs=mode_tradeoffs,
             current_risk=risk_data["current"],
             target_risk=risk_data["target"],
             risk_reduction=risk_data["reduction"],
@@ -863,24 +1082,58 @@ class MoEOrchestrator:
         base: float,
         architect: ValidationResult,
         tester: ValidationResult,
-        red_team: ValidationResult
+        red_team: ValidationResult,
+        blackhat: Optional[ValidationResult] = None,
+        purple_team_result: Optional[ValidationResult] = None,
     ) -> float:
         """
-        Calculate final confidence with adjustments.
+        Calculate final confidence with adjustments from all critics.
 
-        Formula: Base × (1 + architect_adj) × (1 + tester_adj) × (1 + red_team_adj)
-
+        Formula: Base × (1 + arch_adj) × (1 + tester_adj) × (1 + rt_adj) × (1 + pt_adj) × (1 + bh_adj)
         Capped at 100%, floored at 50%.
         """
         final = base
         final = final * (1 + architect.confidence_adjustment)
         final = final * (1 + tester.confidence_adjustment)
         final = final * (1 + red_team.confidence_adjustment)
+        if purple_team_result is not None:
+            final = final * (1 + purple_team_result.confidence_adjustment)
+        if blackhat is not None:
+            final = final * (1 + blackhat.confidence_adjustment)
+        return max(50.0, min(100.0, final))
 
-        # Cap and floor
-        final = max(50.0, min(100.0, final))
-
-        return final
+    @staticmethod
+    def _compute_mode_tradeoffs(resolved_mode: str, requested_mode: str) -> List[str]:
+        """
+        Return deterministic plain-English sentences explaining what cross-referencing
+        was sacrificed in the chosen mode. Shown in UI and passed to synthesis.
+        """
+        tradeoffs = []
+        if resolved_mode == "parallel":
+            tradeoffs = [
+                "Parallel mode: all three critics ran independently without seeing each other's findings.",
+                "Tester did not receive the Architect's roadmap — MITRE mapping gaps may overlap with design gaps.",
+                "Red Team did not adjust for Tester's invalid technique flags — exploit difficulty may be over- or under-stated.",
+                "Purple Team used all three critic outputs but cross-referencing is weaker than sequential mode.",
+                "Findings marked KNOWN require extra scrutiny — independent agreement is less rigorous when critics had no shared context.",
+            ]
+        elif resolved_mode == "partial_parallel":
+            tradeoffs = [
+                "Partial-parallel mode: Architect and Red Team ran concurrently (Red Team had no Tester context at LLM time).",
+                "Red Team's score was post-hoc adjusted for Tester gaps numerically, but the LLM reasoning did not incorporate them.",
+                "Some Red Team gap descriptions may not reference Tester's specific MITRE mapping concerns.",
+                "Purple Team and Blackhat received all prior outputs and ran sequentially — their findings are fully cross-referenced.",
+            ]
+        else:
+            tradeoffs = [
+                "Sequential mode: each critic received prior outputs — full cross-referencing enabled.",
+                "Confidence adjustments are most reliable in this mode.",
+            ]
+        if requested_mode == "auto":
+            tradeoffs.append(
+                f"Auto mode selected '{resolved_mode}' based on architecture complexity score."
+            )
+        return tradeoffs
 
     def _synthesize_consensus(
         self,
@@ -891,6 +1144,10 @@ class MoEOrchestrator:
         architect_raw: Optional[CritiqueScore] = None,
         tester_raw: Optional[CritiqueScore] = None,
         red_team_raw: Optional[CritiqueScore] = None,
+        purple_team_result: Optional[ValidationResult] = None,
+        purple_team_raw: Optional[CritiqueScore] = None,
+        blackhat_result: Optional[ValidationResult] = None,
+        mode_tradeoffs: Optional[List[str]] = None,
     ) -> Dict:
         """
         LLM synthesis: cross-validate all three critic outputs and produce grounded
@@ -901,31 +1158,64 @@ class MoEOrchestrator:
         """
         synthesis = self._llm_synthesize(
             ground_truth, architect, tester, red_team,
-            architect_raw, tester_raw, red_team_raw
+            architect_raw, tester_raw, red_team_raw,
+            purple_team_result=purple_team_result,
+            purple_team_raw=purple_team_raw,
+            blackhat_result=blackhat_result,
+            mode_tradeoffs=mode_tradeoffs or [],
         )
         if synthesis:
-            # Second pass: self-reflect on any contradictions found
             if synthesis.get("contradictions"):
                 synthesis["contradictions"] = self._reflect_contradictions(
                     synthesis["contradictions"],
-                    architect, tester, red_team
+                    architect, tester, red_team,
+                    purple_team_result=purple_team_result,
+                    blackhat_result=blackhat_result,
                 )
             return synthesis
 
         # ---- fallback: union of all gaps, no consensus scoring ----
         logger.warning("Orchestrator: LLM synthesis failed — using gap-union fallback")
-        all_gaps = architect.gaps + tester.gaps + red_team.gaps
+
+        # PT gaps are high-confidence when coverage or detection blindspots are present
+        pt_has_coverage_gaps = bool(
+            purple_team_result
+            and purple_team_result.raw_data
+            and (
+                purple_team_result.raw_data.get("coverage_gaps")
+                or purple_team_result.raw_data.get("detection_blindspots")
+            )
+        )
+        # BH pivot-diverge chains are cross-path facts — mark KNOWN if present
+        bh_has_pivots = bool(
+            blackhat_result
+            and blackhat_result.raw_data
+            and blackhat_result.raw_data.get("pivot_diverge_chains")
+        )
+
+        pt_gap_set = set(str(g.get("description", ""))[:80] for g in (purple_team_result.gaps if purple_team_result else []))
+        bh_gap_set = set(str(g.get("description", ""))[:80] for g in (blackhat_result.gaps if blackhat_result else []))
+
+        all_gaps = (
+            architect.gaps + tester.gaps + red_team.gaps
+            + (purple_team_result.gaps if purple_team_result else [])
+            + (blackhat_result.gaps if blackhat_result else [])
+        )
         seen, deduped = set(), []
         for g in all_gaps:
             key = g.get("description", "")[:80]
             if key not in seen:
                 seen.add(key)
+                # Determine confidence: PT coverage/detection findings and BH pivot chains are KNOWN
+                is_pt_finding = key in pt_gap_set and pt_has_coverage_gaps
+                is_bh_finding = key in bh_gap_set and bh_has_pivots
+                label = "KNOWN" if (is_pt_finding or is_bh_finding) else "UNSURE"
                 deduped.append({
                     "description": g.get("description", ""),
                     "category": g.get("category", ""),
                     "severity": g.get("severity", "MEDIUM"),
                     "source": "fallback-union",
-                    "confidence_label": "UNSURE",
+                    "confidence_label": label,
                 })
         return {
             "critical": [],
@@ -946,6 +1236,10 @@ class MoEOrchestrator:
         architect_raw: Optional[CritiqueScore],
         tester_raw: Optional[CritiqueScore],
         red_team_raw: Optional[CritiqueScore],
+        purple_team_result: Optional[ValidationResult] = None,
+        purple_team_raw: Optional[CritiqueScore] = None,
+        blackhat_result: Optional[ValidationResult] = None,
+        mode_tradeoffs: Optional[List[str]] = None,
     ) -> Optional[Dict]:
         """
         Single LLM call that reads all three critic outputs and produces the
@@ -983,9 +1277,72 @@ class MoEOrchestrator:
             all_critic_text = (
                 json.dumps(architect.gaps) + json.dumps(architect.recommendations or []) +
                 json.dumps(tester.gaps) + json.dumps(tester.recommendations or []) +
-                json.dumps(red_team.gaps) + json.dumps(red_team.recommendations or [])
+                json.dumps(red_team.gaps) + json.dumps(red_team.recommendations or []) +
+                (json.dumps(purple_team_result.gaps) if purple_team_result else "") +
+                (json.dumps(blackhat_result.gaps) if blackhat_result else "")
             )
             tech_grounding_block = self._resolve_technique_ids(all_critic_text)
+
+            # Purple Team and Blackhat optional blocks
+            pt_block = ""
+            if purple_team_result:
+                pt_bd = purple_team_result.breakdown or {}
+                pt_counts = pt_bd.get("summary_counts", {})
+                pt_block = f"""
+{'═'*59}
+PURPLE TEAM OUTPUT  (Layer 2D — Detection Depth, Coverage Gaps, ADR Operability)
+Score: {purple_team_result.original_score}/100  |  Status: {purple_team_result.validation_status}
+Coverage gaps (unmapped techniques): {pt_counts.get('coverage_gaps', 0)}
+Detection blindspots (high-value paths, no SOC visibility): {pt_counts.get('detection_blindspots', 0)}
+ADR coherence failures (controls that don't close the gap): {pt_counts.get('adr_coherence_failures', 0)}
+Gaps:
+{_gap_list(purple_team_result)}
+"""
+            bh_block = ""
+            if blackhat_result:
+                bh_bd = blackhat_result.breakdown or {}
+                pivot_count = len(bh_bd.get("pivot_diverge_chains", []))
+                seq_count = len(bh_bd.get("chained_exploit_findings", []))
+                bh_block = f"""
+{'═'*59}
+BLACKHAT OUTPUT  (Layer 2E — Cross-Path Chain Exploitation — Supreme Critic)
+Score: {blackhat_result.original_score}/100 (INVERTED: high = bad)  |  Status: {blackhat_result.validation_status}
+Sequential chains (AP-i target → AP-j mid-node): {seq_count}
+Pivot-diverge chains (shared node fans to multiple targets): {pivot_count}
+Gaps:
+{_gap_list(blackhat_result)}
+"""
+            tradeoff_block = ""
+            if mode_tradeoffs:
+                tradeoff_block = f"""
+{'═'*59}
+MODE TRADEOFFS (explain these in your mode_transparency field)
+{chr(10).join('- ' + t for t in mode_tradeoffs)}
+"""
+
+            # Build deterministic validation checks block — surface new Check 7/8 results
+            val_report = ground_truth.get("validation_report", {})
+            val_checks = val_report.get("checks", {})
+            det_analytics = val_checks.get("detection_analytics", {})
+            ext_deps = val_checks.get("external_dependencies", {})
+            val_issues = val_report.get("issues", [])
+            # Collect messages for check 7 and 8 specifically
+            det_issues = [i["message"] for i in val_issues if i.get("check") == "detection_analytics"]
+            ext_issues = [i["message"] for i in val_issues if i.get("check") == "external_dependencies"]
+            deterministic_block = ""
+            if det_issues or ext_issues:
+                lines = []
+                for msg in det_issues:
+                    lines.append(f"  [DETECTION_ANALYTICS — DETERMINISTIC KNOWN] {msg}")
+                for msg in ext_issues:
+                    lines.append(f"  [EXTERNAL_DEPS — DETERMINISTIC KNOWN] {msg}")
+                deterministic_block = f"""
+{'═'*59}
+DETERMINISTIC ENGINE FLAGS (treat as KNOWN — not single-critic opinion)
+These issues were flagged by the deterministic completeness validator before any LLM ran.
+They are structural facts about the architecture, not critic opinions:
+{chr(10).join(lines)}
+"""
 
             prompt = f"""
 You are synthesising a security assessment for architecture: "{arch_name}"
@@ -1015,11 +1372,14 @@ Gaps (exploit feasibility):
 {_gap_list(red_team)}
 Exploit Mitigation Roadmap (use these cost/effort fields verbatim — do not invent):
 {rt_roadmap_json}
-
+{pt_block}{bh_block}{deterministic_block}{tradeoff_block}
 {'═'*59}
 {tech_grounding_block if tech_grounding_block else ''}
 ═══════════════════════════════════════════════════════════
 YOUR SYNTHESIS TASK
+
+You are the impartial Whitehat orchestrator. Tap each critic's strength; be wary of their blindspots.
+Each improvement tier MUST trace its items to specific critic findings — no generic recommendations.
 
 Produce a JSON object with EXACTLY this structure:
 
@@ -1027,10 +1387,10 @@ Produce a JSON object with EXACTLY this structure:
 {{
   "critical": [
     {{
-      "description": "...",
+      "description": "plain English — what is wrong and why it matters operationally",
       "category": "...",
       "severity": "CRITICAL|HIGH",
-      "source": "which critics raised this (e.g. architect+tester)",
+      "source": "which critics raised this (e.g. architect+purple_team)",
       "confidence_label": "KNOWN",
       "evidence": "cite the specific gap/field that supports this"
     }}
@@ -1039,23 +1399,24 @@ Produce a JSON object with EXACTLY this structure:
   "review": [ /* same shape, confidence_label UNSURE — single-critic findings */ ],
   "blindspots": [
     {{
-      "description": "gap that ALL THREE critics structurally missed",
-      "why_missed": "reason (e.g. rubric scope, single-lens focus)",
+      "description": "gap that ALL critics structurally missed",
+      "why_missed": "reason (e.g. rubric scope, single-lens focus, mode tradeoff)",
       "recommendation": "what the human should investigate"
     }}
   ],
   "contradictions": [
     {{
       "topic": "...",
-      "architect_view": "...",
-      "tester_or_redteam_view": "...",
+      "critic_a_view": "...",
+      "critic_b_view": "...",
+      "why_it_differs": "explain the lens difference — do not resolve",
       "resolution": "UNSURE — human review needed"
     }}
   ],
   "improvement_tiers": {{
     "quick_win": {{
       "rationale": "highest security gain per unit effort, lowest user friction",
-      "items": ["..."],
+      "items": ["control name — traces to: critic X finding Y"],
       "effort": "use Red Team roadmap effort field verbatim, or state 'not estimated'",
       "cost": "use Red Team roadmap cost field verbatim, or state 'cost not estimated'",
       "risk_reduction": "estimated score change (e.g. {rt['current']} → X)",
@@ -1064,7 +1425,7 @@ Produce a JSON object with EXACTLY this structure:
     }},
     "recommended": {{
       "rationale": "balanced security / usability / cost — realistic for most teams",
-      "items": ["..."],
+      "items": ["control — traces to: critic X finding Y"],
       "effort": "...",
       "cost": "...",
       "risk_reduction": "...",
@@ -1082,17 +1443,29 @@ Produce a JSON object with EXACTLY this structure:
     }}
   }},
   "confidence_commentary": "1-2 sentences: what the cross-expert agreement pattern means for confidence in this assessment",
+  "mode_transparency": "1-2 sentences explaining which critics ran, which did not, and what gaps this creates in the synthesis — reference the mode tradeoffs listed above",
   "synthesis_quality": "FULL"
 }}
 ```
 
 RULES:
 - critical = findings ≥2 critics independently raised (mark KNOWN)
-- high = single-critic findings that Red Team exploit data corroborates (mark UNSURE if not corroborated)
+- high = single-critic findings that Red Team or Blackhat exploit data corroborates (mark UNSURE if not corroborated)
 - review = single-critic, not corroborated elsewhere (mark UNSURE)
+- Purple Team findings about uncovered techniques or detection blindspots are high-confidence — treat as KNOWN if coverage_gap count > 0 or detection_blindspot count > 0
+- Blackhat pivot-diverge chains are KNOWN if pivot_count > 0 — they reveal cross-path risk that single-AP critics cannot see
+- DETERMINISTIC ESCALATION — the following are KNOWN regardless of critic count because the deterministic engine flagged them:
+  * If validation_report.checks.detection_analytics.issues > 0: T1005/T1213 paths lack behavioral analytics — mark KNOWN, not UNSURE
+  * If validation_report.checks.detection_analytics mentions API Gateway placement unclear: mark KNOWN
+  * If validation_report.checks.external_dependencies.issues > 0: supply chain risk or BCP gap — mark KNOWN
+- STRUCTURAL BLINDSPOTS — all critic lenses have these systematic gaps; always include them in blindspots[] if not addressed by controls:
+  * Supply chain / third-party: all critics focus on internal architecture nodes; vendor risk and external dependencies are outside every critic's rubric
+  * Business continuity / DR impact: security-focused lenses do not evaluate operational resilience or availability impact of security controls
+  * API Gateway placement: critics cannot determine which attack path hops a gateway defends unless nodes appear explicitly in the path — unclear placement should always be flagged
 - Never invent cost figures. Quote Red Team roadmap fields exactly or say "cost not estimated".
 - Residual must always be non-empty — controls reduce risk, they do not eliminate it.
 - If critics contradict each other, put it in contradictions, do NOT resolve it yourself.
+- improvement_tiers items MUST trace back to a specific critic finding or deterministic check — never write a generic control not mentioned by at least one critic or validator.
 - **TECHNIQUE ID VALIDATION**: Before flagging a disagreement about whether a technique ID exists, verify it against the MITRE reference block below. A technique ID that appears in that block is VALID — do NOT generate a contradiction claiming it doesn't exist. Only flag DATA_REFERENCE_ERROR if an ID is genuinely absent from that block.
 """
 
@@ -1167,12 +1540,13 @@ RULES:
         architect: "ValidationResult",
         tester: "ValidationResult",
         red_team: "ValidationResult",
+        purple_team_result: Optional["ValidationResult"] = None,
+        blackhat_result: Optional["ValidationResult"] = None,
     ) -> List[Dict]:
         """
         Second-pass LLM call: for each contradiction, ask WHY the critics disagree.
-        Possible causes: different scope, stale data reference, JSON field mismatch,
-        assessment incomplete.  Returns the enriched contradiction list; falls back
-        to the original list if the call fails.
+        Includes PT and BH context so their findings can participate in resolution.
+        Falls back to the original list if the call fails.
         """
         try:
             items_json = json.dumps(contradictions, indent=2)
@@ -1180,11 +1554,25 @@ RULES:
             # the authoritative MITRE database so the LLM cannot confuse labels
             tech_grounding = self._resolve_technique_ids(items_json)
 
-            prompt = f"""You are a quality-control reviewer for a multi-expert security assessment.
+            # Build supplementary PT/BH context snippets
+            pt_context = ""
+            if purple_team_result:
+                pt_gaps = [g.get("description", "") for g in purple_team_result.gaps[:5]]
+                if pt_gaps:
+                    pt_context = "\nPURPLE TEAM (Layer 2D) flagged these detection/coverage gaps:\n" + "\n".join(f"  - {g}" for g in pt_gaps)
 
-The three expert critics disagreed on the following topics:
+            bh_context = ""
+            if blackhat_result:
+                bh_gaps = [g.get("description", "") for g in blackhat_result.gaps[:5]]
+                if bh_gaps:
+                    bh_context = "\nBLACKHAT (Layer 2E) flagged these cross-path chain risks:\n" + "\n".join(f"  - {g}" for g in bh_gaps)
+
+            prompt = f"""You are a quality-control reviewer for a multi-expert security assessment (5 critics: Architect 2A, Tester 2B, Red Team 2C, Purple Team 2D, Blackhat 2E).
+
+The critics disagreed on the following topics:
 
 {items_json}
+{pt_context}{bh_context}
 {f'''
 IMPORTANT — VERIFIED TECHNIQUE NAMES (authoritative reference):
 {tech_grounding}
@@ -1198,16 +1586,18 @@ For each contradiction, diagnose WHY the disagreement exists.  Consider:
 2. Critic hallucination — a critic incorrectly described or denied a technique ID whose official name contradicts what they claimed
 3. Assessment confidence — one critic may have guessed while the other had direct evidence
 4. Genuine expert disagreement — both are right from different attack angles
+5. PT/BH corroboration — if Purple Team or Blackhat findings above support one side of the contradiction, note that
 
 Return a JSON array with the SAME length and order as the input, each item having:
 {{
   "topic": "<same as input>",
   "architect_view": "<same as input>",
   "tester_or_redteam_view": "<same as input>",
-  "resolution": "<original resolution>",
+  "resolution": "<original resolution or updated if PT/BH corroborates one side>",
   "disagreement_root_cause": "SCOPE_MISMATCH | DATA_REFERENCE_ERROR | CRITIC_HALLUCINATION | CONFIDENCE_DIFFERENCE | GENUINE_DISAGREEMENT",
   "root_cause_explanation": "1-2 sentences explaining specifically why these critics see it differently. If a technique ID is verified VALID above but a critic claimed it doesn't exist, state that the critic hallucinated an incorrect name/description for a real technique.",
-  "human_action": "what a human reviewer should do to resolve this (e.g. check field X, run test Y)"
+  "human_action": "what a human reviewer should do to resolve this (e.g. check field X, run test Y)",
+  "pt_bh_corroboration": "which side (if any) Purple Team or Blackhat findings support, or 'none'"
 }}
 
 Reply with only the JSON array, no other text.
@@ -1383,6 +1773,7 @@ def run_moe_pipeline(
     base_confidence: float = 99.5,
     progress_callback=None,
     critic_mode: str = "sequential",
+    run_blackhat: Optional[bool] = None,
 ) -> MoEResult:
     """
     Convenience function to run full MoE pipeline.
@@ -1393,6 +1784,7 @@ def run_moe_pipeline(
         progress_callback: Optional callable(stage: str, result: ValidationResult)
             called immediately after each critic finishes.  Must be non-blocking.
         critic_mode: "sequential" | "parallel" | "auto" (see MoEOrchestrator.run_pipeline)
+        run_blackhat: Override blackhat.enabled setting. None = use config setting.
 
     Returns:
         MoEResult with unified assessment
@@ -1405,7 +1797,7 @@ def run_moe_pipeline(
         >>> print(f"Final confidence: {result.final_confidence:.1f}%")
     """
     orchestrator = MoEOrchestrator(progress_callback=progress_callback)
-    return orchestrator.run_pipeline(report_dir, base_confidence, critic_mode=critic_mode)
+    return orchestrator.run_pipeline(report_dir, base_confidence, critic_mode=critic_mode, run_blackhat=run_blackhat)
 
 
 # ============================================================================

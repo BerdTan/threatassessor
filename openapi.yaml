@@ -258,6 +258,25 @@ paths:
           description: Architecture name (must match an existing analysis in report/)
           title: Architecture Name
         description: Architecture name (must match an existing analysis in report/)
+      - name: critic_mode
+        in: query
+        required: false
+        schema:
+          type: string
+          default: sequential
+          enum: [sequential, parallel, auto]
+          description: "Critic execution mode: sequential | parallel | auto"
+          title: Critic Mode
+        description: "Critic execution mode: sequential (default) | parallel | auto"
+      - name: run_blackhat
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+          description: Enable Blackhat Layer 2D critic (cross-path chain analysis). Overrides blackhat.enabled config.
+          title: Run Blackhat
+        description: Enable Blackhat Layer 2D critic (cross-path chain analysis). Overrides blackhat.enabled config.
       - name: TM-API-KEY
         in: header
         required: true
@@ -268,7 +287,51 @@ paths:
         description: ThreatAssessor API key for authentication
       responses:
         '200':
-          description: Successful Response
+          description: "SSE stream of expert review progress and results"
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: "Server-Sent Events stream. Events: progress, critic_result, complete, error"
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/expert-review/cancel:
+    delete:
+      tags:
+      - streaming
+      summary: Cancel Expert Review
+      description: "Cancel a running expert review and purge intermediate files for a given architecture."
+      operationId: cancel_expert_review_api_v1_expert_review_cancel_delete
+      parameters:
+      - name: architecture_name
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+        description: Architecture name to cancel and purge
+      - name: TM-API-KEY
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Cancellation acknowledged
           content:
             application/json:
               schema: {}
@@ -280,6 +343,59 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - ApiKeyAuth: []
+  /api/v1/config:
+    get:
+      tags:
+      - config
+      summary: Get Configuration
+      description: "Return current ThreatAssessor configuration (all settings groups)."
+      operationId: get_config_api_v1_config_get
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      responses:
+        '200':
+          description: Current configuration
+          content:
+            application/json:
+              schema: {}
+    put:
+      tags:
+      - config
+      summary: Update Configuration
+      description: "Update ThreatAssessor configuration. Accepts a partial or full settings payload."
+      operationId: update_config_api_v1_config_put
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Partial or full settings payload
+      responses:
+        '200':
+          description: Updated configuration
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+    post:
+      tags:
+      - config
+      summary: Reset Configuration
+      description: "Reset ThreatAssessor configuration to defaults."
+      operationId: reset_config_api_v1_config_post
+      responses:
+        '200':
+          description: Reset configuration
+          content:
+            application/json:
+              schema: {}
   /api/v1/reports:
     get:
       tags:
@@ -305,6 +421,42 @@ paths:
       tags:
       - reports
       summary: List Reports
+    delete:
+      tags:
+      - reports
+      summary: Delete Architecture Reports
+      description: "Delete all report files for an architecture (removes the report directory)."
+      operationId: delete_architecture_api_v1_reports__architecture_name__delete
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: TM-API-KEY
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Tm-Api-Key
+      responses:
+        '200':
+          description: Deletion acknowledged
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Architecture not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+
       description: "List all report files for a specific architecture.\n\nArgs:\n\
         \    architecture_name: Architecture directory name\n\nReturns:\n    List\
         \ of report files with metadata\n\nExample:\n    ```json\n    {\n      \"\
@@ -380,7 +532,7 @@ paths:
       description: "Get a quick summary of available reports for an architecture.\n\
         \nReturns metadata without file contents (faster than listing all files).\n\
         \nArgs:\n    architecture_name: Architecture directory name\n\nReturns:\n\
-        \    Summary with file counts and types"
+        \    Summary with file counts, types, has_moe, has_blackhat flags."
       operationId: get_report_summary_api_v1_reports__architecture_name__summary_get
       parameters:
       - name: architecture_name
@@ -394,7 +546,19 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                type: object
+                properties:
+                  architecture:
+                    type: string
+                  file_count:
+                    type: integer
+                  has_moe:
+                    type: boolean
+                    description: Whether MoE expert review has been run
+                  has_blackhat:
+                    type: boolean
+                    description: Whether Blackhat Layer 2D critic has been run
         '422':
           description: Validation Error
           content:
@@ -432,6 +596,96 @@ paths:
           content:
             application/json:
               schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/ground-truth:
+    get:
+      tags:
+      - reports
+      summary: Get Ground Truth
+      description: "Return the raw ground_truth.json for an architecture. Includes all threat paths, attack paths, MoE results, and blackhat critique if available."
+      operationId: get_ground_truth_api_v1_reports__architecture_name__ground_truth_get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      responses:
+        '200':
+          description: ground_truth.json contents
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Architecture or ground_truth.json not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/moe:
+    get:
+      tags:
+      - reports
+      summary: Get MoE Results
+      description: "Return the MoE orchestrator result for an architecture (from ground_truth.moe_orchestrator). Requires expert review to have been run."
+      operationId: get_moe_results_api_v1_reports__architecture_name__moe_get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      responses:
+        '200':
+          description: MoE result object
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Architecture not found or MoE not yet run
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/blackhat:
+    get:
+      tags:
+      - reports
+      summary: Get Blackhat Critique
+      description: "Return the blackhat critique for an architecture (from ground_truth.blackhat_critique). Requires expert review with run_blackhat=true."
+      operationId: get_blackhat_critique_api_v1_reports__architecture_name__blackhat_get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      responses:
+        '200':
+          description: Blackhat critique object
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Architecture not found or Blackhat not yet run
         '422':
           description: Validation Error
           content:

@@ -1766,15 +1766,28 @@ def generate_adr_report(ground_truth: Dict) -> str:
             node_techs = hop.get("node_techniques", [])
             controls = hop.get("controls", [])
             gap_note = hop.get("gap_note")
+            gap_type = hop.get("gap_type")
 
             tech_str = ", ".join(node_techs[:4]) if node_techs else "no techniques mapped"
             out.append(f"#### `{node}` — techniques: {tech_str}\n")
 
             if gap_note:
-                out.append(f"> ⚠️ **{gap_note}**\n")
+                _GAP_LABEL = {
+                    "upstream_covered": "ℹ️ UPSTREAM COVERAGE ASSUMED",
+                    "library_gap":      "⚠️ PATTERN LIBRARY GAP",
+                    "detection_only":   "⚠️ DETECTION GAP",
+                    "unmitigated":      "🔴 UNMITIGATED",
+                }
+                label = _GAP_LABEL.get(gap_type, "⚠️ GAP")
+                out.append(f"> **{label}:** {gap_note}\n")
 
             if not controls:
-                out.append("_No control assigned to this hop — see gap note above._\n")
+                if gap_type == "upstream_covered":
+                    out.append("_Techniques are assumed mitigated by upstream controls on this path._\n")
+                elif gap_type == "library_gap":
+                    out.append("_No control in the pattern library targets these techniques at this hop. MoE review required._\n")
+                else:
+                    out.append("_No control assigned to this hop — see gap note above._\n")
             else:
                 for ctrl in controls:
                     priority = ctrl.get("priority", "medium").upper()
@@ -1797,9 +1810,89 @@ def _mmd_safe(text: str, max_len: int = 40) -> str:
     return text.replace('"', "'").replace('\n', ' ')[:max_len]
 
 
+def _append_bh_subgraphs(base_mmd: str, bh: Dict) -> str:
+    """
+    Extend threatmodel_adr.mmd with BH cross-path chain subgraphs.
+
+    One subgraph per least_resistance_path chain entry; pivot-node annotations
+    outside subgraphs; stealth score summary node.  Called only when blackhat_critique
+    is present so the base diagram is always clean without BH data.
+    """
+    from typing import List as _List  # local to avoid circular import guard
+    chains = bh.get("least_resistance_paths", [])
+    findings = bh.get("chained_exploit_findings", [])
+    shared = bh.get("shared_nodes", {})
+    stealth = bh.get("stealth_score", 0)
+    stealth_techs = bh.get("stealthy_techniques", [])
+    gaps = bh.get("mitigation_gaps_for_chains", [])
+
+    if not chains and not findings:
+        return base_mmd  # nothing to add
+
+    lines = [
+        "",
+        "  %% ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "  %% ⚔️  BLACKHAT LAYER 2D — CROSS-PATH CHAIN SUBGRAPHS",
+        "  %% Each subgraph = one chained exploit route BH found",
+        "  %% ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "  classDef bhChain fill:#4a1942,stroke:#a855f7,color:#fff,font-size:9px",
+        "  classDef bhGap   fill:#7c2d12,stroke:#f97316,color:#fff,font-size:9px,stroke-dasharray:4",
+        "  classDef bhStealth fill:#1c1917,stroke:#78716c,color:#a8a29e,font-size:9px",
+        "",
+    ]
+
+    # One subgraph per structured chain entry
+    for ci, chain in enumerate(chains[:6]):
+        if not isinstance(chain, dict):
+            continue
+        ap_chain = chain.get("chain", [])
+        pivot    = chain.get("pivot", "?")
+        crit     = chain.get("chain_criticality", "HIGH")
+        if len(ap_chain) < 2:
+            continue
+        sg_id    = f"BHChain{ci}"
+        src      = _mmd_safe(ap_chain[0], 12)
+        dst      = _mmd_safe(ap_chain[1], 12)
+        piv      = _mmd_safe(pivot, 15)
+        lines.append(f'  subgraph {sg_id}["⚔️ BH Chain {ci+1} [{crit}]: {src} → {dst} via {piv}"]')
+        lines.append(f'    direction LR')
+        lines.append(f'    BHC{ci}SRC["{src}"]:::bhChain')
+        lines.append(f'    BHC{ci}PIV["🔀 pivot: {piv}"]:::bhChain')
+        lines.append(f'    BHC{ci}DST["{dst}"]:::bhChain')
+        lines.append(f'    BHC{ci}SRC -.->|"chains to"| BHC{ci}PIV')
+        lines.append(f'    BHC{ci}PIV -.->|"enables"| BHC{ci}DST')
+        # Attach any matching gap
+        if ci < len(gaps):
+            gid = f"BHC{ci}GAP"
+            lines.append(f'    {gid}["⚠ {_mmd_safe(gaps[ci], 40)}"]:::bhGap')
+            lines.append(f'    {gid} -.->|"gap"| BHC{ci}PIV')
+        lines.append(f'  end')
+        lines.append("")
+
+    # Fallback: use string findings if no structured chains
+    if not chains and findings:
+        lines.append(f'  subgraph BHFindings["⚔️ BH Chain Findings"]')
+        lines.append(f'    direction LR')
+        for fi, finding in enumerate(findings[:6]):
+            fid = f"BHF{fi}"
+            lines.append(f'    {fid}["{_mmd_safe(str(finding), 50)}"]:::bhChain')
+            if fi > 0:
+                lines.append(f'    BHF{fi-1} -.-> {fid}')
+        lines.append(f'  end')
+        lines.append("")
+
+    # Stealth summary node
+    if stealth > 0:
+        tech_str = ", ".join(stealth_techs[:4]) if stealth_techs else "—"
+        lines.append(f'  BHStealth["🕵️ Stealth: {stealth}/100 | {_mmd_safe(tech_str, 35)}"]:::bhStealth')
+        lines.append("")
+
+    return base_mmd.rstrip() + "\n" + "\n".join(lines) + "\n"
+
+
 def generate_final_diagram(ground_truth: Dict) -> str:
     """
-    Generate 11_final.mmd — one subgraph per attack path.
+    Generate threatmodel_adr.mmd — one subgraph per attack path.
 
     Each subgraph shows:
     - The attack path as a node chain
@@ -2017,7 +2110,11 @@ def generate_report_package(
 
         if settings.threat_model.enabled and ground_truth.get("architecture_decision_records"):
             final_mmd = generate_final_diagram(ground_truth)
-            paths["final_diagram"] = save_report(final_mmd, str(report_base / "11_final.mmd"), "mmd")
+            paths["final_diagram"] = save_report(final_mmd, str(report_base / "threatmodel_adr.mmd"), "mmd")
+            # BH variant: same diagram but with BH cross-path subgraphs appended (only when BH ran)
+            if ground_truth.get("blackhat_critique"):
+                bh_mmd = _append_bh_subgraphs(final_mmd, ground_truth["blackhat_critique"])
+                paths["final_diagram_bh"] = save_report(bh_mmd, str(report_base / "threatmodel_adr_bh.mmd"), "mmd")
 
         # Re-save ground_truth.json with enriched fields
         paths["ground_truth"] = save_report(

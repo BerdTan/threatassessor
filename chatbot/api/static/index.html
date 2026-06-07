@@ -129,19 +129,19 @@
                     <!-- So-what dashboard rendered by loadOverviewTab() -->
                     <div id="overview-dashboard"></div>
 
-                    <!-- Detail sub-tabs (Threat Chart + Architecture Diagram) -->
+                    <!-- Detail sub-tabs (Expert Consensus + Architecture Diagram) -->
                     <div id="overview-detail" style="margin-top: 1.5rem;">
                         <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--border-color); margin-bottom: 1rem;">
-                            <button class="overview-subtab active" data-subtab="threat-map" style="padding: 0.625rem 1.25rem; background: var(--primary-color); color: var(--button-text-color); border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
-                                📊 Threat Heat Map
+                            <button class="overview-subtab active" data-subtab="expert-consensus" style="padding: 0.625rem 1.25rem; background: var(--primary-color); color: var(--button-text-color); border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
+                                🔍 Expert Consensus
                             </button>
                             <button class="overview-subtab" data-subtab="arch-diagram" style="padding: 0.625rem 1.25rem; background: transparent; color: var(--text-color); border: none; border-bottom: 2px solid transparent; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
                                 🏗️ Architecture Diagram
                             </button>
                         </div>
-                        <div id="overview-threat-map" class="overview-subtab-content active" style="display: block;">
-                            <div class="card" style="height: 300px;">
-                                <canvas id="threat-chart"></canvas>
+                        <div id="overview-expert-consensus" class="overview-subtab-content active" style="display: block;">
+                            <div id="expert-consensus-strip">
+                                <p class="placeholder" style="font-size:0.85rem;">Run Expert Review to see critic consensus here.</p>
                             </div>
                         </div>
                         <div id="overview-arch-diagram" class="overview-subtab-content" style="display: none;">
@@ -211,48 +211,80 @@
                 </div>
 
                 <!-- Threat Model Tab -->
-                <div class="tab-pane" data-tab="threat-model" id="threat-model-pane">
-                    <div id="tm-tldr" style="display:none; margin-bottom:1.25rem; padding:0.9rem 1.2rem; background:var(--card-bg); border-left:4px solid #FF8C00; border-radius:6px;">
-                        <div style="font-size:0.78rem; font-weight:700; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.3rem;">Highest Risk Scenario</div>
-                        <div id="tm-tldr-text" style="font-size:0.95rem;"></div>
-                    </div>
+                <div class="tab-pane" data-tab="threat-model" id="threat-model-pane" style="padding:0;">
 
-                    <!-- Legend -->
-                    <div id="tm-legend" style="display:none; margin-bottom:1.25rem; padding:0.7rem 1.1rem; background:var(--card-bg); border-radius:6px; border:1px solid var(--border-color); font-size:0.8rem; display:flex; flex-wrap:wrap; gap:1rem;">
-                        <span><span style="display:inline-block;width:12px;height:12px;background:#DC143C;border-radius:2px;margin-right:4px;vertical-align:middle;"></span>CRITICAL</span>
-                        <span><span style="display:inline-block;width:12px;height:12px;background:#FF8C00;border-radius:2px;margin-right:4px;vertical-align:middle;"></span>HIGH</span>
-                        <span><span style="display:inline-block;width:12px;height:12px;background:#FFD700;border-radius:2px;margin-right:4px;vertical-align:middle;"></span>MEDIUM</span>
-                        <span><span style="display:inline-block;width:12px;height:12px;background:#32CD32;border-radius:2px;margin-right:4px;vertical-align:middle;"></span>LOW</span>
-                        <span><span style="display:inline-block;width:12px;height:12px;background:#1E90FF;border-radius:2px;margin-right:4px;vertical-align:middle;"></span>ADR proposed</span>
-                        <span>⚠️ Blackhat pivot</span>
-                    </div>
-
-                    <!-- Threat Model Overview -->
-                    <details id="tm-overview" style="display:none; margin-bottom:1rem;">
-                        <summary style="cursor:pointer; font-weight:600; font-size:0.95rem; padding:0.6rem 0;">Threat Model Overview</summary>
-                        <div id="tm-overview-content" style="padding:0.75rem 0 0 1rem; font-size:0.88rem; color:var(--text-secondary);"></div>
-                    </details>
-
-                    <!-- Per-AP collapsibles -->
-                    <div id="tm-ap-sections"></div>
-
-                    <!-- Blackhat section -->
-                    <details id="tm-blackhat" style="display:none; margin-top:1.5rem; border:1px solid var(--border-color); border-radius:6px; padding:0.75rem 1rem;">
-                        <summary style="cursor:pointer; font-weight:600; font-size:0.95rem;">⚠️ Blackhat Cross-Path Findings</summary>
-                        <div id="tm-blackhat-content" style="padding:0.75rem 0 0 0.5rem; font-size:0.87rem;"></div>
-                    </details>
-
-                    <!-- 11_final.mmd inline render -->
-                    <div id="tm-diagram-wrapper" style="display:none; margin-top:1.5rem;">
-                        <h4 style="margin-bottom:0.5rem; font-size:0.9rem; font-weight:600;">Final Diagram (11_final.mmd)</h4>
-                        <div id="tm-diagram" class="mermaid" style="background:var(--card-bg); border-radius:6px; padding:1rem; overflow-x:auto; min-height:120px;">
-                            <p class="placeholder">Loading diagram…</p>
-                        </div>
-                    </div>
-
-                    <div id="tm-placeholder" style="color:var(--text-tertiary); font-size:0.9rem; padding:2rem 0;">
+                    <!-- Placeholder (no data) -->
+                    <div id="tm-placeholder" style="color:var(--text-tertiary); font-size:0.9rem; padding:2rem 1.5rem;">
                         <p>Run an analysis to generate the Threat Model.</p>
                     </div>
+
+                    <!-- Main split layout (shown when data available) -->
+                    <div id="tm-layout" style="display:none; flex-direction:column;">
+
+                        <!-- Top bar: header + filter controls -->
+                        <div id="tm-topbar" style="flex-shrink:0; padding:0.75rem 1.25rem; border-bottom:1px solid var(--border-color); background:var(--sidebar-bg); display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+                            <div style="font-weight:700; font-size:1rem; color:var(--primary-color); white-space:nowrap;">Threat Model &amp; ADR Walkthrough</div>
+                            <!-- Tier filter -->
+                            <div style="display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;">
+                                <span style="font-size:0.75rem; color:var(--text-tertiary); white-space:nowrap;">Filter:</span>
+                                <button class="tm-filter-btn active" data-filter="ALL" onclick="window.dashboard._tmFilter('ALL')" style="padding:0.15rem 0.55rem; border-radius:12px; border:1px solid var(--border-color); background:var(--primary-color); color:#fff; font-size:0.73rem; cursor:pointer;">All</button>
+                                <button class="tm-filter-btn" data-filter="CRITICAL" onclick="window.dashboard._tmFilter('CRITICAL')" style="padding:0.15rem 0.55rem; border-radius:12px; border:1px solid #DC143C55; background:transparent; color:#DC143C; font-size:0.73rem; cursor:pointer;">Critical</button>
+                                <button class="tm-filter-btn" data-filter="HIGH" onclick="window.dashboard._tmFilter('HIGH')" style="padding:0.15rem 0.55rem; border-radius:12px; border:1px solid #FF8C0055; background:transparent; color:#FF8C00; font-size:0.73rem; cursor:pointer;">High</button>
+                                <button class="tm-filter-btn" data-filter="MEDIUM" onclick="window.dashboard._tmFilter('MEDIUM')" style="padding:0.15rem 0.55rem; border-radius:12px; border:1px solid #cc990055; background:transparent; color:#cc9900; font-size:0.73rem; cursor:pointer;">Medium</button>
+                                <button class="tm-filter-btn" data-filter="LOW" onclick="window.dashboard._tmFilter('LOW')" style="padding:0.15rem 0.55rem; border-radius:12px; border:1px solid #32CD3255; background:transparent; color:#32CD32; font-size:0.73rem; cursor:pointer;">Low</button>
+                            </div>
+                            <!-- Diagram toggle -->
+                            <button id="tm-diagram-toggle" onclick="window.dashboard._tmToggleDiagram()" style="margin-left:auto; padding:0.25rem 0.75rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-color); font-size:0.78rem; cursor:pointer; white-space:nowrap; display:none;">Show Diagram</button>
+                            <!-- Links to ThreatModel+ADR diagram files -->
+                            <div id="tm-diagram-links" style="display:none; margin-left:0.5rem;"></div>
+                        </div>
+
+                        <!-- TLDR banner (highest risk scenario) -->
+                        <div id="tm-tldr" style="display:none; flex-shrink:0; padding:0.6rem 1.25rem; background:var(--card-bg); border-bottom:1px solid var(--border-color); border-left:4px solid #FF8C00; font-size:0.85rem;">
+                            <span style="font-size:0.72rem; font-weight:700; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.05em; margin-right:0.5rem;">Highest Risk</span>
+                            <span id="tm-tldr-text"></span>
+                        </div>
+
+                        <!-- Diagram panel (collapsible, above split) -->
+                        <div id="tm-diagram-wrapper" style="display:none; flex-shrink:0; padding:0.75rem 1.25rem; border-bottom:1px solid var(--border-color); background:var(--card-bg); max-height:340px; overflow:auto;">
+                            <div id="tm-diagram" class="mermaid" style="background:var(--card-bg); border-radius:6px; overflow-x:auto; min-height:60px;"></div>
+                        </div>
+
+                        <!-- Split: list (left) + detail (right) -->
+                        <div style="flex:1; display:flex; min-height:0; overflow:hidden;">
+
+                            <!-- Left panel: AP list + overview + blackhat -->
+                            <div id="tm-left" style="width:300px; min-width:180px; max-width:520px; flex-shrink:0; border-right:none; overflow-y:auto; background:var(--sidebar-bg); display:flex; flex-direction:column;">
+
+                                <!-- Architecture Overview card -->
+                                <div id="tm-overview-card" style="display:none; padding:0.75rem 1rem; border-bottom:1px solid var(--border-color); font-size:0.8rem; color:var(--text-secondary);">
+                                    <div style="font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.4rem;">Architecture Overview</div>
+                                    <div id="tm-overview-content"></div>
+                                </div>
+
+                                <!-- AP list -->
+                                <div id="tm-ap-list" style="flex:1; overflow-y:auto; padding:0.5rem 0;"></div>
+
+                                <!-- Blackhat card -->
+                                <div id="tm-blackhat-card" style="display:none; border-top:1px solid var(--border-color); padding:0.75rem 1rem; font-size:0.8rem; cursor:pointer; background:var(--card-bg);" onclick="window.dashboard._tmSelectBlackhat()">
+                                    <div style="display:flex; align-items:center; gap:0.4rem; font-weight:600; font-size:0.83rem; margin-bottom:0.25rem;">
+                                        <span style="color:#FF8C00;">&#9888;</span>
+                                        <span>Blackhat Cross-Path Analysis</span>
+                                    </div>
+                                    <div id="tm-blackhat-summary" style="font-size:0.75rem; color:var(--text-tertiary);"></div>
+                                </div>
+                            </div>
+
+                            <!-- Right panel: detail view -->
+                            <div id="tm-resize-handle" title="Drag to resize"></div>
+                            <div id="tm-detail" style="flex:1; min-width:200px; overflow-y:auto; padding:1.25rem 1.5rem; background:var(--main-bg);">
+                                <div id="tm-detail-content" style="color:var(--text-tertiary); font-size:0.9rem;">
+                                    <p style="margin-top:2rem; text-align:center; opacity:0.6;">Select an attack path from the list to see the ADR walkthrough.</p>
+                                </div>
+                            </div>
+
+                        </div><!-- /split -->
+                    </div><!-- /tm-layout -->
                 </div>
 
                 <!-- Raw Data Tab -->
@@ -339,6 +371,7 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
     <script src="/static/js/resize-pane.js"></script>
     <script src="/static/js/streaming-renderer.js"></script>
     <script src="/static/js/dashboard.js"></script>

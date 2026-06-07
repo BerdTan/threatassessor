@@ -342,6 +342,256 @@ async def download_reports_zip(architecture_name: str, pack: str = "full"):
     )
 
 
+@router.get("/reports/{architecture_name}/briefing")
+async def get_briefing(architecture_name: str, fmt: str = "md"):
+    """
+    Export a self-contained two-page briefing for offline sharing.
+
+    Distils the full analysis into a single Markdown document covering:
+    - Architecture snapshot (type, primary actor, trust boundaries at risk)
+    - Risk waterfall (before → after controls)
+    - Top-3 critical findings with confidence labels
+    - Expert consensus strip (critic name, status, key gap)
+    - Improvement tiers (quick win / recommended / maximum)
+    - Blindspots and supply chain / BCP flags
+    - Action checklist
+
+    Args:
+        architecture_name: Architecture directory name
+        fmt: "md" (default) for Markdown plain text
+
+    Returns:
+        text/markdown attachment
+    """
+    import datetime
+    report_dir = get_report_dir() / architecture_name
+
+    if not report_dir.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Architecture '{architecture_name}' not found"
+        )
+
+    # Load ground truth
+    gt_path = report_dir / "ground_truth.json"
+    if not gt_path.exists():
+        raise HTTPException(status_code=404, detail="ground_truth.json not found — run analysis first")
+    with open(gt_path) as f:
+        gt = json.load(f)
+
+    # Load MoE orchestrator output (optional — expert review may not have run)
+    moe = None
+    moe_path = report_dir / "07_moe_orchestrator.json"
+    if moe_path.exists():
+        with open(moe_path) as f:
+            moe = json.load(f)
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+    def _s(v, fallback="—"):
+        return str(v).strip() if v else fallback
+
+    def _pct(v):
+        try:
+            return f"{float(v):.0f}%"
+        except Exception:
+            return "—"
+
+    def _tier_row(t, label):
+        if not t:
+            return ""
+        items = t.get("items", [])
+        effort = _s(t.get("effort"), "not estimated")
+        cost   = _s(t.get("cost"), "not estimated")
+        resid  = _s(t.get("residual"), "not stated")
+        lines  = [f"### {label}", f"- **Effort:** {effort}  |  **Cost:** {cost}"]
+        for it in items[:5]:
+            lines.append(f"- {it}")
+        lines.append(f"- *Residual:* {resid}")
+        return "\n".join(lines)
+
+    def _conf_badge(label):
+        return "✅ KNOWN" if label == "KNOWN" else "⚠ UNSURE"
+
+    # ── ground truth fields ───────────────────────────────────────────────────
+    tm      = gt.get("threat_model", {})
+    rrs     = tm.get("residual_risk_summary", {})
+    aps     = gt.get("expected_attack_paths", [])
+    arch    = gt.get("architecture", architecture_name)
+
+    arch_type      = _s(tm.get("architecture_type"))
+    primary_actor  = _s(tm.get("primary_threat_actor"))
+    weakness       = _s(tm.get("architecture_weakness"))
+    boundaries     = ", ".join(tm.get("trust_boundaries_at_risk", [])) or "—"
+    risk_before    = _s(rrs.get("overall_before"))
+    risk_after     = _s(rrs.get("overall_after_controls"))
+    risk_reduction = _s(rrs.get("risk_reduction_pct"))
+
+    # Top 3 critical APs
+    tier_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+    top_aps = sorted(aps, key=lambda a: tier_order.get(a.get("criticality_tier",""), 0), reverse=True)[:3]
+    ap_lines = []
+    for ap in top_aps:
+        rs  = ap.get("risk_scenario", {})
+        tid = ap.get("adr_id") or (ap.get("adr_ids") or [""])[0] or ""
+        ap_lines.append(
+            f"| {ap.get('id','?')} | {ap.get('criticality_tier','?')} "
+            f"| {_s(rs.get('threat_actor'))} → {_s(rs.get('targeted_asset'))} "
+            f"| {_s(rs.get('impact'))} | {tid or '—'} |"
+        )
+
+    # ── MoE expert consensus (if available) ──────────────────────────────────
+    expert_section = ""
+    improvement_section = ""
+    blindspot_section = ""
+
+    if moe:
+        ev      = moe.get("expert_validations", {})
+        adj     = moe.get("confidence", {}).get("adjustments", {})
+        cons    = moe.get("consensus_recommendations", {})
+        tiers   = moe.get("improvement_options", {})
+        bspots  = cons.get("blindspots", [])
+        crits   = cons.get("critical", [])
+        highs   = cons.get("high", [])
+        reviews = cons.get("review", [])
+
+        CRITIC_LABELS = {
+            "architect":   "🏛️  Architecture Review (2A)",
+            "tester":      "🔬  Coverage Audit (2B)",
+            "red_team":    "🎯  Exploit Analysis (2C)",
+            "purple_team": "🟣  Purple Team (2D)",
+            "blackhat":    "⚔️  Blackhat Cross-Path (2E)",
+        }
+        STATUS_EMOJI = {"PASS": "✅", "MINOR_GAPS": "⚠️", "MAJOR_GAPS": "🔴", "FAIL": "❌"}
+
+        expert_rows = []
+        for key, lbl in CRITIC_LABELS.items():
+            v = ev.get(key)
+            if not v:
+                continue
+            status_str = v.get("validation_status", "?")
+            emoji = STATUS_EMOJI.get(status_str, "•")
+            adj_pct = round((adj.get(key, 0)) * 100, 1)
+            adj_str = (f"+{adj_pct}%" if adj_pct > 0 else f"{adj_pct}%") if adj_pct != 0 else "±0%"
+            top_gap = (v.get("gaps") or [{}])[0].get("description", "No gaps identified")
+            expert_rows.append(f"| {lbl} | {emoji} {status_str} | {adj_str} | {top_gap[:120]}{'…' if len(top_gap) > 120 else ''} |")
+
+        if expert_rows:
+            expert_section = (
+                "## Expert Consensus\n\n"
+                "| Critic | Status | Δ Conf | Top finding |\n"
+                "|--------|--------|--------|-------------|\n"
+                + "\n".join(expert_rows)
+            )
+
+        # Critical / high / review findings
+        findings_lines = []
+        for f in (crits + highs)[:6]:
+            badge = _conf_badge(f.get("confidence_label", "UNSURE"))
+            findings_lines.append(f"- **[{f.get('severity','?')}]** {badge}  \n  {f.get('description','')}")
+        if reviews:
+            findings_lines.append(f"\n*For Review ({len(reviews)} single-critic findings — verify before acting):*")
+            for f in reviews[:3]:
+                findings_lines.append(f"- {f.get('description','')}")
+
+        if findings_lines:
+            expert_section += "\n\n## Key Findings\n\n" + "\n".join(findings_lines)
+
+        # Improvement tiers
+        tier_parts = [
+            _tier_row(tiers.get("quick_win"),   "⚡ Quick Win"),
+            _tier_row(tiers.get("recommended"), "⭐ Recommended"),
+            _tier_row(tiers.get("maximum"),     "🔒 Maximum"),
+        ]
+        tier_parts = [t for t in tier_parts if t]
+        if tier_parts:
+            improvement_section = "## Improvement Tiers\n\n" + "\n\n".join(tier_parts)
+
+        # Blindspots
+        if bspots:
+            bs_lines = []
+            for b in bspots:
+                bs_lines.append(f"- **{b.get('description','')}**  \n  *Why missed:* {b.get('why_missed','')}  \n  *Action:* {b.get('recommendation','')}")
+            blindspot_section = "## Structural Blindspots\n\n" + "\n".join(bs_lines)
+
+    # ── action checklist from top APs ────────────────────────────────────────
+    adrs = gt.get("architecture_decision_records", [])
+    checklist_lines = []
+    for ap in top_aps:
+        adr_id = ap.get("adr_id") or (ap.get("adr_ids") or [""])[0] or ""
+        adr = next((a for a in adrs if a.get("adr_id") == adr_id), None)
+        if adr:
+            hops = adr.get("hops", [])
+            for hop in hops:
+                for ctrl in (hop.get("controls") or [])[:2]:
+                    pri = ctrl.get("priority", "")
+                    if pri in ("critical", "high"):
+                        checklist_lines.append(
+                            f"- [ ] **{ctrl['control'].upper()}** ({ap.get('id','?')}, {pri}) — {ctrl.get('dir_category','')}"
+                        )
+    if not checklist_lines:
+        checklist_lines = ["- [ ] Run full expert review (MoE) for prioritised action list"]
+
+    # ── assemble document ─────────────────────────────────────────────────────
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    lines = [
+        f"# ThreatAssessor Briefing — {arch}",
+        f"*Generated: {now}  |  Confidential — internal use*",
+        "",
+        "---",
+        "",
+        "## Architecture Snapshot",
+        "",
+        f"| Field | Value |",
+        f"|-------|-------|",
+        f"| Architecture | {arch} |",
+        f"| Type | {arch_type} |",
+        f"| Primary Threat Actor | {primary_actor} |",
+        f"| Biggest Weakness | {weakness} |",
+        f"| Trust Boundaries at Risk | {boundaries} |",
+        f"| Risk Before Controls | {risk_before} |",
+        f"| Risk After Controls | {risk_after} |",
+        f"| Estimated Reduction | {risk_reduction}% |" if risk_reduction != "—" else f"| Estimated Reduction | — |",
+        "",
+        "---",
+        "",
+        "## Top Attack Paths",
+        "",
+        "| ID | Tier | Actor → Target | Impact | ADR |",
+        "|----|------|----------------|--------|-----|",
+        *ap_lines,
+        "",
+        "---",
+        "",
+    ]
+
+    if expert_section:
+        lines += [expert_section, "", "---", ""]
+    if improvement_section:
+        lines += [improvement_section, "", "---", ""]
+    if blindspot_section:
+        lines += [blindspot_section, "", "---", ""]
+
+    lines += [
+        "## Action Checklist",
+        "",
+        *checklist_lines,
+        "",
+        "---",
+        "",
+        f"*Full interactive report: run ThreatAssessor dashboard and load architecture `{arch}`.*",
+        f"*Expert Review not run yet — start the dashboard and click Run Expert Review for full consensus.*" if not moe else "",
+    ]
+
+    doc = "\n".join(l for l in lines)
+
+    filename = f"{architecture_name}_briefing.md"
+    return StreamingResponse(
+        io.BytesIO(doc.encode()),
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
 @router.get("/mitigations")
 async def get_mitigation_names(mitigation_ids: str = Query(..., description="Comma-separated mitigation IDs (e.g., M1042,M1026,M1037)")):
     """

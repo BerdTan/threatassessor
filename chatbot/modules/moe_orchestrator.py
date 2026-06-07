@@ -116,15 +116,18 @@ class MoEResult:
 
     def to_dict(self) -> Dict:
         """Convert to dictionary."""
+        adjustments = {
+            "architect": self.architect_adjustment,
+            "tester": self.tester_adjustment,
+            "red_team": self.red_team_adjustment,
+        }
+        if self.blackhat_result is not None:
+            adjustments["blackhat"] = self.blackhat_adjustment
         return {
             "architecture": self.architecture_name,
             "confidence": {
                 "base": self.base_confidence,
-                "adjustments": {
-                    "architect": self.architect_adjustment,
-                    "tester": self.tester_adjustment,
-                    "red_team": self.red_team_adjustment
-                },
+                "adjustments": adjustments,
                 "final": self.final_confidence,
                 "interpretation": self._interpret_confidence()
             },
@@ -133,9 +136,6 @@ class MoEResult:
                 "tester": self.tester_result.to_dict(),
                 "red_team": self.red_team_result.to_dict(),
                 **({"blackhat": self.blackhat_result.to_dict()} if self.blackhat_result else {}),
-            },
-            "adjustments": {
-                "blackhat": self.blackhat_adjustment,
             },
             "consensus_recommendations": {
                 "critical": self.critical_recommendations,
@@ -315,7 +315,7 @@ class MoEOrchestrator:
             blackhat_enabled = False
 
         if blackhat_enabled:
-            logger.info("MoE Pipeline: Layer 2D - Running Blackhat cross-path analysis...")
+            logger.info("MoE Pipeline: Layer 2E - Running Blackhat cross-path analysis...")
             try:
                 from chatbot.modules.agents.critics.blackhat_critic import BlackhatCritic
                 blackhat = BlackhatCritic(model=self.model)
@@ -346,8 +346,8 @@ class MoEOrchestrator:
                 )
                 blackhat_adjustment = bh_adj
 
-                # Save 06b_blackhat_critique.json
-                bh_path = report_path / "06b_blackhat_critique.json"
+                # Save 06c_blackhat_critique.json
+                bh_path = report_path / "06c_blackhat_critique.json"
                 bh_data = blackhat_critique_score.to_dict()
                 # Also embed into ground_truth for report generators
                 ground_truth["blackhat_critique"] = {

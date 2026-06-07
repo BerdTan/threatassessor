@@ -569,6 +569,196 @@ def validate_hop_coverage(
 
 
 # ============================================================================
+# CHECK 7: DETECTION ANALYTICS GAPS (T1005 / T1213)
+# ============================================================================
+
+def validate_detection_analytics(
+    attack_paths: List[Dict],
+    control_recommendations: List[Dict],
+) -> List["ValidationIssue"]:
+    """
+    Check 7: For attack paths that include T1005 or T1213, verify that at least
+    one behavioral-analytics or anomaly-detection control covers the data-store
+    node.  Pure logging controls (audit logging, query logging) do not count —
+    they capture events but cannot detect abnormal patterns at runtime.
+
+    Also flags API Gateway nodes that appear in the architecture but are absent
+    from every attack path — suggests the gateway control placement is unclear.
+    """
+    issues = []
+
+    DATA_EXFIL_TECHNIQUES = {"T1005", "T1213"}
+    BEHAVIORAL_CONTROLS = {
+        "behavioral analytics", "ueba", "user entity behavior analytics",
+        "anomaly detection", "dam", "database activity monitoring",
+        "data loss prevention", "dlp", "exfiltration detection",
+        "machine learning detection", "ml-based detection",
+    }
+    PURE_LOGGING = {"audit logging", "query logging", "query monitoring", "logging", "log monitoring"}
+
+    # Collect data-store nodes that are targeted by T1005/T1213 paths
+    data_nodes_needing_analytics: set = set()
+    for path in attack_paths:
+        techs = set(path.get("techniques", []))
+        if techs & DATA_EXFIL_TECHNIQUES:
+            target = path.get("target", "")
+            if target:
+                data_nodes_needing_analytics.add(target)
+            # Also collect intermediate data nodes on the path
+            for node in path.get("path", [])[1:]:
+                node_lower = node.lower()
+                if any(kw in node_lower for kw in ["db", "database", "storage", "data", "repository", "log", "cache"]):
+                    data_nodes_needing_analytics.add(node)
+
+    if data_nodes_needing_analytics:
+        # Check controls: need at least one behavioral/anomaly control (not just logging)
+        ctrl_names_lower = [c.get("control", "").lower() for c in control_recommendations]
+        has_behavioral = any(
+            any(bc in ctrl for bc in BEHAVIORAL_CONTROLS)
+            for ctrl in ctrl_names_lower
+        )
+        has_only_logging = any(
+            any(lc in ctrl for lc in PURE_LOGGING)
+            for ctrl in ctrl_names_lower
+        )
+
+        if not has_behavioral:
+            hint = "pure logging only" if has_only_logging else "no detection control"
+            issues.append(ValidationIssue(
+                check="detection_analytics",
+                severity="warning",
+                message=(
+                    f"T1005/T1213 paths target data nodes "
+                    f"({', '.join(sorted(data_nodes_needing_analytics)[:3])}) "
+                    f"but no behavioral analytics or anomaly detection control is present ({hint}). "
+                    f"Logging captures events; behavioral analytics detects abnormal patterns."
+                ),
+                confidence_penalty=0.02,
+                details={
+                    "data_nodes": sorted(data_nodes_needing_analytics),
+                    "techniques": sorted(DATA_EXFIL_TECHNIQUES & set(
+                        t for p in attack_paths for t in p.get("techniques", [])
+                    )),
+                    "fix": "Add behavioral analytics / UEBA / DAM for data exfiltration detection",
+                }
+            ))
+        else:
+            logger.info("✅ Detection analytics: behavioral/anomaly control covers T1005/T1213 paths")
+
+    # API Gateway placement check: if an api-gateway-like node exists in the graph
+    # but none of the attack paths pass through it, flag unclear placement.
+    ctrl_names_lower = [c.get("control", "").lower() for c in control_recommendations]
+    has_api_gateway_ctrl = any(
+        "api gateway" in ctrl or "api management" in ctrl
+        for ctrl in ctrl_names_lower
+    )
+    if has_api_gateway_ctrl:
+        api_gw_in_paths = any(
+            any("api" in str(node).lower() and "gateway" in str(node).lower()
+                for node in path.get("path", []))
+            for path in attack_paths
+        )
+        if not api_gw_in_paths:
+            issues.append(ValidationIssue(
+                check="detection_analytics",
+                severity="warning",
+                message=(
+                    "API Gateway control is recommended but no attack path passes through an "
+                    "API Gateway node — control placement against T1059/T1190/T1203 is unclear. "
+                    "Confirm which path hops the gateway defends."
+                ),
+                confidence_penalty=0.01,
+                details={
+                    "fix": "Map API Gateway node explicitly in at least one attack path to confirm coverage scope",
+                }
+            ))
+
+    return issues
+
+
+# ============================================================================
+# CHECK 8: EXTERNAL DEPENDENCY / SUPPLY CHAIN FLAGS
+# ============================================================================
+
+def validate_external_dependencies(
+    ground_truth: Dict,
+) -> List["ValidationIssue"]:
+    """
+    Check 8: Deterministic signal for supply-chain and business-continuity gaps.
+    Uses the RAPIDS supply_chain risk score already computed by the engine — if
+    it is elevated (≥60) but no supply-chain or vendor-risk control is present,
+    raises a KNOWN-class gap that the synthesis prompt can escalate from UNSURE.
+
+    Also raises a flag when no availability/BCP control exists, since all critic
+    lenses are security-focused and systematically miss operational resilience.
+    """
+    issues = []
+
+    rapids = ground_truth.get("rapids_assessment", {})
+    threats = rapids.get("threats", {})
+    supply_chain_score = threats.get("supply_chain", {}).get("risk", 0)
+
+    control_recommendations = ground_truth.get("control_recommendations", [])
+    ctrl_names_lower = [c.get("control", "").lower() for c in control_recommendations]
+
+    SUPPLY_CHAIN_CONTROLS = {
+        "vendor risk management", "sbom", "software bill of materials",
+        "supply chain risk", "third-party assessment", "dependency scanning",
+        "container scanning", "code signing", "software composition analysis", "sca",
+    }
+    BCP_CONTROLS = {
+        "backup", "disaster recovery", "dr", "bcp", "business continuity",
+        "rto", "rpo", "failover", "high availability", "ha", "resilience",
+    }
+
+    has_supply_chain_ctrl = any(
+        any(sc in ctrl for sc in SUPPLY_CHAIN_CONTROLS)
+        for ctrl in ctrl_names_lower
+    )
+    has_bcp_ctrl = any(
+        any(bc in ctrl for bc in BCP_CONTROLS)
+        for ctrl in ctrl_names_lower
+    )
+
+    if supply_chain_score >= 60 and not has_supply_chain_ctrl:
+        issues.append(ValidationIssue(
+            check="external_dependencies",
+            severity="warning",
+            message=(
+                f"Supply chain risk score is {supply_chain_score}/100 but no vendor risk management, "
+                f"SBOM, or third-party assessment control is present. "
+                f"All critic lenses focus on internal architecture — external dependency risk is a structural blindspot."
+            ),
+            confidence_penalty=0.02,
+            details={
+                "supply_chain_score": supply_chain_score,
+                "fix": "Add vendor risk management or SBOM controls; explicitly assess third-party integrations",
+            }
+        ))
+    elif supply_chain_score >= 60:
+        logger.info(f"✅ External deps: supply-chain control present (score {supply_chain_score})")
+
+    if not has_bcp_ctrl:
+        issues.append(ValidationIssue(
+            check="external_dependencies",
+            severity="warning",
+            message=(
+                "No backup, disaster recovery, or business continuity control is present. "
+                "Security-focused critic lenses do not evaluate operational resilience — "
+                "availability impact of security controls is a known structural blindspot."
+            ),
+            confidence_penalty=0.01,
+            details={
+                "fix": "Add backup/DR/BCP controls; evaluate how security controls affect system availability",
+            }
+        ))
+    else:
+        logger.info("✅ External deps: BCP/DR control present")
+
+    return issues
+
+
+# ============================================================================
 # COMPREHENSIVE VALIDATION
 # ============================================================================
 
@@ -693,6 +883,26 @@ def validate_completeness(
     check_results['hop_coverage'] = {
         "passed": len(issues_6) == 0,
         "issues": len(issues_6)
+    }
+
+    # CHECK 7: Detection analytics gaps (T1005/T1213 + API Gateway placement)
+    logger.info("\nCheck 7: Detection Analytics Gaps")
+    logger.info("-"*80)
+    issues_7 = validate_detection_analytics(attack_paths, control_recommendations)
+    all_issues.extend(issues_7)
+    check_results['detection_analytics'] = {
+        "passed": len(issues_7) == 0,
+        "issues": len(issues_7)
+    }
+
+    # CHECK 8: External dependencies / supply chain / BCP
+    logger.info("\nCheck 8: External Dependencies & Supply Chain")
+    logger.info("-"*80)
+    issues_8 = validate_external_dependencies(ground_truth)
+    all_issues.extend(issues_8)
+    check_results['external_dependencies'] = {
+        "passed": len(issues_8) == 0,
+        "issues": len(issues_8)
     }
 
     # Calculate confidence adjustment

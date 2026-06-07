@@ -15,6 +15,7 @@ Fully deterministic — no LLM calls.
 from __future__ import annotations
 
 import logging
+import re
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
@@ -76,15 +77,101 @@ def _technique_name(tech_id: str) -> str:
     return _TECH_SHORT.get(tech_id, tech_id)
 
 
+# Keywords that identify a node as a human/client/endpoint rather than a server-side component.
+# Server-side controls (API Gateway, WAF, etc.) should not be placed here.
+_USER_NODE_KEYWORDS: set = {
+    "user", "users", "internet", "client", "clients", "browser",
+    "mobile", "employee", "staff", "admin", "external", "partner",
+    "vendor", "endpoint", "workstation", "attacker",
+}
+
+# Controls that are server-side / network-boundary by nature — never placed on a user/client node.
+_SERVER_SIDE_CONTROLS: set = {
+    "api gateway", "waf", "web application firewall", "reverse proxy",
+    "load balancer", "firewall", "network segmentation", "dmz",
+    "service mesh", "ingress controller",
+}
+
+
+def _is_user_node(node_id: str, node_label: str) -> bool:
+    """Return True if this node represents a human/client origin, not a server component."""
+    tokens = _node_tokens(node_id) + _node_tokens(node_label)
+    return any(t in _USER_NODE_KEYWORDS for t in tokens)
+
+
+# Zero-trust DIR categories required at every hop for full coverage.
+_ZT_REQUIRED: List[str] = ["prevention", "detect", "isolate", "respond"]
+
+# Canonical mapping: some dir_category values use alternate names
+_ZT_NORMALISE: Dict[str, str] = {
+    "prevention":  "prevention",
+    "detect":      "detect",
+    "detection":   "detect",
+    "isolate":     "isolate",
+    "response":    "respond",
+    "respond":     "respond",
+    "hardening":   "prevention",  # hardening strengthens prevention layer
+    "governance":  "isolate",     # governance enforces access boundaries
+}
+
+
+def _zt_gap_note(controls: List[Dict]) -> Optional[str]:
+    """
+    Return a gap note if the hop does not satisfy zero-trust coverage
+    (prevent + detect + isolate + respond), or None if fully covered.
+    """
+    covered = {_ZT_NORMALISE.get(c.get("dir_category", ""), "") for c in controls}
+    covered.discard("")
+    missing = [cat for cat in _ZT_REQUIRED if cat not in covered]
+    if not missing:
+        return None
+    return (
+        f"Zero-trust gap: missing {', '.join(missing)} layer(s). "
+        f"Present: {', '.join(sorted(covered)) or 'none'}."
+    )
+
+
+def _node_tokens(name: str) -> List[str]:
+    """Split a node ID or label into lowercase word tokens for fuzzy matching.
+
+    'AppServer'         → ['app', 'server']
+    'Application Server' → ['application', 'server']
+    'WebApp'            → ['web', 'app']
+    """
+    # Split on spaces first, then on camelCase boundaries
+    parts = re.sub(r"([a-z])([A-Z])", r"\1 \2", name).split()
+    return [p.lower() for p in parts if p]
+
+
+def _placement_matches_node(placement: str, node_id: str, node_label: str) -> bool:
+    """Return True if the placement string refers to this node.
+
+    Checks (in order):
+    1. Direct substring: node_id or node_label (lowercased) appears in placement
+    2. Token overlap: all tokens from node_id appear in placement tokens
+    3. Token overlap: all tokens from node_label appear in placement tokens
+    """
+    p = placement.lower()
+    if node_id.lower() in p or node_label.lower() in p:
+        return True
+    p_tokens = set(_node_tokens(placement))
+    if all(t in p_tokens for t in _node_tokens(node_id)):
+        return True
+    if node_label and all(t in p_tokens for t in _node_tokens(node_label)):
+        return True
+    return False
+
+
 def _resolve_hop(
     control_rec: Dict,
     ap: Dict,
+    parsed_nodes: Optional[Dict] = None,
 ) -> Tuple[str, str]:
     """
-    Return (node_name, node_id_label) — the hop on this AP where the control applies.
+    Return (node_id, node_id) — the hop on this AP where the control applies.
 
     Priority:
-    1. Explicit placement field matches a node name on the path
+    1. Explicit placement field — matches node ID or label (token-aware, camelCase-split)
     2. Control's techniques intersect per_node_techniques for a node
     3. First node on the path that has any techniques (most exposed)
     4. First node on the path (fallback)
@@ -93,26 +180,51 @@ def _resolve_hop(
     per_node: Dict[str, List[str]] = ap.get("per_node_techniques", {})
     cr_techs: set = set(control_rec.get("techniques", []))
     placement: str = control_rec.get("placement") or ""
+    parsed_nodes = parsed_nodes or {}
 
-    # 1. Explicit placement substring match
+    ctrl_name = (control_rec.get("control") or "").lower()
+    is_server_side = any(s in ctrl_name for s in _SERVER_SIDE_CONTROLS)
+
+    # 1. Placement match — compare against both node ID and display label
     if placement:
-        placement_lower = placement.lower()
         for node in path_nodes:
-            if node.lower() in placement_lower or placement_lower in node.lower():
+            label = parsed_nodes.get(node, {}).get("label", node)
+            if _placement_matches_node(placement, node, label):
+                # Skip user/client nodes for server-side controls even if placement matches
+                if is_server_side and _is_user_node(node, label):
+                    continue
                 return node, node
 
-    # 2. Technique overlap
+    # 2. Technique overlap (skip user nodes for server-side controls)
+    for node in path_nodes:
+        label = parsed_nodes.get(node, {}).get("label", node)
+        if is_server_side and _is_user_node(node, label):
+            continue
+        node_techs = set(per_node.get(node, []))
+        if cr_techs & node_techs:
+            return node, node
+
+    # 2b. Technique overlap without server-side restriction (fallback for server-side controls
+    #     when all non-user nodes lack those techniques)
     for node in path_nodes:
         node_techs = set(per_node.get(node, []))
         if cr_techs & node_techs:
             return node, node
 
-    # 3. First node with any techniques
+    # 3. First non-user node with any techniques (server-side controls prefer server nodes)
+    for node in path_nodes:
+        label = parsed_nodes.get(node, {}).get("label", node)
+        if is_server_side and _is_user_node(node, label):
+            continue
+        if per_node.get(node):
+            return node, node
+
+    # 4. First node with any techniques
     for node in path_nodes:
         if per_node.get(node):
             return node, node
 
-    # 4. Fallback
+    # 5. Fallback
     if path_nodes:
         return path_nodes[0], path_nodes[0]
     return "unknown", "unknown"
@@ -147,12 +259,63 @@ def _extract_risk_values(
     return original_risk, rb, ra, max(0, rb - ra)
 
 
+def _classify_gap(
+    node: str,
+    node_techs: List[str],
+    path_nodes: List[str],
+    hop_bucket: Dict,
+) -> Tuple[str, str]:
+    """
+    Return (gap_type, gap_note) for a hop that has techniques but no assigned control.
+
+    gap_type values (machine-readable, used by MoE critics):
+      "upstream_covered"  — a prior hop already has a control that blocks these techniques
+      "library_gap"       — techniques are known but no control in the pattern library targets them
+      "detection_only"    — only detection controls present, no prevention
+      "unmitigated"       — no explanation found; genuine gap requiring critic review
+    """
+    node_tech_set = set(node_techs)
+    node_idx = path_nodes.index(node) if node in path_nodes else -1
+    tech_str = ", ".join(node_techs[:4])
+
+    # Check if an earlier hop already covers all these techniques
+    earlier_nodes = path_nodes[:node_idx]
+    upstream_ctrls_for_techs: List[str] = []
+    for prev_node in earlier_nodes:
+        prev_ctrls = hop_bucket.get(prev_node, [])
+        for _, cr in prev_ctrls:
+            cr_techs = set(cr.get("techniques", []))
+            overlap = cr_techs & node_tech_set
+            if overlap:
+                upstream_ctrls_for_techs.append(
+                    f"{cr['control']} at {prev_node} covers {', '.join(overlap)}"
+                )
+
+    if upstream_ctrls_for_techs:
+        note = (
+            f"Techniques {tech_str} are present but assumed covered upstream: "
+            + "; ".join(upstream_ctrls_for_techs[:2])
+            + ". Verify upstream controls are effective at this depth."
+        )
+        return "upstream_covered", note
+
+    # No upstream coverage — check if the techniques map to any known controls at all
+    # (library gap: techniques exist but pattern library has no control targeting them here)
+    return (
+        "library_gap",
+        f"No deterministic control maps to {tech_str} at {node}. "
+        f"The pattern library does not cover this hop — "
+        f"MoE critic should assess whether additional controls are feasible or risk must be accepted."
+    )
+
+
 def _build_hop_controls(
     ap: Dict,
     relevant_crs: List[Tuple[int, Dict]],
     residual_before: Dict,
     residual_after: Dict,
     all_control_recs: List[Dict],
+    parsed_nodes: Optional[Dict] = None,
 ) -> List[Dict]:
     """
     Group relevant controls by hop, returning a list of hop entries ordered
@@ -160,11 +323,12 @@ def _build_hop_controls(
     """
     path_nodes: List[str] = ap.get("path", [])
     per_node: Dict[str, List[str]] = ap.get("per_node_techniques", {})
+    parsed_nodes = parsed_nodes or {}
 
-    # Bucket controls by resolved hop
+    # Bucket controls by resolved hop (using label-aware placement matching)
     hop_bucket: Dict[str, List[Tuple[int, Dict]]] = defaultdict(list)
     for cr_idx, cr in relevant_crs:
-        node, _ = _resolve_hop(cr, ap)
+        node, _ = _resolve_hop(cr, ap, parsed_nodes)
         hop_bucket[node].append((cr_idx, cr))
 
     # Emit hops in path order (only nodes that have at least one control or technique)
@@ -177,20 +341,11 @@ def _build_hop_controls(
         if not node_techs and not controls_at_hop:
             continue
 
-        # Determine whether any detection control covers this hop
-        has_detection = any(
-            cr.get("dir_category") in ("detection", "detect", "response")
-            for _, cr in controls_at_hop
-        )
-        has_prevention = any(
-            cr.get("dir_category") in ("prevention", "isolate", "hardening")
-            for _, cr in controls_at_hop
-        )
+        node_label = parsed_nodes.get(node, {}).get("label", node)
         gap_note = None
+        gap_type = None
         if node_techs and not controls_at_hop:
-            gap_note = f"No control assigned — {len(node_techs)} technique(s) exposed ({', '.join(node_techs[:3])})"
-        elif has_prevention and not has_detection:
-            gap_note = "Prevention only — add detection to satisfy zero-trust verify principle"
+            gap_type, gap_note = _classify_gap(node, node_techs, path_nodes, hop_bucket)
 
         # Build control entries
         control_entries = []
@@ -200,18 +355,19 @@ def _build_hop_controls(
             dir_cat = cr.get("dir_category", "prevention")
             threats = cr.get("rapids_threats", [])
 
-            # Reason: what threat + technique is this blocking at this hop
+            # Reason: what threat + technique is this blocking at this hop (use display label)
             if techniques and threats:
                 reason = (
-                    f"At {node}, {cr['control'].title()} blocks "
+                    f"At {node_label}, {cr['control'].title()} blocks "
                     f"{', '.join(_technique_name(t) for t in techniques[:2])} "
                     f"({', '.join(techniques[:2])}) — mitigates {', '.join(threats[:2])} risk"
                 )
             elif threats:
-                reason = f"At {node}, {cr['control'].title()} reduces {', '.join(threats[:2])} risk"
+                reason = f"At {node_label}, {cr['control'].title()} reduces {', '.join(threats[:2])} risk"
             else:
-                reason = f"At {node}, {cr['control'].title()} reduces exposure"
+                reason = f"At {node_label}, {cr['control'].title()} reduces exposure"
 
+            ssp_ctx = cr.get("ssp_context")
             control_entries.append({
                 "control": cr.get("control", "unknown"),
                 "dir_category": dir_cat,
@@ -223,13 +379,23 @@ def _build_hop_controls(
                 "risk_before": orig,
                 "risk_after": ra,
                 "risk_reduction": reduction,
+                "ssp_context": ssp_ctx,
             })
+
+        # Full zero-trust coverage check for hops that have controls
+        if control_entries and not gap_note:
+            zt_note = _zt_gap_note(control_entries)
+            if zt_note:
+                gap_type = "detection_only"
+                gap_note = zt_note
 
         hops.append({
             "node": node,
+            "node_label": node_label,
             "node_techniques": node_techs,
             "controls": control_entries,
             "gap_note": gap_note,
+            "gap_type": gap_type,
         })
 
     return hops
@@ -256,6 +422,8 @@ def generate_adrs_from_ground_truth(
     rapids: Dict = ground_truth.get("rapids_assessment", {})
     arch_type: str = ground_truth.get("metadata", {}).get("architecture_type", "generic")
     arch_framing = _ARCH_FRAMING.get(arch_type, _ARCH_FRAMING["generic"])
+    # Node ID → {label, shape} — used for label-aware placement matching
+    parsed_nodes: Dict = ground_truth.get("metadata", {}).get("parsed_nodes", {})
 
     # Build a ranked list of active RAPIDS threats with scores for narrative.
     # Primary source: rapids_assessment.risk_score; fallback: residual_risks_before.per_threat.initial_risk
@@ -301,7 +469,7 @@ def generate_adrs_from_ground_truth(
                 relevant_crs.append((cr_idx, cr))
 
         # Group controls by hop
-        hops = _build_hop_controls(ap, relevant_crs, residual_before, residual_after, control_recs)
+        hops = _build_hop_controls(ap, relevant_crs, residual_before, residual_after, control_recs, parsed_nodes)
 
         # Threat actor + key technique — pulled from risk_scenario if already enriched,
         # otherwise derived directly from path entry and techniques (enricher runs after)
@@ -380,13 +548,28 @@ def generate_adrs_from_ground_truth(
             f"This path is the primary vector for {top_threat_str} risk in this architecture."
         )
 
-        # Gap summary — what is currently unprotected and what that means
+        # Gap summary — classify each unprotected hop so the MoE critic knows exactly what it is
         gap_parts = []
-        if unprotected_hops:
-            nodes_str = ", ".join(h["node"] for h in unprotected_hops)
+        upstream_hops = [h for h in unprotected_hops if h.get("gap_type") == "upstream_covered"]
+        library_gap_hops = [h for h in unprotected_hops if h.get("gap_type") == "library_gap"]
+        unmitigated_hops = [h for h in unprotected_hops if h.get("gap_type") == "unmitigated"]
+
+        if upstream_hops:
             gap_parts.append(
-                f"{len(unprotected_hops)} hop(s) have no control assigned "
-                f"({nodes_str}) — an attacker can traverse these without any verification"
+                f"{len(upstream_hops)} hop(s) ({', '.join(h['node'] for h in upstream_hops)}) "
+                f"have no dedicated control but are assumed covered by upstream controls — "
+                f"verify depth-of-defence is sufficient"
+            )
+        if library_gap_hops:
+            gap_parts.append(
+                f"{len(library_gap_hops)} hop(s) ({', '.join(h['node'] for h in library_gap_hops)}) "
+                f"have exposed techniques with no matching control in the pattern library — "
+                f"MoE critic required to assess feasibility or accept residual risk"
+            )
+        if unmitigated_hops:
+            gap_parts.append(
+                f"{len(unmitigated_hops)} hop(s) ({', '.join(h['node'] for h in unmitigated_hops)}) "
+                f"are genuinely unmitigated — no upstream coverage and no library match"
             )
         if prevention_only_hops:
             nodes_str = ", ".join(h["node"] for h in prevention_only_hops)

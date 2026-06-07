@@ -429,6 +429,7 @@ async def expert_review_with_progress(
     Run MoE Expert Review pipeline with SSE progress updates.
 
     Requires analysis to have been run first (ground_truth.json must exist).
+    Critic enablement (blackhat, purple_team) is controlled by server config only.
 
     Args:
         architecture_name: Architecture name (matches report directory)
@@ -526,15 +527,47 @@ async def expert_review_with_progress(
 
         task = loop.run_in_executor(None, _run_pipeline)
 
-        # Per-critic progress bands: (start_pct, end_pct, stage_label)
+        # Determine which optional critics are enabled via server config
+        from chatbot.config import get_settings as _gs_bands
+        _cfg_bands = _gs_bands()
+        _bh_enabled = getattr(getattr(_cfg_bands, 'blackhat', None), 'enabled', False)
+        _pt_enabled = getattr(getattr(_cfg_bands, 'purple_team', None), 'enabled', True)
+
+        # Per-critic progress bands: (start_pct, end_pct, stage_label, message)
         # Timed progress messages play within each band until the real
         # critic_result event arrives and advances to the next band.
-        stage_bands = [
-            (10, 33, "architect", "[2A] Architect Critic: Validating threat model and attack paths..."),
-            (33, 66, "tester",    "[2B] Tester Critic: Auditing MITRE mappings and control effectiveness..."),
-            (66, 90, "red_team",  "[2C] Red Team Critic: Stress-testing defensive posture and bypass paths..."),
-            (90, 98, "synthesis", "[L3] Orchestrator: Synthesising consensus recommendations..."),
-        ]
+        if _bh_enabled and _pt_enabled:
+            stage_bands = [
+                (10, 25, "architect",    "[2A] Architect Critic: Validating threat model and attack paths..."),
+                (25, 45, "tester",       "[2B] Tester Critic: Auditing MITRE mappings and control effectiveness..."),
+                (45, 62, "red_team",     "[2C] Red Team Critic: Stress-testing defensive posture and bypass paths..."),
+                (62, 76, "purple_team",  "[2D] Purple Team Critic: Verifying detection depth, coverage gaps, and ADR operability..."),
+                (76, 90, "blackhat",     "[2E] Blackhat Critic: Mapping cross-path pivot routes and chain exploits..."),
+                (90, 98, "synthesis",    "[L3] Orchestrator: Synthesising consensus recommendations..."),
+            ]
+        elif _pt_enabled:
+            stage_bands = [
+                (10, 28, "architect",    "[2A] Architect Critic: Validating threat model and attack paths..."),
+                (28, 52, "tester",       "[2B] Tester Critic: Auditing MITRE mappings and control effectiveness..."),
+                (52, 72, "red_team",     "[2C] Red Team Critic: Stress-testing defensive posture and bypass paths..."),
+                (72, 88, "purple_team",  "[2D] Purple Team Critic: Verifying detection depth, coverage gaps, and ADR operability..."),
+                (88, 98, "synthesis",    "[L3] Orchestrator: Synthesising consensus recommendations..."),
+            ]
+        elif _bh_enabled:
+            stage_bands = [
+                (10, 30, "architect",  "[2A] Architect Critic: Validating threat model and attack paths..."),
+                (30, 55, "tester",     "[2B] Tester Critic: Auditing MITRE mappings and control effectiveness..."),
+                (55, 78, "red_team",   "[2C] Red Team Critic: Stress-testing defensive posture and bypass paths..."),
+                (78, 92, "blackhat",   "[2E] Blackhat Critic: Mapping cross-path pivot routes and chain exploits..."),
+                (92, 98, "synthesis",  "[L3] Orchestrator: Synthesising consensus recommendations..."),
+            ]
+        else:
+            stage_bands = [
+                (10, 33, "architect",  "[2A] Architect Critic: Validating threat model and attack paths..."),
+                (33, 66, "tester",     "[2B] Tester Critic: Auditing MITRE mappings and control effectiveness..."),
+                (66, 90, "red_team",   "[2C] Red Team Critic: Stress-testing defensive posture and bypass paths..."),
+                (90, 98, "synthesis",  "[L3] Orchestrator: Synthesising consensus recommendations..."),
+            ]
 
         # Synthesis sub-step messages fired by the orchestrator via progress_callback
         _SYNTHESIS_MESSAGES = {
@@ -670,14 +703,14 @@ async def expert_review_stream(
     """
     Run MoE Expert Review on a previously analyzed architecture.
 
-    Streams real-time progress via SSE as three independent critic agents
-    (Architect, Tester, Red Team) validate the deterministic analysis and
-    produce a consensus confidence score and unified recommendations.
+    Streams real-time progress via SSE as critics validate the deterministic
+    analysis and produce a consensus confidence score and unified recommendations.
+    Which critics run (blackhat, purple_team) is controlled by server configuration.
 
     **Prerequisites:** Run `/api/v1/analyze-stream` first to generate `ground_truth.json`.
 
     **SSE Events:**
-    - `progress`: Stage updates (architect → tester → red_team → synthesis)
+    - `progress`: Stage updates (architect → tester → red_team → [purple_team] → [blackhat] → synthesis)
     - `critic_result`: Emitted as each critic finishes — includes score, status, gap count, top gaps
     - `complete`: Final MoEResult with confidence and consensus recommendations
     - `error`: Error details (e.g. missing prerequisites)
@@ -743,6 +776,7 @@ async def expert_review_cancel(
     report_dir = _report_base_dir() / architecture_name
     purged = []
     for fname in ("04_architect_critique.json", "05_tester_critique.json", "06_red_team_critique.json",
+                  "06b_purple_team_critique.json", "06c_blackhat_critique.json",
                   "07_moe_orchestrator.json", "07_orchestrator_report.json"):
         fpath = report_dir / fname
         if fpath.exists():

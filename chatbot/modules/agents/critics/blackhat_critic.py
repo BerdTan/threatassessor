@@ -1,5 +1,5 @@
 """
-Blackhat Critic — Layer 2D: Cross-path chain analysis.
+Blackhat Critic — Layer 2E: Cross-path chain analysis (supreme critic — runs last).
 
 Uniqueness vs other critics:
 - Architect, Tester, Red Team all validate WITHIN individual attack paths.
@@ -40,7 +40,7 @@ _DEFAULT_STEALTH_TECHNIQUES = ["T1562", "T1070", "T1078", "T1036", "T1027"]
 
 class BlackhatCritic(CriticAgent):
     """
-    Layer 2D critic — cross-path chain analysis.
+    Layer 2E critic — cross-path chain analysis (supreme critic).
 
     Contract:
     - Input: ground_truth.json (expected_attack_paths, control_recommendations)
@@ -92,10 +92,11 @@ class BlackhatCritic(CriticAgent):
 
     def _identify_chained_paths(self, paths: List[Dict]) -> List[Dict]:
         """
-        Find AP-i → AP-j chains where AP-i's target appears in AP-j's path body.
-        Returns list of {chain: [ap_id_i, ap_id_j], pivot: node}.
+        Find AP-i → AP-j chains where AP-i's target appears as a mid-node in AP-j.
+        Returns list of {chain: [ap_id_i, ap_id_j], pivot: node, chain_type: 'sequential'}.
         """
         chains = []
+        _tier = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
         for i, ap_i in enumerate(paths):
             target_i = ap_i.get("target", "")
             if not target_i:
@@ -108,13 +109,103 @@ class BlackhatCritic(CriticAgent):
                     chains.append({
                         "chain": [ap_i.get("id", f"AP-{i+1}"), ap_j.get("id", f"AP-{j+1}")],
                         "pivot": target_i,
+                        "chain_type": "sequential",
                         "chain_criticality": max(
                             ap_i.get("criticality_tier", "LOW"),
                             ap_j.get("criticality_tier", "LOW"),
-                            key=lambda t: {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(t, 0)
+                            key=lambda t: _tier.get(t, 0)
                         ),
                     })
         return chains
+
+    def _find_pivot_diverge_chains(
+        self,
+        paths: List[Dict],
+        shared_nodes: Dict[str, List[str]],
+        control_recs: List[Dict],
+        detection_controls: Optional[List[str]] = None,
+    ) -> List[Dict]:
+        """
+        Pivot-diverge analysis: shared mid-nodes where a single compromise gives
+        forked reach to multiple distinct downstream targets.
+
+        Example: AuthService shared by AP-12 (→UserDB) and AP-15 (→Cache).
+        Attacker reaching AuthService gains lateral reach to both targets — per-path
+        mitigations on each AP cannot prevent this branching.
+
+        Returns list of {pivot, ap_ids, diverge_targets, techniques_at_pivot,
+                          detection_downstream, chain_type, chain_criticality}.
+        """
+        _tier = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+        detection_keywords = set(detection_controls or [
+            "siem", "edr", "ids", "ips", "logging", "monitoring", "audit",
+            "detection", "alerting", "behavioral analysis", "ndr", "xdr",
+        ])
+
+        # Build control name set for detection check
+        control_names_lower = {cr.get("control", "").lower() for cr in control_recs}
+        has_detection = any(
+            any(kw in name for kw in detection_keywords)
+            for name in control_names_lower
+        )
+
+        pivot_chains = []
+        for node, ap_ids in shared_nodes.items():
+            if len(ap_ids) < 2:
+                continue
+            # Collect distinct targets reachable from this node across all APs
+            diverge_targets: Dict[str, Dict] = {}  # target → {ap_id, onward_path}
+            for ap in paths:
+                if ap.get("id") not in ap_ids:
+                    continue
+                path = ap.get("path", [])
+                if node not in path:
+                    continue
+                idx = path.index(node)
+                onward = path[idx:]
+                target = ap.get("target", "")
+                if target and target != node:
+                    diverge_targets[target] = {
+                        "ap_id": ap.get("id"),
+                        "onward": onward,
+                        "criticality": ap.get("criticality_tier", "LOW"),
+                    }
+
+            if len(diverge_targets) < 2:
+                continue  # only one target reachable — not a diverge
+
+            # Techniques at pivot node across all involved APs
+            techs_at_pivot: List[str] = []
+            for ap in paths:
+                if ap.get("id") in ap_ids:
+                    node_techs = ap.get("per_node_techniques", {}).get(node, [])
+                    techs_at_pivot.extend(node_techs)
+            techs_at_pivot = list(dict.fromkeys(techs_at_pivot))  # dedupe, preserve order
+
+            # Downstream detection: any detection control on the onward paths?
+            onward_nodes: List[str] = []
+            for info in diverge_targets.values():
+                onward_nodes.extend(info["onward"][1:])  # skip pivot itself
+            detection_downstream = has_detection  # conservative: global check
+
+            max_crit = max(
+                (info["criticality"] for info in diverge_targets.values()),
+                key=lambda t: _tier.get(t, 0),
+                default="LOW"
+            )
+
+            pivot_chains.append({
+                "pivot": node,
+                "ap_ids": ap_ids,
+                "diverge_targets": {t: v["ap_id"] for t, v in diverge_targets.items()},
+                "onward_paths": {t: v["onward"] for t, v in diverge_targets.items()},
+                "techniques_at_pivot": techs_at_pivot[:6],
+                "detection_downstream": detection_downstream,
+                "chain_type": "pivot_diverge",
+                "chain_criticality": max_crit,
+            })
+
+        return pivot_chains
 
     def _score_stealth(self, techniques_list: List[str]) -> Tuple[int, List[str]]:
         """Count Defense Evasion techniques in a combined technique list."""
@@ -191,7 +282,10 @@ class BlackhatCritic(CriticAgent):
             "You are a blackhat security assessor specialising in cross-path chain exploitation. "
             "Your sole focus is: can an attacker combine individual attack paths via shared pivot nodes "
             "to form a more dangerous, often stealthy, composite attack? "
-            "Do NOT repeat findings already covered by Architect, Tester, or Red Team critics. "
+            "Do NOT repeat findings already covered by Architect, Tester, Red Team, or Purple Team critics. "
+            "Purple Team (Layer 2D) has already assessed detection depth, coverage gaps, and ADR operability — "
+            "do not re-raise those findings; instead, use PT's detection blindspot data as input to identify "
+            "pivot nodes where a cross-path chain would be invisible to defenders. "
             "INVERTED scoring: high score = easy cross-path chain = BAD defence. "
             "Ground yourself in the deterministic pre-processing data provided — "
             "do not hallucinate paths or controls not listed in the input."
@@ -206,11 +300,15 @@ class BlackhatCritic(CriticAgent):
         artifacts: ArtifactSet,
         ground_truth: Dict,
         red_team_critique: Optional[CritiqueScore] = None,
+        purple_team_critique: Optional[CritiqueScore] = None,
     ) -> CritiqueScore:
         """
         Run cross-path chain analysis.
 
-        Short-circuits to PASS if fewer than 2 attack paths (cross-path analysis N/A).
+        Receives red_team_critique and purple_team_critique (when available) so BH
+        can elevate stealth pivots that overlap with PT's detection blindspots.
+
+        Short-circuits to PASS if fewer than 2 attack paths.
         """
         attack_paths = ground_truth.get("expected_attack_paths", [])
         control_recs = ground_truth.get("control_recommendations", [])
@@ -221,22 +319,47 @@ class BlackhatCritic(CriticAgent):
 
         # --- Deterministic pre-processing ---
         shared_nodes = self._find_shared_nodes(attack_paths)
-        chains = self._identify_chained_paths(attack_paths)
+
+        # Sequential chains: AP-i.target is a mid-node of AP-j
+        sequential_chains = self._identify_chained_paths(attack_paths)
+
+        # Pivot-diverge chains: shared mid-node fans out to multiple distinct targets
+        pivot_chains = self._find_pivot_diverge_chains(attack_paths, shared_nodes, control_recs)
+
+        # PT detection blindspots: nodes that PT flagged as having no detection downstream
+        pt_blind_nodes: List[str] = []
+        if purple_team_critique and purple_team_critique.breakdown:
+            pt_blind_nodes = [
+                b.get("node", "") for b in
+                purple_team_critique.breakdown.get("detection_blindspots", [])
+                if b.get("node")
+            ]
+            # Elevate pivot chains where the pivot node has no detection (PT finding)
+            for pc in pivot_chains:
+                if pc["pivot"] in pt_blind_nodes:
+                    pc["stealth_elevated"] = True
+                    pc["chain_criticality"] = "CRITICAL"  # worst-case: blind pivot
+
+        all_chains = sequential_chains + pivot_chains
         all_techniques: List[str] = []
         for ap in attack_paths:
             all_techniques.extend(ap.get("techniques", []))
         stealth_score, stealthy_techs = self._score_stealth(all_techniques)
-        chain_gaps = self._find_control_gaps_for_chains(chains, attack_paths, control_recs)
+        chain_gaps = self._find_control_gaps_for_chains(all_chains, attack_paths, control_recs)
 
         logger.info(
             f"BlackhatCritic: {len(shared_nodes)} shared nodes, "
-            f"{len(chains)} chains, stealth_score={stealth_score}"
+            f"{len(sequential_chains)} sequential chains, "
+            f"{len(pivot_chains)} pivot-diverge chains, "
+            f"stealth_score={stealth_score}"
         )
 
         # --- LLM challenge ---
         prompt = self._build_prompt(
-            attack_paths, control_recs, shared_nodes, chains,
-            stealth_score, stealthy_techs, chain_gaps, red_team_critique
+            attack_paths, control_recs, shared_nodes,
+            sequential_chains, pivot_chains,
+            stealth_score, stealthy_techs, chain_gaps,
+            red_team_critique, pt_blind_nodes,
         )
 
         logger.info("BlackhatCritic: Calling LLM for cross-path chain assessment")
@@ -254,34 +377,82 @@ class BlackhatCritic(CriticAgent):
         raw_score.breakdown["shared_nodes"] = {k: v for k, v in list(shared_nodes.items())[:10]}
         raw_score.breakdown["chained_exploit_findings"] = [
             f"{c['chain'][0]} → {c['chain'][1]} via `{c['pivot']}` [{c['chain_criticality']}]"
-            for c in chains[:10]
+            for c in sequential_chains[:10]
+        ]
+        raw_score.breakdown["pivot_diverge_chains"] = [
+            {
+                "pivot": pc["pivot"],
+                "ap_ids": pc["ap_ids"],
+                "targets": list(pc["diverge_targets"].keys()),
+                "techniques": pc["techniques_at_pivot"],
+                "chain_criticality": pc["chain_criticality"],
+                "stealth_elevated": pc.get("stealth_elevated", False),
+            }
+            for pc in pivot_chains[:8]
         ]
         raw_score.breakdown["stealth_score"] = stealth_score
         raw_score.breakdown["stealthy_techniques"] = stealthy_techs
         raw_score.breakdown["least_resistance_paths"] = [
-            c for c in chains if c.get("chain_criticality") in ("CRITICAL", "HIGH")
+            c for c in all_chains if c.get("chain_criticality") in ("CRITICAL", "HIGH")
         ]
         raw_score.breakdown["mitigation_gaps_for_chains"] = chain_gaps
+        raw_score.breakdown["pt_blind_pivot_nodes"] = pt_blind_nodes
 
         # Uniqueness vs other critics
-        rt_gaps = []
-        if red_team_critique:
-            rt_gaps = [str(g) for g in red_team_critique.gaps[:5]]
+        rt_gaps = [str(g) for g in red_team_critique.gaps[:5]] if red_team_critique else []
+        pt_gaps = [str(g) for g in purple_team_critique.gaps[:5]] if purple_team_critique else []
         raw_score.breakdown["uniqueness_vs_critics"] = {
             "new_findings_not_in_redteam": [
                 g for g in chain_gaps
                 if not any(g[:20] in rt for rt in rt_gaps)
             ][:5],
             "chains_missed_by_architect": [
-                f"{c['chain'][0]} → {c['chain'][1]}" for c in chains[:5]
+                f"{c['chain'][0]} → {c['chain'][1]}" for c in sequential_chains[:5]
             ],
-            "mitre_gaps_not_in_tester": [
-                f"Uncovered in chain: {g[:60]}" for g in chain_gaps[:3]
+            "pivot_diverge_missed_by_purpleteam": [
+                f"Pivot `{pc['pivot']}` fans to: {', '.join(pc['diverge_targets'].keys())}"
+                for pc in pivot_chains[:3]
+                if not any(pc["pivot"][:8] in pt for pt in pt_gaps)
             ],
         }
 
-        logger.info(f"BlackhatCritic: complete — score={raw_score.score}, chains={len(chains)}")
+        logger.info(
+            f"BlackhatCritic: complete — score={raw_score.score}, "
+            f"sequential={len(sequential_chains)}, pivot_diverge={len(pivot_chains)}"
+        )
         return raw_score
+
+    # ------------------------------------------------------------------
+    # Response parsing
+    # ------------------------------------------------------------------
+
+    def _parse_response_wrapper(self, response) -> CritiqueScore:
+        """Parse LLM response into CritiqueScore using parent JSON extractor."""
+        data = self._parse_llm_response(response)
+
+        if not data:
+            logger.warning("BlackhatCritic: parse failure — using default score")
+            return CritiqueScore(
+                role=self.role,
+                score=50,
+                max_score=100,
+                rating="UNKNOWN",
+                breakdown={},
+                gaps=[],
+                strengths=[],
+                improvement_roadmap=[],
+            )
+
+        return CritiqueScore(
+            role=self.role,
+            score=data.get("score", 50),
+            max_score=100,
+            rating=data.get("rating", "UNKNOWN"),
+            breakdown=data.get("breakdown", {}),
+            gaps=data.get("gaps", []),
+            strengths=data.get("strengths", []),
+            improvement_roadmap=[],
+        )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -316,11 +487,13 @@ class BlackhatCritic(CriticAgent):
         attack_paths: List[Dict],
         control_recs: List[Dict],
         shared_nodes: Dict[str, List[str]],
-        chains: List[Dict],
+        sequential_chains: List[Dict],
+        pivot_chains: List[Dict],
         stealth_score: int,
         stealthy_techs: List[str],
         chain_gaps: List[str],
         red_team_critique: Optional[CritiqueScore],
+        pt_blind_nodes: Optional[List[str]] = None,
     ) -> str:
         weights = self._rubric_weights
 
@@ -328,7 +501,7 @@ class BlackhatCritic(CriticAgent):
         for ap in attack_paths:
             paths_summary += (
                 f"  {ap.get('id','?')} [{ap.get('criticality_tier','?')}]: "
-                f"{' → '.join(ap.get('path', [])[:5])} | "
+                f"{' → '.join(ap.get('path', [])[:6])} | "
                 f"Techniques: {', '.join(ap.get('techniques', [])[:4])}\n"
             )
 
@@ -338,23 +511,49 @@ class BlackhatCritic(CriticAgent):
         for node, aps in list(shared_nodes.items())[:8]:
             shared_summary += f"  `{node}` shared by: {', '.join(aps)}\n"
 
-        chains_summary = ""
-        for c in chains[:8]:
-            chains_summary += f"  {c['chain'][0]} → {c['chain'][1]} via `{c['pivot']}` [{c['chain_criticality']}]\n"
+        seq_summary = ""
+        for c in sequential_chains[:6]:
+            seq_summary += (
+                f"  {c['chain'][0]} → {c['chain'][1]} via `{c['pivot']}` "
+                f"[{c['chain_criticality']}]\n"
+            )
+
+        pivot_summary = ""
+        for pc in pivot_chains[:8]:
+            targets_str = ", ".join(
+                f"{t} (via {aid})" for t, aid in pc["diverge_targets"].items()
+            )
+            stealth_note = " ⚠ NO DETECTION DOWNSTREAM" if pc.get("stealth_elevated") else ""
+            pivot_summary += (
+                f"  PIVOT `{pc['pivot']}` [{pc['chain_criticality']}]{stealth_note}\n"
+                f"    Shared by: {', '.join(pc['ap_ids'])}\n"
+                f"    Diverge targets: {targets_str}\n"
+                f"    Techniques at pivot: {', '.join(pc['techniques_at_pivot']) or 'none mapped'}\n"
+            )
 
         rt_context = ""
         if red_team_critique:
             rt_context = (
-                f"\n## Red Team Findings (do NOT repeat these — find NEW cross-path issues)\n"
+                f"\n## Red Team Findings (do NOT repeat — find NEW cross-path issues)\n"
                 f"Red Team score: {red_team_critique.score}/100\n"
                 f"Red Team gaps (first 3): {'; '.join(str(g) for g in red_team_critique.gaps[:3])}\n"
+            )
+
+        pt_context = ""
+        if pt_blind_nodes:
+            pt_context = (
+                f"\n## Purple Team Detection Blindspots\n"
+                f"These nodes have no detection controls downstream (Purple Team finding).\n"
+                f"If any of these are pivot nodes, the attacker can branch silently:\n"
+                f"  {', '.join(pt_blind_nodes[:8])}\n"
+                f"Elevate any pivot chain that passes through these nodes to CRITICAL.\n"
             )
 
         return f"""# Blackhat Cross-Path Chain Assessment
 
 INVERTED SCORING: high score = easy cross-path chain = BAD defence.
-Your job: assess whether the attack paths can be COMBINED via shared nodes into more dangerous chains.
-Do NOT re-assess individual path controls (Red Team already did that).
+Your job: identify whether attack paths can be COMBINED via shared nodes into more dangerous composite attacks.
+Do NOT re-assess individual path controls (Red Team + Purple Team already covered that).
 
 ## Attack Paths
 {paths_summary}
@@ -363,24 +562,29 @@ Do NOT re-assess individual path controls (Red Team already did that).
 
 ## Pre-computed Deterministic Facts
 
-### Shared Pivot Nodes (appear in 2+ paths):
+### Shared Nodes (appear in 2+ paths):
 {shared_summary or '  None identified.'}
 
-### Identified Chains (AP-i target appears in AP-j path):
-{chains_summary or '  No chains identified.'}
+### Sequential Chains (AP-i target is mid-node of AP-j — direct pivot):
+{seq_summary or '  None — targets are leaf nodes not reused as mid-nodes.'}
 
-### Stealth Score: {stealth_score} (count of Defense Evasion techniques: {', '.join(stealthy_techs) or 'none'})
+### Pivot-Diverge Chains (shared mid-node fans out to multiple distinct targets):
+{pivot_summary or '  None — no shared mid-nodes lead to distinct targets.'}
+(A pivot-diverge means: one compromise gives the attacker forked reach across multiple AP targets
+without needing separate entry points. Per-path mitigations cannot stop this.)
+
+### Stealth Score: {stealth_score} Defence Evasion techniques ({', '.join(stealthy_techs) or 'none'})
 
 ### Cross-Path Mitigation Gaps:
 {''.join('  - ' + g + chr(10) for g in chain_gaps) or '  None — all chain techniques have a mitigation.'}
-{rt_context}
+{rt_context}{pt_context}
 ## Rubric (100 points, INVERTED)
 
 | Category | Points |
 |----------|--------|
-| Cross-Path Chain Feasibility | {weights['cross_path_chain_feasibility']} |
+| Cross-Path Chain Feasibility (sequential + pivot-diverge) | {weights['cross_path_chain_feasibility']} |
 | Least-Resistance Path | {weights['least_resistance_path']} |
-| Stealth Potential | {weights['stealth_potential']} |
+| Stealth Potential (pivot nodes with no detection) | {weights['stealth_potential']} |
 | Mitigation Chain Coverage | {weights['mitigation_chain_coverage']} |
 
 ## Required Output (JSON only)
@@ -395,16 +599,16 @@ Do NOT re-assess individual path controls (Red Team already did that).
     "stealth_potential": <int 0-{weights['stealth_potential']}>,
     "mitigation_chain_coverage": <int 0-{weights['mitigation_chain_coverage']}>
   }},
-  "reasoning": "<2-3 sentences explaining the chain threat level>",
+  "reasoning": "<2-3 sentences: what is the most dangerous chain and why>",
   "gaps": [
-    {{"severity": "<LOW/MEDIUM/HIGH/CRITICAL>", "description": "<cross-path chain gap>"}}
+    {{"severity": "<LOW/MEDIUM/HIGH/CRITICAL>", "description": "<specific cross-path chain gap, name the pivot node>"}}
   ],
   "strengths": ["<what mitigations hold even across chains>"],
   "exploit_mitigation_roadmap": [
     {{
       "target_score": <int>,
-      "requirements": ["<control to break the chain>"],
-      "attacker_impact": "<how this breaks chain feasibility>",
+      "requirements": ["<control that breaks this chain, e.g. network segmentation at pivot node>"],
+      "attacker_impact": "<how this eliminates the chain or raises the bar>",
       "practical": "<YES/MAYBE/NO>"
     }}
   ]

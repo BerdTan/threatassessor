@@ -155,10 +155,13 @@ body {
 }
 
 .right-pane.visible {
-    width: 380px;
+    width: 480px;
+    min-width: 280px;
+    max-width: 60vw;
     opacity: 1;
     overflow-y: auto;
     padding: 1.5rem;
+    resize: horizontal;
 }
 
 .right-pane-content h3 {
@@ -240,6 +243,50 @@ body {
 
 .tab-pane.active {
     display: block;
+}
+
+#threat-model-pane.active {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 180px);
+}
+
+#tm-left {
+    position: sticky;
+    top: -1.5rem;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+}
+
+#tm-resize-handle {
+    width: 5px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    background: var(--border-color);
+    transition: background 0.15s;
+    position: relative;
+    z-index: 1;
+}
+#tm-resize-handle:hover,
+#tm-resize-handle.dragging {
+    background: var(--primary-color);
+}
+#tm-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 1px;
+    height: 32px;
+    background: var(--primary-color);
+    opacity: 0;
+    transition: opacity 0.15s;
+    border-radius: 2px;
+}
+#tm-resize-handle:hover::after,
+#tm-resize-handle.dragging::after {
+    opacity: 0.6;
 }
 
 .tab-pane h2 {

@@ -107,6 +107,8 @@ class ResidualRiskSettings(BaseModel):
 
 
 class MoESettings(BaseModel):
+    enabled: bool = Field(default=True,
+        description="Master switch: enable the full MoE expert review chain (Layer 2A–2D). When False, only the deterministic engine runs.")
     base_confidence: float = Field(default=99.5, ge=50.0, le=100.0,
         description="Starting confidence percentage before expert critic adjustments")
     temperature_synthesis: float = Field(default=0.2, ge=0.0, le=2.0,
@@ -117,36 +119,70 @@ class MoESettings(BaseModel):
         description="Complexity score above which 'auto' critic mode uses sequential (not parallel)")
     critic_mode: Literal["sequential", "parallel", "auto"] = Field(default="sequential",
         description="How critic agents are executed: sequential (cross-referenced), parallel (faster), or auto")
-    # Architect critic score thresholds
+
+    # Architect critic — sensitivity preset (expands to pass/minor/major thresholds)
+    architect_sensitivity: Literal["lenient", "balanced", "strict"] = Field(default="balanced",
+        description="Architect critic sensitivity. lenient = fewer gaps flagged; strict = more gaps flagged")
     architect_pass_threshold: int = Field(default=90, ge=50, le=100,
-        description="Architect score ≥ this = PASS (no confidence penalty)")
+        description="Architect score ≥ this = PASS (no confidence penalty). Set automatically by architect_sensitivity.")
     architect_minor_gap_threshold: int = Field(default=80, ge=50, le=100,
-        description="Architect score ≥ this (but < pass) = MINOR_GAPS (−2% to −5%)")
+        description="Architect score ≥ this (but < pass) = MINOR_GAPS (−2% to −5%). Set automatically by architect_sensitivity.")
     architect_major_gap_threshold: int = Field(default=70, ge=0, le=100,
-        description="Architect score < this = MAJOR_GAPS (−10% confidence)")
-    # Tester critic score thresholds
+        description="Architect score < this = MAJOR_GAPS (−10% confidence). Set automatically by architect_sensitivity.")
+
+    # Tester critic — sensitivity preset
+    tester_sensitivity: Literal["lenient", "balanced", "strict"] = Field(default="balanced",
+        description="Tester critic sensitivity. lenient = fewer MITRE gaps flagged; strict = more gaps flagged")
     tester_pass_threshold: int = Field(default=85, ge=50, le=100,
-        description="Tester score ≥ this = PASS (no confidence penalty)")
+        description="Tester score ≥ this = PASS. Set automatically by tester_sensitivity.")
     tester_minor_gap_threshold: int = Field(default=75, ge=50, le=100,
-        description="Tester score ≥ this (but < pass) = MINOR_GAPS (−1% to −3%)")
+        description="Tester score ≥ this (but < pass) = MINOR_GAPS. Set automatically by tester_sensitivity.")
     tester_major_gap_threshold: int = Field(default=65, ge=0, le=100,
-        description="Tester score < this = MAJOR_GAPS (−5% confidence)")
-    # Red team critic thresholds (inverted: high score = easy to exploit = bad)
+        description="Tester score < this = MAJOR_GAPS. Set automatically by tester_sensitivity.")
+
+    # Red team critic — sensitivity preset (inverted: high score = easy to exploit = bad)
+    red_team_sensitivity: Literal["lenient", "balanced", "strict"] = Field(default="balanced",
+        description="Red Team critic sensitivity. lenient = only obvious exploits flagged; strict = any exploitability flagged")
     red_team_hard_threshold: int = Field(default=40, ge=0, le=100,
-        description="Red team score ≤ this = hard to exploit (no penalty)")
+        description="Red team score ≤ this = hard to exploit (no penalty). Set automatically by red_team_sensitivity.")
     red_team_medium_threshold: int = Field(default=55, ge=0, le=100,
-        description="Red team score ≤ this (but > hard) = medium exploitability (−3% to −6%)")
+        description="Red team score ≤ this (but > hard) = medium exploitability. Set automatically by red_team_sensitivity.")
     red_team_easy_threshold: int = Field(default=70, ge=0, le=100,
-        description="Red team score > this = easy to exploit (−10% confidence)")
+        description="Red team score > this = easy to exploit (−10% confidence). Set automatically by red_team_sensitivity.")
 
     @model_validator(mode="after")
     def check_critic_threshold_order(self) -> "MoESettings":
-        if not (self.architect_major_gap_threshold < self.architect_minor_gap_threshold < self.architect_pass_threshold):
-            raise ValueError("Architect thresholds must satisfy: major_gap < minor_gap < pass")
-        if not (self.tester_major_gap_threshold < self.tester_minor_gap_threshold < self.tester_pass_threshold):
-            raise ValueError("Tester thresholds must satisfy: major_gap < minor_gap < pass")
-        if not (self.red_team_hard_threshold < self.red_team_medium_threshold < self.red_team_easy_threshold):
-            raise ValueError("Red team thresholds must satisfy: hard < medium < easy")
+        # Expand sensitivity presets into thresholds
+        _arch_presets = {
+            "lenient":  (80, 70, 60),   # pass, minor, major
+            "balanced": (90, 80, 70),
+            "strict":   (95, 85, 75),
+        }
+        _test_presets = {
+            "lenient":  (75, 65, 55),
+            "balanced": (85, 75, 65),
+            "strict":   (92, 82, 72),
+        }
+        _rt_presets = {
+            # hard, medium, easy — inverted scale (lower = harder to exploit)
+            "lenient":  (50, 65, 80),
+            "balanced": (40, 55, 70),
+            "strict":   (30, 45, 60),
+        }
+        ap, amin, amaj = _arch_presets[self.architect_sensitivity]
+        self.architect_pass_threshold = ap
+        self.architect_minor_gap_threshold = amin
+        self.architect_major_gap_threshold = amaj
+
+        tp, tmin, tmaj = _test_presets[self.tester_sensitivity]
+        self.tester_pass_threshold = tp
+        self.tester_minor_gap_threshold = tmin
+        self.tester_major_gap_threshold = tmaj
+
+        rh, rm, re = _rt_presets[self.red_team_sensitivity]
+        self.red_team_hard_threshold = rh
+        self.red_team_medium_threshold = rm
+        self.red_team_easy_threshold = re
         return self
 
 
@@ -366,9 +402,18 @@ class BlackhatRubricWeights(BaseModel):
         return self
 
 
+class PurpleTeamSettings(BaseModel):
+    enabled: bool = Field(default=True,
+        description="Enable Purple Team critic (Layer 2D). Runs after 2A/2B/2C — before Blackhat (2E).")
+    detection_focus: Literal["balanced", "detection", "coverage", "adr"] = Field(
+        default="balanced",
+        description="Which Purple Team lens to weight most: balanced | detection | coverage | adr"
+    )
+
+
 class BlackhatSettings(BaseModel):
-    enabled: bool = Field(default=False,
-        description="Enable Blackhat cross-path chain critic (Layer 2D). Requires MoE expert review.")
+    enabled: bool = Field(default=True,
+        description="Enable Blackhat cross-path chain critic (Layer 2E — supreme critic). Requires MoE expert review.")
     stealth_techniques: List[str] = Field(
         default=["T1562", "T1070", "T1078", "T1036", "T1027"],
         description="MITRE technique IDs considered Defense Evasion / stealth indicators for stealth scoring"
@@ -415,6 +460,7 @@ class AppSettings(BaseModel):
     narratives: NarrativesSettings = Field(default_factory=NarrativesSettings)
     threat_model: ThreatModelSettings = Field(default_factory=ThreatModelSettings)
     adr: ADRSettings = Field(default_factory=ADRSettings)
+    purple_team: PurpleTeamSettings = Field(default_factory=PurpleTeamSettings)
     blackhat: BlackhatSettings = Field(default_factory=BlackhatSettings)
 
 

@@ -206,6 +206,28 @@ class Dashboard {
         return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data'];
     }
 
+    _setOverviewDetailVisible(visible) {
+        const detail = document.getElementById('overview-detail');
+        const banner = document.getElementById('overview-running-banner');
+        if (!detail) return;
+        if (visible) {
+            detail.style.display = '';
+            if (banner) banner.style.display = 'none';
+        } else {
+            detail.style.display = 'none';
+            // Show/create a slim banner in its place
+            if (banner) {
+                banner.style.display = 'flex';
+            } else {
+                const b = document.createElement('div');
+                b.id = 'overview-running-banner';
+                b.style.cssText = 'margin-top:1.25rem; padding:0.75rem 1rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; display:flex; align-items:center; gap:0.6rem; font-size:0.85rem; color:var(--text-tertiary);';
+                b.innerHTML = '<span style="animation:spin 1.2s linear infinite; display:inline-block;">⏳</span> Expert Consensus and Architecture Diagram will appear here once analysis completes.';
+                detail.parentNode.insertBefore(b, detail.nextSibling);
+            }
+        }
+    }
+
     _setContentTabsDisabled(disabled) {
         this._contentTabs().forEach(name => {
             const tab = document.querySelector(`.nav-tab[data-tab="${name}"]`);
@@ -401,7 +423,9 @@ class Dashboard {
         document.getElementById('tab-content').style.display = 'block';
 
         // Grey out content tabs while analysis is in progress
+        this._analysing = true;
         this._setContentTabsDisabled(true);
+        this._setOverviewDetailVisible(false);
 
         // Reset progress
         this.updateProgress(0, 'Starting analysis...');
@@ -456,6 +480,8 @@ class Dashboard {
         badgesContainer.innerHTML = '';
 
         patterns.forEach(pattern => {
+            // RAPIDS is universal (always present) — skip its badge to avoid header noise
+            if (pattern.pattern_id === 'rapids') return;
             const badge = document.createElement('span');
             badge.className = `badge badge-${this.getPatternClass(pattern.pattern_id)}`;
             badge.textContent = pattern.name.split(' + ')[0]; // Short name
@@ -538,7 +564,9 @@ class Dashboard {
         if (tmNavTab) tmNavTab.style.display = 'block';
 
         // Enable content tabs now that analysis data is available
+        this._analysing = false;
         this._setContentTabsDisabled(false);
+        this._setOverviewDetailVisible(true);
 
         // Show analysis status bar
         this._updateAnalysisStatusBar();
@@ -597,6 +625,10 @@ class Dashboard {
 
         // Grey out content tabs — no data to show
         this._setContentTabsDisabled(true);
+
+        // Restore overview detail (so it's visible when next analysis loads)
+        this._analysing = false;
+        this._setOverviewDetailVisible(true);
 
         // Hide right pane
         this.hideRightPane();
@@ -821,10 +853,12 @@ class Dashboard {
         // Full text corpus from MoE recs — used for substring matching against control names
         let moeKnownText = '';
         let moeUnsureText = '';
+        let moeExpertValidationsOuter = {};
         try {
             const moeResp = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
             if (moeResp.ok) {
                 const moe = await moeResp.json();
+                moeExpertValidationsOuter = moe.expert_validations || {};
                 validatedConf = (moe.confidence?.final ?? null);
                 moeInterp = moe.confidence?.interpretation ?? '';
                 moeImprovTiers = moe.improvement_options || {};
@@ -1049,28 +1083,47 @@ class Dashboard {
             </div>`;
         }).join('');
 
-        // Build Expert Review synthesis summary for Overview (items 2 & 5)
+        // Build Expert Review synthesis summary for Overview — one plain-English "biggest gap" sentence
         let moeOverviewSummary = '';
         if (hasMoe) {
-            let knownList = '';
-            for (const f of moeKnownFindings) {
-                knownList += '<li style="margin-bottom:0.25rem;">' + (f.description || f.recommendation || '') + '</li>';
+            // Find the single biggest confidence drop across expert validations
+            let biggestDrop = null;
+            let biggestDropLabel = '';
+            let biggestDropDesc = '';
+            const expertValidationsOv = moeExpertValidationsOuter;
+            const criticLabels = { architect: 'Architecture Review', tester: 'Coverage Audit', red_team: 'Exploit Analysis', purple_team: 'Purple Team', blackhat: 'Blackhat' };
+            for (const [key, ev] of Object.entries(expertValidationsOv)) {
+                const adj = ev.confidence_adjustment || 0;
+                if (adj < 0 && (biggestDrop === null || adj < biggestDrop)) {
+                    biggestDrop = adj;
+                    biggestDropLabel = criticLabels[key] || key;
+                    // Get the top gap description
+                    const gaps = ev.gaps || [];
+                    const topGap = gaps.find(g => ['CRITICAL','HIGH'].includes((g.severity || '').toUpperCase())) || gaps[0];
+                    biggestDropDesc = topGap ? (topGap.description || '') : (ev.summary || '');
+                }
             }
-            const knownBlock = knownList
-                ? '<ul style="margin:0.5rem 0 0; padding-left:1.25rem; font-size:0.8125rem; color:var(--text-color);">' + knownList + '</ul>'
-                : '';
-            const commentBlock = moeSynthComment
-                ? '<div style="font-size:0.8125rem; color:var(--text-secondary); font-style:italic; margin-top:0.5rem;">' + moeSynthComment + '</div>'
-                : '';
+
+            // Also check consensus KNOWN findings for the top recommendation
+            const topKnown = moeKnownFindings[0];
+            const topRec = topKnown ? (topKnown.recommendation || topKnown.description || '') : '';
+
+            let summaryLine = '';
+            if (biggestDrop !== null && biggestDropDesc) {
+                const dropPct = Math.abs(Math.round(biggestDrop * 100));
+                summaryLine = `<strong>${biggestDropLabel}</strong> flagged: "${biggestDropDesc}" — this is pulling confidence down by <strong>${dropPct}%</strong>.`;
+            } else if (topRec) {
+                summaryLine = `Top finding: "${topRec}"`;
+            } else {
+                summaryLine = 'No critical multi-expert findings — strong security posture.';
+            }
+
             moeOverviewSummary = '<div style="background:var(--primary-color)0e; border:1px solid var(--primary-color)44; border-radius:8px; padding:0.75rem 1rem; margin-bottom:1.25rem;">'
                 + '<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem;">'
                 + '<span style="font-size:0.9375rem;">🧑‍🏫</span>'
                 + '<span style="font-size:0.8125rem; font-weight:700; color:var(--primary-color);">Expert Review validated — ' + validatedConf.toFixed(1) + '% confidence</span>'
                 + '</div>'
-                + (moeKnownFindings.length > 0
-                    ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.25rem;">Key KNOWN findings (' + moeKnownFindings.length + ' confirmed by multiple experts):</div>' + knownBlock
-                    : '<div style="font-size:0.8125rem; color:var(--secondary-color);">No critical multi-expert findings — strong posture.</div>')
-                + commentBlock
+                + '<div style="font-size:0.875rem; color:var(--text-color); line-height:1.55;">' + summaryLine + '</div>'
                 + '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.5rem;">Full details → <strong style="cursor:pointer; color:var(--primary-color);" onclick="window.dashboard?.switchTab(\'expert-review\')">Expert Review tab</strong></div>'
                 + '</div>';
         }
@@ -1211,7 +1264,12 @@ class Dashboard {
 
     async renderArchitectureDiagram() {
         const container = document.getElementById('arch-diagram');
-        if (!container || !this.uploadedFile) return;
+        if (!container) return;
+        if (this._analysing) {
+            container.innerHTML = '<p class="placeholder" style="font-size:0.85rem; color:var(--text-tertiary);">⏳ Analysis in progress — Architecture Diagram will appear here once complete.</p>';
+            return;
+        }
+        if (!this.uploadedFile) return;
 
         try {
             // Read uploaded file
@@ -1395,98 +1453,136 @@ class Dashboard {
     }
 
     renderThreatChart() {
-        if (!this.threatScores) return;
+        // Replaced by renderExpertConsensusStrip — kept as no-op to avoid call-site errors
+        this.renderExpertConsensusStrip();
+    }
 
-        const canvas = document.getElementById('threat-chart');
-        if (!canvas) return;
+    async renderExpertConsensusStrip() {
+        const strip = document.getElementById('expert-consensus-strip');
+        if (!strip) return;
 
-        const rapidsScores = this.threatScores.rapids || {};
-        const labels = Object.keys(rapidsScores).filter(k => k !== '_metadata');
-        const risks = labels.map(label => rapidsScores[label]?.risk || 0);
-
-        if (window.threatChartInstance) {
-            window.threatChartInstance.destroy();
+        if (this._analysing) {
+            strip.innerHTML = '<p class="placeholder" style="font-size:0.85rem; color:var(--text-tertiary);">⏳ Analysis in progress — Expert Consensus will appear here once complete.</p>';
+            return;
         }
 
-        const isDark = document.body.classList.contains('dark-theme');
+        const archName = this.analysisData?.architecture_name || this.analysisData?.architecture || '';
+        if (!archName) {
+            strip.innerHTML = '<p class="placeholder" style="font-size:0.85rem;">Load an architecture analysis first.</p>';
+            return;
+        }
 
-        window.threatChartInstance = new Chart(canvas, {
-            type: 'bar',
-            data: {
-                labels: labels.map(l => l.replace(/_/g, ' ').toUpperCase()),
-                datasets: [{
-                    label: 'Risk Score',
-                    data: risks,
-                    backgroundColor: risks.map(r =>
-                        r >= 70 ? '#e74c3c' : r >= 50 ? '#f39c12' : '#f1c40f'
-                    ),
-                    borderColor: risks.map(r =>
-                        r >= 70 ? '#c0392b' : r >= 50 ? '#d68910' : '#d4ac0d'
-                    ),
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: true,
-                        position: 'top',
-                        labels: {
-                            color: isDark ? '#ffffff' : '#000000',
-                            generateLabels: () => [
-                                { text: 'High Risk (70-100)', fillStyle: '#e74c3c', strokeStyle: '#e74c3c', fontColor: isDark ? '#ffffff' : '#000000' },
-                                { text: 'Medium Risk (50-69)', fillStyle: '#f39c12', strokeStyle: '#f39c12', fontColor: isDark ? '#ffffff' : '#000000' },
-                                { text: 'Low Risk (0-49)', fillStyle: '#f1c40f', strokeStyle: '#f1c40f', fontColor: isDark ? '#ffffff' : '#000000' }
-                            ]
-                        }
-                    },
-                    tooltip: {
-                        backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
-                        titleColor: isDark ? '#ffffff' : '#000000',
-                        bodyColor: isDark ? '#ffffff' : '#000000',
-                        borderColor: isDark ? '#00d4ff' : '#0066cc',
-                        borderWidth: 1
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100,
-                        title: {
-                            display: true,
-                            text: 'Risk Score',
-                            color: isDark ? '#ffffff' : '#000000'
-                        },
-                        ticks: {
-                            color: isDark ? '#d0d0d0' : '#4a4a4a',
-                            font: {
-                                size: 12,
-                                weight: '500'
-                            }
-                        },
-                        grid: {
-                            color: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.1)',
-                            lineWidth: 1
-                        }
-                    },
-                    x: {
-                        ticks: {
-                            color: isDark ? '#d0d0d0' : '#4a4a4a',
-                            font: {
-                                size: 12,
-                                weight: '500'
-                            }
-                        },
-                        grid: {
-                            color: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.1)',
-                            lineWidth: 1
-                        }
-                    }
-                }
+        let moe = null;
+        try {
+            const r = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
+            if (r.ok) moe = await r.json();
+        } catch (_) {}
+
+        if (!moe) {
+            strip.innerHTML = '<p class="placeholder" style="font-size:0.85rem;">Run Expert Review to see critic consensus here.</p>';
+            return;
+        }
+
+        const ev = moe.expert_validations || {};
+        const adj = moe.confidence?.adjustments || {};
+        const tradeoffs = moe.mode_tradeoffs || [];
+        const mode = moe.mode || 'sequential';
+
+        const CRITIC_DEFS = [
+            { key: 'architect',   icon: '🏛️', label: 'Architecture Review',   desc: 'Structural gaps, unmodelled threats, ADR completeness' },
+            { key: 'tester',      icon: '🔬', label: 'Coverage Audit',         desc: 'MITRE mapping accuracy, control effectiveness, configuration validation' },
+            { key: 'red_team',    icon: '🎯', label: 'Exploit Analysis',        desc: 'Bypass paths, control evasion, attack feasibility under active exploitation' },
+            { key: 'purple_team', icon: '🟣', label: 'Purple Team',             desc: 'Detection depth, coverage gaps, investigation value & ADR operability' },
+            { key: 'blackhat',    icon: '⚔️', label: 'Blackhat Cross-Path',     desc: 'Cross-path chaining, pivot-diverge routes & chain exploits (supreme critic)' },
+        ];
+
+        const STATUS_CHIP = {
+            'PASS':        { color: 'var(--secondary-color)', label: 'PASS',        tip: 'No significant issues found' },
+            'MINOR_GAPS':  { color: 'var(--warning-color)',   label: 'MINOR GAPS',  tip: 'Small gaps found — low exploitability' },
+            'MAJOR_GAPS':  { color: 'var(--danger-color)',    label: 'MAJOR GAPS',  tip: 'Significant issues — high exploitability risk' },
+            'FAIL':        { color: 'var(--danger-color)',    label: 'FAIL',         tip: 'Critical failures — immediate action required' },
+        };
+
+        // Legend
+        const legendHtml = `
+            <div style="display:flex;flex-wrap:wrap;gap:0.6rem;align-items:center;margin-bottom:0.85rem;padding:0.5rem 0.75rem;background:var(--nav-hover-bg);border-radius:6px;font-size:0.73rem;color:var(--text-tertiary);">
+                <span style="font-weight:700;color:var(--text-secondary);">Status legend:</span>
+                ${Object.entries(STATUS_CHIP).map(([k, v]) =>
+                    `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${v.color};"></span>${v.label} — ${v.tip}</span>`
+                ).join('')}
+                <span style="margin-left:0.5rem;"><strong>Δ conf</strong> = change to overall confidence from this critic</span>
+            </div>`;
+
+        // Critic cards
+        let cardsHtml = `<div style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-bottom:${tradeoffs.length > 0 ? '0.85rem' : '0'};">`;
+        CRITIC_DEFS.forEach(def => {
+            const v = ev[def.key];
+            if (!v) {
+                // Not-run card
+                cardsHtml += `
+                    <div style="flex:1;min-width:200px;max-width:320px;padding:0.85rem 1rem;background:var(--card-bg);border-radius:10px;border:1px solid var(--border-color);opacity:0.45;">
+                        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;">
+                            <span style="font-size:1.25rem;">${def.icon}</span>
+                            <span style="font-weight:700;font-size:0.85rem;color:var(--text-tertiary);">${def.label}</span>
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--text-tertiary);font-style:italic;">Not run this session</div>
+                    </div>`;
+                return;
             }
+            const status = v.validation_status || 'UNKNOWN';
+            const chip   = STATUS_CHIP[status] || { color: 'var(--text-tertiary)', label: status, tip: '' };
+            const adjPct = parseFloat(((adj[def.key] || 0) * 100).toFixed(1));
+            const adjStr = adjPct === 0 ? '±0%' : (adjPct > 0 ? '+' : '') + adjPct + '%';
+            const adjColor = adjPct < 0 ? 'var(--warning-color)' : adjPct === 0 ? 'var(--text-tertiary)' : 'var(--secondary-color)';
+            const score  = v.original_score ?? '–';
+            // Full verdict text — all gaps listed, or strengths fallback
+            const allGaps = (v.gaps && v.gaps.length > 0)
+                ? v.gaps.map(g => g.description || '').filter(Boolean)
+                : [];
+            const verdictFull = allGaps.length > 0
+                ? allGaps.join(' · ')
+                : (v.strengths && v.strengths.length > 0 ? 'Strengths confirmed; no critical gaps.' : def.desc);
+            const PREVIEW_LEN = 120;
+            const needsExpand = verdictFull.length > PREVIEW_LEN;
+            const verdictPreview = needsExpand ? verdictFull.slice(0, PREVIEW_LEN).trimEnd() + '…' : verdictFull;
+            const cardId = 'ec-card-' + def.key;
+
+            cardsHtml += `
+                <div id="${cardId}" style="flex:1;min-width:200px;max-width:320px;padding:0.85rem 1rem;background:var(--card-bg);border-radius:10px;border:1px solid ${chip.color}44;transition:box-shadow 0.15s;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.45rem;">
+                        <span style="font-size:1.25rem;">${def.icon}</span>
+                        <span style="font-weight:700;font-size:0.85rem;color:var(--text-color);">${def.label}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+                        <span style="padding:0.1rem 0.5rem;background:${chip.color}22;color:${chip.color};border-radius:4px;font-size:0.7rem;font-weight:700;">${chip.label}</span>
+                        <span style="font-size:0.78rem;font-weight:700;color:${adjColor};">Δ ${adjStr}</span>
+                        <span style="margin-left:auto;font-size:0.72rem;color:var(--text-tertiary);">score ${score}/100</span>
+                    </div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);line-height:1.5;">
+                        <span class="ec-preview">${verdictPreview}</span>
+                        ${needsExpand ? `<span class="ec-full" style="display:none;">${verdictFull}</span>
+                        <a href="#" style="display:inline-block;margin-top:0.2rem;font-size:0.72rem;color:var(--primary-color);text-decoration:none;" onclick="(function(a){var card=a.closest('[id^=ec-card-]');var pre=card.querySelector('.ec-preview');var full=card.querySelector('.ec-full');var isExpanded=full.style.display!=='none';pre.style.display=isExpanded?'':'none';full.style.display=isExpanded?'none':'';a.textContent=isExpanded?'…more':'less ↑';})(this);return false;">…more</a>` : ''}
+                    </div>
+                    <div style="margin-top:0.55rem;padding-top:0.45rem;border-top:1px solid var(--border-color);font-size:0.71rem;color:var(--text-tertiary);cursor:pointer;" onclick="window.dashboard?.switchTab('expert-review')" title="Open Expert Review">
+                        Open full review →
+                    </div>
+                </div>`;
         });
+        cardsHtml += '</div>';
+
+        // Mode tradeoff note
+        let tradeoffNote = '';
+        if (tradeoffs.length > 0) {
+            tradeoffNote = `
+                <div style="padding:0.6rem 0.85rem;background:var(--warning-color)12;border-left:3px solid var(--warning-color);border-radius:6px;font-size:0.78rem;color:var(--text-secondary);">
+                    <strong style="color:var(--warning-color);">Mode tradeoffs (${mode})</strong>
+                    <ul style="margin:0.3rem 0 0;padding-left:1.2rem;">
+                        ${tradeoffs.map(t => `<li style="margin-bottom:0.2rem;">${t}</li>`).join('')}
+                    </ul>
+                </div>`;
+        }
+
+        strip.innerHTML = legendHtml + cardsHtml + tradeoffNote;
     }
 
     loadPatternsTab() {
@@ -1849,36 +1945,58 @@ class Dashboard {
             return;
         }
 
-        // Render control recommendations with checkbox filter and legend
+        // Pre-compute aggregate counts for display in filter header
+        const countByPriority = { critical: 0, high: 0, medium: 0, low: 0 };
+        const countByDir = { prevention: 0, detect: 0, isolate: 0, respond: 0, other: 0 };
+        let sspMapped = 0;
+        for (const c of controlRecs) {
+            if (c.priority in countByPriority) countByPriority[c.priority]++;
+            const dc = (c.dir_category || '').toLowerCase();
+            if (dc === 'prevention' || dc === 'hardening' || dc === 'governance') countByDir.prevention++;
+            else if (dc === 'detect' || dc === 'detection') countByDir.detect++;
+            else if (dc === 'isolate') countByDir.isolate++;
+            else if (dc === 'respond' || dc === 'response') countByDir.respond++;
+            else countByDir.other++;
+            if (c.ssp_context && c.ssp_context.primary) sspMapped++;
+        }
+
+        // Render control recommendations with search, priority + dir_category filters, collapse/expand
         tableContainer.innerHTML = `
-            <div style="margin-bottom: 1rem; padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                    <label style="font-size: 0.875rem; font-weight: 600; color: var(--text-color);">Filter by Priority:</label>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button id="select-all-filter" style="padding: 0.375rem 0.75rem; border-radius: 6px; background: var(--secondary-color)22; color: var(--secondary-color); border: 1px solid var(--secondary-color); cursor: pointer; font-size: 0.8125rem; font-weight: 600;">
-                            Select All
-                        </button>
-                        <button id="reset-filter" style="padding: 0.375rem 0.75rem; border-radius: 6px; background: var(--warning-color)22; color: var(--warning-color); border: 1px solid var(--warning-color); cursor: pointer; font-size: 0.8125rem; font-weight: 600;">
-                            Clear All
-                        </button>
-                    </div>
+            <div style="margin-bottom: 0.75rem; padding: 0.85rem 1rem; background: var(--nav-hover-bg); border-radius: 8px;">
+                <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap; margin-bottom:0.6rem;">
+                    <input id="ctrl-search" type="search" placeholder="🔍 Search controls…"
+                        style="flex:1; min-width:160px; padding:0.35rem 0.65rem; border:1px solid var(--border-color); border-radius:6px; background:var(--main-bg); color:var(--text-color); font-size:0.83rem;">
+                    <button id="ctrl-expand-all" title="Expand all" style="padding:0.3rem 0.65rem; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-secondary); font-size:0.8rem; cursor:pointer;">⊞ Expand all</button>
+                    <button id="ctrl-collapse-all" title="Collapse all" style="padding:0.3rem 0.65rem; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-secondary); font-size:0.8rem; cursor:pointer;">⊟ Collapse all</button>
                 </div>
-                <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.875rem;">
-                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                        <input type="checkbox" class="priority-checkbox" value="critical" checked style="cursor: pointer;">
-                        <span style="color: var(--danger-color); font-weight: 600;">CRITICAL</span>
+                <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0.45rem;">
+                    <span style="font-size:0.78rem; font-weight:600; color:var(--text-tertiary);">Priority:</span>
+                    <label style="display:flex; align-items:center; gap:0.3rem; cursor:pointer; font-size:0.82rem;">
+                        <input type="checkbox" class="priority-checkbox" value="critical" checked style="cursor:pointer;">
+                        <span style="color:var(--danger-color); font-weight:700;">CRITICAL <span style="font-size:0.7rem; font-weight:400; color:var(--text-tertiary);">(${countByPriority.critical})</span></span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                        <input type="checkbox" class="priority-checkbox" value="high" checked style="cursor: pointer;">
-                        <span style="color: var(--warning-color); font-weight: 600;">HIGH</span>
+                    <label style="display:flex; align-items:center; gap:0.3rem; cursor:pointer; font-size:0.82rem;">
+                        <input type="checkbox" class="priority-checkbox" value="high" checked style="cursor:pointer;">
+                        <span style="color:var(--warning-color); font-weight:700;">HIGH <span style="font-size:0.7rem; font-weight:400; color:var(--text-tertiary);">(${countByPriority.high})</span></span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                        <input type="checkbox" class="priority-checkbox" value="medium" checked style="cursor: pointer;">
-                        <span style="color: var(--primary-color); font-weight: 600;">MEDIUM</span>
+                    <label style="display:flex; align-items:center; gap:0.3rem; cursor:pointer; font-size:0.82rem;">
+                        <input type="checkbox" class="priority-checkbox" value="medium" checked style="cursor:pointer;">
+                        <span style="color:var(--primary-color); font-weight:700;">MEDIUM <span style="font-size:0.7rem; font-weight:400; color:var(--text-tertiary);">(${countByPriority.medium})</span></span>
                     </label>
+                    <button id="select-all-filter" style="padding:0.2rem 0.55rem; border-radius:5px; background:var(--secondary-color)22; color:var(--secondary-color); border:1px solid var(--secondary-color); cursor:pointer; font-size:0.76rem; font-weight:600;">All</button>
+                    <button id="reset-filter" style="padding:0.2rem 0.55rem; border-radius:5px; background:transparent; color:var(--text-tertiary); border:1px solid var(--border-color); cursor:pointer; font-size:0.76rem;">None</button>
                 </div>
-                <div style="margin-top: 0.75rem; font-size: 0.875rem; color: var(--text-secondary);">
-                    Showing <strong id="control-count">${controlRecs.length}</strong> of ${controlRecs.length} controls
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-bottom:0.45rem;">
+                    <span style="font-size:0.78rem; font-weight:600; color:var(--text-tertiary);">ZT Layer:</span>
+                    <button class="dir-btn active" data-dir="all" style="padding:0.2rem 0.6rem; border-radius:5px; border:1px solid var(--border-color); background:var(--primary-color)22; color:var(--primary-color); cursor:pointer; font-size:0.76rem; font-weight:600;">All</button>
+                    <button class="dir-btn" data-dir="prevention" style="padding:0.2rem 0.6rem; border-radius:5px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-secondary); cursor:pointer; font-size:0.76rem;">🛡 Prevent <span style="opacity:0.6;">(${countByDir.prevention})</span></button>
+                    <button class="dir-btn" data-dir="detect" style="padding:0.2rem 0.6rem; border-radius:5px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-secondary); cursor:pointer; font-size:0.76rem;">🔍 Detect <span style="opacity:0.6;">(${countByDir.detect})</span></button>
+                    <button class="dir-btn" data-dir="isolate" style="padding:0.2rem 0.6rem; border-radius:5px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-secondary); cursor:pointer; font-size:0.76rem;">🔒 Isolate <span style="opacity:0.6;">(${countByDir.isolate})</span></button>
+                    <button class="dir-btn" data-dir="respond" style="padding:0.2rem 0.6rem; border-radius:5px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-secondary); cursor:pointer; font-size:0.76rem;">⚡ Respond <span style="opacity:0.6;">(${countByDir.respond})</span></button>
+                    <button class="dir-btn" data-dir="ssp" style="padding:0.2rem 0.6rem; border-radius:5px; border:1px solid #0891b244; background:var(--card-bg); color:#06b6d4; cursor:pointer; font-size:0.76rem;">🏛 SSP-mapped <span style="opacity:0.6;">(${sspMapped})</span></button>
+                </div>
+                <div style="margin-top:0.3rem; font-size:0.8rem; color:var(--text-secondary);">
+                    Showing <strong id="control-count">${controlRecs.length}</strong> of ${controlRecs.length} controls · Total: ${controlRecs.length} · SSP-mapped: ${sspMapped}
                 </div>
             </div>
             <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 8px;">
@@ -1919,11 +2037,39 @@ class Dashboard {
         `;
 
         const controlsList = tableContainer.querySelector('#controls-list');
+        // Multi-select ZT layer filter: empty Set = "All"
+        let _activeDirFilters = new Set();
+
+        const _DIR_ALIASES = {
+            prevention: ['prevention', 'hardening', 'governance'],
+            detect:     ['detect', 'detection'],
+            isolate:    ['isolate', 'response'],
+            respond:    ['respond', 'response'],
+        };
 
         const renderControls = (selectedPriorities = ['critical', 'high', 'medium']) => {
             controlsList.innerHTML = '';
+            const searchVal = (tableContainer.querySelector('#ctrl-search')?.value || '').toLowerCase();
 
-            const filteredControls = controlRecs.filter(c => selectedPriorities.includes(c.priority));
+            const filteredControls = controlRecs.filter(c => {
+                if (!selectedPriorities.includes(c.priority)) return false;
+                if (_activeDirFilters.size > 0) {
+                    // Multi-select: match if control satisfies ANY active filter
+                    const dirCat = (c.dir_category || '').toLowerCase();
+                    const hasSsp = c.ssp_context && c.ssp_context.primary;
+                    const matches = [..._activeDirFilters].some(f => {
+                        if (f === 'ssp') return hasSsp;
+                        const allowed = _DIR_ALIASES[f] || [f];
+                        return allowed.includes(dirCat);
+                    });
+                    if (!matches) return false;
+                }
+                if (searchVal) {
+                    const hay = ((c.control || '') + ' ' + (c.rationale || '') + ' ' + (c.placement || '')).toLowerCase();
+                    if (!hay.includes(searchVal)) return false;
+                }
+                return true;
+            });
 
             // Update count
             document.getElementById('control-count').textContent = filteredControls.length;
@@ -1963,59 +2109,49 @@ class Dashboard {
                         + `</span>`;
                 }
 
-                const card = document.createElement('div');
+                const card = document.createElement('details');
                 card.className = 'list-item';
                 card.dataset.priority = control.priority;
                 card.style.cssText = `
-                    padding: 1rem;
-                    margin-bottom: 0.75rem;
+                    margin-bottom: 0.6rem;
                     background: var(--card-bg);
                     border-radius: 8px;
                     border-left: 4px solid ${priorityColor};
-                    cursor: pointer;
-                    transition: all 0.2s;
+                    overflow: hidden;
                 `;
 
+                const dirCatLabel = (control.dir_category || 'prevention').charAt(0).toUpperCase() + (control.dir_category || 'prevention').slice(1);
                 card.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: start;">
-                        <div style="flex: 1;">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap:wrap;">
-                                <strong style="font-size: 1rem; color: var(--primary-color);">${control.control}</strong>
-                                <span style="padding: 0.2rem 0.6rem; background: ${priorityColor}22; color: ${priorityColor}; border-radius: 10px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;">${control.priority}</span>
-                                ${sourceTag}
-                                ${sspBadge}
-                            </div>
-                            ${arcCats ? `<div style="font-size:0.75rem; color:#a78bfa; margin-bottom:0.35rem;">ARC categories: ${arcCats}</div>` : ''}
-                            <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
-                                ${control.rationale}
-                            </div>
-                            <div style="display: flex; gap: 1rem; font-size: 0.8125rem; color: var(--text-tertiary); margin-bottom: 0.5rem; flex-wrap:wrap;">
-                                <span>📍 ${control.attack_paths ? control.attack_paths.length : 0} paths</span>
-                                <span>🎯 ${control.techniques ? control.techniques.length : 0} ${isArc ? 'ATLAS' : 'Enterprise'} techniques</span>
-                                <span>🛡️ ${control.mitigations ? control.mitigations.length : 0} mitigations</span>
-                            </div>
-                            ${control.control_type ? `
-                                <div style="font-size: 0.8125rem; color: var(--text-tertiary); padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
-                                    <strong>Implementation:</strong> ${control.control_type}${control.layer ? ` | ${control.layer}` : ''}${control.placement ? ` | ${control.placement}` : ''}
-                                </div>
-                            ` : ''}
+                    <summary style="padding:0.75rem 1rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:0.5rem; list-style:none; user-select:none;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; flex:1; min-width:0;">
+                            <strong style="font-size:0.92rem; color:var(--primary-color); white-space:nowrap;">${this._esc(control.control)}</strong>
+                            <span style="padding:0.15rem 0.5rem; background:${priorityColor}22; color:${priorityColor}; border-radius:8px; font-size:0.68rem; font-weight:700; text-transform:uppercase; flex-shrink:0;">${control.priority}</span>
+                            <span style="padding:0.15rem 0.5rem; background:var(--border-color); color:var(--text-tertiary); border-radius:8px; font-size:0.68rem; font-weight:600; flex-shrink:0;">${this._esc(dirCatLabel)}</span>
+                            ${sourceTag}
+                            ${sspBadge}
                         </div>
-                        <div style="text-align: right; min-width: 72px;">
-                            <div style="font-size: 1.1rem; font-weight: 700; color: ${priorityColor}; white-space:nowrap;">
-                                ${control.score ? control.score.toFixed(1) : 'N/A'}<span style="font-size:0.7rem; font-weight:400; color:var(--text-tertiary);"> / 100</span>
-                            </div>
-                            <div style="margin: 3px 0; height: 4px; background: var(--border-color); border-radius: 2px; overflow:hidden;">
-                                <div style="height:100%; width:${Math.min(100, (control.score || 0))}%; background:${priorityColor}; border-radius:2px;"></div>
-                            </div>
-                            <div style="font-size: 0.68rem; color: var(--text-tertiary); white-space:nowrap;">
-                                ${(control.score || 0) >= 20 ? 'high impact' : (control.score || 0) >= 10 ? 'medium impact' : 'lower impact'}
-                            </div>
+                        <div style="text-align:right; flex-shrink:0; min-width:60px;">
+                            <div style="font-size:0.95rem; font-weight:700; color:${priorityColor};">${control.score ? control.score.toFixed(1) : 'N/A'}</div>
+                            <div style="font-size:0.64rem; color:var(--text-tertiary);">${(control.score || 0) >= 20 ? 'high' : (control.score || 0) >= 10 ? 'medium' : 'lower'} impact</div>
+                        </div>
+                    </summary>
+                    <div style="padding:0.75rem 1rem; border-top:1px solid var(--border-color);">
+                        ${arcCats ? `<div style="font-size:0.75rem; color:#a78bfa; margin-bottom:0.35rem;">ARC categories: ${arcCats}</div>` : ''}
+                        <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem; line-height:1.55;">${control.rationale}</div>
+                        <div style="display:flex; gap:1rem; font-size:0.79rem; color:var(--text-tertiary); margin-bottom:0.5rem; flex-wrap:wrap;">
+                            <span>📍 ${control.attack_paths ? control.attack_paths.length : 0} paths</span>
+                            <span>🎯 ${control.techniques ? control.techniques.length : 0} ${isArc ? 'ATLAS' : 'Enterprise'} techniques</span>
+                            <span>🛡️ ${control.mitigations ? control.mitigations.length : 0} mitigations</span>
+                        </div>
+                        ${control.control_type ? `<div style="font-size:0.79rem; color:var(--text-tertiary); padding-top:0.4rem; border-top:1px solid var(--border-color)22;"><strong>Implementation:</strong> ${this._esc(control.control_type)}${control.layer ? ` | ${this._esc(control.layer)}` : ''}${control.placement ? ` | ${this._esc(control.placement)}` : ''}</div>` : ''}
+                        <div style="margin-top:0.5rem;">
+                            <button style="padding:0.2rem 0.6rem; border-radius:5px; border:1px solid var(--border-color); background:var(--nav-hover-bg); color:var(--primary-color); cursor:pointer; font-size:0.76rem; font-weight:600;">View full details →</button>
                         </div>
                     </div>
                 `;
 
-                card.addEventListener('click', () => {
-                    // Remove active from all
+                card.querySelector('button').addEventListener('click', (e) => {
+                    e.stopPropagation();
                     controlsList.querySelectorAll('.list-item').forEach(el => el.classList.remove('active'));
                     card.classList.add('active');
                     this.showControlDetail(control);
@@ -2025,31 +2161,82 @@ class Dashboard {
             });
         };
 
+        const _getSelected = () => Array.from(tableContainer.querySelectorAll('.priority-checkbox')).filter(cb => cb.checked).map(cb => cb.value);
+        const _rerender = () => renderControls(_getSelected());
+
         // Initial render
         renderControls(['critical', 'high', 'medium']);
 
-        // Add checkbox listeners
-        const checkboxes = tableContainer.querySelectorAll('.priority-checkbox');
-        checkboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', () => {
-                const selected = Array.from(checkboxes)
-                    .filter(cb => cb.checked)
-                    .map(cb => cb.value);
-                renderControls(selected);
+        // Priority checkbox listeners
+        tableContainer.querySelectorAll('.priority-checkbox').forEach(cb => cb.addEventListener('change', _rerender));
+
+        tableContainer.querySelector('#select-all-filter').addEventListener('click', () => {
+            tableContainer.querySelectorAll('.priority-checkbox').forEach(cb => cb.checked = true);
+            _rerender();
+        });
+        tableContainer.querySelector('#reset-filter').addEventListener('click', () => {
+            tableContainer.querySelectorAll('.priority-checkbox').forEach(cb => cb.checked = false);
+            _rerender();
+        });
+
+        // Dir filter buttons — multi-select toggle (click to add/remove, All deselects everything)
+        tableContainer.querySelectorAll('.dir-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const dir = btn.dataset.dir;
+                if (dir === 'all') {
+                    // Clear all selections → show everything
+                    _activeDirFilters.clear();
+                    tableContainer.querySelectorAll('.dir-btn').forEach(b => {
+                        if (b.dataset.dir === 'all') {
+                            b.style.background = 'var(--primary-color)22';
+                            b.style.color = 'var(--primary-color)';
+                            b.classList.add('active');
+                        } else {
+                            b.style.background = 'var(--card-bg)';
+                            b.style.color = 'var(--text-secondary)';
+                            b.classList.remove('active');
+                        }
+                    });
+                } else {
+                    // Toggle this filter on/off
+                    if (_activeDirFilters.has(dir)) {
+                        _activeDirFilters.delete(dir);
+                        btn.style.background = 'var(--card-bg)';
+                        btn.style.color = 'var(--text-secondary)';
+                        btn.classList.remove('active');
+                    } else {
+                        _activeDirFilters.add(dir);
+                        btn.style.background = 'var(--primary-color)22';
+                        btn.style.color = 'var(--primary-color)';
+                        btn.classList.add('active');
+                    }
+                    // Deactivate the "All" button when specific filters are set
+                    const allBtn2 = tableContainer.querySelector('.dir-btn[data-dir="all"]');
+                    if (allBtn2) {
+                        if (_activeDirFilters.size > 0) {
+                            allBtn2.style.background = 'var(--card-bg)';
+                            allBtn2.style.color = 'var(--text-secondary)';
+                            allBtn2.classList.remove('active');
+                        } else {
+                            allBtn2.style.background = 'var(--primary-color)22';
+                            allBtn2.style.color = 'var(--primary-color)';
+                            allBtn2.classList.add('active');
+                        }
+                    }
+                }
+                _rerender();
             });
         });
 
-        // Add button listeners
-        const selectAllBtn = tableContainer.querySelector('#select-all-filter');
-        selectAllBtn.addEventListener('click', () => {
-            checkboxes.forEach(cb => cb.checked = true);
-            renderControls(['critical', 'high', 'medium']);
-        });
+        // Search box
+        tableContainer.querySelector('#ctrl-search').addEventListener('input', _rerender);
 
-        const resetBtn = tableContainer.querySelector('#reset-filter');
-        resetBtn.addEventListener('click', () => {
-            checkboxes.forEach(cb => cb.checked = false);
-            renderControls([]);
+        // Expand / Collapse all
+        tableContainer.querySelector('#ctrl-expand-all').addEventListener('click', () => {
+            controlsList.querySelectorAll('details').forEach(d => d.open = true);
+        });
+        tableContainer.querySelector('#ctrl-collapse-all').addEventListener('click', () => {
+            controlsList.querySelectorAll('details').forEach(d => d.open = false);
         });
     }
 
@@ -2813,66 +3000,538 @@ class Dashboard {
         const analysis = this.analysisData.analysis || {};
         const attackPaths = analysis.expected_attack_paths || [];
         const controlRecs = analysis.control_recommendations || [];
+        const blackhat = analysis.blackhat_critique || null;
 
         if (attackPaths.length === 0) {
             listContainer.innerHTML = '<p class="placeholder">No attack paths available</p>';
             return;
         }
 
+        // --- Graceful D3 fallback ---
+        if (typeof d3 === 'undefined') {
+            console.warn('[Visualise] D3 not loaded — falling back to card list');
+            this._loadHardeningTabCards(listContainer, attackPaths, controlRecs);
+            return;
+        }
+
+        // ─── AP colour palette ───────────────────────────────────────────────────
+        const AP_PALETTE = ['#4da6ff', '#51cf66', '#ff6b6b', '#cc5de8', '#ffd43b'];
+        const BH_COLOR   = '#ff8c00';
+        const MULTI_COLOR = '#64748b';
+
+        // Map AP id → palette index (AP-1 → 0, AP-2 → 1, …)
+        const apColorMap = {};
+        attackPaths.forEach((ap, i) => {
+            apColorMap[ap.id] = AP_PALETTE[i % AP_PALETTE.length];
+        });
+
+        // ─── Build pivot node set (BH shared_nodes + pivot_diverge_chains) ─────────
+        const sharedPivotSet = new Set();
+        if (blackhat) {
+            (blackhat.shared_nodes || []).forEach(n => sharedPivotSet.add(n));
+            (blackhat.pivot_diverge_chains || []).forEach(chain => {
+                if (chain.pivot) sharedPivotSet.add(chain.pivot);
+            });
+        }
+
+        // Track entry and exit (target) nodes across all APs
+        const entryNodes  = new Set(attackPaths.map(ap => ap.entry).filter(Boolean));
+        const targetNodes = new Set(attackPaths.map(ap => ap.target).filter(Boolean));
+
+        const nodeMap = {}; // id → { id, label, aps: [apId, …], isSharedPivot, isEntry, isTarget }
+        attackPaths.forEach(ap => {
+            (ap.path || []).forEach(nodeName => {
+                if (!nodeMap[nodeName]) {
+                    nodeMap[nodeName] = {
+                        id: nodeName,
+                        label: nodeName,
+                        aps: [],
+                        isSharedPivot: sharedPivotSet.has(nodeName),
+                        isEntry: entryNodes.has(nodeName),
+                        isTarget: targetNodes.has(nodeName)
+                    };
+                }
+                if (!nodeMap[nodeName].aps.includes(ap.id)) {
+                    nodeMap[nodeName].aps.push(ap.id);
+                }
+            });
+        });
+        const nodes = Object.values(nodeMap);
+
+        // ─── Build edge list ─────────────────────────────────────────────────────
+        const edges = [];
+        const edgeSet = new Set();
+        attackPaths.forEach(ap => {
+            const path = ap.path || [];
+            for (let i = 0; i < path.length - 1; i++) {
+                const key = `${ap.id}::${path[i]}→${path[i+1]}`;
+                if (!edgeSet.has(key)) {
+                    edgeSet.add(key);
+                    edges.push({
+                        source: path[i],
+                        target: path[i+1],
+                        apId: ap.id,
+                        criticality: ap.criticality_tier,
+                        color: apColorMap[ap.id] || AP_PALETTE[0],
+                        dashed: false
+                    });
+                }
+            }
+        });
+
+        // BH chain edges
+        const bhEdges = [];
+        if (blackhat && blackhat.least_resistance_paths && blackhat.least_resistance_paths.length > 0) {
+            blackhat.least_resistance_paths.forEach(lrp => {
+                const chain = lrp.chain || [];
+                if (chain.length >= 2) {
+                    bhEdges.push({
+                        source: chain[0],
+                        target: chain[1],
+                        apId: 'BH',
+                        pivot: lrp.pivot || '',
+                        criticality: lrp.chain_criticality || '',
+                        color: BH_COLOR,
+                        dashed: true
+                    });
+                }
+            });
+        }
+        const allEdges = edges.concat(bhEdges);
+
+        // ─── Render shell HTML ───────────────────────────────────────────────────
+        const chipIds = attackPaths.map(ap => ap.id);
+        const hasBH = bhEdges.length > 0;
+
+        // Build chip HTML
+        let chipHtml = '';
+        attackPaths.forEach((ap, i) => {
+            const color = AP_PALETTE[i % AP_PALETTE.length];
+            chipHtml += `<button class="vg-chip" data-ap="${ap.id}" data-active="1" style="display:inline-flex;align-items:center;gap:0.35rem;padding:0.2rem 0.65rem;border-radius:12px;border:2px solid ${color};background:${color}22;color:${color};font-size:0.78rem;font-weight:700;cursor:pointer;transition:all 0.15s;">`
+                + `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};"></span>${ap.id}</button>`;
+        });
+        if (hasBH) {
+            chipHtml += `<button class="vg-chip" data-ap="BH" data-active="1" style="display:inline-flex;align-items:center;gap:0.35rem;padding:0.2rem 0.65rem;border-radius:12px;border:2px solid ${BH_COLOR};background:${BH_COLOR}22;color:${BH_COLOR};font-size:0.78rem;font-weight:700;cursor:pointer;transition:all 0.15s;">`
+                + `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${BH_COLOR};"></span>&#9876; BH</button>`;
+        }
+        chipHtml += `<button id="vg-all-btn" style="padding:0.2rem 0.65rem;border-radius:12px;border:1px solid var(--border-color);background:var(--nav-hover-bg);color:var(--text-secondary);font-size:0.78rem;cursor:pointer;">ALL</button>`;
+        chipHtml += `<button id="vg-reset-btn" style="padding:0.2rem 0.65rem;border-radius:12px;border:1px solid var(--border-color);background:var(--nav-hover-bg);color:var(--text-secondary);font-size:0.78rem;cursor:pointer;">RESET</button>`;
+
+        // Build legend HTML
+        let legendHtml = '<div style="display:flex;flex-wrap:wrap;gap:0.6rem;align-items:center;font-size:0.75rem;">';
+        attackPaths.forEach((ap, i) => {
+            const color = AP_PALETTE[i % AP_PALETTE.length];
+            legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${color};"></span><span style="color:var(--text-secondary);">${ap.id} — ${ap.entry || ''} → ${ap.target || ''}</span></span>`;
+        });
+        if (hasBH) {
+            legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><span style="display:inline-block;width:18px;height:3px;background:${BH_COLOR};border-top:2px dashed ${BH_COLOR};"></span><span style="color:var(--text-secondary);">BH chain</span></span>`;
+        }
+        legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="14" height="14" viewBox="-8 -8 16 16"><circle cx="0" cy="0" r="6" fill="#64748b" stroke="#dc2626" stroke-width="2"/></svg><span style="color:var(--text-secondary);">Entry</span></span>`;
+        legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="14" height="14" viewBox="-8 -8 16 16"><circle cx="0" cy="0" r="6" fill="#64748b" stroke="#f97316" stroke-width="2"/></svg><span style="color:var(--text-secondary);">Target</span></span>`;
+        if (sharedPivotSet.size > 0) {
+            legendHtml += `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><svg width="14" height="14" viewBox="-8 -8 16 16"><polygon points="0,-7 7,0 0,7 -7,0" fill="none" stroke="${BH_COLOR}" stroke-width="2"/></svg><span style="color:var(--text-secondary);">Pivot node (diamond + amber ring)</span></span>`;
+        }
+        legendHtml += '</div>';
+
+        listContainer.innerHTML = `
+            <div style="margin-bottom:0.75rem;">
+                <h4 style="margin:0 0 0.5rem;font-size:0.95rem;color:var(--primary-color);">Attack Path Graph</h4>
+                <div id="vg-chips" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;">${chipHtml}</div>
+                <div id="vg-legend" style="margin-bottom:0.6rem;">${legendHtml}</div>
+            </div>
+            <div id="vg-svg-wrap" style="width:100%;border-radius:8px;border:1px solid var(--border-color);background:var(--code-bg);overflow:hidden;">
+                <svg id="vg-svg" width="100%" height="480" style="display:block;"></svg>
+            </div>
+            <div id="vg-pivot-info" style="display:none;margin-top:0.75rem;padding:0.65rem 1rem;background:${BH_COLOR}18;border-left:4px solid ${BH_COLOR};border-radius:6px;font-size:0.82rem;color:var(--text-secondary);"></div>
+            <div id="vg-ap-picker" style="display:none;margin-top:0.75rem;padding:0.65rem 1rem;background:var(--nav-hover-bg);border-radius:6px;font-size:0.82rem;"></div>
+            <p style="margin-top:0.5rem;font-size:0.78rem;color:var(--text-tertiary);">Click a node to drill into its attack path and control placement.</p>
+        `;
+
+        // ─── D3 force graph ──────────────────────────────────────────────────────
+        const svgEl = document.getElementById('vg-svg');
+        const wrap  = document.getElementById('vg-svg-wrap');
+        const W = wrap.clientWidth  || 800;
+        const H = 480;
+        svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+        const svg = d3.select(svgEl);
+
+        // Defs: arrowhead markers per AP color + BH
+        const defs = svg.append('defs');
+        const markerColors = Object.values(apColorMap).concat(hasBH ? [BH_COLOR] : []);
+        const uniqueColors = [...new Set(markerColors)];
+        uniqueColors.forEach(color => {
+            const safeId = 'arrow-' + color.replace('#', '');
+            defs.append('marker')
+                .attr('id', safeId)
+                .attr('viewBox', '0 -4 8 8')
+                .attr('refX', 18)
+                .attr('refY', 0)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+              .append('path')
+                .attr('d', 'M0,-4L8,0L0,4')
+                .attr('fill', color);
+        });
+
+        // Link group
+        const linkGroup = svg.append('g').attr('class', 'vg-links');
+        // Node group
+        const nodeGroup = svg.append('g').attr('class', 'vg-nodes');
+
+        // Create D3 node/link data (copies for simulation)
+        const simNodes = nodes.map(n => Object.assign({}, n));
+        const nodeById = {};
+        simNodes.forEach(n => { nodeById[n.id] = n; });
+
+        const simEdges = allEdges.map(e => Object.assign({}, e, {
+            source: e.source,
+            target: e.target
+        }));
+
+        // Draw links
+        const linkEls = linkGroup.selectAll('line')
+            .data(simEdges)
+            .enter().append('line')
+            .attr('class', d => 'vg-edge vg-ap-' + d.apId)
+            .attr('stroke', d => d.color)
+            .attr('stroke-width', 2)
+            .attr('stroke-dasharray', d => d.dashed ? '6 3' : null)
+            .attr('marker-end', d => {
+                const safeId = 'arrow-' + d.color.replace('#', '');
+                return 'url(#' + safeId + ')';
+            })
+            .attr('opacity', 0.8);
+
+        // Draw nodes
+        const nodeEls = nodeGroup.selectAll('g.vg-node')
+            .data(simNodes)
+            .enter().append('g')
+            .attr('class', 'vg-node')
+            .style('cursor', 'pointer');
+
+        // Pivot nodes: diamond (polygon) + amber ring; entry nodes: red ring; target nodes: orange ring; regular: circle
+        const ENTRY_COLOR  = '#dc2626'; // red
+        const TARGET_COLOR = '#f97316'; // orange
+        nodeEls.each(function(d) {
+            const g = d3.select(this);
+            const fill = d.aps.length > 1 ? MULTI_COLOR : (apColorMap[d.aps[0]] || MULTI_COLOR);
+            if (d.isSharedPivot) {
+                const r = 26;
+                // Outer amber ring (slightly larger diamond)
+                g.append('polygon')
+                    .attr('points', `0,${-(r+5)} ${r+5},0 0,${r+5} ${-(r+5)},0`)
+                    .attr('fill', 'none')
+                    .attr('stroke', BH_COLOR)
+                    .attr('stroke-width', 3)
+                    .attr('opacity', 0.85);
+                // Inner filled diamond
+                g.append('polygon')
+                    .attr('points', `0,${-r} ${r},0 0,${r} ${-r},0`)
+                    .attr('fill', fill)
+                    .attr('stroke', BH_COLOR)
+                    .attr('stroke-width', 2);
+            } else {
+                const ringColor = d.isEntry ? ENTRY_COLOR : d.isTarget ? TARGET_COLOR : null;
+                if (ringColor) {
+                    // Outer ring for entry/exit
+                    g.append('circle')
+                        .attr('r', 24)
+                        .attr('fill', 'none')
+                        .attr('stroke', ringColor)
+                        .attr('stroke-width', 3)
+                        .attr('opacity', 0.9);
+                }
+                g.append('circle')
+                    .attr('r', 20)
+                    .attr('fill', fill)
+                    .attr('stroke', ringColor || 'none')
+                    .attr('stroke-width', ringColor ? 2 : 0);
+            }
+        });
+
+        nodeEls.append('text')
+            .text(d => d.label.length > 14 ? d.label.substring(0, 12) + '…' : d.label)
+            .attr('text-anchor', 'middle')
+            .attr('dy', d => (d.isSharedPivot ? 32 : 22) + 12)
+            .attr('font-size', '11px')
+            .attr('fill', 'var(--text-secondary)')
+            .style('pointer-events', 'none')
+            .style('user-select', 'none');
+
+        // ─── Simulation (static layout — tick 200 times then stop) ───────────────
+        const simulation = d3.forceSimulation(simNodes)
+            .force('link', d3.forceLink(simEdges).id(d => d.id).distance(120))
+            .force('charge', d3.forceManyBody().strength(-300))
+            .force('center', d3.forceCenter(W / 2, H / 2))
+            .stop();
+
+        // Run ticks synchronously
+        for (let i = 0; i < 200; i++) simulation.tick();
+
+        // Apply positions
+        linkEls
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+
+        nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
+
+        // ─── Toggle chip logic ────────────────────────────────────────────────────
+        const self = this;
+        const activeAps = new Set([...chipIds, ...(hasBH ? ['BH'] : [])]);
+
+        function applyToggles() {
+            // Edges
+            linkEls.style('display', d => activeAps.has(d.apId) ? null : 'none');
+
+            // Nodes: show if at least one of their APs is active
+            nodeEls.style('opacity', d => {
+                const visible = d.aps.some(apId => activeAps.has(apId));
+                return visible ? 1 : 0.18;
+            });
+        }
+
+        listContainer.querySelectorAll('.vg-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const apId = chip.dataset.ap;
+                const wasActive = chip.dataset.active === '1';
+                if (wasActive) {
+                    activeAps.delete(apId);
+                    chip.dataset.active = '0';
+                    chip.style.background = 'transparent';
+                    chip.style.opacity = '0.45';
+                } else {
+                    activeAps.add(apId);
+                    chip.dataset.active = '1';
+                    const color = apId === 'BH' ? BH_COLOR : (apColorMap[apId] || AP_PALETTE[0]);
+                    chip.style.background = color + '22';
+                    chip.style.opacity = '1';
+                }
+                applyToggles();
+            });
+        });
+
+        const allBtn   = document.getElementById('vg-all-btn');
+        const resetBtn = document.getElementById('vg-reset-btn');
+
+        if (allBtn) {
+            allBtn.addEventListener('click', () => {
+                [...chipIds, ...(hasBH ? ['BH'] : [])].forEach(id => activeAps.add(id));
+                listContainer.querySelectorAll('.vg-chip').forEach(chip => {
+                    chip.dataset.active = '1';
+                    const color = chip.dataset.ap === 'BH' ? BH_COLOR : (apColorMap[chip.dataset.ap] || AP_PALETTE[0]);
+                    chip.style.background = color + '22';
+                    chip.style.opacity = '1';
+                });
+                applyToggles();
+            });
+        }
+
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                activeAps.clear();
+                listContainer.querySelectorAll('.vg-chip').forEach(chip => {
+                    chip.dataset.active = '0';
+                    chip.style.background = 'transparent';
+                    chip.style.opacity = '0.45';
+                });
+                applyToggles();
+            });
+        }
+
+        // ─── Node click handler ───────────────────────────────────────────────────
+        const pivotInfo  = document.getElementById('vg-pivot-info');
+        const apPicker   = document.getElementById('vg-ap-picker');
+
+        function showNodeDetail(nodeName, ap) {
+            const rightPane        = document.getElementById('right-pane');
+            const rightPaneContent = document.getElementById('right-pane-content');
+            if (!rightPane || !rightPaneContent) return;
+
+            const apIndex      = attackPaths.indexOf(ap);
+            const pathControls = controlRecs.filter(c => c.attack_paths && c.attack_paths.includes(apIndex));
+
+            // Per-node techniques from ground_truth per_node_techniques
+            const perNodeTech = (self.analysisData?.analysis?.per_node_techniques || {})[nodeName] || [];
+
+            // Controls specifically targeting this node (strict match — avoid laundry list)
+            const nodeControls = pathControls.filter(c => {
+                const targets = c.node_targets || c.apply_to_nodes || [];
+                if (targets.length === 0) return false; // skip broadly-scoped controls with no node assignment
+                return targets.some(t => t === nodeName || t.includes(nodeName) || nodeName.includes(t));
+            });
+            // Fallback: if no node-targeted controls exist, show all AP controls (broad coverage only)
+            const displayControls = nodeControls.length > 0 ? nodeControls : pathControls;
+
+            const isPivot = sharedPivotSet.has(nodeName);
+            const pivotChains = isPivot
+                ? (blackhat && blackhat.pivot_diverge_chains || []).filter(ch => ch.pivot === nodeName)
+                : [];
+
+            const critColor = ap.criticality_tier === 'CRITICAL' ? 'var(--danger-color)'
+                : ap.criticality_tier === 'HIGH' ? 'var(--warning-color)'
+                : 'var(--primary-color)';
+
+            // Pivot section
+            let pivotSection = '';
+            if (isPivot) {
+                const divergeTargets = pivotChains.flatMap(c => c.diverge_targets || []).join(', ') || ap.aps ? ap.aps.join(', ') : '–';
+                pivotSection = `
+                    <div style="margin-bottom:1.25rem;padding:0.75rem 1rem;background:${BH_COLOR}18;border-left:4px solid ${BH_COLOR};border-radius:6px;">
+                        <div style="font-weight:700;color:${BH_COLOR};margin-bottom:0.35rem;">⬥ Pivot Node — Cross-Path Chaining Risk</div>
+                        <p style="margin:0;font-size:0.85rem;color:var(--text-secondary);line-height:1.55;">
+                            Compromising <strong>${nodeName}</strong> gives an attacker forked reach into
+                            <strong>${divergeTargets}</strong>. Per-path controls cannot stop this branching —
+                            a single breach here expands the blast radius across multiple attack paths simultaneously.
+                        </p>
+                    </div>`;
+            }
+
+            // Technique-control pairs
+            let pairsHtml = '';
+            if (perNodeTech.length > 0) {
+                pairsHtml = '<h4 style="margin:0 0 0.65rem;font-size:0.9rem;color:var(--text-color);">Attack techniques at this node</h4>';
+                self.fetchTechniqueNames(perNodeTech).then(techNames => {
+                    const pairsContainer = document.getElementById('vg-tech-pairs');
+                    if (!pairsContainer) return;
+                    let html = '';
+                    perNodeTech.forEach(techId => {
+                        const techName = techNames[techId] || techId;
+                        // Use displayControls (node-specific if available, else AP-broad)
+                        const mitigating = displayControls.filter(c =>
+                            (c.techniques || []).includes(techId)
+                        );
+                        const prioColor = mitigating.length > 0 ? 'var(--secondary-color)' : 'var(--warning-color)';
+                        html += `<div style="margin-bottom:0.9rem;padding:0.75rem 0.9rem;background:var(--nav-hover-bg);border-radius:8px;border-left:3px solid ${prioColor};">`;
+                        html += `<div style="font-size:0.82rem;font-weight:700;color:var(--text-color);margin-bottom:0.3rem;">${techId} — ${techName}</div>`;
+                        if (mitigating.length > 0) {
+                            mitigating.forEach(c => {
+                                const pc = c.priority ? c.priority.toUpperCase() : 'BASELINE';
+                                const pColor = pc === 'CRITICAL' ? 'var(--danger-color)' : pc === 'HIGH' ? 'var(--warning-color)' : 'var(--primary-color)';
+                                html += `<div style="margin-top:0.35rem;display:flex;align-items:flex-start;gap:0.5rem;">`;
+                                html += `<span style="padding:0.1rem 0.45rem;background:${pColor}22;color:${pColor};border-radius:4px;font-size:0.7rem;font-weight:700;white-space:nowrap;">${pc}</span>`;
+                                html += `<span style="font-size:0.82rem;color:var(--text-secondary);line-height:1.5;">${c.control} — ${c.rationale || ''}</span>`;
+                                html += `</div>`;
+                            });
+                        } else {
+                            html += `<div style="font-size:0.8rem;color:var(--warning-color);margin-top:0.3rem;">⚠ No control mapped to this technique at this node</div>`;
+                        }
+                        html += `</div>`;
+                    });
+                    pairsContainer.innerHTML = html;
+                });
+            } else if (displayControls.length > 0) {
+                // No per-node techniques but controls exist — show controls directly
+                const isBroadFallback = nodeControls.length === 0;
+                pairsHtml = `<h4 style="margin:0 0 0.65rem;font-size:0.9rem;color:var(--text-color);">${isBroadFallback ? 'Controls for this attack path' : 'Controls at this node'}</h4>`;
+                if (isBroadFallback) {
+                    pairsHtml += `<div style="font-size:0.75rem;color:var(--text-tertiary);margin-bottom:0.65rem;font-style:italic;">No node-specific controls assigned — showing all ${ap.id} path controls.</div>`;
+                }
+                displayControls.forEach(c => {
+                    const pc = c.priority ? c.priority.toUpperCase() : 'BASELINE';
+                    const pColor = pc === 'CRITICAL' ? 'var(--danger-color)' : pc === 'HIGH' ? 'var(--warning-color)' : 'var(--primary-color)';
+                    pairsHtml += `<div style="margin-bottom:0.75rem;padding:0.65rem 0.9rem;background:var(--nav-hover-bg);border-radius:8px;border-left:3px solid ${pColor};">`;
+                    pairsHtml += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;"><span style="padding:0.1rem 0.45rem;background:${pColor}22;color:${pColor};border-radius:4px;font-size:0.7rem;font-weight:700;">${pc}</span><strong style="font-size:0.85rem;">${c.control}</strong></div>`;
+                    pairsHtml += `<p style="margin:0;font-size:0.82rem;color:var(--text-secondary);line-height:1.5;">${c.rationale || ''}</p>`;
+                    pairsHtml += `</div>`;
+                });
+            } else {
+                pairsHtml = `<p style="font-size:0.85rem;color:var(--warning-color);">⚠ No controls mapped to this node in ${ap.id}.</p>`;
+            }
+
+            // Node position in path
+            const pathPos = ap.path ? ap.path.indexOf(nodeName) : -1;
+            const posLabel = pathPos === 0 ? 'Entry Point' : pathPos === (ap.path || []).length - 1 ? 'Target' : `Traversal node (step ${pathPos + 1})`;
+
+            rightPaneContent.innerHTML = `
+                <div style="margin-bottom:1rem;">
+                    <div style="font-size:0.75rem;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">${ap.id} · ${posLabel}</div>
+                    <h3 style="margin:0 0 0.25rem;font-size:1.05rem;color:var(--text-color);">${nodeName}</h3>
+                    <div style="font-size:0.82rem;color:var(--text-secondary);">${ap.entry || ''} → ${ap.target || ''}</div>
+                    <span style="display:inline-block;margin-top:0.4rem;padding:0.15rem 0.6rem;background:${critColor}22;color:${critColor};border-radius:4px;font-size:0.72rem;font-weight:700;">${ap.criticality_tier || ''}</span>
+                </div>
+                ${pivotSection}
+                <div id="vg-tech-pairs">${pairsHtml}</div>
+            `;
+            rightPane.classList.add('visible');
+        }
+
+        nodeEls.on('click', function(event, d) {
+            event.stopPropagation();
+
+            // Hide stale panels
+            pivotInfo.style.display = 'none';
+            apPicker.style.display  = 'none';
+
+            // Highlight selected node
+            nodeEls.selectAll('circle,polygon').attr('opacity', n => n.id === d.id ? 1 : 0.55);
+            d3.select(this).selectAll('circle,polygon').attr('opacity', 1);
+
+            if (d.aps.length === 1) {
+                const ap = attackPaths.find(a => a.id === d.aps[0]);
+                if (!ap) return;
+                showNodeDetail(d.id, ap);
+            } else {
+                // Multi-AP node — show inline picker
+                let pickerHtml = `<p style="margin:0 0 0.4rem;font-weight:600;color:var(--text-color);">
+                    <strong>${d.id}</strong> appears in ${d.aps.length} attack paths — choose one to explore:</p>
+                    <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">`;
+                d.aps.forEach(apId => {
+                    const color = apColorMap[apId] || AP_PALETTE[0];
+                    pickerHtml += `<button class="vg-picker-btn" data-apid="${apId}" style="padding:0.25rem 0.75rem;border-radius:8px;border:2px solid ${color};background:${color}22;color:${color};font-size:0.8rem;font-weight:700;cursor:pointer;">${apId}</button>`;
+                });
+                pickerHtml += `</div>`;
+                apPicker.innerHTML = pickerHtml;
+                apPicker.style.display = 'block';
+
+                apPicker.querySelectorAll('.vg-picker-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        apPicker.style.display = 'none';
+                        const ap = attackPaths.find(a => a.id === btn.dataset.apid);
+                        if (!ap) return;
+                        showNodeDetail(d.id, ap);
+                    });
+                });
+            }
+        });
+
+        // Click on SVG background to deselect
+        d3.select(svgEl).on('click', () => {
+            nodeEls.selectAll('circle,polygon').attr('opacity', 1);
+            pivotInfo.style.display = 'none';
+            apPicker.style.display  = 'none';
+        });
+    }
+
+    // ─── Fallback card list (used when D3 is unavailable) ────────────────────
+    _loadHardeningTabCards(listContainer, attackPaths, controlRecs) {
         listContainer.innerHTML = `
             <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px; border-left: 4px solid var(--primary-color);">
-                <h4 style="margin-bottom: 0.75rem; font-size: 1rem; color: var(--primary-color);">🔒 What is "Visualize"?</h4>
-                <p style="color: var(--text-secondary); margin-bottom: 0.75rem; font-size: 0.875rem;">
-                    Shows side-by-side comparison of your architecture BEFORE and AFTER applying security controls:
+                <h4 style="margin-bottom: 0.75rem; font-size: 1rem; color: var(--primary-color);">Attack Path Controls</h4>
+                <p style="color: var(--text-secondary); margin-bottom: 0; font-size: 0.875rem;">
+                    Click an attack path to view its technique-control pairs in the detail panel.
                 </p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 0.875rem;">
-                    <div style="padding: 0.75rem; background: var(--code-bg); border-radius: 6px; border: 2px solid var(--danger-color);">
-                        <strong style="color: var(--danger-color);">⚠️ BEFORE</strong>
-                        <div style="color: var(--text-secondary); margin-top: 0.5rem;">
-                            Attack path nodes highlighted in RED showing vulnerability
-                        </div>
-                    </div>
-                    <div style="padding: 0.75rem; background: var(--code-bg); border-radius: 6px; border: 2px solid var(--secondary-color);">
-                        <strong style="color: var(--secondary-color);">✅ AFTER</strong>
-                        <div style="color: var(--text-secondary); margin-top: 0.5rem;">
-                            Protected nodes highlighted in GREEN with controls applied
-                        </div>
-                    </div>
-                </div>
-                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color); font-size: 0.875rem;">
-                    💡 Click <strong style="color: var(--primary-color);">Visualize →</strong> on any attack path to see control placement<br>
-                    ⚠️ <strong style="color: var(--warning-color);">0 controls = Residual Risk</strong> - Path has no available mitigations and represents accepted/residual risk
-                </div>
             </div>
         `;
 
-        // Sort attack paths by control count (most controls first), then by criticality
         const sortedPaths = [...attackPaths].sort((a, b) => {
             const aIndex = attackPaths.indexOf(a);
             const bIndex = attackPaths.indexOf(b);
             const aControls = controlRecs.filter(c => c.attack_paths && c.attack_paths.includes(aIndex)).length;
             const bControls = controlRecs.filter(c => c.attack_paths && c.attack_paths.includes(bIndex)).length;
-
-            // Sort by control count descending
             if (bControls !== aControls) return bControls - aControls;
-
-            // Then by criticality
             const tierOrder = { 'CRITICAL': 3, 'HIGH': 2, 'MEDIUM': 1 };
             return (tierOrder[b.criticality_tier] || 0) - (tierOrder[a.criticality_tier] || 0);
         });
 
         sortedPaths.forEach(path => {
-            // Find controls that apply to this path using array position (not AP- number)
             const pathIndex = attackPaths.indexOf(path);
             const pathControls = controlRecs.filter(c =>
                 c.attack_paths && c.attack_paths.includes(pathIndex)
             );
-
-            // POINT 3: Skip attack paths with no controls (nothing to visualize)
-            if (pathControls.length === 0) {
-                console.log(`[DEBUG] Skipping ${path.id} - no controls to visualize`);
-                return;
-            }
 
             const criticalityColor =
                 path.criticality_tier === 'CRITICAL' ? 'var(--danger-color)' :
@@ -2881,998 +3540,60 @@ class Dashboard {
 
             const card = document.createElement('div');
             card.className = 'list-item';
-            card.style.cssText = `
-                padding: 1rem;
-                margin-bottom: 0.75rem;
-                background: var(--card-bg);
-                border-radius: 8px;
-                border-left: 4px solid ${criticalityColor};
-                cursor: pointer;
-                transition: all 0.2s;
-            `;
-
+            card.style.cssText = `padding:1rem;margin-bottom:0.75rem;background:var(--card-bg);border-radius:8px;border-left:4px solid ${criticalityColor};cursor:pointer;transition:all 0.2s;`;
             card.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: start;">
-                    <div style="flex: 1;">
-                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
-                            <strong style="font-size: 1rem; color: var(--primary-color);">${path.id}</strong>
-                            <span style="padding: 0.25rem 0.75rem; background: ${criticalityColor}22; color: ${criticalityColor}; border-radius: 12px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">
-                                ${path.criticality_tier}
-                            </span>
-                        </div>
-                        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
-                            ${path.entry} → ${path.target} (${path.hop_count} hops)
-                        </div>
-                        <div style="display: flex; gap: 1rem; font-size: 0.8125rem; color: var(--text-tertiary);">
-                            <span>🛡️ ${pathControls.length} control${pathControls.length !== 1 ? 's' : ''}</span>
-                            <span>🎯 ${path.techniques ? path.techniques.length : 0} techniques</span>
-                        </div>
-                    </div>
-                    <button class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
-                        Visualize →
-                    </button>
+                <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.4rem;">
+                    <strong style="font-size:1rem;color:var(--primary-color);">${path.id}</strong>
+                    <span style="padding:0.15rem 0.6rem;background:${criticalityColor}22;color:${criticalityColor};border-radius:12px;font-size:0.72rem;font-weight:700;text-transform:uppercase;">${path.criticality_tier}</span>
                 </div>
+                <div style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:0.35rem;">${path.entry} → ${path.target}</div>
+                <div style="font-size:0.8rem;color:var(--text-tertiary);">🛡️ ${pathControls.length} control${pathControls.length !== 1 ? 's' : ''} &nbsp;|&nbsp; 🎯 ${path.techniques ? path.techniques.length : 0} techniques</div>
             `;
-
-            card.addEventListener('click', async () => {
+            card.addEventListener('click', () => {
                 listContainer.querySelectorAll('.list-item').forEach(el => el.classList.remove('active'));
                 card.classList.add('active');
-
-                // Update status message
-                this.updateStatusMessage(`🔒 Generating hardening visualization for ${path.id}...`);
-
-                await this.visualizePathHardening(path, pathControls);
-
-                // Update status message after completion
-                this.updateStatusMessage(`✅ ${path.id} hardening visualization complete`);
+                this._showPathDetailPane(path, pathControls);
             });
-
             listContainer.appendChild(card);
         });
     }
 
-    async visualizePathHardening(path, controls) {
-        console.log('[DEBUG] visualizePathHardening called for', path.id);
+    _showPathDetailPane(path, pathControls) {
+        const rightPane        = document.getElementById('right-pane');
+        const rightPaneContent = document.getElementById('right-pane-content');
+        if (!rightPane || !rightPaneContent) return;
 
-        // Use center pane instead of right pane for better visibility
-        const centerPane = document.getElementById('hardening-paths-list');
+        const critColor = path.criticality_tier === 'CRITICAL' ? 'var(--danger-color)'
+            : path.criticality_tier === 'HIGH' ? 'var(--warning-color)' : 'var(--primary-color)';
 
-        if (!centerPane) {
-            console.error('[DEBUG] Center pane not found');
-            return;
-        }
-
-        if (!this.originalMmdContent) {
-            console.error('[DEBUG] No original MMD content available');
-            centerPane.innerHTML = `
-                <div style="padding: 2rem; text-align: center;">
-                    <h3 style="color: var(--danger-color);">⚠️ Cannot Visualize</h3>
-                    <p style="color: var(--text-secondary);">
-                        Architecture diagram not available. Please re-analyze the architecture.
-                    </p>
-                </div>
-            `;
-            return;
-        }
-
-        // Use stored original mermaid content
-        console.log('[DEBUG] Generating diagrams from stored MMD content');
-        const originalMmd = this.originalMmdContent;
-
-        // Generate before/after diagrams (simplified - just show nodes in path)
-        const beforeMmd = this.generateSimpleBeforeDiagram(originalMmd, path);
-        const afterMmd = this.generateSimpleAfterDiagram(originalMmd, path, controls);
-        console.log('[DEBUG] Diagrams generated, updating center pane');
-
-        // Group controls by node they protect
-        const controlsByNode = this.groupControlsByNode(controls, path);
-
-        // Get nodes with controls
-        const nodesWithControls = Object.keys(controlsByNode);
-
-        // Generate attack path diagram (showing only the path)
-        const attackPathMmd = this.generateAttackPathDiagram(path);
-
-        centerPane.innerHTML = `
-                <!-- POINT 2: Back button to return to attack path list -->
-                <div style="margin-bottom: 1rem;">
-                    <button id="back-to-paths" class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
-                        ← Back to Attack Paths
-                    </button>
-                </div>
-
-                <h3 style="color: var(--primary-color);">${path.id}: Control Placement</h3>
-                <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.875rem;">
-                    ${path.entry} → ${path.target}
-                </p>
-
-                <!-- Tabbed view for Before/After/Full -->
-                <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--border-color); margin-bottom: 1rem; align-items: center;">
-                    <button class="visualize-subtab active" data-subtab="before" style="padding: 0.75rem 1.5rem; background: var(--danger-color); color: white; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 0.875rem;">
-                        ⚠️ Before Hardening
-                    </button>
-                    <button class="visualize-subtab" data-subtab="after" style="padding: 0.75rem 1.5rem; background: transparent; color: var(--text-color); border: none; cursor: pointer; font-weight: 600; font-size: 0.875rem;">
-                        ✅ After Hardening
-                    </button>
-                    <button class="visualize-subtab" data-subtab="full" style="padding: 0.75rem 1.5rem; background: transparent; color: var(--text-color); border: none; cursor: pointer; font-weight: 600; font-size: 0.875rem;">
-                        🏗️ Full Architecture
-                    </button>
-
-                    <!-- POINT 4: Criticality filter (only show in After tab) -->
-                    <div id="criticality-filter" style="margin-left: auto; display: none; gap: 0.5rem; align-items: center;">
-                        <span style="font-size: 0.8125rem; color: var(--text-secondary);">Filter:</span>
-                        <button class="criticality-btn active" data-tier="all" style="padding: 0.25rem 0.75rem; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 600;">All</button>
-                        <button class="criticality-btn" data-tier="CRITICAL" style="padding: 0.25rem 0.75rem; background: transparent; color: var(--text-color); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 600;">🔴 Critical</button>
-                        <button class="criticality-btn" data-tier="HIGH" style="padding: 0.25rem 0.75rem; background: transparent; color: var(--text-color); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 600;">🟡 High</button>
-                        <button class="criticality-btn" data-tier="MEDIUM" style="padding: 0.25rem 0.75rem; background: transparent; color: var(--text-color); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 600;">🔵 Medium</button>
-                    </div>
-                </div>
-
-                <!-- Before View -->
-                <div id="visualize-before" class="visualize-subtab-content" style="display: block;">
-                    <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--danger-color)15; border-radius: 8px; border-left: 4px solid var(--danger-color);">
-                        <h4 style="margin-bottom: 0.75rem; color: var(--danger-color);">Attack Path Nodes (Click to View)</h4>
-                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                            ${path.path.map((node, idx) => `
-                                <button class="vulnerable-node-btn" data-node="${node}" data-idx="${idx}" style="padding: 0.5rem 0.75rem; background: var(--danger-color)22; border: 2px solid var(--danger-color); border-radius: 8px; color: var(--text-color); cursor: pointer; transition: all 0.2s; font-weight: 600;" onmouseover="this.style.background='var(--danger-color)44'" onmouseout="this.style.background='var(--danger-color)22'">
-                                    <strong>${idx + 1}.</strong> ${node}
-                                </button>
-                            `).join('')}
-                        </div>
-                        <p style="margin-top: 0.75rem; font-size: 0.875rem; color: var(--text-secondary);">
-                            These ${path.path.length} nodes form the attack path. <strong>Click any node</strong> to view the attack path diagram.
-                        </p>
-                    </div>
-
-                    <!-- Diagram controls -->
-                    <div style="margin-bottom: 0.5rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
-                        <button id="before-zoom-in" class="btn-icon" title="Zoom In">🔍+</button>
-                        <button id="before-zoom-out" class="btn-icon" title="Zoom Out">🔍−</button>
-                        <button id="before-zoom-reset" class="btn-icon" title="Reset Zoom">↺</button>
-                        <div style="width: 1px; height: 24px; background: var(--border-color); margin: 0 0.25rem;"></div>
-                        <button id="before-fit-width" class="btn-icon" title="Fit to Width">↔️</button>
-                        <button id="before-fit-height" class="btn-icon" title="Fit to Height">↕️</button>
-                    </div>
-
-                    <div id="before-diagram-container" style="padding: 1rem; background: var(--code-bg); border-radius: 8px; overflow: auto; max-height: 500px; border: 2px solid var(--danger-color);">
-                        <div class="mermaid" id="before-diagram">${attackPathMmd}</div>
-                    </div>
-                    <p style="margin-top: 0.5rem; font-size: 0.8125rem; color: var(--text-tertiary); font-style: italic;">
-                        Attack path diagram showing traversal from entry to target
-                    </p>
-                </div>
-
-                <!-- After View -->
-                <div id="visualize-after" class="visualize-subtab-content" style="display: none;">
-                    ${nodesWithControls.length > 0 ? `
-                        <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--secondary-color)15; border-radius: 8px; border-left: 4px solid var(--secondary-color);">
-                            <h4 style="margin-bottom: 0.75rem; color: var(--secondary-color);">Hardened Nodes (Click to View Controls)</h4>
-                            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                                ${nodesWithControls.map(node => `
-                                    <button class="hardened-node-btn" data-node="${node}" style="padding: 0.5rem 0.75rem; background: var(--secondary-color)22; border: 2px solid var(--secondary-color); border-radius: 8px; color: var(--text-color); cursor: pointer; transition: all 0.2s; font-weight: 600;" onmouseover="this.style.background='var(--secondary-color)44'" onmouseout="this.style.background='var(--secondary-color)22'">
-                                        🛡️ ${this._nodeLabelMap?.[node] || node}
-                                    </button>
-                                `).join('')}
-                            </div>
-                            <p style="margin-top: 0.75rem; font-size: 0.875rem; color: var(--text-secondary);">
-                                <strong>${nodesWithControls.length}</strong> out of <strong>${path.path.length}</strong> nodes hardened. <strong>Click any node</strong> to see controls in detail pane.
-                            </p>
-                        </div>
-                    ` : `
-                        <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--warning-color)15; border-radius: 8px; border-left: 4px solid var(--warning-color);">
-                            <h4 style="margin-bottom: 0.75rem; color: var(--warning-color);">⚠️ No Controls Applied</h4>
-                            <p style="font-size: 0.875rem; color: var(--text-secondary);">
-                                This attack path has no security controls. This represents <strong>residual risk</strong>.
-                            </p>
-                        </div>
-                    `}
-
-                    <!-- Diagram controls -->
-                    <div style="margin-bottom: 0.5rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
-                        <button id="after-zoom-in" class="btn-icon" title="Zoom In">🔍+</button>
-                        <button id="after-zoom-out" class="btn-icon" title="Zoom Out">🔍−</button>
-                        <button id="after-zoom-reset" class="btn-icon" title="Reset Zoom">↺</button>
-                        <div style="width: 1px; height: 24px; background: var(--border-color); margin: 0 0.25rem;"></div>
-                        <button id="after-fit-width" class="btn-icon" title="Fit to Width">↔️</button>
-                        <button id="after-fit-height" class="btn-icon" title="Fit to Height">↕️</button>
-                    </div>
-
-                    <div id="after-diagram-container" style="padding: 1rem; background: var(--code-bg); border-radius: 8px; overflow: auto; max-height: 500px; border: 2px solid var(--secondary-color);">
-                        <div class="mermaid" id="after-diagram">${afterMmd}</div>
-                    </div>
-                    <p style="margin-top: 0.5rem; font-size: 0.8125rem; color: var(--text-tertiary); font-style: italic;">
-                        Attack path diagram with hardened nodes highlighted
-                    </p>
-                </div>
-
-                <!-- Full Architecture View -->
-                <div id="visualize-full" class="visualize-subtab-content" style="display: none;">
-                    <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--primary-color)15; border-radius: 8px; border-left: 4px solid var(--primary-color);">
-                        <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">Complete System Architecture with All Controls</h4>
-                        <p style="font-size: 0.875rem; color: var(--text-secondary);">
-                            This shows the complete architecture from <code>after.mmd</code> with all recommended security controls integrated.
-                        </p>
-                    </div>
-
-                    <!-- Diagram controls -->
-                    <div style="margin-bottom: 0.5rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
-                        <button id="full-zoom-in" class="btn-icon" title="Zoom In">🔍+</button>
-                        <button id="full-zoom-out" class="btn-icon" title="Zoom Out">🔍−</button>
-                        <button id="full-zoom-reset" class="btn-icon" title="Reset Zoom">↺</button>
-                        <div style="width: 1px; height: 24px; background: var(--border-color); margin: 0 0.25rem;"></div>
-                        <button id="full-fit-width" class="btn-icon" title="Fit to Width">↔️</button>
-                        <button id="full-fit-height" class="btn-icon" title="Fit to Height">↕️</button>
-                    </div>
-
-                    <div id="full-diagram-container" style="padding: 1rem; background: var(--code-bg); border-radius: 8px; overflow: auto; max-height: 600px; border: 2px solid var(--primary-color);">
-                        <div class="mermaid" id="full-diagram"></div>
-                    </div>
-                    <p style="margin-top: 0.5rem; font-size: 0.8125rem; color: var(--text-tertiary); font-style: italic;">
-                        Full architecture with all security controls and connections
-                    </p>
-                </div>
-        `;
-
-        // Store path and controls for later use
-        this.currentVisualizePath = path;
-        this.currentVisualizeControls = controls;
-        this.currentVisualizeControlsByNode = controlsByNode;
-
-        // Add event listeners for vulnerable nodes (Before view)
-        centerPane.querySelectorAll('.vulnerable-node-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const node = btn.dataset.node;
-                const idx = btn.dataset.idx;
-                this.showVulnerableNodeDetail(node, idx, path);
-            });
-        });
-
-        // Add event listeners for hardened nodes (After view)
-        centerPane.querySelectorAll('.hardened-node-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const node = btn.dataset.node;
-                this.showHardenedNodeDetail(node, controlsByNode[node], path);
-            });
-        });
-
-        // Add visualize subtab switching
-        const visualizeSubtabs = centerPane.querySelectorAll('.visualize-subtab');
-        visualizeSubtabs.forEach(subtab => {
-            subtab.addEventListener('click', () => {
-                const subtabName = subtab.dataset.subtab;
-
-                // Update button styles
-                visualizeSubtabs.forEach(btn => {
-                    const isActive = btn.dataset.subtab === subtabName;
-                    if (isActive) {
-                        const bgColor = subtabName === 'before' ? 'var(--danger-color)' :
-                                       subtabName === 'after' ? 'var(--secondary-color)' :
-                                       'var(--primary-color)';
-                        btn.style.background = bgColor;
-                        btn.style.color = 'white';
-                    } else {
-                        btn.style.background = 'transparent';
-                        btn.style.color = 'var(--text-color)';
-                    }
-                });
-
-                // Update content visibility
-                centerPane.querySelectorAll('.visualize-subtab-content').forEach(content => {
-                    const isActive = content.id === `visualize-${subtabName}`;
-                    content.style.display = isActive ? 'block' : 'none';
-                });
-
-                // Render the Full Architecture diagram when switching to Full tab
-                if (subtabName === 'full') {
-                    setTimeout(async () => {
-                        const fullElement = document.querySelector('#full-diagram');
-                        if (!fullElement) {
-                            console.error('[DEBUG] Full diagram element not found');
-                            return;
-                        }
-
-                        // Check if already rendered
-                        const existingSvg = fullElement.querySelector('svg');
-                        if (existingSvg && existingSvg.getAttribute('width') !== '16') {
-                            console.log('[DEBUG] Full diagram already rendered properly');
-                            return;
-                        }
-
-                        // Fetch after.mmd from Reports API
-                        if (this.analysisData && this.analysisData.architecture_name) {
-                            try {
-                                console.log('[DEBUG] Fetching after.mmd from Reports API...');
-                                const response = await fetch(`/api/v1/reports/${this.analysisData.architecture_name}/files/after.mmd`);
-                                if (response.ok) {
-                                    const afterMmdFull = await response.text();
-                                    console.log('[DEBUG] after.mmd loaded:', afterMmdFull.length, 'characters');
-
-                                    // Render diagram
-                                    fullElement.innerHTML = '';
-                                    fullElement.textContent = afterMmdFull;
-                                    fullElement.removeAttribute('data-processed');
-                                    fullElement.classList.add('mermaid');
-
-                                    await mermaid.run({ nodes: [fullElement] });
-                                    console.log('[DEBUG] Full architecture diagram rendered successfully');
-                                    await new Promise(r => setTimeout(r, 100));
-                                    this[`fullScale`] = undefined; // reset so auto-fit runs fresh
-                                    this.setupDiagramZoom('full');
-                                } else {
-                                    console.error('[DEBUG] Failed to fetch after.mmd:', response.status);
-                                    fullElement.innerHTML = '<p style="color: var(--danger-color);">Failed to load full architecture diagram</p>';
-                                }
-                            } catch (err) {
-                                console.error('[DEBUG] Error fetching after.mmd:', err);
-                                fullElement.innerHTML = '<p style="color: var(--danger-color);">Error: ' + err.message + '</p>';
-                            }
-                        } else {
-                            console.error('[DEBUG] No architecture name available');
-                        }
-                    }, 200);
-                }
-
-                // Render the After diagram when switching to After tab (fixes 16x16 size issue)
-                if (subtabName === 'after') {
-                    setTimeout(async () => {
-                        const afterElement = document.querySelector('#after-diagram');
-                        if (!afterElement) {
-                            console.error('[DEBUG] After diagram element not found');
-                            return;
-                        }
-
-                        // Check if already rendered properly (has SVG with good size)
-                        const existingSvg = afterElement.querySelector('svg');
-                        if (existingSvg) {
-                            const width = existingSvg.getAttribute('width');
-                            const height = existingSvg.getAttribute('height');
-                            console.log('[DEBUG] After diagram already rendered, size:', width, 'x', height);
-
-                            // If size is tiny (16x16), need to re-render
-                            if (width === '16' || width === '16px') {
-                                console.log('[DEBUG] After diagram too small (16x16), re-rendering...');
-                            } else {
-                                console.log('[DEBUG] After diagram size is good, skipping re-render');
-                                return;
-                            }
-                        }
-
-                        // Get the diagram content from the element's text or data attribute
-                        let diagramContent = afterElement.getAttribute('data-diagram-content');
-                        if (!diagramContent) {
-                            diagramContent = afterElement.textContent.trim();
-                        }
-
-                        if (diagramContent && diagramContent.startsWith('flowchart')) {
-                            console.log('[DEBUG] Rendering After diagram now that tab is visible');
-                            console.log('[DEBUG] Diagram content length:', diagramContent.length);
-
-                            try {
-                                // Clear element and set fresh content
-                                afterElement.innerHTML = '';
-                                afterElement.textContent = diagramContent;
-                                afterElement.removeAttribute('data-processed');
-                                afterElement.classList.add('mermaid');
-
-                                // Render with mermaid
-                                await mermaid.run({ nodes: [afterElement] });
-                                console.log('[DEBUG] After diagram rendered successfully');
-                                await new Promise(r => setTimeout(r, 100));
-                                this[`afterScale`] = undefined; // reset so auto-fit runs fresh
-                                this.setupDiagramZoom('after');
-                            } catch (err) {
-                                console.error('[DEBUG] After diagram render failed:', err);
-                                console.error('[DEBUG] Error details:', err.message);
-                            }
-                        } else {
-                            console.error('[DEBUG] No valid diagram content found for After diagram');
-                        }
-                    }, 200);
-                }
-            });
-        });
-
-        // Render mermaid diagrams
-        if (window.mermaid) {
-            console.log('[DEBUG] Rendering mermaid diagrams');
-            try {
-                // Important: Mermaid needs a small delay to properly attach to DOM
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                const beforeElement = document.querySelector('#before-diagram');
-                const afterElement = document.querySelector('#after-diagram');
-
-                if (beforeElement && beforeElement.textContent) {
-                    const beforeContent = beforeElement.textContent.trim();
-                    console.log('[DEBUG] Before diagram content length:', beforeContent.length);
-                    console.log('[DEBUG] Before diagram preview:', beforeContent.substring(0, 100));
-
-                    if (beforeContent.length > 0) {
-                        try {
-                            await mermaid.run({
-                                nodes: [beforeElement]
-                            });
-                            console.log('[DEBUG] Before diagram rendered successfully');
-                        } catch (err) {
-                            console.error('[DEBUG] Before diagram render failed:', err);
-                            // Show raw text as fallback
-                            beforeElement.innerHTML = `<pre style="color: var(--danger-color); white-space: pre-wrap; font-size: 0.75rem;">${beforeContent}</pre>`;
-                        }
-                    }
-                } else {
-                    console.error('[DEBUG] Before diagram element not found or empty');
-                }
-
-                if (afterElement && afterElement.textContent) {
-                    const afterContent = afterElement.textContent.trim();
-                    console.log('[DEBUG] After diagram content length:', afterContent.length);
-                    console.log('[DEBUG] After diagram preview:', afterContent.substring(0, 100));
-
-                    // Store diagram content for later re-render when tab becomes visible
-                    afterElement.setAttribute('data-diagram-content', afterContent);
-                    console.log('[DEBUG] Stored After diagram content in data attribute');
-
-                    // Don't render it yet (it's hidden, will be 16x16)
-                    // It will be rendered when user clicks the After tab
-                    console.log('[DEBUG] Skipping initial After diagram render (will render on tab click)');
-                } else {
-                    console.error('[DEBUG] After diagram element not found or empty');
-                }
-
-                console.log('[DEBUG] Mermaid rendering complete');
-
-                // Setup zoom for before diagram only — after/full are set up post-render
-                await new Promise(resolve => setTimeout(resolve, 100));
-                this.setupDiagramZoom('before');
-            } catch (error) {
-                console.error('[DEBUG] Mermaid rendering failed:', error);
-                console.error('[DEBUG] Error details:', error.message, error.stack);
-            }
+        let controlsHtml = '';
+        if (pathControls.length === 0) {
+            controlsHtml = `<p style="color:var(--warning-color);font-size:0.85rem;">No controls mapped for this attack path.</p>`;
         } else {
-            console.error('[DEBUG] Mermaid library not loaded');
-        }
-
-        // POINT 2: Setup Back button to return to attack path list
-        const backBtn = document.getElementById('back-to-paths');
-        if (backBtn) {
-            backBtn.addEventListener('click', () => {
-                console.log('[DEBUG] Back button clicked, reloading Visualise tab');
-                this.loadHardeningTab();
-            });
-        }
-
-        // POINT 4: Setup criticality filter (show when After tab is active, hide for Before/Full)
-        const filterDiv = document.getElementById('criticality-filter');
-        centerPane.querySelectorAll('.visualize-subtab').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const subtab = btn.getAttribute('data-subtab');
-                if (filterDiv) {
-                    filterDiv.style.display = subtab === 'after' ? 'flex' : 'none';
+            pathControls.forEach(c => {
+                const pc = (c.priority || 'baseline').toUpperCase();
+                const pColor = pc === 'CRITICAL' ? 'var(--danger-color)' : pc === 'HIGH' ? 'var(--warning-color)' : 'var(--primary-color)';
+                controlsHtml += `<div style="margin-bottom:0.75rem;padding:0.65rem 0.9rem;background:var(--nav-hover-bg);border-radius:8px;border-left:3px solid ${pColor};">`;
+                controlsHtml += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;"><span style="padding:0.1rem 0.45rem;background:${pColor}22;color:${pColor};border-radius:4px;font-size:0.7rem;font-weight:700;">${pc}</span><strong style="font-size:0.85rem;">${c.control}</strong></div>`;
+                controlsHtml += `<p style="margin:0;font-size:0.82rem;color:var(--text-secondary);line-height:1.5;">${c.rationale || ''}</p>`;
+                if (c.techniques && c.techniques.length > 0) {
+                    controlsHtml += `<div style="margin-top:0.3rem;font-size:0.75rem;color:var(--text-tertiary);">Mitigates: ${c.techniques.join(', ')}</div>`;
                 }
+                controlsHtml += `</div>`;
             });
-        });
-
-        // POINT 4: Criticality filter functionality
-        this.setupCriticalityFilter(centerPane, path, controls);
-
-        // Scroll to top of center pane
-        centerPane.scrollTop = 0;
-    }
-
-    setupCriticalityFilter(centerPane, path, allControls) {
-        const filterButtons = centerPane.querySelectorAll('.criticality-btn');
-        let currentFilter = 'all';
-
-        filterButtons.forEach(btn => {
-            btn.addEventListener('click', async () => {
-                // Update active state
-                filterButtons.forEach(b => {
-                    b.classList.remove('active');
-                    b.style.background = 'transparent';
-                    b.style.color = 'var(--text-color)';
-                    b.style.border = '1px solid var(--border-color)';
-                });
-                btn.classList.add('active');
-                btn.style.background = 'var(--primary-color)';
-                btn.style.color = 'white';
-                btn.style.border = 'none';
-
-                // Get selected tier
-                currentFilter = btn.getAttribute('data-tier');
-                console.log('[DEBUG] Criticality filter changed to:', currentFilter);
-
-                // POINT 4: Filter controls by criticality (case-insensitive)
-                const filteredControls = currentFilter === 'all'
-                    ? allControls
-                    : allControls.filter(c => (c.priority || '').toUpperCase() === currentFilter);
-
-                console.log('[DEBUG] Filtered controls:', filteredControls.length, 'of', allControls.length);
-
-                // Regenerate After diagram with filtered controls
-                const afterMmd = this.generateSimpleAfterDiagram(this.originalMmdContent, path, filteredControls);
-
-                // Update After diagram content
-                const afterElement = document.querySelector('#after-diagram');
-                if (afterElement) {
-                    afterElement.setAttribute('data-diagram-content', afterMmd);
-                    afterElement.innerHTML = '';
-                    afterElement.textContent = afterMmd;
-                    afterElement.removeAttribute('data-processed');
-                    afterElement.classList.add('mermaid');
-
-                    try {
-                        await mermaid.run({ nodes: [afterElement] });
-                        console.log('[DEBUG] After diagram re-rendered with filter:', currentFilter);
-                        this.setupDiagramZoom('after');
-                    } catch (err) {
-                        console.error('[DEBUG] Failed to re-render After diagram:', err);
-                    }
-                }
-            });
-        });
-    }
-
-    setupDiagramZoom(prefix) {
-        // Container naming: try exact id, then "{prefix}-diagram-container", then "{prefix}-container"
-        const container =
-            document.getElementById(`${prefix}-diagram-container`) ||
-            document.getElementById(`${prefix}-container`) ||
-            document.getElementById(prefix);
-
-        if (!container) return;
-
-        const getSvg = () => container.querySelector('svg');
-
-        // Capture/refresh original dimensions from the live SVG.
-        // Called here and again after deferred renders so zoom math is always correct.
-        const captureSize = () => {
-            const svg = getSvg();
-            if (!svg) return false;
-            const bbox = svg.getBBox ? svg.getBBox() : {};
-            const w = parseFloat(svg.getAttribute('width'))  || bbox.width  || 800;
-            const h = parseFloat(svg.getAttribute('height')) || bbox.height || 600;
-            if (w > 1 && h > 1) {
-                this[`${prefix}OriginalWidth`]  = w;
-                this[`${prefix}OriginalHeight`] = h;
-                return true;
-            }
-            return false;
-        };
-
-        // Scale state lives on the instance so re-calls share state (not accumulate).
-        if (this[`${prefix}Scale`] === undefined) this[`${prefix}Scale`] = 1;
-        const getScale = ()  => this[`${prefix}Scale`];
-        const setScale = (v) => { this[`${prefix}Scale`] = v; };
-
-        const applyScale = (s) => {
-            const svg = getSvg();
-            if (!svg) return;
-            if (!this[`${prefix}OriginalWidth`]) { if (!captureSize()) return; }
-            setScale(s);
-            svg.setAttribute('width',  this[`${prefix}OriginalWidth`]  * s);
-            svg.setAttribute('height', this[`${prefix}OriginalHeight`] * s);
-            svg.style.maxWidth = 'none';
-        };
-
-        // Auto-fit on first setup — wait for Mermaid to finish rendering.
-        setTimeout(() => {
-            if (!captureSize()) return;
-            const containerWidth = container.clientWidth - 32;
-            const fitScale = containerWidth < this[`${prefix}OriginalWidth`]
-                ? containerWidth / this[`${prefix}OriginalWidth`]
-                : 1;
-            applyScale(fitScale);
-        }, 200);
-
-        // Replace each button with a fresh clone to remove any previous listeners.
-        const wire = (id, handler) => {
-            const old = document.getElementById(id);
-            if (!old) return;
-            const fresh = old.cloneNode(true);
-            old.parentNode.replaceChild(fresh, old);
-            fresh.addEventListener('click', handler);
-        };
-
-        wire(`${prefix}-zoom-in`,   () => applyScale(Math.min(getScale() + 0.2, 4)));
-        wire(`${prefix}-zoom-out`,  () => applyScale(Math.max(getScale() - 0.2, 0.1)));
-        wire(`${prefix}-zoom-reset`, () => {
-            if (!this[`${prefix}OriginalWidth`]) { captureSize(); }
-            const containerWidth = container.clientWidth - 32;
-            const fitScale = Math.min(1, containerWidth / (this[`${prefix}OriginalWidth`] || 800));
-            applyScale(fitScale);
-            container.scrollTop  = 0;
-            container.scrollLeft = 0;
-        });
-        wire(`${prefix}-fit-width`, () => {
-            if (!this[`${prefix}OriginalWidth`]) { captureSize(); }
-            applyScale((container.clientWidth - 32) / (this[`${prefix}OriginalWidth`] || 800));
-        });
-        wire(`${prefix}-fit-height`, () => {
-            if (!this[`${prefix}OriginalHeight`]) { captureSize(); }
-            applyScale((container.clientHeight - 32) / (this[`${prefix}OriginalHeight`] || 600));
-        });
-    }
-
-    generateAttackPathDiagram(path) {
-        // Generate simple linear attack path diagram
-        console.log('[DEBUG] Generating attack path diagram for:', path.id);
-        console.log('[DEBUG] Path nodes:', path.path);
-
-        const nodes = path.path.map((node, idx) => {
-            // Sanitize node name for mermaid
-            const sanitized = node.replace(/[[\](){}]/g, '');
-            return `${sanitized}["${node}"]`;
-        }).join(' --> ');
-
-        const diagram = `flowchart LR\n    ${nodes}\n    style ${path.path[0].replace(/[[\](){}]/g, '')} fill:#ff6b8a,stroke:#ff0033,stroke-width:3px,color:#000000\n    style ${path.path[path.path.length - 1].replace(/[[\](){}]/g, '')} fill:#f39c12,stroke:#d68910,stroke-width:3px,color:#000000`;
-        console.log('[DEBUG] Generated diagram:', diagram);
-        return diagram;
-    }
-
-    showVulnerableNodeDetail(node, idx, path) {
-        const rightPane = document.getElementById('right-pane');
-        const rightPaneContent = document.getElementById('right-pane-content');
-
-        const position = parseInt(idx) === 0 ? 'Entry Point' :
-                        parseInt(idx) === path.path.length - 1 ? 'Target' :
-                        'Traversal Node';
+        }
 
         rightPaneContent.innerHTML = `
-            <h3 style="color: var(--danger-color);">⚠️ Vulnerable Node</h3>
-            <div style="padding: 1rem; background: var(--danger-color)15; border-radius: 8px; border-left: 4px solid var(--danger-color); margin-bottom: 1.5rem;">
-                <h4 style="font-size: 1.125rem; margin-bottom: 0.5rem;">${node}</h4>
-                <div style="font-size: 0.875rem; color: var(--text-secondary);">
-                    <div><strong>Position:</strong> Step ${parseInt(idx) + 1} of ${path.path.length}</div>
-                    <div><strong>Role:</strong> ${position}</div>
-                    <div><strong>Path:</strong> ${path.id}</div>
-                </div>
+            <div style="margin-bottom:1rem;">
+                <div style="font-size:0.75rem;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">Attack Path</div>
+                <h3 style="margin:0 0 0.25rem;font-size:1.05rem;color:var(--text-color);">${path.id}</h3>
+                <div style="font-size:0.82rem;color:var(--text-secondary);">${path.entry} → ${path.target}</div>
+                <span style="display:inline-block;margin-top:0.4rem;padding:0.15rem 0.6rem;background:${critColor}22;color:${critColor};border-radius:4px;font-size:0.72rem;font-weight:700;">${path.criticality_tier}</span>
             </div>
-
-            <div style="margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.75rem; font-size: 1rem;">🎯 Attack Context</h4>
-                <p style="color: var(--text-secondary); font-size: 0.875rem; line-height: 1.6;">
-                    ${position === 'Entry Point' ?
-                        `This is the <strong>entry point</strong> where the attacker gains initial access to the system. Securing this node is critical to preventing the entire attack chain.` :
-                    position === 'Target' ?
-                        `This is the <strong>target</strong> of the attack. The attacker's goal is to reach this node to exfiltrate data, cause damage, or achieve their objective.` :
-                        `This is a <strong>traversal node</strong> in the attack path. The attacker uses this node to move closer to their target.`
-                    }
-                </p>
-            </div>
-
-            <div style="margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.75rem; font-size: 1rem;">🛡️ Protection Status</h4>
-                <div style="padding: 1rem; background: var(--warning-color)15; border-radius: 8px; border-left: 4px solid var(--warning-color);">
-                    <p style="color: var(--text-secondary); font-size: 0.875rem;">
-                        <strong>No controls applied</strong> - This node is currently vulnerable in this attack path.
-                        Switch to "After Hardening" view to see which nodes have been protected.
-                    </p>
-                </div>
-            </div>
-
-            <div>
-                <h4 style="margin-bottom: 0.75rem; font-size: 1rem;">📍 Path Sequence</h4>
-                <div style="padding: 1rem; background: var(--code-bg); border-radius: 8px;">
-                    ${path.path.map((n, i) => `
-                        <div style="padding: 0.5rem; margin-bottom: 0.5rem; ${i === parseInt(idx) ? 'background: var(--danger-color)22; border-left: 4px solid var(--danger-color);' : 'background: var(--nav-hover-bg);'} border-radius: 6px;">
-                            <strong>${i + 1}.</strong> ${n} ${i === parseInt(idx) ? '← You are here' : ''}
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
+            <h4 style="margin:0 0 0.65rem;font-size:0.9rem;color:var(--text-color);">Controls for this path</h4>
+            ${controlsHtml}
         `;
-
         rightPane.classList.add('visible');
-    }
-
-    showHardenedNodeDetail(node, nodeControls, path) {
-        const rightPane = document.getElementById('right-pane');
-        const rightPaneContent = document.getElementById('right-pane-content');
-
-        rightPaneContent.innerHTML = `
-            <h3 style="color: var(--secondary-color);">🛡️ Hardened Node</h3>
-            <div style="padding: 1rem; background: var(--secondary-color)15; border-radius: 8px; border-left: 4px solid var(--secondary-color); margin-bottom: 1.5rem;">
-                <h4 style="font-size: 1.125rem; margin-bottom: 0.5rem;">${this._nodeLabelMap?.[node] || node}</h4>
-                <div style="font-size: 0.875rem; color: var(--text-secondary);">
-                    <div><strong>Controls Applied:</strong> ${nodeControls.length}</div>
-                    <div><strong>Path:</strong> ${path.id}</div>
-                </div>
-            </div>
-
-            <div style="margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.75rem; font-size: 1rem;">🛡️ Applied Controls</h4>
-                ${nodeControls.map(control => {
-                    const priorityColor =
-                        control.priority === 'critical' ? 'var(--danger-color)' :
-                        control.priority === 'high' ? 'var(--warning-color)' :
-                        'var(--primary-color)';
-
-                    return `
-                        <div style="margin-bottom: 1rem; padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px; border-left: 4px solid ${priorityColor};">
-                            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;">
-                                <strong style="font-size: 1rem; color: var(--primary-color);">${control.control}</strong>
-                                <span style="padding: 0.25rem 0.75rem; background: ${priorityColor}22; color: ${priorityColor}; border-radius: 12px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">
-                                    ${control.priority}
-                                </span>
-                            </div>
-                            <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                                ${control.rationale}
-                            </p>
-                            ${control.techniques && control.techniques.length > 0 ? `
-                                <div style="font-size: 0.8125rem; color: var(--text-tertiary);">
-                                    <strong>Mitigates:</strong> ${control.techniques.length} MITRE technique${control.techniques.length > 1 ? 's' : ''}
-                                </div>
-                            ` : ''}
-                        </div>
-                    `;
-                }).join('')}
-            </div>
-
-            <div>
-                <h4 style="margin-bottom: 0.75rem; font-size: 1rem;">📊 Control Summary</h4>
-                <div style="padding: 1rem; background: var(--code-bg); border-radius: 8px;">
-                    <div style="margin-bottom: 0.5rem;">
-                        <strong>Total Controls:</strong> ${nodeControls.length}
-                    </div>
-                    <div style="margin-bottom: 0.5rem;">
-                        <strong>Priority Breakdown:</strong>
-                    </div>
-                    <div style="padding-left: 1rem; font-size: 0.875rem;">
-                        ${['critical', 'high', 'medium'].map(priority => {
-                            const count = nodeControls.filter(c => c.priority === priority).length;
-                            return count > 0 ? `<div>${priority.toUpperCase()}: ${count}</div>` : '';
-                        }).join('')}
-                    </div>
-                </div>
-            </div>
-        `;
-
-        rightPane.classList.add('visible');
-    }
-
-    getPathIndex(path) {
-        const attackPaths = (this.analysisData?.analysis || {}).expected_attack_paths || [];
-        return attackPaths.indexOf(path);
-    }
-
-    groupControlsByNode(controls, path) {
-        const grouped = {};
-        this._nodeLabelMap = {};  // nodeId → human-readable label, populated as a side-effect
-        const pathIndex = this.getPathIndex(path);
-
-        // Controls that are only applicable to specific node layer types.
-        // Controls NOT listed here are considered broadly applicable (e.g. least privilege, logging, mfa).
-        // 'unknown' is always permissive — unrecognised nodes could be any type.
-        const CONTROL_LAYER_RESTRICTIONS = {
-            // Host-agent controls — valid on any node that runs a real OS/process.
-            // Excluded from: data (managed storage like S3/RDS), network (managed LB/firewall appliances).
-            'edr':                ['device', 'application', 'identity', 'unknown'],
-            'antivirus':          ['device', 'identity', 'unknown'],
-            'device hardening':   ['device', 'identity', 'unknown'],
-
-            // Code-deployment controls — meaningful anywhere software artifacts are built/deployed.
-            // Excluded from: network (LBs/firewalls are not code deployment targets), data (storage buckets).
-            'code signing':       ['application', 'device', 'identity', 'unknown'],
-            'container scanning': ['application', 'device', 'identity', 'network', 'unknown'],
-
-            // Patching — any node running patchable software (OS, runtime, gateway).
-            // Excluded from: data (cloud providers manage S3/RDS patching).
-            'patching':           ['device', 'application', 'identity', 'network', 'unknown'],
-            'patch management':   ['device', 'application', 'identity', 'network', 'unknown'],
-
-            // HTTP/API layer controls — valid on any node that handles HTTP traffic.
-            // Excluded from: data (storage layer, no HTTP endpoint), device (bare OS host layer).
-            'waf':                ['network', 'application', 'identity', 'unknown'],
-            'input validation':   ['application', 'identity', 'network', 'unknown'],
-
-            // Data-layer-only controls — only meaningful on storage/database nodes.
-            'database firewall':  ['data'],
-            'data masking':       ['data'],
-            'query monitoring':   ['data'],
-        };
-
-        console.log('[DEBUG] groupControlsByNode - controls count:', controls.length);
-        console.log('[DEBUG] groupControlsByNode - pathIndex:', pathIndex);
-
-        controls.forEach(control => {
-            const hopAnalysis = control._layered_defense?.hop_analysis || [];
-            console.log('[DEBUG] control:', control.control, 'has hop_analysis:', hopAnalysis.length > 0);
-
-            const pathHops = hopAnalysis.filter(hop => hop.path_id === pathIndex);
-
-            if (pathHops.length > 0) {
-                pathHops.forEach(hop => {
-                    // Key by node ID (matches path.path entries exactly) for diagram wiring
-                    const nodeKey = hop.target_id || hop.source_id || hop.target_label || hop.source_label;
-                    const nodeLabel = hop.target_label || hop.source_label || nodeKey;
-                    if (nodeKey) {
-                        // Store human label for display (node IDs like "OnPremApp" → "Legacy Application")
-                        if (nodeLabel && nodeLabel !== nodeKey) {
-                            this._nodeLabelMap[nodeKey] = nodeLabel;
-                        }
-                        // Skip controls that are not applicable to this node's layer type
-                        const controlName = (control.control || '').toLowerCase();
-                        const hopLayer = hop.layer || 'unknown';
-                        const allowedLayers = CONTROL_LAYER_RESTRICTIONS[controlName];
-                        if (allowedLayers && !allowedLayers.includes(hopLayer)) {
-                            console.log(`[DEBUG] Skipping "${controlName}" for ${nodeKey} (layer: ${hopLayer}) — not applicable to this node type`);
-                            return;
-                        }
-
-                        if (!grouped[nodeKey]) {
-                            grouped[nodeKey] = [];
-                        }
-                        // Avoid duplicates
-                        if (!grouped[nodeKey].some(c => c.control === control.control)) {
-                            grouped[nodeKey].push(control);
-                        }
-                    }
-                });
-            }
-        });
-
-        return grouped;
-    }
-
-    generateSimpleBeforeDiagram(originalMmd, path) {
-        // Generate attack path diagram (not full architecture)
-        return this.generateAttackPathDiagram(path);
-    }
-
-    normalizeNodeName(nodeName) {
-        // Normalize node names for comparison (remove spaces, lowercase, handle common variations)
-        return nodeName
-            .toLowerCase()
-            .replace(/\s+/g, '')
-            .replace(/[_-]/g, '')
-            .replace(/with.+$/, '') // Remove "with WAF" etc.
-            .trim();
-    }
-
-    findMatchingPathNode(hardenedNode, pathNodes) {
-        // Exact match first (hardenedNode is now keyed by node ID, same as pathNodes)
-        if (pathNodes.includes(hardenedNode)) {
-            return hardenedNode;
-        }
-
-        // Fallback: fuzzy normalized match (handles legacy data where key is a label)
-        const normalizedHardened = this.normalizeNodeName(hardenedNode);
-        for (const pathNode of pathNodes) {
-            const normalizedPath = this.normalizeNodeName(pathNode);
-            if (normalizedPath === normalizedHardened ||
-                normalizedPath.includes(normalizedHardened) ||
-                normalizedHardened.includes(normalizedPath)) {
-                return pathNode;
-            }
-        }
-
-        return null;
-    }
-
-    generateSimpleAfterDiagram(originalMmd, path, controls) {
-        // Generate attack path diagram WITH control nodes connected
-        console.log('[DEBUG] generateSimpleAfterDiagram - controls count:', controls.length);
-        console.log('[DEBUG] generateSimpleAfterDiagram - path:', path.id);
-
-        const controlsByNode = this.groupControlsByNode(controls, path);
-        console.log('[DEBUG] generateSimpleAfterDiagram - controlsByNode:', controlsByNode);
-
-        const hardenedNodes = Object.keys(controlsByNode);
-        console.log('[DEBUG] generateSimpleAfterDiagram - hardenedNodes:', hardenedNodes);
-
-        // Build attack path nodes
-        const pathNodes = path.path.map((node, idx) => {
-            const sanitized = node.replace(/[[\](){}]/g, '');
-            return `${sanitized}["${node}"]`;
-        }).join(' --> ');
-
-        let diagram = `flowchart LR\n    ${pathNodes}\n`;
-
-        // Add control nodes and connections
-        const addedControls = new Set(); // Track to avoid duplicates
-
-        hardenedNodes.forEach(hardenedNode => {
-            const matchingPathNode = this.findMatchingPathNode(hardenedNode, path.path);
-            console.log('[DEBUG] Hardened node:', hardenedNode, '→ matched path node:', matchingPathNode);
-
-            if (matchingPathNode) {
-                const nodeControls = controlsByNode[hardenedNode];
-                const sanitizedPathNode = matchingPathNode.replace(/[[\](){}]/g, '');
-
-                // POINT 4: Sort controls by criticality (CRITICAL first, then HIGH, MEDIUM)
-                const tierOrder = { 'CRITICAL': 0, 'critical': 0, 'HIGH': 1, 'high': 1, 'MEDIUM': 2, 'medium': 2, 'BASELINE': 3, 'baseline': 3 };
-                const sortedControls = [...nodeControls].sort((a, b) => {
-                    return (tierOrder[a.priority] || 99) - (tierOrder[b.priority] || 99);
-                });
-
-                // Add all controls for this node (prioritizing higher criticality)
-                sortedControls.forEach(control => {
-                    const controlKey = control.control.replace(/\s+/g, '');
-
-                    if (!addedControls.has(controlKey)) {
-                        // Add control node definition
-                        const controlLabel = control.control;
-
-                        // FIX: Use 'priority' field, not 'criticality_tier'
-                        const tier = (control.priority || 'baseline').toUpperCase();
-                        console.log('[DEBUG] Control:', controlLabel, 'Priority:', control.priority, '→ Tier:', tier);
-
-                        const tierIcon =
-                            tier === 'CRITICAL' ? '🔴' :
-                            tier === 'HIGH' ? '🟡' :
-                            tier === 'MEDIUM' ? '🔵' : '🟢';
-
-                        diagram += `    ${controlKey}["${tierIcon} ${controlLabel}"]\n`;
-                        addedControls.add(controlKey);
-                    }
-
-                    // Add dotted edge from control to protected node
-                    diagram += `    ${controlKey} -.->|protects| ${sanitizedPathNode}\n`;
-                });
-            }
-        });
-
-        // Build style directives
-        let styles = '\n';
-
-        // Entry point (red)
-        styles += `    style ${path.path[0].replace(/[[\](){}]/g, '')} fill:#ff6b8a,stroke:#ff0033,stroke-width:3px,color:#000000\n`;
-
-        // Target (orange)
-        styles += `    style ${path.path[path.path.length - 1].replace(/[[\](){}]/g, '')} fill:#f39c12,stroke:#d68910,stroke-width:3px,color:#000000\n`;
-
-        // Protected nodes (green) - nodes that have controls
-        hardenedNodes.forEach(hardenedNode => {
-            const matchingPathNode = this.findMatchingPathNode(hardenedNode, path.path);
-            if (matchingPathNode) {
-                styles += `    style ${matchingPathNode.replace(/[[\](){}]/g, '')} fill:#5fd49c,stroke:#00aa55,stroke-width:4px,color:#000000\n`;
-            }
-        });
-
-        // POINT 5: Control node styles (by criticality) with better contrast
-        addedControls.forEach(controlKey => {
-            const control = controls.find(c => c.control.replace(/\s+/g, '') === controlKey);
-            if (control) {
-                // FIX: Use 'priority' field, not 'criticality_tier'
-                const tier = (control.priority || 'baseline').toUpperCase();
-                console.log('[DEBUG] Styling control:', controlKey, 'Priority:', control.priority, '→ Tier:', tier);
-
-                // Use appropriate text colors for each background for maximum readability
-                const styleMap = {
-                    'CRITICAL': 'fill:#c92a2a,stroke:#a61e1e,stroke-width:3px,color:#ffffff',  // Dark red bg, white text
-                    'HIGH': 'fill:#fd7e14,stroke:#e8590c,stroke-width:3px,color:#000000',      // Bright orange bg, black text
-                    'MEDIUM': 'fill:#339af0,stroke:#1c7ed6,stroke-width:2px,color:#000000',    // Bright blue bg, black text
-                    'BASELINE': 'fill:#9775fa,stroke:#845ef7,stroke-width:2px,color:#000000'   // Bright purple bg, black text
-                };
-                const style = styleMap[tier] || styleMap['BASELINE'];
-                styles += `    style ${controlKey} ${style}\n`;
-                console.log('[DEBUG] Applied style for', controlKey, ':', style);
-            } else {
-                console.error('[DEBUG] Control not found for styling:', controlKey);
-            }
-        });
-
-        const fullDiagram = diagram + styles;
-        console.log('[DEBUG] Full After diagram:');
-        console.log('[DEBUG] - Path nodes:', path.path.length);
-        console.log('[DEBUG] - Control nodes added:', addedControls.size);
-        console.log('[DEBUG] - Diagram length:', fullDiagram.length);
-        console.log('[DEBUG] Full diagram content:\n', fullDiagram);
-        return fullDiagram;
-    }
-
-    getControlPlacementForPath(control, path) {
-        const hopAnalysis = control._layered_defense?.hop_analysis || [];
-        const pathIndex = this.getPathIndex(path);
-
-        const hopsInPath = hopAnalysis.filter(hop => hop.path_id === pathIndex);
-
-        if (hopsInPath.length === 0) {
-            return `Applied to ${path.id}`;
-        }
-
-        const nodes = [...new Set(hopsInPath.flatMap(hop => [hop.source_label, hop.target_label]))];
-        return `Protects: ${nodes.map(n => n.replace(/"/g, '')).join(' → ')}`;
     }
 
     async loadMitreTab() {
@@ -3902,7 +3623,7 @@ class Dashboard {
 
         matrixContainer.innerHTML = `
             <p style="margin-bottom: 1rem; color: var(--text-secondary);">
-                ${techniques.size} MITRE ATT&CK techniques identified across ${attackPaths.length} attack paths
+                ${techniques.size} techniques identified across ${attackPaths.length} attack paths
             </p>
         `;
 
@@ -3971,11 +3692,16 @@ class Dashboard {
     async loadThreatModelTab() {
         const gt = this.analysisData && this.analysisData.analysis;
         const placeholder = document.getElementById('tm-placeholder');
+        const layout = document.getElementById('tm-layout');
         if (!gt || !gt.threat_model) {
             if (placeholder) placeholder.style.display = 'block';
+            if (layout) layout.style.display = 'none';
             return;
         }
         if (placeholder) placeholder.style.display = 'none';
+        if (layout) layout.style.display = 'flex';
+
+        this._tmInitResizer();
 
         const tm = gt.threat_model || {};
         const aps = gt.expected_attack_paths || [];
@@ -3983,122 +3709,868 @@ class Dashboard {
         const bh = gt.blackhat_critique || null;
         const rrs = tm.residual_risk_summary || {};
 
-        // TLDR
+        // Cache for AP selection
+        this._tmAps = aps;
+        this._tmAdrs = adrs;
+        this._tmBh = bh;
+        this._tmGt = gt;
+        this._tmRrs = rrs;
+        this._tmCurrentFilter = this._tmCurrentFilter || 'ALL';
+
+        // Extract BH pivot-diverge chains as synthetic "new APs"
+        const bhBreakdown = bh ? (bh.breakdown || bh) : null;
+        this._tmBhChains = bhBreakdown ? (bhBreakdown.pivot_diverge_chains || []) : [];
+
+        // TLDR banner
         const tldr = document.getElementById('tm-tldr');
         const tldrText = document.getElementById('tm-tldr-text');
         if (tldr && tldrText && tm.highest_risk_scenario) {
             const rs = tm.highest_risk_scenario;
-            tldrText.textContent = `${rs.threat_actor || '?'} targeting ${rs.targeted_asset || '?'} via ${rs.exploited_vulnerability || '?'} → ${rs.impact || '?'}`;
+            tldrText.innerHTML = `<b>${this._esc(rs.threat_actor || '?')}</b> targeting <b>${this._esc(rs.targeted_asset || '?')}</b> via ${this._esc(rs.exploited_vulnerability || '?')} <span style="color:#FF8C00;">&#8594;</span> ${this._esc(rs.impact || '?')}`;
             tldr.style.display = 'block';
         }
 
-        // Legend
-        const legend = document.getElementById('tm-legend');
-        if (legend) legend.style.display = 'flex';
-
-        // Overview
-        const tmOverview = document.getElementById('tm-overview');
-        const tmOverviewContent = document.getElementById('tm-overview-content');
-        if (tmOverview && tmOverviewContent) {
-            const boundaries = (tm.trust_boundaries_at_risk || []).map(n => `<code>${n}</code>`).join(', ') || '—';
-            tmOverviewContent.innerHTML =
-                `<b>Architecture type:</b> ${tm.architecture_type || '?'}<br>` +
-                `<b>Primary threat actor:</b> ${tm.primary_threat_actor || '?'}<br>` +
-                `<b>Bottleneck node:</b> <code>${tm.architecture_weakness || '?'}</code><br>` +
-                `<b>Trust boundaries at risk (no detection):</b> ${boundaries}<br>` +
-                `<br><i>${tm.summary || ''}</i><br>` +
-                (rrs.overall_before ? `<br><b>Overall risk delta:</b> ${rrs.overall_before} → ${rrs.overall_after_controls} (${rrs.status_after}) | Δ −${rrs.risk_reduction_pct}%` : '');
-            tmOverview.style.display = 'block';
+        // Architecture overview card (left panel)
+        const overviewCard = document.getElementById('tm-overview-card');
+        const overviewContent = document.getElementById('tm-overview-content');
+        if (overviewCard && overviewContent) {
+            const boundaries = (tm.trust_boundaries_at_risk || []).map(n => `<code>${this._esc(n)}</code>`).join(', ') || '—';
+            const riskLine = rrs.overall_before
+                ? `<div style="margin-top:0.4rem; padding:0.3rem 0.5rem; background:var(--card-bg); border-radius:4px; font-size:0.78rem;">Risk: <b>${rrs.overall_before}</b> &#8594; <b>${rrs.overall_after_controls}</b> (${rrs.status_after || ''}), &#8722;${rrs.risk_reduction_pct || 0}%</div>`
+                : '';
+            overviewContent.innerHTML =
+                `<div><b>Type:</b> ${this._esc(tm.architecture_type || '?')}</div>` +
+                `<div><b>Primary actor:</b> ${this._esc(tm.primary_threat_actor || '?')}</div>` +
+                `<div><b>Bottleneck:</b> <code>${this._esc(tm.architecture_weakness || '?')}</code></div>` +
+                `<div><b>Trust boundaries:</b> ${boundaries}</div>` +
+                riskLine +
+                (tm.summary ? `<div style="margin-top:0.5rem; font-style:italic; color:var(--text-tertiary);">${this._esc(tm.summary)}</div>` : '');
+            overviewCard.style.display = 'block';
         }
 
-        // Per-AP sections
-        const apContainer = document.getElementById('tm-ap-sections');
-        if (apContainer) {
-            const tierOrder = {CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1};
-            const sortedAps = [...aps].sort((a, b) =>
-                (tierOrder[b.criticality_tier] || 0) - (tierOrder[a.criticality_tier] || 0)
-            );
-            const tierColor = {CRITICAL: '#DC143C', HIGH: '#FF8C00', MEDIUM: '#cc9900', LOW: '#32CD32'};
-            const adrMap = {};
-            adrs.forEach(adr => { adrMap[adr.adr_id] = adr; });
+        // Build AP list
+        this._tmRenderApList();
 
-            apContainer.innerHTML = sortedAps.map(ap => {
-                const tier = ap.criticality_tier || 'UNKNOWN';
-                const color = tierColor[tier] || '#888';
-                const path = (ap.path || [ap.entry, ap.target]).slice(0, 5).join(' → ');
-                const rs = ap.risk_scenario || {};
-                const apAdrs = ap.adr_ids || [];
-                const perApR = (rrs.per_ap_residual || []).find(r => r.ap_id === ap.id) || {};
+        // Blackhat card (left panel bottom)
+        const bhCard = document.getElementById('tm-blackhat-card');
+        const bhSummary = document.getElementById('tm-blackhat-summary');
+        if (bh && bhCard && bhSummary) {
+            const breakdown = bh.breakdown || bh;
+            const score = bh.score || 0;
+            const chains = (breakdown.chained_exploit_findings || []).length;
+            bhSummary.textContent = `Score ${score}/100 · ${chains} chained path(s) found`;
+            bhCard.style.display = 'block';
+        }
 
-                const rsHtml = rs.threat_actor ? `
-                    <div style="font-size:0.84rem; line-height:1.6; padding:0.5rem 0;">
-                        🎭 <b>Actor:</b> ${rs.threat_actor}<br>
-                        🎯 <b>Asset:</b> ${rs.targeted_asset}<br>
-                        ⚡ <b>Vulnerability:</b> ${rs.exploited_vulnerability}<br>
-                        💥 <b>Impact:</b> ${rs.impact}
-                    </div>` : '<div style="color:var(--text-tertiary);font-size:0.82rem;">Run /generate-narratives to populate risk scenario.</div>';
+        // Interactive node graph toggle button
+        const diagToggle = document.getElementById('tm-diagram-toggle');
+        if (diagToggle) {
+            diagToggle.style.display = 'inline-block';
+            this._tmDiagramBuilt = false;
+        }
 
-                const adrHtml = apAdrs.length ? apAdrs.map(adrId => {
-                    const adr = adrMap[adrId];
-                    if (!adr) return '';
-                    const c = adr.consequences || {};
-                    return `<span style="display:inline-block;margin:0.2rem 0.3rem 0.2rem 0;padding:0.15rem 0.5rem;background:#1E90FF22;border:1px solid #1E90FF55;border-radius:4px;font-size:0.76rem;">` +
-                        `<b>${adrId}</b> ${adr.control} · ${adr.priority} · ${c.residual_risk_before}→${c.residual_risk_after}</span>`;
-                }).join('') : '<span style="font-size:0.8rem; color:var(--text-tertiary);">No ADRs linked</span>';
+        // Diagram links (ThreatModel+ADR and BH variant)
+        const tmDiagLinks = document.getElementById('tm-diagram-links');
+        if (tmDiagLinks) {
+            const archName = this.analysisData.architecture_name;
+            const baseFile = 'threatmodel_adr.mmd';
+            const bhFile = 'threatmodel_adr_bh.mmd';
+            tmDiagLinks.innerHTML =
+                `<button class="btn-sm" style="font-size:0.75rem; margin-right:0.4rem;" onclick="window.dashboard._openTmDiagram('${archName}','${baseFile}')">🗂️ ThreatModel+ADR</button>` +
+                (bh ? `<button class="btn-sm" style="font-size:0.75rem;" onclick="window.dashboard._openTmDiagram('${archName}','${bhFile}')">⚔️ +BH Chains</button>` : '');
+            tmDiagLinks.style.display = 'block';
+        }
 
-                const residualLine = perApR.residual_after_adrs !== undefined
-                    ? `<div style="font-size:0.8rem; margin-top:0.4rem; color:var(--text-tertiary);">Residual after ADRs: <b>${perApR.residual_after_adrs}</b></div>`
-                    : '';
+        // Select first AP by default
+        if (aps.length) this._tmSelectAp(aps[0].id);
+    }
 
-                return `<details style="margin-bottom:0.6rem; border:1px solid var(--border-color); border-radius:6px; overflow:hidden;">
-                    <summary style="cursor:pointer; padding:0.65rem 1rem; font-weight:600; font-size:0.9rem; background:var(--card-bg); border-left:4px solid ${color};">
-                        ${ap.id} [${tier}]: ${path}
-                    </summary>
-                    <div style="padding:0.75rem 1rem; font-size:0.87rem;">
-                        ${rsHtml}
-                        <div style="margin-top:0.5rem;"><b>ADRs:</b> ${adrHtml}</div>
-                        ${residualLine}
+    async _openTmDiagram(archName, filename) {
+        const resp = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/${encodeURIComponent(filename)}`);
+        if (!resp.ok) {
+            this.showRightPane(`📄 ${filename}`, `<p style="color:var(--text-tertiary); padding:1rem;">${filename} not found — re-run analysis.</p>`);
+            return;
+        }
+        const mmd = await resp.text();
+        let html = '';
+        if (window.mermaid) {
+            try {
+                const id = 'tm-diag-' + Date.now();
+                const { svg } = await window.mermaid.render(id, mmd);
+                html = `<div style="padding:1rem; overflow:auto;">${svg}</div>`;
+            } catch (e) {
+                html = `<pre style="padding:1rem; overflow:auto; font-size:0.7rem;">${this._esc(mmd)}</pre>`;
+            }
+        } else {
+            html = `<pre style="padding:1rem; overflow:auto; font-size:0.7rem;">${this._esc(mmd)}</pre>`;
+        }
+        this.showRightPane(`📄 ${filename}`, html);
+    }
+
+    _tmRenderApList() {
+        const container = document.getElementById('tm-ap-list');
+        if (!container) return;
+        const aps = this._tmAps || [];
+        const filter = this._tmCurrentFilter || 'ALL';
+        const tierOrder = {CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1};
+        const tierColor = {CRITICAL: '#DC143C', HIGH: '#FF8C00', MEDIUM: '#cc9900', LOW: '#32CD32'};
+        const sorted = [...aps]
+            .filter(ap => filter === 'ALL' || ap.criticality_tier === filter)
+            .sort((a, b) => (tierOrder[b.criticality_tier] || 0) - (tierOrder[a.criticality_tier] || 0));
+
+        const bhChains = (filter === 'ALL') ? (this._tmBhChains || []) : [];
+
+        if (!sorted.length && !bhChains.length) {
+            container.innerHTML = `<div style="padding:1rem; font-size:0.8rem; color:var(--text-tertiary);">No paths match filter.</div>`;
+            return;
+        }
+
+        const apHtml = sorted.map(ap => {
+            const tier = ap.criticality_tier || 'UNKNOWN';
+            const color = tierColor[tier] || '#888';
+            const pathStr = (ap.path || []).join(' → ') || ap.id;
+            const rs = ap.risk_scenario || {};
+            const adrId = ap.adr_id || (ap.adr_ids || [])[0] || '';
+            const adr = (this._tmAdrs || []).find(a => a.adr_id === adrId);
+            const riskBefore = adr ? adr.consequences.overall_risk_before : '?';
+            const riskAfter = adr ? adr.consequences.overall_risk_after : '?';
+            return `<div class="tm-ap-item" data-apid="${this._esc(ap.id)}" onclick="window.dashboard._tmSelectAp('${this._esc(ap.id)}')"
+                style="padding:0.65rem 1rem 0.65rem 0.75rem; cursor:pointer; border-left:3px solid ${color}; border-bottom:1px solid var(--border-color); transition:background 0.15s;"
+                onmouseover="this.style.background='var(--list-hover-bg)'" onmouseout="this.style.background=(this.classList.contains('selected')?'var(--list-active-bg)':'')">
+                <div style="font-weight:600; font-size:0.83rem; display:flex; justify-content:space-between; align-items:center; gap:0.3rem;">
+                    <span>${this._esc(ap.id)}</span>
+                    <span style="font-size:0.68rem; padding:0.1rem 0.35rem; border-radius:3px; background:${color}22; color:${color}; border:1px solid ${color}44;">${tier}</span>
+                </div>
+                <div style="font-size:0.72rem; color:var(--text-tertiary); margin-top:0.2rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${this._esc(pathStr)}">${this._esc(pathStr)}</div>
+                ${rs.threat_actor ? `<div style="font-size:0.71rem; color:var(--text-secondary); margin-top:0.15rem;">${this._esc(rs.threat_actor)}</div>` : ''}
+                ${adrId ? `<div style="font-size:0.69rem; color:#1E90FF; margin-top:0.15rem;">${this._esc(adrId)} · ${riskBefore}&#8594;${riskAfter}</div>` : ''}
+            </div>`;
+        }).join('');
+
+        // BH-discovered chains section (only shown when filter=ALL)
+        let bhSectionHtml = '';
+        if (bhChains.length) {
+            const bhDivider = `<div style="padding:0.4rem 0.75rem; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#a855f7; background:#a855f711; border-bottom:1px solid #a855f733;">⚔️ BH-Discovered Chains</div>`;
+            const bhItems = bhChains.map((chain, idx) => {
+                const chainId = `BH-${idx + 1}`;
+                const crit = chain.chain_criticality || 'UNKNOWN';
+                const critColor = crit === 'CRITICAL' ? '#DC143C' : crit === 'HIGH' ? '#FF8C00' : '#cc9900';
+                const stealth = chain.stealth_elevated ? ' 👁‍🗨 stealth' : '';
+                const targetStr = (chain.targets || []).join(', ') || '?';
+                const apIds = (chain.ap_ids || []).join(', ');
+                return `<div class="tm-ap-item" data-apid="${this._esc(chainId)}" onclick="window.dashboard._tmSelectAp('${this._esc(chainId)}')"
+                    style="padding:0.65rem 1rem 0.65rem 0.75rem; cursor:pointer; border-left:3px solid #a855f7; border-bottom:1px solid var(--border-color); transition:background 0.15s;"
+                    onmouseover="this.style.background='var(--list-hover-bg)'" onmouseout="this.style.background=(this.classList.contains('selected')?'var(--list-active-bg)':'')">
+                    <div style="font-weight:600; font-size:0.83rem; display:flex; justify-content:space-between; align-items:center; gap:0.3rem;">
+                        <span style="color:#a855f7;">${this._esc(chainId)}</span>
+                        <span style="font-size:0.68rem; padding:0.1rem 0.35rem; border-radius:3px; background:${critColor}22; color:${critColor}; border:1px solid ${critColor}44;">${crit}${stealth}</span>
                     </div>
-                </details>`;
+                    <div style="font-size:0.72rem; color:var(--text-tertiary); margin-top:0.2rem;">pivot: <code style="font-size:0.7rem;">${this._esc(chain.pivot || '?')}</code></div>
+                    <div style="font-size:0.69rem; color:#a855f766; margin-top:0.1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="targets: ${this._esc(targetStr)}">→ ${this._esc(targetStr)}</div>
+                    ${apIds ? `<div style="font-size:0.67rem; color:var(--text-tertiary); margin-top:0.1rem;">via ${this._esc(apIds)}</div>` : ''}
+                </div>`;
             }).join('');
+            bhSectionHtml = bhDivider + bhItems;
         }
 
-        // Blackhat section
-        const bhEl = document.getElementById('tm-blackhat');
-        const bhContent = document.getElementById('tm-blackhat-content');
-        if (bh && bhEl && bhContent) {
-            const chains = bh.chained_exploit_findings || [];
-            const gaps = bh.mitigation_gaps_for_chains || [];
-            const unique = (bh.uniqueness_vs_critics || {}).new_findings_not_in_redteam || [];
-            bhContent.innerHTML =
-                `<b>Cross-chain score:</b> ${bh.score}/100 (${bh.rating})<br>` +
-                `<b>Stealth score:</b> ${bh.stealth_score} technique(s) — ${(bh.stealthy_techniques || []).join(', ') || 'none'}<br>` +
-                (chains.length ? `<br><b>Chains:</b><ul style="margin:0.3rem 0;padding-left:1.2rem;">${chains.slice(0,5).map(c=>`<li>${c}</li>`).join('')}</ul>` : '') +
-                (gaps.length ? `<b>Mitigation gaps:</b><ul style="margin:0.3rem 0;padding-left:1.2rem;">${gaps.slice(0,5).map(g=>`<li>${g}</li>`).join('')}</ul>` : '') +
-                (unique.length ? `<b>New vs Red Team:</b><ul style="margin:0.3rem 0;padding-left:1.2rem;">${unique.slice(0,3).map(f=>`<li>${f}</li>`).join('')}</ul>` : '');
-            bhEl.style.display = 'block';
+        container.innerHTML = apHtml + bhSectionHtml;
+    }
+
+    _tmFilter(tier) {
+        this._tmCurrentFilter = tier;
+        // Update button active states
+        document.querySelectorAll('.tm-filter-btn').forEach(btn => {
+            const isActive = btn.dataset.filter === tier;
+            btn.style.background = isActive ? 'var(--primary-color)' : 'transparent';
+            btn.style.color = isActive ? '#fff' : (btn.dataset.filter === 'CRITICAL' ? '#DC143C' : btn.dataset.filter === 'HIGH' ? '#FF8C00' : btn.dataset.filter === 'MEDIUM' ? '#cc9900' : btn.dataset.filter === 'LOW' ? '#32CD32' : 'var(--text-color)');
+        });
+        this._tmRenderApList();
+        // Re-select first visible AP
+        const first = (this._tmAps || []).find(ap => tier === 'ALL' || ap.criticality_tier === tier);
+        if (first) this._tmSelectAp(first.id);
+        else { const d = document.getElementById('tm-detail-content'); if (d) d.innerHTML = '<p style="color:var(--text-tertiary); text-align:center; margin-top:2rem;">No paths match filter.</p>'; }
+    }
+
+    _tmSelectAp(apId) {
+        // Highlight selected in list (shared for both AP and BH items)
+        document.querySelectorAll('.tm-ap-item').forEach(el => {
+            const sel = el.dataset.apid === apId;
+            el.classList.toggle('selected', sel);
+            el.style.background = sel ? 'var(--list-active-bg)' : '';
+        });
+
+        // Route BH-discovered chain IDs to BH detail renderer
+        if (apId.startsWith('BH-')) {
+            const idx = parseInt(apId.slice(3), 10) - 1;
+            const chain = (this._tmBhChains || [])[idx];
+            if (chain) this._tmRenderBhChainDetail(apId, chain);
+            return;
         }
 
-        // 11_final.mmd inline render
-        const archName = (this.analysisData || {}).architecture_name;
-        if (archName) {
-            const diagWrapper = document.getElementById('tm-diagram-wrapper');
-            const diagEl = document.getElementById('tm-diagram');
-            if (diagWrapper && diagEl) {
-                try {
-                    const resp = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/11_final.mmd`);
-                    if (resp.ok) {
-                        const mmdText = await resp.text();
-                        diagEl.innerHTML = mmdText;
-                        diagEl.removeAttribute('data-processed');
-                        if (window.mermaid) {
-                            try { await window.mermaid.run({ nodes: [diagEl] }); } catch(e) { /* ignore render errors */ }
-                        }
-                        diagWrapper.style.display = 'block';
+        const aps = this._tmAps || [];
+        const adrs = this._tmAdrs || [];
+        const ap = aps.find(a => a.id === apId);
+        if (!ap) return;
+
+        const adrId = ap.adr_id || (ap.adr_ids || [])[0] || '';
+        const adr = adrs.find(a => a.adr_id === adrId);
+        const tierColor = {CRITICAL: '#DC143C', HIGH: '#FF8C00', MEDIUM: '#cc9900', LOW: '#32CD32'};
+        const dirIcon = {prevention: '🛡️', detection: '👁️', response: '🔄', isolate: '🔒', hardening: '⚙️', governance: '📋'};
+
+        const detail = document.getElementById('tm-detail-content');
+        if (!detail) return;
+
+        const tier = ap.criticality_tier || 'UNKNOWN';
+        const color = tierColor[tier] || '#888';
+        const rs = ap.risk_scenario || {};
+        const pathStr = (ap.path || []).join(' → ');
+
+        // Section 1: Risk scenario narrative
+        let html = `<div style="margin-bottom:1.5rem;">
+            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+                <span style="font-size:1.1rem; font-weight:700; color:var(--text-color);">${this._esc(apId)}</span>
+                <span style="padding:0.15rem 0.55rem; border-radius:4px; font-size:0.72rem; font-weight:700; background:${color}22; color:${color}; border:1px solid ${color}55;">${tier}</span>
+                ${adrId ? `<span style="padding:0.15rem 0.55rem; border-radius:4px; font-size:0.72rem; background:#1E90FF22; color:#1E90FF; border:1px solid #1E90FF44;">${this._esc(adrId)}</span>` : ''}
+            </div>
+            <div style="font-size:0.78rem; color:var(--text-tertiary); margin-bottom:0.9rem; font-family:monospace;">${this._esc(pathStr)}</div>`;
+
+        if (rs.threat_actor) {
+            html += `<div style="padding:0.65rem 0.9rem; background:var(--card-bg); border-radius:6px; border-left:3px solid ${color}; margin-bottom:0.75rem;">
+                <div style="display:flex; flex-wrap:wrap; gap:0.6rem 1.25rem;">
+                    <div style="min-width:100px;"><span style="color:var(--text-tertiary); font-size:0.67rem; text-transform:uppercase; letter-spacing:0.05em;">Actor</span><br><span style="font-size:0.78rem; font-weight:700; color:#4da6ff;">${this._esc(rs.threat_actor)}</span></div>
+                    <div style="min-width:100px;"><span style="color:var(--text-tertiary); font-size:0.67rem; text-transform:uppercase; letter-spacing:0.05em;">Target</span><br><span style="font-size:0.78rem; color:var(--danger-color);">${this._esc(rs.targeted_asset || '?')}</span></div>
+                    <div style="flex:1; min-width:140px;"><span style="color:var(--text-tertiary); font-size:0.67rem; text-transform:uppercase; letter-spacing:0.05em;">Exploited via</span><br><span style="font-size:0.78rem; color:var(--warning-color);">${this._esc(rs.exploited_vulnerability || '?')}</span></div>
+                </div>
+                <div style="margin-top:0.4rem; padding-top:0.4rem; border-top:1px solid var(--border-color);"><span style="color:var(--text-tertiary); font-size:0.67rem; text-transform:uppercase; letter-spacing:0.05em;">Impact</span>&nbsp;<span style="font-size:0.82rem; font-weight:700; color:#FF8C00;">${this._esc(rs.impact || '?')}</span></div>
+            </div>`;
+        }
+        html += `</div>`;
+
+        // Section 2: ADR walkthrough (if ADR exists)
+        if (adr) {
+            const ctx = adr.context || {};
+            const cons = adr.consequences || {};
+            const hops = adr.hops || [];
+
+            // Threat scenario prose
+            if (ctx.threat_scenario) {
+                html += `<div style="margin-bottom:1.25rem; padding:0.75rem 1rem; background:var(--card-bg); border-radius:6px; font-size:0.86rem; line-height:1.65; color:var(--text-secondary);">
+                    ${this._esc(ctx.threat_scenario)}
+                </div>`;
+            }
+
+            // RAPIDS active threats table
+            if (ctx.active_threats && ctx.active_threats.length) {
+                html += `<div style="margin-bottom:1.25rem;">
+                    <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.4rem;">RAPIDS Threat Scores</div>
+                    <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+                        <thead><tr style="border-bottom:1px solid var(--border-color);">
+                            <th style="text-align:left; padding:0.3rem 0.5rem; color:var(--text-tertiary); font-weight:600;">Category</th>
+                            <th style="text-align:center; padding:0.3rem 0.5rem; color:var(--text-tertiary); font-weight:600;">Score</th>
+                            <th style="text-align:left; padding:0.3rem 0.5rem; color:var(--text-tertiary); font-weight:600;">Consequence</th>
+                        </tr></thead>
+                        <tbody>${ctx.active_threats.map(t => {
+                            const bar = Math.round(t.score / 5);
+                            const tcolor = t.score >= 70 ? '#DC143C' : t.score >= 40 ? '#FF8C00' : '#32CD32';
+                            return `<tr style="border-bottom:1px solid var(--border-color)22;">
+                                <td style="padding:0.3rem 0.5rem; font-weight:600; color:${tcolor};">${this._esc(t.category.replace(/_/g,' '))}</td>
+                                <td style="padding:0.3rem 0.5rem; text-align:center;">
+                                    <span style="display:inline-block; width:${bar * 3}px; height:6px; background:${tcolor}; border-radius:3px; vertical-align:middle; margin-right:4px;"></span>${t.score}
+                                </td>
+                                <td style="padding:0.3rem 0.5rem; color:var(--text-secondary);">${this._esc(t.consequence)}</td>
+                            </tr>`;
+                        }).join('')}</tbody>
+                    </table>
+                </div>`;
+            }
+
+            // Gap summary callout
+            if (ctx.gap_summary && ctx.gap_summary !== 'All hops are covered with at least one control.') {
+                html += `<div style="margin-bottom:1.25rem; padding:0.6rem 0.9rem; background:#FF8C0011; border:1px solid #FF8C0044; border-radius:6px; font-size:0.82rem; color:#FF8C00;">
+                    <b>Gap:</b> ${this._esc(ctx.gap_summary)}
+                </div>`;
+            }
+
+            // Decision rationale
+            if (ctx.decision_rationale) {
+                html += `<div style="margin-bottom:1.25rem; font-size:0.84rem; color:var(--text-secondary); line-height:1.6;">
+                    <span style="font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary);">Decision Rationale</span><br>
+                    ${this._esc(ctx.decision_rationale)}
+                </div>`;
+            }
+
+            // Risk outcome line
+            html += `<div style="margin-bottom:1.5rem; display:flex; gap:1.5rem; font-size:0.85rem;">
+                <div><span style="color:var(--text-tertiary); font-size:0.72rem;">Risk Before</span><br><b style="font-size:1rem; color:#DC143C;">${cons.overall_risk_before}</b></div>
+                <div style="color:var(--text-tertiary); font-size:1.2rem; align-self:flex-end; padding-bottom:2px;">&#8594;</div>
+                <div><span style="color:var(--text-tertiary); font-size:0.72rem;">Risk After</span><br><b style="font-size:1rem; color:#32CD32;">${cons.overall_risk_after}</b></div>
+                <div><span style="color:var(--text-tertiary); font-size:0.72rem;">Reduction</span><br><b style="font-size:1rem; color:var(--primary-color);">&#8722;${cons.risk_reduction_pct}%</b></div>
+            </div>`;
+
+            // Hop walkthrough — node graph + controls
+            if (hops.length) {
+                html += `<div style="margin-bottom:0.5rem; font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary);">Hop-by-Hop Walkthrough</div>`;
+
+                // Mini legend for hop cards
+                html += `<div style="margin-bottom:0.6rem; padding:0.4rem 0.65rem; background:var(--nav-hover-bg); border-radius:5px; font-size:0.71rem; display:flex; flex-wrap:wrap; gap:0.6rem; align-items:center; color:var(--text-tertiary);">
+                    <span style="font-weight:700; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em;">Legend:</span>
+                    <span><span style="color:#FF8C00;">■</span> Gap border = ZT layer missing</span>
+                    <span><span style="color:#FF8C00;">missing X</span> = absent ZT layer</span>
+                    <span><span style="color:var(--secondary-color);">Present: Y</span> = covered layers</span>
+                    <span>🏛 <span style="color:#06b6d4;">AC-1</span> <span style="background:var(--danger-color)22; color:var(--danger-color); border-radius:2px; padding:0 2px; font-weight:700;">L0</span> = SSP mandatory</span>
+                    <span><span style="background:var(--warning-color)22; color:var(--warning-color); border-radius:2px; padding:0 2px; font-weight:700;">L1</span> = baseline</span>
+                    <span><span style="background:var(--text-tertiary)22; color:var(--text-tertiary); border-radius:2px; padding:0 2px; font-weight:700;">L2</span> = best practice</span>
+                </div>`;
+
+                // Path node graph (click to expand)
+                html += this._tmBuildNodeGraph(ap, hops, adr);
+
+                // Hop detail cards
+                hops.forEach((hop, idx) => {
+                    const isGap = hop.gap_note;
+                    const hasCtrls = hop.controls && hop.controls.length > 0;
+                    const hopId = `tm-hop-${apId}-${idx}`;
+                    html += `<details id="${hopId}" style="margin-bottom:0.5rem; border:1px solid ${isGap ? '#FF8C0044' : 'var(--border-color)'}; border-radius:6px; overflow:hidden;">
+                        <summary style="cursor:pointer; padding:0.55rem 0.9rem; font-weight:600; font-size:0.84rem; background:var(--card-bg); display:flex; align-items:center; gap:0.5rem;">
+                            <span style="font-size:0.7rem; color:var(--text-tertiary); font-weight:400;">Hop ${idx + 1}</span>
+                            <code style="font-size:0.83rem;">${this._esc(hop.node_label || hop.node)}</code>
+                            ${hasCtrls ? `<span style="margin-left:auto; font-size:0.69rem; padding:0.1rem 0.4rem; background:#1E90FF22; color:#1E90FF; border-radius:3px;">${hop.controls.length} control${hop.controls.length > 1 ? 's' : ''}</span>` : ''}
+                            ${isGap ? `<span style="margin-left:${hasCtrls ? '0' : 'auto'}; font-size:0.69rem; padding:0.1rem 0.4rem; background:#FF8C0022; color:#FF8C00; border-radius:3px;">gap</span>` : ''}
+                        </summary>
+                        <div style="padding:0.75rem 0.9rem; font-size:0.82rem;">`;
+
+                    // Techniques at this hop
+                    if (hop.node_techniques && hop.node_techniques.length) {
+                        html += `<div style="margin-bottom:0.5rem; color:var(--text-tertiary); font-size:0.76rem;">
+                            <b>Techniques:</b> ${hop.node_techniques.map(t => `<code style="font-size:0.74rem; padding:0.05rem 0.25rem; background:var(--code-bg); border-radius:3px;">${this._esc(t)}</code>`).join(' ')}
+                        </div>`;
                     }
-                } catch(e) { /* diagram not yet generated */ }
+
+                    // Gap callout — split "missing X" (gap color) from "Present: Y" (neutral)
+                    if (isGap) {
+                        const rawNote = hop.gap_note || '';
+                        // Attempt to split on "Present:" so we colour the two halves differently
+                        const presentIdx = rawNote.indexOf('Present:');
+                        let gapNoteHtml;
+                        if (presentIdx > 0) {
+                            const missingPart = this._esc(rawNote.slice(0, presentIdx).trim());
+                            const presentPart = this._esc(rawNote.slice(presentIdx).trim());
+                            gapNoteHtml = `<span style="color:#FF8C00;">${missingPart}</span> <span style="color:var(--secondary-color); font-size:0.76rem;">${presentPart}</span>`;
+                        } else {
+                            gapNoteHtml = `<span style="color:#FF8C00;">${this._esc(rawNote)}</span>`;
+                        }
+                        html += `<div style="margin-bottom:0.6rem; padding:0.4rem 0.7rem; background:#FF8C0011; border-left:3px solid #FF8C00; border-radius:4px; font-size:0.79rem;">${gapNoteHtml}</div>`;
+                    }
+
+                    // Controls
+                    if (hasCtrls) {
+                        hop.controls.forEach(ctrl => {
+                            const icon = dirIcon[ctrl.dir_category] || '🔹';
+                            const rr = ctrl.risk_reduction || 0;
+                            const sspCtx = ctrl.ssp_context;
+                            let sspBadge = '';
+                            if (sspCtx && sspCtx.primary) {
+                                const p = sspCtx.primary;
+                                const lvl = p.level ?? 2;
+                                const lvlColor = lvl === 0 ? 'var(--danger-color)' : lvl === 1 ? 'var(--warning-color)' : 'var(--text-tertiary)';
+                                const lvlLabel = ['L0','L1','L2'][lvl] ?? `L${lvl}`;
+                                const govTip = lvl === 0 ? 'Cardinal — mandatory, HQ approval required' : lvl === 1 ? 'Basic Hygiene — SC risk acceptance required' : 'Best Practice — risk-owner acceptance';
+                                sspBadge = `<span title="${this._esc(p.title || '')} · ${govTip}" style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.67rem; padding:0.1rem 0.38rem; background:#06b6d418; color:#06b6d4; border:1px solid #06b6d444; border-radius:3px; cursor:default;">🏛 ${this._esc(p.id)} <span style="padding:0 2px; background:${lvlColor}22; color:${lvlColor}; border-radius:2px; font-size:0.62rem; font-weight:700;">${lvlLabel}</span></span>`;
+                            }
+                            html += `<div style="padding:0.5rem 0.7rem; background:var(--main-bg); border:1px solid var(--border-color); border-radius:5px; margin-bottom:0.4rem;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                                    <span style="font-weight:700; font-size:0.83rem;">${icon} ${this._esc(ctrl.control.toUpperCase())}</span>
+                                    <div style="display:flex; gap:0.35rem; align-items:center; flex-shrink:0;">
+                                        ${sspBadge}
+                                        <span style="font-size:0.69rem; padding:0.1rem 0.35rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:3px; color:var(--text-secondary);">${this._esc(ctrl.dir_category)}</span>
+                                        <span style="font-size:0.69rem; padding:0.1rem 0.35rem; border-radius:3px; background:${ctrl.priority === 'critical' ? '#DC143C22' : ctrl.priority === 'high' ? '#FF8C0022' : 'var(--card-bg)'}; color:${ctrl.priority === 'critical' ? '#DC143C' : ctrl.priority === 'high' ? '#FF8C00' : 'var(--text-tertiary)'}; border:1px solid var(--border-color);">${this._esc(ctrl.priority)}</span>
+                                    </div>
+                                </div>
+                                <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:0.3rem; line-height:1.5;">${this._esc(ctrl.reason)}</div>
+                                ${rr > 0 ? `<div style="font-size:0.72rem; color:#32CD32; margin-top:0.25rem;">&#8722;${rr} risk reduction</div>` : ''}
+                            </div>`;
+                        });
+                    } else if (!isGap) {
+                        html += `<div style="color:var(--text-tertiary); font-size:0.79rem;">No controls assigned to this hop.</div>`;
+                    }
+
+                    html += `</div></details>`;
+                });
+            }
+
+            // New risks introduced
+            if (cons.new_risks_introduced && cons.new_risks_introduced.length) {
+                html += `<div style="margin-top:1rem; padding:0.6rem 0.9rem; background:#DC143C11; border:1px solid #DC143C44; border-radius:6px; font-size:0.8rem; color:#DC143C;">
+                    <b>New risks introduced:</b><br>${cons.new_risks_introduced.map(r => `• ${this._esc(r)}`).join('<br>')}
+                </div>`;
+            }
+        } else {
+            html += `<div style="color:var(--text-tertiary); font-size:0.83rem; margin-top:0.5rem;">No ADR found for this path.</div>`;
+        }
+
+        detail.innerHTML = html;
+    }
+
+    _tmSelectBlackhat() {
+        const bh = this._tmBh;
+        const detail = document.getElementById('tm-detail-content');
+        if (!detail || !bh) return;
+
+        // Highlight blackhat card
+        document.querySelectorAll('.tm-ap-item').forEach(el => { el.classList.remove('selected'); el.style.background = ''; });
+        const bhCard = document.getElementById('tm-blackhat-card');
+        if (bhCard) bhCard.style.background = 'var(--list-active-bg)';
+
+        const breakdown = bh.breakdown || bh;
+        const chains = breakdown.chained_exploit_findings || [];
+        const stealth = breakdown.stealth_score || 0;
+        const stealthTechs = breakdown.stealthy_techniques || [];
+        const gaps = breakdown.mitigation_gaps_for_chains || [];
+        const shared = breakdown.shared_nodes || {};
+        const unique = (breakdown.uniqueness_vs_critics || {}).new_findings_not_in_redteam || [];
+        const score = bh.score || 0;
+        const scoreColor = score <= 30 ? '#32CD32' : score <= 60 ? '#FF8C00' : '#DC143C';
+
+        let html = `<div style="margin-bottom:1.5rem;">
+            <div style="font-size:1.05rem; font-weight:700; margin-bottom:0.5rem;">Blackhat Cross-Path Analysis</div>
+            <div style="font-size:0.8rem; color:var(--text-tertiary); margin-bottom:1rem;">
+                Analyses all attack paths together — the only critic that reasons about attacker pivoting across paths via shared nodes.
+            </div>
+            <div style="display:flex; gap:1.5rem; margin-bottom:1rem;">
+                <div><span style="font-size:0.7rem; color:var(--text-tertiary);">Cross-chain score</span><br><b style="font-size:1.1rem; color:${scoreColor};">${score}/100</b></div>
+                <div><span style="font-size:0.7rem; color:var(--text-tertiary);">Stealth techniques</span><br><b style="font-size:1.1rem;">${stealth}</b></div>
+                <div><span style="font-size:0.7rem; color:var(--text-tertiary);">Chained paths</span><br><b style="font-size:1.1rem;">${chains.length}</b></div>
+            </div>
+        </div>`;
+
+        // Pivot nodes
+        const pivotNodes = Object.keys(shared);
+        if (pivotNodes.length) {
+            html += `<div style="margin-bottom:1.25rem;">
+                <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.4rem;">Pivot Nodes (shared across paths)</div>
+                <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+                    ${pivotNodes.slice(0, 8).map(n => `<span style="padding:0.2rem 0.55rem; background:var(--card-bg); border:1px solid #FF8C0055; border-radius:4px; font-size:0.78rem;"><code>${this._esc(n)}</code> <span style="color:var(--text-tertiary);">(${(shared[n] || []).length} path(s))</span></span>`).join('')}
+                </div>
+            </div>`;
+        }
+
+        // Chained exploits
+        if (chains.length) {
+            html += `<div style="margin-bottom:1.25rem;">
+                <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.4rem;">Chained Exploit Paths</div>
+                <ul style="margin:0; padding-left:1.2rem; font-size:0.83rem; color:var(--text-secondary); line-height:1.7;">
+                    ${chains.slice(0, 6).map(c => `<li>${this._esc(c)}</li>`).join('')}
+                </ul>
+            </div>`;
+        }
+
+        // Stealth
+        if (stealth > 0) {
+            html += `<div style="margin-bottom:1.25rem; padding:0.6rem 0.9rem; background:#FF8C0011; border-left:3px solid #FF8C00; border-radius:4px; font-size:0.82rem;">
+                <b>Stealth evasion:</b> ${stealth} Defence Evasion technique(s) active in chains — ${stealthTechs.slice(0, 4).map(t => `<code style="font-size:0.76rem;">${this._esc(t)}</code>`).join(', ')}.
+                ${stealth >= 2 ? ' An attacker using these would evade detection controls on individual paths.' : ''}
+            </div>`;
+        }
+
+        // Mitigation gaps
+        if (gaps.length) {
+            html += `<div style="margin-bottom:1.25rem;">
+                <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.4rem;">Cross-Path Gaps</div>
+                <ul style="margin:0; padding-left:1.2rem; font-size:0.83rem; color:var(--text-secondary); line-height:1.7;">
+                    ${gaps.slice(0, 5).map(g => `<li>${this._esc(g)}</li>`).join('')}
+                </ul>
+            </div>`;
+        }
+
+        // Unique findings
+        if (unique.length) {
+            html += `<div style="margin-bottom:1.25rem;">
+                <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.4rem;">Unique to Blackhat (not raised by Red Team)</div>
+                <ul style="margin:0; padding-left:1.2rem; font-size:0.83rem; color:var(--text-secondary); line-height:1.7;">
+                    ${unique.slice(0, 4).map(f => `<li>${this._esc(f)}</li>`).join('')}
+                </ul>
+            </div>`;
+        }
+
+        detail.innerHTML = html;
+    }
+
+    _tmRenderBhChainDetail(chainId, chain) {
+        const detail = document.getElementById('tm-detail-content');
+        if (!detail) return;
+
+        const crit = chain.chain_criticality || 'UNKNOWN';
+        const critColor = crit === 'CRITICAL' ? '#DC143C' : crit === 'HIGH' ? '#FF8C00' : '#cc9900';
+        const pivot = chain.pivot || '?';
+        const targets = chain.targets || [];
+        const apIds = chain.ap_ids || [];
+        const techniques = chain.techniques || [];
+        const stealth = chain.stealth_elevated;
+
+        // Collect original AP details for the feeding APs
+        const aps = this._tmAps || [];
+        const bhBreakdown = this._tmBh ? (this._tmBh.breakdown || this._tmBh) : {};
+        const gapsList = (bhBreakdown.mitigation_gaps_for_chains || []).filter(g =>
+            typeof g === 'string' ? g.toLowerCase().includes(pivot.toLowerCase()) : false
+        );
+
+        let html = `<div style="margin-bottom:1.5rem;">
+            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+                <span style="font-size:1.1rem; font-weight:700; color:#a855f7;">${this._esc(chainId)}</span>
+                <span style="padding:0.15rem 0.55rem; border-radius:4px; font-size:0.72rem; font-weight:700; background:${critColor}22; color:${critColor}; border:1px solid ${critColor}55;">${crit}</span>
+                ${stealth ? `<span style="padding:0.15rem 0.45rem; border-radius:4px; font-size:0.71rem; background:#ff000022; color:#ff6666; border:1px solid #ff666644;">👁‍🗨 stealth</span>` : ''}
+                <span style="padding:0.15rem 0.45rem; border-radius:4px; font-size:0.71rem; background:#a855f722; color:#a855f7; border:1px solid #a855f744;">⚔️ surfaced by BH expert</span>
+            </div>
+            <div style="padding:0.5rem 0.8rem; background:#a855f711; border:1px solid #a855f733; border-radius:6px; font-size:0.82rem; color:var(--text-secondary); margin-bottom:1rem; line-height:1.55;">
+                Blackhat Expert (Layer 2E) identified <strong style="color:#a855f7;">${this._esc(pivot)}</strong> as a shared pivot node reachable from
+                ${apIds.length ? apIds.map(id => `<span style="color:#4da6ff; font-weight:600;">${this._esc(id)}</span>`).join(', ') : 'multiple paths'}.
+                From this pivot, an attacker can diverge to <strong>${targets.length}</strong> distinct target${targets.length !== 1 ? 's' : ''},
+                creating a cross-path chain not modelled in the original attack paths.
+                ${stealth ? '<br><span style="color:#ff6666; font-size:0.79rem;">⚠ Pivot node has no detection coverage — chain would be invisible to defenders.</span>' : ''}
+            </div>
+        </div>`;
+
+        // Chain diagram: pivot → targets
+        if (targets.length) {
+            const pivotW = 120, nodeW = 110, nodeH = 34, gapX = 80, gapY = 10;
+            const totalH = Math.max(60, targets.length * (nodeH + gapY) + gapY);
+            const svgW = pivotW + gapX + nodeW + 20;
+            const pivotX = 10, pivotY = totalH / 2 - nodeH / 2;
+            let svgParts = [`<svg width="${svgW}" height="${totalH}" style="font-family:monospace; overflow:visible;">`];
+
+            // Pivot node (amber/purple)
+            svgParts.push(`<rect x="${pivotX}" y="${pivotY}" width="${pivotW}" height="${nodeH}" rx="5" fill="#a855f711" stroke="#a855f7" stroke-width="2"/>`);
+            svgParts.push(`<text x="${pivotX + pivotW/2}" y="${pivotY + nodeH/2 + 5}" text-anchor="middle" fill="#a855f7" font-size="11" font-weight="600">${this._esc(pivot.length > 14 ? pivot.slice(0,13)+'…' : pivot)}</text>`);
+            svgParts.push(`<text x="${pivotX + pivotW/2}" y="${pivotY - 6}" text-anchor="middle" fill="#a855f788" font-size="9">pivot</text>`);
+
+            // Target nodes
+            targets.forEach((tgt, i) => {
+                const tgtX = pivotX + pivotW + gapX;
+                const tgtY = gapY + i * (nodeH + gapY);
+                const midX = pivotX + pivotW + gapX / 2;
+                const pivotMidY = pivotY + nodeH / 2;
+                const tgtMidY = tgtY + nodeH / 2;
+                svgParts.push(`<path d="M ${pivotX + pivotW} ${pivotMidY} C ${midX} ${pivotMidY}, ${midX} ${tgtMidY}, ${tgtX} ${tgtMidY}" fill="none" stroke="#FF8C00" stroke-width="1.5" stroke-dasharray="4,3"/>`);
+                svgParts.push(`<polygon points="${tgtX-5},${tgtMidY-4} ${tgtX},${tgtMidY} ${tgtX-5},${tgtMidY+4}" fill="#FF8C00"/>`);
+                svgParts.push(`<rect x="${tgtX}" y="${tgtY}" width="${nodeW}" height="${nodeH}" rx="5" fill="#FF8C0011" stroke="#FF8C00" stroke-width="1.5"/>`);
+                svgParts.push(`<text x="${tgtX + nodeW/2}" y="${tgtY + nodeH/2 + 5}" text-anchor="middle" fill="#FF8C00" font-size="10">${this._esc(tgt.length > 14 ? tgt.slice(0,13)+'…' : tgt)}</text>`);
+            });
+
+            svgParts.push(`</svg>`);
+            html += `<div style="margin-bottom:1.25rem; padding:0.75rem; background:var(--card-bg); border-radius:6px; overflow-x:auto;">${svgParts.join('')}</div>`;
+        }
+
+        // Feeding APs
+        if (apIds.length) {
+            html += `<div style="margin-bottom:1.25rem;">
+                <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.5rem;">Feeding Attack Paths</div>
+                <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+                ${apIds.map(id => {
+                    const ap = aps.find(a => a.id === id);
+                    const tier = ap ? (ap.criticality_tier || '') : '';
+                    const tColor = tier === 'CRITICAL' ? '#DC143C' : tier === 'HIGH' ? '#FF8C00' : tier === 'MEDIUM' ? '#cc9900' : '#888';
+                    return `<span onclick="window.dashboard._tmSelectAp('${this._esc(id)}')" style="cursor:pointer; padding:0.2rem 0.6rem; border-radius:4px; font-size:0.78rem; font-weight:600; background:#1E90FF11; color:#1E90FF; border:1px solid #1E90FF44;" title="Click to view ${this._esc(id)}">${this._esc(id)}${tier ? ` <span style="color:${tColor}; font-size:0.68rem;">(${tier})</span>` : ''}</span>`;
+                }).join('')}
+                </div>
+            </div>`;
+        }
+
+        // Techniques at pivot
+        if (techniques.length) {
+            html += `<div style="margin-bottom:1.25rem;">
+                <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.4rem;">Techniques at Pivot Node</div>
+                <div style="display:flex; flex-wrap:wrap; gap:0.35rem;">
+                ${techniques.map(t => `<code style="padding:0.15rem 0.4rem; background:var(--code-bg); border-radius:3px; font-size:0.76rem; color:var(--text-secondary);">${this._esc(t)}</code>`).join('')}
+                </div>
+            </div>`;
+        }
+
+        // Mitigation gaps relevant to this chain
+        if (gapsList.length) {
+            html += `<div style="margin-bottom:1.25rem;">
+                <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.4rem;">Mitigation Gaps</div>
+                ${gapsList.map(g => `<div style="padding:0.4rem 0.7rem; background:#FF8C0011; border-left:3px solid #FF8C00; border-radius:4px; font-size:0.8rem; color:#FF8C00; margin-bottom:0.35rem;">${this._esc(g)}</div>`).join('')}
+            </div>`;
+        }
+
+        // No ADR notice
+        html += `<div style="padding:0.55rem 0.9rem; background:var(--card-bg); border-radius:6px; font-size:0.8rem; color:var(--text-tertiary); border:1px dashed var(--border-color);">
+            <b>No ADR for this chain</b> — BH-discovered cross-path chains are not part of the original architecture decision records.
+            Review feeding APs above for existing mitigations, then consider whether a new ADR is warranted to address the pivot node exposure.
+        </div>`;
+
+        detail.innerHTML = html;
+    }
+
+    _tmBuildNodeGraph(ap, hops, adr) {
+        // Build a simple inline SVG node-link diagram for the attack path.
+        // Each node is clickable to toggle a tooltip showing techniques + controls.
+        const nodes = ap.path || [];
+        if (!nodes.length) return '';
+
+        const nodeW = 90, nodeH = 32, gapX = 56, padX = 16, padY = 20;
+        const totalW = nodes.length * nodeW + (nodes.length - 1) * gapX + padX * 2;
+        const totalH = nodeH + padY * 2 + 32; // 32px for labels
+
+        const tierColor = {CRITICAL: '#DC143C', HIGH: '#FF8C00', MEDIUM: '#cc9900', LOW: '#32CD32'};
+        const nodeColor = '#1E90FF';
+        const gapColor = '#FF8C00';
+        const safeColor = '#32CD32';
+
+        // Build hop lookup
+        const hopByNode = {};
+        hops.forEach(h => { hopByNode[h.node] = h; });
+
+        let svgParts = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" style="width:100%; max-width:${totalW}px; display:block; margin-bottom:1rem; font-family:inherit; cursor:default;" role="img" aria-label="Attack path: ${this._esc(ap.id)}">`];
+
+        // Arrows between nodes
+        for (let i = 0; i < nodes.length - 1; i++) {
+            const x1 = padX + i * (nodeW + gapX) + nodeW;
+            const x2 = padX + (i + 1) * (nodeW + gapX);
+            const y = padY + nodeH / 2;
+            svgParts.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="#FF8C00" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowhead)"/>`);
+        }
+
+        // Arrowhead marker
+        svgParts.unshift(`<defs><marker id="arrowhead" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#FF8C00"/></marker></defs>`);
+
+        // Nodes
+        nodes.forEach((node, i) => {
+            const hop = hopByNode[node];
+            const hasGap = hop && hop.gap_note;
+            const hasCtrl = hop && hop.controls && hop.controls.length > 0;
+            const fill = hasGap ? gapColor : (hasCtrl ? safeColor : nodeColor);
+            const rx = padX + i * (nodeW + gapX);
+            const ry = padY;
+            const cx = rx + nodeW / 2;
+            const cy = ry + nodeH / 2;
+
+            // Encode tooltip content for onclick
+            const techStr = hop ? (hop.node_techniques || []).join(', ') || 'none' : 'none';
+            const ctrlStr = hop ? (hop.controls || []).map(c => c.control).join(', ') || 'none' : 'none';
+            const gapStr = hop && hop.gap_note ? hop.gap_note : '';
+            const label = node.length > 10 ? node.slice(0, 9) + '…' : node;
+
+            const thisApId = ap.id;
+            svgParts.push(`<g class="tm-node" onclick="window.dashboard._tmNodeClick('${this._esc(node)}','${this._esc(thisApId)}',event)" style="cursor:pointer;" role="button" tabindex="0" aria-label="${this._esc(node)}">
+                <rect x="${rx}" y="${ry}" width="${nodeW}" height="${nodeH}" rx="5" fill="${fill}22" stroke="${fill}" stroke-width="1.5"/>
+                <text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="11" fill="var(--text-color)" font-weight="600">${this._esc(label)}</text>
+                ${hasGap ? `<circle cx="${rx + nodeW - 6}" cy="${ry + 6}" r="5" fill="#FF8C00"/><text x="${rx + nodeW - 6}" y="${ry + 10}" text-anchor="middle" font-size="7" fill="#fff" font-weight="700">!</text>` : ''}
+            </g>`);
+
+            // Control count badge below node
+            if (hasCtrl) {
+                svgParts.push(`<text x="${cx}" y="${ry + nodeH + 14}" text-anchor="middle" font-size="9" fill="${safeColor}">${hop.controls.length} ctrl</text>`);
+            }
+        });
+
+        svgParts.push(`</svg>`);
+
+        const svgHtml = svgParts.join('\n');
+        return `<div style="margin-bottom:1rem; padding:0.75rem; background:var(--card-bg); border-radius:6px; border:1px solid var(--border-color);">
+            <div style="font-size:0.7rem; color:var(--text-tertiary); margin-bottom:0.4rem;">Attack path — click a node to jump to its hop detail</div>
+            <div style="display:flex; gap:0.75rem; margin-bottom:0.5rem; font-size:0.7rem;">
+                <span><span style="display:inline-block;width:8px;height:8px;background:#32CD32;border-radius:1px;margin-right:3px;"></span>controlled</span>
+                <span><span style="display:inline-block;width:8px;height:8px;background:#FF8C00;border-radius:1px;margin-right:3px;"></span>gap</span>
+                <span><span style="display:inline-block;width:8px;height:8px;background:#1E90FF;border-radius:1px;margin-right:3px;"></span>no techniques</span>
+            </div>
+            ${svgHtml}
+            <div id="tm-node-tooltip" style="display:none; margin-top:0.5rem; padding:0.5rem 0.75rem; background:var(--main-bg); border:1px solid var(--border-color); border-radius:5px; font-size:0.79rem; line-height:1.5;"></div>
+        </div>`;
+    }
+
+    _tmNodeClick(nodeName, apId, event) {
+        const aps = this._tmAps || [];
+        const adrs = this._tmAdrs || [];
+        const ap = aps.find(a => a.id === apId);
+        if (!ap) return;
+        const adrId = ap.adr_id || (ap.adr_ids || [])[0] || '';
+        const adr = adrs.find(a => a.adr_id === adrId);
+        const hopIdx = adr && adr.hops ? adr.hops.findIndex(h => h.node === nodeName) : -1;
+
+        // Primary action: open and scroll to the hop card in the right pane
+        if (hopIdx >= 0) {
+            const hopId = `tm-hop-${apId}-${hopIdx}`;
+            const hopEl = document.getElementById(hopId);
+            if (hopEl) {
+                hopEl.setAttribute('open', '');
+                hopEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Pulse highlight so the user sees which card opened
+                hopEl.style.outline = `2px solid var(--primary-color)`;
+                hopEl.style.outlineOffset = '2px';
+                setTimeout(() => { hopEl.style.outline = ''; hopEl.style.outlineOffset = ''; }, 1400);
             }
         }
+
+        // Secondary: update the inline tooltip so the graph still shows context
+        const tooltip = document.getElementById('tm-node-tooltip');
+        if (!tooltip) return;
+        const hop = adr && adr.hops ? adr.hops[hopIdx] : null;
+        if (!hop) {
+            tooltip.innerHTML = `<code>${this._esc(nodeName)}</code> — no hop data for this path.`;
+            tooltip.style.display = 'block';
+            return;
+        }
+        const techs = (hop.node_techniques || []).join(', ') || 'none';
+        const ctrls = (hop.controls || []).map(c => `<code>${this._esc(c.control)}</code>`).join(', ') || 'none';
+        const gapBadge = hop.gap_note
+            ? `<span style="margin-left:0.4rem; font-size:0.7rem; padding:0.1rem 0.35rem; background:#FF8C0022; color:#FF8C00; border-radius:3px;">${hop.gap_type || 'gap'}</span>`
+            : '';
+
+        tooltip.innerHTML = `<b><code>${this._esc(nodeName)}</code></b>${gapBadge}<br>
+            <span style="color:var(--text-tertiary); font-size:0.75rem;">Techniques:</span> ${this._esc(techs)}<br>
+            <span style="color:var(--text-tertiary); font-size:0.75rem;">Controls:</span> ${ctrls}
+            <div style="margin-top:0.3rem; font-size:0.7rem; color:var(--primary-color);">&#8595; Scrolled to hop card</div>`;
+        tooltip.style.display = 'block';
+    }
+
+    _tmToggleDiagram() {
+        const wrapper = document.getElementById('tm-diagram-wrapper');
+        const btn = document.getElementById('tm-diagram-toggle');
+        if (!wrapper) return;
+        const isVisible = wrapper.style.display !== 'none';
+        wrapper.style.display = isVisible ? 'none' : 'block';
+        if (btn) btn.textContent = isVisible ? 'Show Diagram' : 'Hide Diagram';
+
+        // Build the interactive node graph on first show
+        if (!isVisible && !this._tmDiagramBuilt) {
+            this._tmBuildFullDiagram();
+            this._tmDiagramBuilt = true;
+        }
+    }
+
+    _tmBuildFullDiagram() {
+        const diagramEl = document.getElementById('tm-diagram');
+        if (!diagramEl) return;
+        const aps = this._tmAps || [];
+        const adrs = this._tmAdrs || [];
+        if (!aps.length) { diagramEl.innerHTML = '<div style="color:var(--text-tertiary);font-size:0.85rem;">No attack paths to display.</div>'; return; }
+
+        // Collect all unique nodes and edges across all APs
+        const nodeSet = new Map(); // node -> {hops: [], aps: []}
+        const edges = [];
+        const tierColor = {CRITICAL: '#DC143C', HIGH: '#FF8C00', MEDIUM: '#cc9900', LOW: '#32CD32'};
+
+        aps.forEach(ap => {
+            const adrId = ap.adr_id || (ap.adr_ids || [])[0] || '';
+            const adr = adrs.find(a => a.adr_id === adrId);
+            const pathNodes = ap.path || [];
+            const hopByNode = {};
+            if (adr) adr.hops.forEach(h => { hopByNode[h.node] = h; });
+
+            pathNodes.forEach((node, i) => {
+                if (!nodeSet.has(node)) nodeSet.set(node, {hops: [], aps: []});
+                nodeSet.get(node).aps.push(ap.id);
+                if (hopByNode[node]) nodeSet.get(node).hops.push(hopByNode[node]);
+                if (i < pathNodes.length - 1) {
+                    edges.push({from: node, to: pathNodes[i + 1], apId: ap.id, tier: ap.criticality_tier});
+                }
+            });
+        });
+
+        // Layout: arrange nodes left-to-right by first-appearance order
+        const nodeList = Array.from(nodeSet.keys());
+        const columns = {};
+        let col = 0;
+        aps.forEach(ap => {
+            (ap.path || []).forEach(n => { if (columns[n] === undefined) columns[n] = col++; });
+        });
+
+        const nodeW = 100, nodeH = 36, gapX = 60, gapY = 70, padX = 20, padY = 20;
+        const sortedNodes = nodeList.sort((a, b) => (columns[a] || 0) - (columns[b] || 0));
+
+        // Assign rows: nodes that appear in multiple APs get their own row per AP usage
+        const nodePos = {};
+        sortedNodes.forEach((n, i) => { nodePos[n] = {x: padX + i * (nodeW + gapX), y: padY}; });
+
+        const totalW = Math.max(400, padX * 2 + sortedNodes.length * (nodeW + gapX) - gapX);
+        const totalH = nodeH + padY * 2 + 40;
+
+        let svgParts = [`<defs><marker id="fgarrow" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#FF8C00" opacity="0.7"/></marker></defs>`];
+        svgParts.unshift(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" style="width:100%; max-width:${totalW}px; display:block;" aria-label="Full architecture diagram">`);
+
+        // Edges
+        edges.forEach(e => {
+            const from = nodePos[e.from];
+            const to = nodePos[e.to];
+            if (!from || !to) return;
+            const ec = tierColor[e.tier] || '#888';
+            svgParts.push(`<line x1="${from.x + nodeW}" y1="${from.y + nodeH / 2}" x2="${to.x}" y2="${to.y + nodeH / 2}" stroke="${ec}" stroke-width="1.5" stroke-opacity="0.5" marker-end="url(#fgarrow)"/>`);
+        });
+
+        // Nodes
+        sortedNodes.forEach(n => {
+            const pos = nodePos[n];
+            const info = nodeSet.get(n);
+            const firstHop = info.hops[0];
+            const hasGap = firstHop && firstHop.gap_note;
+            const hasCtrl = firstHop && firstHop.controls && firstHop.controls.length > 0;
+            const fill = hasGap ? '#FF8C00' : hasCtrl ? '#32CD32' : '#1E90FF';
+            const label = n.length > 11 ? n.slice(0, 10) + '…' : n;
+            const cx = pos.x + nodeW / 2;
+            const cy = pos.y + nodeH / 2;
+            svgParts.push(`<g onclick="window.dashboard._tmSelectApFromNode('${this._esc(n)}')" style="cursor:pointer;" title="${this._esc(n)}">
+                <rect x="${pos.x}" y="${pos.y}" width="${nodeW}" height="${nodeH}" rx="5" fill="${fill}22" stroke="${fill}" stroke-width="1.5"/>
+                <text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="11" fill="var(--text-color)" font-weight="600">${this._esc(label)}</text>
+                ${hasGap ? `<circle cx="${pos.x + nodeW - 7}" cy="${pos.y + 7}" r="5" fill="#FF8C00"/><text x="${pos.x + nodeW - 7}" y="${pos.y + 11}" text-anchor="middle" font-size="7" fill="#fff" font-weight="700">!</text>` : ''}
+            </g>
+            <text x="${cx}" y="${pos.y + nodeH + 14}" text-anchor="middle" font-size="9" fill="var(--text-tertiary)">${this._esc(info.aps.slice(0,2).join(','))}</text>`);
+        });
+
+        svgParts.push(`</svg>`);
+        diagramEl.innerHTML = svgParts.join('\n') + `<div style="margin-top:0.5rem; font-size:0.72rem; color:var(--text-tertiary);">Click a node to navigate to its attack path. <span style="color:#32CD32;">Green</span> = controlled, <span style="color:#FF8C00;">orange</span> = gap, <span style="color:#1E90FF;">blue</span> = no techniques.</div>`;
+    }
+
+    _tmSelectApFromNode(nodeName) {
+        const aps = this._tmAps || [];
+        const ap = aps.find(a => (a.path || []).includes(nodeName));
+        if (ap) this._tmSelectAp(ap.id);
+    }
+
+    _tmInitResizer() {
+        const handle = document.getElementById('tm-resize-handle');
+        const left   = document.getElementById('tm-left');
+        if (!handle || !left || handle._resizerBound) return;
+        handle._resizerBound = true;
+
+        let startX = 0, startW = 0;
+
+        const onMove = (e) => {
+            const dx = (e.clientX || (e.touches && e.touches[0].clientX) || 0) - startX;
+            const newW = Math.max(180, Math.min(520, startW + dx));
+            left.style.width = newW + 'px';
+        };
+        const onUp = () => {
+            handle.classList.remove('dragging');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            document.removeEventListener('touchmove', onMove);
+            document.removeEventListener('touchend', onUp);
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+        };
+        handle.addEventListener('mousedown', (e) => {
+            startX = e.clientX;
+            startW = left.getBoundingClientRect().width;
+            handle.classList.add('dragging');
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'col-resize';
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+            e.preventDefault();
+        });
+        handle.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            startW = left.getBoundingClientRect().width;
+            handle.classList.add('dragging');
+            document.addEventListener('touchmove', onMove, {passive: false});
+            document.addEventListener('touchend', onUp);
+            e.preventDefault();
+        }, {passive: false});
+    }
+
+    _esc(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
     async loadReportsTab() {
@@ -4240,89 +4712,184 @@ class Dashboard {
 
         // Reports tab shows markdown and mermaid only — JSON lives in Raw Data tab
         const REPORT_CATALOGUE = {
-            '01_executive_summary.md':    { id: 'executive',   title: 'Executive Summary',   icon: '📊', desc: 'High-level threat overview for leadership and CISOs', audience: 'stakeholder', type: 'markdown' },
-            '03_action_plan.md':          { id: 'action',      title: 'Action Plan',          icon: '✅', desc: 'Prioritised recommendations with implementation steps', audience: 'stakeholder', type: 'markdown' },
-            '08_improvement_summary.md':  { id: 'improvement', title: 'Improvement Summary',  icon: '🗺️', desc: 'Roadmap across Quick Win, Recommended, and Maximum tiers', audience: 'stakeholder', type: 'markdown' },
-            'before.mmd':                 { id: 'before',      title: 'Current Architecture', icon: '⚠️', desc: 'Architecture before hardening controls are applied', audience: 'stakeholder', type: 'mermaid', color: 'var(--danger-color)' },
-            'after.mmd':                  { id: 'after',       title: 'Hardened Architecture',icon: '🛡️', desc: 'Architecture with all recommended controls applied', audience: 'stakeholder', type: 'mermaid', color: 'var(--secondary-color)' },
-            '02_technical_report.md':     { id: 'technical',   title: 'Technical Report',     icon: '🔧', desc: 'Full MITRE ATT&CK technique mappings and control analysis', audience: 'technical', type: 'markdown' },
-            '08a_quick_wins.mmd':         { id: 'tier-a',      title: 'Quick Wins Diagram',   icon: '⚡', desc: 'Architecture diagram with Quick Win controls highlighted', audience: 'technical', type: 'mermaid', color: 'var(--secondary-color)' },
-            '08b_recommended_target.mmd': { id: 'tier-b',      title: 'Recommended Diagram',  icon: '📈', desc: 'Architecture diagram with Recommended controls highlighted', audience: 'technical', type: 'mermaid', color: 'var(--primary-color)' },
-            '08c_maximum_security.mmd':   { id: 'tier-c',      title: 'Maximum Coverage',     icon: '🔒', desc: 'Architecture diagram with Maximum controls highlighted', audience: 'technical', type: 'mermaid', color: 'var(--warning-color)' },
+            '01_executive_summary.md': {
+                id: 'executive', title: 'Executive Summary', icon: '📊', audience: 'stakeholder', type: 'markdown',
+                desc: 'High-level threat overview for leadership and CISOs',
+                personas: ['CIO', 'CISO'],
+                readersContext: 'Written for executive stakeholders who need a concise risk picture without technical detail. It answers: how exposed are we, what is the confidence in this assessment, and what is the headline recommendation? Use this to brief the board or justify security investment.',
+            },
+            '03_action_plan.md': {
+                id: 'action', title: 'Action Plan', icon: '✅', audience: 'stakeholder', type: 'markdown',
+                desc: 'Prioritised recommendations with implementation steps',
+                personas: ['CISO', 'Security Engineer', 'IT Team'],
+                readersContext: 'Translates the threat analysis into a sequenced to-do list ranked by risk reduction and implementation effort. CISOs use it to set quarterly security roadmaps; security engineers and IT teams use it to understand what to build or configure first.',
+            },
+            '08_improvement_summary.md': {
+                id: 'improvement', title: 'Improvement Summary', icon: '🗺️', audience: 'stakeholder', type: 'markdown',
+                desc: 'Roadmap across Quick Win, Recommended, and Maximum tiers',
+                personas: ['CISO', 'Security Engineer'],
+                readersContext: 'Three-tier roadmap showing risk reduction at each investment level. Quick Wins deliver the highest security gain per unit effort. Recommended balances security with usability. Maximum covers all residual risk. Decision-makers use this to match security spend to risk appetite.',
+            },
+            'before.mmd': {
+                id: 'before', title: 'Current Architecture', icon: '⚠️', audience: 'stakeholder', type: 'mermaid', color: 'var(--danger-color)',
+                desc: 'Architecture before hardening controls are applied',
+                personas: ['CIO', 'CISO', 'Security Engineer'],
+                readersContext: 'Visual map of the architecture as it stands today, with attack paths highlighted. Each red node or edge marks an exploitable gap. CIOs use this to understand what systems are at risk; security engineers use it to identify where to focus hardening effort first.',
+            },
+            'after.mmd': {
+                id: 'after', title: 'Hardened Architecture', icon: '🛡️', audience: 'stakeholder', type: 'mermaid', color: 'var(--secondary-color)',
+                desc: 'Architecture with all recommended controls applied',
+                personas: ['CIO', 'CISO', 'Security Engineer', 'IT Team'],
+                readersContext: 'Shows the target state once all recommended controls are in place. Green nodes indicate hardened components. IT teams use this as the "done" picture to work toward; CISOs use it to communicate the security improvement story to leadership.',
+            },
+            'after_bh.mmd': {
+                id: 'after-bh', title: 'BH Chain Overlay', icon: '⚔️', audience: 'technical', type: 'mermaid', color: '#ff8c00',
+                desc: 'Hardened architecture + Blackhat cross-path chain edges and gap controls',
+                personas: ['Security Engineer', 'CISO'],
+                readersContext: 'The hardened architecture overlaid with Blackhat cross-path chain analysis. Amber dashed edges show pivot routes that remain exploitable even after per-path hardening. Security engineers use this to identify controls that close cross-path chaining risk that single-AP mitigations cannot address.',
+            },
+            '02_technical_report.md': {
+                id: 'technical', title: 'Technical Report', icon: '🔧', audience: 'technical', type: 'markdown',
+                desc: 'Full MITRE ATT&CK technique mappings and control analysis',
+                personas: ['Security Engineer'],
+                readersContext: 'The complete technical deep-dive: every MITRE ATT&CK technique identified, its RAPIDS risk score, and the specific controls mapped to each. Security engineers use this to verify coverage completeness and as a reference when implementing controls or updating the threat model.',
+            },
+            '08a_quick_wins.mmd': {
+                id: 'tier-a', title: 'Quick Wins Diagram', icon: '⚡', audience: 'technical', type: 'mermaid', color: 'var(--secondary-color)',
+                desc: 'Architecture diagram with Quick Win controls highlighted',
+                personas: ['Security Engineer', 'IT Team'],
+                readersContext: 'Architecture annotated with Quick Win control placements — the changes that close the biggest gaps fastest. IT teams use this to plan sprint work; security engineers use it to validate that the right nodes are being hardened first.',
+            },
+            '08b_recommended_target.mmd': {
+                id: 'tier-b', title: 'Recommended Diagram', icon: '📈', audience: 'technical', type: 'mermaid', color: 'var(--primary-color)',
+                desc: 'Architecture diagram with Recommended controls highlighted',
+                personas: ['Security Engineer', 'IT Team'],
+                readersContext: 'The balanced target-state architecture: Recommended tier controls applied. This is the most practical roadmap for most organisations — good security posture without over-engineering. Use this as the reference architecture for the next 6–12 months.',
+            },
+            '08c_maximum_security.mmd': {
+                id: 'tier-c', title: 'Maximum Coverage', icon: '🔒', audience: 'technical', type: 'mermaid', color: 'var(--warning-color)',
+                desc: 'Architecture diagram with Maximum controls highlighted',
+                personas: ['Security Engineer', 'CISO'],
+                readersContext: 'All controls applied — the highest achievable security posture. Some of these controls have high implementation effort or user friction. Security architects and CISOs use this to understand the theoretical ceiling and to evaluate which diminishing-return controls are still worth pursuing given the risk context.',
+            },
+            'threatmodel_adr.mmd': {
+                id: 'tm-adr', title: 'ThreatModel + ADR', icon: '🗂️', audience: 'technical', type: 'mermaid', color: '#6c757d',
+                desc: 'Per-AP subgraphs with per-hop controls, gap notes, and ADR annotations',
+                personas: ['Security Engineer'],
+                readersContext: 'Per-attack-path subgraphs showing exactly which controls are placed at each hop, with gap annotations and ADR (Architecture Decision Record) notes. Security engineers use this to verify that every hop in every attack path has a control rationale and that ADR decisions close the intended gap.',
+            },
+            'threatmodel_adr_bh.mmd': {
+                id: 'tm-adr-bh', title: 'ThreatModel + ADR + BH', icon: '⚔️', audience: 'technical', type: 'mermaid', color: '#d63384',
+                desc: 'ThreatModel+ADR with Blackhat cross-path chain subgraphs appended',
+                personas: ['Security Engineer', 'CISO'],
+                readersContext: 'Extends ThreatModel+ADR with Blackhat cross-path chain subgraphs at the end. These show the lateral movement routes that remain available after per-path hardening. Use this when doing a comprehensive threat model review that needs to account for chained attack scenarios, not just individual paths.',
+            },
+            '00_executive_dashboard.md': {
+                id: 'exec-dashboard', title: 'Executive Dashboard', icon: '🖥️', audience: 'stakeholder', type: 'markdown',
+                desc: 'One-page visual dashboard — risk scores, coverage, and headline controls at a glance',
+                personas: ['CIO', 'CISO'],
+                readersContext: 'A single-page snapshot designed for rapid briefings. Shows the composite risk score, RAPIDS confidence, control coverage percentage, and the top three headline recommendations. CIOs use this as a standing agenda item in security reviews; CISOs use it to track posture improvement across analysis runs.',
+            },
+            '09_threat_model.md': {
+                id: 'threat-model', title: 'Threat Model', icon: '🎯', audience: 'technical', type: 'markdown',
+                desc: 'Structured per-AP threat model — actors, assets, techniques, and controls for each attack path',
+                personas: ['Security Engineer', 'CISO'],
+                readersContext: 'A formal threat model structured by attack path. For each path it records the threat actor, targeted assets, MITRE ATT&CK techniques used, existing controls, and residual gaps. Security engineers use this as the authoritative reference for control traceability; CISOs use it for audit evidence and compliance submissions.',
+            },
+            '10_adr_report.md': {
+                id: 'adr-report', title: 'ADR Report', icon: '📝', audience: 'technical', type: 'markdown',
+                desc: 'Architecture Decision Records — per-path master ADR with rationale, alternatives, and control placements',
+                personas: ['Security Engineer'],
+                readersContext: 'Architecture Decision Records (ADRs) document every security control placement decision: what was decided, why, which alternatives were considered, and what risk is accepted. Security engineers use this to onboard new team members, justify control choices to auditors, and track which ADR decisions need revisiting as the architecture evolves.',
+            },
         };
 
         // Skip JSON and README — JSON belongs in Raw Data, README is noise
         const SKIP_EXTS = new Set(['.json']);
         const SKIP_FILES = new Set(['README.md']);
 
-        const byAudience = { stakeholder: [], technical: [] };
         const fileMap = {};
         allFiles.forEach(f => fileMap[f.filename] = f);
 
+        const allReports = [];
         Object.entries(REPORT_CATALOGUE).forEach(([filename, meta]) => {
             if (fileMap[filename]) {
-                byAudience[meta.audience].push({ ...meta, filename, url: fileMap[filename].url, size: fileMap[filename].size });
+                allReports.push({ ...meta, filename, url: fileMap[filename].url, size: fileMap[filename].size });
             }
         });
 
-        // Any unrecognised non-JSON files not skipped go to technical
+        // Any unrecognised non-JSON files go in too (uncatalogued)
         allFiles.forEach(f => {
             const ext = f.filename.includes('.') ? '.' + f.filename.split('.').pop() : '';
             if (!REPORT_CATALOGUE[f.filename] && !SKIP_EXTS.has(ext) && !SKIP_FILES.has(f.filename)) {
-                byAudience.technical.push({
-                    id: f.filename, title: f.filename,
-                    icon: f.type === 'mermaid' ? '🏗️' : '📄',
-                    desc: '', audience: 'technical', type: f.type,
-                    filename: f.filename, url: f.url, size: f.size
+                allReports.push({
+                    id: f.filename, title: f.filename, icon: f.type === 'mermaid' ? '🏗️' : '📄',
+                    desc: '', personas: [], audience: 'technical', type: f.type || 'text',
+                    filename: f.filename, url: f.url, size: f.size, readersContext: '',
                 });
             }
         });
 
+        const PERSONAS = ['All', 'CIO', 'CISO', 'Security Engineer', 'IT Team'];
+
+        const personaChips = PERSONAS.map((p, i) =>
+            `<button class="rp-persona-chip${i === 0 ? ' active' : ''}" data-persona="${p}"
+              style="padding:0.2rem 0.65rem;border-radius:12px;border:1.5px solid ${i === 0 ? 'var(--primary-color)' : 'var(--border-color)'};
+                     background:${i === 0 ? 'var(--primary-color)' : 'transparent'};
+                     color:${i === 0 ? 'white' : 'var(--text-secondary)'};font-size:0.78rem;font-weight:600;cursor:pointer;transition:all 0.15s;">${p}</button>`
+        ).join('');
+
         listContainer.innerHTML = `
             <!-- Download packs -->
-            <div style="display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;">
-                <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 600;">Download:</span>
+            <div style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;">
+                <span style="font-size:0.8125rem;color:var(--text-secondary);font-weight:600;">Download:</span>
                 <a href="/api/v1/reports/${archName}/download?pack=stakeholder" download="${archName}_stakeholder.zip"
-                   class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 600; text-decoration: none;">
-                    ⬇ Stakeholder Pack
-                </a>
+                   class="btn-primary" style="padding:0.5rem 1rem;font-size:0.8125rem;font-weight:600;text-decoration:none;">⬇ Stakeholder Pack</a>
                 <a href="/api/v1/reports/${archName}/download?pack=reports" download="${archName}_reports.zip"
-                   style="padding: 0.5rem 1rem; font-size: 0.8125rem; font-weight: 600; background: transparent; color: var(--text-color); border: 1.5px solid var(--border-color); border-radius: 6px; text-decoration: none;">
-                    ⬇ All Reports
-                </a>
-                <span style="font-size: 0.75rem; color: var(--text-tertiary); margin-left: auto;">
-                    Click any card to preview · ⬇ on card to download · JSON data → Raw Data tab
-                </span>
+                   style="padding:0.5rem 1rem;font-size:0.8125rem;font-weight:600;background:transparent;color:var(--text-color);border:1.5px solid var(--border-color);border-radius:6px;text-decoration:none;">⬇ All Reports</a>
+                <a href="/api/v1/reports/${archName}/briefing" download="${archName}_briefing.md"
+                   style="padding:0.5rem 1rem;font-size:0.8125rem;font-weight:600;background:transparent;color:#a855f7;border:1.5px solid #a855f744;border-radius:6px;text-decoration:none;" title="Single-file Markdown briefing for offline sharing — no dashboard needed">📄 Export Briefing</a>
+                <span style="font-size:0.72rem;color:var(--text-tertiary);margin-left:auto;">Click a card to preview · ⬇ to download · JSON → Raw Data tab</span>
             </div>
 
-            <!-- Section: For Stakeholders -->
-            ${byAudience.stakeholder.length > 0 ? `
-            <div class="report-section" style="margin-bottom: 1.5rem;">
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
-                    <span style="font-size: 1.125rem;">👔</span>
-                    <h4 style="margin: 0; color: var(--text-color); font-size: 0.9375rem;">For Stakeholders</h4>
-                    <span style="font-size: 0.75rem; color: var(--text-tertiary); padding: 0.125rem 0.5rem; background: var(--nav-hover-bg); border-radius: 10px;">Decision-driving</span>
-                </div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.625rem;">
-                    ${byAudience.stakeholder.map(r => this._reportCard(r, archName)).join('')}
-                </div>
-            </div>` : ''}
+            <!-- Persona filter bar -->
+            <div style="margin-bottom:0.9rem;">
+                <span style="font-size:0.75rem;color:var(--text-tertiary);margin-right:0.5rem;font-weight:600;">Filter by role:</span>
+                <div id="rp-persona-chips" style="display:inline-flex;flex-wrap:wrap;gap:0.35rem;">${personaChips}</div>
+            </div>
 
-            <!-- Section: For Technical Teams -->
-            ${byAudience.technical.length > 0 ? `
-            <div class="report-section" style="margin-bottom: 1.5rem;">
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
-                    <span style="font-size: 1.125rem;">🔧</span>
-                    <h4 style="margin: 0; color: var(--text-color); font-size: 0.9375rem;">For Technical Teams</h4>
-                    <span style="font-size: 0.75rem; color: var(--text-tertiary); padding: 0.125rem 0.5rem; background: var(--nav-hover-bg); border-radius: 10px;">Implementation depth</span>
-                </div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.625rem;">
-                    ${byAudience.technical.map(r => this._reportCard(r, archName)).join('')}
-                </div>
-            </div>` : ''}
+            <!-- Card grid -->
+            <div id="rp-card-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.625rem;">
+                ${allReports.map(r => this._reportCard(r, archName)).join('')}
+            </div>
         `;
 
-        const allReports = [...byAudience.stakeholder, ...byAudience.technical];
+        // Persona filter logic
+        const chipsEl = listContainer.querySelector('#rp-persona-chips');
+        if (chipsEl) {
+            chipsEl.querySelectorAll('.rp-persona-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    chipsEl.querySelectorAll('.rp-persona-chip').forEach(c => {
+                        c.classList.remove('active');
+                        c.style.background = 'transparent';
+                        c.style.color = 'var(--text-secondary)';
+                        c.style.borderColor = 'var(--border-color)';
+                    });
+                    chip.classList.add('active');
+                    chip.style.background = 'var(--primary-color)';
+                    chip.style.color = 'white';
+                    chip.style.borderColor = 'var(--primary-color)';
+
+                    const persona = chip.dataset.persona;
+                    listContainer.querySelectorAll('[data-report-id]').forEach(card => {
+                        const rp = card.dataset.personas ? JSON.parse(card.dataset.personas) : [];
+                        const show = persona === 'All' || rp.length === 0 || rp.includes(persona);
+                        card.style.display = show ? '' : 'none';
+                    });
+                });
+            });
+        }
+
         listContainer.querySelectorAll('[data-report-id]').forEach(card => {
             card.addEventListener('click', () => {
                 listContainer.querySelectorAll('[data-report-id]').forEach(c => {
@@ -4338,8 +4905,12 @@ class Dashboard {
     }
 
     _reportCard(report, archName) {
+        const personasJson = JSON.stringify(report.personas || []).replace(/"/g, '&quot;');
+        const personaChips = (report.personas || []).map(p =>
+            `<span style="padding:0.05rem 0.4rem;background:var(--primary-color)18;color:var(--primary-color);border-radius:4px;font-size:0.65rem;font-weight:600;">${p}</span>`
+        ).join('');
         return `
-            <div data-report-id="${report.id}" style="
+            <div data-report-id="${report.id}" data-personas="${personasJson}" style="
                 padding: 0.875rem 1rem;
                 background: var(--card-bg);
                 border: 1.5px solid var(--border-color);
@@ -4351,13 +4922,13 @@ class Dashboard {
                     <span style="font-size: 1.25rem; flex-shrink: 0; margin-top: 0.1rem;">${report.icon}</span>
                     <div style="min-width: 0;">
                         <div style="font-weight: 600; font-size: 0.875rem; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${report.title}</div>
-                        ${report.desc ? `<div style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 0.125rem; line-height: 1.3;">${report.desc}</div>` : ''}
+                        ${report.desc ? `<div style="font-size: 0.72rem; color: var(--text-tertiary); margin-top: 0.1rem; line-height: 1.3;">${report.desc}</div>` : ''}
                     </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
-                    <span style="font-size: 0.6875rem; color: var(--text-tertiary);">${report.type.toUpperCase()}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; flex-wrap: wrap; gap: 0.3rem;">
+                    <div style="display:flex;gap:0.25rem;flex-wrap:wrap;">${personaChips}</div>
                     <a href="/api/v1/reports/${archName}/files/${report.filename}" target="_blank"
-                       style="font-size: 0.75rem; color: var(--primary-color); text-decoration: none; padding: 0.125rem 0.375rem; border: 1px solid var(--primary-color); border-radius: 4px;"
+                       style="font-size: 0.75rem; color: var(--primary-color); text-decoration: none; padding: 0.125rem 0.375rem; border: 1px solid var(--primary-color); border-radius: 4px; flex-shrink:0;"
                        onclick="event.stopPropagation()">⬇</a>
                 </div>
             </div>
@@ -4365,10 +4936,16 @@ class Dashboard {
     }
 
     async _renderReportInRightPane(report, archName) {
-        // Show right pane with loading state immediately
-        const downloadLink = `<a href="/api/v1/reports/${archName}/files/${report.filename}" download="${report.filename}" class="btn-primary" style="display: inline-block; text-decoration: none; padding: 0.375rem 0.875rem; font-size: 0.8125rem; margin-bottom: 1rem;">⬇ Download ${report.filename}</a>`;
+        const downloadLink = `<a href="/api/v1/reports/${archName}/files/${report.filename}" download="${report.filename}" class="btn-primary" style="display:inline-block;text-decoration:none;padding:0.375rem 0.875rem;font-size:0.8125rem;margin-bottom:0.75rem;">⬇ Download ${report.filename}</a>`;
+
+        // Readers context — who reads this and what decision it enables
+        const contextHtml = report.readersContext ? `
+            <div style="margin-bottom:1rem;padding:0.75rem 1rem;background:var(--nav-hover-bg);border-left:3px solid var(--primary-color);border-radius:0 6px 6px 0;font-size:0.82rem;color:var(--text-secondary);line-height:1.55;">
+                ${report.readersContext}
+            </div>` : '';
 
         this.showRightPane(`${report.icon} ${report.title}`, `
+            ${contextHtml}
             ${downloadLink}
             <div id="rp-content-area" style="color: var(--text-secondary); font-size: 0.875rem;">Loading...</div>
         `);
@@ -4448,6 +5025,40 @@ class Dashboard {
                 hljs.highlightBlock(block);
             });
         }
+    }
+
+    setupDiagramZoom(prefix) {
+        const container = document.getElementById(`${prefix}-container`) || document.getElementById(prefix);
+        if (!container) return;
+        const getSvg = () => container.querySelector('svg');
+        if (this[`${prefix}Scale`] === undefined) this[`${prefix}Scale`] = 1;
+        const applyScale = s => {
+            const svg = getSvg(); if (!svg) return;
+            const w = parseFloat(svg.getAttribute('width'))  || 800;
+            const h = parseFloat(svg.getAttribute('height')) || 600;
+            if (!this[`${prefix}OrigW`]) { this[`${prefix}OrigW`] = w; this[`${prefix}OrigH`] = h; }
+            this[`${prefix}Scale`] = s;
+            svg.setAttribute('width',  this[`${prefix}OrigW`] * s);
+            svg.setAttribute('height', this[`${prefix}OrigH`] * s);
+            svg.style.maxWidth = 'none';
+        };
+        setTimeout(() => {
+            const svg = getSvg(); if (!svg) return;
+            const w = parseFloat(svg.getAttribute('width')) || 800;
+            this[`${prefix}OrigW`] = w;
+            this[`${prefix}OrigH`] = parseFloat(svg.getAttribute('height')) || 600;
+            const fit = Math.min(1, (container.clientWidth - 32) / w);
+            applyScale(fit);
+        }, 200);
+        const wire = (id, fn) => {
+            const el = document.getElementById(id); if (!el) return;
+            const clone = el.cloneNode(true); el.parentNode.replaceChild(clone, el);
+            clone.addEventListener('click', fn);
+        };
+        wire(`${prefix}-zoom-in`,    () => applyScale(Math.min(this[`${prefix}Scale`] + 0.2, 4)));
+        wire(`${prefix}-zoom-out`,   () => applyScale(Math.max(this[`${prefix}Scale`] - 0.2, 0.1)));
+        wire(`${prefix}-zoom-reset`, () => applyScale(1));
+        wire(`${prefix}-fit-height`, () => applyScale((container.clientHeight - 32) / (this[`${prefix}OrigH`] || 600)));
     }
 
     // Return the button-row HTML for a given ERP state: 'idle' | 'running' | 'paused'
@@ -4595,6 +5206,18 @@ class Dashboard {
                                 <div id="erp-card-red_team-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
                                 <div id="erp-card-red_team-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
                             </div>
+                            <div id="erp-card-purple_team" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                <div style="font-size:0.875rem;">🟣</div>
+                                <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Purple Team</div>
+                                <div id="erp-card-purple_team-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                                <div id="erp-card-purple_team-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
+                            </div>
+                            <div id="erp-card-blackhat" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                <div style="font-size:0.875rem;">⚔️</div>
+                                <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Blackhat</div>
+                                <div id="erp-card-blackhat-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                                <div id="erp-card-blackhat-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
+                            </div>
                             <div id="erp-card-synthesis" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
                                 <div style="font-size:0.875rem;">⚙️</div>
                                 <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Synthesis</div>
@@ -4616,7 +5239,7 @@ class Dashboard {
         const pct = document.getElementById('erp-pct');
         const stageLabel = document.getElementById('erp-stage-label');
         const message = document.getElementById('erp-message');
-        const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
+        const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', purple_team: '🟣 Purple Team', blackhat: '⚔️ Blackhat', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
         const parallelModeR = s.criticMode === 'parallel' || s.criticMode === 'auto';
         if (parallelModeR) {
             if (pct) pct.textContent = (s.pct || 0) + '%';
@@ -4648,7 +5271,7 @@ class Dashboard {
         }
         if (message) message.textContent = s.message || '';
         // Restore each critic card from saved cardStates
-        const agentOrder = ['architect', 'tester', 'red_team', 'synthesis'];
+        const agentOrder = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat', 'synthesis'];
         for (const agent of agentOrder) {
             const cs = s.cardStates && s.cardStates[agent];
             if (!cs) continue;
@@ -4788,21 +5411,47 @@ class Dashboard {
             const runCriticMode = moe.critic_mode || 'sequential';
             const isParallelResult = runCriticMode === 'parallel' || runCriticMode === 'partial_parallel';
 
+            // Count how many critics actually ran (have an entry in expert_validations)
+            const expertValidationsForCount = moe.expert_validations || {};
+            const ranCriticKeys = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat'].filter(k => expertValidationsForCount[k]);
+            const ranCriticLabels = { architect: 'Architect', tester: 'Coverage Auditor', red_team: 'Exploit Analyst', purple_team: 'Purple Team', blackhat: 'Blackhat' };
+            const criticCountLabel = ranCriticKeys.length + ' critic' + (ranCriticKeys.length !== 1 ? 's' : '');
+            const criticNamesLabel = ranCriticKeys.map(k => ranCriticLabels[k]).join(', ');
+
             // Build blindspots HTML
             let blindspotsHtml = '';
             if (blindspots.length > 0) {
+                // Classify each blindspot by topic to decide note vs action
+                const _bsClassify = (b) => {
+                    const desc = (b.description || '').toLowerCase();
+                    const rec  = (b.recommendation || '').toLowerCase();
+                    const combined = desc + ' ' + rec;
+                    if (combined.includes('supply chain') || combined.includes('vendor') || combined.includes('third-party') || combined.includes('third party')) {
+                        return { actionable: true, pill: '⚠ Act', pillColor: 'var(--warning-color)', action: 'Conduct a separate vendor risk assessment. Review all third-party integrations for contractual security controls and incident notification requirements.' };
+                    }
+                    if (combined.includes('bcp') || combined.includes('business continuity') || combined.includes('disaster recovery') || combined.includes('dr plan') || combined.includes('availability')) {
+                        return { actionable: true, pill: '⚠ Act', pillColor: 'var(--warning-color)', action: 'Evaluate resilience controls: define RTO/RPO targets, map which attack paths impact availability, and add BCP/DR controls to the relevant ADRs.' };
+                    }
+                    if (combined.includes('api gateway') || combined.includes('api-gateway')) {
+                        return { actionable: true, pill: '⚠ Act', pillColor: 'var(--warning-color)', action: 'Review attack paths that traverse external-facing entry points — an API Gateway node is expected between external actors and internal services. If missing from your diagram, add it and re-run analysis.' };
+                    }
+                    return { actionable: false, pill: '📋 Note', pillColor: 'var(--text-tertiary)', action: null };
+                };
                 let cards = '';
                 for (const b of blindspots) {
-                    cards += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--primary-color);">'
-                        + '<div style="font-size: 0.875rem; font-weight:600; color: var(--text-color);">' + (b.description || '') + '</div>'
+                    const cls = _bsClassify(b);
+                    const pillHtml = '<span style="font-size:0.68rem; font-weight:700; color:' + cls.pillColor + '; background:' + cls.pillColor + '18; border:1px solid ' + cls.pillColor + '44; border-radius:8px; padding:1px 7px; margin-left:0.5rem; white-space:nowrap;">' + cls.pill + '</span>';
+                    cards += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid ' + (cls.actionable ? 'var(--warning-color)' : 'var(--primary-color)') + ';">'
+                        + '<div style="font-size: 0.875rem; font-weight:600; color: var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (b.description || '') + pillHtml + '</div>'
                         + (b.why_missed ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.25rem;">Why missed: ' + b.why_missed + '</div>' : '')
                         + (b.recommendation ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-top:0.25rem;">→ ' + b.recommendation + '</div>' : '')
+                        + (cls.action ? '<div style="font-size:0.75rem; color:var(--warning-color); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">Action: ' + cls.action + '</div>' : '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">No immediate action required — document for awareness and revisit when scope changes.</div>')
                         + '</div>';
                 }
                 blindspotsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">🔍 Blindspots</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Gaps all three critics structurally could not see — highest priority for human review.</p></div>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Gaps all ' + criticCountLabel + ' structurally could not see. <strong>⚠ Act</strong> = actionable now. <strong>📋 Note</strong> = awareness only.</p></div>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
                     + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + cards + '</div>'
@@ -4836,6 +5485,8 @@ class Dashboard {
                         + '</div>'
                         + '<div style="font-size:0.8125rem; color:var(--text-secondary);">🏛️ Architect/Tester: ' + (c.architect_view || '') + '</div>'
                         + '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.2rem;">🎯 Red Team: ' + (c.tester_or_redteam_view || '') + '</div>'
+                        + (c.purple_team_view ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.2rem;">🟣 Purple Team: ' + c.purple_team_view + '</div>' : '')
+                        + (c.blackhat_view ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.2rem;">⚔️ Blackhat: ' + c.blackhat_view + '</div>' : '')
                         + '<div style="font-size:0.8125rem; color:var(--warning-color); margin-top:0.35rem; font-style:italic;">' + (c.resolution || 'UNSURE — human review needed') + '</div>'
                         + '</div>';
                 }
@@ -4866,7 +5517,7 @@ class Dashboard {
                         + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;"> ⌄</span>'
                         + '</div>'
                         + '<div class="er-panel-body" style="padding: 0.75rem 1.25rem 1rem;">'
-                        + '<div style="padding:0.65rem 1rem; background:var(--secondary-color)14; border:1px solid var(--secondary-color)44; border-radius:8px; font-size:0.875rem; color:var(--secondary-color);">All three critics read each other\'s output and found no conflicting positions — this is genuine consensus.</div>'
+                        + '<div style="padding:0.65rem 1rem; background:var(--secondary-color)14; border:1px solid var(--secondary-color)44; border-radius:8px; font-size:0.875rem; color:var(--secondary-color);">All ' + criticCountLabel + ' (' + criticNamesLabel + ') read each other\'s output and found no conflicting positions — this is genuine consensus.</div>'
                         + '<div style="margin-top:0.5rem; font-size:0.8125rem; color:var(--text-tertiary);">Mode used: <strong>' + modeLabel + '</strong>. Critics did cross-reference each other, so this absence reflects actual agreement.</div>'
                         + '</div></div>';
                 }
@@ -4922,17 +5573,22 @@ class Dashboard {
                 tiersHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">📊 Improvement Tiers</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Cost and effort from Red Team exploit roadmap — not estimated where data is absent.</p></div>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Synthesised from all ' + criticCountLabel + ' findings. Cost and effort from Red Team exploit roadmap — not estimated where absent.</p></div>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
                     + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + tierCards + '</div>'
                     + '</div>';
             }
 
+            const bhValidation = expertValidations.blackhat || null;
+            const bhAdjNum = parseFloat(((confidence.adjustments?.blackhat || 0) * 100).toFixed(1));
+
             const expertDefs = [
-                { key: 'architect', icon: '🏛️', label: 'Architecture Review', role: 'Design quality & threat completeness' },
-                { key: 'tester',    icon: '🔬', label: 'Coverage Audit',       role: 'MITRE mapping accuracy' },
-                { key: 'red_team',  icon: '🎯', label: 'Exploit Analysis',     role: 'Control effectiveness under attack' },
+                { key: 'architect',    icon: '🏛️', label: 'Architecture Review',     role: 'Structural gaps, unmodelled threats, ADR completeness' },
+                { key: 'tester',       icon: '🔬', label: 'Coverage Audit',           role: 'MITRE mapping accuracy, control effectiveness, configuration validation' },
+                { key: 'red_team',     icon: '🎯', label: 'Exploit Analysis',         role: 'Bypass paths, attack feasibility, control evasion under active exploitation' },
+                { key: 'purple_team',  icon: '🟣', label: 'Purple Team',              role: 'Detection depth, coverage gaps, investigation value & ADR operability', isOptional: true },
+                { key: 'blackhat',     icon: '⚔️', label: 'Blackhat Cross-Path',      role: 'Cross-path chaining, pivot-diverge routes & chain exploits (supreme critic)', isOptional: true },
             ];
 
             const statusColor = {
@@ -4989,7 +5645,25 @@ class Dashboard {
             let expertPanelCards = '';
             for (const e of expertDefs) {
                 const v = expertValidations[e.key];
-                if (!v) continue;
+                // Optional critics: show a "not run" card if absent
+                if (!v) {
+                    if (e.isOptional) {
+                        const notRunNote = e.key === 'blackhat'
+                            ? 'Not run — enable in Config → MoE → Blackhat Critic (Layer 2E) and re-run Expert Review'
+                            : 'Not run — enable in Config → MoE → Purple Team Critic (Layer 2D) and re-run Expert Review';
+                        expertPanelCards += '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow:hidden; opacity:0.55;">'
+                            + '<div style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center;">'
+                            + '<div style="display:flex; align-items:center; gap:0.75rem;">'
+                            + '<span style="font-size:1.5rem;">' + e.icon + '</span>'
+                            + '<div><div style="font-weight:700; color:var(--text-tertiary);">' + e.label + '</div>'
+                            + '<div style="font-size:0.8125rem; color:var(--text-tertiary);">' + e.role + '</div></div>'
+                            + '</div>'
+                            + '<div style="font-size:0.8125rem; color:var(--text-tertiary); font-style:italic;">' + notRunNote + '</div>'
+                            + '</div>'
+                            + '</div>';
+                    }
+                    continue;
+                }
                 const adjNum2 = parseFloat(((v.confidence_adjustment || 0) * 100).toFixed(1));
                 const adj = adjNum2 === 0 ? '±0' : (adjNum2 > 0 ? '+' : '') + adjNum2;
                 const sign = '';
@@ -5012,6 +5686,48 @@ class Dashboard {
                 }
                 // Sub-dimension breakdown (tester only) — compact score chips + gaps-only reasoning
                 let breakdownBars = '';
+                // Blackhat breakdown: chain findings, stealth score, shared nodes
+                if (e.key === 'blackhat' && v.breakdown) {
+                    const bd = v.breakdown;
+                    const chains = bd.chained_exploit_findings || [];
+                    const stealth = bd.stealth_score || 0;
+                    const stealthTechs = bd.stealthy_techniques || [];
+                    const shared = bd.shared_nodes || {};
+                    const lrp = bd.least_resistance_paths || [];
+                    const chainGaps = bd.mitigation_gaps_for_chains || [];
+                    const unique = (bd.uniqueness_vs_critics || {}).new_findings_not_in_redteam || [];
+                    const stealthColor = stealth >= 60 ? 'var(--danger-color)' : stealth >= 35 ? 'var(--warning-color)' : 'var(--secondary-color)';
+                    const sharedNodeList = Object.keys(shared).join(', ') || 'none';
+                    let bhInner = '<div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.65rem;">'
+                        + '<span style="padding:2px 8px; border-radius:8px; font-size:0.76rem; background:' + stealthColor + '18; border:1px solid ' + stealthColor + '44; color:' + stealthColor + '; font-weight:600;">Stealth: ' + stealth + '/100</span>'
+                        + '<span style="padding:2px 8px; border-radius:8px; font-size:0.76rem; background:var(--nav-hover-bg); color:var(--text-secondary); border:1px solid var(--border-color);">' + chains.length + ' chain finding' + (chains.length !== 1 ? 's' : '') + '</span>'
+                        + '<span style="padding:2px 8px; border-radius:8px; font-size:0.76rem; background:var(--nav-hover-bg); color:var(--text-secondary); border:1px solid var(--border-color);">' + Object.keys(shared).length + ' shared node' + (Object.keys(shared).length !== 1 ? 's' : '') + ': ' + sharedNodeList + '</span>'
+                        + (unique.length ? '<span style="padding:2px 8px; border-radius:8px; font-size:0.76rem; background:var(--warning-color)18; border:1px solid var(--warning-color)44; color:var(--warning-color);">' + unique.length + ' unique vs Red Team</span>' : '')
+                        + '</div>';
+                    if (chains.length) {
+                        bhInner += '<div style="font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.35rem;">Chain findings:</div>';
+                        for (const ch of chains.slice(0, 5)) {
+                            bhInner += '<div style="padding:0.5rem 0.65rem; background:var(--nav-hover-bg); border-left:3px solid var(--warning-color); border-radius:4px; margin-bottom:0.3rem; font-size:0.78rem;">'
+                                + (ch.chain || ch.description || JSON.stringify(ch))
+                                + '</div>';
+                        }
+                    }
+                    if (stealthTechs.length) {
+                        bhInner += '<div style="font-size:0.76rem; color:var(--text-tertiary); margin-top:0.4rem;">Stealth techniques: ' + stealthTechs.join(', ') + '</div>';
+                    }
+                    if (lrp.length) {
+                        bhInner += '<div style="font-size:0.76rem; color:var(--text-tertiary); margin-top:0.2rem;">Least-resistance paths: ' + lrp.slice(0,3).map(p => Array.isArray(p) ? p.join('→') : String(p)).join(' | ') + '</div>';
+                    }
+                    if (chainGaps.length) {
+                        bhInner += '<div style="font-size:0.76rem; color:var(--warning-color); margin-top:0.3rem;">Chain mitigation gaps: ' + chainGaps.slice(0,4).join(', ') + '</div>';
+                    }
+                    // Link to after_bh.mmd in Reports tab
+                    bhInner += '<div style="margin-top:0.65rem; padding-top:0.5rem; border-top:1px solid var(--border-color);">'
+                        + '<span style="font-size:0.78rem; color:var(--text-tertiary);">Cross-path chains visible in </span>'
+                        + '<button onclick="window.dashboard._openBhDiagram()" style="font-size:0.78rem; color:#ff8c00; background:transparent; border:1px solid #ff8c0044; border-radius:6px; padding:2px 8px; cursor:pointer; margin-left:0.35rem;">⚔️ BH Chain Diagram →</button>'
+                        + '</div>';
+                    breakdownBars = '<div style="margin-bottom:0.75rem; padding:0.65rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px;">' + bhInner + '</div>';
+                }
                 if (e.key === 'tester' && v.breakdown && Object.keys(v.breakdown).length > 0) {
                     const subLabels = {
                         validation_checks:    'Validation',
@@ -5126,22 +5842,41 @@ class Dashboard {
                     }
                 }
                 if (consensusReview.length > 0) {
-                    inner += '<div style="font-size:0.8125rem; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.04em; margin: 0.75rem 0 0.5rem;">For Review</div>';
+                    inner += '<div style="margin: 0.75rem 0 0.5rem;">'
+                        + '<div style="font-size:0.8125rem; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.04em;">For Review</div>'
+                        + '<div style="font-size:0.72rem; color:var(--text-tertiary); margin-top:0.15rem;">UNSURE = raised by a single critic only. No second critic confirmed or refuted it — review and decide whether to act.</div>'
+                        + '</div>';
                     for (const r of consensusReview) {
                         const known = isKnown(r);
                         const badge = known
                             ? '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>'
                             : '<span style="font-size:0.7rem; font-weight:700; color:var(--text-tertiary); background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
+                        const src = (r.source || '').toLowerCase();
+                        let actionHint = '';
+                        if (src.includes('architect')) {
+                            actionHint = 'Architecture concern — verify whether this applies to your specific design. If the finding describes a generic gap rather than a confirmed path, document as accepted risk or revisit on a more complex architecture diagram.';
+                        } else if (src.includes('tester') || src.includes('coverage')) {
+                            actionHint = 'Control coverage gap — check whether the flagged control exists and is correctly mapped. If the gap is real, add the missing control to the ADR.';
+                        } else if (src.includes('red_team') || src.includes('red team') || src.includes('exploit')) {
+                            actionHint = 'Exploit feasibility concern — assess whether this bypass path is realistic for your threat model. If confirmed, escalate to the Red Team improvement tier.';
+                        } else if (src.includes('purple') || src.includes('detection')) {
+                            actionHint = 'Detection gap — if this technique is in scope, add the suggested behavioral analytics or detection control (UEBA, DAM, anomaly detection) to the relevant ADR.';
+                        } else if (src.includes('blackhat')) {
+                            actionHint = 'Cross-path chain concern — review whether the identified pivot nodes are reachable in practice. If confirmed, treat as a high-priority chaining risk.';
+                        } else {
+                            actionHint = 'Review this finding: if it describes a real gap in your architecture, add a control to the relevant ADR. If it does not apply, document as accepted risk.';
+                        }
                         inner += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--border-color);">'
                             + '<div style="font-size: 0.875rem; color: var(--text-secondary); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
-                            + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Raised by: ' + r.source + '</div>' : '')
+                            + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.2rem;">Raised by: ' + r.source + '</div>' : '')
+                            + '<div style="font-size:0.75rem; color:var(--primary-color); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">→ ' + actionHint + '</div>'
                             + '</div>';
                     }
                 }
                 consensusHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">Cross-Expert Findings</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">KNOWN = ≥2 critics agree. UNSURE = single critic, needs human verification.</p></div>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;"><strong>KNOWN</strong> = confirmed by ≥2 critics — act on these. <strong>UNSURE</strong> = single critic raised it, no second opinion yet — needs human review, not necessarily wrong.</p></div>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
                     + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + inner + '</div>'
@@ -5242,10 +5977,37 @@ class Dashboard {
         this.showRightPane('⚠️ ' + (c.topic || 'Disagreement'), content);
     }
 
+    // Open after_bh.mmd in the Reports tab (right pane viewer)
+    async _openBhDiagram() {
+        const archName = this.analysisData?.architecture_name || this.analysisData?.architecture;
+        if (!archName) return;
+        try {
+            const resp = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/after_bh.mmd`);
+            if (!resp.ok) {
+                this.showRightPane('⚔️ BH Chain Diagram', '<p style="color:var(--text-tertiary); padding:1rem;">after_bh.mmd not found — re-run Expert Review with Blackhat enabled.</p>');
+                return;
+            }
+            const mmdContent = await resp.text();
+            this.showRightPane('⚔️ Blackhat Cross-Path Chain Overlay', `
+                <p style="font-size:0.8125rem; color:var(--text-secondary); margin:0 0 0.75rem;">
+                    Cross-path chain edges (dashed orange/red) and gap controls (pink) overlaid on the hardened architecture.
+                    Edges show pivot routes BH identified across multiple attack paths.
+                </p>
+                <div id="bh-diag-container" style="overflow:auto; max-height:calc(100vh - 260px); background:var(--code-bg); border-radius:8px; border:1px solid var(--border-color); padding:1rem;">
+                    <div class="mermaid">${mmdContent}</div>
+                </div>`);
+            if (window.mermaid) {
+                setTimeout(() => mermaid.run({ querySelector: '#bh-diag-container .mermaid' }).catch(() => {}), 50);
+            }
+        } catch (err) {
+            this.showRightPane('⚔️ BH Chain Diagram', `<p style="color:var(--danger-color); padding:1rem;">${err.message}</p>`);
+        }
+    }
+
     // Build a live critic result card HTML from a critic_result SSE event payload
     _buildLiveCriticCard(data) {
-        const labels = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team' };
-        const roles  = { architect: 'Architecture Review', tester: 'Coverage Audit', red_team: 'Exploit Analysis' };
+        const labels = { architect: '🏛️ Architect', tester: '🔬 Coverage Auditor', red_team: '🎯 Exploit Analyst', purple_team: '🟣 Purple Team', blackhat: '⚔️ Blackhat' };
+        const roles  = { architect: 'Architecture Review', tester: 'MITRE mapping, control effectiveness & configuration validation', red_team: 'Bypass paths, attack feasibility & control evasion', purple_team: 'Detection depth, coverage gaps & ADR operability', blackhat: 'Cross-path chain exploitation & pivot hacking' };
         const statusColor = data.status_color || 'var(--secondary-color)';
         const adjPct = parseFloat(data.confidence_adjustment_pct);
         const adjLabel = adjPct === 0 ? 'No adjustment' : (adjPct > 0 ? '+' : '') + adjPct + '% confidence';
@@ -5339,12 +6101,12 @@ class Dashboard {
         this._erpState.message = data.message || '';
         const parallelMode = this._erpState.criticMode === 'parallel' || this._erpState.criticMode === 'auto';
         const msgEl = document.getElementById('erp-message');
-        const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
+        const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', purple_team: '🟣 Purple Team', blackhat: '⚔️ Blackhat', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
         if (msgEl) msgEl.textContent = data.message || '';
 
         if (parallelMode) {
             // Per-critic bars: each stage drives its own bar
-            const criticStages = ['architect', 'tester', 'red_team'];
+            const criticStages = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat'];
             if (data.stage === 'parallel_starting') {
                 // Initialise all three critic bars to "started" (5%)
                 for (const c of criticStages) {
@@ -5360,8 +6122,8 @@ class Dashboard {
                     this._erpParallelTimer = setInterval(() => {
                         if (!this._erpState) { clearInterval(this._erpParallelTimer); return; }
                         const elapsed = Math.round((Date.now() - this._erpState._parallelStartTs) / 1000);
-                        const criticLabels = { architect: '🏛️ Architect', tester: '🔬 Coverage Audit', red_team: '🎯 Red Team' };
-                        for (const c of ['architect', 'tester', 'red_team']) {
+                        const criticLabels = { architect: '🏛️ Architect', tester: '🔬 Coverage Audit', red_team: '🎯 Red Team', purple_team: '🟣 Purple Team', blackhat: '⚔️ Blackhat' };
+                        for (const c of ['architect', 'tester', 'red_team', 'purple_team', 'blackhat']) {
                             const cs = this._erpState.cardStates[c];
                             if (cs && cs.isCriticResult) continue; // already done
                             const statusEl = document.getElementById('erp-card-' + c + '-status');
@@ -5410,7 +6172,7 @@ class Dashboard {
             return '⚙ Running...';
         })();
 
-        const agentOrder = ['architect', 'tester', 'red_team', 'synthesis'];
+        const agentOrder = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat', 'synthesis'];
         const currentIdx = agentOrder.indexOf(data.stage);
         // In parallel/auto mode all three critics run concurrently — show them all as
         // "Running…" while the batch is in progress (before any critic_result arrives)
@@ -5477,14 +6239,14 @@ class Dashboard {
         if (previewEl) { previewEl.innerHTML = previewHtml; previewEl.style.display = 'block'; }
         // In parallel mode: mark this critic's bar as 100% (done) with success colour
         const parallelMode2 = this._erpState.criticMode === 'parallel' || this._erpState.criticMode === 'auto';
-        if (parallelMode2 && ['architect', 'tester', 'red_team'].includes(critic)) {
+        if (parallelMode2 && ['architect', 'tester', 'red_team', 'purple_team', 'blackhat'].includes(critic)) {
             const cBar = document.getElementById('erp-bar-' + critic);
             const cPct = document.getElementById('erp-pct-' + critic);
             if (cBar) { cBar.style.width = '100%'; cBar.style.background = statusColor; }
             if (cPct) { cPct.textContent = '✓'; cPct.style.color = statusColor; }
         }
 
-        // Stop parallel elapsed timer once all three critics have results
+        // Stop parallel elapsed timer once all core critics have results
         const allCriticsDone = ['architect', 'tester', 'red_team'].every(
             c => this._erpState.cardStates[c] && this._erpState.cardStates[c].isCriticResult
         );
@@ -5598,9 +6360,11 @@ class Dashboard {
         // JSON file catalogue — descriptions for known files
         const JSON_CATALOGUE = {
             'ground_truth.json':        { title: 'Ground Truth',         icon: '🏗️', desc: 'Full deterministic analysis output — threats, controls, attack paths, MITRE mappings', group: 'foundation' },
-            '04_architect_critique.json': { title: 'Architecture Review', icon: '🏛️', desc: 'Expert assessment of threat model completeness and structural coverage', group: 'expert' },
-            '05_tester_critique.json':  { title: 'Coverage Audit',        icon: '🔬', desc: 'MITRE technique coverage and mapping accuracy review', group: 'expert' },
-            '06_red_team_critique.json':{ title: 'Exploit Analysis',      icon: '🎯', desc: 'Red team assessment of control weaknesses and exploitable gaps', group: 'expert' },
+            '04_architect_critique.json': { title: 'Architecture Review', icon: '🏛️', desc: 'Expert assessment of structural gaps, unmodelled threats, and ADR completeness', group: 'expert' },
+            '05_tester_critique.json':  { title: 'Coverage Audit',   icon: '🔬', desc: 'MITRE technique mapping accuracy, control effectiveness, configuration validation', group: 'expert' },
+            '06_red_team_critique.json':{ title: 'Exploit Analysis', icon: '🎯', desc: 'Bypass paths, control evasion, and attack feasibility under active exploitation', group: 'expert' },
+            '06b_purple_team_critique.json': { title: 'Purple Team', icon: '🟣', desc: 'Detection depth, coverage gaps, investigation value, and ADR operability', group: 'expert' },
+            '06c_blackhat_critique.json': { title: 'Blackhat Cross-Path', icon: '⚔️', desc: 'Cross-path chaining, pivot-diverge routes, and chain exploit feasibility (supreme critic)', group: 'expert' },
             '07_moe_orchestrator.json': { title: 'MoE Orchestrator',      icon: '🧠', desc: 'Mixture-of-Experts synthesis — consensus recommendations and confidence waterfall', group: 'expert' },
             '07_orchestrator_report.json': { title: 'Orchestrator Report',icon: '📋', desc: 'Structured expert panel summary with contradiction and action item lists', group: 'expert' },
         };
@@ -6279,9 +7043,18 @@ class Dashboard {
             ]
           },
           {
-            title: '🧑‍🏫 MoE / Expert Review',
-            subtitle: 'Mixture-of-Experts pipeline: base confidence, critic execution, LLM settings, and scoring bands.',
+            title: '🧑‍🏫 MoE — Base Settings',
+            subtitle: 'Mixture-of-Experts pipeline: starting confidence, execution mode, and LLM parameters. Blackhat (Layer 2E) is the supreme critic and runs last.',
             fields: [
+              { section:'moe', field:'enabled', label:'Enable Expert Review (MoE)',
+                vtype:'select',
+                options:[
+                  {v:'true',  label:'true — Enabled (recommended)', rec:true},
+                  {v:'false', label:'false — Deterministic only (skip all critics)'},
+                ],
+                desc:'Master switch for the full MoE expert review chain. When disabled, only the deterministic engine runs — no LLM calls. The three core critics (Architect, Coverage Auditor, Exploit Analyst) always run when MoE is enabled and cannot be individually disabled. Purple Team and Blackhat can be toggled separately below.',
+                effects: ef('Enables full LLM-backed validation','Architect/Tester/Red Team always run; Purple Team/Blackhat optional','High','Requires LLM API key') },
+
               { section:'moe', field:'base_confidence', label:'Base Confidence (%)',
                 vtype:'select',
                 options:[
@@ -6299,7 +7072,7 @@ class Dashboard {
                   {v:'parallel',   label:'parallel — Faster, critics run blind (less accurate)'},
                   {v:'auto',       label:'auto — Decides per complexity score'},
                 ],
-                desc:'How the three expert critics run. Sequential means each critic sees prior results for cross-referencing.',
+                desc:'How the enabled critics run. Sequential means each critic sees prior results for cross-referencing. Applies to all critics including Purple Team and Blackhat if enabled.',
                 effects: ef('Sequential = more accurate','Sequential = higher quality gaps','High','Parallel = faster') },
 
               { section:'moe', field:'complexity_threshold', label:'Auto-Mode Complexity Cutoff',
@@ -6335,104 +7108,101 @@ class Dashboard {
                 desc:'Max tokens for the synthesis LLM call. 4000 is already generous — values above increase cost and latency without proportional benefit.',
                 effects: ef('Higher = more complete reasoning','Higher = richer executive output','Low','Higher = slower & costlier') },
 
-              { section:'moe', field:'architect_pass_threshold', label:'Architect: PASS Threshold',
+            ]
+          },
+          {
+            title: '🏛️ MoE — Architect Critic (Layer 2A)',
+            subtitle: 'Always on — cannot be disabled individually. Assesses structural coverage, defence-in-depth, and zero-trust alignment.',
+            fields: [
+              { section:'moe', field:'architect_sensitivity', label:'Sensitivity',
                 vtype:'select',
                 options:[
-                  {v:'80', label:'80 — Lenient (easier to PASS)'},
-                  {v:'85', label:'85 — Moderate'},
-                  {v:'90', label:'90 — Default (recommended)', rec:true},
-                  {v:'95', label:'95 — Strict (harder to PASS)'},
+                  {v:'lenient',   label:'lenient — Fewer gaps flagged, higher tolerance for design trade-offs'},
+                  {v:'balanced',  label:'balanced — Standard thresholds (recommended)', rec:true},
+                  {v:'strict',    label:'strict — More gaps flagged, higher bar for design quality'},
                 ],
-                desc:'Architect critic score ≥ this = PASS (no confidence penalty). Must be above the minor-gap threshold.',
-                effects: ef('Higher = stricter architect scoring','Stricter = more gaps flagged','High','None') },
+                desc:'Controls how aggressively the Architect critic flags structural gaps. Lenient suits early-stage or exploratory architectures; strict suits production or regulated environments.',
+                effects: ef('Strict = more gaps flagged','Strict = lower confidence scores','High','None') },
+            ]
+          },
+          {
+            title: '🧪 MoE — Tester Critic (Layer 2B)',
+            subtitle: 'Always on — cannot be disabled individually. Validates MITRE ATT&CK technique mapping accuracy, control effectiveness, and configuration gaps.',
+            fields: [
+              { section:'moe', field:'tester_sensitivity', label:'Sensitivity',
+                vtype:'select',
+                options:[
+                  {v:'lenient',   label:'lenient — Fewer MITRE mapping gaps flagged'},
+                  {v:'balanced',  label:'balanced — Standard thresholds (recommended)', rec:true},
+                  {v:'strict',    label:'strict — Stricter MITRE coverage bar, more gaps flagged'},
+                ],
+                desc:'Controls how strictly the Coverage Auditor validates technique-to-control mappings. Lenient reduces noise on immature mappings; strict ensures comprehensive coverage on production assessments.',
+                effects: ef('Strict = more technique gaps flagged','Strict = lower confidence scores','High','None') },
+            ]
+          },
+          {
+            title: '🔴 MoE — Red Team Critic (Layer 2C)',
+            subtitle: 'Always on — cannot be disabled individually. Scores exploit feasibility across bypass paths and control evasion. Lower score = harder to exploit (better).',
+            fields: [
+              { section:'moe', field:'red_team_sensitivity', label:'Sensitivity',
+                vtype:'select',
+                options:[
+                  {v:'lenient',   label:'lenient — Only obvious, low-effort exploits trigger penalty'},
+                  {v:'balanced',  label:'balanced — Standard thresholds (recommended)', rec:true},
+                  {v:'strict',    label:'strict — Any realistic exploit path triggers penalty'},
+                ],
+                desc:'Controls how aggressively the Exploit Analyst penalises confidence. Lenient is appropriate for internal-only architectures with strong perimeter controls; strict is appropriate for internet-facing or high-value systems.',
+                effects: ef('Strict = more exploit paths penalised','Strict = lower confidence scores','Very High','None') },
+            ]
+          },
+          {
+            title: '🟣 MoE — Purple Team Critic (Layer 2D)',
+            subtitle: 'Detection depth and coverage gap analysis. Runs after Architect/Tester/Red Team and before Blackhat, feeding detection blindspot data to the cross-path analysis.',
+            fields: [
+              { section:'purple_team', field:'enabled', label:'Enable Purple Team Critic',
+                vtype:'select',
+                options:[
+                  {v:'true',  label:'true — Enabled (recommended)', rec:true},
+                  {v:'false', label:'false — Disabled'},
+                ],
+                desc:'When disabled, the core three critics (Architect, Coverage Auditor, Exploit Analyst) still run — the assessment is not broken. Purple Team adds detection-depth analysis: coverage gaps, blindspots, and ADR operability. Adds ~20–40s per run.',
+                effects: ef('Surfaces detection/response gaps','Disabling skips detection-depth layer only — core assessment unaffected','High','Adds LLM call per run') },
 
-              { section:'moe', field:'architect_minor_gap_threshold', label:'Architect: Minor Gap Cutoff',
+              { section:'purple_team', field:'detection_focus', label:'Detection Focus Mode',
                 vtype:'select',
                 options:[
-                  {v:'70', label:'70 — Lenient'},
-                  {v:'75', label:'75'},
-                  {v:'80', label:'80 — Default (recommended)', rec:true},
-                  {v:'85', label:'85 — Strict'},
+                  {v:'balanced',   label:'balanced — Coverage + Detection + ADR (recommended)', rec:true},
+                  {v:'detection',  label:'detection — Emphasise detection blindspots'},
+                  {v:'coverage',   label:'coverage — Emphasise unmapped technique coverage'},
+                  {v:'adr',        label:'adr — Emphasise ADR operability failures'},
                 ],
-                desc:'Architect score ≥ this (but < PASS) = MINOR_GAPS (−2% or −5% penalty). Must be between major-gap and PASS thresholds.',
-                effects: ef('Affects MINOR vs MAJOR boundary','Moderate','High','None') },
+                desc:'Controls which of the three Purple Team lenses is weighted most heavily in the critique.',
+                effects: ef('Shifts critique focus','Changes which gaps score highest','Moderate','None') },
+            ]
+          },
+          {
+            title: '⚔️ MoE — Blackhat Critic (Layer 2E)',
+            subtitle: 'Cross-path chain exploitation analysis. Finds attacker pivot routes across multiple attack paths. Runs last in the MoE chain — the supreme critic that sees all prior findings.',
+            fields: [
+              { section:'blackhat', field:'enabled', label:'Enable Blackhat Critic',
+                vtype:'select',
+                options:[
+                  {v:'true',  label:'true — Enabled (recommended)', rec:true},
+                  {v:'false', label:'false — Disabled'},
+                ],
+                desc:'When disabled, the core three critics (Architect, Coverage Auditor, Exploit Analyst) still run — the assessment is not broken. Blackhat adds cross-path chain analysis: pivot routes and chain exploits that single-path critics cannot see. Adds ~30–60s per run.',
+                effects: ef('Enables chain-risk detection','Disabling skips cross-path chain layer only — core assessment unaffected','High','Adds LLM call per run') },
 
-              { section:'moe', field:'architect_major_gap_threshold', label:'Architect: Major Gap Cutoff',
+              { section:'blackhat', field:'rubric_preset', label:'Scoring Rubric Preset',
                 vtype:'select',
                 options:[
-                  {v:'60', label:'60 — Very lenient'},
-                  {v:'65', label:'65'},
-                  {v:'70', label:'70 — Default (recommended)', rec:true},
-                  {v:'75', label:'75 — Strict'},
+                  {v:'balanced',          label:'balanced — Equal weight across dimensions (recommended)', rec:true},
+                  {v:'stealth_focused',   label:'stealth_focused — Emphasise evasion techniques (stealth ×40)'},
+                  {v:'chain_focused',     label:'chain_focused — Emphasise chaining feasibility (chain ×40)'},
+                  {v:'mitigation_stress', label:'mitigation_stress — Emphasise mitigation coverage gaps (coverage ×40)'},
                 ],
-                desc:'Architect score < this = MAJOR_GAPS (−10% confidence). Must be below the minor-gap threshold.',
-                effects: ef('Lower = more forgiving of architectural gaps','Moderate','High','None') },
-
-              { section:'moe', field:'tester_pass_threshold', label:'Tester: PASS Threshold',
-                vtype:'select',
-                options:[
-                  {v:'75', label:'75 — Lenient'},
-                  {v:'80', label:'80 — Moderate'},
-                  {v:'85', label:'85 — Default (recommended)', rec:true},
-                  {v:'90', label:'90 — Strict'},
-                ],
-                desc:'Tester score ≥ this = PASS. Higher = stricter MITRE technique validation required.',
-                effects: ef('Higher = stricter MITRE mapping','High','High','None') },
-
-              { section:'moe', field:'tester_minor_gap_threshold', label:'Tester: Minor Gap Cutoff',
-                vtype:'select',
-                options:[
-                  {v:'65', label:'65 — Lenient'},
-                  {v:'70', label:'70'},
-                  {v:'75', label:'75 — Default (recommended)', rec:true},
-                  {v:'80', label:'80 — Strict'},
-                ],
-                desc:'Tester score ≥ this (but < PASS) = MINOR_GAPS. Must be between major-gap and PASS thresholds.',
-                effects: ef('Moderate','Moderate','High','None') },
-
-              { section:'moe', field:'tester_major_gap_threshold', label:'Tester: Major Gap Cutoff',
-                vtype:'select',
-                options:[
-                  {v:'55', label:'55 — Very lenient'},
-                  {v:'60', label:'60'},
-                  {v:'65', label:'65 — Default (recommended)', rec:true},
-                  {v:'70', label:'70 — Strict'},
-                ],
-                desc:'Tester score < this = MAJOR_GAPS (−5% confidence). Must be below the minor-gap threshold.',
-                effects: ef('Lower = more forgiving of MITRE gaps','Moderate','High','None') },
-
-              { section:'moe', field:'red_team_hard_threshold', label:'Red Team: Hard-to-Exploit Limit',
-                vtype:'select',
-                options:[
-                  {v:'30', label:'30 — Strict (fewer PASS)'},
-                  {v:'35', label:'35'},
-                  {v:'40', label:'40 — Default (recommended)', rec:true},
-                  {v:'50', label:'50 — Lenient (more PASS)'},
-                ],
-                desc:'Red Team score ≤ this = PASS (hard to exploit, no penalty). Inverted scale — lower Red Team score = better security.',
-                effects: ef('Defines "hard to exploit" boundary','Changes confidence outcome','Very High','None') },
-
-              { section:'moe', field:'red_team_medium_threshold', label:'Red Team: Medium-Exploit Limit',
-                vtype:'select',
-                options:[
-                  {v:'45', label:'45 — Strict'},
-                  {v:'50', label:'50'},
-                  {v:'55', label:'55 — Default (recommended)', rec:true},
-                  {v:'60', label:'60 — Lenient'},
-                ],
-                desc:'Red Team score ≤ this (but > hard threshold) = MINOR_GAPS (−3% to −6%). Must be between hard and easy thresholds.',
-                effects: ef('Moderate','Moderate','Very High','None') },
-
-              { section:'moe', field:'red_team_easy_threshold', label:'Red Team: Easy-Exploit Limit',
-                vtype:'select',
-                options:[
-                  {v:'60', label:'60 — Strict (−10% penalty triggers early)'},
-                  {v:'65', label:'65'},
-                  {v:'70', label:'70 — Default (recommended)', rec:true},
-                  {v:'80', label:'80 — Lenient'},
-                ],
-                desc:'Red Team score > this = MAJOR_GAPS (−10% confidence). Must be above the medium threshold.',
-                effects: ef('Controls when −10% penalty triggers','Controls penalty severity','Very High','None') },
+                desc:'Named rubric preset. Controls how the Blackhat score is weighted across: cross-path chain feasibility, least-resistance path, stealth potential, and mitigation chain coverage.',
+                effects: ef('Shifts what type of risk the score reflects','Changes which findings score highest','High','None') },
             ]
           },
           {
@@ -6547,17 +7317,19 @@ class Dashboard {
                 : `<span style="color:#ef4444; font-weight:700;">❌ Not set</span>`;
         };
         const providerBodyId = 'cfg-section-body-provider';
+        const providerLsKey = 'cfg_open_' + providerBodyId;
+        const providerOpen = localStorage.getItem(providerLsKey) === 'true';
         const providerHtml = `
             <div class="card" style="margin-bottom:1rem;">
                 <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1.1rem; cursor:pointer; user-select:none;"
-                     onclick="(function(el){var b=document.getElementById('${providerBodyId}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';})(this)">
+                     onclick="(function(el){var b=document.getElementById('${providerBodyId}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';localStorage.setItem('${providerLsKey}',String(!open));})(this)">
                     <div>
                         <span style="font-weight:700; font-size:0.95rem;">🔑 LLM Provider Chain</span>
                         <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">Read-only — configure in .env</span>
                     </div>
-                    <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">▼</span>
+                    <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">${providerOpen ? '▼' : '▶'}</span>
                 </div>
-                <div id="${providerBodyId}" style="border-top:1px solid var(--border-color); padding:0.9rem 1.1rem;">
+                <div id="${providerBodyId}" style="display:${providerOpen ? 'block' : 'none'}; border-top:1px solid var(--border-color); padding:0.9rem 1.1rem;">
                     <table style="width:100%; border-collapse:collapse; font-size:0.84rem;">
                         <tr style="border-bottom:1px solid var(--border-color);">
                             <td style="padding:0.4rem 0; color:var(--text-secondary); width:210px; vertical-align:top;">Active chain</td>
@@ -6611,10 +7383,12 @@ class Dashboard {
         const qSec = data.moe || {}, qEng = data.engine || {}, qSys = data.system || {};
         const qSelStyle = `padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer; width:100%; box-sizing:border-box; color-scheme:dark;`;
         const qRow = (label, hint, inputHtml) => `
-            <div style="display:grid; grid-template-columns:minmax(160px,1fr) minmax(240px,320px) minmax(200px,2fr); gap:1rem; align-items:start; padding:0.65rem 1.1rem; border-bottom:1px solid var(--border-color);">
-                <div style="font-weight:600; font-size:0.84rem; color:var(--text-color);">${label}</div>
-                <div>${inputHtml}</div>
-                <div style="color:var(--text-secondary); font-size:0.78rem; line-height:1.5;">${hint}</div>
+            <div style="padding:0.65rem 1.1rem; border-bottom:1px solid var(--border-color);">
+                <div style="display:flex; align-items:baseline; justify-content:space-between; gap:1.25rem; flex-wrap:wrap;">
+                    <span style="font-weight:600; font-size:0.84rem; color:var(--text-color); min-width:140px; flex-shrink:0;">${label}</span>
+                    <div style="flex:1; min-width:260px; max-width:560px;">${inputHtml}</div>
+                </div>
+                <div style="color:var(--text-secondary); font-size:0.78rem; line-height:1.5; margin-top:0.35rem;">${hint}</div>
             </div>`;
         const mkSel = (section, field, opts, curVal) => {
             const oHtml = opts.map(o => `<option value="${o.v}" ${curVal===o.v?'selected':''}>${o.label}</option>`).join('');
@@ -6774,10 +7548,12 @@ class Dashboard {
                     }).join('');
                     inputHtml = `<select data-section="${f.section}" data-field="${f.field}" style="${inpStyle}" onchange="window.dashboard._onConfigFieldChange(this)">${opts}</select>`;
                 }
-                return `<div style="display:grid; grid-template-columns:minmax(160px,1fr) minmax(180px,240px) minmax(160px,2fr); gap:0.75rem; align-items:start; padding:0.5rem 1.1rem; border-bottom:1px solid var(--border-color)08;">
-                    <div style="font-weight:500; font-size:0.82rem; color:var(--text-color); padding-top:0.3rem;">${f.label}</div>
-                    <div>${inputHtml}</div>
-                    <div style="font-size:0.76rem; color:var(--text-secondary); line-height:1.5; padding-top:0.2rem;">${f.desc}</div>
+                return `<div style="padding:0.5rem 1.1rem; border-bottom:1px solid var(--border-color)08;">
+                    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:1.25rem; flex-wrap:wrap;">
+                        <span style="font-weight:500; font-size:0.82rem; color:var(--text-color); min-width:140px; flex-shrink:0;">${f.label}</span>
+                        <div style="flex:1; min-width:240px; max-width:520px;">${inputHtml}</div>
+                    </div>
+                    <div style="font-size:0.76rem; color:var(--text-secondary); line-height:1.5; margin-top:0.35rem;">${f.desc}</div>
                 </div>`;
             };
 
@@ -6828,17 +7604,19 @@ class Dashboard {
                 </div>`;
             }).join('');
         })();
+        const patternsLsKey = 'cfg_open_cfg-section-body-patterns';
+        const patternsOpen = localStorage.getItem(patternsLsKey) === 'true';
         const patternsCard = `
             <div class="card" data-cfg-cat="patterns" style="margin-bottom:1rem;">
                 <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1.1rem; cursor:pointer; user-select:none;"
-                     onclick="(function(el){var b=document.getElementById('cfg-section-body-patterns');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';})(this)">
+                     onclick="(function(el){var b=document.getElementById('cfg-section-body-patterns');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';localStorage.setItem('${patternsLsKey}',String(!open));})(this)">
                     <div>
                         <span style="font-weight:700; font-size:0.95rem;">🧩 Threat Patterns</span>
                         <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">Threat patterns activate automatically when matching architecture components are detected — read only</span>
                     </div>
-                    <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">▼</span>
+                    <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">${patternsOpen ? '▼' : '▶'}</span>
                 </div>
-                <div id="cfg-section-body-patterns" style="border-top:1px solid var(--border-color);">
+                <div id="cfg-section-body-patterns" style="display:${patternsOpen ? 'block' : 'none'}; border-top:1px solid var(--border-color);">
                     ${patToggleRows}
                 </div>
             </div>`;
@@ -6869,11 +7647,16 @@ class Dashboard {
 
         // Add data-cfg-cat attribute to each section card via wrapper
         const sectionCatMap = {
-            '🔍 Analysis Engine':        'engine',
-            '📊 Confidence Calculation': 'confidence',
-            '🧑‍🏫 MoE / Expert Review':  'moe',
-            '🔒 Residual Risk':          'residual_risk',
-            '🤖 LLM & System':           'llm_system',
+            '🔍 Analysis Engine':                        'engine',
+            '📊 Confidence Calculation':                 'confidence',
+            '🧑‍🏫 MoE — Base Settings':                 'moe',
+            '🏛️ MoE — Architect Critic (Layer 2A)':     'moe',
+            '🧪 MoE — Tester Critic (Layer 2B)':        'moe',
+            '🔴 MoE — Red Team Critic (Layer 2C)':      'moe',
+            '🟣 MoE — Purple Team Critic (Layer 2D)':   'moe',
+            '⚔️ MoE — Blackhat Critic (Layer 2E)':      'moe',
+            '🔒 Residual Risk':                          'residual_risk',
+            '🤖 LLM & System':                           'llm_system',
         };
 
         const sectionCards = sections.map(s => {
@@ -6960,30 +7743,34 @@ class Dashboard {
             }
 
             return `
-            <div style="display:grid; grid-template-columns:minmax(180px,1fr) minmax(240px,320px) minmax(220px,2fr); gap:1rem; align-items:start; padding:0.65rem 1.1rem; border-bottom:1px solid var(--border-color);">
-                <div>
-                    <div style="font-weight:600; font-size:0.84rem; color:var(--text-color);">${f.label}</div>
-                    <div style="${cs} margin-top:0.15rem;">Default: ${currentVal || '—'}</div>
+            <div style="padding:0.65rem 1.1rem; border-bottom:1px solid var(--border-color);">
+                <div style="display:flex; align-items:baseline; justify-content:space-between; gap:1.25rem; flex-wrap:wrap;">
+                    <div style="min-width:140px; flex-shrink:0;">
+                        <span style="font-weight:600; font-size:0.84rem; color:var(--text-color);">${f.label}</span>
+                        <span style="${cs} margin-left:0.6rem;">current: ${currentVal || '—'}</span>
+                    </div>
+                    <div style="flex:1; min-width:260px; max-width:560px;">${inputHtml}</div>
                 </div>
-                <div style="padding-top:0.05rem;">${inputHtml}</div>
-                <div style="${cs} padding-top:0.05rem; line-height:1.55;">
+                <div style="${cs} margin-top:0.4rem; line-height:1.55;">
                     ${f.desc}
                     ${f.effects || ''}
                 </div>
             </div>`;
         }).join('');
 
+        const lsKey = 'cfg_open_' + sectionId;
+        const isOpen = localStorage.getItem(lsKey) === 'true';
         return `
         <div class="card" style="margin-bottom:1rem;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1.1rem; cursor:pointer; user-select:none;"
-                 onclick="(function(el){var b=document.getElementById('${sectionId}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';})(this)">
+                 onclick="(function(el){var b=document.getElementById('${sectionId}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';localStorage.setItem('${lsKey}',String(!open));})(this)">
                 <div>
                     <span style="font-weight:700; font-size:0.95rem;">${sectionDef.title}</span>
                     <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">${sectionDef.subtitle}</span>
                 </div>
-                <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">▼</span>
+                <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">${isOpen ? '▼' : '▶'}</span>
             </div>
-            <div id="${sectionId}" style="border-top:1px solid var(--border-color);">
+            <div id="${sectionId}" style="display:${isOpen ? 'block' : 'none'}; border-top:1px solid var(--border-color);">
                 ${rows}
             </div>
         </div>`;
