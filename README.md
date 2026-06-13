@@ -8,9 +8,11 @@ Upload a Mermaid (`.mmd`) architecture diagram and receive a full, MITRE-mapped 
 
 - Parses your architecture diagram and maps every component and data flow to MITRE ATT&CK techniques, generating prioritized security controls with before/after diagrams.
 - Runs AI/ML threat pattern detection using the ARC Framework and MITRE ATLAS (AI/ML techniques) on top of the deterministic RAPIDS threat engine. ARC control recommendations are annotated with category badges (SAF, SEC, PRIV, etc.) and linked to ATLAS techniques with full name resolution.
+- Generates **user journey co-intelligence** (StoryCaster) — the diagram is treated as a knowledge graph. Every attack path is cross-referenced against the legitimate user workflows that traverse the same route. Corroborated paths (real users follow this path) are distinguished from post-compromise pivots (no user baseline, attacker must already have a foothold). This signal flows into all five MoE critics, the synthesis tier recommendations, and every generated report — making findings concrete: "an end user follows this exact path in normal use" vs "no one follows this path legitimately."
+- Enriches attack paths with **real-world threat intelligence** — MITRE ATT&CK intrusion-set (APT group) attribution by technique overlap, CTID KEV→ATT&CK CVE mapping cross-referenced against CISA Known Exploited Vulnerabilities (ransomware flag, active exploitation status). APT and CVE chips appear in the dashboard with hover popovers linking to MITRE, NVD, and CISA KEV.
 - Enriches controls with the Singapore Government ICT&SS Security Standards for Providers (SSP) baseline — selectable profile (Low/Medium/High Risk Cloud, On-Premises, Generative AI, Digital Services, Sandbox) surfaces the mandatory controls your architecture must meet.
 - Calculates architecture-sensitive confidence: complex architectures start with a lower base confidence that recovers only when coverage signals (control coverage, validation pass rate, attack path depth) prove the surface was thoroughly mapped. Final confidence is reported as a `confidence_breakdown` object.
-- Validates findings through a Mixture of Experts (MoE) review — five critic agents running in a fixed sequence: Architect (2A) → Coverage Auditor (2B) → Exploit Analyst (2C) → Purple Team (2D) → Blackhat (2E). The core three (2A–2C) always run; Purple Team and Blackhat are optional toggles. Blackhat is the supreme critic — it sees all prior critique output and performs cross-path chain exploitation and pivot-diverge analysis. Produces 16 output files including an executive summary, technical report, 8-week action plan, and three phased architecture diagrams.
+- Validates findings through a Mixture of Experts (MoE) review — five critic agents running in a fixed sequence: Architect (2A) → Coverage Auditor (2B) → Exploit Analyst (2C) → Purple Team (2D) → Blackhat (2E). The core three (2A–2C) always run; Purple Team and Blackhat are optional toggles. Blackhat is the supreme critic — it sees all prior critique output and performs cross-path chain exploitation and pivot-diverge analysis. Each critic receives a tailored slice of user journey context relevant to its rubric. Produces output files including an executive summary, technical report, 8-week action plan, and three phased architecture diagrams — all annotated with user journey context.
 
 ## Quick Start
 
@@ -53,7 +55,11 @@ ThreatAssessor parses the Mermaid diagram into a graph, then the RAPIDS engine w
 
 Confidence is architecture-sensitive: a complex multi-tier architecture starts at a lower base than a small demo diagram, recovering toward the ceiling only when control coverage, validation pass rate, and attack path depth prove the surface was thoroughly mapped.
 
-When Expert Review is enabled, up to five MoE critic agents audit the findings in sequence. The core three (Architect, Coverage Auditor, Exploit Analyst) always run. Purple Team adds detection-depth and SOC operability analysis across three lenses (coverage, assume-breach, ADR operability). Blackhat — the supreme critic — runs last and performs cross-path chain exploitation, surfacing pivot-diverge chains as synthetic BH-N attack paths in the Threat Model; it short-circuits if fewer than two attack paths are present. The synthesis step is grounded against the MITRE ATT&CK database so technique-ID disputes between critics are resolved against authoritative names. The dashboard history dropdown lets you reload any past analysis without re-running the pipeline.
+When Expert Review is enabled, up to five MoE critic agents audit the findings in sequence. The core three (Architect, Coverage Auditor, Exploit Analyst) always run. Purple Team adds detection-depth and SOC operability analysis across three lenses (coverage, assume-breach, ADR operability). Blackhat — the supreme critic — runs last and performs cross-path chain exploitation, surfacing pivot-diverge chains as synthetic BH-N attack paths in the Threat Model; it short-circuits if fewer than two attack paths are present.
+
+Before any critic runs, StoryCaster generates user journey stories from the architecture graph — classifying which attack paths are corroborated by real user workflows and which are post-compromise pivots. Each critic receives a tailored slice of this context: the Architect checks controls align to dominant flow types; the Tester validates story-derived rationales; the Exploit Analyst withholds anomaly-detection credit on corroborated paths; the Purple Team applies path-aware detection strategy; the Blackhat elevates stealth scores at pivot nodes that share a corroborated path. The synthesis step applies deterministic tier-sharpening rules: controls on post-compromise paths always land in Quick Win (no detection fallback), while corroborated paths get preventive controls in Quick Win and detection controls with baseline precision in Recommended.
+
+The synthesis step is grounded against the MITRE ATT&CK database so technique-ID disputes between critics are resolved against authoritative names. The dashboard history dropdown lets you reload any past analysis without re-running the pipeline.
 
 ## API usage
 
@@ -93,15 +99,22 @@ Set `API_KEY` in your `.env` file; the server reads it on startup.
 chatbot/          Core analysis engine and REST API
   api/            FastAPI application (app.py, routes/, models/, static/)
   modules/        Threat analysis, RAPIDS, MoE agents, SSP mapper, self-validation
+    story_caster.py          User journey co-generation (StoryCaster)
+    threat_scene_deepener.py APT attribution + KEV CVE enrichment
+    kev_helper.py            CTID + CISA KEV singleton loader
+    agents/critics/          Five MoE critic agents (Architect, Tester, RedTeam, Purple, Blackhat)
+    agents/orchestrators/    MoE synthesis + tier sharpening
   services/       Thread-safe service layer
   data/
     arc/          ARC Framework data (controls.yaml, risks.yaml) — in repo
     atlas/        MITRE ATLAS YAML corpus — in repo
     ssp/          Singapore Government SSP catalog JSON — in repo
+    kev/          CTID + CISA KEV indexes — not in git (run update-kev.sh to fetch)
     *.json        MITRE ATT&CK + embeddings — not in git (large files)
 agentic/          Multi-provider LLM client (OpenRouter, Bedrock)
 scripts/          Server lifecycle, validation, ingest, doc generation
   api/            api_start/stop/restart/status scripts
+  data/           fetch_kev.py — download CTID + CISA KEV indexes
   ingest/         scrape_ssp_catalog.py — refresh SSP data from source
   integration/    test_openrouter.py and other integration tests
   validation/     check_orphans.py, validate_llm_config.py
