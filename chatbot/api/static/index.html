@@ -135,6 +135,9 @@
                             <button class="overview-subtab active" data-subtab="expert-consensus" style="padding: 0.625rem 1.25rem; background: var(--primary-color); color: var(--button-text-color); border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
                                 🔍 Expert Consensus
                             </button>
+                            <button class="overview-subtab" id="ov-journeys-tab" data-subtab="user-journeys" style="padding: 0.625rem 1.25rem; background: transparent; color: var(--text-color); border: none; border-bottom: 2px solid transparent; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
+                                🗺️ User Journeys
+                            </button>
                             <button class="overview-subtab" data-subtab="arch-diagram" style="padding: 0.625rem 1.25rem; background: transparent; color: var(--text-color); border: none; border-bottom: 2px solid transparent; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
                                 🏗️ Architecture Diagram
                             </button>
@@ -142,6 +145,11 @@
                         <div id="overview-expert-consensus" class="overview-subtab-content active" style="display: block;">
                             <div id="expert-consensus-strip">
                                 <p class="placeholder" style="font-size:0.85rem;">Run Expert Review to see critic consensus here.</p>
+                            </div>
+                        </div>
+                        <div id="overview-user-journeys" class="overview-subtab-content" style="display: none;">
+                            <div id="overview-journeys-content">
+                                <p class="placeholder" style="font-size:0.85rem;">Run analysis to see user journey coverage.</p>
                             </div>
                         </div>
                         <div id="overview-arch-diagram" class="overview-subtab-content" style="display: none;">
@@ -262,8 +270,17 @@
                                     <div id="tm-overview-content"></div>
                                 </div>
 
-                                <!-- AP list -->
+                                <!-- Left pane tab strip: Attack Paths | Journeys -->
+                                <div id="tm-left-tabs" style="display:flex; border-bottom:1px solid var(--border-color); flex-shrink:0;">
+                                    <button id="tm-tab-aps" onclick="window.dashboard._tmSwitchLeftTab('aps')" style="flex:1; padding:0.45rem 0; font-size:0.76rem; font-weight:600; border:none; border-bottom:2px solid var(--primary-color); background:transparent; color:var(--primary-color); cursor:pointer;">Attack Paths</button>
+                                    <button id="tm-tab-journeys" onclick="window.dashboard._tmSwitchLeftTab('journeys')" style="flex:1; padding:0.45rem 0; font-size:0.76rem; font-weight:600; border:none; border-bottom:2px solid transparent; background:transparent; color:var(--text-tertiary); cursor:pointer;">Journeys</button>
+                                </div>
+
+                                <!-- AP list (default visible) -->
                                 <div id="tm-ap-list" style="flex:1; overflow-y:auto; padding:0.5rem 0;"></div>
+
+                                <!-- Journey list (hidden until tab switched) -->
+                                <div id="tm-journey-list" style="flex:1; overflow-y:auto; padding:0.5rem 0; display:none;"></div>
 
                                 <!-- Blackhat card -->
                                 <div id="tm-blackhat-card" style="display:none; border-top:1px solid var(--border-color); padding:0.75rem 1rem; font-size:0.8rem; cursor:pointer; background:var(--card-bg);" onclick="window.dashboard._tmSelectBlackhat()">

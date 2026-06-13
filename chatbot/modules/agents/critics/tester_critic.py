@@ -365,6 +365,32 @@ def format_architect_roadmap(roadmap: List[Dict]) -> str:
     return "\n".join(lines)
 
 
+def _format_tester_story_context(artifacts: ArtifactSet) -> str:
+    """
+    Inject story-flow context into the Tester rationale-validation rubric.
+    AP rationales are now story-derived — they describe real data/control flow,
+    not just topology. The Tester should validate that rationale prose matches
+    the actual edge types and roles present.
+    """
+    si = artifacts.indexes.get("story_index")
+    if not si or (not si.get("corroborated") and not si.get("attacker_only")):
+        return ""
+
+    lines = ["USER STORY CONTEXT (for rationale validation):"]
+    lines.append(f"  {si['summary']}")
+    lines.append("  NOTE: AP rationales are story-derived — validate that:")
+    lines.append("    · Corroborated path rationales reference the user role and flow action (not just hops/topology).")
+    lines.append("    · Attacker-only path rationales say 'no legitimate user traversal' — confirm no user story was missed.")
+
+    attacker_only = si.get("attacker_only", [])
+    if attacker_only:
+        for j in attacker_only:
+            path_str = " → ".join(j.get("path_labels", j.get("path", [])))
+            lines.append(f"    · {j.get('attack_path_id','?')} (attacker-only): {path_str}")
+
+    return "\n".join(lines)
+
+
 def create_tester_prompt(
     artifacts: ArtifactSet,
     architect_critique: Optional['CritiqueScore'] = None
@@ -424,6 +450,8 @@ TIER 1: CRITICAL ARTIFACTS
 
 ATTACK PATHS ({attack_paths['count']} paths):
 {format_attack_paths_summary(attack_paths)}
+
+{_format_tester_story_context(artifacts)}
 
 CONTROLS ({len(controls)} controls):
 {format_controls_summary(controls)}

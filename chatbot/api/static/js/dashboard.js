@@ -52,6 +52,113 @@ class Dashboard {
         if (localStorage.getItem('tm_api_key')) {
             this.loadConfigTab();
         }
+
+        // Shared hover popover for intel chips (APT/CVE)
+        this._initChipTip();
+    }
+
+    _initChipTip() {
+        this._chipTipData = new Map(); // chip-id → {type, data}
+        this._chipTipSeq = 0;
+
+        const tip = document.createElement('div');
+        tip.id = 'chip-tip';
+        tip.style.cssText = [
+            'position:fixed', 'z-index:9999', 'display:none',
+            'max-width:300px', 'padding:0.65rem 0.85rem',
+            'background:var(--main-bg,#1a1a2e)', 'border:1px solid var(--border-color,#333)',
+            'border-radius:8px', 'box-shadow:0 4px 18px rgba(0,0,0,0.45)',
+            'font-size:0.77rem', 'line-height:1.55', 'pointer-events:none',
+        ].join(';');
+        document.body.appendChild(tip);
+        this._chipTip = tip;
+
+        document.addEventListener('mouseover', e => {
+            const chip = e.target.closest('.intel-chip');
+            if (!chip) return;
+            const d = this._chipTipData.get(chip.dataset.tipId);
+            if (!d) return;
+            tip.innerHTML = d.type === 'apt' ? this._aptTipHtml(d.data) : this._cveTipHtml(d.data);
+            tip.style.display = 'block';
+            this._positionChipTip(e);
+        });
+        document.addEventListener('mousemove', e => {
+            if (this._chipTip.style.display === 'none') return;
+            if (!e.target.closest('.intel-chip')) { this._chipTip.style.display = 'none'; return; }
+            this._positionChipTip(e);
+        });
+        document.addEventListener('mouseout', e => {
+            if (!e.target.closest('.intel-chip')) return;
+            if (!e.relatedTarget || !e.relatedTarget.closest?.('.intel-chip')) {
+                this._chipTip.style.display = 'none';
+            }
+        });
+    }
+
+    _positionChipTip(e) {
+        const tip = this._chipTip;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        let x = e.clientX + 14, y = e.clientY + 14;
+        tip.style.left = '-9999px'; tip.style.top = '-9999px'; tip.style.display = 'block';
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        if (x + tw > vw - 8) x = e.clientX - tw - 10;
+        if (y + th > vh - 8) y = e.clientY - th - 10;
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+    }
+
+    _aptTipHtml(g) {
+        const aliases = (g.aliases || []).filter(a => a !== g.group_name);
+        const aliasStr = aliases.length ? `<div style="color:var(--text-tertiary);font-size:0.72rem;">aka ${aliases.slice(0,3).map(a=>this._esc(a)).join(', ')}</div>` : '';
+        const techs = (g.matched_techniques || []);
+        const techStr = techs.length
+            ? `<div style="margin-top:0.4rem;"><span style="color:var(--text-tertiary);font-size:0.7rem;">Matched techniques</span><br><span style="font-family:monospace;font-size:0.72rem;">${techs.map(t=>this._esc(t)).join(' · ')}</span></div>`
+            : '';
+        const gid = g.group_id || '';
+        const mitreLink = gid ? `<div style="margin-top:0.5rem;"><a href="https://attack.mitre.org/groups/${this._esc(gid)}/" target="_blank" style="color:var(--primary-color);font-size:0.72rem;text-decoration:none;">→ MITRE ATT&CK ↗</a></div>` : '';
+        return `<div>
+            <b style="color:#a855f7;">${this._esc(g.group_name)}</b>&nbsp;<span style="color:var(--text-tertiary);font-size:0.72rem;">${this._esc(gid)}</span>
+            ${aliasStr}
+            <div style="margin-top:0.3rem;color:var(--text-secondary);">Technique overlap: <b>${g.technique_overlap || 0}</b></div>
+            ${techStr}
+            ${mitreLink}
+        </div>`;
+    }
+
+    _cveTipHtml(d) {
+        const nvdLink = `<a href="https://nvd.nist.gov/vuln/detail/${this._esc(d.cve_id)}" target="_blank" style="color:var(--primary-color);font-size:0.72rem;text-decoration:none;">→ NVD ↗</a>`;
+        if (!d.isKev) {
+            return `<div>
+                <b style="font-family:monospace;">${this._esc(d.cve_id)}</b>
+                <div style="color:var(--text-tertiary);margin-top:0.25rem;font-size:0.72rem;">Technique-matched · Not confirmed in CISA KEV</div>
+                <div style="margin-top:0.45rem;">${nvdLink}</div>
+            </div>`;
+        }
+        const h = d.kevHit || {};
+        const ransomBadge = h.ransomware ? `<span style="padding:0.1rem 0.35rem;background:#DC143C22;color:#DC143C;border-radius:3px;font-size:0.7rem;margin-left:0.35rem;">🔴 Ransomware</span>` : '';
+        const vendor = [h.vendor, h.product].filter(Boolean).join(' — ');
+        const capGroup = h.capability_group ? `<div style="color:var(--text-tertiary);font-size:0.71rem;">Capability: ${this._esc(h.capability_group)}</div>` : '';
+        const cisaLink = `<a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" style="color:#FF8C00;font-size:0.72rem;text-decoration:none;">→ CISA KEV ↗</a>`;
+        return `<div>
+            <b style="font-family:monospace;">${this._esc(d.cve_id)}</b>${ransomBadge}
+            <div style="margin-top:0.3rem;color:var(--text-secondary);">${this._esc(vendor)}</div>
+            ${capGroup}
+            <div style="color:var(--text-tertiary);font-size:0.72rem;margin-top:0.2rem;">Added to KEV: ${this._esc(h.date_added || '—')}</div>
+            <div style="margin-top:0.45rem;display:flex;gap:0.75rem;">${nvdLink}${cisaLink}</div>
+        </div>`;
+    }
+
+    _bindChipTips(container) {
+        container.querySelectorAll('.intel-chip').forEach(chip => {
+            if (chip.dataset.tipId) return; // already bound
+            const id = 'ct' + (++this._chipTipSeq);
+            chip.dataset.tipId = id;
+            // data-tip-type and data-tip-json set at render time
+            const raw = chip.dataset.tipJson;
+            if (raw) {
+                try { this._chipTipData.set(id, JSON.parse(raw)); } catch(_) {}
+                delete chip.dataset.tipJson; // keep DOM clean
+            }
+        });
     }
 
     _pollReadiness() {
@@ -175,6 +282,11 @@ class Dashboard {
                 if (subtabName === 'arch-diagram' && (this.uploadedFile || this.originalMmdContent) && !this.diagramRendered) {
                     await this.renderArchitectureDiagram();
                     this.diagramRendered = true;
+                }
+
+                // Render user journeys overview when switched to
+                if (subtabName === 'user-journeys') {
+                    this._renderOverviewJourneys();
                 }
             });
         });
@@ -825,6 +937,7 @@ class Dashboard {
         this.renderThreatChart();
         this.diagramRendered = false;
         this.renderOverviewDashboard();
+        this._renderOverviewJourneys();
     }
 
     async renderOverviewDashboard() {
@@ -1238,6 +1351,27 @@ class Dashboard {
                         const sc = sl === 0 ? 'var(--danger-color)' : sl === 1 ? 'var(--warning-color)' : 'var(--text-tertiary)';
                         sspMiniPill = `<span style="padding:1px 4px; background:${sc}15; border:1px solid ${sc}44; border-radius:3px; font-size:0.62rem; font-weight:700; color:${sc};" title="${sspCtx.primary.title}">🏛 L${sl}</span>`;
                     }
+                    // Find most impactful corroborated journey covered by this control
+                    const coveredApIndices = c.attack_paths || [];
+                    const coveredAps = coveredApIndices.map(idx => (attackPaths[idx] || {}).id).filter(Boolean);
+                    let topJourneyHtml = '';
+                    if (coveredAps.length && this._tmJourneyByAp) {
+                        const covJourneys = coveredAps
+                            .map(id => this._tmJourneyByAp[id])
+                            .filter(j => j && !j.no_user_story);
+                        if (covJourneys.length) {
+                            const j = covJourneys[0]; // first = highest-ranked AP
+                            const rIcon = {'end user':'👤','system administrator':'🔧','partner/third party':'🤝','API consumer':'⚙️','web user':'🌐','mobile user':'📱','customer':'👥'}[j.user_role] || '👤';
+                            topJourneyHtml = `
+                            <div style="margin-top:0.4rem; padding:0.35rem 0.5rem; background:var(--main-bg); border-radius:4px; border-left:2px solid #32CD3255; font-size:0.72rem; color:var(--text-secondary);">
+                                <span style="color:#32CD32; font-size:0.67rem;">✓ Protects journey:</span>
+                                <span style="margin-left:0.3rem;">${rIcon} ${this._esc(j.user_role||'user')} — ${this._esc(j.actor_label||'?')} → ${this._esc(j.resource_label||'?')}</span>
+                                <button onclick="window.dashboard.switchToThreatModelJourneys()" style="margin-left:0.5rem; font-size:0.65rem; padding:0 0.3rem; border:1px solid var(--border-color); border-radius:3px; background:transparent; color:var(--primary-color); cursor:pointer;">details →</button>
+                            </div>`;
+                        } else if (coveredAps.some(id => (this._tmJourneyByAp||{})[id]?.no_user_story)) {
+                            topJourneyHtml = `<div style="margin-top:0.4rem; font-size:0.7rem; color:#FF8C00; padding:0.3rem 0.5rem; background:#FF8C0008; border-radius:4px; border-left:2px solid #FF8C0044;">⚠ Covers post-compromise path — network controls needed, not user behaviour</div>`;
+                        }
+                    }
                     return `
                 <div style="padding:0.625rem 0; border-bottom:1px solid var(--border-color);">
                     <div style="display:flex; align-items:flex-start; gap:0.5rem;">
@@ -1251,6 +1385,7 @@ class Dashboard {
                                 ${sspMiniPill}
                                 <span style="margin-left:auto; padding:0.1rem 0.3rem; background:${priColor}22; color:${priColor}; border-radius:3px; font-size:0.65rem; font-weight:700;">${c.priority}</span>
                             </div>
+                            ${topJourneyHtml}
                         </div>
                     </div>
                 </div>`}).join('') : '<div style="color:var(--text-tertiary); font-size:0.875rem;">No critical actions identified</div>'}
@@ -1631,7 +1766,117 @@ class Dashboard {
                 </div>`;
         }
 
+        // Story coverage chip
+        let storyCoverageHtml = '';
+        const sc = this._tmStoryCoverage;
+        if (sc !== null && sc !== undefined) {
+            const pct = Math.round(sc * 100);
+            const scColor = pct >= 80 ? '#32CD32' : pct >= 50 ? '#FF8C00' : '#DC143C';
+            const atkOnly = (this._tmJourneys || []).filter(j => j.no_user_story).length;
+            const tip = `${pct}% of attack paths corroborated by user journeys. ${atkOnly} attacker-only path(s) — no behavioral baseline.`;
+            storyCoverageHtml = `
+                <div style="display:flex; align-items:center; gap:0.6rem; padding:0.45rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px; margin-bottom:0.7rem; font-size:0.76rem; flex-wrap:wrap;">
+                    <span style="color:var(--text-tertiary); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Story Coverage</span>
+                    <div style="flex:1; min-width:80px; height:5px; background:var(--border-color); border-radius:3px; overflow:hidden;">
+                        <div style="height:100%; width:${pct}%; background:${scColor}; border-radius:3px;"></div>
+                    </div>
+                    <span style="font-weight:700; color:${scColor}; cursor:help;" title="${this._esc(tip)}">${pct}%</span>
+                    ${atkOnly ? `<span style="font-size:0.67rem; padding:0.1rem 0.35rem; background:#FF8C0018; color:#FF8C00; border:1px solid #FF8C0033; border-radius:3px;" title="${atkOnly} path(s) have no user baseline — anomaly detection blind spot">⚠ ${atkOnly} no-baseline</span>` : ''}
+                    <span style="font-size:0.67rem; color:var(--text-tertiary);">↗ <a href="#" onclick="window.dashboard.switchToThreatModelJourneys()" style="color:var(--primary-color); text-decoration:none;">View journeys</a></span>
+                </div>`;
+        }
+
         strip.innerHTML = legendHtml + cardsHtml + tradeoffNote;
+    }
+
+    switchToThreatModelJourneys() {
+        this.switchTab('threat-model');
+        setTimeout(() => this._tmSwitchLeftTab('journeys'), 150);
+    }
+
+    _renderOverviewJourneys() {
+        const container = document.getElementById('overview-journeys-content');
+        if (!container) return;
+
+        // Ensure journey data is populated
+        const gt = this.analysisData && this.analysisData.analysis;
+        if (!gt) {
+            container.innerHTML = '<p class="placeholder" style="font-size:0.85rem;">Run analysis to see user journey coverage.</p>';
+            return;
+        }
+        const us = gt.user_stories || {};
+        const journeys = us.journeys || [];
+        if (!journeys.length) {
+            container.innerHTML = '<p class="placeholder" style="font-size:0.85rem; color:var(--text-tertiary);">No user stories generated — re-run analysis to populate journey data.</p>';
+            return;
+        }
+
+        // Ensure _tmJourneyByAp is populated
+        if (!this._tmJourneyByAp) {
+            this._tmJourneys = journeys;
+            this._tmJourneyByAp = {};
+            journeys.forEach(j => { if (j.attack_path_id) this._tmJourneyByAp[j.attack_path_id] = j; });
+        }
+
+        const corr = journeys.filter(j => !j.no_user_story);
+        const atk  = journeys.filter(j =>  j.no_user_story);
+
+        const roleIcon = {'end user':'👤','system administrator':'🔧','partner/third party':'🤝',
+                          'API consumer':'⚙️','web user':'🌐','mobile user':'📱','customer':'👥'};
+
+        // Legend + summary header — no bar
+        let html = `
+        <div style="margin-bottom:1rem; padding:0.6rem 0.9rem; background:var(--nav-hover-bg); border-radius:8px; font-size:0.75rem; color:var(--text-secondary); display:flex; align-items:center; flex-wrap:wrap; gap:1rem;">
+            <span style="font-weight:700; color:var(--text-color);">${journeys.length} attack path${journeys.length !== 1 ? 's' : ''}</span>
+            <span><span style="color:#32CD32; font-weight:700;">✓ Corroborated (${corr.length})</span> — real user follows this path. Behavioural detection applies.</span>
+            ${atk.length ? `<span><span style="color:#FF8C00; font-weight:700;">⚠ Post-compromise (${atk.length})</span> — attacker-only pivot. Needs network controls.</span>` : ''}
+            <button onclick="window.dashboard.switchToThreatModelJourneys()" style="margin-left:auto; font-size:0.72rem; padding:0.2rem 0.6rem; border:1px solid var(--primary-color); border-radius:5px; background:transparent; color:var(--primary-color); cursor:pointer; white-space:nowrap;">Full details →</button>
+        </div>`;
+
+        // Journey cards — compact, 2-column grid
+        html += `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:0.75rem; margin-bottom:1rem;">`;
+
+        for (const j of journeys) {
+            if (j.no_user_story) {
+                const pathStr = (j.path_labels || j.path || []).join(' → ');
+                html += `
+                <div style="padding:0.75rem 0.9rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; border-left:3px solid #FF8C00;">
+                    <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.35rem;">
+                        <span style="font-size:0.7rem; color:#FF8C00; font-weight:700;">⚠ ${this._esc(j.attack_path_id||j.story_id||'?')}</span>
+                        <span style="font-size:0.63rem; padding:0.1rem 0.3rem; background:#FF8C0018; color:#FF8C00; border:1px solid #FF8C0033; border-radius:3px; margin-left:auto;">post-compromise</span>
+                    </div>
+                    <div style="font-size:0.75rem; color:var(--text-tertiary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${this._esc(pathStr)}">${this._esc(pathStr)}</div>
+                    <div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.25rem; font-style:italic;">No user baseline — detection needs network-layer controls</div>
+                    <button onclick="window.dashboard.switchTab('attacks')" style="margin-top:0.5rem; font-size:0.7rem; padding:0.2rem 0.5rem; border:1px solid var(--border-color); border-radius:4px; background:transparent; color:var(--text-secondary); cursor:pointer;">View in Threat Paths →</button>
+                </div>`;
+            } else {
+                const icon = roleIcon[j.user_role] || '👤';
+                const tactics = (j.threat_relevance || []).slice(0, 2).join(' · ');
+                html += `
+                <div style="padding:0.75rem 0.9rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; border-left:3px solid #32CD32;">
+                    <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.35rem;">
+                        <span style="font-size:0.8rem;">${icon}</span>
+                        <span style="font-size:0.8rem; font-weight:600; color:var(--text-color);">${this._esc(j.user_role||'user')}</span>
+                        <span style="font-size:0.63rem; padding:0.1rem 0.3rem; background:#32CD3218; color:#32CD32; border:1px solid #32CD3233; border-radius:3px; margin-left:auto;">✓ ${this._esc(j.story_id||'')}</span>
+                    </div>
+                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.2rem;"><b>${this._esc(j.actor_label||'?')}</b> → <b>${this._esc(j.resource_label||'?')}</b></div>
+                    <div style="font-size:0.76rem; color:var(--text-secondary); line-height:1.5; margin-bottom:0.3rem;">${this._esc(j.story_text||'').slice(0, 140)}${(j.story_text||'').length > 140 ? '…' : ''}</div>
+                    ${tactics ? `<div style="font-size:0.67rem; color:#a855f7; margin-bottom:0.35rem;">${this._esc(tactics)}</div>` : ''}
+                    <button onclick="window.dashboard.switchTab('attacks');window.dashboard.showAttackPathDetailById('${this._esc(j.attack_path_id||'')}')" style="font-size:0.7rem; padding:0.2rem 0.5rem; border:1px solid var(--border-color); border-radius:4px; background:transparent; color:var(--text-secondary); cursor:pointer;">View path details →</button>
+                </div>`;
+            }
+        }
+        html += `</div>`;
+
+        container.innerHTML = html;
+    }
+
+    showAttackPathDetailById(apId) {
+        // Navigate to the Threat Paths tab and show detail for a specific AP ID
+        const ap = (this.attackPaths || []).find(a => a.id === apId);
+        if (ap) {
+            setTimeout(() => this.showAttackPathDetail(ap), 200);
+        }
     }
 
     loadPatternsTab() {
@@ -1679,6 +1924,15 @@ class Dashboard {
         // Attack paths visualization
         if (!this.attackPaths || !this.analysisData) return;
 
+        // Ensure journey lookup is populated even if Threat Model tab was never opened
+        if (!this._tmJourneyByAp) {
+            const gt = this.analysisData.analysis || {};
+            const us = gt.user_stories || {};
+            this._tmJourneys = us.journeys || [];
+            this._tmJourneyByAp = {};
+            this._tmJourneys.forEach(j => { if (j.attack_path_id) this._tmJourneyByAp[j.attack_path_id] = j; });
+        }
+
         const listContainer = document.getElementById('attack-paths-list');
 
         // Sort attack paths by ID numerically
@@ -1719,10 +1973,21 @@ class Dashboard {
             // Create summary section (collapsed by default)
             const summaryId = `summary-${path.id}`;
 
+            // Corroboration badge from StoryCaster
+            const apJourney = (this._tmJourneyByAp || {})[path.id];
+            let apCorrBadge = '';
+            if (apJourney) {
+                apCorrBadge = apJourney.no_user_story
+                    ? `<span title="No normal user follows this path. Post-compromise pivot — detection needs network controls." style="font-size:0.63rem; padding:0.1rem 0.3rem; border-radius:3px; background:#FF8C0018; color:#FF8C00; border:1px solid #FF8C0033; margin-left:0.4rem; cursor:help;">⚠ post-compromise</span>`
+                    : `<span title="A real ${apJourney.user_role||'user'} follows this path in normal use. Detection can use behavioural baselines." style="font-size:0.63rem; padding:0.1rem 0.3rem; border-radius:3px; background:#32CD3218; color:#32CD32; border:1px solid #32CD3233; margin-left:0.4rem; cursor:help;">✓ ${this._esc(apJourney.user_role||'user')}</span>`;
+            }
+
             item.innerHTML = `
                 <div class="path-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
                     <div style="flex: 1;">
-                        <strong style="font-size: 1.125rem;">${path.id}</strong>
+                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.2rem;">
+                            <strong style="font-size: 1.125rem;">${path.id}</strong>${apCorrBadge}
+                        </div>
                         <div style="color: var(--text-secondary); margin-top: 0.25rem;">
                             ${path.entry} → ${path.target}
                         </div>
@@ -1859,6 +2124,45 @@ class Dashboard {
             `;
         }).join('');
 
+        // Journey story card for this path
+        const detailJourney = (this._tmJourneyByAp || {})[path.id];
+        let journeyCardHtml = '';
+        if (detailJourney && !detailJourney.no_user_story) {
+            const roleIcon = {'end user':'👤','system administrator':'🔧','partner/third party':'🤝','API consumer':'⚙️','web user':'🌐','mobile user':'📱','customer':'👥'};
+            const dIcon = roleIcon[detailJourney.user_role] || '👤';
+            const exploitSteps = (detailJourney.exploitation_chain || '').split('. ').filter(Boolean);
+            const tacticPills = (detailJourney.threat_relevance || []).map(t =>
+                `<span style="padding:0.15rem 0.4rem; background:#a855f711; color:#a855f7; border:1px solid #a855f733; border-radius:4px; font-size:0.75rem;">${this._esc(t)}</span>`
+            ).join(' ');
+            journeyCardHtml = `
+                <div style="margin-bottom:1.5rem; padding:0.85rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border-left:4px solid #32CD32;">
+                    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+                        <span style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); flex:1;">User Journey</span>
+                        <span style="padding:0.15rem 0.45rem; background:#32CD3218; color:#32CD32; border:1px solid #32CD3233; border-radius:4px; font-size:0.7rem; font-weight:700;">✓ corroborated</span>
+                    </div>
+                    <div style="font-size:0.8rem; color:var(--text-tertiary); margin-bottom:0.6rem;">
+                        A real <b>${this._esc(detailJourney.user_role||'user')}</b> follows this path in normal use — this threat is grounded in an actual workflow. Behavioural detection can help flag exploitation.
+                    </div>
+                    <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.65; margin-bottom:0.75rem; padding:0.6rem 0.75rem; background:var(--card-bg); border-radius:6px;">
+                        ${dIcon} ${this._esc(detailJourney.story_text||'')}
+                    </div>
+                    <div style="margin-bottom:0.6rem;">
+                        <div style="font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.4rem;">How an attacker exploits this</div>
+                        <ol style="margin:0; padding-left:1.3rem; font-size:0.85rem; color:var(--text-secondary); line-height:1.65;">
+                            ${exploitSteps.map(s => `<li>${this._esc(s)}.</li>`).join('')}
+                        </ol>
+                    </div>
+                    ${tacticPills ? `<div style="display:flex; flex-wrap:wrap; gap:0.3rem;">${tacticPills}</div>` : ''}
+                </div>`;
+        } else if (detailJourney && detailJourney.no_user_story) {
+            journeyCardHtml = `
+                <div style="margin-bottom:1.5rem; padding:0.85rem 1rem; background:#FF8C0008; border-radius:8px; border-left:4px solid #FF8C00; font-size:0.85rem;">
+                    <div style="font-weight:700; color:#FF8C00; margin-bottom:0.35rem;">⚠ No corroborating user journey</div>
+                    <div style="color:var(--text-secondary); line-height:1.55;">No normal user workflow follows this path. It only makes sense as a post-compromise move — an attacker who already has a foothold pivoting deeper into the system.</div>
+                    <div style="margin-top:0.4rem; font-size:0.8rem; color:var(--text-tertiary);"><b>Implication:</b> Behavioural anomaly detection has no baseline here. Detection must rely on network segmentation or explicit hop-level monitoring.</div>
+                </div>`;
+        }
+
         const pathHtml = `
             <div style="margin-bottom: 1.5rem;">
                 <div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">${path.id}</div>
@@ -1874,6 +2178,8 @@ class Dashboard {
                     <strong>Severity:</strong> ${path.criticality_tier || 'MEDIUM'}
                 </div>
             </div>
+
+            ${journeyCardHtml}
 
             <div style="margin-bottom: 1.5rem;">
                 <h4 style="margin-bottom: 0.75rem; color: var(--primary-color);">Step-by-Step Traversal</h4>
@@ -4069,6 +4375,19 @@ class Dashboard {
         this._tmRrs = rrs;
         this._tmCurrentFilter = this._tmCurrentFilter || 'ALL';
 
+        // Cache user stories — build journey lookup by AP id
+        const us = gt.user_stories || {};
+        this._tmJourneys = us.journeys || [];
+        this._tmEdgeStories = us.edges || [];
+        this._tmJourneyByAp = {};
+        this._tmJourneys.forEach(j => {
+            if (j.attack_path_id) this._tmJourneyByAp[j.attack_path_id] = j;
+        });
+        // story_coverage_score: corroborated / total journeys (ignore empty)
+        const totalJ = this._tmJourneys.length;
+        const corrJ  = this._tmJourneys.filter(j => !j.no_user_story).length;
+        this._tmStoryCoverage = totalJ > 0 ? corrJ / totalJ : null;
+
         // Extract BH pivot-diverge chains as synthetic "new APs"
         const bhBreakdown = bh ? (bh.breakdown || bh) : null;
         this._tmBhChains = bhBreakdown ? (bhBreakdown.pivot_diverge_chains || []) : [];
@@ -4186,11 +4505,19 @@ class Dashboard {
             const adr = (this._tmAdrs || []).find(a => a.adr_id === adrId);
             const riskBefore = adr ? adr.consequences.overall_risk_before : '?';
             const riskAfter = adr ? adr.consequences.overall_risk_after : '?';
+            // Corroboration badge from StoryCaster
+            const journey = (this._tmJourneyByAp || {})[ap.id];
+            let corrBadge = '';
+            if (journey) {
+                corrBadge = journey.no_user_story
+                    ? `<span title="No normal user follows this path. Post-compromise pivot — detection needs network controls, not behavioural baselines." style="font-size:0.63rem; padding:0.1rem 0.3rem; border-radius:3px; background:#FF8C0018; color:#FF8C00; border:1px solid #FF8C0033; margin-left:0.25rem; cursor:help;">⚠ post-compromise</span>`
+                    : `<span title="A real ${journey.user_role||'user'} follows this same path in normal use. Threat is higher-confidence; detection can use behavioural baselines." style="font-size:0.63rem; padding:0.1rem 0.3rem; border-radius:3px; background:#32CD3218; color:#32CD32; border:1px solid #32CD3233; margin-left:0.25rem; cursor:help;">✓ ${this._esc(journey.user_role||'user')}</span>`;
+            }
             return `<div class="tm-ap-item" data-apid="${this._esc(ap.id)}" onclick="window.dashboard._tmSelectAp('${this._esc(ap.id)}')"
                 style="padding:0.65rem 1rem 0.65rem 0.75rem; cursor:pointer; border-left:3px solid ${color}; border-bottom:1px solid var(--border-color); transition:background 0.15s;"
                 onmouseover="this.style.background='var(--list-hover-bg)'" onmouseout="this.style.background=(this.classList.contains('selected')?'var(--list-active-bg)':'')">
-                <div style="font-weight:600; font-size:0.83rem; display:flex; justify-content:space-between; align-items:center; gap:0.3rem;">
-                    <span>${this._esc(ap.id)}</span>
+                <div style="font-weight:600; font-size:0.83rem; display:flex; justify-content:space-between; align-items:center; gap:0.3rem; flex-wrap:wrap;">
+                    <span style="display:flex; align-items:center; gap:0;">${this._esc(ap.id)}${corrBadge}</span>
                     <span style="font-size:0.68rem; padding:0.1rem 0.35rem; border-radius:3px; background:${color}22; color:${color}; border:1px solid ${color}44;">${tier}</span>
                 </div>
                 <div style="font-size:0.72rem; color:var(--text-tertiary); margin-top:0.2rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${this._esc(pathStr)}">${this._esc(pathStr)}</div>
@@ -4241,6 +4568,92 @@ class Dashboard {
         const first = (this._tmAps || []).find(ap => tier === 'ALL' || ap.criticality_tier === tier);
         if (first) this._tmSelectAp(first.id);
         else { const d = document.getElementById('tm-detail-content'); if (d) d.innerHTML = '<p style="color:var(--text-tertiary); text-align:center; margin-top:2rem;">No paths match filter.</p>'; }
+    }
+
+    _tmSwitchLeftTab(tab) {
+        const apList  = document.getElementById('tm-ap-list');
+        const jList   = document.getElementById('tm-journey-list');
+        const tabAps  = document.getElementById('tm-tab-aps');
+        const tabJ    = document.getElementById('tm-tab-journeys');
+        const isAps   = tab === 'aps';
+        if (apList)  apList.style.display  = isAps ? 'block' : 'none';
+        if (jList)   jList.style.display   = isAps ? 'none'  : 'block';
+        if (tabAps)  { tabAps.style.borderBottomColor  = isAps ? 'var(--primary-color)' : 'transparent'; tabAps.style.color  = isAps ? 'var(--primary-color)' : 'var(--text-tertiary)'; }
+        if (tabJ)    { tabJ.style.borderBottomColor    = isAps ? 'transparent' : 'var(--primary-color)'; tabJ.style.color    = isAps ? 'var(--text-tertiary)' : 'var(--primary-color)'; }
+        if (!isAps) this._tmRenderJourneyList();
+    }
+
+    _tmRenderJourneyList() {
+        const container = document.getElementById('tm-journey-list');
+        if (!container) return;
+        const journeys = this._tmJourneys || [];
+        if (!journeys.length) {
+            container.innerHTML = `<div style="padding:1.25rem; font-size:0.82rem; color:var(--text-tertiary); text-align:center;">No user stories generated.<br><span style="font-size:0.75rem;">Re-run analysis to generate stories.</span></div>`;
+            return;
+        }
+
+        const corr = journeys.filter(j => !j.no_user_story).length;
+        const total = journeys.length;
+        const pct = Math.round((corr / total) * 100);
+        const barColor = pct >= 80 ? '#32CD32' : pct >= 50 ? '#FF8C00' : '#DC143C';
+        const legend = `
+            <div style="padding:0.6rem 0.9rem; border-bottom:1px solid var(--border-color); background:var(--nav-hover-bg); font-size:0.72rem; line-height:1.55; color:var(--text-secondary);">
+                <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+                    <span><span style="color:#32CD32; font-weight:700;">✓ Corroborated</span> — a real user follows this same path. Threat is realistic; detection can use behavioural baselines (login anomalies, access patterns).</span>
+                    <span><span style="color:#FF8C00; font-weight:700;">⚠ Post-compromise</span> — no normal user follows this path. Attacker must already have a foothold. Detection needs network controls, not user behaviour.</span>
+                </div>
+            </div>`;
+
+        const coverageBar = `
+            <div style="padding:0.75rem 1rem; border-bottom:1px solid var(--border-color); background:var(--card-bg);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+                    <span style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary);">Story Coverage</span>
+                    <span style="font-size:0.78rem; font-weight:700; color:${barColor};">${corr}/${total} corroborated</span>
+                </div>
+                <div style="height:6px; background:var(--border-color); border-radius:3px; overflow:hidden;">
+                    <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:3px; transition:width 0.4s;"></div>
+                </div>
+                <div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.25rem;">${pct}% of attack paths have a corroborated user journey</div>
+            </div>`;
+
+        const roleIcon = {
+            'end user': '👤', 'system administrator': '🔧', 'partner/third party': '🤝',
+            'API consumer': '⚙️', 'web user': '🌐', 'mobile user': '📱', 'customer': '👥',
+        };
+
+        const rows = journeys.map(j => {
+            if (j.no_user_story) {
+                const pathStr = (j.path_labels || j.path || []).join(' → ');
+                return `<div class="tm-ap-item" data-apid="${this._esc(j.attack_path_id||'')}" onclick="window.dashboard._tmSwitchLeftTab('aps');window.dashboard._tmSelectAp('${this._esc(j.attack_path_id||'')}')"
+                    style="padding:0.6rem 1rem 0.6rem 0.75rem; cursor:pointer; border-left:3px solid #FF8C00; border-bottom:1px solid var(--border-color); transition:background 0.15s; opacity:0.85;"
+                    onmouseover="this.style.background='var(--list-hover-bg)'" onmouseout="this.style.background=''">
+                    <div style="display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; font-weight:600;">
+                        <span style="color:#FF8C00;">⚠</span>
+                        <span style="color:var(--text-secondary);">${this._esc(j.attack_path_id||j.story_id||'?')}</span>
+                        <span style="font-size:0.63rem; padding:0.1rem 0.3rem; border-radius:3px; background:#FF8C0018; color:#FF8C00; border:1px solid #FF8C0033;">no baseline</span>
+                    </div>
+                    <div style="font-size:0.72rem; color:var(--text-tertiary); margin-top:0.2rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${this._esc(pathStr)}">${this._esc(pathStr)}</div>
+                    <div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.15rem; font-style:italic;">Post-compromise pivot — no normal user follows this path</div>
+                </div>`;
+            }
+            const icon = roleIcon[j.user_role] || '👤';
+            const goalStr = j.user_goal || `reach ${j.resource_label||'target'}`;
+            const tacticStr = (j.threat_relevance||[]).join(' · ');
+            return `<div class="tm-ap-item" data-apid="${this._esc(j.attack_path_id||'')}" onclick="window.dashboard._tmSwitchLeftTab('aps');window.dashboard._tmSelectAp('${this._esc(j.attack_path_id||'')}')"
+                style="padding:0.6rem 1rem 0.6rem 0.75rem; cursor:pointer; border-left:3px solid #32CD32; border-bottom:1px solid var(--border-color); transition:background 0.15s;"
+                onmouseover="this.style.background='var(--list-hover-bg)'" onmouseout="this.style.background=''">
+                <div style="display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; font-weight:600;">
+                    <span>${icon}</span>
+                    <span style="color:var(--text-color);">${this._esc(j.user_role||'user')}</span>
+                    <span style="font-size:0.63rem; padding:0.1rem 0.3rem; border-radius:3px; background:#32CD3218; color:#32CD32; border:1px solid #32CD3233; margin-left:auto;">${this._esc(j.story_id||'')}</span>
+                </div>
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.25rem;">${this._esc(j.actor_label||'?')} → <b>${this._esc(j.resource_label||'?')}</b></div>
+                <div style="font-size:0.71rem; color:var(--text-tertiary); margin-top:0.15rem; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${this._esc(goalStr)}">${this._esc(goalStr)}</div>
+                ${tacticStr ? `<div style="font-size:0.67rem; color:#a855f7; margin-top:0.15rem;">${this._esc(tacticStr)}</div>` : ''}
+            </div>`;
+        }).join('');
+
+        container.innerHTML = legend + coverageBar + rows;
     }
 
     _tmSelectAp(apId) {
@@ -4295,8 +4708,94 @@ class Dashboard {
                 </div>
                 <div style="margin-top:0.4rem; padding-top:0.4rem; border-top:1px solid var(--border-color);"><span style="color:var(--text-tertiary); font-size:0.67rem; text-transform:uppercase; letter-spacing:0.05em;">Impact</span>&nbsp;<span style="font-size:0.82rem; font-weight:700; color:#FF8C00;">${this._esc(rs.impact || '?')}</span></div>
             </div>`;
+            const apt = rs.apt_evidence || {};
+            const cves = rs.cve_ids || [];
+            const kevHits = rs.kev_hits || [];
+            const ransomware = rs.ransomware_linked || false;
+            if (apt.top_group || cves.length) {
+                const borderColor = ransomware ? '#DC143C' : '#a855f7';
+                html += `<div style="padding:0.5rem 0.9rem; background:var(--card-bg); border-radius:6px; border-left:3px solid ${borderColor}; margin-bottom:0.75rem; font-size:0.77rem;">`;
+
+                // Header row: label + ransomware pill + KEV count
+                let headerRight = '';
+                if (ransomware) {
+                    headerRight += `<span style="padding:0.1rem 0.45rem; border-radius:3px; background:#DC143C22; color:#DC143C; border:1px solid #DC143C44; font-size:0.67rem; font-weight:700; margin-left:0.4rem;">🔴 Ransomware</span>`;
+                }
+                if (kevHits.length) {
+                    headerRight += `<span title="${kevHits.length} CVE(s) confirmed in CISA KEV" style="padding:0.1rem 0.4rem; border-radius:3px; background:#FF8C0022; color:#FF8C00; border:1px solid #FF8C0044; font-size:0.67rem; margin-left:0.3rem; cursor:default;">⚠ ${kevHits.length} KEV</span>`;
+                }
+                html += `<div style="display:flex; align-items:center; margin-bottom:0.4rem;"><span style="color:var(--text-tertiary); font-size:0.67rem; text-transform:uppercase; letter-spacing:0.05em; flex:1;">Threat Intelligence</span>${headerRight}</div>`;
+
+                if (apt.top_group) {
+                    const groups = (apt.apt_groups || []).slice(0, 3);
+                    const groupChips = groups.map(g => {
+                        const tipJson = JSON.stringify({type:'apt', data: g}).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+                        return `<span class="intel-chip" data-tip-json="${tipJson}" style="display:inline-block; padding:0.1rem 0.45rem; border-radius:3px; background:#a855f722; color:#a855f7; border:1px solid #a855f744; font-size:0.68rem; margin-right:0.3rem; margin-bottom:0.2rem; cursor:help;">${this._esc(g.group_name)} (${this._esc(g.group_id)})</span>`;
+                    }).join('');
+                    html += `<div style="margin-bottom:${cves.length ? '0.4rem' : '0'};"><span style="color:var(--text-tertiary); font-size:0.65rem;">APT</span>&nbsp;${groupChips}</div>`;
+                }
+                if (cves.length) {
+                    const kevSet = new Set(kevHits.map(h => h.cve_id));
+                    const cveChips = cves.slice(0, 5).map(c => {
+                        const isKev = kevSet.has(c);
+                        const kevHit = kevHits.find(h => h.cve_id === c);
+                        const tipData = {type:'cve', data:{cve_id:c, isKev, kevHit: kevHit||null}};
+                        const tipJson = JSON.stringify(tipData).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+                        const bg    = isKev ? (kevHit?.ransomware ? '#DC143C22' : '#FF8C0018') : '#DC143C10';
+                        const color = isKev ? (kevHit?.ransomware ? '#DC143C'   : '#FF8C00')   : '#DC143C';
+                        const border= isKev ? (kevHit?.ransomware ? '#DC143C44' : '#FF8C0044') : '#DC143C28';
+                        return `<span class="intel-chip" data-tip-json="${tipJson}" style="display:inline-block; padding:0.1rem 0.45rem; border-radius:3px; background:${bg}; color:${color}; border:1px solid ${border}; font-size:0.68rem; margin-right:0.25rem; margin-bottom:0.2rem; font-family:monospace; cursor:help;">${this._esc(c)}${isKev ? ' ⚠' : ''}</span>`;
+                    }).join('');
+                    html += `<div><span style="color:var(--text-tertiary); font-size:0.65rem;">CVEs</span>&nbsp;${cveChips}</div>`;
+                }
+                html += `</div>`;
+            }
         }
         html += `</div>`;
+
+        // Section 1b: Journey story card (StoryCaster)
+        const journey = (this._tmJourneyByAp || {})[apId];
+        if (journey && !journey.no_user_story) {
+            const roleIcon = {'end user':'👤','system administrator':'🔧','partner/third party':'🤝','API consumer':'⚙️','web user':'🌐','mobile user':'📱','customer':'👥'};
+            const icon = roleIcon[journey.user_role] || '👤';
+            const tacticPills = (journey.threat_relevance || []).map(t =>
+                `<span style="padding:0.1rem 0.35rem; background:#a855f711; color:#a855f7; border:1px solid #a855f733; border-radius:3px; font-size:0.67rem;">${this._esc(t)}</span>`
+            ).join(' ');
+            const exploitSteps = (journey.exploitation_chain || '').split('. ').filter(Boolean).map(s =>
+                `<li style="margin-bottom:0.2rem;">${this._esc(s)}.</li>`
+            ).join('');
+            html += `<div style="margin-bottom:1.25rem; padding:0.65rem 0.9rem; background:var(--card-bg); border-radius:6px; border-left:3px solid #32CD32; font-size:0.77rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.3rem;">
+                    <span style="font-size:0.67rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); flex:1;">User Journey</span>
+                    <span style="padding:0.1rem 0.35rem; background:#32CD3218; color:#32CD32; border:1px solid #32CD3233; border-radius:3px; font-size:0.63rem; font-weight:700;">✓ corroborated</span>
+                    <span style="font-size:0.67rem; color:var(--text-tertiary);">${this._esc(journey.story_id||'')}</span>
+                </div>
+                <div style="font-size:0.7rem; color:var(--text-tertiary); margin-bottom:0.45rem;">A real ${this._esc(journey.user_role||'user')} follows this path in normal use — this threat is grounded in an actual workflow, not just a theoretical attack route. Behavioural detection (login anomalies, access pattern changes) can help flag exploitation.</div>
+                <div style="display:flex; gap:1rem; margin-bottom:0.45rem; flex-wrap:wrap;">
+                    <div><span style="color:var(--text-tertiary); font-size:0.65rem;">Role</span><br><span style="font-weight:600;">${icon} ${this._esc(journey.user_role||'user')}</span></div>
+                    <div><span style="color:var(--text-tertiary); font-size:0.65rem;">Actor</span><br><span>${this._esc(journey.actor_label||'?')}</span></div>
+                    <div><span style="color:var(--text-tertiary); font-size:0.65rem;">Goal</span><br><span style="color:var(--text-secondary);">${this._esc(journey.user_goal||'?')}</span></div>
+                </div>
+                <div style="font-size:0.79rem; color:var(--text-secondary); line-height:1.6; margin-bottom:0.45rem; border-top:1px solid var(--border-color); padding-top:0.4rem;">
+                    ${this._esc(journey.story_text||'')}
+                </div>
+                ${exploitSteps ? `<div style="margin-top:0.35rem;"><span style="font-size:0.65rem; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.04em;">Exploitation chain</span><ol style="margin:0.25rem 0 0 1rem; padding:0; font-size:0.76rem; color:var(--text-secondary);">${exploitSteps}</ol></div>` : ''}
+                ${tacticPills ? `<div style="margin-top:0.4rem; display:flex; flex-wrap:wrap; gap:0.3rem;">${tacticPills}</div>` : ''}
+            </div>`;
+        } else if (journey && journey.no_user_story) {
+            const pathStr = (journey.path_labels || journey.path || []).join(' → ');
+            html += `<div style="margin-bottom:1.25rem; padding:0.65rem 0.9rem; background:#FF8C0008; border-radius:6px; border-left:3px solid #FF8C00; font-size:0.77rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+                    <span style="font-weight:700; color:#FF8C00;">⚠ No corroborating user journey</span>
+                </div>
+                <div style="color:var(--text-secondary); line-height:1.55;">
+                    No normal user workflow follows this path. It only makes sense as a post-compromise move — an attacker who already has a foothold pivoting deeper into the system.
+                </div>
+                <div style="margin-top:0.4rem; font-size:0.72rem; color:var(--text-tertiary);">
+                    <b>Implication:</b> Behavioural anomaly detection has no legitimate baseline to compare against. Detection must rely on network-level controls (segmentation, east-west inspection) or explicit monitoring of this hop.
+                </div>
+            </div>`;
+        }
 
         // Section 2: ADR walkthrough (if ADR exists)
         if (adr) {
@@ -4461,6 +4960,7 @@ class Dashboard {
         }
 
         detail.innerHTML = html;
+        this._bindChipTips(detail);
     }
 
     _tmSelectBlackhat() {
@@ -6434,7 +6934,116 @@ class Dashboard {
                 + ' style="font-size:0.8125rem; padding:0.25rem 0.875rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; white-space:nowrap;">▶ Re-run MoE</button>'
                 + '</div>';
 
+            // Build UJ influence explainer
+            const _ujExplainerHtml = (() => {
+                const gt2 = this.analysisData && this.analysisData.analysis;
+                const us2 = gt2 && gt2.user_stories || {};
+                const journeys2 = us2.journeys || [];
+                if (!journeys2.length) return '';
+                const corrN = journeys2.filter(j => !j.no_user_story).length;
+                const atkN  = journeys2.filter(j =>  j.no_user_story).length;
+                const totalN = journeys2.length;
+
+                // Build flow distribution string
+                const _flowDist = (() => {
+                    const acc = {};
+                    (us2.edges || []).forEach(e => { if (!e.infra_only) acc[e.story_type] = (acc[e.story_type]||0)+1; });
+                    return Object.entries(acc).map(([t,c])=>`${t}×${c}`).join(', ') || 'none';
+                })();
+
+                // Build per-critic narrative blocks from actual run data
+                const corrPaths = journeys2.filter(j => !j.no_user_story);
+                const atkPaths  = journeys2.filter(j =>  j.no_user_story);
+
+                // Dominant flow types for this architecture
+                const topFlows = Object.entries(
+                    (us2.edges||[]).reduce((a,e) => { if(!e.infra_only) a[e.story_type]=(a[e.story_type]||0)+1; return a; }, {})
+                ).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([t])=>t);
+                const flowStr = topFlows.join(' and ') || 'unknown flow types';
+
+                // Corroborated journey summaries (max 2 for brevity)
+                const corrSummary = corrPaths.slice(0,2).map(j =>
+                    `${j.actor_label||'?'} → ${j.resource_label||'?'} (${j.user_role||'user'})`
+                ).join('; ') || 'none';
+
+                // Attacker-only path IDs
+                const atkIds = atkPaths.map(j => j.attack_path_id||j.story_id||'?').join(', ') || 'none';
+
+                // Two-line block per critic: "so what" + "look out for", plain language
+                const _cb = (icon, label, soWhat, lookFor) =>
+                    `<div style="margin-bottom:0.55rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px;">
+                        <div style="font-size:0.78rem; font-weight:700; color:var(--text-color); margin-bottom:0.3rem;">${icon} ${label}</div>
+                        <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.15rem;">${soWhat}</div>
+                        <div style="font-size:0.72rem; color:var(--text-tertiary);"><span style="font-weight:600;">Look out for:</span> ${lookFor}</div>
+                    </div>`;
+
+                // Derive plain-language sentences from actual run data
+                const firstCorr  = corrPaths[0];
+                const corrLabel  = firstCorr ? `${this._esc(firstCorr.actor_label||'?')} → ${this._esc(firstCorr.resource_label||'?')}` : '';
+
+                const blocks = [
+                    _cb('🏛️', 'Architecture Review',
+                        corrN && atkN
+                            ? `It knows ${corrN} path(s) are real user workflows and ${atkN} (${this._esc(atkIds)}) are post-compromise pivots — so it should recommend different control types for each.`
+                        : corrN
+                            ? `All ${corrN} path(s) are real user workflows — it was given the dominant flow types (${this._esc(flowStr)}) to calibrate control recommendations.`
+                            : `All ${atkN} path(s) have no user baseline — it was told to focus on network-layer controls rather than user-behaviour monitoring.`,
+                        atkN
+                            ? `${this._esc(atkIds)} should get network segmentation or east-west monitoring, not SIEM/anomaly detection.`
+                            : `Controls should map to the dominant flows — look for ${topFlows.includes('auth_flow')?'MFA or IAM controls':'access controls'} on high-risk paths.`),
+
+                    _cb('🔬', 'Coverage Audit',
+                        corrN
+                            ? `Path rationales now describe real workflows (e.g. "${corrLabel}") instead of just hop counts — the auditor validates these against what the controls actually cover.`
+                            : `No corroborated paths — rationale validation is based on topology only, not user workflows.`,
+                        atkN
+                            ? `Check that ${this._esc(atkIds)} rationale(s) say the path has no legitimate user — if it reads like a user journey, that's a mistake.`
+                            : `If it flags a rationale as inaccurate, the story text didn't match the actual path controls — worth reviewing.`),
+
+                    _cb('🎯', 'Exploit Analysis',
+                        corrN
+                            ? `On ${corrN} corroborated path(s), anomaly detection was not counted as a defensive control — the attacker looks like a real user, so alarms won't fire.`
+                            : `All ${atkN} path(s) are post-compromise — difficulty is scored only on network-level preventive controls.`,
+                        atkN
+                            ? `${this._esc(atkIds)}: the difficulty score should not go down because of SIEM or monitoring — only hard network controls (firewall rules, segmentation) count here.`
+                            : `If difficulty is reduced on a corroborated path, check it's because of a preventive control (MFA, WAF), not because of anomaly detection.`),
+
+                    _cb('🟣', 'Purple Team',
+                        corrN && atkN
+                            ? `It knows which paths can use behavioural detection (${corrN} corroborated) and which cannot (${this._esc(atkIds)} — no user baseline).`
+                        : corrN
+                            ? `All paths are user workflows — detection gaps assessed assuming a behavioural baseline exists, but precision matters.`
+                            : `All paths are post-compromise — it was told detection must rely on network monitoring, not user behaviour.`,
+                        atkN
+                            ? `If it recommends SIEM or user-behaviour alerts for ${this._esc(atkIds)}, that's a gap — those controls won't work without a user baseline.`
+                            : `If it recommends broad anomaly thresholds without precision notes on a corroborated path, that's still a detection gap.`),
+
+                    _cb('⚔️', 'Blackhat Cross-Path',
+                        corrN
+                            ? `Shared pivot nodes on corroborated paths were flagged as higher stealth — an attacker pivoting there looks like normal ${this._esc(corrPaths[0]?.user_role||'user')} traffic.`
+                            : `No corroborated paths — stealth scoring is based on technique types only, not user cover.`,
+                        corrN
+                            ? `Cross-path chains through corroborated APs should score higher stealth. If they don't, the scoring may have missed the user-cover effect.`
+                            : `Standard stealth scoring — if stealth scores seem low, check whether any path nodes are shared across APs.`),
+                ].join('');
+
+                return `<div class="er-panel" style="background:var(--card-bg); border-radius:10px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">
+                    <div class="er-panel-header" onclick="(function(h){var b=h.closest('.er-panel').querySelector('.er-panel-body');var c=h.querySelector('.er-chevron');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.textContent=open?'›':'∨';})(this)" style="padding:1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">
+                        <div>
+                            <h3 style="margin:0 0 0.15rem; color:var(--text-color); font-size:1rem;">🗺️ How User Journeys shaped this analysis</h3>
+                            <p style="font-size:0.8rem; color:var(--text-secondary); margin:0;">${corrN}/${totalN} corroborated · ${atkN} post-compromise · dominant flows: ${this._esc(flowStr)}</p>
+                        </div>
+                        <span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>
+                    </div>
+                    <div class="er-panel-body" style="padding:0.75rem 1.25rem 1rem; display:none;">
+                        ${blocks}
+                        <div style="margin-top:0.5rem; font-size:0.72rem; color:var(--text-tertiary);">Story coverage improves input signal quality per critic — not the confidence score directly. <a href="#" onclick="window.dashboard.switchToThreatModelJourneys()" style="color:var(--primary-color); text-decoration:none;">View journeys →</a></div>
+                    </div>
+                </div>`;
+            })();
+
             container.innerHTML = ''
+                + _ujExplainerHtml
                 + rerunRowHtml
                 + parallelWarningBanner
                 + '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">'
@@ -6493,6 +7102,36 @@ class Dashboard {
                 + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.35rem;">Why they disagree</div>'
                 + '<div style="font-size:0.875rem; color:var(--text-color); line-height:1.6;">' + c.root_cause_explanation + '</div>'
                 + '</div>' : '')
+            + (c.pt_bh_corroboration && c.pt_bh_corroboration !== 'none' ? '<div style="margin-bottom:1.25rem; padding:0.6rem 0.75rem; background:#a855f711; border:1px solid #a855f733; border-radius:8px;">'
+                + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:#a855f7; margin-bottom:0.25rem;">Purple Team / Blackhat corroboration</div>'
+                + '<div style="font-size:0.875rem; color:var(--text-color);">' + c.pt_bh_corroboration + '</div>'
+                + '</div>' : '')
+            + (() => {
+                // For GENUINE_DISAGREEMENT: flag if the deterministic engine may have a blindspot
+                if ((c.disagreement_root_cause || '') !== 'GENUINE_DISAGREEMENT') return '';
+                const gt3 = window.dashboard && window.dashboard.analysisData && window.dashboard.analysisData.analysis;
+                const valReport = gt3 && gt3.validation_report;
+                const checks = valReport && valReport.checks || {};
+                // Find relevant check failures that could explain the disagreement
+                const topic = (c.topic || '').toLowerCase();
+                const failedChecks = Object.entries(checks)
+                    .filter(([, v]) => v && (v.issues > 0 || v.status === 'FAIL' || v.status === 'WARNING'))
+                    .map(([k]) => k.replace(/_/g,' '));
+                const relevantChecks = failedChecks.filter(k =>
+                    topic.includes('detect') && k.includes('detect') ||
+                    topic.includes('segment') && (k.includes('network') || k.includes('segment')) ||
+                    topic.includes('coverage') && k.includes('coverage') ||
+                    topic.includes('api') && k.includes('api') ||
+                    failedChecks.length > 0  // fallback: show all if topic match unclear
+                ).slice(0, 3);
+                const engineNote = relevantChecks.length
+                    ? `Deterministic validation flagged: <b>${relevantChecks.join(', ')}</b>. This disagreement may reflect a gap the engine detected but could not resolve — check <code>ground_truth.json → validation_report.checks</code> for detail.`
+                    : `No matching deterministic flag found. This may be a genuine LLM-vs-LLM disagreement where the engine has insufficient structural data. Consider adding architectural detail (node labels, edge labels) to help the engine distinguish.`;
+                return '<div style="margin-bottom:1.25rem; padding:0.6rem 0.75rem; background:var(--warning-color)10; border:1px solid var(--warning-color)44; border-radius:8px;">'
+                    + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--warning-color); margin-bottom:0.25rem;">⚙ Deterministic engine signal</div>'
+                    + '<div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.5;">' + engineNote + '</div>'
+                    + '</div>';
+            })()
             + (c.human_action ? '<div style="margin-bottom:1.25rem; padding:0.75rem; background:var(--secondary-color)12; border:1px solid var(--secondary-color)44; border-radius:8px;">'
                 + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--secondary-color); margin-bottom:0.35rem;">Recommended human action</div>'
                 + '<div style="font-size:0.875rem; color:var(--text-color);">→ ' + c.human_action + '</div>'

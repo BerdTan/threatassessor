@@ -94,6 +94,29 @@ print(f\"{d2['control_count']} CCM controls indexed\")
 "
 ```
 
+## 7 — KEV (CISA Known Exploited Vulnerabilities + CTID ATT&CK Mappings)
+
+```bash
+bash .claude/skills/update-data/scripts/update-kev.sh
+```
+
+Downloads two sources into `chatbot/data/kev/`:
+- **CTID KEV→ATT&CK** (`kev_ctid_by_technique.json`) — 155 ATT&CK techniques mapped to ~550 CVEs with T-code precision. Auto-resolves the latest versioned file from the CTID GitHub repo. ATT&CK-release cadence (~quarterly).
+- **CISA KEV** (`kev_cisa_by_cve.json`) — 1,600+ actively exploited CVEs with ransomware flags, vendor/product, and date_added. Updates daily.
+- **Metadata** (`kev_meta.json`) — fetch provenance (URLs, counts, timestamp).
+
+Run whenever CISA adds new exploited CVEs (monthly is sufficient; daily if you want current ransomware signal).
+
+Verify output:
+```bash
+python3 -c "
+import json
+meta = json.load(open('chatbot/data/kev/kev_meta.json'))
+print(f\"CTID: {meta['ctid_technique_count']} techniques, {meta['ctid_total_mappings']} CVE links\")
+print(f\"CISA: {meta['cisa_cve_count']} CVEs ({meta['cisa_ransomware_count']} ransomware-linked)\")
+"
+```
+
 ## After Full Refresh
 
 ```
@@ -103,4 +126,5 @@ SSP updated    → no further action needed
 ARC updated    → review new RISK-* entries for relevance to ai_pattern.py
 CAVEAT updated → no further action; CloudPattern loads from YAML at startup
 CCM updated    → no further action; CcmHelper loads from YAML at startup
+KEV updated    → no further action; KevHelper loads from JSON at startup
 ```

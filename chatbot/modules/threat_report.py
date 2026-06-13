@@ -178,8 +178,23 @@ def generate_executive_summary(ground_truth: Dict) -> str:
 
     # All attack paths
     all_aps = ground_truth["expected_attack_paths"]
+    _exec_journey_by_ap = {
+        j.get("attack_path_id"): j
+        for j in ground_truth.get("user_stories", {}).get("journeys", [])
+        if j.get("attack_path_id")
+    }
+    _exec_corr_n = sum(1 for j in _exec_journey_by_ap.values() if not j.get("no_user_story"))
     if attack_paths > 0:
+        journey_note = ""
+        if _exec_journey_by_ap:
+            journey_note = (
+                f" {_exec_corr_n}/{len(_exec_journey_by_ap)} of these paths are "
+                f"corroborated by real user workflows — the attacker exploits the same "
+                f"routes your users legitimately take."
+            )
         report += f"### 🎯 Attack Paths ({attack_paths} identified)\n\n"
+        if journey_note:
+            report += f"_{journey_note}_\n\n"
         for i, ap in enumerate(all_aps, 1):
             path_str = " → ".join([n.split()[0] for n in ap["path"][:4]])  # Shorten names
             if len(ap["path"]) > 4:
@@ -187,7 +202,14 @@ def generate_executive_summary(ground_truth: Dict) -> str:
             tier = ap.get("criticality_tier", "UNKNOWN")
             tier_icon = "🔴" if "CRITICAL" in tier else "🟠" if "HIGH" in tier else "🟡"
             n_controls = len([c for c in ground_truth.get("control_recommendations", []) if i - 1 in c.get("attack_paths", [])])
-            report += f"{i}. **{tier_icon} {tier}:** {path_str}\n"
+            j = _exec_journey_by_ap.get(ap.get("id", ""))
+            if j and not j.get("no_user_story"):
+                journey_tag = f" · **{j.get('user_role','user')} workflow** — detection can use behavioural baselines"
+            elif j and j.get("no_user_story"):
+                journey_tag = " · **Post-compromise pivot** — no user baseline, needs network controls"
+            else:
+                journey_tag = ""
+            report += f"{i}. **{tier_icon} {tier}:** {path_str}{journey_tag}\n"
             report += f"   - Entry: {ap['entry']} | Target: {ap['target']} | Controls: {n_controls}\n\n"
     else:
         report += "✅ No direct attack paths identified\n\n"
@@ -376,6 +398,12 @@ def generate_technical_report(ground_truth: Dict) -> str:
     # Attack Path Analysis
     report += format_section_header("Attack Path Analysis", "🛣️", 2)
 
+    _tech_journey_by_ap = {
+        j.get("attack_path_id"): j
+        for j in ground_truth.get("user_stories", {}).get("journeys", [])
+        if j.get("attack_path_id")
+    }
+
     # Detailed attack paths with improved formatting
     for i, ap in enumerate(ground_truth["expected_attack_paths"], 1):
         tier = ap.get("criticality_tier", "UNKNOWN")
@@ -422,6 +450,25 @@ def generate_technical_report(ground_truth: Dict) -> str:
         # Rationale
         rationale = ap.get('rationale', 'N/A')
         report += f"**Analysis:** {rationale}\n"
+
+        # User journey context
+        j = _tech_journey_by_ap.get(ap.get("id", ""))
+        if j and not j.get("no_user_story"):
+            report += f"\n**User journey:** {j.get('story_text', '')}\n"
+            chain = j.get("exploitation_chain", "")
+            if chain:
+                report += f"\n**Exploitation chain:** {chain}\n"
+            report += (
+                f"\n> **Detection strategy:** Corroborated — a real {j.get('user_role','user')} "
+                f"follows this path. Behavioural anomaly detection is viable but must use "
+                f"a precise {j.get('user_role','user')} baseline to avoid false positives.\n\n"
+            )
+        elif j and j.get("no_user_story"):
+            report += (
+                f"\n> **Detection strategy:** Post-compromise pivot — no normal user follows "
+                f"this path. Behavioural baselines cannot help. Use network segmentation, "
+                f"east-west traffic inspection, or explicit hop-level alerts.\n\n"
+            )
 
     report += format_section_header("RAPIDS Threat Assessment", "🎯", 2)
 
@@ -739,9 +786,45 @@ def generate_action_plan(ground_truth: Dict) -> str:
     phase3 = [r for r in control_recs if r.get("priority", "").lower() in ("medium", "low") and r.get("attack_paths")]
     gap    = [r for r in control_recs if not r.get("attack_paths")]
 
+    # Build journey lookup for action plan context
+    _ap_journeys = {
+        j.get("attack_path_id"): j
+        for j in ground_truth.get("user_stories", {}).get("journeys", [])
+        if j.get("attack_path_id")
+    }
+    _all_aps_list = ground_truth.get("control_recommendations", [])  # for index→id mapping
+    _ap_id_by_idx = {
+        idx: ap.get("id", f"AP-{idx+1}")
+        for idx, ap in enumerate(ground_truth.get("expected_attack_paths", []))
+    }
+
+    def _journey_cell(ap_indices):
+        """Return a short 'Protects' label from journey data for control rows."""
+        if not ap_indices or not _ap_journeys:
+            return "—"
+        roles = []
+        has_post = False
+        for idx in ap_indices:
+            ap_id = _ap_id_by_idx.get(idx)
+            if not ap_id:
+                continue
+            j = _ap_journeys.get(ap_id)
+            if j and not j.get("no_user_story"):
+                role = j.get("user_role", "user")
+                if role not in roles:
+                    roles.append(role)
+            elif j and j.get("no_user_story"):
+                has_post = True
+        parts = []
+        if roles:
+            parts.append(", ".join(roles) + " workflow")
+        if has_post:
+            parts.append("post-compromise pivot")
+        return "; ".join(parts) if parts else "—"
+
     def _phase_table(recs, owner, effort, cost, impact, validation):
-        out = "\n| # | Control | Priority | SSP | Paths Covered | Owner | Effort | Cost | Impact | Validation |\n"
-        out += "|---|---------|----------|-----|---------------|-------|--------|------|--------|------------|\n"
+        out = "\n| # | Control | Priority | SSP | Paths Covered | Protects | Owner | Effort | Cost | Impact | Validation |\n"
+        out += "|---|---------|----------|-----|---------------|----------|-------|--------|------|--------|------------|\n"
         for i, rec in enumerate(recs, 1):
             ctrl = rec["control"].upper()
             pri  = rec.get("priority", "").upper()
@@ -754,7 +837,8 @@ def generate_action_plan(ground_truth: Dict) -> str:
                 ssp_badge = f"{ssp_ctx['label']} L{p['level']} {level_stars}"
             else:
                 ssp_badge = "—"
-            out += f"| {i} | **{ctrl}** | {pri} | {ssp_badge} | {paths_str} | {owner} | {effort} | {cost} | {impact} | {validation} |\n"
+            protects = _journey_cell(aps)
+            out += f"| {i} | **{ctrl}** | {pri} | {ssp_badge} | {paths_str} | {protects} | {owner} | {effort} | {cost} | {impact} | {validation} |\n"
         return out + "\n"
 
     report += format_section_header("Phase 1: Immediate (Week 1) — Critical Path Controls", "⚡", 2)
@@ -1603,6 +1687,23 @@ def generate_threat_model_report(ground_truth: Dict) -> str:
 
     # --- Per-AP sections ---
     lines.append("---\n")
+
+    # Journey coverage summary
+    all_journeys = ground_truth.get("user_stories", {}).get("journeys", [])
+    if all_journeys:
+        corr_n = sum(1 for j in all_journeys if not j.get("no_user_story"))
+        atk_n  = sum(1 for j in all_journeys if j.get("no_user_story"))
+        lines.append(
+            f"**User journey coverage:** {corr_n}/{len(all_journeys)} attack paths are corroborated "
+            f"by a real user workflow."
+        )
+        if atk_n:
+            lines.append(
+                f" {atk_n} path{'s' if atk_n > 1 else ''} are post-compromise only — "
+                f"no user baseline, detection requires network-layer controls."
+            )
+        lines.append("\n")
+
     sorted_aps = sorted(
         attack_paths,
         key=lambda ap: tier_order.get(ap.get("criticality_tier", "LOW"), 0),
@@ -1628,6 +1729,40 @@ def generate_threat_model_report(ground_truth: Dict) -> str:
                 f"**{threat_actor}** targets **{targeted_asset}** "
                 f"by exploiting **{vuln}**. "
                 f"If the path is not interrupted, the consequence is: {impact}.\n"
+            )
+
+            apt_ev = rs.get("apt_evidence", {})
+            if apt_ev.get("top_group"):
+                lines.append(f"**Known APT attribution:** {apt_ev['top_group']}\n")
+
+            cves = rs.get("cve_ids", [])
+            if cves:
+                lines.append(f"**Associated CVEs:** {', '.join(cves[:3])}\n")
+
+        # User Journey context
+        journey_by_ap = {
+            j.get("attack_path_id"): j
+            for j in ground_truth.get("user_stories", {}).get("journeys", [])
+            if j.get("attack_path_id")
+        }
+        j = journey_by_ap.get(ap_id)
+        if j and not j.get("no_user_story"):
+            role = j.get("user_role", "user")
+            lines.append(f"**User journey context:** {j.get('story_text', '')}\n")
+            exploit_chain = j.get("exploitation_chain", "")
+            if exploit_chain:
+                lines.append(f"**Exploitation chain:** {exploit_chain}\n")
+            lines.append(
+                f"> Detection note: a real {role} follows this exact path in normal use. "
+                f"The attacker blends with legitimate traffic — behavioural anomaly detection "
+                f"can help but thresholds must be precise.\n"
+            )
+        elif j and j.get("no_user_story"):
+            lines.append(
+                f"> **Post-compromise path:** No normal user follows this route. "
+                f"An attacker must already have a foothold before reaching this path. "
+                f"Detection must rely on network segmentation or explicit hop-level monitoring — "
+                f"not user behavioural baselines.\n"
             )
 
         # Per-AP residual + ADR link
@@ -1715,6 +1850,34 @@ def generate_adr_report(ground_truth: Dict) -> str:
         out.append(f"## {adr_id} — {ap_id} [{tier}]\n")
         out.append(f"**Path:** {path_str}  ")
         out.append(f"**Status:** {status}\n")
+
+        # --- User Journey context (who legitimately uses this path) ---
+        journey_by_ap = {
+            j.get("attack_path_id"): j
+            for j in ground_truth.get("user_stories", {}).get("journeys", [])
+            if j.get("attack_path_id")
+        }
+        j = journey_by_ap.get(ap_id)
+        if j and not j.get("no_user_story"):
+            role = j.get("user_role", "user")
+            out.append(f"\n### Who uses this path legitimately\n")
+            out.append(f"{j.get('story_text', '')}\n")
+            out.append(
+                f"> This means the attacker's activity blends with real {role} traffic. "
+                f"Controls on this path should combine **prevention** (stops the attack) "
+                f"with **detection** calibrated to the {role} baseline.\n"
+            )
+        elif j and j.get("no_user_story"):
+            out.append(f"\n### Who uses this path legitimately\n")
+            out.append(
+                f"No legitimate user follows this path in normal operation. "
+                f"This path only makes sense as a post-compromise pivot — "
+                f"an attacker already inside the network moving deeper.\n"
+            )
+            out.append(
+                f"> Controls on this path should prioritise **network segmentation** "
+                f"and **explicit hop monitoring** over behavioural anomaly detection.\n"
+            )
 
         # --- Threat Scenario (narrative paragraph) ---
         out.append("\n### What is at risk\n")
@@ -2050,6 +2213,14 @@ def generate_report_package(
         if cfg_narratives.enabled:
             from chatbot.modules.narrative_enricher import enrich_ground_truth
             enrich_ground_truth(ground_truth)
+
+        # APT attribution + CVE enrichment (additive — runs regardless of narrative flag)
+        try:
+            from chatbot.modules.threat_scene_deepener import deepen_threat_scenes
+            from chatbot.modules.mitre import get_mitre_helper
+            deepen_threat_scenes(ground_truth, get_mitre_helper())
+        except Exception as _dep_exc:
+            logger.warning(f"APT/CVE enrichment skipped: {_dep_exc}")
 
         if cfg_tm.enabled:
             from chatbot.modules.threat_model_builder import build_threat_model

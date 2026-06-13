@@ -1242,6 +1242,31 @@ def generate_ground_truth(
         ap["per_node_techniques"] = per_node_techniques  # NEW: Detailed hop-by-hop
         ap["techniques"] = get_all_techniques_from_path(per_node_techniques)  # Aggregated list (backwards compatible)
 
+    # StoryCaster: co-generate edge micro-stories and journey macro-stories
+    from chatbot.modules.story_caster import cast_stories, cast_journey_story, build_ap_rationale_from_story
+
+    edge_stories = cast_stories(
+        nodes=parsed["nodes"],
+        edges=parsed["edges"],
+        subgraphs=parsed.get("subgraphs", {}),
+        controls_present=controls_present,
+        architecture_type=arch_type,
+        use_llm=use_llm,
+        llm_model=llm_model,
+    )
+
+    journey_stories = []
+    for i, ap in enumerate(attack_paths):
+        js = cast_journey_story(
+            ap=ap,
+            nodes=parsed["nodes"],
+            edges=parsed["edges"],
+            story_id=f"JS-{i+1}",
+        )
+        journey_stories.append(js)
+        # Replace topology-only rationale with story-derived narrative
+        ap["rationale"] = build_ap_rationale_from_story(ap, js)
+
     # Overall scores (with defense-in-depth consideration)
     risk_score = calculate_overall_risk_score(rapids_assessment, len(attack_paths), coverage, controls_present)
     defensibility_score = calculate_overall_defensibility(rapids_assessment, coverage, controls_present)
@@ -1304,6 +1329,10 @@ def generate_ground_truth(
     # Build initial ground truth
     ground_truth = {
         "architecture": architecture_name or Path(mmd_file_path).name,
+        "user_stories": {
+            "edges":    edge_stories,
+            "journeys": journey_stories,
+        },
         "description": f"{arch_type.replace('_', ' ').title()} architecture",
         "controls_present": controls_present,
         "controls_missing": controls_missing_names,

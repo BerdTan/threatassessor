@@ -6,11 +6,19 @@ This module provides functions to query and use MITRE ATT&CK data for threat mod
 
 import json
 import os
+import re
 import logging
+from typing import List, Dict
 
 from chatbot.modules.pickle_cache import dump as _pkl_dump, load as _pkl_load
 
 logger = logging.getLogger(__name__)
+
+# Bump this when new indexes are added to force pickle rebuild on existing caches
+_PICKLE_VERSION = 2
+
+_CVE_RE = re.compile(r'CVE-\d{4}-\d+', re.IGNORECASE)
+_CVE_YEAR_RE = re.compile(r'CVE-(\d{4})-\d+')
 
 
 def _pickle_path(json_path: str) -> str:
@@ -50,6 +58,14 @@ class MitreHelper:
         self._mitigation_by_ext_id = {}  # "M1042" → mitigation obj
         self._mitigations_by_technique = {}  # technique internal_id → [mitigation dicts]
 
+        # APT / CVE indexes
+        self._intrusion_sets = []                 # all non-revoked intrusion-set objects
+        self._group_by_ext_id = {}                # "G0119" → obj
+        self._techniques_by_group = {}            # intrusion-set internal_id → [attack-pattern internal_ids]
+        self._groups_by_technique = {}            # attack-pattern internal_id → [intrusion-set internal_ids]
+        self._malware_by_group = {}               # intrusion-set internal_id → [malware/tool internal_ids]
+        self._cves_by_technique = {}              # attack-pattern internal_id → [CVE strings]
+
         if use_local:
             if not local_path:
                 local_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'enterprise-attack.json')
@@ -73,6 +89,8 @@ class MitreHelper:
     def _load_from_pickle(self, pkl_path: str):
         """Load pre-built indexes from signed pickle (3× faster than JSON parse)."""
         state = _pkl_load(pkl_path)
+        if state.get('_version', 1) != _PICKLE_VERSION:
+            raise ValueError(f"Pickle version mismatch (got {state.get('_version', 1)}, want {_PICKLE_VERSION})")
         self.techniques                  = state['techniques']
         self.tactics                     = state['tactics']
         self.mitigations                 = state['mitigations']
@@ -82,9 +100,15 @@ class MitreHelper:
         self._technique_by_name          = state['_technique_by_name']
         self._mitigation_by_ext_id       = state['_mitigation_by_ext_id']
         self._mitigations_by_technique   = state['_mitigations_by_technique']
+        self._intrusion_sets             = state['_intrusion_sets']
+        self._group_by_ext_id            = state['_group_by_ext_id']
+        self._techniques_by_group        = state['_techniques_by_group']
+        self._groups_by_technique        = state['_groups_by_technique']
+        self._malware_by_group           = state['_malware_by_group']
+        self._cves_by_technique          = state['_cves_by_technique']
         logger.info(
             f"MITRE cache loaded from pickle: {len(self.techniques)} techniques, "
-            f"{len(self.tactics)} tactics"
+            f"{len(self.tactics)} tactics, {len(self._intrusion_sets)} APT groups"
         )
 
     def _load_from_json(self, local_path: str):
@@ -108,6 +132,11 @@ class MitreHelper:
                 name = obj.get('name', '')
                 if name:
                     self._technique_by_name[name.lower()] = obj
+                cves = _CVE_RE.findall(obj.get('description', ''))
+                if cves:
+                    self._cves_by_technique[obj_id] = list(dict.fromkeys(
+                        c.upper() for c in cves
+                    ))
 
             elif obj_type == 'x-mitre-tactic':
                 self.tactics.append(obj)
@@ -117,26 +146,45 @@ class MitreHelper:
                     ext_id = ref.get('external_id', '')
                     if ext_id and ext_id.startswith('M'):
                         self._mitigation_by_ext_id[ext_id.upper()] = obj
+            elif obj_type == 'intrusion-set' and not obj.get('revoked', False):
+                self._intrusion_sets.append(obj)
+                for ref in obj.get('external_references', []):
+                    ext_id = ref.get('external_id', '')
+                    if ext_id and ext_id.upper().startswith('G'):
+                        self._group_by_ext_id[ext_id.upper()] = obj
             elif obj_type == 'relationship':
                 self.relationships.append(obj)
 
         for rel in self.relationships:
-            if (rel.get('relationship_type') == 'mitigates'
-                    and not rel.get('revoked', False)):
-                target = rel.get('target_ref')
-                if target:
-                    self._mitigations_by_technique.setdefault(target, []).append(rel)
+            revoked = rel.get('revoked', False)
+            src = rel.get('source_ref', '')
+            tgt = rel.get('target_ref', '')
+            rel_type = rel.get('relationship_type')
+
+            if rel_type == 'mitigates' and not revoked:
+                if tgt:
+                    self._mitigations_by_technique.setdefault(tgt, []).append(rel)
+
+            elif rel_type == 'uses' and not revoked:
+                if 'intrusion-set' in src:
+                    if 'attack-pattern' in tgt:
+                        self._techniques_by_group.setdefault(src, []).append(tgt)
+                        self._groups_by_technique.setdefault(tgt, []).append(src)
+                    elif 'malware' in tgt or 'tool' in tgt:
+                        self._malware_by_group.setdefault(src, []).append(tgt)
 
         logger.info(
             f"MITRE cache loaded from JSON: {len(self.techniques)} techniques, "
             f"{len(self.tactics)} tactics, {len(self.mitigations)} mitigations, "
-            f"{len(self.relationships)} relationships"
+            f"{len(self.relationships)} relationships, "
+            f"{len(self._intrusion_sets)} APT groups"
         )
 
     def _save_pickle(self, pkl_path: str):
         """Persist parsed indexes as a signed pickle for faster subsequent loads."""
         try:
             state = {
+                '_version':                    _PICKLE_VERSION,
                 'techniques':                  self.techniques,
                 'tactics':                     self.tactics,
                 'mitigations':                 self.mitigations,
@@ -146,6 +194,12 @@ class MitreHelper:
                 '_technique_by_name':          self._technique_by_name,
                 '_mitigation_by_ext_id':       self._mitigation_by_ext_id,
                 '_mitigations_by_technique':   self._mitigations_by_technique,
+                '_intrusion_sets':             self._intrusion_sets,
+                '_group_by_ext_id':            self._group_by_ext_id,
+                '_techniques_by_group':        self._techniques_by_group,
+                '_groups_by_technique':        self._groups_by_technique,
+                '_malware_by_group':           self._malware_by_group,
+                '_cves_by_technique':          self._cves_by_technique,
             }
             _pkl_dump(state, pkl_path)
             logger.info(f"MITRE signed pickle cache saved: {pkl_path}")
@@ -268,6 +322,106 @@ class MitreHelper:
             })
 
         return mitigations
+
+    def get_groups_by_technique(self, technique_id: str) -> List[Dict]:
+        """Return APT groups known to use a technique. technique_id: "T1190" or internal id."""
+        if technique_id.startswith('T') or technique_id.startswith('AML'):
+            tech = self.find_technique(technique_id)
+            if not tech:
+                return []
+            internal_id = tech.get('id')
+        else:
+            internal_id = technique_id
+
+        group_internal_ids = self._groups_by_technique.get(internal_id, [])
+        results = []
+        for gid in group_internal_ids:
+            obj = self.data_objects.get(gid)
+            if not obj:
+                continue
+            ext_refs = obj.get('external_references', [])
+            group_ext_id = next(
+                (r.get('external_id') for r in ext_refs if r.get('external_id', '').startswith('G')),
+                gid
+            )
+            results.append({
+                'group_id': group_ext_id,
+                'group_name': obj.get('name', 'Unknown'),
+                'aliases': obj.get('aliases', []),
+            })
+        return results
+
+    def get_techniques_for_group(self, group_id: str) -> List[Dict]:
+        """Return techniques used by an APT group. group_id: "G0119" or internal id."""
+        if group_id.upper().startswith('G'):
+            obj = self._group_by_ext_id.get(group_id.upper())
+            internal_id = obj.get('id') if obj else None
+        else:
+            internal_id = group_id
+
+        if not internal_id:
+            return []
+
+        tech_internal_ids = self._techniques_by_group.get(internal_id, [])
+        results = []
+        for tid in tech_internal_ids:
+            obj = self.data_objects.get(tid)
+            if not obj:
+                continue
+            ext_refs = obj.get('external_references', [])
+            tech_ext_id = next(
+                (r.get('external_id') for r in ext_refs if r.get('external_id', '').startswith('T')),
+                tid
+            )
+            tactic_names = [
+                phase.get('phase_name', '')
+                for phase in obj.get('kill_chain_phases', [])
+            ]
+            results.append({
+                'technique_id': tech_ext_id,
+                'technique_name': obj.get('name', 'Unknown'),
+                'tactics': tactic_names,
+            })
+        return results
+
+    def get_cves_for_technique(self, technique_id: str) -> List[str]:
+        """Return CVE IDs mentioned in a technique's description. technique_id: "T1190" or internal id."""
+        if technique_id.startswith('T') or technique_id.startswith('AML'):
+            tech = self.find_technique(technique_id)
+            if not tech:
+                return []
+            internal_id = tech.get('id')
+        else:
+            internal_id = technique_id
+        return self._cves_by_technique.get(internal_id, [])
+
+    def get_malware_for_group(self, group_id: str) -> List[Dict]:
+        """Return malware/tools used by an APT group. group_id: "G0119" or internal id."""
+        if group_id.upper().startswith('G'):
+            obj = self._group_by_ext_id.get(group_id.upper())
+            internal_id = obj.get('id') if obj else None
+        else:
+            internal_id = group_id
+
+        if not internal_id:
+            return []
+
+        malware_ids = self._malware_by_group.get(internal_id, [])
+        results = []
+        for mid in malware_ids:
+            obj = self.data_objects.get(mid)
+            if not obj:
+                continue
+            ext_refs = obj.get('external_references', [])
+            ext_id = next(
+                (r.get('external_id') for r in ext_refs if r.get('external_id')),
+                mid
+            )
+            results.append({
+                'malware_id': ext_id,
+                'malware_name': obj.get('name', 'Unknown'),
+            })
+        return results
 
     def get_mitigations_for_techniques(self, technique_ids):
         """

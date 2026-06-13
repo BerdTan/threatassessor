@@ -1352,6 +1352,35 @@ They are structural facts about the architecture, not critic opinions:
 {chr(10).join(lines)}
 """
 
+            # Build user journey intelligence block from ground_truth
+            _us = ground_truth.get("user_stories", {})
+            _journeys = _us.get("journeys", [])
+            _story_block = ""
+            if _journeys:
+                _corr = [j for j in _journeys if not j.get("no_user_story")]
+                _atk  = [j for j in _journeys if j.get("no_user_story")]
+                _lines = [
+                    f"{'═'*59}",
+                    "USER JOURNEY INTELLIGENCE (StoryCaster — deterministic, pre-LLM)",
+                    f"Corroborated paths ({len(_corr)}): attacker exploits the same route a real user takes.",
+                    f"Post-compromise paths ({len(_atk)}): no legitimate user follows this route — attacker must already have a foothold.",
+                    "",
+                ]
+                for j in _corr:
+                    _lines.append(
+                        f"  CORROBORATED {j.get('attack_path_id','?')}: "
+                        f"{j.get('actor_label','?')} → {j.get('resource_label','?')} "
+                        f"[{j.get('user_role','user')}] "
+                        f"| Tactics: {', '.join(j.get('threat_relevance',[]))}"
+                    )
+                for j in _atk:
+                    path_str = ' → '.join(j.get('path_labels', j.get('path', [])))
+                    _lines.append(
+                        f"  POST-COMPROMISE {j.get('attack_path_id','?')}: {path_str} "
+                        f"— no behavioural baseline, detection must be network-layer only"
+                    )
+                _story_block = "\n".join(_lines) + "\n"
+
             prompt = f"""
 You are synthesising a security assessment for architecture: "{arch_name}"
 
@@ -1380,7 +1409,7 @@ Gaps (exploit feasibility):
 {_gap_list(red_team)}
 Exploit Mitigation Roadmap (use these cost/effort fields verbatim — do not invent):
 {rt_roadmap_json}
-{pt_block}{bh_block}{deterministic_block}{tradeoff_block}
+{pt_block}{bh_block}{_story_block}{deterministic_block}{tradeoff_block}
 {'═'*59}
 {tech_grounding_block if tech_grounding_block else ''}
 ═══════════════════════════════════════════════════════════
@@ -1423,8 +1452,8 @@ Produce a JSON object with EXACTLY this structure:
   ],
   "improvement_tiers": {{
     "quick_win": {{
-      "rationale": "highest security gain per unit effort, lowest user friction",
-      "items": ["control name — traces to: critic X finding Y"],
+      "rationale": "highest security gain per unit effort — prioritise post-compromise paths first (no detection fallback), then corroborated paths where attacker blends with user traffic",
+      "items": ["control name — traces to: critic X finding Y — protects: [journey or post-compromise path ID]"],
       "effort": "use Red Team roadmap effort field verbatim, or state 'not estimated'",
       "cost": "use Red Team roadmap cost field verbatim, or state 'cost not estimated'",
       "risk_reduction": "estimated score change (e.g. {rt['current']} → X)",
@@ -1432,8 +1461,8 @@ Produce a JSON object with EXACTLY this structure:
       "practical_verdict": "YES|MAYBE based on Red Team practical field"
     }},
     "recommended": {{
-      "rationale": "balanced security / usability / cost — realistic for most teams",
-      "items": ["control — traces to: critic X finding Y"],
+      "rationale": "balanced security / usability / cost — include detection controls for corroborated paths (attacker mimics real users, so detection needs precise baselines)",
+      "items": ["control — traces to: critic X finding Y — protects: [journey or post-compromise path ID]"],
       "effort": "...",
       "cost": "...",
       "risk_reduction": "...",
@@ -1441,7 +1470,7 @@ Produce a JSON object with EXACTLY this structure:
       "practical_verdict": "..."
     }},
     "maximum": {{
-      "rationale": "full coverage including diminishing-return items",
+      "rationale": "full coverage including diminishing-return items — address any post-compromise paths still lacking network segmentation",
       "items": ["..."],
       "effort": "...",
       "cost": "...",
@@ -1466,6 +1495,12 @@ RULES:
   * If validation_report.checks.detection_analytics.issues > 0: T1005/T1213 paths lack behavioral analytics — mark KNOWN, not UNSURE
   * If validation_report.checks.detection_analytics mentions API Gateway placement unclear: mark KNOWN
   * If validation_report.checks.external_dependencies.issues > 0: supply chain risk or BCP gap — mark KNOWN
+- USER JOURNEY TIER SHARPENING — use the USER JOURNEY INTELLIGENCE block above to sharpen tier placement:
+  * POST-COMPROMISE paths (no user baseline): any preventive control covering that path (segmentation, firewall rule, network isolation) belongs in Quick Win — there is no detection fallback, so prevention is the only lever.
+  * CORROBORATED paths (real user follows the same route): detection controls are valid but anomaly-based detection alone is insufficient — attacker blends with user traffic. Preventive controls (MFA, RBAC, WAF) belong in Quick Win; detection controls with precise baselines belong in Recommended.
+  * When writing tier items, append "— protects [AP-id] ([user role] journey)" or "— covers post-compromise path [AP-id]" so the reader knows which journey each control addresses.
+  * If all paths are corroborated: note in the residual that behavioural detection thresholds need calibration to avoid false positives from legitimate users.
+  * If any path is post-compromise: include in residual that network-layer monitoring must be in place — SIEM alerts on user behaviour will not fire.
 - STRUCTURAL BLINDSPOTS — all critic lenses have these systematic gaps; always include them in blindspots[] if not addressed by controls:
   * Supply chain / third-party: all critics focus on internal architecture nodes; vendor risk and external dependencies are outside every critic's rubric
   * Business continuity / DR impact: security-focused lenses do not evaluate operational resilience or availability impact of security controls

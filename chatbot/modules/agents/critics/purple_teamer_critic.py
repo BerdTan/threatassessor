@@ -296,10 +296,12 @@ class PurpleTeamerCritic(CriticAgent):
             f"{len(adr_failures)} ADR coherence failures"
         )
 
+        user_stories = ground_truth.get("user_stories", {})
         prompt = self._build_prompt(
             attack_paths, control_recs,
             coverage_gaps, detection_blindspots, adr_failures,
             mode_context, architect_critique, tester_critique, red_team_critique,
+            user_stories=user_stories,
         )
 
         logger.info("PurpleTeamerCritic: Calling LLM")
@@ -418,6 +420,7 @@ class PurpleTeamerCritic(CriticAgent):
         architect_critique: Optional[CritiqueScore],
         tester_critique: Optional[CritiqueScore],
         red_team_critique: Optional[CritiqueScore],
+        user_stories: Optional[Dict] = None,
     ) -> str:
         paths_summary = ""
         for ap in attack_paths:
@@ -483,6 +486,8 @@ Context: {mode_context}
 ## Prior Critic Gaps (do NOT repeat these — find NEW issues in your lenses):
 {prior_gaps or '  No prior critic context available.'}
 
+{self._format_pt_story_context(attack_paths, user_stories or {})}
+
 ## Rubric (100 points, FORWARD — higher = better)
 
 | Lens | Category | Points |
@@ -522,6 +527,44 @@ Context: {mode_context}
   ]
 }}
 ```"""
+
+    def _format_pt_story_context(self, attack_paths: list, user_stories: dict) -> str:
+        """
+        Lens B augmentation: annotate each AP with its user-journey corroboration status.
+        Corroborated paths are harder to detect via anomaly — attacker blends with real traffic.
+        Post-compromise paths have no user baseline — detection must be purely technical.
+        """
+        journeys = user_stories.get("journeys", [])
+        if not journeys:
+            return ""
+
+        by_ap = {j.get("attack_path_id"): j for j in journeys if j.get("attack_path_id")}
+        if not by_ap:
+            return ""
+
+        lines = ["## User Journey Detection Context (Lens B — detection strategy per path):"]
+        lines.append("Use this when assessing whether behavioural anomaly detection is viable for each path.")
+        for ap in attack_paths:
+            ap_id = ap.get("id", "?")
+            j = by_ap.get(ap_id)
+            if not j:
+                continue
+            if j.get("no_user_story"):
+                lines.append(
+                    f"  {ap_id} [POST-COMPROMISE]: No normal user follows this path. "
+                    f"Attacker-only pivot — anomaly detection has no baseline. "
+                    f"Detection MUST use network-layer controls (segmentation, east-west inspection)."
+                )
+            else:
+                role = j.get("user_role", "user")
+                actor = j.get("actor_label", "?")
+                resource = j.get("resource_label", "?")
+                lines.append(
+                    f"  {ap_id} [CORROBORATED — {role}]: {actor} → {resource}. "
+                    f"Legitimate users follow this exact path. Anomaly detection is viable BUT "
+                    f"attacker traffic blends with real {role} behaviour — detection thresholds must be precise."
+                )
+        return "\n".join(lines)
 
     def _short_circuit_pass(self, reason: str) -> CritiqueScore:
         return CritiqueScore(

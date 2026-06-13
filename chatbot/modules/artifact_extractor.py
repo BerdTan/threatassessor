@@ -58,6 +58,9 @@ class ArtifactSet:
     # Indexes for efficient agent queries
     indexes: Dict[str, Any] = field(default_factory=dict)
 
+    # StoryCaster output (additive — empty dict if not generated)
+    user_stories: Dict[str, Any] = field(default_factory=dict)
+
 
 # ============================================================================
 # ARTIFACT EXTRACTOR
@@ -101,6 +104,11 @@ class ArtifactExtractor:
 
         # Build indexes
         indexes = ArtifactExtractor._build_indexes(tier1, tier2)
+
+        # Story index — separate from structural indexes, built from user_stories key
+        user_stories = ground_truth.get("user_stories", {})
+        indexes["story_index"] = ArtifactExtractor._build_story_index(user_stories)
+
         logger.info(f"  ✅ Indexes: {len(indexes)} created")
 
         # Calculate overall completeness
@@ -120,7 +128,8 @@ class ArtifactExtractor:
             tier1_critical=tier1,
             tier2_important=tier2,
             completeness=completeness,
-            indexes=indexes
+            indexes=indexes,
+            user_stories=ground_truth.get("user_stories", {}),
         )
 
     # ========================================================================
@@ -490,6 +499,51 @@ class ArtifactExtractor:
             indexes["after_mmd_controls"] = 0
 
         return indexes
+
+    @staticmethod
+    def _build_story_index(user_stories: Dict) -> Dict:
+        """
+        Build story_index from user_stories for critic context injection.
+
+        Returns:
+            by_type:      story_type → count (edge micro-stories)
+            high_risk:    journey stories with Initial Access or Lateral Movement tactics
+            attacker_only: journey stories with no_user_story=True
+            corroborated:  journey stories with no_user_story=False
+            summary:      one-line distribution string for prompt injection
+        """
+        from collections import Counter
+        edges = user_stories.get("edges", [])
+        journeys = user_stories.get("journeys", [])
+
+        by_type = Counter(
+            s["story_type"] for s in edges if not s.get("infra_only")
+        )
+
+        high_risk = [
+            j for j in journeys
+            if not j.get("no_user_story")
+            and any(t in j.get("threat_relevance", [])
+                    for t in ["Initial Access", "Lateral Movement", "Privilege Escalation"])
+        ]
+
+        attacker_only = [j for j in journeys if j.get("no_user_story")]
+        corroborated  = [j for j in journeys if not j.get("no_user_story")]
+
+        type_str = ", ".join(f"{t}×{c}" for t, c in by_type.most_common())
+        summary = (
+            f"{len(corroborated)} corroborated journey(s), "
+            f"{len(attacker_only)} attacker-only path(s). "
+            f"Edge flow types: {type_str or 'none'}."
+        )
+
+        return {
+            "by_type":       dict(by_type),
+            "high_risk":     high_risk,
+            "attacker_only": attacker_only,
+            "corroborated":  corroborated,
+            "summary":       summary,
+        }
 
 
 # ============================================================================

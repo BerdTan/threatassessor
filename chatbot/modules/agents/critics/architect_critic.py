@@ -402,6 +402,8 @@ ARTIFACT 4: VALIDATION RESULTS
 ARTIFACT 5: RAPIDS ASSESSMENT (6 threat categories)
 {self._format_rapids(tier1["artifact_5_rapids"])}
 
+{self._format_story_context(indexes)}
+
 {'='*70}
 TIER 2: IMPORTANT ARTIFACTS (20 points weight)
 {'='*70}
@@ -443,6 +445,7 @@ Focus on:
 4. Defense-in-depth coverage
 5. RAPIDS threat alignment
 6. **SSP policy alignment** — are L0 cardinal controls present? Are any L0 gaps present that would require HQ approval to defer?
+7. **User journey alignment** — do the recommended controls match the dominant flow types above? Attacker-only paths (no user baseline) should receive anomaly detection or network segmentation controls, since behavioral baselines cannot flag them.
 
 {'='*70}
 OUTPUT FORMAT (JSON REQUIRED)
@@ -582,6 +585,39 @@ You MUST respond with valid JSON in this exact format:
         return f"""  Overall: {overall}
   Confidence: {confidence:.1%}
   Issues found: {len(issues)}"""
+
+    def _format_story_context(self, indexes: Dict) -> str:
+        """Format StoryCaster user journey context for architect review."""
+        si = indexes.get("story_index")
+        if not si:
+            return ""
+
+        lines = ["USER JOURNEY CONTEXT (StoryCaster):"]
+        lines.append(f"  {si['summary']}")
+
+        by_type = si.get("by_type", {})
+        if by_type:
+            dist = ", ".join(f"{t}: {c}" for t, c in sorted(by_type.items(), key=lambda x: -x[1]))
+            lines.append(f"  Flow distribution: {dist}")
+
+        attacker_only = si.get("attacker_only", [])
+        if attacker_only:
+            lines.append(f"  ⚠ Attacker-only paths ({len(attacker_only)}) — no user baseline:")
+            for j in attacker_only:
+                path_str = " → ".join(j.get("path_labels", j.get("path", [])))
+                lines.append(f"    · {j.get('attack_path_id', '?')}: {path_str}")
+
+        high_risk = si.get("high_risk", [])
+        if high_risk:
+            lines.append(f"  High-risk corroborated journeys ({len(high_risk)}):")
+            for j in high_risk[:3]:
+                lines.append(
+                    f"    · {j.get('story_id','?')} [{j.get('user_role','?')}] "
+                    f"{j.get('actor_label','?')} → {j.get('resource_label','?')} "
+                    f"({', '.join(j.get('threat_relevance',[]))})"
+                )
+
+        return "\n".join(lines)
 
     def _format_rapids(self, artifact: Dict) -> str:
         """Format RAPIDS artifact."""

@@ -449,12 +449,31 @@ REMEMBER: Low score = hard to exploit = GOOD defense (we want this!)
         else:
             controls_text = "NONE - Architecture is completely vulnerable!"
 
-        # Format attack paths
+        # Format attack paths — include story corroboration signal
         paths_text = ""
+        story_index = artifacts.indexes.get("story_index", {})
+        attacker_only_ids = {
+            j.get("attack_path_id") for j in story_index.get("attacker_only", [])
+        }
         for i, path in enumerate(paths, 1):
-            paths_text += f"\nPath #{i}: {' → '.join(path['path'])}\n"
+            ap_id = path.get("id", f"AP-{i}")
+            no_baseline = ap_id in attacker_only_ids
+            baseline_note = " [NO USER BASELINE — anomaly detection blind spot]" if no_baseline else " [corroborated user journey]"
+            paths_text += f"\nPath #{i} ({ap_id}){baseline_note}: {' → '.join(path['path'])}\n"
             paths_text += f"  Techniques: {', '.join(path.get('techniques', [])[:5])}\n"
             paths_text += f"  Hop count: {len(path['path']) - 1}\n"
+
+        # Declared attack surface from high-risk user journeys
+        high_risk = story_index.get("high_risk", [])
+        if high_risk:
+            paths_text += "\nDECLARED ATTACK SURFACE (high-risk corroborated journeys):\n"
+            paths_text += "These paths are both legitimate user journeys AND attack paths — harder to detect via anomaly:\n"
+            for j in high_risk:
+                paths_text += (
+                    f"  · {j.get('story_id','?')} [{j.get('user_role','?')}] "
+                    f"{j.get('actor_label','?')} → {j.get('resource_label','?')}: "
+                    f"{j.get('story_text','')[:120]}...\n"
+                )
 
         # Build SSP context block for exploit difficulty context
         control_recs = ground_truth.get('control_recommendations', [])

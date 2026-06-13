@@ -365,6 +365,7 @@ class BlackhatCritic(CriticAgent):
             sequential_chains, pivot_chains,
             stealth_score, stealthy_techs, chain_gaps,
             red_team_critique, pt_blind_nodes,
+            ground_truth=ground_truth,
         )
 
         logger.info("BlackhatCritic: Calling LLM for cross-path chain assessment")
@@ -470,6 +471,46 @@ class BlackhatCritic(CriticAgent):
     # Helpers
     # ------------------------------------------------------------------
 
+    def _format_bh_story_context(self, attack_paths: list, ground_truth: Optional[Dict]) -> str:
+        """
+        Stealth augmentation: for each pivot node in chains, flag whether it sits on
+        a corroborated path (attacker blends with real traffic → stealth is elevated)
+        or a post-compromise path (no user baseline → already a blind spot).
+        """
+        if not ground_truth:
+            return ""
+        journeys = ground_truth.get("user_stories", {}).get("journeys", [])
+        if not journeys:
+            return ""
+
+        by_ap = {j.get("attack_path_id"): j for j in journeys if j.get("attack_path_id")}
+        if not by_ap:
+            return ""
+
+        lines = []
+        for ap in attack_paths:
+            ap_id = ap.get("id", "?")
+            j = by_ap.get(ap_id)
+            if not j:
+                continue
+            if j.get("no_user_story"):
+                lines.append(
+                    f"  {ap_id} [POST-COMPROMISE]: No legitimate user traverses this path — "
+                    f"any activity is anomalous, but only if network-layer detection is present."
+                )
+            else:
+                role = j.get("user_role", "user")
+                lines.append(
+                    f"  {ap_id} [CORROBORATED — {role}]: Attacker traffic on this path mimics "
+                    f"real {role} behaviour. If this AP shares a pivot node with another AP, "
+                    f"lateral movement at the pivot is INVISIBLE to behavioural anomaly detection. "
+                    f"Treat stealth_potential as elevated for any chain through this AP."
+                )
+
+        if not lines:
+            return ""
+        return "\n## User Journey Stealth Context (elevate chains through corroborated paths):\n" + "\n".join(lines) + "\n"
+
     def _short_circuit_pass(self) -> CritiqueScore:
         return CritiqueScore(
             role="Blackhat",
@@ -506,6 +547,7 @@ class BlackhatCritic(CriticAgent):
         chain_gaps: List[str],
         red_team_critique: Optional[CritiqueScore],
         pt_blind_nodes: Optional[List[str]] = None,
+        ground_truth: Optional[Dict] = None,
     ) -> str:
         weights = self._rubric_weights
 
@@ -589,7 +631,7 @@ without needing separate entry points. Per-path mitigations cannot stop this.)
 
 ### Cross-Path Mitigation Gaps:
 {''.join('  - ' + g + chr(10) for g in chain_gaps) or '  None — all chain techniques have a mitigation.'}
-{rt_context}{pt_context}
+{rt_context}{pt_context}{self._format_bh_story_context(attack_paths, ground_truth)}
 ## Rubric (100 points, INVERTED)
 
 | Category | Points |
