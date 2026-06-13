@@ -6,13 +6,14 @@ Upload a Mermaid (`.mmd`) architecture diagram and receive a full, MITRE-mapped 
 
 ## What it does
 
-- Parses your architecture diagram and maps every component and data flow to MITRE ATT&CK techniques, generating prioritized security controls with before/after diagrams.
-- Runs AI/ML threat pattern detection using the ARC Framework and MITRE ATLAS (AI/ML techniques) on top of the deterministic RAPIDS threat engine. ARC control recommendations are annotated with category badges (SAF, SEC, PRIV, etc.) and linked to ATLAS techniques with full name resolution.
-- Generates **user journey co-intelligence** (StoryCaster) — the diagram is treated as a knowledge graph. Every attack path is cross-referenced against the legitimate user workflows that traverse the same route. Corroborated paths (real users follow this path) are distinguished from post-compromise pivots (no user baseline, attacker must already have a foothold). This signal flows into all five MoE critics, the synthesis tier recommendations, and every generated report — making findings concrete: "an end user follows this exact path in normal use" vs "no one follows this path legitimately."
-- Enriches attack paths with **real-world threat intelligence** — MITRE ATT&CK intrusion-set (APT group) attribution by technique overlap, CTID KEV→ATT&CK CVE mapping cross-referenced against CISA Known Exploited Vulnerabilities (ransomware flag, active exploitation status). APT and CVE chips appear in the dashboard with hover popovers linking to MITRE, NVD, and CISA KEV.
-- Enriches controls with the Singapore Government ICT&SS Security Standards for Providers (SSP) baseline — selectable profile (Low/Medium/High Risk Cloud, On-Premises, Generative AI, Digital Services, Sandbox) surfaces the mandatory controls your architecture must meet.
-- Calculates architecture-sensitive confidence: complex architectures start with a lower base confidence that recovers only when coverage signals (control coverage, validation pass rate, attack path depth) prove the surface was thoroughly mapped. Final confidence is reported as a `confidence_breakdown` object.
-- Validates findings through a Mixture of Experts (MoE) review — five critic agents running in a fixed sequence: Architect (2A) → Coverage Auditor (2B) → Exploit Analyst (2C) → Purple Team (2D) → Blackhat (2E). The core three (2A–2C) always run; Purple Team and Blackhat are optional toggles. Blackhat is the supreme critic — it sees all prior critique output and performs cross-path chain exploitation and pivot-diverge analysis. Each critic receives a tailored slice of user journey context relevant to its rubric. Produces output files including an executive summary, technical report, 8-week action plan, and three phased architecture diagrams — all annotated with user journey context.
+| Capability | What you get |
+|---|---|
+| **Threat mapping** | MITRE ATT&CK techniques per node and hop, prioritised controls, before/after architecture diagrams |
+| **User journey intelligence** | Every attack path cross-referenced against real user workflows — tells you whether an attacker blends with legitimate traffic or is on a post-compromise pivot with no user baseline |
+| **Real-world threat intel** | APT group attribution (MITRE intrusion-sets) and CVEs per attack path, cross-checked against CISA Known Exploited Vulnerabilities including ransomware flags |
+| **Policy alignment** | Singapore Government ICT&SS SSP baseline overlay — mandatory controls surfaced per profile (cloud, on-prem, GenAI, etc.) |
+| **Expert Review** | Five MoE critic agents — Architect → Coverage Auditor → Exploit Analyst → Purple Team → Blackhat — each receiving user journey context relevant to their rubric, producing a consensus with tiered improvement recommendations |
+| **Confidence scoring** | Architecture-sensitive confidence band; recovers toward ceiling only when coverage signals prove the surface was thoroughly mapped |
 
 ## Quick Start
 
@@ -51,15 +52,11 @@ Both commands write results to `report/<architecture-name>/` (16 files).
 
 ## How it works
 
-ThreatAssessor parses the Mermaid diagram into a graph, then the RAPIDS engine walks every attack path and maps each hop to MITRE ATT&CK techniques and mitigations — the deterministic pass runs in under 30 seconds with no LLM call. The SSP enrichment layer overlays the user-selected policy baseline, flagging controls that are mandatory, recommended, or not applicable for that profile.
+**1. Deterministic pass (~30 s, no LLM)** — The diagram is parsed into a graph. RAPIDS walks every attack path, maps each hop to MITRE ATT&CK techniques and mitigations, and overlays the selected SSP policy baseline. StoryCaster runs here too: it classifies each attack path as *corroborated* (a real user follows this route) or *post-compromise* (no user baseline — attacker must already be inside). APT group attribution and KEV-backed CVEs are added to each path's risk scenario.
 
-Confidence is architecture-sensitive: a complex multi-tier architecture starts at a lower base than a small demo diagram, recovering toward the ceiling only when control coverage, validation pass rate, and attack path depth prove the surface was thoroughly mapped.
+**2. Expert Review (~90 s, LLM)** — Five MoE critics audit in sequence, each receiving a slice of the journey intelligence relevant to their rubric. Blackhat runs last and looks for cross-path pivot chains the individual critics cannot see. The synthesis step applies deterministic tier-sharpening: post-compromise paths push preventive controls to Quick Win (no detection fallback); corroborated paths place preventive controls in Quick Win and precision-detection controls in Recommended.
 
-When Expert Review is enabled, up to five MoE critic agents audit the findings in sequence. The core three (Architect, Coverage Auditor, Exploit Analyst) always run. Purple Team adds detection-depth and SOC operability analysis across three lenses (coverage, assume-breach, ADR operability). Blackhat — the supreme critic — runs last and performs cross-path chain exploitation, surfacing pivot-diverge chains as synthetic BH-N attack paths in the Threat Model; it short-circuits if fewer than two attack paths are present.
-
-Before any critic runs, StoryCaster generates user journey stories from the architecture graph — classifying which attack paths are corroborated by real user workflows and which are post-compromise pivots. Each critic receives a tailored slice of this context: the Architect checks controls align to dominant flow types; the Tester validates story-derived rationales; the Exploit Analyst withholds anomaly-detection credit on corroborated paths; the Purple Team applies path-aware detection strategy; the Blackhat elevates stealth scores at pivot nodes that share a corroborated path. The synthesis step applies deterministic tier-sharpening rules: controls on post-compromise paths always land in Quick Win (no detection fallback), while corroborated paths get preventive controls in Quick Win and detection controls with baseline precision in Recommended.
-
-The synthesis step is grounded against the MITRE ATT&CK database so technique-ID disputes between critics are resolved against authoritative names. The dashboard history dropdown lets you reload any past analysis without re-running the pipeline.
+**3. Output** — Executive summary, technical report, 8-week action plan, three phased architecture diagrams, and a threat model with ADR walkthrough — all annotated with user journey context so every finding tells you *who is affected* and *whether the attacker looks like a real user*.
 
 ## API usage
 
