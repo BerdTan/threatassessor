@@ -358,6 +358,11 @@ class CloudPatternSettings(BaseModel):
         return self
 
 
+class StoryCasterSettings(BaseModel):
+    llm_enrichment: bool = Field(default=False,
+        description="Use LLM to enrich user story prose (default off — deterministic stories are generated regardless; LLM adds prose quality only)")
+
+
 class NarrativesSettings(BaseModel):
     enabled: bool = Field(default=True,
         description="Add risk_scenario per AP and mitigation_narrative per control after deterministic analysis")
@@ -457,6 +462,7 @@ class AppSettings(BaseModel):
     patterns: PatternsSettings = Field(default_factory=PatternsSettings)
     ai_pattern: AIPatternSettings = Field(default_factory=AIPatternSettings)
     cloud_pattern: CloudPatternSettings = Field(default_factory=CloudPatternSettings)
+    story_caster: StoryCasterSettings = Field(default_factory=StoryCasterSettings)
     narratives: NarrativesSettings = Field(default_factory=NarrativesSettings)
     threat_model: ThreatModelSettings = Field(default_factory=ThreatModelSettings)
     adr: ADRSettings = Field(default_factory=ADRSettings)

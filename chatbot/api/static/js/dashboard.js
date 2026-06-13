@@ -8467,6 +8467,20 @@ class Dashboard {
             ]
           },
           {
+            title: '🗺️ StoryCaster — User Journey Stories',
+            subtitle: 'Controls whether StoryCaster uses an LLM to enrich user story prose. Deterministic stories are always generated; LLM enrichment adds prose quality only.',
+            fields: [
+              { section:'story_caster', field:'llm_enrichment', label:'LLM Story Enrichment',
+                vtype:'select',
+                options:[
+                  {v:'false', label:'Off — deterministic only (recommended)', rec:true},
+                  {v:'true',  label:'On — LLM enriches story prose'},
+                ],
+                desc:'When On, StoryCaster calls the LLM to improve the readability of generated user story text. The structured output (story type, user role, threat relevance, exploitation chain, APT attribution, KEV status) is deterministic regardless of this setting.',
+                effects: ef('Off = zero extra LLM calls per analysis','On = richer story prose in ThreatModel right pane','Adds ~1–2 LLM calls when On','None') },
+            ]
+          },
+          {
             title: '🤖 LLM & System',
             subtitle: 'Default LLM behaviour, file upload limits, and report storage path.',
             fields: [
@@ -8602,7 +8616,7 @@ class Dashboard {
         const filterRow = `<div id="cfg-filter-chips" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">${chips}</div>`;
 
         // ── Quick Setup card (only shown when filter='quick') ─────────────────
-        const qSec = data.moe || {}, qEng = data.engine || {}, qSys = data.system || {};
+        const qSec = data.moe || {}, qEng = data.engine || {}, qSys = data.system || {}, qSC = data.story_caster || {};
         const qSelStyle = `padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer; width:100%; box-sizing:border-box; color-scheme:dark;`;
         const qRow = (label, hint, inputHtml) => `
             <div style="padding:0.65rem 1.1rem; border-bottom:1px solid var(--border-color);">
@@ -8849,7 +8863,7 @@ class Dashboard {
                 <div class="card" style="margin-bottom:0.75rem;">
                     <div style="padding:0.75rem 1.1rem; border-bottom:1px solid var(--border-color);">
                         <span style="font-weight:700; font-size:0.95rem;">⚡ Quick Setup</span>
-                        <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">The 5 most impactful settings — change only these if unsure</span>
+                        <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">The most impactful settings — change only these if unsure</span>
                     </div>
                     ${qRow('Critic Mode', 'Sequential is most accurate. Switch to Parallel to speed up Expert Review.',
                         mkSel('moe','critic_mode', critModeOpts, String(qSec.critic_mode||'sequential')))}
@@ -8857,6 +8871,11 @@ class Dashboard {
                         mkSel('engine','max_paths', maxPathsOpts, String(qEng.max_paths||'10')))}
                     ${qRow('Top-N Paths Kept', 'How many ranked paths appear in the report.',
                         mkSel('engine','top_n', topNOpts, String(qEng.top_n||'5')))}
+                    ${qRow('User Story LLM Enrichment',
+                        'Off: deterministic stories only (zero extra LLM calls). On: LLM enriches story prose in the ThreatModel Journey card.',
+                        mkSel('story_caster','llm_enrichment',
+                          [{v:'false',label:'Off — deterministic only (recommended)',rec:true},{v:'true',label:'On — LLM enriches story prose'}],
+                          String(qSC.llm_enrichment ?? false)))}
                     ${qRow('Report Output Directory',
                         'Relative to project root or absolute path.',
                         `<input type="text" data-section="system" data-field="report_dir" data-vtype="string" value="${(qSys.report_dir||'report').replace(/"/g,'&quot;')}" style="${qSelStyle}" />`)}
@@ -8878,6 +8897,7 @@ class Dashboard {
             '🟣 MoE — Purple Team Critic (Layer 2D)':   'moe',
             '⚔️ MoE — Blackhat Critic (Layer 2E)':      'moe',
             '🔒 Residual Risk':                          'residual_risk',
+            '🗺️ StoryCaster — User Journey Stories':      'story_caster',
             '🤖 LLM & System':                           'llm_system',
         };
 
