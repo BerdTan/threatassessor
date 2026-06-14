@@ -68,9 +68,11 @@
                 <button class="nav-tab disabled" data-tab="controls">🛡️ Mitigations</button>
                 <button class="nav-tab disabled" data-tab="hardening">🔒 Visualise</button>
                 <button class="nav-tab disabled" data-tab="expert-review" style="display: none;">🧑‍🏫 Expert Review</button>
+                <button class="nav-tab disabled" data-tab="scrum-master" id="scrum-master-nav-tab" style="display:none;">🧩 ScrumMaster</button>
                 <button class="nav-tab disabled" data-tab="threat-model" id="threat-model-nav-tab" style="display:none;">🗺️ Threat Model</button>
                 <button class="nav-tab disabled" data-tab="reports">📄 Reports</button>
                 <button class="nav-tab disabled" data-tab="raw-data">💾 Raw Data</button>
+                <button class="nav-tab" id="harness-nav-tab" data-tab="harness">🔧 Harness</button>
                 <button class="nav-tab" id="config-nav-tab" data-tab="config" style="display:none;">⚙️ Configuration</button>
             </nav>
         </aside>
@@ -206,6 +208,14 @@
                     </div>
                 </div>
 
+                <!-- ScrumMaster Tab (shown when SM result available) -->
+                <div class="tab-pane" data-tab="scrum-master">
+                    <h2>ScrumMaster</h2>
+                    <div id="scrum-master-content" class="list-container">
+                        <p class="placeholder">ScrumMaster data loading...</p>
+                    </div>
+                </div>
+
                 <!-- Reports Tab -->
                 <div class="tab-pane" data-tab="reports">
                     <h2>Generated Reports</h2>
@@ -314,6 +324,13 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Harness Tab — full main-pane takeover, always accessible -->
+            <div id="harness-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:auto; background:var(--main-bg); padding:1.5rem;">
+                <div id="harness-content">
+                    <p class="placeholder">Click "Run Self-Check" to verify harness components.</p>
                 </div>
             </div>
 

@@ -1807,6 +1807,79 @@ Reply with only the JSON array, no other text.
             return None
 
 
+    def run_targeted(
+        self,
+        report_dir: str,
+        critics_to_run: list,
+        new_proposals_context: dict,
+        base_confidence: float = None,
+        critic_mode: str = None,
+    ) -> "MoEResult":
+        """Re-run only specific critics and rebuild synthesis.
+
+        Called by ScrumMasterCritic when targeted re-triggering is needed.
+        Critics NOT in critics_to_run are loaded from their saved JSON files —
+        no redundant LLM calls. Each re-run critic receives a
+        SCRUM_MASTER_PROPOSALS block injected into its prompt context.
+
+        Args:
+            report_dir: Path to report directory (must already contain ground_truth.json)
+            critics_to_run: Names of critics to re-run, e.g. ["architect", "red_team"]
+                Valid names: "architect", "tester", "red_team", "purple_team", "blackhat"
+            new_proposals_context: Dict injected into re-run critic prompts.
+                Expected key: "scrum_master_proposals" → List[Dict].
+                Critics receive this as a SCRUM_MASTER_PROPOSALS context block and
+                must address each proposal in their critique.
+            base_confidence: Override base confidence (defaults to existing result's base)
+            critic_mode: Override mode for sequencing re-run critics
+
+        Returns:
+            Updated MoEResult with fresh ValidationResults for re-run critics,
+            loaded results for skipped critics, and re-computed final confidence.
+        """
+        import os
+
+        report_path = Path(report_dir)
+
+        # Critic file mapping: name → (filename, delete-before-rerun)
+        _CRITIC_FILES = {
+            "architect":  report_path / "04_architect_critique.json",
+            "tester":     report_path / "05_tester_critique.json",
+            "red_team":   report_path / "06_red_team_critique.json",
+            "purple_team": report_path / "06b_purple_team_critique.json",
+            "blackhat":   report_path / "06c_blackhat_critique.json",
+        }
+
+        # Delete cached JSON for critics we need to re-run (forces fresh LLM call)
+        for name in critics_to_run:
+            path = _CRITIC_FILES.get(name)
+            if path and path.exists():
+                logger.info(f"run_targeted: deleting cached {path.name} for fresh re-run")
+                os.remove(path)
+
+        # Inject proposals context into orchestrator so critics can read it
+        # We store it on self temporarily — each critic's _logic reads it via
+        # the orchestrator reference passed during critique calls.
+        self._scrum_master_proposals = new_proposals_context.get("scrum_master_proposals", [])
+
+        try:
+            resolved_mode = critic_mode or self.config.critic_mode
+            resolved_confidence = base_confidence if base_confidence is not None else 99.5
+
+            # Re-run the full pipeline — deleted files force re-generation of
+            # targeted critics; saved files are loaded for all others.
+            result = self.run_pipeline(
+                report_dir=report_dir,
+                base_confidence=resolved_confidence,
+                critic_mode=resolved_mode,
+            )
+        finally:
+            # Clean up temporary state
+            self._scrum_master_proposals = []
+
+        return result
+
+
 # ============================================================================
 # CONVENIENCE FUNCTION
 # ============================================================================

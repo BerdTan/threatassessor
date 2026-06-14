@@ -42,7 +42,7 @@ async def analyze_with_progress(
     enable_ssp: bool = True,
 ) -> AsyncGenerator[str, None]:
     """
-    Run analysis with SSE progress updates.
+    Run analysis with SSE progress updates via ThreatAssessorHarness.
 
     Args:
         architecture_path: Path to architecture file
@@ -54,10 +54,10 @@ async def analyze_with_progress(
     Yields:
         SSE formatted progress events
     """
-    tracker = ProgressTracker(has_ai_ml=False)  # Will update after detection
+    tracker = ProgressTracker(has_ai_ml=False)
 
     try:
-        # Stage 1: Parsing (0-10%)
+        # Stage 1: Parsing (0-5%)
         progress = tracker.get_progress("parsing", 0.0)
         yield await SSEStream.send_progress(
             stage="parsing",
@@ -65,10 +65,8 @@ async def analyze_with_progress(
             message=f"[PARSING] {progress}% - {filename} - Analyzing architecture diagram structure...",
             eta_seconds=tracker.get_eta(progress)
         )
-
         await asyncio.sleep(0.1)
 
-        # Parsing progress updates
         progress = tracker.get_progress("parsing", 0.5)
         yield await SSEStream.send_progress(
             stage="parsing",
@@ -76,38 +74,46 @@ async def analyze_with_progress(
             message=f"[PARSING] {progress}% - {filename} - Validating Mermaid syntax...",
             eta_seconds=tracker.get_eta(progress)
         )
-
         await asyncio.sleep(0.1)
 
-        # Start analysis
-        service = ThreatAnalysisService()
-
-        # Extract clean architecture name from uploaded filename
-        # Remove .mmd extension and sanitize
+        # Derive clean architecture name (same logic as before)
         base_name = filename.replace('.mmd', '').replace('.', '_').replace(' ', '_')
-
-        # Avoid clobbering existing reports: append _1, _2, … if folder already exists
-        report_dir = _report_base_dir()
+        report_base = _report_base_dir()
         clean_arch_name = base_name
         counter = 1
-        while (report_dir / clean_arch_name).exists():
+        while (report_base / clean_arch_name).exists():
             clean_arch_name = f"{base_name}_{counter}"
             counter += 1
 
-        # Run analysis in thread pool; send heartbeat pings so the browser doesn't
-        # interpret the silence as a hang. Messages cycle through realistic stage labels.
+        report_dir = str(report_base / clean_arch_name)
+
+        # Build progress bridge: harness callbacks → SSE queue
+        q: queue.SimpleQueue = queue.SimpleQueue()
+
+        def _progress_cb(stage: str, pct: int, message: str) -> None:
+            q.put((stage, pct, message))
+
+        from chatbot.modules.harness import ThreatAssessorHarness, ScenarioConfig
+
+        harness = ThreatAssessorHarness(
+            scenario=ScenarioConfig.API_ONLY,
+            progress_callback=_progress_cb,
+        )
+
         loop = asyncio.get_event_loop()
-        analysis_future = loop.run_in_executor(
+        harness_future = loop.run_in_executor(
             None,
-            lambda: service.safe_execute(
+            lambda: harness.run(
                 architecture_path=architecture_path,
-                architecture_name=clean_arch_name,
-                include_validation=include_validation,
+                report_dir=report_dir,
                 ssp_profile=ssp_profile,
                 enable_ssp=enable_ssp,
+                include_validation=include_validation,
+                architecture_name=clean_arch_name,
             )
         )
 
+        # Heartbeat messages shown while harness runs (bridge progress queue + fake pings)
         heartbeat_messages = [
             (10, "rapids",     "🔍 Loading MITRE ATT&CK knowledge base..."),
             (18, "rapids",     "🧠 Mapping threat techniques to architecture nodes..."),
@@ -121,167 +127,139 @@ async def analyze_with_progress(
             (88, "validation", "📝 Finalising analysis results..."),
         ]
         ping_idx = 0
-        while not analysis_future.done():
-            await asyncio.sleep(3)
-            if analysis_future.done():
-                break
-            if ping_idx < len(heartbeat_messages):
-                prog, stage, msg = heartbeat_messages[ping_idx]
-                ping_idx += 1
-            else:
-                prog, stage, msg = 92, "validation", "⏳ Completing analysis..."
-            yield await SSEStream.send_progress(
-                stage=stage, progress=prog, message=msg,
-                eta_seconds=max(3, (len(heartbeat_messages) - ping_idx) * 3)
-            )
 
-        result = await analysis_future
+        while not harness_future.done():
+            await asyncio.sleep(0.05)
+            # Drain any stage callbacks the harness emitted
+            try:
+                while True:
+                    stage, pct, msg = q.get_nowait()
+                    yield await SSEStream.send_progress(stage=stage, progress=pct, message=msg)
+            except queue.Empty:
+                pass
 
-        if not result.success:
+            # Also emit a heartbeat ping every ~3s so the browser sees activity
+            if not harness_future.done():
+                await asyncio.sleep(2.95)
+                if ping_idx < len(heartbeat_messages):
+                    prog, stage, msg = heartbeat_messages[ping_idx]
+                    ping_idx += 1
+                else:
+                    prog, stage, msg = 92, "validation", "⏳ Completing analysis..."
+                yield await SSEStream.send_progress(
+                    stage=stage, progress=prog, message=msg,
+                    eta_seconds=max(3, (len(heartbeat_messages) - ping_idx) * 3)
+                )
+
+        ctx = await harness_future
+
+        # Check required stage (analysis) succeeded
+        if ctx.stage_outputs.get("analysis") == "error":
+            error_detail = ctx.errors[0] if ctx.errors else "Unknown error"
             yield await SSEStream.send_error(
                 error_message="Analysis failed",
-                detail=result.error
+                detail=error_detail
             )
             return
 
-        # Generate markdown reports (Executive, Technical, Action Plan)
+        # Build a ServiceResult-compatible data dict from ctx for the complete payload
+        service_result = ctx.get("service_result")
+        ground_truth = ctx.get("ground_truth", {})
+        result_data = service_result.data if service_result else {}
+
+        # If ReportStage failed, log it but continue (reports are supplementary)
+        if ctx.stage_outputs.get("report") == "error":
+            report_errors = [e for e in ctx.errors if e.startswith("report:")]
+            for err in report_errors:
+                logger.warning(f"Report generation: {err}")
+            result_data["report_paths"] = None
+            result_data["report_error"] = report_errors[0] if report_errors else "report stage failed"
+        else:
+            result_data["report_paths"] = ctx.get("report_paths")
+
         yield await SSEStream.send_progress(
             stage="reports",
-            progress=15,
-            message=f"📝 Generating markdown reports for {filename}...",
-            eta_seconds=5
+            progress=18,
+            message="✅ Reports generated: Executive, Technical, Action Plan",
+            eta_seconds=3
         )
         await asyncio.sleep(0.1)
 
-        try:
-            from chatbot.modules.threat_report import generate_report_package
-
-            # Generate all reports (executive, technical, action plan, diagrams)
-            ground_truth = result.data.get("analysis", {})
-            report_paths = await loop.run_in_executor(
-                None,
-                lambda: generate_report_package(
-                    original_mmd_path=architecture_path,
-                    ground_truth=ground_truth,
-                    output_dir="report"
-                )
-            )
-
-            # Add report paths to result data
-            result.data["report_paths"] = report_paths
-
-            yield await SSEStream.send_progress(
-                stage="reports",
-                progress=18,
-                message=f"✅ Reports generated: Executive, Technical, Action Plan",
-                eta_seconds=3
-            )
-            await asyncio.sleep(0.1)
-
-        except Exception as e:
-            logger.warning(f"Report generation failed: {e}")
-            # Continue anyway - reports are supplementary
-            result.data["report_paths"] = None
-            result.data["report_error"] = str(e)
-
-        # Extract pattern information
-        patterns_applied = result.data.get("patterns_applied", [])
+        # Extract pattern information for SSE events
+        patterns_applied = ctx.get("patterns_applied", [])
         has_ai_ml = any(p.get("pattern_id") == "ai_ml_arc" for p in patterns_applied)
-
-        # Update tracker if AI/ML detected
         if has_ai_ml:
             tracker.has_ai_ml = True
 
-        # Stage 3: Pattern Detection
         if patterns_applied:
             yield await SSEStream.send_patterns_detected(patterns_applied)
             await asyncio.sleep(0.1)
 
-        # Stage 4: RAPIDS Analysis (20-60%)
+        # RAPIDS stage events
         progress = tracker.get_progress("rapids", 0.0)
         yield await SSEStream.send_progress(
-            stage="rapids",
-            progress=progress,
+            stage="rapids", progress=progress,
             message=f"[RAPIDS] {progress}% - {filename} - Analyzing 6 threat categories...",
-            eta_seconds=tracker.get_eta(progress),
-            patterns_active=["rapids"]
+            eta_seconds=tracker.get_eta(progress), patterns_active=["rapids"]
         )
-
         await asyncio.sleep(0.1)
 
         progress = tracker.get_progress("rapids", 0.3)
         yield await SSEStream.send_progress(
-            stage="rapids",
-            progress=progress,
+            stage="rapids", progress=progress,
             message=f"[RAPIDS] {progress}% - {filename} - Mapping MITRE techniques to components...",
-            eta_seconds=tracker.get_eta(progress),
-            patterns_active=["rapids"]
+            eta_seconds=tracker.get_eta(progress), patterns_active=["rapids"]
         )
-
         await asyncio.sleep(0.1)
 
         progress = tracker.get_progress("rapids", 0.7)
         yield await SSEStream.send_progress(
-            stage="rapids",
-            progress=progress,
+            stage="rapids", progress=progress,
             message=f"[RAPIDS] {progress}% - {filename} - Computing attack paths and defensibility...",
-            eta_seconds=tracker.get_eta(progress),
-            patterns_active=["rapids"]
+            eta_seconds=tracker.get_eta(progress), patterns_active=["rapids"]
         )
-
         await asyncio.sleep(0.1)
 
-        # Send threat scores
-        analysis = result.data.get("analysis", {})
-        threats = analysis.get("threats", {})
-
+        # Threat scores
+        threats = ground_truth.get("threats", {})
         if threats:
-            # Group by pattern
-            scores_by_pattern = {"rapids": threats}
-
-            # If AI/ML detected, extract AI/ML specific scores
+            scores_by_pattern: dict = {"rapids": threats}
             if has_ai_ml:
-                ai_risks = analysis.get("ai_ml_risks", {})
+                ai_risks = ground_truth.get("ai_ml_risks", {})
                 if ai_risks:
                     scores_by_pattern["ai_ml"] = ai_risks
-
             yield await SSEStream.send_threat_scores(scores_by_pattern)
             await asyncio.sleep(0.1)
 
-        # Stage 5: AI/ML Analysis (60-80%) - only if applicable
+        # AI/ML events (if detected)
         if has_ai_ml:
             progress = tracker.get_progress("ai_ml", 0.0)
             yield await SSEStream.send_progress(
-                stage="ai_ml",
-                progress=progress,
+                stage="ai_ml", progress=progress,
                 message=f"[AI/ML] {progress}% - {filename} - Detecting AI/ML components...",
-                eta_seconds=tracker.get_eta(progress),
-                patterns_active=["rapids", "ai_ml_arc"]
+                eta_seconds=tracker.get_eta(progress), patterns_active=["rapids", "ai_ml_arc"]
             )
             await asyncio.sleep(0.1)
 
             progress = tracker.get_progress("ai_ml", 0.5)
             yield await SSEStream.send_progress(
-                stage="ai_ml",
-                progress=progress,
+                stage="ai_ml", progress=progress,
                 message=f"[AI/ML] {progress}% - {filename} - Analyzing ATLAS techniques + ARC risks...",
-                eta_seconds=tracker.get_eta(progress),
-                patterns_active=["rapids", "ai_ml_arc"]
+                eta_seconds=tracker.get_eta(progress), patterns_active=["rapids", "ai_ml_arc"]
             )
             await asyncio.sleep(0.1)
 
-        # Stage 6: Attack Paths
-        attack_paths = analysis.get("attack_paths", [])
-        for path in attack_paths[:3]:  # Send first 3 paths progressively
+        # Attack paths
+        attack_paths = ground_truth.get("attack_paths", [])
+        for path in attack_paths[:3]:
             yield await SSEStream.send_attack_path(path)
             await asyncio.sleep(0.1)
 
-        # Stage 7: Validation (80-100%)
+        # Validation events
         if include_validation:
             progress = tracker.get_progress("validation", 0.0)
             yield await SSEStream.send_progress(
-                stage="validation",
-                progress=progress,
+                stage="validation", progress=progress,
                 message=f"[VALIDATION] {progress}% - {filename} - Running 6-check completeness validation...",
                 eta_seconds=tracker.get_eta(progress),
                 patterns_active=["rapids"] + (["ai_ml_arc"] if has_ai_ml else [])
@@ -290,28 +268,29 @@ async def analyze_with_progress(
 
             progress = tracker.get_progress("validation", 0.5)
             yield await SSEStream.send_progress(
-                stage="validation",
-                progress=progress,
+                stage="validation", progress=progress,
                 message=f"[VALIDATION] {progress}% - {filename} - Verifying technique coverage and orphan nodes...",
                 eta_seconds=tracker.get_eta(progress),
                 patterns_active=["rapids"] + (["ai_ml_arc"] if has_ai_ml else [])
             )
             await asyncio.sleep(0.1)
 
-        # Stage 8: Complete (100%)
+        # Complete
         yield await SSEStream.send_progress(
-            stage="complete",
-            progress=100,
+            stage="complete", progress=100,
             message=f"✅ {filename} - Analysis complete! All reports generated.",
             eta_seconds=0
         )
-
         await asyncio.sleep(0.1)
 
-        # Send final result
-        yield await SSEStream.send_complete(result.to_dict())
+        # Send complete event with same shape as before (service_result dict)
+        if service_result:
+            yield await SSEStream.send_complete(service_result.to_dict())
+        else:
+            yield await SSEStream.send_complete(result_data)
 
     except Exception as e:
+        logger.exception("analyze_with_progress error")
         yield await SSEStream.send_error(
             error_message="Internal server error",
             detail=str(e)
@@ -505,6 +484,7 @@ async def expert_review_with_progress(
         _cfg_bands = _reload_cfg()
         _bh_enabled = getattr(getattr(_cfg_bands, 'blackhat', None), 'enabled', False)
         _pt_enabled = getattr(getattr(_cfg_bands, 'purple_team', None), 'enabled', True)
+        _sm_enabled = getattr(getattr(_cfg_bands, 'scrum_master', None), 'enabled', False)
 
         def _critic_sse(critic_stage: str, vr) -> str:
             top_gaps = [
@@ -573,6 +553,10 @@ async def expert_review_with_progress(
                 (66, 90, "red_team",   "[2C] Red Team Critic: Stress-testing defensive posture and bypass paths..."),
                 (90, 98, "synthesis",  "[L3] Orchestrator: Synthesising consensus recommendations..."),
             ]
+
+        # Append ScrumMaster band to whichever stage_bands was chosen
+        if _sm_enabled:
+            stage_bands.append((98, 100, "scrum_master", "[2F] ScrumMaster: Analysing impediments and building harmony plan..."))
 
         # Synthesis sub-step messages fired by the orchestrator via progress_callback
         _SYNTHESIS_MESSAGES = {
@@ -670,6 +654,43 @@ async def expert_review_with_progress(
             eta_seconds=3
         )
         await asyncio.sleep(0.1)
+
+        # ── ScrumMaster (optional, runs after MoE completes) ────────────────
+        if _sm_enabled:
+            yield await SSEStream.send_progress(
+                stage="scrum_master",
+                progress=98,
+                message="[2F] ScrumMaster: Analysing impediments and building harmony plan...",
+                eta_seconds=60
+            )
+            await asyncio.sleep(0.1)
+            try:
+                import json as _json2
+                with open(report_dir / "ground_truth.json") as _gtf:
+                    _gt_for_sm = _json2.load(_gtf)
+                from chatbot.modules.agents.critics.scrum_master_critic import ScrumMasterCritic
+                from chatbot.modules.harness_stages import ScrumMasterStage
+                _sm_stage = ScrumMasterStage()
+                from chatbot.modules.harness import PipelineContext
+                _sm_ctx = PipelineContext({
+                    "moe_result": result,
+                    "report_dir": str(report_dir),
+                    "ground_truth": _gt_for_sm,
+                })
+
+                def _run_sm():
+                    _sm_stage.run(_sm_ctx)
+
+                await loop.run_in_executor(None, _run_sm)
+                yield await SSEStream.send_progress(
+                    stage="scrum_master",
+                    progress=99,
+                    message="[2F] ScrumMaster: Harmony synthesis complete",
+                    eta_seconds=0
+                )
+                await asyncio.sleep(0.1)
+            except Exception as _sm_exc:
+                logger.warning(f"ScrumMaster stage skipped: {_sm_exc}")
 
         yield await SSEStream.send_progress(
             stage="complete",

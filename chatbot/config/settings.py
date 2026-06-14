@@ -416,6 +416,32 @@ class PurpleTeamSettings(BaseModel):
     )
 
 
+class ScrumMasterSettings(BaseModel):
+    """ScrumMaster meta-critic (Layer 2F). Reads all critic outputs and works towards harmony."""
+    enabled: bool = Field(default=False,
+        description="Enable ScrumMaster meta-critic. Requires MoE expert review. "
+                    "Reads all critic findings and drives confidence higher through "
+                    "targeted re-triggering. Adds ~30–90s per run.")
+    confidence_goal: int = Field(default=90, ge=50, le=99,
+        description="Confidence % the ScrumMaster aims for before stopping re-triggers. "
+                    "If the architecture cannot reach this naturally, redesign guidance is given instead.")
+    max_improvement_rounds: int = Field(default=2, ge=1, le=4,
+        description="How many rounds of critic re-triggering the ScrumMaster will attempt. "
+                    "More rounds = higher potential confidence gain but longer runtime.")
+    harmony_mode: Literal["balanced", "quick", "thorough"] = Field(default="balanced",
+        description="balanced = up to 2 rounds, standard proposals | "
+                    "quick = 1 round, fast turnaround | "
+                    "thorough = up to 4 rounds, deeper proposals")
+
+    @model_validator(mode="after")
+    def apply_harmony_mode(self) -> "ScrumMasterSettings":
+        if self.harmony_mode == "quick":
+            self.max_improvement_rounds = 1
+        elif self.harmony_mode == "thorough":
+            self.max_improvement_rounds = 4
+        return self
+
+
 class BlackhatSettings(BaseModel):
     enabled: bool = Field(default=True,
         description="Enable Blackhat cross-path chain critic (Layer 2E — supreme critic). Requires MoE expert review.")
@@ -468,6 +494,7 @@ class AppSettings(BaseModel):
     adr: ADRSettings = Field(default_factory=ADRSettings)
     purple_team: PurpleTeamSettings = Field(default_factory=PurpleTeamSettings)
     blackhat: BlackhatSettings = Field(default_factory=BlackhatSettings)
+    scrum_master: "ScrumMasterSettings" = Field(default_factory=lambda: ScrumMasterSettings())
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,92 @@
+flowchart TB
+
+    subgraph External [External Internet]
+        User((End User\nBrowser))
+        MobileApp((Mobile App\niOS / Android))
+        DevOps((DevOps\nEngineer))
+        ThirdParty((Third-Party\nPayment Provider\nStripe))
+    end
+
+    subgraph DMZ [DMZ AWS Edge]
+        CF[AWS CloudFront\nCDN / WAF]
+        ALB[Application Load\nBalancer]
+        APIGW[AWS API Gateway\nREST + WebSocket]
+    end
+
+    subgraph Internal [Internal AWS VPC]
+        AuthSvc[Auth Service\nCognito + Custom JWT]
+        BookingSvc[Booking Service\nNode.js ECS Fargate]
+        PaymentSvc[Payment Service\nNode.js ECS Fargate]
+        NotifSvc[Notification Service\nSES / SNS Lambda]
+        SearchSvc[Search Service\nElasticsearch / OpenSearch]
+        AdminSvc[Admin Portal\nReact SPA + API]
+        EventBus[Event Bus\nAWS EventBridge]
+        MsgQueue[Message Queue\nAWS SQS]
+        SecretsMgr[Secrets Manager\nAWS Secrets Manager]
+        CIPipeline[CI/CD Pipeline\nGitHub Actions + CodePipeline]
+    end
+
+    subgraph Data [Data Isolated Subnet]
+        BookingDB[(Booking DB\nAmazon RDS PostgreSQL)]
+        UserDB[(User DB\nAmazon RDS PostgreSQL)]
+        AuditLog[(Audit Log\nAmazon DynamoDB)]
+        S3Docs[(Document Store\nAmazon S3 Private)]
+        ElastiCache[(Session Cache\nAmazon ElastiCache Redis)]
+        BackupVault[(Backup Vault\nAWS Backup)]
+    end
+
+    %% External -> DMZ
+    User -->|HTTPS| CF
+    MobileApp -->|HTTPS| CF
+    DevOps --> APIGW
+    DevOps --> CIPipeline
+    ThirdParty --> APIGW
+
+    %% DMZ internal routing
+    CF --> ALB
+    CF --> APIGW
+    ALB --> AuthSvc
+    ALB --> BookingSvc
+    ALB --> AdminSvc
+    APIGW --> AuthSvc
+    APIGW --> BookingSvc
+    APIGW --> PaymentSvc
+
+    %% CI/CD -> Services (supply chain vector)
+    CIPipeline -->|deploy| APIGW
+    CIPipeline -->|deploy| BookingSvc
+    CIPipeline -->|deploy| PaymentSvc
+    CIPipeline --> SecretsMgr
+
+    %% Service -> Service
+    BookingSvc --> AuthSvc
+    BookingSvc -->|mTLS| PaymentSvc
+    BookingSvc -->|plaintext IAM| SearchSvc
+    BookingSvc --> EventBus
+    PaymentSvc --> ThirdParty
+    PaymentSvc --> EventBus
+    EventBus --> MsgQueue
+    MsgQueue --> NotifSvc
+    AdminSvc --> AuthSvc
+    AdminSvc --> BookingSvc
+
+    %% Services -> Secrets
+    BookingSvc --> SecretsMgr
+    PaymentSvc --> SecretsMgr
+    AuthSvc --> SecretsMgr
+
+    %% Services -> Data
+    AuthSvc --> UserDB
+    AuthSvc --> ElastiCache
+    BookingSvc --> BookingDB
+    BookingSvc --> S3Docs
+    BookingSvc --> ElastiCache
+    PaymentSvc --> BookingDB
+    SearchSvc --> BookingDB
+    AdminSvc --> BookingDB
+    AdminSvc --> UserDB
+    BookingDB --> BackupVault
+    UserDB --> BackupVault
+    BookingSvc --> AuditLog
+    PaymentSvc --> AuditLog
+    AuthSvc --> AuditLog

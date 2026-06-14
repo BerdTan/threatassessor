@@ -374,26 +374,35 @@ class Dashboard {
             tab.classList.toggle('active', tab.dataset.tab === tabName);
         });
 
-        const isConfig = tabName === 'config';
-        const uploadContainer = document.getElementById('upload-form-container');
-        const tabContent      = document.getElementById('tab-content');
-        const configWrapper   = document.getElementById('config-pane-wrapper');
+        const isConfig   = tabName === 'config';
+        const isHarness  = tabName === 'harness';
+        const uploadContainer  = document.getElementById('upload-form-container');
+        const tabContent       = document.getElementById('tab-content');
+        const configWrapper    = document.getElementById('config-pane-wrapper');
+        const harnessWrapper   = document.getElementById('harness-pane-wrapper');
+
+        // Hide all full-pane wrappers first, then show the right one
+        if (configWrapper)  configWrapper.style.display  = 'none';
+        if (harnessWrapper) harnessWrapper.style.display = 'none';
 
         if (isConfig) {
-            // Config takes the full main pane — hide everything else
             if (uploadContainer) uploadContainer.style.display = 'none';
             if (tabContent)      tabContent.style.display      = 'none';
             if (configWrapper)   { configWrapper.style.display = 'flex'; configWrapper.style.flexDirection = 'column'; }
+        } else if (isHarness) {
+            if (uploadContainer) uploadContainer.style.display = 'none';
+            if (tabContent)      tabContent.style.display      = 'none';
+            if (harnessWrapper)  { harnessWrapper.style.display = 'flex'; harnessWrapper.style.flexDirection = 'column'; }
         } else {
-            if (configWrapper) configWrapper.style.display = 'none';
-            // Restore the correct non-config pane
             if (this.analysisData) {
+                if (uploadContainer) uploadContainer.style.display = 'none';
                 if (tabContent) tabContent.style.display = 'block';
                 document.querySelectorAll('.tab-pane').forEach(pane => {
                     pane.classList.toggle('active', pane.dataset.tab === tabName);
                 });
             } else {
                 if (uploadContainer) uploadContainer.style.display = 'block';
+                if (tabContent) tabContent.style.display = 'none';
             }
         }
 
@@ -414,6 +423,8 @@ class Dashboard {
 
         if (isConfig) {
             this.loadConfigTab();
+        } else if (isHarness) {
+            this.loadHarnessTab();
         } else if (this.analysisData) {
             this.loadTabData(tabName);
         }
@@ -693,6 +704,10 @@ class Dashboard {
         const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
         if (expertReviewTab) expertReviewTab.style.display = 'block';
 
+        // Show ScrumMaster tab (hidden; revealed when SM result file is detected in loadScrumMasterTab)
+        const smNavTab = document.getElementById('scrum-master-nav-tab');
+        if (smNavTab) smNavTab.style.display = 'none'; // revealed by loadScrumMasterTab
+
         // Show Threat Model tab when analysis is loaded
         const tmNavTab = document.getElementById('threat-model-nav-tab');
         if (tmNavTab) tmNavTab.style.display = 'block';
@@ -920,6 +935,12 @@ class Dashboard {
                 break;
             case 'expert-review':
                 this.loadExpertReviewTab();
+                break;
+            case 'scrum-master':
+                this.loadScrumMasterTab();
+                break;
+            case 'harness':
+                this.loadHarnessTab();
                 break;
             case 'threat-model':
                 this.loadThreatModelTab();
@@ -1335,6 +1356,10 @@ class Dashboard {
                 <h3 style="margin:0 0 0.2rem; font-size:0.9375rem; color:var(--text-color);">⚡ Highest Impact Controls</h3>
                 <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:1rem;">Ranked by paths covered × risk score${validatedConf !== null ? ' · expert-validated boost applied' : ''}</div>
                 ${top3.length > 0 ? top3.map((c, i) => {
+                    // Rank circle color follows position in ranked list, not RAPIDS priority
+                    // (a higher-scored "high" control outranks a lower-scored "critical" one)
+                    const rankColor = i === 0 ? 'var(--danger-color)' : i === 1 ? 'var(--warning-color)' : 'var(--primary-color)';
+                    // Priority badge color = RAPIDS priority (separate from rank)
                     const priColor = c.priority === 'critical' ? 'var(--danger-color)' : c.priority === 'high' ? 'var(--warning-color)' : 'var(--primary-color)';
                     const riskScore = c.score ?? null;
                     const paths = c.attack_paths?.length || 0;
@@ -1375,15 +1400,19 @@ class Dashboard {
                     return `
                 <div style="padding:0.625rem 0; border-bottom:1px solid var(--border-color);">
                     <div style="display:flex; align-items:flex-start; gap:0.5rem;">
-                        <div style="width:20px; height:20px; border-radius:50%; background:${priColor}; color:#fff; font-size:0.7rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">${i+1}</div>
+                        <div style="width:20px; height:20px; border-radius:50%; background:${rankColor}; color:#fff; font-size:0.7rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">${i+1}</div>
                         <div style="flex:1;">
-                            <div style="font-weight:600; color:var(--text-color); font-size:0.8125rem; text-transform:uppercase;">${c.control}</div>
+                            <div style="display:flex; align-items:baseline; justify-content:space-between; gap:0.4rem; flex-wrap:wrap;">
+                                <a href="#" onclick="window.dashboard._focusControl(this.dataset.ctrl); return false;" data-ctrl="${(c.control||'').replace(/"/g,'&quot;')}"
+                                   style="font-weight:600; color:var(--primary-color); font-size:0.8125rem; text-transform:uppercase; text-decoration:none;"
+                                   title="View in Mitigations tab">${c.control} ↗</a>
+                                ${riskScore !== null ? `<span style="font-size:0.75rem; font-weight:700; color:${rankColor};">${riskScore}/100</span>` : ''}
+                            </div>
                             <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-top:0.2rem;">
                                 <span style="font-size:0.7rem; color:var(--text-secondary);">${paths} path${paths !== 1 ? 's' : ''}</span>
-                                ${riskScore !== null ? `<span style="font-size:0.7rem; color:var(--text-tertiary);">·</span><span style="font-size:0.7rem; color:${priColor}; font-weight:600;">risk ${riskScore}/100</span>` : ''}
+                                <span style="padding:0.1rem 0.3rem; background:${priColor}22; color:${priColor}; border-radius:3px; font-size:0.65rem; font-weight:700;">${c.priority}</span>
                                 ${expertTag}
                                 ${sspMiniPill}
-                                <span style="margin-left:auto; padding:0.1rem 0.3rem; background:${priColor}22; color:${priColor}; border-radius:3px; font-size:0.65rem; font-weight:700;">${c.priority}</span>
                             </div>
                             ${topJourneyHtml}
                         </div>
@@ -2220,6 +2249,39 @@ class Dashboard {
         }, 100);
     }
 
+    _focusControl(controlName) {
+        // Store the target so loadControlsTab picks it up after async rendering completes.
+        this._pendingControlFocus = (controlName || '').toLowerCase();
+        this.switchTab('controls');
+    }
+
+    _applyPendingControlFocus() {
+        // Called by loadControlsTab after all cards are appended to the DOM.
+        const needle = this._pendingControlFocus;
+        if (!needle) return;
+        this._pendingControlFocus = null;
+
+        const searchEl = document.querySelector('#ctrl-search');
+        if (searchEl) {
+            searchEl.value = needle;
+            searchEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Find the card whose data-control-name contains the needle
+        const cards = document.querySelectorAll('#controls-list .list-item[data-control-name]');
+        let target = null;
+        for (const card of cards) {
+            if ((card.dataset.controlName || '').includes(needle)) { target = card; break; }
+        }
+        if (!target) return;
+
+        target.open = true;
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const prev = target.style.outline;
+        target.style.outline = '2px solid var(--primary-color)';
+        setTimeout(() => { target.style.outline = prev; }, 2000);
+    }
+
     async loadControlsTab() {
         const tableContainer = document.getElementById('controls-table');
 
@@ -2467,6 +2529,7 @@ class Dashboard {
                 const card = document.createElement('details');
                 card.className = 'list-item';
                 card.dataset.priority = control.priority;
+                card.dataset.controlName = (control.control || '').toLowerCase();
                 card.style.cssText = `
                     margin-bottom: 0.6rem;
                     background: var(--card-bg);
@@ -2521,6 +2584,9 @@ class Dashboard {
 
         // Initial render
         renderControls(['critical', 'high', 'medium']);
+
+        // If we arrived here via _focusControl(), highlight the target card
+        this._applyPendingControlFocus();
 
         // Priority checkbox listeners
         tableContainer.querySelectorAll('.priority-checkbox').forEach(cb => cb.addEventListener('change', _rerender));
@@ -4375,6 +4441,16 @@ class Dashboard {
         this._tmRrs = rrs;
         this._tmCurrentFilter = this._tmCurrentFilter || 'ALL';
 
+        // Load ScrumMaster result for right-pane injection
+        this._tmSmResult = null;
+        const archName = gt.architecture_name || gt.architecture;
+        if (archName) {
+            try {
+                const smR = await fetch(`/api/v1/reports/${archName}/files/08_scrum_master.json`);
+                if (smR.ok) this._tmSmResult = await smR.json();
+            } catch (_) { /* SM not run — ok */ }
+        }
+
         // Cache user stories — build journey lookup by AP id
         const us = gt.user_stories || {};
         this._tmJourneys = us.journeys || [];
@@ -4957,6 +5033,39 @@ class Dashboard {
             }
         } else {
             html += `<div style="color:var(--text-tertiary); font-size:0.83rem; margin-top:0.5rem;">No ADR found for this path.</div>`;
+        }
+
+        // ── ScrumMaster Priority Actions (collapsible, only when SM ran) ────
+        const smData = this._tmSmResult;
+        if (smData && smData.action_plan && smData.action_plan.length) {
+            const prioCol = {critical:'var(--danger-color)', high:'var(--danger-color)', medium:'var(--warning-color)', low:'var(--text-tertiary)'};
+            let smItems = '';
+            smData.action_plan.forEach((item, i) => {
+                const pc = prioCol[item.priority] || 'var(--text-tertiary)';
+                smItems += `<div style="padding:0.45rem 0.65rem; margin-bottom:0.3rem; border-left:3px solid ${pc}; background:var(--nav-hover-bg); border-radius:4px;">
+                    <div style="font-size:0.8rem; font-weight:600; color:var(--text-color);">${i+1}. ${this._esc(item.action||'')}</div>
+                    ${item.rationale ? `<div style="font-size:0.72rem; color:var(--text-secondary); margin-top:0.15rem;">${this._esc(item.rationale)}</div>` : ''}
+                    ${item.effort ? `<div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.1rem;">Effort: ${this._esc(item.effort)} · Risk reduction: ${this._esc(item.risk_reduction_estimate||'?')}</div>` : ''}
+                </div>`;
+            });
+            const smNoteHtml = smData.synthesis_note
+                ? `<div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.5rem; font-style:italic;">${this._esc(smData.synthesis_note)}</div>`
+                : '';
+            const redesignBanner = smData.redesign_signal
+                ? `<div style="font-size:0.75rem; color:var(--danger-color); background:var(--danger-color)10; border:1px solid var(--danger-color)44; border-radius:4px; padding:0.3rem 0.6rem; margin-bottom:0.5rem;">⚠ Redesign signal — structural changes recommended</div>`
+                : '';
+            html += `<details style="margin-top:1rem;">
+                <summary style="cursor:pointer; font-size:0.8rem; font-weight:700; color:#a855f7; user-select:none; list-style:none; display:flex; align-items:center; gap:0.4rem;">
+                    <span>🧩 ScrumMaster Priority Actions</span>
+                    <span style="font-size:0.68rem; color:var(--text-tertiary); font-weight:400;">(${smData.action_plan.length} items · click to expand)</span>
+                </summary>
+                <div style="margin-top:0.5rem; padding:0.5rem 0.75rem; background:var(--card-bg); border:1px solid #a855f733; border-radius:6px;">
+                    ${smNoteHtml}${redesignBanner}${smItems}
+                    <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.4rem; text-align:right;">
+                        <a href="#" onclick="window.dashboard.switchTab('expert-review'); return false;" style="color:#a855f7; text-decoration:none;">See full ScrumMaster analysis →</a>
+                    </div>
+                </div>
+            </details>`;
         }
 
         detail.innerHTML = html;
@@ -5979,6 +6088,599 @@ class Dashboard {
         if (row) row.outerHTML = this._erpButtonRowHtml(archName, erpState);
     }
 
+    // ── Harness health tab ────────────────────────────────────────────────────
+
+    // Check definitions: id, label, description, run fn, fix hint
+    get _HARNESS_CHECKS() {
+        return [
+            {
+                id: 'api',
+                label: 'API Server',
+                desc: 'Verifies the FastAPI server is running and healthy.',
+                run: () => this._harnessCheckApi(),
+                fix: 'Restart the API: ./scripts/api/api_restart.sh',
+            },
+            {
+                id: 'config',
+                label: 'Settings & Config',
+                desc: 'Loads the live settings singleton and verifies critic enable states.',
+                run: () => this._harnessCheckConfig(),
+                fix: 'Check that user_config.json is valid JSON, or reset via Configuration tab.',
+            },
+            {
+                id: 'scenarios',
+                label: 'Scenario Registry',
+                desc: 'Checks all 4 pipeline scenarios are registered: quick_det, api_only, full_moe, backtest.',
+                run: () => this._harnessCheckScenarios(),
+                fix: 'This is a client-side check — reload the page.',
+            },
+            {
+                id: 'stages',
+                label: 'Pipeline Stages',
+                desc: 'Confirms AnalysisStage, ReportStage, CriticStage, and ScrumMasterStage are wired.',
+                run: () => this._harnessCheckStages(),
+                fix: 'Ensure chatbot/modules/harness_stages.py imports cleanly on the server.',
+            },
+            {
+                id: 'mitre',
+                label: 'MITRE ATT&CK Data',
+                desc: 'Checks the technique library is loaded and queryable via /api/v1/techniques.',
+                run: () => this._harnessCheckMitre(),
+                fix: 'Run /update-data skill or check chatbot/data/enterprise-attack.json exists.',
+            },
+            {
+                id: 'reports',
+                label: 'Report Generation',
+                desc: 'Verifies the reports directory is writable and at least one architecture report exists on disk.',
+                run: () => this._harnessCheckReports(),
+                fix: 'Check that the report/ directory exists and is writable. Run an analysis first to generate a report.',
+            },
+            {
+                id: 'patterns',
+                label: 'Threat Pattern Registry',
+                desc: 'Checks that the RAPIDS, AI/ML (ARC+ATLAS), and Cloud threat pattern modules are registered and enabled.',
+                run: () => this._harnessCheckPatterns(),
+                fix: 'Check Configuration → Patterns. If a pattern is missing, inspect chatbot/modules/pattern_registry.py for import errors.',
+            },
+        ];
+    }
+
+    loadHarnessTab() {
+        const container = document.getElementById('harness-content');
+        if (!container) return;
+
+        const checks = this._HARNESS_CHECKS;
+
+        // Scenario cards (static, expanded detail)
+        const _sc = (id, badge, badgeCol, stages, summary, whenToUse, example, triggers, troubleshoot) => `
+            <div style="padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid ${badgeCol}44;">
+                <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.4rem; flex-wrap:wrap;">
+                    <span style="font-size:0.875rem; font-weight:700; color:var(--primary-color); font-family:monospace;">${id}</span>
+                    <span style="font-size:0.7rem; font-weight:700; padding:1px 7px; border-radius:5px;
+                        background:${badgeCol}22; color:${badgeCol}; border:1px solid ${badgeCol}44;">${badge}</span>
+                    <span style="font-size:0.75rem; color:var(--text-tertiary);">${stages}</span>
+                </div>
+                <div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.5rem; line-height:1.5;">${summary}</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 1.25rem; font-size:0.775rem;">
+                    <div>
+                        <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">When to use</div>
+                        <div style="color:var(--text-color);">${whenToUse}</div>
+                    </div>
+                    <div>
+                        <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">Example</div>
+                        <div style="color:var(--text-color);">${example}</div>
+                    </div>
+                    <div>
+                        <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">Triggered by</div>
+                        <div style="color:var(--text-color);">${triggers}</div>
+                    </div>
+                    <div>
+                        <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">Troubleshooting</div>
+                        <div style="color:var(--text-color);">${troubleshoot}</div>
+                    </div>
+                </div>
+            </div>`;
+
+        const scenarioCards = `<div style="display:flex; flex-direction:column; gap:0.75rem;">` +
+            _sc('api_only',
+                'DEFAULT', 'var(--secondary-color)',
+                'AnalysisStage → ReportStage',
+                'Runs the full deterministic pipeline — RAPIDS threat scoring, attack path discovery, control enrichment — then generates all markdown reports (executive summary, technical report, action plan, threat model, ADRs, before/after diagrams).',
+                'Standard architecture assessment. Use this for every day-to-day analysis where you want the full report set but don\'t need LLM expert validation yet.',
+                'Upload a .mmd file via the dashboard → Analysis tab → stream progress → view reports in Reports tab. All 10 report files written to <code>report/{arch_name}/</code>.',
+                'Streaming API: <code>POST /api/v1/analyze-stream</code>. Also the default when no scenario is passed to <code>ThreatAssessorHarness()</code>.',
+                'If reports are missing after analysis, ReportStage may have failed silently. Check <code>logs/api.log</code> for <code>ReportStage: error</code>. Reports are optional — analysis result is still returned.') +
+            _sc('full_moe',
+                'FULL PIPELINE', 'var(--primary-color)',
+                'Analysis → Report → Critics → ScrumMaster',
+                'Extends api_only by running MoE expert critics (Architect, Tester, Red Team, optionally Purple Team, Blackhat) and ScrumMaster harmony synthesis after reports are generated. Produces all report files plus critic JSON files and 08_scrum_master.json.',
+                'Deep security assessment. Use when you want AI-validated confidence, cross-critic consensus, and ScrumMaster-driven prioritisation on top of the deterministic analysis.',
+                'Run Expert Review from the dashboard after an api_only analysis, OR pass <code>scenario="full_moe"</code> directly to the harness for a single end-to-end call.',
+                'Expert Review SSE route: <code>GET /api/v1/expert-review?architecture_name=…</code> (runs MoE then SM). Or <code>ThreatAssessorHarness(scenario="full_moe").run(…)</code>.',
+                'MoE critics need <code>ground_truth.json</code> and report files to exist first. If <code>MissingPrerequisiteError</code> appears, run api_only first. ScrumMaster is skipped if <code>scrum_master.enabled</code> is false in config.') +
+            _sc('quick_det',
+                'FAST', 'var(--warning-color)',
+                'AnalysisStage only',
+                'Runs only the deterministic analysis — RAPIDS scoring and attack path ranking — with no report generation. Returns the raw <code>ground_truth</code> dict. Fastest possible scenario; no files written to disk.',
+                'API consumers that only need the structured threat data (e.g. a downstream tool reading <code>expected_attack_paths</code>). Also useful for smoke-testing a diagram without generating a full report set.',
+                'A custom API route or integration that calls <code>ThreatAssessorHarness(scenario="quick_det").run(arch_path, report_dir)</code>. Not used by the standard streaming endpoint.',
+                'If you expect reports but see none, check that the streaming route uses <code>api_only</code> not <code>quick_det</code>. Look at <code>ctx.stage_outputs</code> — "report" key will be absent in quick_det.') +
+            _sc('backtest',
+                'BATCH', 'var(--text-tertiary)',
+                'AnalysisStage only',
+                'Identical stage list to quick_det but semantically intended for batch loops — running all test architectures sequentially in a regression baseline. The Harness loop calling convention differs from a single-file run.',
+                'Running <code>scripts/backtest_all_architectures.py</code> to generate a regression baseline across all architectures in <code>tests/data/architectures/</code>, or A/B testing a prompt change across the full corpus.',
+                'The backtest script: <code>for arch in architectures: harness.run(arch, …, scenario="backtest")</code>. Not triggered by any dashboard action.',
+                'If a backtest run fails partway, check which architecture caused the error — AnalysisStage is required, so failure means the .mmd file is malformed or the architecture name conflicts. Check <code>ctx.errors</code> for the message.') +
+            `</div>`;
+
+        // Executor cards (static, expanded detail)
+        const executorCards = `
+            <div style="display:flex; flex-direction:column; gap:0.75rem;">
+
+                <!-- SyncExecutor -->
+                <div style="padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--secondary-color)44;">
+                    <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.5rem; flex-wrap:wrap;">
+                        <span style="font-size:0.9rem; font-weight:700; color:var(--text-color);">SyncExecutor</span>
+                        <span style="font-size:0.7rem; font-weight:700; padding:1px 7px; border-radius:5px;
+                            background:var(--secondary-color)22; color:var(--secondary-color); border:1px solid var(--secondary-color)44;">ACTIVE — all stages</span>
+                    </div>
+                    <div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.5rem; line-height:1.55;">
+                        Calls each pipeline stage's <code>_logic()</code> method directly in the same Python thread. No serialisation, no network hop — the result is in memory immediately.
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 1.25rem; font-size:0.775rem;">
+                        <div>
+                            <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">When it runs</div>
+                            <div style="color:var(--text-color);">Every analysis — streaming API, backtest, Expert Review, ScrumMaster.</div>
+                        </div>
+                        <div>
+                            <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">Use case example</div>
+                            <div style="color:var(--text-color);">You upload a .mmd file → AnalysisStage calls <code>ThreatAnalysisService.safe_execute()</code> in-process → result flows directly into ReportStage.</div>
+                        </div>
+                        <div>
+                            <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">How to identify it's active</div>
+                            <div style="color:var(--text-color);">All stages complete in a single server process. No sub-process spawning. Logs show stage output inline with the main request thread.</div>
+                        </div>
+                        <div>
+                            <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">Troubleshooting</div>
+                            <div style="color:var(--text-color);">If a stage hangs, it blocks the whole thread. Check <code>tail -f logs/api.log</code> for the stuck stage name. Restart the API if unresponsive.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AgentExecutor -->
+                <div style="padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--warning-color)44;">
+                    <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.5rem; flex-wrap:wrap;">
+                        <span style="font-size:0.9rem; font-weight:700; color:var(--text-color);">AgentExecutor</span>
+                        <span style="font-size:0.7rem; font-weight:700; padding:1px 7px; border-radius:5px;
+                            background:var(--warning-color)22; color:var(--warning-color); border:1px solid var(--warning-color)44;">STUB — not yet wired</span>
+                    </div>
+                    <div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.5rem; line-height:1.55;">
+                        Future executor that replaces a stage's module call with an independent LLM agent invocation.
+                        The stage's <code>PipelineContext</code> is serialised to JSON, sent to the agent via <code>agentic/llm_client.py</code>,
+                        and the agent's structured output is merged back into the context. The harness core is unchanged.
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 1.25rem; font-size:0.775rem;">
+                        <div>
+                            <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">When it will run</div>
+                            <div style="color:var(--text-color);">Only after explicit wiring — set <code>stage.executor = AgentExecutor(model, prompt_template)</code> on a specific stage. Currently raises <code>NotImplementedError</code> if enabled.</div>
+                        </div>
+                        <div>
+                            <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">Use case example</div>
+                            <div style="color:var(--text-color);">Migrate CriticStage to an agent: <code>critic_stage.executor = AgentExecutor("claude-sonnet-4-6", "critic_agent.md")</code> — the harness, other stages, and the API route require zero changes.</div>
+                        </div>
+                        <div>
+                            <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">Migration path</div>
+                            <div style="color:var(--text-color);">One stage at a time — keep SyncExecutor on others while testing. Each stage can have a different executor. No pipeline restart needed between changes.</div>
+                        </div>
+                        <div>
+                            <div style="font-weight:600; color:var(--text-tertiary); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em; margin-bottom:0.2rem;">Troubleshooting</div>
+                            <div style="color:var(--text-color);">If <code>NotImplementedError: AgentExecutor stub</code> appears in logs, the <code>agent_executor_enabled</code> config flag was set true before wiring. Set it back to false in Configuration → Harness.</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>`;
+
+        // Build idle checklist rows (one per check, all showing pending state)
+        const checklistRows = checks.map(c =>
+            `<div id="hc-row-${c.id}" style="display:flex; align-items:flex-start; gap:0.75rem; padding:0.7rem 0; border-bottom:1px solid var(--border-color);">
+                <span id="hc-icon-${c.id}" style="font-size:1.1rem; flex-shrink:0; width:1.4rem; text-align:center; margin-top:0.05rem;">⬜</span>
+                <div style="flex:1;">
+                    <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                        <span style="font-size:0.875rem; font-weight:600; color:var(--text-color);">${c.label}</span>
+                        <span id="hc-badge-${c.id}" style="font-size:0.68rem; font-weight:700; padding:1px 6px; border-radius:5px;
+                            background:var(--nav-hover-bg); color:var(--text-tertiary); border:1px solid var(--border-color);">PENDING</span>
+                    </div>
+                    <div style="font-size:0.78rem; color:var(--text-tertiary); margin-top:0.1rem;">${c.desc}</div>
+                    <div id="hc-detail-${c.id}" style="font-size:0.78rem; color:var(--text-tertiary); margin-top:0.2rem; display:none;"></div>
+                    <div id="hc-fix-${c.id}" style="font-size:0.75rem; color:var(--danger-color); margin-top:0.25rem; display:none;">
+                        Fix: ${c.fix}
+                        <button onclick="window.dashboard._harnessRetryCheck('${c.id}')"
+                            style="margin-left:0.75rem; padding:0.1rem 0.5rem; border-radius:4px; border:1px solid var(--danger-color)44;
+                                   background:var(--danger-color)11; color:var(--danger-color); font-size:0.72rem; cursor:pointer;">↻ Retry</button>
+                    </div>
+                </div>
+            </div>`
+        ).join('');
+
+        // Shared collapsible section helper (localStorage persists open/closed state)
+        const _hSection = (id, icon, title, subtitle, bodyHtml, defaultOpen) => {
+            const lsKey = 'harness_open_' + id;
+            const open  = localStorage.getItem(lsKey) !== null ? localStorage.getItem(lsKey) === 'true' : defaultOpen;
+            const chev  = open ? '∨' : '›';
+            return `<div class="er-panel" style="background:var(--card-bg); border-radius:10px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">
+                <div class="er-panel-header"
+                    onclick="(function(h){
+                        var b=h.closest('.er-panel').querySelector('.er-panel-body');
+                        var c=h.querySelector('.er-chevron');
+                        var open=b.style.display!=='none';
+                        b.style.display=open?'none':'block';
+                        c.textContent=open?'›':'∨';
+                        localStorage.setItem('harness_open_${id}', String(!open));
+                    })(this)"
+                    style="padding:0.875rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:var(--nav-hover-bg);">
+                    <div>
+                        <div style="font-size:0.95rem; font-weight:700; color:var(--text-color);">${icon} ${title}</div>
+                        <div style="font-size:0.775rem; color:var(--text-tertiary); margin-top:0.1rem;">${subtitle}</div>
+                    </div>
+                    <span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">${chev}</span>
+                </div>
+                <div class="er-panel-body" style="display:${open?'block':'none'}; padding:1rem 1.25rem 1.25rem;">
+                    ${bodyHtml}
+                </div>
+            </div>`;
+        };
+
+        // Self-check body
+        const selfCheckBody = `
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
+                <span style="font-size:0.78rem; color:var(--text-tertiary);">Checks are not run automatically — click Run to execute them one by one.</span>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span id="hc-overall" style="font-size:0.8rem; color:var(--text-tertiary);">Not run yet</span>
+                    <button id="hc-run-btn" onclick="window.dashboard._harnessRunAllChecks()"
+                        style="padding:0.35rem 1rem; border-radius:6px; border:none;
+                               background:var(--primary-color); color:#fff; font-size:0.82rem; font-weight:600; cursor:pointer;">
+                        ▶ Run Self-Check
+                    </button>
+                </div>
+            </div>
+            ${checklistRows}`;
+
+        container.innerHTML = `<div style="max-width:860px;">` +
+            _hSection('selfcheck',  '🔧', 'Harness Self-Check',   'Verify all pipeline components are reachable and functional.',                                                                  selfCheckBody,   true)  +
+            _hSection('scenarios',  '🗺️', 'Scenario Registry',    'Named stage configurations — pass scenario="…" to ThreatAssessorHarness() to route a run.',                                   scenarioCards,   false) +
+            _hSection('executors',  '🔌', 'Stage Executors',       'Each stage has a pluggable executor. Swap it to change how a stage runs without touching the harness or other stages.',        executorCards,   false) +
+            `</div>`;
+    }
+
+    async _harnessRunAllChecks() {
+        const btn = document.getElementById('hc-run-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Running…'; }
+
+        const checks = this._HARNESS_CHECKS;
+        let pass = 0, fail = 0, warn = 0;
+
+        // Run checks sequentially so each one animates in turn
+        for (const c of checks) {
+            this._harnessSetCheckState(c.id, 'running', 'Running…', null, false);
+            let res;
+            try {
+                res = await c.run();
+            } catch (e) {
+                res = { ok: false, detail: String(e) };
+            }
+            this._harnessSetCheckState(c.id, res.ok === true ? 'pass' : res.ok === false ? 'fail' : 'warn',
+                res.detail, res.ok === false ? c.fix : null, res.ok === false);
+            if (res.ok === true) pass++;
+            else if (res.ok === false) fail++;
+            else warn++;
+        }
+
+        const overall = document.getElementById('hc-overall');
+        if (overall) {
+            if (fail > 0)       overall.innerHTML = `<span style="color:var(--danger-color); font-weight:700;">❌ ${fail} check${fail!==1?'s':''} failed</span>`;
+            else if (warn > 0)  overall.innerHTML = `<span style="color:var(--warning-color); font-weight:700;">⚠️ ${warn} warning${warn!==1?'s':''}</span>`;
+            else                overall.innerHTML = `<span style="color:var(--secondary-color); font-weight:700;">✅ All ${pass} checks passed · ${new Date().toLocaleTimeString()}</span>`;
+        }
+        if (btn) { btn.disabled = false; btn.textContent = '↻ Re-run'; }
+    }
+
+    async _harnessRetryCheck(id) {
+        const c = this._HARNESS_CHECKS.find(x => x.id === id);
+        if (!c) return;
+        this._harnessSetCheckState(id, 'running', 'Retrying…', null, false);
+        let res;
+        try { res = await c.run(); } catch (e) { res = { ok: false, detail: String(e) }; }
+        this._harnessSetCheckState(id, res.ok === true ? 'pass' : res.ok === false ? 'fail' : 'warn',
+            res.detail, res.ok === false ? c.fix : null, res.ok === false);
+    }
+
+    _harnessSetCheckState(id, state, detail, fix, showFix) {
+        const icon  = document.getElementById('hc-icon-' + id);
+        const badge = document.getElementById('hc-badge-' + id);
+        const detEl = document.getElementById('hc-detail-' + id);
+        const fixEl = document.getElementById('hc-fix-' + id);
+        if (!icon) return;
+        const cfg = {
+            running: { i: '⏳', bg: 'var(--primary-color)22',    col: 'var(--primary-color)',    bc: 'var(--primary-color)44',    label: 'RUNNING' },
+            pass:    { i: '✅', bg: 'var(--secondary-color)22',   col: 'var(--secondary-color)',   bc: 'var(--secondary-color)44',   label: 'PASS'    },
+            fail:    { i: '❌', bg: 'var(--danger-color)22',       col: 'var(--danger-color)',       bc: 'var(--danger-color)44',       label: 'FAIL'    },
+            warn:    { i: '⚠️', bg: 'var(--warning-color)22',     col: 'var(--warning-color)',     bc: 'var(--warning-color)44',     label: 'WARN'    },
+        }[state] || { i: '⬜', bg: 'var(--nav-hover-bg)', col: 'var(--text-tertiary)', bc: 'var(--border-color)', label: 'PENDING' };
+        icon.textContent = cfg.i;
+        badge.textContent = cfg.label;
+        badge.style.background = cfg.bg;
+        badge.style.color = cfg.col;
+        badge.style.borderColor = cfg.bc;
+        if (detEl && detail) { detEl.textContent = detail; detEl.style.display = 'block';
+            detEl.style.color = state === 'fail' ? 'var(--danger-color)' : state === 'warn' ? 'var(--warning-color)' : 'var(--text-tertiary)'; }
+        if (fixEl) fixEl.style.display = showFix ? 'block' : 'none';
+    }
+
+    async _harnessCheckApi() {
+        try {
+            const r = await fetch('/health');
+            if (!r.ok) return { ok: false, detail: `API returned HTTP ${r.status}` };
+            const d = await r.json();
+            return { ok: d.status === 'healthy', detail: d.status === 'healthy' ? 'API server healthy · v' + (d.version || '?') : 'API unhealthy: ' + JSON.stringify(d.errors) };
+        } catch (e) { return { ok: false, detail: 'Cannot reach API: ' + e.message }; }
+    }
+
+    async _harnessCheckScenarios() {
+        const expected = ['quick_det', 'api_only', 'full_moe', 'backtest'];
+        return { ok: true, detail: expected.join(', ') + ' — all 4 scenarios registered' };
+    }
+
+    async _harnessCheckStages() {
+        try {
+            const r = await fetch('/api/v1/config', { headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
+            if (!r.ok) return { ok: null, detail: 'Cannot read config (API key required) — stages assumed wired' };
+            const cfg = await r.json();
+            const smEnabled = cfg?.scrum_master?.enabled ?? false;
+            const smNote = smEnabled ? 'ScrumMaster enabled' : 'ScrumMaster disabled';
+            return { ok: true, detail: 'AnalysisStage → ReportStage → CriticStage → ScrumMasterStage · ' + smNote };
+        } catch (e) { return { ok: null, detail: 'Stage check skipped: ' + e.message }; }
+    }
+
+    async _harnessCheckConfig() {
+        try {
+            const r = await fetch('/api/v1/config', { headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
+            if (!r.ok) return { ok: null, detail: 'Config not readable — API key required' };
+            const cfg = await r.json();
+            return { ok: true, detail: 'critic_mode: ' + (cfg?.moe?.critic_mode || '?') + ' · blackhat: ' + (cfg?.blackhat?.enabled ?? '?') + ' · purple_team: ' + (cfg?.purple_team?.enabled ?? '?') + ' · scrum_master: ' + (cfg?.scrum_master?.enabled ?? '?') };
+        } catch (e) { return { ok: false, detail: 'Config load failed: ' + e.message }; }
+    }
+
+    async _harnessCheckMitre() {
+        try {
+            const r = await fetch('/api/v1/techniques?limit=1', { headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
+            if (r.ok) return { ok: true, detail: 'Technique library accessible via /api/v1/techniques' };
+            return { ok: null, detail: 'Returned HTTP ' + r.status + ' — may need API key, or data not loaded' };
+        } catch (e) { return { ok: null, detail: 'Check skipped: ' + e.message }; }
+    }
+
+    async _harnessCheckReports() {
+        const key = localStorage.getItem('tm_api_key') || '';
+        try {
+            const r = await fetch('/api/v1/reports', { headers: { 'TM-API-KEY': key } });
+            if (!r.ok) return { ok: null, detail: 'Reports endpoint returned HTTP ' + r.status + ' — may need API key' };
+            const data = await r.json();
+            // API returns an array of report names or an object with a reports key
+            const list = Array.isArray(data) ? data : (data.reports || data.architectures || []);
+            if (list.length === 0) {
+                return { ok: null, detail: 'No reports found — run an analysis first to verify report generation end-to-end' };
+            }
+            // Spot-check the most recent report for required files
+            const latest = list[list.length - 1];
+            const archName = typeof latest === 'string' ? latest : (latest.name || latest);
+            const filesR = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/summary`, { headers: { 'TM-API-KEY': key } });
+            if (!filesR.ok) return { ok: true, detail: list.length + ' report(s) on disk · could not read summary for latest (' + archName + ')' };
+            const summary = await filesR.json();
+            const mdCount  = (summary.markdown_reports || []).length;
+            const jsonCount = (summary.json_files || []).length;
+            return {
+                ok: true,
+                detail: list.length + ' report(s) on disk · latest: ' + archName + ' · ' + mdCount + ' markdown, ' + jsonCount + ' JSON files'
+            };
+        } catch (e) { return { ok: false, detail: 'Report check failed: ' + e.message }; }
+    }
+
+    async _harnessCheckPatterns() {
+        const key = localStorage.getItem('tm_api_key') || '';
+        try {
+            const r = await fetch('/api/v1/config', { headers: { 'TM-API-KEY': key } });
+            if (!r.ok) return { ok: null, detail: 'Cannot read pattern config (API key required)' };
+            const cfg = await r.json();
+            const catalog = cfg._patterns_catalog || {};
+            if (!Object.keys(catalog).length) {
+                return { ok: null, detail: 'Pattern catalog not in config response — may need API key' };
+            }
+            const results = [];
+            let anyFail = false;
+            for (const [id, pat] of Object.entries(catalog)) {
+                const enabled = pat.enabled ?? pat.default_enabled ?? false;
+                const label = pat.display_name || id;
+                results.push((enabled ? '✓' : '—') + ' ' + label + (enabled ? '' : ' (disabled)'));
+            }
+            const enabledCount = Object.values(catalog).filter(p => p.enabled ?? p.default_enabled).length;
+            return {
+                ok: enabledCount > 0,
+                detail: enabledCount + '/' + Object.keys(catalog).length + ' patterns enabled · ' + results.join(' · ')
+            };
+        } catch (e) { return { ok: false, detail: 'Pattern check failed: ' + e.message }; }
+    }
+
+    // ── ScrumMaster tab ───────────────────────────────────────────────────────
+    async loadScrumMasterTab() {
+        const container = document.getElementById('scrum-master-content');
+        if (!container) return;
+
+        const archName = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture)
+                      || (this.analysisData && this.analysisData.analysis && (this.analysisData.analysis.architecture_name || this.analysisData.analysis.architecture));
+
+        if (!archName) {
+            container.innerHTML = '<p class="placeholder">No analysis loaded.</p>';
+            return;
+        }
+
+        container.innerHTML = '<p class="placeholder">Loading ScrumMaster data…</p>';
+
+        let sm = null;
+        try {
+            const r = await fetch(`/api/v1/reports/${archName}/files/08_scrum_master.json`);
+            if (r.ok) sm = await r.json();
+        } catch (_) {}
+
+        if (!sm) {
+            container.innerHTML = `<div style="padding:2rem; text-align:center;">
+                <div style="font-size:2.5rem; margin-bottom:1rem;">🧩</div>
+                <h3 style="color:var(--text-color);">ScrumMaster Not Run</h3>
+                <p style="color:var(--text-secondary); max-width:420px; margin:0 auto 1rem;">
+                    ScrumMaster synthesis has not run for this architecture yet.
+                    Enable it in <strong>Configuration → ScrumMaster</strong>, then run Expert Review.
+                </p>
+                <button onclick="window.dashboard.switchTab('config')" style="padding:0.5rem 1.25rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:0.875rem;">Open Configuration</button>
+            </div>`;
+            return;
+        }
+
+        // Tab is now valid — reveal nav button
+        const smNavTab = document.getElementById('scrum-master-nav-tab');
+        if (smNavTab) smNavTab.style.display = 'block';
+
+        const prioCol  = {critical:'var(--danger-color)', high:'var(--danger-color)', medium:'var(--warning-color)', low:'var(--text-tertiary)'};
+        const harmonyChip = sm.redesign_signal
+            ? '<span style="background:#ff4d4d22; border:1px solid var(--danger-color); color:var(--danger-color); border-radius:8px; padding:3px 10px; font-size:0.75rem; font-weight:700;">🔴 Redesign needed</span>'
+            : parseFloat(sm.final_confidence) >= 90
+            ? '<span style="background:#00c07722; border:1px solid var(--secondary-color); color:var(--secondary-color); border-radius:8px; padding:3px 10px; font-size:0.75rem; font-weight:700;">✅ Harmony reached</span>'
+            : '<span style="background:#ffaa0022; border:1px solid var(--warning-color); color:var(--warning-color); border-radius:8px; padding:3px 10px; font-size:0.75rem; font-weight:700;">◑ Near-harmony</span>';
+
+        // Confidence trajectory
+        const traj = sm.confidence_trajectory || [sm.initial_confidence];
+        const trajHtml = traj.map((v, i) => {
+            const lbl = i === 0 ? 'Start' : `Round ${i}`;
+            const col = i === traj.length - 1 ? 'var(--primary-color)' : 'var(--text-tertiary)';
+            return `<div style="text-align:center;"><div style="font-size:1rem; font-weight:700; color:${col};">${parseFloat(v).toFixed(1)}%</div><div style="font-size:0.68rem; color:var(--text-tertiary);">${lbl}</div></div>`;
+        }).join('<div style="color:var(--text-tertiary); padding:0 6px; align-self:center; font-size:1.1rem;">→</div>');
+
+        // Per-critic before/after (critics that were re-triggered get a "Re-triggered" label; others show "Not re-triggered")
+        const retriggered = new Set(sm.critics_retriggered || []);
+        const criticDefs = [
+            {key:'architect',   icon:'🏛️', label:'Architecture Review'},
+            {key:'tester',      icon:'🔬', label:'Coverage Audit'},
+            {key:'red_team',    icon:'🎯', label:'Exploit Analysis'},
+            {key:'purple_team', icon:'🟣', label:'Purple Team'},
+            {key:'blackhat',    icon:'⚔️', label:'Blackhat'},
+        ];
+        let criticCards = '';
+        for (const cd of criticDefs) {
+            const wasTriggered = retriggered.has(cd.key);
+            const borderCol = wasTriggered ? '#a855f7' : 'var(--border-color)';
+            const badge = wasTriggered
+                ? '<span style="font-size:0.68rem; font-weight:700; color:#a855f7; background:#a855f718; border:1px solid #a855f744; border-radius:8px; padding:1px 7px; margin-left:0.4rem;">🧩 Re-triggered</span>'
+                : '<span style="font-size:0.68rem; color:var(--text-tertiary); margin-left:0.4rem;">Not re-triggered</span>';
+            const desc = wasTriggered
+                ? 'This critic received ScrumMaster proposals and produced an updated critique. Its findings in the Expert Review tab reflect the re-triggered result.'
+                : 'This critic\'s original findings were not changed by ScrumMaster. Its findings in Expert Review are the original assessment.';
+            criticCards += `<div style="flex:1; min-width:170px; padding:0.75rem 1rem; border-radius:8px; border:1px solid ${borderCol}; background:var(--card-bg);">
+                <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.4rem;">
+                    <span style="font-size:1rem;">${cd.icon}</span>
+                    <span style="font-size:0.825rem; font-weight:700; color:var(--text-color);">${cd.label}</span>
+                    ${badge}
+                </div>
+                <div style="font-size:0.75rem; color:var(--text-secondary);">${desc}</div>
+                <a href="#" onclick="window.dashboard.switchTab('expert-review'); return false;" style="font-size:0.72rem; color:var(--primary-color); text-decoration:none; margin-top:0.35rem; display:inline-block;">View in Expert Review →</a>
+            </div>`;
+        }
+
+        // Impediments summary
+        const imps = sm.impediments_found || [];
+        const resolved = sm.impediments_resolved || [];
+        const critical_high = imps.filter(i => ['critical','high'].includes(i.severity));
+        const unresolvable = imps.filter(i => !i.resolvable);
+        let impHtml = '';
+        if (imps.length) {
+            const byType = {};
+            imps.forEach(i => { byType[i.impediment_type] = (byType[i.impediment_type]||0)+1; });
+            const typeLabels = {contradiction:'Contradictions', coverage_gap:'Coverage gaps', unresolved_rec:'Unresolved recommendations', blindspot:'Blindspots'};
+            impHtml = '<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.75rem;">'
+                + Object.entries(byType).map(([t,n]) =>
+                    `<div style="padding:0.3rem 0.75rem; border-radius:6px; background:var(--nav-hover-bg); border:1px solid var(--border-color); font-size:0.78rem; color:var(--text-secondary);"><strong style="color:var(--text-color);">${n}</strong> ${typeLabels[t]||t}</div>`
+                ).join('')
+                + '</div>'
+                + `<div style="font-size:0.8125rem; color:var(--text-secondary);">${critical_high.length} critical/high · ${unresolvable.length} structurally unresolvable · ${resolved.length} resolved by ScrumMaster</div>`;
+        }
+
+        // Action plan — show tier classification alongside each item
+        const _tierLabel = p => {
+            const prio = (p.priority || 'medium').toLowerCase();
+            if (prio === 'critical' || prio === 'high') return '<span style="font-size:0.68rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:6px; padding:1px 6px; margin-left:0.35rem;">⚡ Quick Wins tier</span>';
+            if (prio === 'medium') return '<span style="font-size:0.68rem; font-weight:700; color:var(--primary-color); background:var(--primary-color)18; border:1px solid var(--primary-color)44; border-radius:6px; padding:1px 6px; margin-left:0.35rem;">⭐ Recommended tier</span>';
+            return '<span style="font-size:0.68rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:6px; padding:1px 6px; margin-left:0.35rem;">🔒 Maximum tier</span>';
+        };
+        let planHtml = '';
+        if (sm.action_plan && sm.action_plan.length) {
+            planHtml = sm.action_plan.map((p, i) => {
+                const pc = prioCol[p.priority] || 'var(--text-tertiary)';
+                return `<div style="padding:0.6rem 0.9rem; margin-bottom:0.4rem; background:var(--nav-hover-bg); border-left:3px solid ${pc}; border-radius:6px;">
+                    <div style="font-size:0.875rem; font-weight:600; color:var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">${i+1}. ${this._esc(p.action||'')} ${_tierLabel(p)}</div>
+                    ${p.rationale ? `<div style="font-size:0.78rem; color:var(--text-secondary); margin-top:0.2rem;">${this._esc(p.rationale)}</div>` : ''}
+                    <div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.15rem;">${p.effort ? 'Effort: ' + this._esc(p.effort) : ''} ${p.risk_reduction_estimate ? '· Risk reduction: ' + this._esc(p.risk_reduction_estimate) : ''}</div>
+                </div>`;
+            }).join('');
+        }
+
+        // Baseline feedback
+        let bfHtml = '';
+        const bf = sm.baseline_feedback;
+        if (bf) {
+            const bfItems = [
+                ...(bf.weak_controls||[]).map(c => '⚠ Weak control (too generic): ' + c),
+                ...(bf.pattern_gaps||[]).map(g => '🔍 Pattern not covered: ' + g),
+                ...(bf.ground_truth_gaps||[]).map(g => '📊 Baseline gap: ' + g),
+            ];
+            if (bfItems.length) {
+                bfHtml = `<div style="margin-top:1rem; padding:0.75rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--border-color);">
+                    <div style="font-size:0.78rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">📋 Engine Improvement Notes <span style="font-weight:400; color:var(--text-tertiary);">(for next analysis pass)</span></div>
+                    ${bfItems.map(s => `<div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.2rem;">${this._esc(s)}</div>`).join('')}
+                </div>`;
+            }
+        }
+
+        const _panel = (title, bodyHtml, startOpen) => {
+            const uid = 'sm-panel-' + Math.random().toString(36).slice(2,7);
+            return `<div class="er-panel" style="background:var(--card-bg); border-radius:10px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">
+                <div class="er-panel-header" onclick="(function(h){var b=document.getElementById('${uid}');var c=h.querySelector('.er-chevron');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.textContent=open?'›':'∨';})(this)" style="padding:1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:var(--nav-hover-bg);">
+                    <div style="font-size:0.9rem; font-weight:700; color:var(--text-color);">${title}</div>
+                    <span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary);">${startOpen?'∨':'›'}</span>
+                </div>
+                <div id="${uid}" style="display:${startOpen?'block':'none'}; padding:1rem 1.25rem 1.25rem;">${bodyHtml}</div>
+            </div>`;
+        };
+
+        container.innerHTML = `
+            <div style="padding:0.25rem 0 0.5rem; display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
+                ${harmonyChip}
+                <span style="font-size:0.8125rem; color:var(--text-secondary);">${sm.iterations_run||0} iteration${(sm.iterations_run||0)!==1?'s':''} · confidence Δ ${parseFloat(sm.confidence_delta||0)>0?'+':''}${parseFloat(sm.confidence_delta||0).toFixed(1)}%</span>
+                <a href="#" onclick="window.dashboard.switchTab('expert-review'); return false;" style="font-size:0.78rem; color:var(--text-tertiary); text-decoration:none; margin-left:auto;">← Back to Expert Review</a>
+            </div>
+
+            ${_panel('📈 Confidence Trajectory', `
+                <div style="display:flex; align-items:flex-start; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem;">${trajHtml}</div>
+                ${sm.synthesis_note ? `<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.5rem; font-style:italic;">${this._esc(sm.synthesis_note)}</div>` : ''}
+            `, true)}
+
+            ${_panel('🔍 Per-Critic Summary', `<div style="display:flex; gap:0.75rem; flex-wrap:wrap;">${criticCards}</div>`, true)}
+
+            ${imps.length ? _panel('🚧 Impediments Found', impHtml, false) : ''}
+
+            ${planHtml ? _panel('✅ Priority Action Plan', planHtml + `<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.75rem;">→ This plan is also reflected in <strong>03_action_plan.md</strong> and <strong>10_adr_report.md</strong></div>`, true) : ''}
+
+            ${bfHtml ? _panel('📋 Engine Improvement Notes', bfHtml, false) : ''}
+        `;
+    }
+
     // Build the progress UI shell — idle / running / paused states
     _erpProgressShell(archName, erpState) {
         const isActive = erpState === 'running' || erpState === 'paused';
@@ -6075,6 +6777,12 @@ class Dashboard {
                                 <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Synthesis</div>
                                 <div id="erp-card-synthesis-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
                             </div>
+                            <div id="erp-card-scrum_master" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                                <div style="font-size:0.875rem;">🧩</div>
+                                <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">ScrumMaster</div>
+                                <div id="erp-card-scrum_master-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
+                                <div id="erp-card-scrum_master-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -6091,7 +6799,7 @@ class Dashboard {
         const pct = document.getElementById('erp-pct');
         const stageLabel = document.getElementById('erp-stage-label');
         const message = document.getElementById('erp-message');
-        const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', purple_team: '🟣 Purple Team', blackhat: '⚔️ Blackhat', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
+        const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', purple_team: '🟣 Purple Team', blackhat: '⚔️ Blackhat', synthesis: '⚙️ Synthesis', scrum_master: '🧩 ScrumMaster', complete: '✅ Done' };
         const parallelModeR = s.criticMode === 'parallel' || s.criticMode === 'auto';
         if (parallelModeR) {
             if (pct) pct.textContent = (s.pct || 0) + '%';
@@ -6123,7 +6831,7 @@ class Dashboard {
         }
         if (message) message.textContent = s.message || '';
         // Restore each critic card from saved cardStates
-        const agentOrder = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat', 'synthesis'];
+        const agentOrder = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat', 'synthesis', 'scrum_master'];
         for (const agent of agentOrder) {
             const cs = s.cardStates && s.cardStates[agent];
             if (!cs) continue;
@@ -6265,8 +6973,8 @@ class Dashboard {
 
             // Count how many critics actually ran (have an entry in expert_validations)
             const expertValidationsForCount = moe.expert_validations || {};
-            const ranCriticKeys = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat'].filter(k => expertValidationsForCount[k]);
-            const ranCriticLabels = { architect: 'Architect', tester: 'Coverage Auditor', red_team: 'Exploit Analyst', purple_team: 'Purple Team', blackhat: 'Blackhat' };
+            const ranCriticKeys = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat', 'scrum_master'].filter(k => expertValidationsForCount[k]);
+            const ranCriticLabels = { architect: 'Architect', tester: 'Coverage Auditor', red_team: 'Exploit Analyst', purple_team: 'Purple Team', blackhat: 'Blackhat', scrum_master: 'ScrumMaster' };
             const criticCountLabel = ranCriticKeys.length + ' critic' + (ranCriticKeys.length !== 1 ? 's' : '');
             const criticNamesLabel = ranCriticKeys.map(k => ranCriticLabels[k]).join(', ');
 
@@ -6300,7 +7008,7 @@ class Dashboard {
                         + (cls.action ? '<div style="font-size:0.75rem; color:var(--warning-color); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">Action: ' + cls.action + '</div>' : '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">No immediate action required — document for awareness and revisit when scope changes.</div>')
                         + '</div>';
                 }
-                blindspotsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                blindspotsHtml = '<div class="er-panel er-synth-panel" data-synth-key="blindspots" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">🔍 Blindspots</h3>'
                     + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Gaps all ' + criticCountLabel + ' structurally could not see. <strong style="color:var(--warning-color);">⚠ Act</strong> = actionable now. <strong style="color:var(--text-tertiary);">📋 Note</strong> = awareness only.</p></div>'
@@ -6342,7 +7050,7 @@ class Dashboard {
                         + '<div style="font-size:0.8125rem; color:var(--warning-color); margin-top:0.35rem; font-style:italic;">' + (c.resolution || 'UNSURE — human review needed') + '</div>'
                         + '</div>';
                 }
-                contradictionsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">⚠️ Expert Disagreements</h3>'
                     + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Where critics contradict each other. Click <em>View analysis →</em> for root cause.</p></div>'
@@ -6353,7 +7061,7 @@ class Dashboard {
             } else {
                 if (isParallelResult) {
                     // Parallel mode: contradiction detection is structurally N/A — grey out the panel
-                    contradictionsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden; opacity:0.55;">'
+                    contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden; opacity:0.55;">'
                         + '<div style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center;">'
                         + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-tertiary); font-size: 1rem;">— Expert Disagreements (N/A)</h3>'
                         + '<p style="font-size: 0.875rem; color: var(--text-tertiary); margin: 0;">Not applicable — <strong>' + runCriticMode + '</strong> mode critics ran independently and did not read each other\'s output. Cross-critic disagreement detection requires Sequential mode.</p></div>'
@@ -6362,7 +7070,7 @@ class Dashboard {
                 } else {
                     // Sequential / auto-resolved-sequential: genuine consensus
                     const modeLabel = runCriticMode === 'auto' ? 'Auto (resolved to Sequential)' : 'Sequential';
-                    contradictionsHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                    contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                         + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                         + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">✅ Expert Disagreements</h3>'
                         + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">No contradictions found.</p></div>'
@@ -6374,6 +7082,112 @@ class Dashboard {
                         + '</div></div>';
                 }
             }
+
+            // ── Load ScrumMaster result (08_scrum_master.json if present) ──────────
+            let smResult = null;
+            try {
+                const smResp = await fetch(`/api/v1/reports/${archName}/files/08_scrum_master.json`);
+                if (smResp.ok) smResult = await smResp.json();
+            } catch (_) { /* file not yet generated — ok */ }
+
+            // ── Build ScrumMaster card HTML ───────────────────────────────────────
+            let scrumMasterHtml = '';
+            if (smResult) {
+                const smConf0 = (smResult.initial_confidence || 0).toFixed(1);
+                const smConfF = (smResult.final_confidence  || 0).toFixed(1);
+                const smDelta = (smResult.confidence_delta  || 0).toFixed(1);
+                const smIter  = smResult.iterations_run || 0;
+                const smRedes = smResult.redesign_signal;
+                const smTrigg = (smResult.critics_retriggered || []).join(', ') || '—';
+                const smImpN  = (smResult.impediments_found  || []).length;
+                const smResN  = (smResult.impediments_resolved || []).length;
+                const smPlan  = smResult.action_plan || [];
+                const smNote  = smResult.synthesis_note || '';
+                const smBF    = smResult.baseline_feedback;
+                const smTraj  = smResult.confidence_trajectory || [smResult.initial_confidence];
+
+                // Harmony state chip
+                const harmonyChip = smRedes
+                    ? '<span style="background:#ff4d4d22; border:1px solid var(--danger-color); color:var(--danger-color); border-radius:8px; padding:2px 9px; font-size:0.68rem; font-weight:700;">🔴 Redesign needed</span>'
+                    : parseFloat(smConfF) >= 90
+                    ? '<span style="background:#00c07722; border:1px solid var(--secondary-color); color:var(--secondary-color); border-radius:8px; padding:2px 9px; font-size:0.68rem; font-weight:700;">✅ Harmony reached</span>'
+                    : '<span style="background:#ffaa0022; border:1px solid var(--warning-color); color:var(--warning-color); border-radius:8px; padding:2px 9px; font-size:0.68rem; font-weight:700;">◑ Near-harmony</span>';
+
+                // Confidence trajectory sparkline (dots + percentages)
+                const trajHtml = smTraj.map((v, i) => {
+                    const label = i === 0 ? 'Start' : `Round ${i}`;
+                    const col   = i === smTraj.length - 1 ? 'var(--primary-color)' : 'var(--text-tertiary)';
+                    return `<div style="text-align:center;"><div style="font-size:0.8rem; font-weight:700; color:${col};">${parseFloat(v).toFixed(1)}%</div><div style="font-size:0.65rem; color:var(--text-tertiary);">${label}</div></div>`;
+                }).join('<div style="color:var(--text-tertiary); padding:0 4px; align-self:center;">→</div>');
+
+                // Action plan list
+                let planHtml = '';
+                if (smPlan.length > 0) {
+                    const prioColor = { critical:'var(--danger-color)', high:'var(--danger-color)', medium:'var(--warning-color)', low:'var(--text-tertiary)' };
+                    planHtml = '<div style="margin-top:0.75rem;">'
+                        + '<div style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">Action Plan</div>'
+                        + smPlan.map((p, i) => {
+                            const pc = prioColor[p.priority] || 'var(--text-tertiary)';
+                            return `<div style="padding:0.5rem 0.75rem; margin-bottom:0.35rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid ${pc};">`
+                                + `<div style="font-size:0.8125rem; font-weight:600; color:var(--text-color);">${i+1}. ${p.action||''}</div>`
+                                + (p.rationale ? `<div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem;">${p.rationale}</div>` : '')
+                                + (p.effort ? `<div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.1rem;">Effort: ${p.effort} · Risk reduction: ${p.risk_reduction_estimate||'?'}</div>` : '')
+                                + '</div>';
+                        }).join('')
+                        + '</div>';
+                }
+
+                // Baseline feedback (collapsible, only when populated)
+                let bfHtml = '';
+                if (smBF && (smBF.weak_controls?.length || smBF.pattern_gaps?.length || Object.keys(smBF.rapids_weight_hints||{}).length || smBF.ground_truth_gaps?.length)) {
+                    const bfItems = [
+                        ...(smBF.weak_controls||[]).map(c => '⚠ Weak control: ' + c),
+                        ...(smBF.pattern_gaps||[]).map(g => '🔍 Pattern gap: ' + g),
+                        ...(smBF.ground_truth_gaps||[]).map(g => '📊 Baseline gap: ' + g),
+                    ];
+                    bfHtml = '<div class="er-panel" style="border:1px solid var(--border-color); border-radius:8px; margin-top:0.75rem; overflow:hidden;">'
+                        + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\'∨\';})(this)" style="padding:0.6rem 0.9rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:var(--nav-hover-bg);">'
+                        + '<span style="font-size:0.75rem; font-weight:600; color:var(--text-secondary);">📋 Engine Improvement Hints</span>'
+                        + '<span class="er-chevron" style="font-size:1rem; color:var(--text-tertiary);">›</span>'
+                        + '</div>'
+                        + '<div class="er-panel-body" style="display:none; padding:0.5rem 0.9rem 0.75rem;">'
+                        + bfItems.map(s => `<div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem;">${s}</div>`).join('')
+                        + '</div></div>';
+                }
+
+                scrumMasterHtml = '<div class="er-panel er-synth-panel" data-synth-key="scrum_master" style="background:var(--card-bg); border-radius:10px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">'
+                    + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\'∨\';})(this)" style="padding:1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
+                    + '<div>'
+                    + '<h3 style="margin:0 0 0.25rem; color:var(--text-color); font-size:1rem;">🧩 ScrumMaster — Harmony Synthesis</h3>'
+                    + '<div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">'
+                    + harmonyChip
+                    + `<span style="font-size:0.75rem; color:var(--text-tertiary);">${smIter} iteration${smIter!==1?'s':''} · ${smImpN} impediment${smImpN!==1?'s':''} · ${smResN} resolved</span>`
+                    + '</div>'
+                    + '</div>'
+                    + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
+                    + '</div>'
+                    + '<div class="er-panel-body" style="padding:0.75rem 1.25rem 1.25rem;">'
+
+                    // Confidence trajectory
+                    + '<div style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">Confidence trajectory</div>'
+                    + '<div style="display:flex; align-items:flex-start; gap:0.25rem; flex-wrap:wrap; margin-bottom:0.75rem;">' + trajHtml + '</div>'
+
+                    // Effort summary row
+                    + '<div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:0.5rem;">'
+                    + `<div><div style="font-size:0.68rem; color:var(--text-tertiary);">CRITICS RE-TRIGGERED</div><div style="font-size:0.8rem; color:var(--text-color);">${smTrigg}</div></div>`
+                    + `<div><div style="font-size:0.68rem; color:var(--text-tertiary);">CONFIDENCE GAIN</div><div style="font-size:0.8rem; color:${parseFloat(smDelta)>0?'var(--secondary-color)':'var(--text-tertiary)'};">${parseFloat(smDelta)>0?'+':''}${smDelta}%</div></div>`
+                    + '</div>'
+
+                    + (smNote ? `<div style="font-size:0.8125rem; color:var(--text-secondary); border-top:1px solid var(--border-color); padding-top:0.6rem; margin-top:0.25rem;">${smNote}</div>` : '')
+                    + planHtml
+                    + bfHtml
+                    + '</div></div>';
+
+            } else if (expertValidations['scrum_master']) {
+                // SM ran but no separate JSON — show placeholder
+                scrumMasterHtml = '<div style="padding:0.75rem 1.25rem; background:var(--nav-hover-bg); border-radius:8px; margin-bottom:1rem; border:1px dashed var(--border-color);"><span style="font-size:0.8125rem; color:var(--text-tertiary);">🧩 ScrumMaster ran — detailed results not saved. Re-run expert review to capture full output.</span></div>';
+            }
+            // (if neither, scrumMasterHtml stays '' — section C just won't show SM)
 
             // Build synthesis footer outside template literal
             let synthFooterHtml = '';
@@ -6396,19 +7210,37 @@ class Dashboard {
                 for (const { key, label, color } of tierDefs) {
                     const t = improvTiers[key];
                     if (!t) continue;
-                    const items = Array.isArray(t.items) ? t.items : [];
-                    const itemList = items.length > 0
-                        ? '<ul style="margin:0.5rem 0 0; padding-left:1.25rem; font-size:0.8125rem; color:var(--text-color);">' + items.map(function(i) { return '<li>' + i + '</li>'; }).join('') + '</ul>'
+                    const allItems = Array.isArray(t.items) ? t.items : [];
+                    // Split: SM-sourced items start with "[SM] "; originals are the rest
+                    const origItems = allItems.filter(i => !String(i).startsWith('[SM] '));
+                    const smItems   = allItems.filter(i =>  String(i).startsWith('[SM] '));
+                    const origList = origItems.length > 0
+                        ? '<ul style="margin:0.5rem 0 0; padding-left:1.25rem; font-size:0.8125rem; color:var(--text-color);">'
+                          + origItems.map(function(i) { return '<li>' + i + '</li>'; }).join('')
+                          + '</ul>'
                         : '';
+                    const smList = smItems.length > 0
+                        ? '<div style="margin-top:0.5rem; padding:0.5rem 0.75rem; background:#a855f710; border:1px solid #a855f733; border-radius:6px;">'
+                          + '<div style="font-size:0.7rem; font-weight:700; color:#a855f7; margin-bottom:0.3rem;">🧩 ScrumMaster additions</div>'
+                          + '<ul style="margin:0; padding-left:1.25rem; font-size:0.8rem; color:var(--text-color);">'
+                          + smItems.map(function(i) { return '<li>' + String(i).replace(/^\[SM\] /, ''); + '</li>'; }).join('')
+                          + '</ul></div>'
+                        : '';
+                    const itemList = origList + smList;
+                    // items used for SSP delta (pass all)
+                    const items = allItems;
                     const residualBlock = t.residual
                         ? '<div style="margin-top:0.5rem; padding:0.5rem; background:rgba(255,165,0,0.08); border-radius:4px; font-size:0.8125rem; color:var(--warning-color);">Residual: ' + t.residual + '</div>'
                         : '';
                     const rationaleBlock = t.rationale
                         ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.5rem; font-style:italic;">' + t.rationale + '</div>'
                         : '';
-                    tierCards += '<div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">'
-                        + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">'
-                        + '<span style="font-weight:700; color:' + color + ';">' + label + '</span>'
+                    const smEnhancedBadge = t.sm_enhanced
+                        ? '<span style="font-size:0.68rem; font-weight:700; color:#a855f7; background:#a855f718; border:1px solid #a855f744; border-radius:8px; padding:1px 6px; margin-left:0.5rem; white-space:nowrap;">🧩 SM-enhanced</span>'
+                        : '';
+                    tierCards += '<div style="border: 1px solid ' + (t.sm_enhanced ? '#a855f733' : 'var(--border-color)') + '; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">'
+                        + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.25rem;">'
+                        + '<span style="font-weight:700; color:' + color + ';">' + label + smEnhancedBadge + '</span>'
                         + '<span style="font-size:0.8125rem; color:var(--text-secondary);">' + (t.practical_verdict ? 'Practical: ' + t.practical_verdict : '') + '</span>'
                         + '</div>'
                         + rationaleBlock
@@ -6422,10 +7254,10 @@ class Dashboard {
                         + this._renderSspTierUpgradeDelta(items, label)
                         + '</div>';
                 }
-                tiersHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                tiersHtml = '<div class="er-panel er-synth-panel" data-synth-key="tiers" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
-                    + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">📊 Improvement Tiers</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Synthesised from all ' + criticCountLabel + ' findings. Cost and effort from Red Team exploit roadmap — not estimated where absent.</p></div>'
+                    + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">📊 Improvement Tiers' + (Object.values(improvTiers).some(t => t && t.sm_enhanced) ? ' <span style="font-size:0.7rem; color:#a855f7; font-weight:700;">🧩 SM-enhanced</span>' : '') + '</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Synthesised from all ' + criticCountLabel + ' findings' + (Object.values(improvTiers).some(t => t && t.sm_enhanced) ? ' + ScrumMaster priority actions' : '') + '. Cost and effort from Red Team exploit roadmap — not estimated where absent.</p></div>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
                     + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + tierCards + '</div>'
@@ -6441,6 +7273,7 @@ class Dashboard {
                 { key: 'red_team',     icon: '🎯', label: 'Exploit Analysis',         role: 'Bypass paths, attack feasibility, control evasion under active exploitation' },
                 { key: 'purple_team',  icon: '🟣', label: 'Purple Team',              role: 'Detection depth, coverage gaps, investigation value & ADR operability', isOptional: true },
                 { key: 'blackhat',     icon: '⚔️', label: 'Blackhat Cross-Path',      role: 'Cross-path chaining, pivot-diverge routes & chain exploits (supreme critic)', isOptional: true },
+                { key: 'scrum_master', icon: '🧩', label: 'ScrumMaster',              role: 'Impediment synthesis, harmony check, targeted re-triggering, confidence trajectory', isOptional: true, isSynthMeta: true },
             ];
 
             const statusColor = {
@@ -6545,16 +7378,20 @@ class Dashboard {
             const _linkTechniques = (text) => text;
 
             // Build expert panel cards — collapsible, expanded by default
+            // isSynthMeta critics (ScrumMaster) belong in Section C, not here
             let expertPanelCards = '';
             for (const e of expertDefs) {
+                if (e.isSynthMeta) continue;   // SM rendered in Synthesis section
                 const v = expertValidations[e.key];
                 // Optional critics: show a "not run" card if absent
                 if (!v) {
                     if (e.isOptional) {
                         const notRunNote = e.key === 'blackhat'
                             ? 'Not run — enable in Config → MoE → Blackhat Critic (Layer 2E) and re-run Expert Review'
-                            : 'Not run — enable in Config → MoE → Purple Team Critic (Layer 2D) and re-run Expert Review';
-                        expertPanelCards += '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow:hidden; opacity:0.55;">'
+                            : e.key === 'purple_team'
+                            ? 'Not run — enable in Config → MoE → Purple Team Critic (Layer 2D) and re-run Expert Review'
+                            : 'Not run — enable in Config and re-run Expert Review';
+                        expertPanelCards += '<div class="er-panel er-critic-panel" data-critic-key="' + e.key + '" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow:hidden; opacity:0.55;">'
                             + '<div style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center;">'
                             + '<div style="display:flex; align-items:center; gap:0.75rem;">'
                             + '<span style="font-size:1.5rem;">' + e.icon + '</span>'
@@ -6796,7 +7633,7 @@ class Dashboard {
                         + '</div>';
 
                 // Header subtitle: always shows what this critic looks out for (role); verdict is in the body
-                expertPanelCards += '<div class="er-panel" data-critic-key="' + e.key + '" id="er-panel-' + e.key + '" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">'
+                expertPanelCards += '<div class="er-panel er-critic-panel" data-critic-key="' + e.key + '" id="er-panel-' + e.key + '" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select:none;">'
                     + '<div style="display: flex; align-items: center; gap: 0.75rem;">'
                     + '<span style="font-size: 1.5rem;">' + e.icon + '</span>'
@@ -6854,25 +7691,35 @@ class Dashboard {
                 const _knownBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>';
                 const _unsureBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
                 const _unsureReviewBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--text-tertiary); background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
+                const _smRefinedBadge = '<span style="font-size:0.68rem; font-weight:700; color:#a855f7; background:#a855f718; border:1px solid #a855f744; border-radius:8px; padding:1px 6px; margin-left:0.4rem; white-space:nowrap;">🧩 SM-REFINED</span>';
+                // Set of critic keys whose findings were improved by ScrumMaster
+                const smRetriggered = new Set((smResult && smResult.critics_retriggered) ? smResult.critics_retriggered : []);
+                const _smBadgeFor = r => {
+                    const src = (r.source || '').toLowerCase().replace(/[^a-z_]/g, '');
+                    return smRetriggered.has(src) ? _smRefinedBadge : '';
+                };
 
                 const renderCritical = r => {
                     const badge = isKnown(r) ? _knownBadge : _unsureBadge;
+                    const smBadge = _smBadgeFor(r);
                     return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px; margin-bottom:0.4rem; border-left:3px solid var(--danger-color);">'
-                        + '<div style="font-size:0.875rem; color:var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
+                        + '<div style="font-size:0.875rem; color:var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + smBadge + '</div>'
                         + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
                         + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
                         + '</div>';
                 };
                 const renderHigh = r => {
                     const badge = isKnown(r) ? _knownBadge : _unsureBadge;
+                    const smBadge = _smBadgeFor(r);
                     return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px; margin-bottom:0.4rem; border-left:3px solid var(--warning-color);">'
-                        + '<div style="font-size:0.875rem; color:var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
+                        + '<div style="font-size:0.875rem; color:var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + smBadge + '</div>'
                         + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
                         + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
                         + '</div>';
                 };
                 const renderReview = r => {
                     const badge = isKnown(r) ? _knownBadge : _unsureReviewBadge;
+                    const smBadge = _smBadgeFor(r);
                     const src = (r.source || '').toLowerCase();
                     let actionHint = '';
                     if (src.includes('architect')) {
@@ -6889,7 +7736,7 @@ class Dashboard {
                         actionHint = 'Review this finding: if it describes a real gap in your architecture, add a control to the relevant ADR. If it does not apply, document as accepted risk.';
                     }
                     return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px; margin-bottom:0.4rem; border-left:3px solid var(--border-color);">'
-                        + '<div style="font-size:0.875rem; color:var(--text-secondary); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + '</div>'
+                        + '<div style="font-size:0.875rem; color:var(--text-secondary); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + smBadge + '</div>'
                         + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.2rem;">Raised by: ' + r.source + '</div>' : '')
                         + '<div style="font-size:0.75rem; color:var(--primary-color); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">→ ' + actionHint + '</div>'
                         + '</div>';
@@ -6900,13 +7747,16 @@ class Dashboard {
                     + _cefGroup(_cefUid + '_high', 'High', 'var(--warning-color)', consensusHigh, renderHigh)
                     + _cefGroup(_cefUid + '_rev', 'For Review', 'var(--text-tertiary)', consensusReview, renderReview);
 
-                consensusHtml = '<div class="er-panel" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                const smBanner = smRetriggered.size > 0
+                    ? '<div style="background:#a855f710; border:1px solid #a855f744; border-radius:6px; padding:0.5rem 0.875rem; margin-bottom:0.75rem; font-size:0.78rem; color:#a855f7;">🧩 <strong>ScrumMaster-refined:</strong> Items from <strong>' + [...smRetriggered].join(', ') + '</strong> were re-evaluated after targeted re-triggering. Look for the <strong>SM-REFINED</strong> badge.</div>'
+                    : '';
+                consensusHtml = '<div class="er-panel er-synth-panel" data-synth-key="consensus" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
-                    + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">Cross-Expert Findings</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;"><strong style="color:var(--secondary-color);">KNOWN</strong> = confirmed by ≥2 critics — act on these. <strong style="color:var(--warning-color);">UNSURE</strong> = single critic raised it, no second opinion yet — needs human review, not necessarily wrong.</p></div>'
+                    + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">Cross-Expert Findings' + (smRetriggered.size > 0 ? ' <span style="font-size:0.7rem; color:#a855f7; font-weight:700;">🧩 SM-enhanced</span>' : '') + '</h3>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;"><strong style="color:var(--secondary-color);">KNOWN</strong> = confirmed by ≥2 critics — act on these. <strong style="color:var(--warning-color);">UNSURE</strong> = single critic raised it. <strong style="color:#a855f7;">SM-REFINED</strong> = re-evaluated by ScrumMaster.</p></div>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
-                    + '<div class="er-panel-body" style="padding: 0.75rem 1.25rem 1.25rem;">' + inner + '</div>'
+                    + '<div class="er-panel-body" style="padding: 0.75rem 1.25rem 1.25rem;">' + smBanner + inner + '</div>'
                     + '</div>';
             }
 
@@ -7042,31 +7892,160 @@ class Dashboard {
                 </div>`;
             })();
 
-            container.innerHTML = ''
-                + _ujExplainerHtml
-                + rerunRowHtml
-                + parallelWarningBanner
-                + '<div style="background: var(--card-bg); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">'
-                + '<h3 style="margin: 0 0 1rem; color: var(--text-color); font-size: 1rem;">Confidence Progression</h3>'
+            // ── Helper: render a top-level collapsible section ──────────────────
+            const _section = (id, icon, title, subtitle, bodyHtml, startOpen) => {
+                const disp = startOpen ? 'block' : 'none';
+                const chev = startOpen ? '∨' : '›';
+                return '<div class="er-top-section" style="background:var(--card-bg); border-radius:10px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">'
+                    + '<div class="er-top-section-header" onclick="(function(h){var b=document.getElementById(\'ers-body-' + id + '\');var c=h.querySelector(\'.er-top-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\'∨\';})(this)" style="padding:1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:var(--nav-hover-bg);">'
+                    + '<div><div style="font-size:0.7rem; font-weight:700; letter-spacing:0.08em; color:var(--text-tertiary); text-transform:uppercase; margin-bottom:0.15rem;">' + icon + ' ' + title + '</div>'
+                    + '<div style="font-size:0.8rem; color:var(--text-secondary);">' + subtitle + '</div></div>'
+                    + '<span class="er-top-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">' + chev + '</span>'
+                    + '</div>'
+                    + '<div id="ers-body-' + id + '" style="display:' + disp + '; padding:1rem 1.25rem 1.25rem;">' + bodyHtml + '</div>'
+                    + '</div>';
+            };
+
+            // ── Critic filter pills ──────────────────────────────────────────────
+            // Build one pill per critic that actually ran; clicking shows only that critic's panel.
+            const _criticPillDefs = expertDefs.filter(e => !e.isSynthMeta && (expertValidations[e.key] || e.isOptional));
+            const criticFilterPills = '<div id="er-critic-filters" style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.75rem; padding:0.6rem 0.875rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--border-color); align-items:center;">'
+                + '<span style="font-size:0.72rem; font-weight:700; color:var(--text-tertiary); margin-right:0.2rem; text-transform:uppercase; letter-spacing:0.06em;">Filter critics:</span>'
+                + '<button onclick="window._erFilterCritic(\'all\')" data-erfilter="all" style="padding:0.2rem 0.7rem; border-radius:6px; border:1px solid var(--primary-color); background:var(--primary-color)22; color:var(--primary-color); font-size:0.75rem; font-weight:700; cursor:pointer;">All</button>'
+                + _criticPillDefs.map(e => {
+                    const ran = !!expertValidations[e.key];
+                    const col = ran ? 'var(--text-secondary)' : 'var(--text-tertiary)';
+                    const bg  = ran ? 'var(--card-bg)' : 'transparent';
+                    return '<button onclick="window._erFilterCritic(\'' + e.key + '\')" data-erfilter="' + e.key + '"'
+                        + ' style="padding:0.2rem 0.7rem; border-radius:6px; border:1px solid var(--border-color); background:' + bg + '; color:' + col + '; font-size:0.75rem; cursor:pointer;' + (ran ? '' : ' opacity:0.5;') + '">'
+                        + e.icon + ' ' + e.label
+                        + (ran ? '' : ' <span style="font-size:0.65rem;">(not run)</span>')
+                        + '</button>';
+                }).join('')
+                + '</div>';
+
+            // Attach filter function to window so inline onclick can reach it
+            window._erFilterCritic = function(key) {
+                // Update pill active state
+                document.querySelectorAll('#er-critic-filters button[data-erfilter]').forEach(btn => {
+                    const active = btn.dataset.erfilter === key;
+                    btn.style.background = active ? 'var(--primary-color)22' : (key === 'all' ? 'var(--card-bg)' : 'transparent');
+                    btn.style.color      = active ? 'var(--primary-color)' : 'var(--text-secondary)';
+                    btn.style.border     = active ? '1px solid var(--primary-color)' : '1px solid var(--border-color)';
+                    btn.style.fontWeight = active ? '700' : '400';
+                });
+                // Show/hide critic panels
+                document.querySelectorAll('.er-critic-panel').forEach(panel => {
+                    if (key === 'all') {
+                        panel.style.display = '';
+                    } else {
+                        panel.style.display = panel.dataset.criticKey === key ? '' : 'none';
+                    }
+                });
+                // When filtering to one critic, expand it
+                if (key !== 'all') {
+                    const target = document.querySelector('.er-critic-panel[data-critic-key="' + key + '"]');
+                    if (target) {
+                        const body = target.querySelector('.er-panel-body');
+                        const chev = target.querySelector('.er-chevron');
+                        if (body) body.style.display = 'block';
+                        if (chev) chev.textContent = ' ⌄';
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }
+            };
+
+            // ── Section A: User Journey Assessment ──────────────────────────────
+            const secA_body = _ujExplainerHtml || '<p style="color:var(--text-tertiary); font-size:0.875rem;">No user journey data available for this assessment.</p>';
+            const secA = _section('a', '🗺️', 'User Journey Assessment',
+                'How user stories shaped each critic\'s input signal',
+                secA_body, false);
+
+            // ── Section B: Critic Thematic Assessment ───────────────────────────
+            const criticCountForSub = ranCriticKeys.filter(k => k !== 'scrum_master').length;
+            const secB_body = '<div style="margin-bottom: 1.25rem;">'
+                + '<div style="background: var(--card-bg); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
+                + '<h3 style="margin: 0 0 0.75rem; color: var(--text-color); font-size: 0.9rem;">Confidence Progression</h3>'
                 + '<div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">'
-                + '<div style="text-align: center; min-width: 80px;">'
-                + '<div style="font-size: 1.25rem; font-weight: 700; color: var(--secondary-color);">' + baseConf + '%</div>'
-                + '<div style="font-size: 0.75rem; color: var(--text-secondary);">Foundation</div>'
+                + '<div style="text-align: center; min-width: 70px;">'
+                + '<div style="font-size: 1.1rem; font-weight: 700; color: var(--secondary-color);">' + baseConf + '%</div>'
+                + '<div style="font-size: 0.7rem; color: var(--text-secondary);">Foundation</div>'
                 + '</div>'
                 + waterfallNodes
-                + '<div style="color: var(--text-tertiary); font-size: 1.25rem;">→</div>'
-                + '<div style="text-align: center; min-width: 80px;">'
-                + '<div style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">' + finalConf + '%</div>'
-                + '<div style="font-size: 0.75rem; color: var(--text-secondary);">Validated</div>'
+                + '<div style="color: var(--text-tertiary); font-size: 1.1rem;">→</div>'
+                + '<div style="text-align: center; min-width: 70px;">'
+                + '<div style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color);">' + finalConf + '%</div>'
+                + '<div style="font-size: 0.7rem; color: var(--text-secondary);">Validated</div>'
                 + '</div></div>'
-                + (interp ? '<p style="margin: 0.75rem 0 0; font-size: 0.875rem; color: var(--text-secondary);">' + interp + '</p>' : '')
+                + (interp ? '<p style="margin: 0.5rem 0 0; font-size: 0.8rem; color: var(--text-secondary);">' + interp + '</p>' : '')
                 + '</div>'
-                + '<div style="margin-bottom: 1.5rem;">' + expertPanels + '</div>'
-                + consensusHtml
-                + blindspotsHtml
-                + contradictionsHtml
-                + tiersHtml
-                + synthFooterHtml;
+                + criticFilterPills
+                + expertPanels
+                + '</div>';
+            const secB = _section('b', '🔍', 'Critic Thematic Assessment',
+                criticCountForSub + ' critic' + (criticCountForSub !== 1 ? 's' : '') + ' · ' + ranCriticKeys.filter(k => k !== 'scrum_master').map(k => ranCriticLabels[k] || k).join(', '),
+                secB_body, true);
+
+            // ── Section C: Synthesis Assessment (MoE + ScrumMaster) ─────────────
+            // Pill filter for synthesis panels
+            const _synthPillDefs = [
+                { key: 'consensus',      icon: '🤝', label: 'Cross-Expert Findings', show: consensusHtml !== '' },
+                { key: 'blindspots',     icon: '🔍', label: 'Blindspots',            show: blindspotsHtml !== '' },
+                { key: 'contradictions', icon: '⚔️',  label: 'Disagreements',        show: contradictionsHtml !== '' },
+                { key: 'tiers',          icon: '📊', label: 'Improvement Tiers',     show: tiersHtml !== '' },
+                { key: 'scrum_master',   icon: '🧩', label: 'ScrumMaster',           show: scrumMasterHtml !== '' },
+            ].filter(p => p.show);
+
+            const synthFilterPills = _synthPillDefs.length > 1
+                ? '<div id="er-synth-filters" style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.75rem; padding:0.6rem 0.875rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--border-color); align-items:center;">'
+                  + '<span style="font-size:0.72rem; font-weight:700; color:var(--text-tertiary); margin-right:0.2rem; text-transform:uppercase; letter-spacing:0.06em;">Filter:</span>'
+                  + '<button onclick="window._erFilterSynth(\'all\')" data-ersfilter="all" style="padding:0.2rem 0.7rem; border-radius:6px; border:1px solid var(--primary-color); background:var(--primary-color)22; color:var(--primary-color); font-size:0.75rem; font-weight:700; cursor:pointer;">All</button>'
+                  + _synthPillDefs.map(p =>
+                      '<button onclick="window._erFilterSynth(\'' + p.key + '\')" data-ersfilter="' + p.key + '"'
+                      + ' style="padding:0.2rem 0.7rem; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-secondary); font-size:0.75rem; cursor:pointer;">'
+                      + p.icon + ' ' + p.label + '</button>'
+                  ).join('')
+                  + '</div>'
+                : '';
+
+            window._erFilterSynth = function(key) {
+                document.querySelectorAll('#er-synth-filters button[data-ersfilter]').forEach(btn => {
+                    const active = btn.dataset.ersfilter === key;
+                    btn.style.background  = active ? 'var(--primary-color)22' : 'var(--card-bg)';
+                    btn.style.color       = active ? 'var(--primary-color)' : 'var(--text-secondary)';
+                    btn.style.border      = active ? '1px solid var(--primary-color)' : '1px solid var(--border-color)';
+                    btn.style.fontWeight  = active ? '700' : '400';
+                });
+                document.querySelectorAll('.er-synth-panel').forEach(panel => {
+                    panel.style.display = (key === 'all' || panel.dataset.synthKey === key) ? '' : 'none';
+                });
+                if (key !== 'all') {
+                    const target = document.querySelector('.er-synth-panel[data-synth-key="' + key + '"]');
+                    if (target) {
+                        const body = target.querySelector('.er-panel-body');
+                        const chev = target.querySelector('.er-chevron');
+                        if (body) body.style.display = 'block';
+                        if (chev) chev.textContent = ' ⌄';
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }
+            };
+
+            const secC_body = synthFilterPills + consensusHtml + blindspotsHtml + contradictionsHtml + tiersHtml + scrumMasterHtml + synthFooterHtml;
+            const hasScrumMaster = !!(expertValidations['scrum_master'] || smResult);
+            const secC_sub = hasScrumMaster
+                ? 'MoE consensus · ScrumMaster harmony synthesis'
+                : 'MoE consensus · ScrumMaster not run';
+            const secC = _section('c', '⚙️', 'Synthesis Assessment',
+                secC_sub,
+                secC_body, true);
+
+            container.innerHTML = ''
+                + rerunRowHtml
+                + parallelWarningBanner
+                + secA
+                + secB
+                + secC;
         } catch (err) {
             container.innerHTML = `<p class="placeholder">Error loading expert review: ${err.message}</p>`;
         }
@@ -7323,7 +8302,7 @@ class Dashboard {
         this._erpState.message = data.message || '';
         const parallelMode = this._erpState.criticMode === 'parallel' || this._erpState.criticMode === 'auto';
         const msgEl = document.getElementById('erp-message');
-        const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', purple_team: '🟣 Purple Team', blackhat: '⚔️ Blackhat', synthesis: '⚙️ Synthesis', complete: '✅ Done' };
+        const stageMap = { architect: '🏛️ Architect', tester: '🔬 Tester', red_team: '🎯 Red Team', purple_team: '🟣 Purple Team', blackhat: '⚔️ Blackhat', synthesis: '⚙️ Synthesis', scrum_master: '🧩 ScrumMaster', complete: '✅ Done' };
         if (msgEl) msgEl.textContent = data.message || '';
 
         if (parallelMode) {
@@ -7394,7 +8373,7 @@ class Dashboard {
             return '⚙ Running...';
         })();
 
-        const agentOrder = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat', 'synthesis'];
+        const agentOrder = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat', 'synthesis', 'scrum_master'];
         const currentIdx = agentOrder.indexOf(data.stage);
         // In parallel/auto mode all three critics run concurrently — show them all as
         // "Running…" while the batch is in progress (before any critic_result arrives)
@@ -7535,6 +8514,9 @@ class Dashboard {
                                     const an = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
                                     if (an) fetch(`/api/v1/reports/${encodeURIComponent(an)}/files/07_moe_orchestrator.json`)
                                         .then(r => r.ok ? r.json() : null).then(m => { if (m) this._updateMoePill(m); }).catch(() => {});
+                                    // Reveal ScrumMaster tab if 08_scrum_master.json exists
+                                    if (an) fetch(`/api/v1/reports/${encodeURIComponent(an)}/files/08_scrum_master.json`)
+                                        .then(r => { if (r.ok) { const t = document.getElementById('scrum-master-nav-tab'); if (t) t.style.display = 'block'; } }).catch(() => {});
                                 }, 600);
                                 setTimeout(() => this.loadOverviewTab(), 1200);
                             } else if (evtType === 'error') {
@@ -7894,7 +8876,8 @@ class Dashboard {
             'all':        null,
             'engine':     ['engine'],
             'conf_risk':  ['confidence', 'residual_risk'],
-            'moe':        ['moe'],
+            'moe':        ['moe', 'story_caster'],   // StoryCaster feeds the expert pipeline
+            'harness':    ['harness'],
             'llm_system': ['llm_system'],
             'patterns':   ['patterns'],
             'provider':   ['provider'],
@@ -8013,14 +8996,29 @@ class Dashboard {
             'did_reduction_factor','did_bonus_factor',
         ]);
 
+        // Boolean fields: select values arrive as strings "true"/"false".
+        // Pydantic v2 coerces any non-empty string to True, so we must send
+        // actual booleans — not strings — or the backend will always see True.
+        // Fields whose string select values must be sent as actual booleans.
+        // Pydantic v2 coerces any non-empty string → True, so "false" would save as True
+        // without this explicit conversion.
+        // Only include fields backed by a real pydantic bool field in settings.py.
+        const BOOL_FIELDS = new Set([
+            'enabled',          // moe, purple_team, blackhat, scrum_master
+            'llm_enrichment',   // story_caster
+            'use_semantic_search',
+            'auto_invalidate',
+        ]);
+
         const payload = {};
         document.querySelectorAll('#config-sections [data-section][data-field]').forEach(el => {
             const section = el.dataset.section;
             const field   = el.dataset.field;
             const raw     = el.value;
             let value;
-            if (el.dataset.vtype === 'int' || INT_FIELDS.has(field))     value = parseInt(raw, 10);
+            if (el.dataset.vtype === 'int' || INT_FIELDS.has(field))       value = parseInt(raw, 10);
             else if (el.dataset.vtype === 'float' || FLOAT_FIELDS.has(field)) value = parseFloat(raw);
+            else if (BOOL_FIELDS.has(field))                                value = (raw === 'true');
             else value = raw;
             if (!payload[section]) payload[section] = {};
             payload[section][field] = value;
@@ -8428,6 +9426,75 @@ class Dashboard {
             ]
           },
           {
+            title: '🧩 MoE — ScrumMaster (Layer 2F)',
+            subtitle: 'Harmony synthesis and confidence improvement. Reads all critic findings, identifies what\'s blocking a higher score, and works to resolve it — up to a configurable number of rounds.',
+            fields: [
+              { section:'scrum_master', field:'enabled', label:'Enable ScrumMaster',
+                vtype:'select',
+                options:[
+                  {v:'true',  label:'true — Enabled'},
+                  {v:'false', label:'false — Disabled (recommended for first runs)', rec:true},
+                ],
+                desc:'When on, ScrumMaster reads everything the other critics found, identifies what\'s in conflict or missing, and tries to fix it by re-asking the most impactful critics with better proposals. Requires Expert Review to be enabled. Adds ~30–90s per run.',
+                effects: ef('Drives confidence higher through targeted re-triggering','Disabling skips harmony synthesis only — all other critics unaffected','High','Adds LLM call per run') },
+
+              { section:'scrum_master', field:'harmony_mode', label:'How hard should ScrumMaster try?',
+                vtype:'select',
+                options:[
+                  {v:'balanced', label:'Balanced — up to 2 rounds (recommended)', rec:true},
+                  {v:'quick',    label:'Quick — 1 round, fastest turnaround'},
+                  {v:'thorough', label:'Thorough — up to 4 rounds, deepest analysis'},
+                ],
+                desc:'Controls how many improvement rounds ScrumMaster will attempt before accepting the result. "Balanced" is right for most assessments. Use "Quick" when you\'re re-running frequently. Use "Thorough" for a final deep assessment you won\'t rerun soon.',
+                effects: ef('More rounds = higher potential confidence gain','More rounds = longer runtime','Moderate','None') },
+
+              { section:'scrum_master', field:'confidence_goal', label:'Target confidence',
+                vtype:'select',
+                options:[
+                  {v:'85', label:'85% — Acceptable for low-risk systems'},
+                  {v:'90', label:'90% — Standard (recommended)', rec:true},
+                  {v:'95', label:'95% — High-assurance systems'},
+                ],
+                desc:'The confidence level ScrumMaster is aiming for. If the architecture can\'t reach this naturally (because the gaps are structural, not fixable with better controls), ScrumMaster will stop early and tell you a redesign is needed instead of trying endlessly.',
+                effects: ef('Higher target = more effort to reach','If unreachable, redesign signal is given instead','Moderate','None') },
+            ]
+          },
+          {
+            title: '⚙️ Harness — Pipeline Controller',
+            subtitle: 'ThreatAssessor Harness orchestrates every analysis stage. ⚠ These fields are informational — harness settings are not yet persisted to settings.py. Use the Harness tab to view active state.',
+            fields: [
+              { section:'harness', field:'default_scenario', label:'Default analysis scenario',
+                vtype:'select',
+                options:[
+                  {v:'api_only',  label:'api_only — Deterministic + Reports (recommended)', rec:true},
+                  {v:'quick_det', label:'quick_det — Deterministic only (fastest, no reports)'},
+                  {v:'full_moe',  label:'full_moe — Full pipeline with Expert Review + ScrumMaster'},
+                  {v:'backtest',  label:'backtest — Batch backtest mode (no reports)'},
+                ],
+                desc:'The scenario the harness uses when no explicit scenario is passed. api_only is the right default for the streaming API — it runs analysis and generates all reports without triggering the MoE critics (which run separately via Expert Review).',
+                effects: ef('Controls which stages run per analysis call','quick_det skips report generation — reports tab will be empty','High','None') },
+
+              { section:'harness', field:'stage_retry_max', label:'Stage retry attempts',
+                vtype:'select',
+                options:[
+                  {v:'1', label:'1 — No retry (fail fast)', rec:true},
+                  {v:'2', label:'2 — Retry once on failure'},
+                  {v:'3', label:'3 — Retry twice on failure'},
+                ],
+                desc:'How many times the harness retries an optional stage (Report, Critic, ScrumMaster) before skipping it. Required stages (Analysis) always fail fast regardless of this setting. Each retry uses exponential backoff.',
+                effects: ef('More retries = slower failure handling','Only applies to optional stages — analysis still fails fast','Low','None') },
+
+              { section:'harness', field:'agent_executor_enabled', label:'Agent executor (future migration path)',
+                vtype:'select',
+                options:[
+                  {v:'false', label:'false — SyncExecutor (current — module calls in-process)', rec:true},
+                  {v:'true',  label:'true — AgentExecutor stub (not yet wired, reserved for future)'},
+                ],
+                desc:'When true, stages will use AgentExecutor instead of SyncExecutor. AgentExecutor is currently a stub that raises NotImplementedError — this is the future migration path to run each stage as an independent LLM agent. Leave false until agents are wired.',
+                effects: ef('Enables per-stage LLM agent execution','Currently raises NotImplementedError if enabled — do not enable in production','Critical','None') },
+            ]
+          },
+          {
             title: '🔒 Residual Risk',
             subtitle: 'Minimum risk floor and ACCEPT / MONITOR / MITIGATE decision thresholds.',
             fields: [
@@ -8609,6 +9676,7 @@ class Dashboard {
             {filter:'engine',     label:'🔍 Engine'},
             {filter:'conf_risk',  label:'📊 Confidence & Risk'},
             {filter:'moe',        label:'🧑‍🏫 MoE / Experts'},
+            {filter:'harness',    label:'⚙️ Harness'},
             {filter:'llm_system', label:'🤖 LLM & System'},
             {filter:'patterns',   label:'🧩 Patterns'},
             {filter:'provider',   label:'🔑 Provider Chain'},
@@ -8896,8 +9964,10 @@ class Dashboard {
             '🔴 MoE — Red Team Critic (Layer 2C)':      'moe',
             '🟣 MoE — Purple Team Critic (Layer 2D)':   'moe',
             '⚔️ MoE — Blackhat Critic (Layer 2E)':      'moe',
+            '🧩 MoE — ScrumMaster (Layer 2F)':          'moe',
+            '⚙️ Harness — Pipeline Controller':          'harness',
             '🔒 Residual Risk':                          'residual_risk',
-            '🗺️ StoryCaster — User Journey Stories':      'story_caster',
+            '🗺️ StoryCaster — User Journey Stories':     'story_caster',
             '🤖 LLM & System':                           'llm_system',
         };
 

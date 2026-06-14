@@ -970,6 +970,53 @@ def generate_action_plan(ground_truth: Dict) -> str:
     report += "- [ ] Week 8: Final red team validation\n"
     report += "- [ ] Week 9: Continuous monitoring begins\n\n"
 
+    # ── ScrumMaster Action Plan (appended when SM ran) ────────────────────
+    sm_plan = ground_truth.get("scrum_master_action_plan", [])
+    if sm_plan:
+        report += "\n---\n\n"
+        report += format_section_header("ScrumMaster Priority Actions", "🧩", 2)
+        sm_note = ground_truth.get("scrum_master_synthesis_note", "")
+        sm_traj = ground_truth.get("scrum_master_confidence_trajectory", [])
+        sm_retriggered = ground_truth.get("scrum_master_critics_retriggered", [])
+        sm_redesign = ground_truth.get("scrum_master_redesign_signal", False)
+
+        if sm_note:
+            report += f"\n> {sm_note}\n\n"
+        if sm_traj and len(sm_traj) > 1:
+            traj_str = " → ".join(f"{v:.1f}%" for v in sm_traj)
+            report += f"**Confidence trajectory:** {traj_str}\n\n"
+        if sm_retriggered:
+            report += f"**Critics re-triggered:** {', '.join(sm_retriggered)}\n\n"
+        if sm_redesign:
+            report += "> ⚠ **Redesign signal:** The ScrumMaster determined that incremental controls alone "
+            report += "cannot close the identified gaps. Architectural changes are recommended.\n\n"
+
+        report += "These items represent the ScrumMaster's sharp prioritised list — ranked by risk reduction "
+        report += "and implementation effort after cross-critic impediment analysis.\n\n"
+
+        prio_labels = {"critical": "🔴 CRITICAL", "high": "🟠 HIGH", "medium": "🟡 MEDIUM", "low": "⚪ LOW"}
+        for i, item in enumerate(sm_plan, 1):
+            prio = item.get("priority", "medium").lower()
+            label = prio_labels.get(prio, prio.upper())
+            report += f"### {i}. {item.get('action', 'Action item')}\n\n"
+            report += f"**Priority:** {label}  \n"
+            if item.get("rationale"):
+                report += f"**Rationale:** {item['rationale']}  \n"
+            if item.get("risk_reduction_estimate"):
+                report += f"**Risk reduction:** {item['risk_reduction_estimate']}  \n"
+            if item.get("effort"):
+                report += f"**Estimated effort:** {item['effort']}\n\n"
+
+        sm_bf = ground_truth.get("scrum_master_baseline_feedback")
+        if sm_bf:
+            report += "#### Engine Improvement Notes\n\n"
+            report += "_These notes feed back into future analysis passes — not immediate action items._\n\n"
+            for gap in sm_bf.get("ground_truth_gaps", []):
+                report += f"- {gap}\n"
+            for ctrl in sm_bf.get("weak_controls", [])[:5]:
+                report += f"- Weak control (too generic): {ctrl}\n"
+            report += "\n"
+
     # Clean up any remaining ASCII separators
     report = remove_ascii_separators(report, remove_all=True)
 
@@ -1963,6 +2010,44 @@ def generate_adr_report(ground_truth: Dict) -> str:
                     out.append(f"> Risk: {rb} → {ra} (−{red} pts)\n")
 
         out.append(f"\n_Next step: see [Action Plan](03_action_plan.md) for implementation sequencing._\n")
+        out.append("\n---\n")
+
+    # ── ScrumMaster ADR section (appended when SM ran) ────────────────────
+    sm_plan = ground_truth.get("scrum_master_action_plan", [])
+    sm_redesign = ground_truth.get("scrum_master_redesign_signal", False)
+    sm_retriggered = ground_truth.get("scrum_master_critics_retriggered", [])
+
+    if sm_plan or sm_redesign:
+        out.append("\n## 🧩 ScrumMaster — Cross-ADR Actions\n")
+        sm_note = ground_truth.get("scrum_master_synthesis_note", "")
+        if sm_note:
+            out.append(f"> {sm_note}\n")
+        if sm_retriggered:
+            out.append(f"\nCritics re-triggered by ScrumMaster: {', '.join(sm_retriggered)}\n")
+        if sm_redesign:
+            out.append("\n> ⚠ **Architectural Redesign Recommended.** The following items "
+                       "cannot be addressed through incremental controls alone. "
+                       "They require structural changes to the architecture.\n")
+
+        if sm_plan:
+            out.append("\nThese actions span multiple ADRs and were identified after cross-critic "
+                       "impediment analysis. They complement — not replace — the per-path ADRs above.\n")
+            prio_labels = {"critical": "CRITICAL", "high": "HIGH", "medium": "MEDIUM", "low": "LOW"}
+            for i, item in enumerate(sm_plan, 1):
+                prio = item.get("priority", "medium").lower()
+                label = prio_labels.get(prio, prio.upper())
+                status = "OPEN — REDESIGN REQUIRED" if sm_redesign else "OPEN"
+                out.append(f"\n### SM-ADR-{i:02d} [{label}] — {item.get('action', 'Action')}\n")
+                out.append(f"**Status:** {status}  ")
+                out.append(f"**Source:** ScrumMaster harmony synthesis\n")
+                if item.get("rationale"):
+                    out.append(f"\n**Context:** {item['rationale']}\n")
+                if item.get("risk_reduction_estimate"):
+                    out.append(f"\n**Expected risk reduction:** {item['risk_reduction_estimate']}  ")
+                if item.get("effort"):
+                    out.append(f"**Effort:** {item['effort']}\n")
+                out.append(f"\n_See [Action Plan §ScrumMaster](03_action_plan.md) for implementation sequence._\n")
+
         out.append("\n---\n")
 
     return "\n".join(out)
