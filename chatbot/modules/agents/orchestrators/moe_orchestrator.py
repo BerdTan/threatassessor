@@ -290,6 +290,7 @@ class MoEOrchestrator:
         """
         self.model = model
         self.progress_callback = progress_callback
+        self._synth_perf: Dict = {}  # accumulated perf for orchestrator LLM calls
 
         # Create expert agents
         self.architect = EnhancedArchitectCritic(model=model)
@@ -355,6 +356,8 @@ class MoEOrchestrator:
 
         import time as _time
         _pipeline_start = _time.time()
+        self._synth_perf = {"llm_calls": 0, "llm_tokens": 0, "llm_cost_usd": 0.0,
+                            "llm_latency_s": 0.0, "llm_model": "", "wall_clock_s": 0.0}
 
         report_path = Path(report_dir)
         architecture_name = report_path.name
@@ -464,7 +467,7 @@ class MoEOrchestrator:
             except Exception:
                 pt_status = "PASS" if pt_score >= 75 else "NEEDS_REVIEW"
 
-            purple_team_result = ValidationResult(
+            purple_team_result = self._attach_perf(ValidationResult(
                 expert_name="PurpleTeam",
                 validation_status=pt_status,
                 confidence_adjustment=pt_adj,
@@ -474,7 +477,7 @@ class MoEOrchestrator:
                 original_score=pt_score,
                 breakdown=purple_team_critique_score.breakdown or {},
                 reasoning=purple_team_critique_score.reasoning or "",
-            )
+            ), purple_team_critique_score)
             purple_team_adjustment = pt_adj
 
             # Embed summary into ground_truth for downstream use
@@ -534,7 +537,7 @@ class MoEOrchestrator:
                     bh_adj = -0.05
                     bh_status = "MAJOR_GAPS"
 
-                blackhat_result = ValidationResult(
+                blackhat_result = self._attach_perf(ValidationResult(
                     expert_name="Blackhat",
                     validation_status=bh_status,
                     confidence_adjustment=bh_adj,
@@ -544,7 +547,7 @@ class MoEOrchestrator:
                     original_score=bh_score,
                     breakdown=blackhat_critique_score.breakdown or {},
                     reasoning=blackhat_critique_score.reasoning or "",
-                )
+                ), blackhat_critique_score)
                 blackhat_adjustment = bh_adj
 
                 # Embed into ground_truth for downstream report generators
@@ -669,6 +672,43 @@ class MoEOrchestrator:
             maximum=improvement_options["maximum"]
         )
 
+        # ── Populate pipeline_perf before saving so it lands in the JSON ────────
+        _pipeline_elapsed = _time.time() - _pipeline_start
+        _critics_perf: dict = {}
+        _total_tokens = 0
+        _total_cost   = 0.0
+
+        for _cname, _vr in [
+            ("architect",   result.architect_result),
+            ("tester",      result.tester_result),
+            ("red_team",    result.red_team_result),
+            ("purple_team", result.purple_team_result),
+            ("blackhat",    result.blackhat_result),
+        ]:
+            if _vr and _vr.perf and _vr.perf.get("llm_tokens", 0) > 0:
+                _critics_perf[_cname] = dict(_vr.perf)
+                _total_tokens += _vr.perf.get("llm_tokens", 0)
+                _total_cost   += _vr.perf.get("llm_cost_usd", 0.0)
+
+        # Include orchestrator synthesis calls (wall_clock_s = synthesis slice of pipeline)
+        self._synth_perf["wall_clock_s"] = round(self._synth_perf["llm_latency_s"], 3)
+        if self._synth_perf.get("llm_tokens", 0) > 0:
+            _critics_perf["orchestrator"] = dict(self._synth_perf)
+            _total_tokens += self._synth_perf.get("llm_tokens", 0)
+            _total_cost   += self._synth_perf.get("llm_cost_usd", 0.0)
+
+        result.pipeline_perf = {
+            "pipeline_wall_clock_s": round(_pipeline_elapsed, 2),
+            "total_llm_tokens":      _total_tokens,
+            "total_llm_cost_usd":    round(_total_cost, 6),
+            "critic_count":          len(_critics_perf),
+            "critics":               _critics_perf,
+        }
+        logger.info(
+            f"MoE Pipeline: perf — {_pipeline_elapsed:.1f}s wall | "
+            f"{_total_tokens} tokens | ${_total_cost:.4f}"
+        )
+
         if self.progress_callback:
             self.progress_callback("synthesis:save", None)
 
@@ -716,36 +756,6 @@ class MoEOrchestrator:
 
         logger.info(f"MoE Pipeline: COMPLETE - {final_confidence:.1f}% confidence")
         logger.info(f"MoE Pipeline: Generated 16/16 files (ground_truth + 1 dashboard + 6 JSON + 4 MD + 4 MMD)")
-
-        # ── Populate pipeline_perf from ValidationResult.perf fields ─────────
-        _pipeline_elapsed = _time.time() - _pipeline_start
-        _critics_perf: dict = {}
-        _total_tokens = 0
-        _total_cost   = 0.0
-
-        for _cname, _vr in [
-            ("architect",   result.architect_result),
-            ("tester",      result.tester_result),
-            ("red_team",    result.red_team_result),
-            ("purple_team", result.purple_team_result),
-            ("blackhat",    result.blackhat_result),
-        ]:
-            if _vr and _vr.perf:
-                _critics_perf[_cname] = dict(_vr.perf)
-                _total_tokens += _vr.perf.get("llm_tokens", 0)
-                _total_cost   += _vr.perf.get("llm_cost_usd", 0.0)
-
-        result.pipeline_perf = {
-            "pipeline_wall_clock_s": round(_pipeline_elapsed, 2),
-            "total_llm_tokens":      _total_tokens,
-            "total_llm_cost_usd":    round(_total_cost, 6),
-            "critic_count":          len(_critics_perf),
-            "critics":               _critics_perf,
-        }
-        logger.info(
-            f"MoE Pipeline: perf — {_pipeline_elapsed:.1f}s wall | "
-            f"{_total_tokens} tokens | ${_total_cost:.4f}"
-        )
 
         return result
 
@@ -1582,6 +1592,13 @@ RULES:
                 max_tokens=_synth_cfg.max_tokens_synthesis,
             )
 
+            # Accumulate perf for this synthesis call
+            self._synth_perf["llm_calls"]    += 1
+            self._synth_perf["llm_tokens"]   += getattr(response, "tokens_used",    0) or 0
+            self._synth_perf["llm_cost_usd"] += getattr(response, "cost_usd",       0.0) or 0.0
+            self._synth_perf["llm_latency_s"]+= getattr(response, "latency_seconds",0.0) or 0.0
+            self._synth_perf["llm_model"]     = getattr(response, "model", self._synth_perf["llm_model"]) or self._synth_perf["llm_model"]
+
             # Parse JSON from response
             content = response.content if hasattr(response, 'content') else str(response)
             if '```json' in content:
@@ -1714,6 +1731,14 @@ Reply with only the JSON array, no other text.
                 temperature=_refl_temp,
                 max_tokens=2000,
             )
+
+            # Accumulate perf for this reflection call
+            self._synth_perf["llm_calls"]    += 1
+            self._synth_perf["llm_tokens"]   += getattr(response, "tokens_used",    0) or 0
+            self._synth_perf["llm_cost_usd"] += getattr(response, "cost_usd",       0.0) or 0.0
+            self._synth_perf["llm_latency_s"]+= getattr(response, "latency_seconds",0.0) or 0.0
+            self._synth_perf["llm_model"]     = getattr(response, "model", self._synth_perf["llm_model"]) or self._synth_perf["llm_model"]
+
             content = response.content if hasattr(response, 'content') else str(response)
             if '```json' in content:
                 raw = content.split('```json')[1].split('```')[0].strip()

@@ -304,7 +304,9 @@ class PurpleTeamerCritic(CriticAgent):
             user_stories=user_stories,
         )
 
+        import time as _t
         logger.info("PurpleTeamerCritic: Calling LLM")
+        _wall_start = _t.time()
         response = self.llm_client.generate(
             prompt=prompt,
             system_message=self.system_prompt,
@@ -312,8 +314,17 @@ class PurpleTeamerCritic(CriticAgent):
             temperature=0.3,
             max_tokens=3500,
         )
+        _wall_elapsed = _t.time() - _wall_start
 
         raw_score = self._parse_response_wrapper(response)
+
+        # Stamp perf telemetry onto the score
+        raw_score.llm_calls     = 1
+        raw_score.llm_tokens    = getattr(response, 'tokens_used',    0) or 0
+        raw_score.llm_cost_usd  = round(getattr(response, 'cost_usd',       0.0) or 0.0, 6)
+        raw_score.llm_latency_s = round(getattr(response, 'latency_seconds',0.0) or 0.0, 3)
+        raw_score.llm_model     = getattr(response, 'model', self.model or '') or ''
+        raw_score.wall_clock_s  = round(_wall_elapsed, 3)
 
         # Inject deterministic breakdown fields
         raw_score.breakdown["coverage_gaps"] = [

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time as _time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, TYPE_CHECKING
@@ -78,6 +79,7 @@ class ScrumMasterResult:
     confidence_trajectory: List[float]
     baseline_feedback: Optional[BaselineFeedback]
     synthesis_note: str               # one-paragraph plain-English summary
+    perf: Dict = field(default_factory=dict)  # {llm_calls, llm_tokens, llm_cost_usd, llm_latency_s, llm_model, wall_clock_s}
 
     def to_dict(self) -> Dict:
         """JSON-serialisable dict. Used for 08_scrum_master.json persistence."""
@@ -139,6 +141,18 @@ class ScrumMasterCritic:
             self.model = model or get_settings().llm_model
         except Exception:
             self.model = model or "anthropic/claude-sonnet-4-6"
+        self._perf_acc: Dict = {}  # accumulated LLM telemetry for this run
+
+    def _reset_perf(self) -> None:
+        self._perf_acc = {"llm_calls": 0, "llm_tokens": 0, "llm_cost_usd": 0.0,
+                          "llm_latency_s": 0.0, "llm_model": "", "wall_clock_s": 0.0}
+
+    def _accum_perf(self, response) -> None:
+        self._perf_acc["llm_calls"]    += 1
+        self._perf_acc["llm_tokens"]   += getattr(response, "tokens_used",    0) or 0
+        self._perf_acc["llm_cost_usd"] += getattr(response, "cost_usd",       0.0) or 0.0
+        self._perf_acc["llm_latency_s"]+= getattr(response, "latency_seconds",0.0) or 0.0
+        self._perf_acc["llm_model"]     = getattr(response, "model", self._perf_acc["llm_model"]) or self._perf_acc["llm_model"]
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -154,6 +168,9 @@ class ScrumMasterCritic:
         progress_callback=None,
     ) -> ScrumMasterResult:
         """Main entry point: analyse → gate → harmony → (optional) re-trigger → plan."""
+
+        _run_start = _time.time()
+        self._reset_perf()
 
         arch_name = moe_result.architecture_name
         initial_confidence = moe_result.final_confidence
@@ -179,6 +196,7 @@ class ScrumMasterCritic:
             action_plan = self._build_action_plan(current_result, resolved_impediments, redesign_signal=False)
             baseline_fb = self._build_baseline_feedback(current_result, ground_truth, impediments, report_dir) \
                 if self._has_persistent_gaps(impediments) else None
+            self._perf_acc["wall_clock_s"] = round(_time.time() - _run_start, 3)
             return ScrumMasterResult(
                 architecture_name=arch_name,
                 initial_confidence=initial_confidence,
@@ -196,6 +214,7 @@ class ScrumMasterCritic:
                 synthesis_note=self._build_synthesis_note(
                     initial_confidence, initial_confidence, 0, False, [], impediments
                 ),
+                perf=dict(self._perf_acc),
             )
 
         # Step 3: Harmony check — majority unresolvable → redesign signal
@@ -204,6 +223,7 @@ class ScrumMasterCritic:
             logger.info("ScrumMaster: harmony check failed — redesign_signal=True")
             baseline_fb = self._build_baseline_feedback(current_result, ground_truth, impediments, report_dir)
             action_plan = self._build_action_plan(current_result, [], redesign_signal=True)
+            self._perf_acc["wall_clock_s"] = round(_time.time() - _run_start, 3)
             return ScrumMasterResult(
                 architecture_name=arch_name,
                 initial_confidence=initial_confidence,
@@ -221,6 +241,7 @@ class ScrumMasterCritic:
                 synthesis_note=self._build_synthesis_note(
                     initial_confidence, initial_confidence, 0, True, [], impediments
                 ),
+                perf=dict(self._perf_acc),
             )
 
         # Step 4: Formulate proposals for resolvable impediments (LLM pass)
@@ -309,6 +330,7 @@ class ScrumMasterCritic:
 
         action_plan = self._build_action_plan(current_result, resolved_impediments, redesign_signal=False)
 
+        self._perf_acc["wall_clock_s"] = round(_time.time() - _run_start, 3)
         return ScrumMasterResult(
             architecture_name=arch_name,
             initial_confidence=initial_confidence,
@@ -327,6 +349,7 @@ class ScrumMasterCritic:
                 initial_confidence, final_confidence,
                 len(trajectory) - 1, False, critics_retriggered, impediments
             ),
+            perf=dict(self._perf_acc),
         )
 
     # ------------------------------------------------------------------
@@ -469,11 +492,12 @@ class ScrumMasterCritic:
         proposals_by_index: Dict[int, str] = {}
         try:
             from agentic.llm_client import LLMClient
-            client = LLMClient()
-            response = client.complete(prompt, model=self.model)
-            # Parse JSON from response
             import re
-            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            client = LLMClient()
+            response = client.generate(prompt=prompt, system_message="You are a security architecture advisor. Return only valid JSON.", model=self.model)
+            self._accum_perf(response)
+            content = response.content if hasattr(response, "content") else str(response)
+            json_match = re.search(r'\[.*\]', content, re.DOTALL)
             if json_match:
                 proposals = json.loads(json_match.group())
                 for p in proposals:
@@ -706,7 +730,9 @@ class ScrumMasterCritic:
             from agentic.llm_client import LLMClient
             import re
             client = LLMClient()
-            response = client.complete(prompt, model=self.model)
+            response = client.generate(prompt=prompt, system_message="You are a security prioritisation expert. Return only valid JSON.", model=self.model)
+            self._accum_perf(response)
+            response = response.content if hasattr(response, "content") else str(response)
             json_match = re.search(r'\[.*?\]', response, re.DOTALL)
             if json_match:
                 items = json.loads(json_match.group())

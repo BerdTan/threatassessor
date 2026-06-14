@@ -137,6 +137,9 @@
                             <button class="overview-subtab active" data-subtab="expert-consensus" style="padding: 0.625rem 1.25rem; background: var(--primary-color); color: var(--button-text-color); border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
                                 🔍 Expert Consensus
                             </button>
+                            <button class="overview-subtab" id="ov-scrum-master-tab" data-subtab="scrum-master-summary" style="padding: 0.625rem 1.25rem; background: transparent; color: var(--text-color); border: none; border-bottom: 2px solid transparent; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
+                                🧩 ScrumMaster
+                            </button>
                             <button class="overview-subtab" id="ov-journeys-tab" data-subtab="user-journeys" style="padding: 0.625rem 1.25rem; background: transparent; color: var(--text-color); border: none; border-bottom: 2px solid transparent; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
                                 🗺️ User Journeys
                             </button>
@@ -147,6 +150,11 @@
                         <div id="overview-expert-consensus" class="overview-subtab-content active" style="display: block;">
                             <div id="expert-consensus-strip">
                                 <p class="placeholder" style="font-size:0.85rem;">Run Expert Review to see critic consensus here.</p>
+                            </div>
+                        </div>
+                        <div id="overview-scrum-master-summary" class="overview-subtab-content" style="display: none;">
+                            <div id="overview-sm-content">
+                                <p class="placeholder" style="font-size:0.85rem;">Run Expert Review with ScrumMaster enabled to see the summary here.</p>
                             </div>
                         </div>
                         <div id="overview-user-journeys" class="overview-subtab-content" style="display: none;">

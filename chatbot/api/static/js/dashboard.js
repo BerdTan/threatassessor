@@ -289,6 +289,11 @@ class Dashboard {
                 if (subtabName === 'user-journeys') {
                     this._renderOverviewJourneys();
                 }
+
+                // Render ScrumMaster summary when switched to
+                if (subtabName === 'scrum-master-summary') {
+                    this._renderOverviewScrumMaster();
+                }
             });
         });
     }
@@ -1910,6 +1915,103 @@ class Dashboard {
         container.innerHTML = html;
     }
 
+    async _renderOverviewScrumMaster() {
+        const container = document.getElementById('overview-sm-content');
+        if (!container) return;
+
+        const archName = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+        if (!archName) {
+            container.innerHTML = '<p class="placeholder" style="font-size:0.85rem;">No analysis loaded.</p>';
+            return;
+        }
+
+        container.innerHTML = '<p class="placeholder" style="font-size:0.85rem;">Loading…</p>';
+
+        let sm = null;
+        try {
+            const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/08_scrum_master.json`);
+            if (r.ok) sm = await r.json();
+        } catch (_) {}
+
+        if (!sm) {
+            container.innerHTML = `
+                <div style="padding:2rem; text-align:center;">
+                    <div style="font-size:2.5rem; margin-bottom:0.75rem;">🧩</div>
+                    <div style="font-size:0.9rem; color:var(--text-secondary); max-width:380px; margin:0 auto 1rem;">
+                        ScrumMaster has not run yet. Enable it in <strong>Configuration → ScrumMaster</strong>, then run Expert Review.
+                    </div>
+                    <button onclick="window.dashboard.switchTab('scrum-master')" style="padding:0.4rem 1rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem;">Open ScrumMaster tab →</button>
+                </div>`;
+            return;
+        }
+
+        // Harmony chip
+        const finalConf = parseFloat(sm.final_confidence) || 0;
+        const harmonyChip = sm.redesign_signal
+            ? '<span style="background:#ff4d4d22; border:1px solid var(--danger-color); color:var(--danger-color); border-radius:8px; padding:3px 10px; font-size:0.78rem; font-weight:700;">🔴 Redesign needed</span>'
+            : finalConf >= 90
+            ? '<span style="background:#00c07722; border:1px solid var(--secondary-color); color:var(--secondary-color); border-radius:8px; padding:3px 10px; font-size:0.78rem; font-weight:700;">✅ Harmony reached</span>'
+            : '<span style="background:#ffaa0022; border:1px solid var(--warning-color); color:var(--warning-color); border-radius:8px; padding:3px 10px; font-size:0.78rem; font-weight:700;">◑ Near-harmony</span>';
+
+        // Confidence trajectory
+        const traj = sm.confidence_trajectory || [sm.initial_confidence];
+        const trajHtml = traj.map((v, i) => {
+            const lbl = i === 0 ? 'Start' : `R${i}`;
+            const isLast = i === traj.length - 1;
+            return `<div style="text-align:center;">
+                <div style="font-size:1rem; font-weight:700; color:${isLast ? 'var(--primary-color)' : 'var(--text-tertiary)'};">${parseFloat(v).toFixed(1)}%</div>
+                <div style="font-size:0.65rem; color:var(--text-tertiary);">${lbl}</div>
+            </div>`;
+        }).join('<div style="color:var(--text-tertiary); padding:0 4px; align-self:center;">→</div>');
+
+        // Impediment counts
+        const imps = sm.impediments_found || [];
+        const unresolvable = imps.filter(i => !i.resolvable).length;
+        const critHigh = imps.filter(i => ['critical','high'].includes(i.severity)).length;
+
+        // Top action plan items — immediate tier first, cap at 5
+        const plan = (sm.action_plan || []).slice().sort((a, b) => {
+            const tierOrder = { immediate: 0, structural: 1 };
+            return (tierOrder[a.tier] ?? 2) - (tierOrder[b.tier] ?? 2);
+        }).slice(0, 5);
+
+        const prioCol = { critical: 'var(--danger-color)', high: 'var(--danger-color)', medium: 'var(--warning-color)', low: 'var(--text-tertiary)' };
+        const tierBadge = t => t === 'immediate'
+            ? '<span style="font-size:0.65rem; padding:1px 5px; border-radius:4px; background:var(--secondary-color)22; color:var(--secondary-color); border:1px solid var(--secondary-color)44; margin-right:0.3rem;">⚡ immediate</span>'
+            : t === 'structural'
+            ? '<span style="font-size:0.65rem; padding:1px 5px; border-radius:4px; background:var(--danger-color)22; color:var(--danger-color); border:1px solid var(--danger-color)44; margin-right:0.3rem;">🏗 structural</span>'
+            : '';
+
+        const planItems = plan.map(p => {
+            const col = prioCol[p.priority] || 'var(--text-tertiary)';
+            const confBadge = p.confidence_gain != null
+                ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:var(--nav-hover-bg); color:var(--text-tertiary); border:1px solid var(--border-color); margin-left:0.25rem;">+${parseFloat(p.confidence_gain).toFixed(1)}%</span>`
+                : '';
+            return `<div style="padding:0.65rem 0.85rem; background:var(--card-bg); border:1px solid var(--border-color); border-left:3px solid ${col}; border-radius:6px; font-size:0.8rem; color:var(--text-color); line-height:1.5;">
+                <div style="margin-bottom:0.25rem;">${tierBadge(p.tier)}${this._esc(p.action)}${confBadge}</div>
+                ${p.first_step ? `<div style="font-size:0.72rem; color:var(--text-tertiary); margin-top:0.2rem;">→ ${this._esc(p.first_step)}</div>` : ''}
+            </div>`;
+        }).join('');
+
+        // Synthesis note
+        const note = (sm.synthesis_note || '').trim();
+
+        container.innerHTML = `
+            <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
+                ${harmonyChip}
+                <div style="display:flex; align-items:center; gap:0; flex-wrap:nowrap;">${trajHtml}</div>
+                <span style="font-size:0.78rem; color:var(--text-secondary); margin-left:0.25rem;">${imps.length} impediment${imps.length !== 1 ? 's' : ''} · ${unresolvable} unresolvable${critHigh ? ` · <span style="color:var(--danger-color); font-weight:700;">${critHigh} critical/high</span>` : ''} · ${sm.iterations_run || 0} iteration${(sm.iterations_run || 0) !== 1 ? 's' : ''}</span>
+                <button onclick="window.dashboard.switchTab('scrum-master')" style="margin-left:auto; font-size:0.72rem; padding:0.2rem 0.6rem; border:1px solid var(--primary-color); border-radius:5px; background:transparent; color:var(--primary-color); cursor:pointer; white-space:nowrap;">Full ScrumMaster →</button>
+            </div>
+            ${note ? `<div style="margin-bottom:1rem; padding:0.7rem 0.9rem; background:var(--nav-hover-bg); border-radius:8px; font-size:0.8125rem; color:var(--text-secondary); line-height:1.55;">${this._esc(note)}</div>` : ''}
+            ${plan.length ? `
+            <div style="margin-bottom:0.5rem; font-size:0.75rem; font-weight:700; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.04em;">Top Actions</div>
+            <div style="display:flex; flex-direction:column; gap:0.5rem;">
+                ${planItems}
+            </div>` : ''}
+        `;
+    }
+
     showAttackPathDetailById(apId) {
         // Navigate to the Threat Paths tab and show detail for a specific AP ID
         const ap = (this.attackPaths || []).find(a => a.id === apId);
@@ -2950,6 +3052,9 @@ class Dashboard {
                 analysis: gt,
                 ssp_profile: this.sspProfile,
             };
+
+            // Populate attackPaths so loadAttacksTab() doesn't bail on the null guard
+            this.attackPaths = gt.expected_attack_paths || [];
 
             // Show tab content, hide upload form
             document.getElementById('upload-form-container').style.display = 'none';
@@ -6382,10 +6487,21 @@ class Dashboard {
             const listR = await fetch('/api/v1/reports', { headers: { 'TM-API-KEY': key } });
             if (listR.ok) {
                 const listData = await listR.json();
-                const reports = Array.isArray(listData) ? listData
+                const rawReports = Array.isArray(listData) ? listData
                     : (listData.reports || listData.architectures || []);
-                // Try most recent reports (last in list = most recent)
-                for (let i = reports.length - 1; i >= Math.max(0, reports.length - 5); i--) {
+                // Sort newest-first by analysed_at; put currently-loaded arch first
+                const currentArch = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+                const reports = rawReports.slice().sort((a, b) => {
+                    const aName = typeof a === 'string' ? a : a.name;
+                    const bName = typeof b === 'string' ? b : b.name;
+                    if (aName === currentArch) return -1;
+                    if (bName === currentArch) return 1;
+                    const aT = typeof a === 'object' ? (a.analysed_at || 0) : 0;
+                    const bT = typeof b === 'object' ? (b.analysed_at || 0) : 0;
+                    return bT - aT;
+                });
+                // Try up to 10 most recent reports
+                for (let i = 0; i < Math.min(reports.length, 10); i++) {
                     const name = typeof reports[i] === 'string' ? reports[i] : reports[i].name;
                     if (!name) continue;
                     const moeR = await fetch(`/api/v1/reports/${encodeURIComponent(name)}/files/07_moe_orchestrator.json`);
@@ -6404,7 +6520,7 @@ class Dashboard {
                             const critics = {};
                             let totalTok = 0, totalCost = 0;
                             for (const [k, v] of Object.entries(ev)) {
-                                if (v && v.perf) {
+                                if (v && v.perf && (v.perf.llm_tokens || 0) > 0) {
                                     critics[k] = v.perf;
                                     totalTok  += (v.perf.llm_tokens    || 0);
                                     totalCost += (v.perf.llm_cost_usd  || 0);
@@ -6432,9 +6548,21 @@ class Dashboard {
             </div>`;
         }
 
+        // Fetch ScrumMaster perf from 08_scrum_master.json and merge in
+        let smPerf = null;
+        try {
+            const smR = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/08_scrum_master.json`);
+            if (smR.ok) {
+                const sm = await smR.json();
+                if (sm.perf && (sm.perf.llm_tokens || 0) > 0) smPerf = sm.perf;
+            }
+        } catch (_) {}
+
         const critics = perf.critics || {};
-        const criticOrder = ['architect','tester','red_team','purple_team','blackhat'];
-        const criticLabel = { architect:'🏛️ Architect', tester:'🔬 Tester', red_team:'🎯 Red Team', purple_team:'🟣 Purple Team', blackhat:'⚔️ Blackhat' };
+        if (smPerf) critics['scrum_master'] = smPerf;
+
+        const criticOrder = ['architect','tester','red_team','purple_team','blackhat','orchestrator','scrum_master'];
+        const criticLabel = { architect:'🏛️ Architect', tester:'🔬 Tester', red_team:'🎯 Red Team', purple_team:'🟣 Purple Team', blackhat:'⚔️ Blackhat', orchestrator:'🎼 Orchestrator', scrum_master:'🧩 ScrumMaster' };
 
         // Per-critic table rows
         const rows = criticOrder
@@ -6461,10 +6589,10 @@ class Dashboard {
                 </tr>`;
             }).join('');
 
-        const totalTok  = perf.total_llm_tokens || 0;
-        const totalCost = perf.total_llm_cost_usd || 0;
+        const totalTok  = (perf.total_llm_tokens || 0) + (smPerf ? (smPerf.llm_tokens || 0) : 0);
+        const totalCost = (perf.total_llm_cost_usd || 0) + (smPerf ? (smPerf.llm_cost_usd || 0) : 0);
         const totalWall = perf.pipeline_wall_clock_s || 0;
-        const nCritics  = perf.critic_count || Object.keys(critics).length;
+        const nCritics  = Object.keys(critics).length;
 
         // Colour-coded efficiency hints
         const hints = [];
@@ -6488,7 +6616,7 @@ class Dashboard {
                 · Pipeline: <strong style="color:var(--text-color);">${_fmtTime(totalWall)}</strong>
                 · Total tokens: <strong style="color:var(--text-color);">${_fmtTok(totalTok)}</strong>
                 · Estimated cost: <strong style="color:var(--text-color);">${_fmtCost(totalCost)}</strong>
-                · Critics ran: <strong style="color:var(--text-color);">${nCritics}</strong>
+                · LLM components: <strong style="color:var(--text-color);">${nCritics}</strong>
             </div>
             <div style="overflow-x:auto;">
             <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
