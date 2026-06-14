@@ -12,7 +12,9 @@ Upload a Mermaid (`.mmd`) architecture diagram and receive a full, MITRE-mapped 
 | **User journey intelligence** | Every attack path cross-referenced against real user workflows — tells you whether an attacker blends with legitimate traffic or is on a post-compromise pivot with no user baseline |
 | **Real-world threat intel** | APT group attribution (MITRE intrusion-sets) and CVEs per attack path, cross-checked against CISA Known Exploited Vulnerabilities including ransomware flags |
 | **Policy alignment** | Singapore Government ICT&SS SSP baseline overlay — mandatory controls surfaced per profile (cloud, on-prem, GenAI, etc.) |
-| **Expert Review** | Five MoE critic agents — Architect → Coverage Auditor → Exploit Analyst → Purple Team → Blackhat — each receiving user journey context relevant to their rubric, producing a consensus with tiered improvement recommendations |
+| **Expert Review** | Five MoE critic agents — Architect → Tester → Red Team → Purple Team → Blackhat — each receiving user journey context relevant to their rubric, producing a consensus with tiered improvement recommendations |
+| **ScrumMaster** | Synthesises critic findings into sprint-ready impediments, redesign proposals, and an 8-week action plan; runs a harmony check before calling the LLM — zero spend when all impediments are unresolvable architectural issues |
+| **Performance telemetry** | Per-critic cost, token count, and latency for every run — full pipeline tracked at ~$0.10 / 32k tokens / 113s on Claude Sonnet 4 |
 | **Confidence scoring** | Architecture-sensitive confidence band; recovers toward ceiling only when coverage signals prove the surface was thoroughly mapped |
 
 ## Quick Start
@@ -125,11 +127,15 @@ openapi.yaml      OpenAPI 3.0 spec
 
 ## Read more
 
-Curious how the whole pipeline fits together — RAPIDS, MoE critics, SSP enrichment, and the design decisions behind them? The full walkthrough is on Medium:
+The full build story is on Medium — five parts covering the pipeline, cloud threat modelling, user journey intelligence, and the MoE critic system:
 
-> **[From Diagram to Threat Model Report in Minutes: Building an AI-Assisted Threat Model Assessor](https://medium.com/@breadtan/from-diagram-to-threat-model-report-in-minutes-building-an-ai-assisted-threat-model-assessor-b730d9f91459)**
->
-> Covers: MITRE ATT&CK + ATLAS + ARC Framework + Singapore SSP — four authoritative sources, one architecture diagram, under two minutes.
+| # | Title | What it covers |
+|---|-------|----------------|
+| 1 | [From Diagram to Threat Model Report in Minutes](https://medium.com/@breadtan/from-diagram-to-threat-model-report-in-minutes-building-an-ai-assisted-threat-model-assessor-b730d9f91459) | MITRE ATT&CK + ATLAS + ARC + Singapore SSP — four sources, one diagram, under two minutes |
+| 2 | [Cloud Threat Modelling: CSP-Aware, Risk-First — CAVEAT + CCM + SSP](https://medium.com/@breadtan/cloud-threat-modelling-csp-aware-risk-first-caveat-ccm-ssp-c367ac96d6cf) | How cloud-specific attack patterns layer onto the RAPIDS baseline; SSRM, IAM inference, GenAI profiles |
+| 3 | [When Good Enough Is Not Enough: Teaching a Threat Assessor to See What It Couldn't](https://medium.com/@breadtan/when-good-enough-is-not-enough-teaching-a-threat-assessor-to-see-what-it-couldnt-0e027d6578fe) | MoE critics, self-validation, and closing the gaps a deterministic engine misses |
+| 4 | [StoryCaster: Read the Human Stories Hidden in Your Architecture](https://medium.com/@breadtan/storycaster-read-the-human-stories-hidden-in-your-architecture-4fed8dfdcf05) | User journey co-generation — corroborated vs post-compromise paths, APT attribution, KEV CVEs |
+| 5 | [When the Critics Disagree: ScrumMaster and the Art of Security Harmony](https://medium.com/@breadtan/when-the-critics-disagree-scrummaster-and-the-art-of-security-harmony-6cfacb7eb05e) | ScrumMaster synthesis, harmony checking, performance telemetry across the full critic pipeline |
 
 ---
 

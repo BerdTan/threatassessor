@@ -198,4 +198,4 @@ python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.
 ---
 
 **Purpose:** AI assistant context + developer quick reference  
-**Last Updated:** 2026-06-07
+**Last Updated:** 2026-06-14
