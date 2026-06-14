@@ -12,6 +12,7 @@ class Dashboard {
         // Expert Review in-progress state — persists across tab switches
         this._erpState = null;
 
+        this._initSmHelpers();
         this.init();
     }
 
@@ -704,9 +705,18 @@ class Dashboard {
         const expertReviewTab = document.querySelector('.nav-tab[data-tab="expert-review"]');
         if (expertReviewTab) expertReviewTab.style.display = 'block';
 
-        // Show ScrumMaster tab (hidden; revealed when SM result file is detected in loadScrumMasterTab)
+        // Show ScrumMaster tab if 08_scrum_master.json already exists for this architecture
         const smNavTab = document.getElementById('scrum-master-nav-tab');
-        if (smNavTab) smNavTab.style.display = 'none'; // revealed by loadScrumMasterTab
+        if (smNavTab) {
+            smNavTab.style.display = 'none';
+            const _smArch = this.analysisData?.architecture_name || this.analysisData?.analysis?.architecture_name
+                         || this.analysisData?.architecture || this.analysisData?.analysis?.architecture;
+            if (_smArch) {
+                fetch(`/api/v1/reports/${encodeURIComponent(_smArch)}/files/08_scrum_master.json`)
+                    .then(r => { if (r.ok) smNavTab.style.display = 'block'; })
+                    .catch(() => {});
+            }
+        }
 
         // Show Threat Model tab when analysis is loaded
         const tmNavTab = document.getElementById('threat-model-nav-tab');
@@ -6145,7 +6155,7 @@ class Dashboard {
         ];
     }
 
-    loadHarnessTab() {
+    async loadHarnessTab() {
         const container = document.getElementById('harness-content');
         if (!container) return;
 
@@ -6347,11 +6357,172 @@ class Dashboard {
             </div>
             ${checklistRows}`;
 
+        // ── Pipeline Performance — load from most recent report ─────────────
+        const perfBody = await this._harnessLoadPerfSection();
+
         container.innerHTML = `<div style="max-width:860px;">` +
-            _hSection('selfcheck',  '🔧', 'Harness Self-Check',   'Verify all pipeline components are reachable and functional.',                                                                  selfCheckBody,   true)  +
-            _hSection('scenarios',  '🗺️', 'Scenario Registry',    'Named stage configurations — pass scenario="…" to ThreatAssessorHarness() to route a run.',                                   scenarioCards,   false) +
-            _hSection('executors',  '🔌', 'Stage Executors',       'Each stage has a pluggable executor. Swap it to change how a stage runs without touching the harness or other stages.',        executorCards,   false) +
+            _hSection('selfcheck',  '🔧', 'Harness Self-Check',    'Verify all pipeline components are reachable and functional.',                                                                   selfCheckBody,   true)  +
+            _hSection('perf',       '📊', 'Pipeline Performance',  'LLM call counts, token usage, cost, and latency per critic — from the most recent Expert Review run.',                          perfBody,        true)  +
+            _hSection('scenarios',  '🗺️', 'Scenario Registry',     'Named stage configurations — pass scenario="…" to ThreatAssessorHarness() to route a run.',                                    scenarioCards,   false) +
+            _hSection('executors',  '🔌', 'Stage Executors',        'Each stage has a pluggable executor. Swap it to change how a stage runs without touching the harness or other stages.',         executorCards,   false) +
             `</div>`;
+    }
+
+    async _harnessLoadPerfSection() {
+        const key = localStorage.getItem('tm_api_key') || '';
+        const _na = '<span style="color:var(--text-tertiary);">—</span>';
+        const _fmt = (n, unit) => n ? `${n}${unit}` : _na;
+        const _fmtCost = c => c ? `$${parseFloat(c).toFixed(4)}` : _na;
+        const _fmtTime = s => s ? `${parseFloat(s).toFixed(1)}s` : _na;
+        const _fmtTok  = t => t ? t.toLocaleString() : _na;
+
+        // Try to find the most recent report with pipeline_perf data
+        let perf = null, archName = '', runTime = '';
+        try {
+            const listR = await fetch('/api/v1/reports', { headers: { 'TM-API-KEY': key } });
+            if (listR.ok) {
+                const listData = await listR.json();
+                const reports = Array.isArray(listData) ? listData
+                    : (listData.reports || listData.architectures || []);
+                // Try most recent reports (last in list = most recent)
+                for (let i = reports.length - 1; i >= Math.max(0, reports.length - 5); i--) {
+                    const name = typeof reports[i] === 'string' ? reports[i] : reports[i].name;
+                    if (!name) continue;
+                    const moeR = await fetch(`/api/v1/reports/${encodeURIComponent(name)}/files/07_moe_orchestrator.json`);
+                    if (moeR.ok) {
+                        const moe = await moeR.json();
+                        // Prefer top-level pipeline_perf; fall back to reconstructing from expert_validations
+                        if (moe.pipeline_perf && Object.keys(moe.pipeline_perf).length) {
+                            perf = moe.pipeline_perf;
+                            archName = name;
+                            break;
+                        }
+                        // Fallback: reconstruct from expert_validations[*].perf (transition case)
+                        const ev = moe.expert_validations || {};
+                        const hasCriticPerf = Object.values(ev).some(v => v && v.perf && v.perf.llm_tokens > 0);
+                        if (hasCriticPerf) {
+                            const critics = {};
+                            let totalTok = 0, totalCost = 0;
+                            for (const [k, v] of Object.entries(ev)) {
+                                if (v && v.perf) {
+                                    critics[k] = v.perf;
+                                    totalTok  += (v.perf.llm_tokens    || 0);
+                                    totalCost += (v.perf.llm_cost_usd  || 0);
+                                }
+                            }
+                            perf = {
+                                pipeline_wall_clock_s: 0,  // not available in this path
+                                total_llm_tokens: totalTok,
+                                total_llm_cost_usd: totalCost,
+                                critic_count: Object.keys(critics).length,
+                                critics,
+                            };
+                            archName = name;
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (_) {}
+
+        if (!perf) {
+            return `<div style="padding:0.75rem; text-align:center; color:var(--text-tertiary); font-size:0.875rem;">
+                No performance data yet. Run an Expert Review to populate this section.
+                Performance data is recorded from the next run onwards.
+            </div>`;
+        }
+
+        const critics = perf.critics || {};
+        const criticOrder = ['architect','tester','red_team','purple_team','blackhat'];
+        const criticLabel = { architect:'🏛️ Architect', tester:'🔬 Tester', red_team:'🎯 Red Team', purple_team:'🟣 Purple Team', blackhat:'⚔️ Blackhat' };
+
+        // Per-critic table rows
+        const rows = criticOrder
+            .filter(k => critics[k])
+            .map(k => {
+                const c = critics[k];
+                const tok  = c.llm_tokens || 0;
+                const cost = c.llm_cost_usd || 0;
+                const wall = c.wall_clock_s || 0;
+                const lat  = c.llm_latency_s || 0;
+                const calls = c.llm_calls || 0;
+                const model = c.llm_model || '—';
+                // Efficiency: tokens per second of wall-clock time
+                const tps = wall > 0 ? Math.round(tok / wall) : 0;
+                return `<tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:0.45rem 0.75rem; font-size:0.82rem; font-weight:600; color:var(--text-color); white-space:nowrap;">${criticLabel[k]||k}</td>
+                    <td style="padding:0.45rem 0.75rem; text-align:right; font-size:0.82rem; color:var(--text-color);">${calls}</td>
+                    <td style="padding:0.45rem 0.75rem; text-align:right; font-size:0.82rem; color:var(--text-color);">${_fmtTok(tok)}</td>
+                    <td style="padding:0.45rem 0.75rem; text-align:right; font-size:0.82rem; color:${cost > 0.01 ? 'var(--warning-color)' : 'var(--text-color)'};">${_fmtCost(cost)}</td>
+                    <td style="padding:0.45rem 0.75rem; text-align:right; font-size:0.82rem; color:var(--text-color);">${_fmtTime(lat)}</td>
+                    <td style="padding:0.45rem 0.75rem; text-align:right; font-size:0.82rem; color:var(--text-color);">${_fmtTime(wall)}</td>
+                    <td style="padding:0.45rem 0.75rem; text-align:right; font-size:0.75rem; color:var(--text-tertiary);">${tps > 0 ? tps + ' t/s' : _na}</td>
+                    <td style="padding:0.45rem 0.75rem; font-size:0.72rem; color:var(--text-tertiary); max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${model}">${model.split('/').pop()}</td>
+                </tr>`;
+            }).join('');
+
+        const totalTok  = perf.total_llm_tokens || 0;
+        const totalCost = perf.total_llm_cost_usd || 0;
+        const totalWall = perf.pipeline_wall_clock_s || 0;
+        const nCritics  = perf.critic_count || Object.keys(critics).length;
+
+        // Colour-coded efficiency hints
+        const hints = [];
+        if (totalWall > 120) hints.push({ col:'var(--warning-color)', msg:`Pipeline took ${_fmtTime(totalWall)} — consider switching to Parallel mode for architectures with low complexity.` });
+        if (totalTok > 30000) hints.push({ col:'var(--warning-color)', msg:`High token usage (${_fmtTok(totalTok)}) — check if artifact context passed to critics can be trimmed.` });
+        const avgWall = nCritics > 0 ? totalWall / nCritics : 0;
+        const slowCritic = criticOrder.filter(k => critics[k]).sort((a,b) => (critics[b]?.wall_clock_s||0) - (critics[a]?.wall_clock_s||0))[0];
+        if (slowCritic && critics[slowCritic]?.wall_clock_s > avgWall * 1.5) {
+            hints.push({ col:'var(--primary-color)', msg:`${criticLabel[slowCritic]||slowCritic} is the slowest critic (${_fmtTime(critics[slowCritic].wall_clock_s)}) — review its prompt length or consider a smaller model for this role.` });
+        }
+
+        const hintsHtml = hints.length
+            ? '<div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.3rem;">'
+              + hints.map(h => `<div style="font-size:0.78rem; color:${h.col}; padding:0.3rem 0.5rem; background:${h.col}0a; border-radius:4px; border-left:3px solid ${h.col}44;">💡 ${h.msg}</div>`).join('')
+              + '</div>'
+            : '';
+
+        return `
+            <div style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:0.75rem;">
+                Architecture: <strong style="color:var(--text-color);">${archName}</strong>
+                · Pipeline: <strong style="color:var(--text-color);">${_fmtTime(totalWall)}</strong>
+                · Total tokens: <strong style="color:var(--text-color);">${_fmtTok(totalTok)}</strong>
+                · Estimated cost: <strong style="color:var(--text-color);">${_fmtCost(totalCost)}</strong>
+                · Critics ran: <strong style="color:var(--text-color);">${nCritics}</strong>
+            </div>
+            <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                <thead><tr style="border-bottom:2px solid var(--border-color); background:var(--nav-hover-bg);">
+                    <th style="padding:0.4rem 0.75rem; text-align:left; color:var(--text-tertiary); font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em;">Critic</th>
+                    <th style="padding:0.4rem 0.75rem; text-align:right; color:var(--text-tertiary); font-size:0.7rem; text-transform:uppercase;" title="Number of LLM API calls">Calls</th>
+                    <th style="padding:0.4rem 0.75rem; text-align:right; color:var(--text-tertiary); font-size:0.7rem; text-transform:uppercase;" title="Total tokens (prompt + completion)">Tokens</th>
+                    <th style="padding:0.4rem 0.75rem; text-align:right; color:var(--text-tertiary); font-size:0.7rem; text-transform:uppercase;" title="Estimated USD cost">Cost</th>
+                    <th style="padding:0.4rem 0.75rem; text-align:right; color:var(--text-tertiary); font-size:0.7rem; text-transform:uppercase;" title="LLM API round-trip time only">LLM latency</th>
+                    <th style="padding:0.4rem 0.75rem; text-align:right; color:var(--text-tertiary); font-size:0.7rem; text-transform:uppercase;" title="Full critic wall-clock including parsing">Wall clock</th>
+                    <th style="padding:0.4rem 0.75rem; text-align:right; color:var(--text-tertiary); font-size:0.7rem; text-transform:uppercase;" title="Tokens per second of wall-clock time">Efficiency</th>
+                    <th style="padding:0.4rem 0.75rem; text-align:left; color:var(--text-tertiary); font-size:0.7rem; text-transform:uppercase;">Model</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+                <tfoot><tr style="border-top:2px solid var(--border-color); background:var(--nav-hover-bg); font-weight:700;">
+                    <td style="padding:0.4rem 0.75rem; font-size:0.82rem;">Total</td>
+                    <td></td>
+                    <td style="padding:0.4rem 0.75rem; text-align:right; font-size:0.82rem;">${_fmtTok(totalTok)}</td>
+                    <td style="padding:0.4rem 0.75rem; text-align:right; font-size:0.82rem;">${_fmtCost(totalCost)}</td>
+                    <td></td>
+                    <td style="padding:0.4rem 0.75rem; text-align:right; font-size:0.82rem;">${_fmtTime(totalWall)}</td>
+                    <td></td><td></td>
+                </tfoot>
+            </table>
+            </div>
+            ${hintsHtml}
+            <div style="margin-top:0.75rem; font-size:0.72rem; color:var(--text-tertiary);">
+                <strong>Calls</strong> = LLM API round-trips per critic (normally 1; >1 if tool-use or retry).
+                <strong>Tokens</strong> = prompt + completion combined.
+                <strong>LLM latency</strong> = API call only (network + inference).
+                <strong>Wall clock</strong> = full critic time including JSON parse and validation.
+                <strong>Efficiency</strong> = tokens per second — lower suggests a slow model or large prompt.
+                Values appear after the first Expert Review run on any architecture.
+            </div>`;
     }
 
     async _harnessRunAllChecks() {
@@ -6416,6 +6587,209 @@ class Dashboard {
         if (detEl && detail) { detEl.textContent = detail; detEl.style.display = 'block';
             detEl.style.color = state === 'fail' ? 'var(--danger-color)' : state === 'warn' ? 'var(--warning-color)' : 'var(--text-tertiary)'; }
         if (fixEl) fixEl.style.display = showFix ? 'block' : 'none';
+    }
+
+    // ── Shared SM formatting helpers (attached to window for use inside template literals) ──
+
+    // Splits a SM rationale string into readable lines:
+    //   "Lead sentence — Evidence A + Evidence B" →
+    //   Lead sentence (bold label)
+    //   → Evidence A
+    //   → Evidence B
+    _initSmHelpers() {
+        window._smFormatRationale = (text) => {
+            if (!text) return '';
+            // Strategy: first sentence (up to first '.') is the lead summary.
+            // Remaining text is the critic evidence chain — split on ' + ' for each critic.
+            // Also handles " — " as an alternative lead/tail separator.
+            let lead = text, tail = '';
+            const dotIdx  = text.indexOf('. ');
+            const dashIdx = text.indexOf(' — ');
+            // Use whichever separator comes first
+            const splitIdx = (dotIdx > -1 && (dashIdx === -1 || dotIdx < dashIdx)) ? dotIdx
+                           : (dashIdx > -1) ? dashIdx : -1;
+            if (splitIdx > -1) {
+                const sep = text[splitIdx] === '.' ? '. ' : ' — ';
+                lead = text.slice(0, splitIdx).trim();
+                tail = text.slice(splitIdx + sep.length).trim();
+            }
+            // Split evidence chain on ' + ', then extract only named-critic fragments.
+            // The tail may start with a generic note (e.g. "does not require...") before
+            // the first named critic — filter those out so only critic evidence lines show.
+            const rawFrags   = tail ? tail.split(/\s*\+\s*/).map(s => s.trim()).filter(Boolean) : [];
+            const criticRx   = /^(Red Team|Architect|Tester|Purple\s*Team|Blackhat|ScrumMaster)/i;
+            // Named-critic fragments: show as evidence lines
+            const namedCrits = rawFrags.filter(f => criticRx.test(f));
+            // Generic note: first fragment that isn't a named critic (keep as part of lead if short)
+            const genericNote = rawFrags.find(f => !criticRx.test(f) && f.length < 80) || '';
+            // Append generic note to lead if it adds useful context and isn't redundant
+            const fullLead  = (genericNote && !lead.toLowerCase().includes(genericNote.slice(0,20).toLowerCase()))
+                ? lead + ' — ' + genericNote
+                : lead;
+            const evidences = namedCrits;
+
+            let html = `<strong style="color:var(--text-tertiary); font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em;">Why:</strong> `
+                     + `<span style="color:var(--text-secondary);">${fullLead}.</span>`;
+            if (evidences.length) {
+                html += '<div style="margin-top:0.25rem; display:flex; flex-direction:column; gap:0.15rem;">'
+                      + evidences.map(e =>
+                            `<div style="font-size:0.75rem; color:var(--text-tertiary); padding-left:0.75rem; border-left:2px solid var(--border-color); line-height:1.4;">→ ${e.replace(/\.$/, '')}</div>`
+                        ).join('')
+                      + '</div>';
+            }
+            return html;
+        };
+    }
+
+    // ── Append a SM action item to 10_adr_report.md ──────────────────────────────
+    async _smAddToAdr(archName, payloadStr) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        let payload;
+        try { payload = JSON.parse(payloadStr); } catch (_) { payload = { action: payloadStr }; }
+
+        const btn = event && event.currentTarget;
+        if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+
+        try {
+            const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/add-to-adr`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'TM-API-KEY': apiKey },
+                body: JSON.stringify(payload),
+            });
+            if (r.ok) {
+                const d = await r.json();
+                if (btn) {
+                    const entryId = d.entry_id || 'SM-ADR';
+                    btn.textContent = `✅ ${entryId} added`;
+                    btn.title = `Appended to 10_adr_report.md as ${entryId} (Status: OPEN). View in Reports tab.`;
+                    btn.style.color = 'var(--secondary-color)';
+                    btn.style.borderColor = 'var(--secondary-color)44';
+                    btn.style.background = 'var(--secondary-color)0a';
+                    btn.disabled = true;
+                    // Insert a small confirmation note next to the button
+                    const note = document.createElement('span');
+                    note.textContent = ` → saved to 10_adr_report.md`;
+                    note.style.cssText = 'font-size:0.68rem; color:var(--secondary-color); margin-left:0.3rem; opacity:0.8;';
+                    btn.parentNode && btn.parentNode.insertBefore(note, btn.nextSibling);
+                }
+            } else {
+                const err = await r.json().catch(() => ({}));
+                if (btn) { btn.textContent = '❌ Failed — check API key'; btn.disabled = false; }
+                console.warn('_smAddToAdr error:', err);
+            }
+        } catch (e) {
+            if (btn) { btn.textContent = '❌'; btn.disabled = false; }
+            console.warn('_smAddToAdr error:', e);
+        }
+    }
+
+    // ── Run a single critic (or ScrumMaster) without rerunning the full pipeline ──
+    // After the critic completes, the backend runs MoE synthesis automatically.
+    // If SM is enabled in config, the backend also runs SM as part of run_targeted().
+    _runSingleCritic(archName, criticKey) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const criticLabel = {
+            architect:'🏛️ Architect', tester:'🔬 Tester', red_team:'🎯 Red Team',
+            purple_team:'🟣 Purple Team', blackhat:'⚔️ Blackhat', scrum_master:'🧩 ScrumMaster',
+        }[criticKey] || criticKey;
+
+        // Disable ALL buttons for this critic key (both ▶ Run now and ↻ re-run header btn)
+        const allBtns = [];
+        document.querySelectorAll(`[id*="run-critic-btn-${criticKey}"], [id*="rerun-critic-btn-${criticKey}"]`).forEach(b => allBtns.push(b));
+        allBtns.forEach(b => { b.disabled = true; b.textContent = '⏳'; b.style.opacity = '0.6'; });
+
+        // Fixed-position status bar anchored to bottom-right — never disrupts content layout
+        const _toastId = 'rsc-toast-' + criticKey;
+        let toast = document.getElementById(_toastId);
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = _toastId;
+            toast.style.cssText = [
+                'position:fixed; bottom:1.25rem; right:1.25rem; z-index:9999;',
+                'padding:0.6rem 1rem; min-width:280px; max-width:420px;',
+                'background:var(--primary-color); color:#fff; font-size:0.82rem; font-weight:600;',
+                'border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.35);',
+                'display:flex; align-items:center; gap:0.6rem;',
+                'transition:opacity 0.3s, transform 0.3s;',
+                'transform:translateY(0); opacity:1;',
+            ].join('');
+            document.body.appendChild(toast);
+        }
+        const _setToast = (msg, col) => {
+            toast.style.background = col || 'var(--primary-color)';
+            // Progress spinner or icon prefix
+            toast.innerHTML = `<span style="flex-shrink:0; font-size:1rem;">⏳</span><span style="flex:1;">${msg}</span>`;
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+        };
+        const _setToastDone = (msg, col) => {
+            toast.style.background = col || 'var(--secondary-color)';
+            toast.innerHTML = `<span style="flex-shrink:0; font-size:1rem;">✅</span><span style="flex:1;">${msg}</span>`;
+        };
+        const _setToastError = (msg) => {
+            toast.style.background = 'var(--danger-color)';
+            toast.innerHTML = `<span style="flex-shrink:0; font-size:1rem;">❌</span><span style="flex:1;">${msg}</span>`;
+        };
+        const _hideToast = () => {
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(0.5rem)';
+                setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 350);
+            }, 3000);
+        };
+
+        _setToast(`▶ ${criticLabel}: starting…`);
+
+        const url = `/api/v1/run-critic?architecture_name=${encodeURIComponent(archName)}&critic=${criticKey}`;
+
+        fetch(url, { headers: { 'TM-API-KEY': apiKey } })
+            .then(resp => {
+                const reader = resp.body.getReader();
+                let buf = '';
+                const pump = () => reader.read().then(({ done, value }) => {
+                    if (done) return;
+                    buf += new TextDecoder().decode(value);
+                    const parts = buf.split('\n\n');
+                    buf = parts.pop() || '';
+                    for (const part of parts) {
+                        let evtType = 'message', dataLine = '';
+                        for (const line of part.split('\n')) {
+                            if (line.startsWith('event: ')) evtType = line.slice(7).trim();
+                            else if (line.startsWith('data: ')) dataLine = line.slice(6).trim();
+                        }
+                        try {
+                            const data = JSON.parse(dataLine);
+                            if (evtType === 'progress') {
+                                _setToast(`${criticLabel}: ${data.progress||0}% — ${data.message||''}`);
+                            } else if (evtType === 'complete') {
+                                const confTxt = data.final_confidence
+                                    ? ` · confidence now ${parseFloat(data.final_confidence).toFixed(1)}%` : '';
+                                _setToastDone(`${criticLabel} complete${confTxt}`);
+                                allBtns.forEach(b => { b.disabled = false; b.textContent = '↻'; b.style.opacity = ''; });
+                                setTimeout(() => {
+                                    this.loadExpertReviewTab();
+                                    if (criticKey === 'scrum_master') {
+                                        fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/08_scrum_master.json`)
+                                            .then(r => { if (r.ok) { const t = document.getElementById('scrum-master-nav-tab'); if (t) t.style.display = 'block'; } }).catch(() => {});
+                                    }
+                                    _hideToast();
+                                }, 900);
+                            } else if (evtType === 'error') {
+                                _setToastError(`${criticLabel} failed: ${data.detail||data.message||'unknown error'}`);
+                                allBtns.forEach(b => { b.disabled = false; b.textContent = '↻'; b.style.opacity = ''; });
+                                _hideToast();
+                            }
+                        } catch (_) {}
+                    }
+                    return pump();
+                });
+                return pump();
+            })
+            .catch(err => {
+                _setToastError(`Connection error: ${err.message}`);
+                allBtns.forEach(b => { b.disabled = false; b.textContent = '↻'; b.style.opacity = ''; });
+                _hideToast();
+            });
     }
 
     async _harnessCheckApi() {
@@ -6609,26 +6983,69 @@ class Dashboard {
                     `<div style="padding:0.3rem 0.75rem; border-radius:6px; background:var(--nav-hover-bg); border:1px solid var(--border-color); font-size:0.78rem; color:var(--text-secondary);"><strong style="color:var(--text-color);">${n}</strong> ${typeLabels[t]||t}</div>`
                 ).join('')
                 + '</div>'
-                + `<div style="font-size:0.8125rem; color:var(--text-secondary);">${critical_high.length} critical/high · ${unresolvable.length} structurally unresolvable · ${resolved.length} resolved by ScrumMaster</div>`;
+                + `<div style="font-size:0.8125rem; color:var(--text-secondary);">${imps.length} total · ${unresolvable.length} structurally unresolvable${critical_high.length ? ' (' + critical_high.length + ' critical/high)' : ''} · ${resolved.length} resolved</div>`;
         }
 
-        // Action plan — show tier classification alongside each item
-        const _tierLabel = p => {
-            const prio = (p.priority || 'medium').toLowerCase();
-            if (prio === 'critical' || prio === 'high') return '<span style="font-size:0.68rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:6px; padding:1px 6px; margin-left:0.35rem;">⚡ Quick Wins tier</span>';
-            if (prio === 'medium') return '<span style="font-size:0.68rem; font-weight:700; color:var(--primary-color); background:var(--primary-color)18; border:1px solid var(--primary-color)44; border-radius:6px; padding:1px 6px; margin-left:0.35rem;">⭐ Recommended tier</span>';
-            return '<span style="font-size:0.68rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:6px; padding:1px 6px; margin-left:0.35rem;">🔒 Maximum tier</span>';
-        };
+        // Action plan — collapsible tiers, confidence gain badges, anti-pattern flag
         let planHtml = '';
         if (sm.action_plan && sm.action_plan.length) {
-            planHtml = sm.action_plan.map((p, i) => {
-                const pc = prioCol[p.priority] || 'var(--text-tertiary)';
-                return `<div style="padding:0.6rem 0.9rem; margin-bottom:0.4rem; background:var(--nav-hover-bg); border-left:3px solid ${pc}; border-radius:6px;">
-                    <div style="font-size:0.875rem; font-weight:600; color:var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">${i+1}. ${this._esc(p.action||'')} ${_tierLabel(p)}</div>
-                    ${p.rationale ? `<div style="font-size:0.78rem; color:var(--text-secondary); margin-top:0.2rem;">${this._esc(p.rationale)}</div>` : ''}
-                    <div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.15rem;">${p.effort ? 'Effort: ' + this._esc(p.effort) : ''} ${p.risk_reduction_estimate ? '· Risk reduction: ' + this._esc(p.risk_reduction_estimate) : ''}</div>
+            const hasTiers = sm.action_plan.some(p => p.tier);
+            const tierBorderCol = { immediate:'var(--secondary-color)', structural:'var(--danger-color)' };
+            const _smItem = (p, i) => {
+                const pc = tierBorderCol[p.tier] || prioCol[p.priority] || 'var(--text-tertiary)';
+                const confGain = p.confidence_gain !== undefined ? p.confidence_gain : null;
+                const isAnti  = p.is_antipattern === true;
+                const confBadge = confGain !== null
+                    ? `<span style="font-size:0.68rem; font-weight:700; padding:1px 5px; border-radius:4px; margin-left:0.35rem;
+                        background:${confGain>=5?'var(--secondary-color)22':confGain>=2?'var(--warning-color)22':'var(--nav-hover-bg)'};
+                        color:${confGain>=5?'var(--secondary-color)':confGain>=2?'var(--warning-color)':'var(--text-tertiary)'};
+                        border:1px solid ${confGain>=5?'var(--secondary-color)44':confGain>=2?'var(--warning-color)44':'var(--border-color)'};">+${parseFloat(confGain).toFixed(1)}% confidence</span>`
+                    : '';
+                const antiBadge = isAnti
+                    ? `<span style="font-size:0.68rem; font-weight:700; padding:1px 5px; border-radius:4px; margin-left:0.35rem;
+                        background:var(--warning-color)15; color:var(--warning-color); border:1px solid var(--warning-color)44;">⚠ anti-pattern</span>`
+                    : '';
+                const _smArchName = sm.architecture_name || '';
+                const _adrPayload = JSON.stringify({ action: p.action||'', rationale: p.rationale||'', priority: p.priority||'high', first_step: p.first_step||'' }).replace(/'/g, "\\'");
+                const addToAdrBtn = (!isAnti && (p.action||'').length > 0)
+                    ? `<button onclick="window.dashboard._smAddToAdr('${_smArchName}', '${_adrPayload.replace(/"/g,'&quot;')}')"
+                        style="margin-left:0.35rem; padding:0.1rem 0.45rem; border-radius:4px; border:1px solid var(--border-color);
+                               background:transparent; color:var(--text-tertiary); font-size:0.68rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;"
+                        onmouseover="this.style.borderColor='#a855f7';this.style.color='#a855f7'"
+                        onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'"
+                        title="Add this action to 10_adr_report.md as an open decision record (SM-ADR-XX)">📋 Add to ADR</button>`
+                    : '';
+                return `<div style="padding:0.6rem 0.9rem; margin-bottom:0.5rem; background:var(--nav-hover-bg); border-left:3px solid ${isAnti?'var(--text-tertiary)':pc}; border-radius:6px;">
+                    <div style="font-size:0.875rem; font-weight:600; color:${isAnti?'var(--text-tertiary)':'var(--text-color)'}; display:flex; flex-wrap:wrap; align-items:baseline; gap:0.2rem; margin-bottom:0.2rem;">${i+1}. ${this._esc(p.action||'')}${confBadge}${antiBadge}${addToAdrBtn}</div>
+                    ${p.rationale ? `<div style="font-size:0.78rem; color:var(--text-secondary); margin-top:0.25rem; padding-top:0.2rem; border-top:1px solid var(--border-color)22;">${window._smFormatRationale(p.rationale)}</div>` : ''}
+                    ${p.first_step ? `<div style="font-size:0.78rem; color:var(--primary-color); margin-top:0.25rem; padding:0.25rem 0.5rem; background:var(--primary-color)0a; border-radius:4px; border-left:2px solid var(--primary-color)44;"><strong style="font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em;">First step:</strong> ${this._esc(p.first_step)}</div>` : ''}
+                    <div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.25rem;">${p.effort ? '⏱ Effort: ' + this._esc(p.effort) : ''}${p.effort && p.risk_reduction_estimate ? ' · ' : ''}${p.risk_reduction_estimate ? '↓ Risk reduction: ' + this._esc(p.risk_reduction_estimate) : ''}</div>
                 </div>`;
-            }).join('');
+            };
+            const _smSection = (id, items, label, col, open) => {
+                if (!items.length) return '';
+                const totalGain = items.reduce((s, p) => s + (p.confidence_gain||0), 0);
+                const gainNote = totalGain > 0 ? ` · up to +${totalGain.toFixed(1)}% confidence` : '';
+                return `<div class="er-panel" style="border:1px solid ${col}44; border-radius:8px; margin-bottom:0.5rem; overflow:hidden;">`
+                    + `<div class="er-panel-header" onclick="(function(h){var b=h.closest('.er-panel').querySelector('.er-panel-body');var c=h.querySelector('.er-chevron');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.textContent=open?'›':'∨';})(this)" style="padding:0.5rem 0.875rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:${col}0a;">`
+                    + `<span style="font-size:0.78rem; font-weight:700; color:${col};">${label}</span><span style="font-size:0.7rem; color:var(--text-tertiary); margin-left:0.35rem;">${items.length} item${items.length!==1?'s':''}${gainNote}</span>`
+                    + `<span class="er-chevron" style="font-size:1rem; color:var(--text-tertiary);">${open?'∨':'›'}</span></div>`
+                    + `<div class="er-panel-body" style="display:${open?'block':'none'}; padding:0.5rem 0.875rem 0.75rem;">`
+                    + items.map(_smItem).join('') + `</div></div>`;
+            };
+            if (hasTiers) {
+                const immediate = sm.action_plan.filter(p => p.tier === 'immediate');
+                const structural = sm.action_plan.filter(p => p.tier === 'structural');
+                const anti = sm.action_plan.filter(p => !p.tier && p.is_antipattern);
+                planHtml = _smSection('imm', immediate, '⚡ Immediate — apply controls now', 'var(--secondary-color)', true)
+                         + _smSection('str', structural, '🏗 Structural — architecture changes', 'var(--danger-color)', true)
+                         + _smSection('anti', anti, '⚠ Low-effectiveness (anti-patterns)', 'var(--text-tertiary)', false);
+            } else {
+                const main = sm.action_plan.filter(p => !p.is_antipattern);
+                const anti = sm.action_plan.filter(p => p.is_antipattern);
+                planHtml = _smSection('main', main, '✅ Priority controls', 'var(--secondary-color)', true)
+                         + _smSection('anti', anti, '⚠ Low-effectiveness (anti-patterns)', 'var(--text-tertiary)', false);
+            }
         }
 
         // Baseline feedback
@@ -6638,7 +7055,12 @@ class Dashboard {
             const bfItems = [
                 ...(bf.weak_controls||[]).map(c => '⚠ Weak control (too generic): ' + c),
                 ...(bf.pattern_gaps||[]).map(g => '🔍 Pattern not covered: ' + g),
-                ...(bf.ground_truth_gaps||[]).map(g => '📊 Baseline gap: ' + g),
+                ...(bf.ground_truth_gaps||[]).map(g => {
+                    if (/very few controls detected/i.test(g) || /enriching node labels/i.test(g)) {
+                        return '📊 Baseline gap: Few security controls found in node labels. Open 08b_recommended_target.mmd — copy the NEW_* control nodes into your source .mmd and rename them (e.g. NEW_MFA → MFA[Multi-Factor Authentication]). Re-run analysis to pick them up.';
+                    }
+                    return '📊 Baseline gap: ' + g;
+                }),
             ];
             if (bfItems.length) {
                 bfHtml = `<div style="margin-top:1rem; padding:0.75rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--border-color);">
@@ -7088,10 +7510,16 @@ class Dashboard {
             try {
                 const smResp = await fetch(`/api/v1/reports/${archName}/files/08_scrum_master.json`);
                 if (smResp.ok) smResult = await smResp.json();
-            } catch (_) { /* file not yet generated — ok */ }
+            } catch (smErr) {
+                console.warn('loadExpertReviewTab: SM fetch failed:', smErr);
+            }
+
+            // Build SM card inside its own try so an error there doesn't hide the whole tab
+            let scrumMasterBuildErr = null;
 
             // ── Build ScrumMaster card HTML ───────────────────────────────────────
             let scrumMasterHtml = '';
+            try {
             if (smResult) {
                 const smConf0 = (smResult.initial_confidence || 0).toFixed(1);
                 const smConfF = (smResult.final_confidence  || 0).toFixed(1);
@@ -7120,38 +7548,159 @@ class Dashboard {
                     return `<div style="text-align:center;"><div style="font-size:0.8rem; font-weight:700; color:${col};">${parseFloat(v).toFixed(1)}%</div><div style="font-size:0.65rem; color:var(--text-tertiary);">${label}</div></div>`;
                 }).join('<div style="color:var(--text-tertiary); padding:0 4px; align-self:center;">→</div>');
 
-                // Action plan list
+                // Action plan — collapsible sections per tier, confidence gain, anti-pattern flag
                 let planHtml = '';
                 if (smPlan.length > 0) {
                     const prioColor = { critical:'var(--danger-color)', high:'var(--danger-color)', medium:'var(--warning-color)', low:'var(--text-tertiary)' };
-                    planHtml = '<div style="margin-top:0.75rem;">'
-                        + '<div style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">Action Plan</div>'
-                        + smPlan.map((p, i) => {
-                            const pc = prioColor[p.priority] || 'var(--text-tertiary)';
-                            return `<div style="padding:0.5rem 0.75rem; margin-bottom:0.35rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid ${pc};">`
-                                + `<div style="font-size:0.8125rem; font-weight:600; color:var(--text-color);">${i+1}. ${p.action||''}</div>`
-                                + (p.rationale ? `<div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem;">${p.rationale}</div>` : '')
-                                + (p.effort ? `<div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.1rem;">Effort: ${p.effort} · Risk reduction: ${p.risk_reduction_estimate||'?'}</div>` : '')
-                                + '</div>';
-                        }).join('')
-                        + '</div>';
+                    const tierBorderColor = { immediate:'var(--secondary-color)', structural:'var(--danger-color)' };
+                    const hasTiers = smPlan.some(p => p.tier);
+
+                    const _renderItem = (p, i) => {
+                        const pc = tierBorderColor[p.tier] || prioColor[p.priority] || 'var(--text-tertiary)';
+                        const confGain = p.confidence_gain !== undefined ? p.confidence_gain : null;
+                        const isAnti  = p.is_antipattern === true;
+                        const confBadge = confGain !== null
+                            ? `<span style="font-size:0.68rem; font-weight:700; padding:1px 5px; border-radius:4px;
+                                background:${confGain >= 5 ? 'var(--secondary-color)22' : confGain >= 2 ? 'var(--warning-color)22' : 'var(--nav-hover-bg)'};
+                                color:${confGain >= 5 ? 'var(--secondary-color)' : confGain >= 2 ? 'var(--warning-color)' : 'var(--text-tertiary)'};
+                                border:1px solid ${confGain >= 5 ? 'var(--secondary-color)44' : confGain >= 2 ? 'var(--warning-color)44' : 'var(--border-color)'};
+                                white-space:nowrap; margin-left:0.35rem;">+${parseFloat(confGain).toFixed(1)}% confidence</span>`
+                            : '';
+                        const antiBadge = isAnti
+                            ? `<span style="font-size:0.68rem; font-weight:700; padding:1px 5px; border-radius:4px;
+                                background:var(--warning-color)15; color:var(--warning-color); border:1px solid var(--warning-color)44;
+                                margin-left:0.35rem; white-space:nowrap;">⚠ anti-pattern</span>`
+                            : '';
+                        const _adrPay = JSON.stringify({ action: p.action||'', rationale: p.rationale||'', priority: p.priority||'high', first_step: p.first_step||'' }).replace(/"/g,'&quot;').replace(/'/g,"\\'");
+                        const addAdrBtn = (!isAnti && (p.action||'').length)
+                            ? `<button onclick="window.dashboard._smAddToAdr('${archName}','${_adrPay}')"
+                                style="margin-left:0.35rem; padding:0.1rem 0.45rem; border-radius:4px; border:1px solid var(--border-color);
+                                       background:transparent; color:var(--text-tertiary); font-size:0.68rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;"
+                                onmouseover="this.style.borderColor='#a855f7';this.style.color='#a855f7'"
+                                onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'"
+                                title="Add this action to 10_adr_report.md as an open decision record (SM-ADR-XX)">📋 Add to ADR</button>`
+                            : '';
+                        return `<div style="padding:0.5rem 0.75rem; margin-bottom:0.5rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid ${isAnti ? 'var(--text-tertiary)' : pc};">`
+                            + `<div style="font-size:0.8125rem; font-weight:600; color:${isAnti ? 'var(--text-tertiary)' : 'var(--text-color)'}; display:flex; flex-wrap:wrap; align-items:baseline; gap:0.2rem; margin-bottom:0.2rem;">`
+                            + `${i+1}. ${p.action||''}${confBadge}${antiBadge}${addAdrBtn}</div>`
+                            + (p.rationale ? `<div style="font-size:0.78rem; color:var(--text-secondary); margin-top:0.25rem; padding-top:0.2rem; border-top:1px solid var(--border-color)22;">${window._smFormatRationale(p.rationale)}</div>` : '')
+                            + (p.first_step ? `<div style="font-size:0.78rem; color:var(--primary-color); margin-top:0.25rem; padding:0.25rem 0.5rem; background:var(--primary-color)0a; border-radius:4px; border-left:2px solid var(--primary-color)44;"><strong style="font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em;">First step:</strong> ${p.first_step}</div>` : '')
+                            + (p.effort ? `<div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.25rem;">⏱ Effort: ${p.effort}${p.risk_reduction_estimate ? ' · ↓ Risk reduction: ' + p.risk_reduction_estimate : ''}</div>` : '')
+                            + '</div>';
+                    };
+
+                    const _collapsibleSection = (id, items, headerLabel, headerColor, startOpen) => {
+                        if (!items.length) return '';
+                        const disp = startOpen ? 'block' : 'none';
+                        const chev = startOpen ? '∨' : '›';
+                        const totalGain = items.reduce((s, p) => s + (p.confidence_gain || 0), 0);
+                        const gainNote = totalGain > 0 ? ` — up to +${totalGain.toFixed(1)}% confidence` : '';
+                        return `<div class="er-panel" style="border:1px solid ${headerColor}44; border-radius:8px; margin-bottom:0.5rem; overflow:hidden;">`
+                            + `<div class="er-panel-header" onclick="(function(h){var b=h.closest('.er-panel').querySelector('.er-panel-body');var c=h.querySelector('.er-chevron');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.textContent=open?'›':'∨';})(this)" style="padding:0.5rem 0.875rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:${headerColor}0a;">`
+                            + `<div><span style="font-size:0.78rem; font-weight:700; color:${headerColor};">${headerLabel}</span>`
+                            + `<span style="font-size:0.7rem; color:var(--text-tertiary); margin-left:0.4rem;">${items.length} item${items.length!==1?'s':''}${gainNote}</span></div>`
+                            + `<span class="er-chevron" style="font-size:1rem; color:var(--text-tertiary);">${chev}</span>`
+                            + `</div><div class="er-panel-body" style="display:${disp}; padding:0.5rem 0.875rem 0.75rem;">`
+                            + items.map(_renderItem).join('')
+                            + `</div></div>`;
+                    };
+
+                    if (hasTiers) {
+                        const immediate = smPlan.filter(p => p.tier === 'immediate');
+                        const structural = smPlan.filter(p => p.tier === 'structural');
+                        const other = smPlan.filter(p => !p.tier);
+                        planHtml = '<div style="margin-top:0.75rem;">'
+                            + `<div style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">Action Plan — ranked by confidence gain</div>`
+                            + _collapsibleSection('sm-imm', immediate, '⚡ Immediate — apply controls now', 'var(--secondary-color)', true)
+                            + _collapsibleSection('sm-str', structural, '🏗 Structural — architecture changes', 'var(--danger-color)', true)
+                            + _collapsibleSection('sm-oth', other, '📋 Other', 'var(--text-tertiary)', false)
+                            + '</div>';
+                    } else {
+                        const antiItems = smPlan.filter(p => p.is_antipattern);
+                        const mainItems = smPlan.filter(p => !p.is_antipattern);
+                        planHtml = '<div style="margin-top:0.75rem;">'
+                            + `<div style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">Action Plan — ranked by confidence gain</div>`
+                            + _collapsibleSection('sm-main', mainItems, '✅ Priority controls', 'var(--secondary-color)', true)
+                            + (antiItems.length ? _collapsibleSection('sm-anti', antiItems, '⚠ Low-effectiveness items (anti-patterns)', 'var(--text-tertiary)', false) : '')
+                            + '</div>';
+                    }
                 }
 
-                // Baseline feedback (collapsible, only when populated)
+                // Baseline feedback (collapsible, shown whenever smBF is present)
                 let bfHtml = '';
-                if (smBF && (smBF.weak_controls?.length || smBF.pattern_gaps?.length || Object.keys(smBF.rapids_weight_hints||{}).length || smBF.ground_truth_gaps?.length)) {
+                if (smBF) {
                     const bfItems = [
-                        ...(smBF.weak_controls||[]).map(c => '⚠ Weak control: ' + c),
-                        ...(smBF.pattern_gaps||[]).map(g => '🔍 Pattern gap: ' + g),
-                        ...(smBF.ground_truth_gaps||[]).map(g => '📊 Baseline gap: ' + g),
+                        ...(smBF.weak_controls||[]).map(c => ({ icon:'⚠', label:'Weak control (too generic)', text: c, col:'var(--warning-color)' })),
+                        ...(smBF.pattern_gaps||[]).map(g => ({ icon:'🔍', label:'Pattern not covered', text: g, col:'var(--primary-color)' })),
+                        ...(smBF.ground_truth_gaps||[]).map(g => {
+                            // Upgrade stale messages from older SM runs into actionable guidance
+                            let text = g;
+                            if (/very few controls detected/i.test(g) || /enriching node labels/i.test(g)) {
+                                text = 'Few security controls found in node labels. '
+                                     + 'Open 08b_recommended_target.mmd (or 08a_quick_wins.mmd if that doesn\'t exist) — '
+                                     + 'it shows the recommended controls as NEW_* nodes. '
+                                     + 'Copy those into your source .mmd, rename them '
+                                     + '(e.g. NEW_MFA → MFA[Multi-Factor Authentication]), then re-run analysis.';
+                            }
+                            return { icon:'📊', label:'Baseline gap', text, col:'var(--text-secondary)' };
+                        }),
+                        ...Object.entries(smBF.rapids_weight_hints||{}).map(([cat, delta]) => {
+                            const currentW = 1.0; // default — would need live config to show actual
+                            const newW = Math.min(2.0, Math.max(0.5, +(1.0 + delta).toFixed(2)));
+                            const catLabel = {
+                                ransomware:'Ransomware', application_vulns:'App Vulns / Exfiltration',
+                                phishing:'Phishing / Detection', insider_threat:'Insider Threat / Lateral Movement',
+                                dos:'DoS / Availability', supply_chain:'Supply Chain / Vendor'
+                            }[cat] || cat.replace(/_/g,' ');
+                            // "Apply" button serialises the config PUT inline
+                            const applyBtn = `<button onclick="(async function(){
+                                const key=localStorage.getItem('tm_api_key')||'';
+                                const payload={engine:{rapids_category_weights:{${JSON.stringify(cat)}:${newW}}}};
+                                const r=await fetch('/api/v1/config',{method:'PUT',headers:{'Content-Type':'application/json','TM-API-KEY':key},body:JSON.stringify(payload)});
+                                if(r.ok){this.textContent='✅ Applied';this.disabled=true;this.style.background='var(--secondary-color)22';this.style.color='var(--secondary-color)';this.style.borderColor='var(--secondary-color)44';}
+                                else{this.textContent='❌ Failed — check API key';}
+                            }).call(this)"
+                                style="margin-left:0.5rem; padding:0.15rem 0.55rem; border-radius:4px; border:1px solid var(--warning-color)44; background:var(--warning-color)11; color:var(--warning-color); font-size:0.68rem; cursor:pointer; white-space:nowrap;">
+                                Apply for next run (set to ${newW})
+                            </button>`;
+                            return {
+                                icon:'⚖️',
+                                label:'RAPIDS weight hint — ' + catLabel,
+                                text: `Current weight: 1.0 (equal). Suggested: ${newW} (+${(delta*100).toFixed(0)}%). `
+                                    + `On the next analysis run, the ${catLabel} threat category will contribute more to the overall risk score. `
+                                    + `This means architectures with ${catLabel.toLowerCase()} gaps will show higher risk scores and the affected attack paths will rank higher.`,
+                                col:'var(--warning-color)',
+                                extra: applyBtn,
+                            };
+                        }),
                     ];
+                    // Always render the panel when smBF exists — even if bfItems is empty,
+                    // show a "no hints" message so the user knows feedback was evaluated
+                    const bfBody = bfItems.length > 0
+                        ? bfItems.map(({ icon, label, text, col, extra }) => {
+                            // Split text into display lines for readability
+                            const lines = text.split(' — ').map(l => l.trim()).filter(Boolean);
+                            const firstLine = lines[0] || text;
+                            const restLines = lines.slice(1);
+                            return `<div style="margin-bottom:0.6rem; padding:0.5rem 0.75rem; border-radius:6px; background:var(--nav-hover-bg); border-left:3px solid ${col}44;">`
+                              + `<div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.25rem;">`
+                              + `<span style="font-size:0.9rem; flex-shrink:0;">${icon}</span>`
+                              + `<span style="font-size:0.72rem; font-weight:700; color:${col};">${label}</span>`
+                              + (extra || '')
+                              + `</div>`
+                              + `<div style="font-size:0.78rem; color:var(--text-color); font-weight:600; margin-bottom:0.15rem;">${firstLine}</div>`
+                              + restLines.map(l => `<div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.1rem; padding-left:0.25rem; border-left:2px solid ${col}22;">→ ${l}</div>`).join('')
+                              + `</div>`;
+                          }).join('')
+                        : '<div style="font-size:0.78rem; color:var(--text-tertiary); font-style:italic;">No specific engine improvements identified — baseline analysis quality looks appropriate for this architecture.</div>';
                     bfHtml = '<div class="er-panel" style="border:1px solid var(--border-color); border-radius:8px; margin-top:0.75rem; overflow:hidden;">'
                         + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\'∨\';})(this)" style="padding:0.6rem 0.9rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:var(--nav-hover-bg);">'
-                        + '<span style="font-size:0.75rem; font-weight:600; color:var(--text-secondary);">📋 Engine Improvement Hints</span>'
+                        + `<span style="font-size:0.75rem; font-weight:600; color:var(--text-secondary);">📋 Engine Improvement Hints${bfItems.length > 0 ? ' <span style="font-size:0.68rem; color:var(--warning-color);">(' + bfItems.length + ' hint' + (bfItems.length!==1?'s':'') + ')</span>' : ''}</span>`
                         + '<span class="er-chevron" style="font-size:1rem; color:var(--text-tertiary);">›</span>'
                         + '</div>'
                         + '<div class="er-panel-body" style="display:none; padding:0.5rem 0.9rem 0.75rem;">'
-                        + bfItems.map(s => `<div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem;">${s}</div>`).join('')
+                        + '<div style="font-size:0.72rem; color:var(--text-tertiary); margin-bottom:0.5rem;">These hints target the deterministic engine — not the critics. They suggest improvements to analysis quality on the next run.</div>'
+                        + bfBody
                         + '</div></div>';
                 }
 
@@ -7164,30 +7713,70 @@ class Dashboard {
                     + `<span style="font-size:0.75rem; color:var(--text-tertiary);">${smIter} iteration${smIter!==1?'s':''} · ${smImpN} impediment${smImpN!==1?'s':''} · ${smResN} resolved</span>`
                     + '</div>'
                     + '</div>'
+                    + '<div style="display:flex; align-items:center; gap:0.5rem;">'
+                    + `<button id="rerun-critic-btn-scrum_master" onclick="event.stopPropagation();window.dashboard._runSingleCritic('${archName}','scrum_master')" title="Re-run ScrumMaster independently" style="padding:0.2rem 0.55rem; border-radius:5px; border:1px solid var(--border-color); background:transparent; color:var(--text-tertiary); font-size:0.72rem; cursor:pointer; transition:all 0.15s;" onmouseover="this.style.borderColor='#a855f7';this.style.color='#a855f7'" onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'" onmousedown="this.style.transform='scale(0.93)'" onmouseup="this.style.transform=''" onmouseleave="this.style.transform=''">↻</button>`
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
+                    + '</div>'
                     + '<div class="er-panel-body" style="padding:0.75rem 1.25rem 1.25rem;">'
+
+                    // Legend — vertical list, one entry per line
+                    + '<details style="margin-bottom:0.75rem;">'
+                    + '<summary style="cursor:pointer; font-size:0.72rem; font-weight:700; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.05em; user-select:none; list-style:none; display:flex; align-items:center; gap:0.3rem;">📖 Legend <span style="font-size:0.65rem; font-weight:400;">(click to expand)</span></summary>'
+                    + '<div style="margin-top:0.4rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px; display:flex; flex-direction:column; gap:0.3rem; font-size:0.75rem;">'
+                    + '<div><span style="color:var(--secondary-color); font-weight:700;">⚡ Immediate</span> — Apply controls to the existing architecture right now. No diagram changes needed. Reduces risk while structural work is planned.</div>'
+                    + '<div><span style="color:var(--danger-color); font-weight:700;">🏗 Structural</span> — Requires adding or repositioning a component in the .mmd architecture diagram, then re-running analysis. Cannot be addressed with controls alone.</div>'
+                    + '<div><span style="color:#a855f7; font-weight:700;">🧩 0 iterations</span> — SM detected a redesign signal immediately. Re-triggering critics would not help because the gaps are structural, not a matter of misconfigured controls.</div>'
+                    + '<div><span style="color:var(--warning-color); font-weight:700;">⚠ Anti-pattern</span> — Policy reviews, awareness training, and governance frameworks rarely block attack paths. Flagged so you can deprioritise them.</div>'
+                    + '<div><span style="color:var(--primary-color); font-weight:700;">% Confidence gain</span> — Estimated recovery of Expert Review confidence if this item is fully addressed. Higher = more diagnostic signal per unit of effort.</div>'
+                    + '</div></details>'
 
                     // Confidence trajectory
                     + '<div style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">Confidence trajectory</div>'
                     + '<div style="display:flex; align-items:flex-start; gap:0.25rem; flex-wrap:wrap; margin-bottom:0.75rem;">' + trajHtml + '</div>'
 
-                    // Effort summary row
+                    // Effort summary row with no-iteration explanation
                     + '<div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:0.5rem;">'
                     + `<div><div style="font-size:0.68rem; color:var(--text-tertiary);">CRITICS RE-TRIGGERED</div><div style="font-size:0.8rem; color:var(--text-color);">${smTrigg}</div></div>`
                     + `<div><div style="font-size:0.68rem; color:var(--text-tertiary);">CONFIDENCE GAIN</div><div style="font-size:0.8rem; color:${parseFloat(smDelta)>0?'var(--secondary-color)':'var(--text-tertiary)'};">${parseFloat(smDelta)>0?'+':''}${smDelta}%</div></div>`
+                    + `<div><div style="font-size:0.68rem; color:var(--text-tertiary);">ITERATIONS</div><div style="font-size:0.8rem; color:var(--text-color);">${smIter === 0 ? '0 — redesign signal, no re-triggering attempted' : smIter}</div></div>`
                     + '</div>'
 
                     + (smNote ? `<div style="font-size:0.8125rem; color:var(--text-secondary); border-top:1px solid var(--border-color); padding-top:0.6rem; margin-top:0.25rem;">${smNote}</div>` : '')
+
+                    // Owner discussion callout (only when structural items exist)
+                    + (smRedes ? '<div style="margin-top:0.65rem; padding:0.5rem 0.75rem; background:var(--warning-color)0a; border:1px solid var(--warning-color)44; border-radius:6px; font-size:0.78rem; color:var(--text-secondary);">'
+                        + '<strong style="color:var(--warning-color);">⚠ Owner discussion needed:</strong> Structural changes may alter how legitimate users traverse the system. '
+                        + 'Review the <a href="#" onclick="window.dashboard.switchTab(\'expert-review\'); window._erFilterCritic(\'all\'); return false;" style="color:var(--primary-color); text-decoration:none;">User Journey section</a> '
+                        + 'before committing to architecture changes — some redesigns will affect user flows and require sign-off from product and business owners.'
+                        + '</div>' : '')
+
                     + planHtml
                     + bfHtml
                     + '</div></div>';
 
+            } else if (!smResult) {
+                // SM has not run — show a run button (no full Expert Review needed)
+                scrumMasterHtml = '<div class="er-synth-panel" data-synth-key="scrum_master" style="padding:0.875rem 1.25rem; background:var(--nav-hover-bg); border-radius:8px; margin-bottom:1rem; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">'
+                    + '<div><div style="font-size:0.875rem; font-weight:700; color:var(--text-tertiary);">🧩 ScrumMaster — Not run</div>'
+                    + '<div style="font-size:0.78rem; color:var(--text-tertiary);">Enable in Config → MoE / Experts, then run independently or with the next Expert Review.</div></div>'
+                    + '<button onclick="window.dashboard._runSingleCritic(\'' + archName + '\',\'scrum_master\')"'
+                    + ' style="padding:0.35rem 0.9rem; border-radius:6px; border:1px solid #a855f7; background:#a855f711;'
+                    + ' color:#a855f7; font-size:0.8rem; font-weight:600; cursor:pointer; transition:all 0.15s; white-space:nowrap;"'
+                    + ' onmousedown="this.style.transform=\'scale(0.95)\';this.style.opacity=\'0.7\'"'
+                    + ' onmouseup="this.style.transform=\'\';this.style.opacity=\'\'"'
+                    + ' onmouseleave="this.style.transform=\'\';this.style.opacity=\'\'">▶ Run ScrumMaster</button>'
+                    + '</div>';
             } else if (expertValidations['scrum_master']) {
                 // SM ran but no separate JSON — show placeholder
                 scrumMasterHtml = '<div style="padding:0.75rem 1.25rem; background:var(--nav-hover-bg); border-radius:8px; margin-bottom:1rem; border:1px dashed var(--border-color);"><span style="font-size:0.8125rem; color:var(--text-tertiary);">🧩 ScrumMaster ran — detailed results not saved. Re-run expert review to capture full output.</span></div>';
             }
             // (if neither, scrumMasterHtml stays '' — section C just won't show SM)
+            } catch (smBuildErr) {
+                scrumMasterBuildErr = smBuildErr;
+                console.error('loadExpertReviewTab: SM card build failed:', smBuildErr);
+                scrumMasterHtml = '<div style="padding:0.75rem 1.25rem; background:var(--danger-color)0a; border-radius:8px; margin-bottom:1rem; border:1px dashed var(--danger-color)44;"><span style="font-size:0.8125rem; color:var(--danger-color);">🧩 ScrumMaster result exists but could not be rendered: ' + String(smBuildErr).slice(0,200) + '. Check browser console.</span></div>';
+            }
 
             // Build synthesis footer outside template literal
             let synthFooterHtml = '';
@@ -7220,11 +7809,51 @@ class Dashboard {
                           + '</ul>'
                         : '';
                     const smList = smItems.length > 0
-                        ? '<div style="margin-top:0.5rem; padding:0.5rem 0.75rem; background:#a855f710; border:1px solid #a855f733; border-radius:6px;">'
-                          + '<div style="font-size:0.7rem; font-weight:700; color:#a855f7; margin-bottom:0.3rem;">🧩 ScrumMaster additions</div>'
-                          + '<ul style="margin:0; padding-left:1.25rem; font-size:0.8rem; color:var(--text-color);">'
-                          + smItems.map(function(i) { return '<li>' + String(i).replace(/^\[SM\] /, ''); + '</li>'; }).join('')
-                          + '</ul></div>'
+                        ? '<div style="margin-top:0.5rem; padding:0.4rem 0.75rem; background:#a855f710; border:1px solid #a855f733; border-radius:6px;">'
+                          + '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.3rem;">'
+                          + '<span style="font-size:0.7rem; font-weight:700; color:#a855f7;">🧩 ScrumMaster</span>'
+                          + '<a href="#" onclick="window._erFilterSynth(\'scrum_master\');return false;" style="font-size:0.68rem; color:#a855f7; text-decoration:none; opacity:0.7;">details →</a>'
+                          + '</div>'
+                          + smItems.map(function(sm_i) {
+                              const raw = String(sm_i)
+                                  .replace(/^\[SM\] /, '')          // strip [SM] prefix
+                                  .replace(/^\[Immediate\] /, '')    // strip [Immediate]
+                                  .replace(/^Redesign: /, '');       // strip Redesign:
+                              // Line 1: the control/action name — everything before first " — "
+                              const dashIdx = raw.indexOf(' — ');
+                              const line1 = (dashIdx > -1 ? raw.slice(0, dashIdx) : raw)
+                                  .replace(/\|.*$/, '').trim();
+                              // Line 2: first named critic evidence (e.g. "Red Team: ...")
+                              // Skip generic "Actionable now" / "Structural blindspot" sentences
+                              const tail = dashIdx > -1 ? raw.slice(dashIdx + 3) : '';
+                              const allFrags = tail.split(/\s*\+\s*/);
+                              const firstCriticFrag = allFrags.find(f =>
+                                  /^(Red Team|Architect|Tester|Purple|Blackhat)/i.test(f.trim())
+                              ) || '';
+                              const line2 = firstCriticFrag
+                                  .replace(/\|.*$/, '')
+                                  .trim();
+                              // Truncate at word boundary — never mid-word, end with proper stop
+                              const _wordTrim = (s, max) => {
+                                  if (s.length <= max) return s;
+                                  // Prefer ending at a full sentence (first '. ' within range)
+                                  const firstDot = s.indexOf('. ');
+                                  if (firstDot > 20 && firstDot <= max) return s.slice(0, firstDot + 1);
+                                  // Fall back to last word boundary
+                                  const cut = s.slice(0, max);
+                                  const lastSpace = cut.lastIndexOf(' ');
+                                  const trimmed = lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut;
+                                  return trimmed.replace(/[,;:\-–—]+$/, '').trim() + '.';
+                              };
+                              const t1 = _wordTrim(line1, 80);
+                              const t2 = line2 ? _wordTrim(line2, 72) : '';
+                              return '<div style="padding:0.15rem 0; display:flex; flex-direction:column; gap:0.05rem;">'
+                                   + '<div style="font-size:0.8rem; color:var(--text-color); display:flex; align-items:baseline; gap:0.3rem;">'
+                                   + '<span style="color:#a855f7; flex-shrink:0; font-size:0.75rem;">•</span>' + t1 + '</div>'
+                                   + (t2 ? '<div style="font-size:0.72rem; color:var(--text-tertiary); padding-left:0.85rem;">' + t2 + '</div>' : '')
+                                   + '</div>';
+                          }).join('')
+                          + '</div>'
                         : '';
                     const itemList = origList + smList;
                     // items used for SSP delta (pass all)
@@ -7386,21 +8015,31 @@ class Dashboard {
                 // Optional critics: show a "not run" card if absent
                 if (!v) {
                     if (e.isOptional) {
-                        const notRunNote = e.key === 'blackhat'
-                            ? 'Not run — enable in Config → MoE → Blackhat Critic (Layer 2E) and re-run Expert Review'
+                        // Check if this critic is enabled in config (can be run independently)
+                        const _cfgEnabled = {
+                            blackhat:    window._erpCfg?.blackhat_enabled,
+                            purple_team: window._erpCfg?.purple_team_enabled,
+                        }[e.key];
+                        const configNote = e.key === 'blackhat'
+                            ? 'Enable in Config → MoE → Blackhat Critic (Layer 2E) or run independently below.'
                             : e.key === 'purple_team'
-                            ? 'Not run — enable in Config → MoE → Purple Team Critic (Layer 2D) and re-run Expert Review'
-                            : 'Not run — enable in Config and re-run Expert Review';
-                        expertPanelCards += '<div class="er-panel er-critic-panel" data-critic-key="' + e.key + '" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow:hidden; opacity:0.55;">'
-                            + '<div style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center;">'
+                            ? 'Enable in Config → MoE → Purple Team Critic (Layer 2D) or run independently below.'
+                            : 'Enable in Config or run independently below.';
+                        const runBtnId = 'run-critic-btn-' + e.key;
+                        expertPanelCards += '<div class="er-panel er-critic-panel" data-critic-key="' + e.key + '" id="erp-notrun-' + e.key + '" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow:hidden;">'
+                            + '<div style="padding: 0.875rem 1.25rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">'
                             + '<div style="display:flex; align-items:center; gap:0.75rem;">'
-                            + '<span style="font-size:1.5rem;">' + e.icon + '</span>'
+                            + '<span style="font-size:1.5rem; opacity:0.5;">' + e.icon + '</span>'
                             + '<div><div style="font-weight:700; color:var(--text-tertiary);">' + e.label + '</div>'
-                            + '<div style="font-size:0.8125rem; color:var(--text-tertiary);">' + e.role + '</div></div>'
+                            + '<div style="font-size:0.78rem; color:var(--text-tertiary);">' + configNote + '</div></div>'
                             + '</div>'
-                            + '<div style="font-size:0.8125rem; color:var(--text-tertiary); font-style:italic;">' + notRunNote + '</div>'
-                            + '</div>'
-                            + '</div>';
+                            + '<button id="' + runBtnId + '" onclick="window.dashboard._runSingleCritic(\'' + archName + '\',\'' + e.key + '\')"'
+                            + ' style="padding:0.35rem 0.9rem; border-radius:6px; border:1px solid var(--primary-color); background:var(--primary-color)11;'
+                            + ' color:var(--primary-color); font-size:0.8rem; font-weight:600; cursor:pointer; transition:all 0.15s; white-space:nowrap;"'
+                            + ' onmousedown="this.style.transform=\'scale(0.95)\';this.style.opacity=\'0.7\'"'
+                            + ' onmouseup="this.style.transform=\'\';this.style.opacity=\'\'"'
+                            + ' onmouseleave="this.style.transform=\'\';this.style.opacity=\'\'">▶ Run now</button>'
+                            + '</div></div>';
                     }
                     continue;
                 }
@@ -7640,11 +8279,19 @@ class Dashboard {
                     + '<div><div style="font-weight: 700; color: var(--text-color);">' + e.label + '</div>'
                     + '<div style="font-size: 0.8125rem; color: var(--text-secondary); line-height:1.4; max-width:38rem;">' + e.role + '</div></div>'
                     + '</div>'
-                    + '<div style="display:flex; align-items:center; gap:1rem;">'
+                    + '<div style="display:flex; align-items:center; gap:0.75rem;">'
                     + '<div style="text-align: right;">'
                     + '<div style="font-size: 1.125rem; font-weight: 700; color: ' + (adjNum2 < 0 ? 'var(--warning-color)' : adjNum2 === 0 ? 'var(--text-tertiary)' : 'var(--secondary-color)') + ';">' + sign + adj + '%</div>'
                     + '<div style="font-size: 0.75rem; font-weight: 600; color: ' + color + ';" title="' + statusExplain + '">' + statusText + '</div>'
                     + '</div>'
+                    // Re-run button — runs this critic standalone, re-synthesises MoE + SM after
+                    + '<button id="rerun-critic-btn-' + e.key + '" onclick="event.stopPropagation();window.dashboard._runSingleCritic(\'' + archName + '\',\'' + e.key + '\')"'
+                    + ' title="Re-run ' + e.label + ' without rerunning all other critics"'
+                    + ' style="padding:0.2rem 0.55rem; border-radius:5px; border:1px solid var(--border-color); background:transparent;'
+                    + ' color:var(--text-tertiary); font-size:0.72rem; cursor:pointer; white-space:nowrap; transition:all 0.15s;"'
+                    + ' onmouseover="this.style.borderColor=\'var(--primary-color)\';this.style.color=\'var(--primary-color)\'"'
+                    + ' onmouseout="this.style.borderColor=\'var(--border-color)\';this.style.color=\'var(--text-tertiary)\'"'
+                    + ' onmousedown="this.style.transform=\'scale(0.93)\'" onmouseup="this.style.transform=\'\'" onmouseleave="this.style.transform=\'\'">↻</button>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div></div>'
                     + bodyHtml
@@ -8994,6 +9641,8 @@ class Dashboard {
             'node_penalty_factor','edge_penalty_factor','max_complexity_penalty',
             'base_confidence','temperature_synthesis','min_failure_probability','temperature',
             'did_reduction_factor','did_bonus_factor',
+            // RAPIDS category weights — leaf field names after dot-path resolution
+            'ransomware','application_vulns','phishing','insider_threat','dos','supply_chain',
         ]);
 
         // Boolean fields: select values arrive as strings "true"/"false".
@@ -9013,15 +9662,28 @@ class Dashboard {
         const payload = {};
         document.querySelectorAll('#config-sections [data-section][data-field]').forEach(el => {
             const section = el.dataset.section;
-            const field   = el.dataset.field;
+            const field   = el.dataset.field;   // may be dot-path: "rapids_category_weights.ransomware"
             const raw     = el.value;
+            // Resolve field value type using the leaf name (last segment after last dot)
+            const leafField = field.includes('.') ? field.split('.').pop() : field;
             let value;
-            if (el.dataset.vtype === 'int' || INT_FIELDS.has(field))       value = parseInt(raw, 10);
-            else if (el.dataset.vtype === 'float' || FLOAT_FIELDS.has(field)) value = parseFloat(raw);
-            else if (BOOL_FIELDS.has(field))                                value = (raw === 'true');
+            if (el.dataset.vtype === 'int' || INT_FIELDS.has(leafField))       value = parseInt(raw, 10);
+            else if (el.dataset.vtype === 'float' || FLOAT_FIELDS.has(leafField)) value = parseFloat(raw);
+            else if (BOOL_FIELDS.has(leafField))                                value = (raw === 'true');
             else value = raw;
             if (!payload[section]) payload[section] = {};
-            payload[section][field] = value;
+            // Support nested dot-paths by building nested objects
+            if (field.includes('.')) {
+                const parts = field.split('.');
+                let cursor = payload[section];
+                for (let i = 0; i < parts.length - 1; i++) {
+                    if (!cursor[parts[i]]) cursor[parts[i]] = {};
+                    cursor = cursor[parts[i]];
+                }
+                cursor[parts[parts.length - 1]] = value;
+            } else {
+                payload[section][field] = value;
+            }
         });
         return payload;
     }
@@ -9178,6 +9840,84 @@ class Dashboard {
                 ],
                 desc:'Maximum total risk points attributable to all attack paths combined.',
                 effects: ef('Lower cap = many paths cannot keep escalating risk','Moderate','Moderate','None') },
+            ]
+          },
+          {
+            title: '⚖️ RAPIDS Category Weights',
+            subtitle: 'Per-category risk multipliers for the RAPIDS threat scoring average. Default 1.0 = equal weight. Apply ScrumMaster engine hints here to re-score specific threat types on the next analysis run.',
+            fields: [
+              { section:'engine', field:'rapids_category_weights.ransomware', label:'Ransomware / Encryption',
+                vtype:'select',
+                options:[
+                  {v:'0.5',  label:'0.5 — Low (de-emphasise ransomware risk)'},
+                  {v:'0.8',  label:'0.8 — Below average'},
+                  {v:'1.0',  label:'1.0 — Default equal weight (recommended)', rec:true},
+                  {v:'1.2',  label:'1.2 — Above average'},
+                  {v:'1.5',  label:'1.5 — High emphasis'},
+                ],
+                desc:'Weight multiplier for the Ransomware threat category in RAPIDS risk averaging. A ScrumMaster hint of "+10%" means set this to 1.1.',
+                effects: ef('Higher = ransomware risk contributes more to overall risk score','Affects risk score and attack path prioritisation','Raises severity estimates','None') },
+
+              { section:'engine', field:'rapids_category_weights.application_vulns', label:'Application Vulnerabilities / Exfiltration',
+                vtype:'select',
+                options:[
+                  {v:'0.5',  label:'0.5 — Low'},
+                  {v:'0.8',  label:'0.8 — Below average'},
+                  {v:'1.0',  label:'1.0 — Default equal weight (recommended)', rec:true},
+                  {v:'1.2',  label:'1.2 — Above average'},
+                  {v:'1.5',  label:'1.5 — High emphasis'},
+                ],
+                desc:'Weight for Application Vulnerabilities. Also covers exfiltration risk. Raise if critics found significant unaddressed app-layer or data-exfiltration gaps.',
+                effects: ef('Higher = app vuln risk scores more heavily','More app-path ranking','Raises estimates','None') },
+
+              { section:'engine', field:'rapids_category_weights.phishing', label:'Phishing / Social Engineering / Detection Gaps',
+                vtype:'select',
+                options:[
+                  {v:'0.5',  label:'0.5 — Low'},
+                  {v:'0.8',  label:'0.8 — Below average'},
+                  {v:'1.0',  label:'1.0 — Default equal weight (recommended)', rec:true},
+                  {v:'1.2',  label:'1.2 — Above average'},
+                  {v:'1.5',  label:'1.5 — High emphasis'},
+                ],
+                desc:'Weight for Phishing. Also covers behavioural detection gaps flagged by Purple Team. Raise if UEBA or user-baseline gaps were found.',
+                effects: ef('Higher = phishing + detection risk scores more heavily','','Raises estimates','None') },
+
+              { section:'engine', field:'rapids_category_weights.insider_threat', label:'Insider Threat / Lateral Movement / Privilege Escalation',
+                vtype:'select',
+                options:[
+                  {v:'0.5',  label:'0.5 — Low'},
+                  {v:'0.8',  label:'0.8 — Below average'},
+                  {v:'1.0',  label:'1.0 — Default equal weight (recommended)', rec:true},
+                  {v:'1.1',  label:'1.1 — +10% (ScrumMaster hint)'},
+                  {v:'1.2',  label:'1.2 — Above average'},
+                  {v:'1.5',  label:'1.5 — High emphasis'},
+                ],
+                desc:'Weight for Insider Threat. This category also covers lateral movement and privilege escalation risk — SM hints for those map here. Raise if Blackhat found shared pivot nodes or if microsegmentation gaps were flagged.',
+                effects: ef('Higher = insider/lateral/privilege risk scores more heavily','Affects path ranking for internal-movement paths','Raises overall risk score','None') },
+
+              { section:'engine', field:'rapids_category_weights.dos', label:'Denial of Service / Availability',
+                vtype:'select',
+                options:[
+                  {v:'0.5',  label:'0.5 — Low'},
+                  {v:'0.8',  label:'0.8 — Below average'},
+                  {v:'1.0',  label:'1.0 — Default equal weight (recommended)', rec:true},
+                  {v:'1.2',  label:'1.2 — Above average'},
+                  {v:'1.5',  label:'1.5 — High emphasis'},
+                ],
+                desc:'Weight for DoS / availability risk. Raise for internet-facing services or when availability is a primary security objective (e.g. critical national infrastructure).',
+                effects: ef('Higher = availability risk scores more heavily','','Raises estimates','None') },
+
+              { section:'engine', field:'rapids_category_weights.supply_chain', label:'Supply Chain / Third-Party / Vendor',
+                vtype:'select',
+                options:[
+                  {v:'0.5',  label:'0.5 — Low'},
+                  {v:'0.8',  label:'0.8 — Below average'},
+                  {v:'1.0',  label:'1.0 — Default equal weight (recommended)', rec:true},
+                  {v:'1.2',  label:'1.2 — Above average'},
+                  {v:'1.5',  label:'1.5 — High emphasis'},
+                ],
+                desc:'Weight for Supply Chain risk. Raise if the architecture has significant third-party dependencies, external APIs, or vendor-managed components not modelled as diagram nodes.',
+                effects: ef('Higher = supply chain risk scores more heavily','','Raises estimates','None') },
             ]
           },
           {
@@ -9957,6 +10697,7 @@ class Dashboard {
         // Add data-cfg-cat attribute to each section card via wrapper
         const sectionCatMap = {
             '🔍 Analysis Engine':                        'engine',
+            '⚖️ RAPIDS Category Weights':               'engine',
             '📊 Confidence Calculation':                 'confidence',
             '🧑‍🏫 MoE — Base Settings':                 'moe',
             '🏛️ MoE — Architect Critic (Layer 2A)':     'moe',
@@ -10022,7 +10763,17 @@ class Dashboard {
 
         const rows = sectionDef.fields.map(f => {
             const sectionData = data[f.section] || {};
-            const currentVal  = sectionData[f.field] !== undefined ? String(sectionData[f.field]) : '';
+            // Resolve dot-path fields (e.g. "rapids_category_weights.ransomware")
+            let currentVal = '';
+            if (f.field.includes('.')) {
+                let cursor = sectionData;
+                for (const part of f.field.split('.')) {
+                    cursor = (cursor && cursor[part] !== undefined) ? cursor[part] : undefined;
+                }
+                currentVal = cursor !== undefined ? String(cursor) : '';
+            } else {
+                currentVal = sectionData[f.field] !== undefined ? String(sectionData[f.field]) : '';
+            }
             let inputHtml;
 
             if (f.vtype === 'select') {

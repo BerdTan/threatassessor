@@ -163,6 +163,58 @@ async def list_reports(architecture_name: str):
     }
 
 
+@router.post("/reports/{architecture_name}/add-to-adr")
+async def add_sm_action_to_adr(
+    architecture_name: str,
+    payload: dict,
+    _: str = Depends(verify_api_key),
+):
+    """Append a ScrumMaster action item as a new SM-ADR entry in 10_adr_report.md.
+
+    Body: {"action": str, "rationale": str, "priority": str, "first_step": str}
+    """
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+
+    report_dir = get_report_dir() / architecture_name
+    adr_path = report_dir / "10_adr_report.md"
+
+    action    = str(payload.get("action",    "")).strip()
+    rationale = str(payload.get("rationale", "")).strip()
+    priority  = str(payload.get("priority",  "high")).strip()
+    first_step = str(payload.get("first_step","")).strip()
+
+    if not action:
+        raise HTTPException(status_code=400, detail="action is required")
+
+    # Read existing ADR to find highest SM-ADR-XX index
+    existing = ""
+    if adr_path.exists():
+        existing = adr_path.read_text(encoding="utf-8")
+
+    import re
+    existing_indices = [int(m) for m in re.findall(r"SM-ADR-(\d+)", existing)]
+    next_idx = (max(existing_indices) + 1) if existing_indices else 1
+    entry_id = f"SM-ADR-{next_idx:02d}"
+
+    import datetime
+    entry = (
+        f"\n\n## {entry_id} [{priority.upper()}] — {action}\n\n"
+        f"**Status:** OPEN — added via ScrumMaster action plan  \n"
+        f"**Added:** {datetime.date.today().isoformat()}  \n"
+        f"**Source:** ScrumMaster harmony synthesis\n\n"
+        + (f"**Context:** {rationale}\n\n" if rationale else "")
+        + (f"**First step:** {first_step}\n\n" if first_step else "")
+        + "_→ Verify this control is reflected in the architecture diagram and re-run analysis to confirm coverage._\n\n---\n"
+    )
+
+    with open(adr_path, "a", encoding="utf-8") as f:
+        f.write(entry)
+
+    return {"status": "ok", "entry_id": entry_id, "architecture": architecture_name}
+
+
 @router.delete("/reports/{architecture_name}")
 async def delete_report(architecture_name: str, _: str = Depends(verify_api_key)):
     """

@@ -784,6 +784,163 @@ async def expert_review_stream(
     )
 
 
+@router.get("/run-critic")
+async def run_single_critic(
+    architecture_name: str = Query(..., description="Architecture name (must match an existing analysis)"),
+    critic: str = Query(..., description="Critic to run: architect | tester | red_team | purple_team | blackhat | scrum_master"),
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Run a single critic (or ScrumMaster) on an existing analysis without re-running the full pipeline.
+
+    Streams SSE progress events. Requires ground_truth.json and 07_moe_orchestrator.json to exist.
+    Useful for running optional critics (purple_team, blackhat, scrum_master) after enabling them
+    in Configuration, without re-running all three core critics.
+
+    SSE events: progress, complete, error
+    """
+    VALID_CRITICS = {"architect", "tester", "red_team", "purple_team", "blackhat", "scrum_master"}
+    if critic not in VALID_CRITICS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid critic '{critic}'. Must be one of: {', '.join(sorted(VALID_CRITICS))}"
+        )
+
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid architecture_name")
+
+    return StreamingResponse(
+        _run_single_critic_progress(architecture_name, critic),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+async def _run_single_critic_progress(architecture_name: str, critic: str):
+    """SSE generator for running a single critic or ScrumMaster."""
+    report_dir = _report_base_dir() / architecture_name
+
+    try:
+        gt_path = report_dir / "ground_truth.json"
+        if not gt_path.exists():
+            yield await SSEStream.send_error("Prerequisites missing",
+                f"Run analysis first — ground_truth.json not found for '{architecture_name}'")
+            return
+
+        critic_label = {
+            "architect": "🏛️ Architect", "tester": "🔬 Tester", "red_team": "🎯 Red Team",
+            "purple_team": "🟣 Purple Team", "blackhat": "⚔️ Blackhat", "scrum_master": "🧩 ScrumMaster",
+        }.get(critic, critic)
+
+        yield await SSEStream.send_progress("running", 5, f"Starting {critic_label}…")
+        await asyncio.sleep(0.1)
+
+        loop = asyncio.get_event_loop()
+
+        if critic == "scrum_master":
+            # ScrumMaster needs 07_moe_orchestrator.json + ground_truth.json
+            moe_path = report_dir / "07_moe_orchestrator.json"
+            if not moe_path.exists():
+                yield await SSEStream.send_error("Prerequisites missing",
+                    "Run Expert Review first — 07_moe_orchestrator.json not found")
+                return
+
+            yield await SSEStream.send_progress("scrum_master", 10, "Loading MoE results…")
+            await asyncio.sleep(0.1)
+
+            def _run_sm():
+                import json as _j
+                from chatbot.modules.agents.orchestrators.moe_orchestrator import run_moe_pipeline
+                from chatbot.modules.harness_stages import ScrumMasterStage
+                from chatbot.modules.harness import PipelineContext
+                gt = _j.load(open(gt_path))
+                # Load existing MoE result (fast — reads from saved JSON, no LLM)
+                moe_result = run_moe_pipeline(str(report_dir))
+                stage = ScrumMasterStage()
+                ctx = PipelineContext({
+                    "moe_result": moe_result,
+                    "report_dir": str(report_dir),
+                    "ground_truth": gt,
+                })
+                stage.run(ctx)
+                return ctx.get("scrum_master_result")
+
+            yield await SSEStream.send_progress("scrum_master", 20, f"{critic_label}: Analysing impediments…")
+            sm_result = await loop.run_in_executor(None, _run_sm)
+            yield await SSEStream.send_progress("scrum_master", 95, f"{critic_label}: Harmony synthesis complete")
+            await asyncio.sleep(0.1)
+            yield await SSEStream.send_complete({
+                "critic": critic,
+                "architecture": architecture_name,
+                "result": sm_result.to_dict() if sm_result and hasattr(sm_result, 'to_dict') else {}
+            })
+
+        else:
+            # Run a single MoE critic via run_targeted
+            from chatbot.config.settings import load_settings as _reload_cfg
+            _cfg = _reload_cfg()
+            base_conf = _cfg.moe.base_confidence
+
+            yield await SSEStream.send_progress(critic, 15, f"{critic_label}: Starting critique…")
+            await asyncio.sleep(0.1)
+
+            def _run_critic():
+                from chatbot.modules.agents.orchestrators.moe_orchestrator import MoEOrchestrator
+                orch = MoEOrchestrator()
+                return orch.run_targeted(
+                    report_dir=str(report_dir),
+                    critics_to_run=[critic],
+                    new_proposals_context={},
+                    base_confidence=base_conf,
+                )
+
+            yield await SSEStream.send_progress(critic, 25, f"{critic_label}: Calling LLM…")
+            moe_result = await loop.run_in_executor(None, _run_critic)
+            yield await SSEStream.send_progress(critic, 75, f"{critic_label}: Complete — MoE synthesis updated")
+            await asyncio.sleep(0.1)
+
+            # ── Run SM automatically if enabled ──────────────────────────────
+            _sm_enabled = getattr(getattr(_cfg, 'scrum_master', None), 'enabled', False)
+            if _sm_enabled:
+                yield await SSEStream.send_progress("scrum_master", 80, "🧩 ScrumMaster: re-harmonising with updated results…")
+                await asyncio.sleep(0.1)
+                try:
+                    import json as _j
+                    _gt = _j.load(open(gt_path))
+                    from chatbot.modules.harness_stages import ScrumMasterStage
+                    from chatbot.modules.harness import PipelineContext
+                    _sm_stage = ScrumMasterStage()
+                    _sm_ctx = PipelineContext({
+                        "moe_result": moe_result,
+                        "report_dir": str(report_dir),
+                        "ground_truth": _gt,
+                    })
+                    await loop.run_in_executor(None, lambda: _sm_stage.run(_sm_ctx))
+                    yield await SSEStream.send_progress("scrum_master", 95, "🧩 ScrumMaster: harmony synthesis complete")
+                    await asyncio.sleep(0.1)
+                except Exception as sm_exc:
+                    logger.warning(f"run_single_critic: SM step failed: {sm_exc}")
+
+            # Return the specific critic's ValidationResult + updated confidence
+            _vr_map = {
+                "architect": "architect_result", "tester": "tester_result",
+                "red_team": "red_team_result", "purple_team": "purple_team_result",
+                "blackhat": "blackhat_result",
+            }
+            vr = getattr(moe_result, _vr_map.get(critic, "architect_result"), None)
+            yield await SSEStream.send_complete({
+                "critic": critic,
+                "architecture": architecture_name,
+                "result": vr.to_dict() if vr else {},
+                "final_confidence": moe_result.final_confidence,
+            })
+
+    except Exception as e:
+        logger.exception(f"run_single_critic error ({critic})")
+        yield await SSEStream.send_error("Critic run failed", str(e))
+
+
 @router.delete("/expert-review/cancel")
 async def expert_review_cancel(
     architecture_name: str = Query(..., description="Architecture name to cancel and purge"),

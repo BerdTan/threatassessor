@@ -110,10 +110,14 @@ class ValidationResult:
     original_score: int  # Original expert score (for reference)
     breakdown: Dict = None  # Sub-dimension scores (for UI display)
     reasoning: str = ""  # 2-3 sentence "so what" topliner for the dashboard card
+    # Performance telemetry carried from CritiqueScore
+    perf: Dict = None   # {llm_calls, llm_tokens, llm_cost_usd, llm_latency_s, llm_model, wall_clock_s}
 
     def __post_init__(self):
         if self.breakdown is None:
             self.breakdown = {}
+        if self.perf is None:
+            self.perf = {}
 
     def to_dict(self) -> Dict:
         """Convert to dictionary."""
@@ -163,6 +167,13 @@ class MoEResult:
     target_risk: int = 0
     risk_reduction: int = 0
 
+    # Pipeline performance telemetry
+    # pipeline_perf: {
+    #   pipeline_wall_clock_s, total_llm_tokens, total_llm_cost_usd,
+    #   critics: {architect: {llm_calls, tokens, cost, latency_s, model, wall_s}, ...}
+    # }
+    pipeline_perf: Dict = None
+
     # Improvement options (sourced from Red Team roadmap, not hardcoded)
     quick_wins: Dict = None
     recommended: Dict = None
@@ -175,6 +186,8 @@ class MoEResult:
             self.contradictions = []
         if self.mode_tradeoffs is None:
             self.mode_tradeoffs = []
+        if self.pipeline_perf is None:
+            self.pipeline_perf = {}
         if self.quick_wins is None:
             self.quick_wins = {}
         if self.recommended is None:
@@ -233,6 +246,7 @@ class MoEResult:
             },
             "critic_mode": self.critic_mode,
             "mode_tradeoffs": self.mode_tradeoffs,
+            "pipeline_perf": self.pipeline_perf or {},
         }
 
     def _interpret_confidence(self) -> str:
@@ -338,6 +352,9 @@ class MoEOrchestrator:
             base_confidence = _moe_cfg.base_confidence
         if critic_mode is None:
             critic_mode = _moe_cfg.critic_mode
+
+        import time as _time
+        _pipeline_start = _time.time()
 
         report_path = Path(report_dir)
         architecture_name = report_path.name
@@ -700,6 +717,36 @@ class MoEOrchestrator:
         logger.info(f"MoE Pipeline: COMPLETE - {final_confidence:.1f}% confidence")
         logger.info(f"MoE Pipeline: Generated 16/16 files (ground_truth + 1 dashboard + 6 JSON + 4 MD + 4 MMD)")
 
+        # ── Populate pipeline_perf from ValidationResult.perf fields ─────────
+        _pipeline_elapsed = _time.time() - _pipeline_start
+        _critics_perf: dict = {}
+        _total_tokens = 0
+        _total_cost   = 0.0
+
+        for _cname, _vr in [
+            ("architect",   result.architect_result),
+            ("tester",      result.tester_result),
+            ("red_team",    result.red_team_result),
+            ("purple_team", result.purple_team_result),
+            ("blackhat",    result.blackhat_result),
+        ]:
+            if _vr and _vr.perf:
+                _critics_perf[_cname] = dict(_vr.perf)
+                _total_tokens += _vr.perf.get("llm_tokens", 0)
+                _total_cost   += _vr.perf.get("llm_cost_usd", 0.0)
+
+        result.pipeline_perf = {
+            "pipeline_wall_clock_s": round(_pipeline_elapsed, 2),
+            "total_llm_tokens":      _total_tokens,
+            "total_llm_cost_usd":    round(_total_cost, 6),
+            "critic_count":          len(_critics_perf),
+            "critics":               _critics_perf,
+        }
+        logger.info(
+            f"MoE Pipeline: perf — {_pipeline_elapsed:.1f}s wall | "
+            f"{_total_tokens} tokens | ${_total_cost:.4f}"
+        )
+
         return result
 
     # =========================================================================
@@ -910,6 +957,19 @@ class MoEOrchestrator:
 
         return results["architect"], results["tester"], results["red_team"]
 
+    @staticmethod
+    def _attach_perf(vr: ValidationResult, critique: "CritiqueScore") -> ValidationResult:
+        """Copy CritiqueScore performance telemetry into the ValidationResult.perf dict."""
+        vr.perf = {
+            "llm_calls":     getattr(critique, "llm_calls",     0),
+            "llm_tokens":    getattr(critique, "llm_tokens",    0),
+            "llm_cost_usd":  getattr(critique, "llm_cost_usd",  0.0),
+            "llm_latency_s": getattr(critique, "llm_latency_s", 0.0),
+            "llm_model":     getattr(critique, "llm_model",     ""),
+            "wall_clock_s":  getattr(critique, "wall_clock_s",  0.0),
+        }
+        return vr
+
     def _process_architect_validation(self, critique: CritiqueScore) -> ValidationResult:
         """
         Process Architect critique into validation result.
@@ -946,7 +1006,7 @@ class MoEOrchestrator:
                 "verification": item.get("verification_method", "Manual review")
             })
 
-        return ValidationResult(
+        return self._attach_perf(ValidationResult(
             expert_name="Architect",
             validation_status=status,
             confidence_adjustment=adjustment,
@@ -955,7 +1015,7 @@ class MoEOrchestrator:
             recommendations=recommendations,
             original_score=critique.score,
             reasoning=critique.reasoning or "",
-        )
+        ), critique)
 
     def _process_tester_validation(self, critique: CritiqueScore) -> ValidationResult:
         """
@@ -1023,7 +1083,7 @@ class MoEOrchestrator:
                 "verification": item.get("verification_method", "Manual review")
             })
 
-        return ValidationResult(
+        return self._attach_perf(ValidationResult(
             expert_name="Tester",
             validation_status=status,
             confidence_adjustment=adjustment,
@@ -1033,7 +1093,7 @@ class MoEOrchestrator:
             original_score=critique.score,
             breakdown=raw_breakdown,
             reasoning=critique.reasoning or "",
-        )
+        ), critique)
 
     def _process_red_team_validation(self, critique: CritiqueScore) -> ValidationResult:
         """
@@ -1074,7 +1134,7 @@ class MoEOrchestrator:
                     "verification": "Red Team penetration test"
                 })
 
-        return ValidationResult(
+        return self._attach_perf(ValidationResult(
             expert_name="Red Team",
             validation_status=status,
             confidence_adjustment=adjustment,
@@ -1083,7 +1143,7 @@ class MoEOrchestrator:
             recommendations=recommendations,
             original_score=critique.score,
             reasoning=critique.reasoning or "",
-        )
+        ), critique)
 
     def _calculate_final_confidence(
         self,
@@ -1801,6 +1861,13 @@ Reply with only the JSON array, no other text.
                 gaps=data.get("gaps", []),
                 strengths=data.get("strengths", []),
                 improvement_roadmap=data.get("improvement_roadmap", []),
+                # Restore perf telemetry if present in the saved file
+                llm_calls    =data.get("llm_calls",     0),
+                llm_tokens   =data.get("llm_tokens",    0),
+                llm_cost_usd =data.get("llm_cost_usd",  0.0),
+                llm_latency_s=data.get("llm_latency_s", 0.0),
+                llm_model    =data.get("llm_model",     ""),
+                wall_clock_s =data.get("wall_clock_s",  0.0),
             )
         except Exception as e:
             logger.warning(f"Could not load saved critique from {path}: {e}")

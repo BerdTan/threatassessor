@@ -898,10 +898,27 @@ def calculate_overall_risk_score(
     - Attack path count (moderate risk increase)
     - Control coverage (minor risk adjustment)
     """
-    # Average RAPIDS risk (baseline threat level)
-    # Filter out metadata keys (start with _)
-    rapids_risks = [cat["risk"] for key, cat in rapids_assessment.items() if not key.startswith("_") and isinstance(cat, dict) and "risk" in cat]
-    avg_rapids_risk = sum(rapids_risks) / len(rapids_risks) if rapids_risks else 60
+    # Weighted RAPIDS average (baseline threat level).
+    # Per-category multipliers come from engine.rapids_category_weights —
+    # default 1.0 each (equal weight). Adjust via Config tab or by applying
+    # ScrumMaster engine hints to emphasise under-scored threat types.
+    _weights = get_settings().engine.rapids_category_weights
+    _weight_map = {
+        "ransomware":       _weights.ransomware,
+        "application_vulns": _weights.application_vulns,
+        "phishing":         _weights.phishing,
+        "insider_threat":   _weights.insider_threat,
+        "dos":              _weights.dos,
+        "supply_chain":     _weights.supply_chain,
+    }
+    weighted_sum = 0.0
+    total_weight = 0.0
+    for key, cat in rapids_assessment.items():
+        if not key.startswith("_") and isinstance(cat, dict) and "risk" in cat:
+            w = _weight_map.get(key, 1.0)
+            weighted_sum += cat["risk"] * w
+            total_weight += w
+    avg_rapids_risk = (weighted_sum / total_weight) if total_weight > 0 else 60
 
     # Defense-in-depth modifier (MAJOR impact)
     did_score = calculate_defense_in_depth_score(controls_present)

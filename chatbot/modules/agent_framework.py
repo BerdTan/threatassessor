@@ -16,7 +16,8 @@ VERSION: 1.2 - Refactored to use BaseAgent hierarchy
 
 import json
 import logging
-from dataclasses import dataclass, asdict
+import time
+from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Callable, Optional, Any
 
 from chatbot.modules.base_agent import BaseAgent, AgentResult
@@ -61,6 +62,15 @@ class CritiqueScore:
     strengths: List[str]  # What was done well
     improvement_roadmap: List[Dict]  # How to increase score (priority-ordered)
     reasoning: str = ""  # 2-3 sentence "so what" from the LLM — shown as topliner in UI
+
+    # ── Performance telemetry (populated by CriticAgent.critique()) ─────────
+    # llm_calls: number of LLM round-trips (1 normally; >1 if tool-use or retries)
+    llm_calls: int = 0
+    llm_tokens: int = 0          # total tokens (prompt + completion)
+    llm_cost_usd: float = 0.0   # estimated cost
+    llm_latency_s: float = 0.0  # wall-clock seconds for all LLM calls combined
+    llm_model: str = ""          # exact model string used
+    wall_clock_s: float = 0.0   # total time for the full critique() call (parse + LLM)
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -125,6 +135,7 @@ class CriticAgent(BaseAgent):
 
         Returns: CritiqueScore with structured findings
         """
+        _wall_start = time.time()
         logger.info(f"{self.role}: Starting critique")
 
         # 1. Format prompt with ground truth data
@@ -136,6 +147,11 @@ class CriticAgent(BaseAgent):
         tool_schemas = None  # [tool.to_litellm_schema() for tool in self.tools] if self.tools else None
 
         # 3. Call LLM without tools (MVP1 simplification)
+        _llm_tokens = 0
+        _llm_cost   = 0.0
+        _llm_latency = 0.0
+        _llm_model  = self.model or ""
+        _llm_calls  = 0
         try:
             # If model is None, LLMClient uses .env defaults (LLM_PROVIDER, BEDROCK_MODEL, etc.)
             logger.info(f"{self.role}: Calling LLM (model={self.model}, tools disabled for MVP1)")
@@ -147,6 +163,11 @@ class CriticAgent(BaseAgent):
                 temperature=0.3,  # Lower for consistent scoring
                 max_tokens=4000
             )
+            _llm_calls   += 1
+            _llm_tokens  += getattr(response, 'tokens_used', 0) or 0
+            _llm_cost    += getattr(response, 'cost_usd', 0.0) or 0.0
+            _llm_latency += getattr(response, 'latency_seconds', 0.0) or 0.0
+            _llm_model    = getattr(response, 'model', self.model or "") or _llm_model
             logger.info(f"{self.role}: LLM call completed - Response type: {type(response)}")
             logger.info(f"{self.role}: Response attributes: {dir(response)[:10]}...")  # First 10 to avoid spam
         except Exception as e:
@@ -178,6 +199,7 @@ class CriticAgent(BaseAgent):
         # Normalize roadmap to realistic target (85-95, not >100)
         normalized_roadmap = self._normalize_roadmap(raw_roadmap, current_score)
 
+        _wall_elapsed = time.time() - _wall_start
         score = CritiqueScore(
             role=self.role,
             score=current_score,
@@ -188,9 +210,18 @@ class CriticAgent(BaseAgent):
             strengths=critique_data.get("strengths", []),
             improvement_roadmap=normalized_roadmap,
             reasoning=critique_data.get("reasoning", ""),
+            llm_calls=_llm_calls,
+            llm_tokens=_llm_tokens,
+            llm_cost_usd=round(_llm_cost, 6),
+            llm_latency_s=round(_llm_latency, 3),
+            llm_model=_llm_model,
+            wall_clock_s=round(_wall_elapsed, 3),
         )
 
-        logger.info(f"{self.role}: Critique complete - Score: {score.score}/{score.max_score} ({score.rating})")
+        logger.info(
+            f"{self.role}: Critique complete — Score: {score.score}/{score.max_score} ({score.rating}) "
+            f"| {score.llm_tokens} tokens | ${score.llm_cost_usd:.4f} | {score.wall_clock_s:.1f}s"
+        )
         return score
 
     def _format_prompt(self, ground_truth: Dict) -> str:

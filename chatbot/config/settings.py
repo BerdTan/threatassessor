@@ -22,6 +22,21 @@ USER_CONFIG_PATH = CONFIG_DIR / "user_config.json"
 # Section models
 # ---------------------------------------------------------------------------
 
+class RAPIDSCategoryWeights(BaseModel):
+    """Per-category multipliers for RAPIDS risk averaging (default 1.0 = equal weight).
+
+    Range 0.5–2.0 per category. A value of 1.1 means that category contributes
+    +10% more to the overall risk score. Apply ScrumMaster engine hints here
+    to make the baseline engine score specific threat types more aggressively.
+    """
+    ransomware:       float = Field(default=1.0, ge=0.5, le=2.0, description="Ransomware / encryption attack threat weight")
+    application_vulns: float = Field(default=1.0, ge=0.5, le=2.0, description="Application vulnerability / exfiltration threat weight")
+    phishing:         float = Field(default=1.0, ge=0.5, le=2.0, description="Phishing / social engineering / detection gap weight")
+    insider_threat:   float = Field(default=1.0, ge=0.5, le=2.0, description="Insider threat / lateral movement / privilege escalation weight")
+    dos:              float = Field(default=1.0, ge=0.5, le=2.0, description="Denial-of-service / availability threat weight")
+    supply_chain:     float = Field(default=1.0, ge=0.5, le=2.0, description="Supply chain / third-party / vendor risk weight")
+
+
 class AnalysisEngineSettings(BaseModel):
     max_paths: int = Field(default=10, ge=1, le=50,
         description="Maximum attack paths explored during BFS graph traversal")
@@ -49,6 +64,11 @@ class AnalysisEngineSettings(BaseModel):
         description="Risk points added per discovered attack path")
     path_risk_cap: int = Field(default=15, ge=0, le=50,
         description="Maximum total risk points from attack paths combined")
+    rapids_category_weights: RAPIDSCategoryWeights = Field(
+        default_factory=RAPIDSCategoryWeights,
+        description="Per-category RAPIDS risk multipliers. Adjust to reflect architecture-specific "
+                    "threat relevance. Apply ScrumMaster engine hints here for the next analysis run."
+    )
 
     @model_validator(mode="after")
     def check_weight_sum(self) -> "AnalysisEngineSettings":
@@ -537,13 +557,18 @@ def save_settings(new_settings: AppSettings) -> None:
     """Persist only non-default values to user_config.json and update the singleton."""
     global _settings
     with _lock:
-        defaults = AppSettings()
+        defaults_dict  = AppSettings().model_dump()
+        new_dict       = new_settings.model_dump()  # fully serialised (no nested models)
         diff: dict = {}
-        for section_name, section_model in new_settings:
-            default_section = getattr(defaults, section_name)
+        for section_name, new_section in new_dict.items():
+            default_section = defaults_dict.get(section_name, {})
+            if not isinstance(new_section, dict) or not isinstance(default_section, dict):
+                if new_section != default_section:
+                    diff[section_name] = new_section
+                continue
             section_diff: dict = {}
-            for field_name, value in section_model:
-                if value != getattr(default_section, field_name):
+            for field_name, value in new_section.items():
+                if value != default_section.get(field_name):
                     section_diff[field_name] = value
             if section_diff:
                 diff[section_name] = section_diff
