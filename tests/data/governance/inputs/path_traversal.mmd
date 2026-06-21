@@ -1,0 +1,7 @@
+graph TD
+    Upload["File Upload Service"]
+    Processor["../../etc/passwd"]
+    Storage["Local Filesystem"]
+
+    Upload --> Processor
+    Processor --> Storage

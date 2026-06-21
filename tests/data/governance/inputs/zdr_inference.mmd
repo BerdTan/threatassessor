@@ -1,0 +1,9 @@
+graph TD
+    UserInput["User Input"]
+    LLM["LLM Inference (Claude)"]
+    ExternalWebhook["External Webhook (SendGrid)"]
+    DB[("Internal DB")]
+
+    UserInput --> LLM
+    LLM --> ExternalWebhook
+    LLM --> DB

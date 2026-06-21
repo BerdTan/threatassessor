@@ -1,0 +1,16 @@
+{
+  "final_confidence": 71.0,
+  "base_confidence": 89.0,
+  "synthesis_quality": "FALLBACK",
+  "expert_validations": {
+    "architect": {"score": 92, "verdict": "PASS"},
+    "tester":    {"score": 44, "verdict": "MAJOR_GAPS"},
+    "red_team":  {"score": 38, "verdict": "MAJOR_GAPS"}
+  },
+  "consensus_recommendations": [
+    {"action": "Patch SQL injection in AppServer", "priority": "critical", "source": "tester+red_team", "contested": true},
+    {"action": "Add WAF rules for LLM output", "priority": "high", "source": "architect", "contested": false},
+    {"action": "Rotate db_pass credential", "priority": "critical", "source": "red_team", "contested": true},
+    {"action": "Enforce MFA on all admin paths", "priority": "high", "source": "tester", "contested": true}
+  ]
+}

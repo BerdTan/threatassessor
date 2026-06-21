@@ -1,0 +1,22 @@
+{
+  "architecture_name": "all_dims_smoke",
+  "rapids_assessment": {
+    "ransomware": 55,
+    "application_vulns": 70,
+    "phishing": 40,
+    "insider_threat": 50,
+    "dos": 30,
+    "supply_chain": 60
+  },
+  "control_recommendations": [
+    {"control": "WAF", "priority": "high"},
+    {"control": "MFA", "priority": "high"},
+    {"control": "SIEM", "priority": "medium"}
+  ],
+  "expected_attack_paths": [],
+  "metadata": {
+    "node_count": 7,
+    "edge_count": 6,
+    "analyst_note": "Architecture submitted by S9876543C on behalf of team. Contact: lead@example.com. db_pass: ProdSecret2026!"
+  }
+}

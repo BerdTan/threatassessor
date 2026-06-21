@@ -1,0 +1,15 @@
+graph TD
+    Browser["Web Browser"]
+    WAF["WAF / CDN"]
+    AppServer["Application Server"]
+    AuthService["Auth Service"]
+    DB[("PostgreSQL DB")]
+    Cache["Redis Cache"]
+    S3["Object Storage"]
+
+    Browser --> WAF
+    WAF --> AppServer
+    AppServer --> AuthService
+    AppServer --> DB
+    AppServer --> Cache
+    AppServer --> S3

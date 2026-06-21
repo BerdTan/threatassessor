@@ -142,9 +142,9 @@ class CriticAgent(BaseAgent):
         prompt = self._format_prompt(ground_truth)
 
         # 2. Convert tools to LiteLLM format
-        # MVP1: Disable tools for now - LLM prefers to ask for tools rather than directly answer
-        # Full tool execution in MVP2+
-        tool_schemas = None  # [tool.to_litellm_schema() for tool in self.tools] if self.tools else None
+        # Tools disabled by default (_tools_enabled=False). Set to True on subclass to enable.
+        _tools_enabled = getattr(self, "_tools_enabled", False)
+        tool_schemas = [t.to_litellm_schema() for t in self.tools] if (self.tools and _tools_enabled) else None
 
         # 3. Call LLM without tools (MVP1 simplification)
         _llm_tokens = 0
@@ -451,9 +451,16 @@ SCORING GUIDANCE:
                 logger.warning(f"{self.role}: Unknown tool: {tool_name}")
                 continue
 
-            # Execute tool
+            # Execute tool (wrapped by governance adapter if present)
+            fn = tool.function
+            governance_adapter = getattr(self, "_governance_adapter", None)
+            if governance_adapter is not None:
+                try:
+                    fn = governance_adapter.wrap_capability(fn, "tool", self.role)
+                except Exception:
+                    pass  # governance wrap failure is non-fatal
             try:
-                result = tool.function(**tool_args)
+                result = fn(**tool_args)
                 results.append({
                     "tool": tool_name,
                     "result": result

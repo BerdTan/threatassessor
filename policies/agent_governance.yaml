@@ -1,0 +1,186 @@
+# ThreatAssessor Agent Governance Policy v1.0
+#
+# Loaded only when governance.agt_enabled = true AND agent-governance-toolkit is installed.
+# InhouseGovernanceAdapter ignores this file and applies equivalent logic in Python.
+#
+# Actions: audit (log + continue) | deny (block + raise) | require_approval (pause + notify)
+# Dimensions mapped to OWASP Agentic Top 10 (2025)
+
+rules:
+
+  # ── Dimension 1: Exploitation (A01 Prompt Injection, A03 Data/Model Poisoning) ──
+
+  - id: exploit-001
+    description: "Audit injection patterns in MMD node labels"
+    owasp: [A01, A03]
+    arc: [INT, SAF]
+    atlas_tactic: AML.TA0001
+    condition: "exploitation.injection_patterns | length > 0"
+    action: audit
+    severity: MEDIUM
+
+  - id: exploit-002
+    description: "Deny oversized node labels (>512 chars) — potential prompt stuffing"
+    owasp: [A01]
+    arc: [INT]
+    atlas_tactic: AML.TA0001
+    condition: "exploitation.oversized_labels > 0"
+    action: deny
+    severity: CRITICAL
+
+  - id: exploit-003
+    description: "Deny path traversal sequences in node IDs or labels"
+    owasp: [A03]
+    arc: [SAF]
+    atlas_tactic: AML.TA0001
+    condition: "exploitation.path_traversal | length > 0"
+    action: deny
+    severity: CRITICAL
+
+  # ── Dimension 2: Manipulation (A09 Misinformation, A05 Insecure Output) ──
+
+  - id: manip-001
+    description: "Audit high critic score divergence (possible conflicting expert signals)"
+    owasp: [A09]
+    arc: [TRANS, ACC]
+    atlas_tactic: AML.TA0009
+    condition: "manipulation.critic_divergence_score > 30"
+    action: audit
+    severity: MEDIUM
+
+  - id: manip-002
+    description: "Require approval when orchestrator falls back to partial synthesis"
+    owasp: [A09, A05]
+    arc: [TRANS]
+    atlas_tactic: AML.TA0009
+    condition: "manipulation.fallback_triggered == true"
+    action: require_approval
+    severity: HIGH
+    approvers: ["security-lead"]
+
+  - id: manip-003
+    description: "Audit large confidence swing between base and final"
+    owasp: [A09]
+    arc: [ACC]
+    atlas_tactic: AML.TA0009
+    condition: "manipulation.confidence_swing > 20"
+    action: audit
+    severity: LOW
+
+  # ── Dimension 3: Data Leakage (A03 Sensitive Info, A06 Excessive Agency) ──
+
+  - id: leak-001
+    description: "Deny PII indicators (NRIC, email, phone) detected in analysis artifact"
+    owasp: [A03]
+    arc: [PRIV]
+    atlas_tactic: AML.TA0007
+    condition: "leakage.pii_indicators | length > 0"
+    action: deny
+    severity: HIGH
+
+  - id: leak-002
+    description: "Deny credential keywords detected in analysis artifact"
+    owasp: [A03, A06]
+    arc: [SEC]
+    atlas_tactic: AML.TA0007
+    condition: "leakage.sensitive_keywords | length > 0"
+    action: deny
+    severity: CRITICAL
+
+  - id: leak-003
+    description: "Audit stale data sources (>90 days) — risk of poisoned intelligence"
+    owasp: [A03]
+    arc: [SEC]
+    atlas_tactic: AML.TA0007
+    condition: "leakage.supply_chain_stale_sources | length > 0"
+    action: audit
+    severity: MEDIUM
+
+  # ── Dimension 4: Cross-Identity (A02 Agent Auth Failures, A06 Excessive Agency) ──
+
+  - id: identity-001
+    description: "Audit critic tool call overreach signals"
+    owasp: [A06]
+    arc: [ACC]
+    atlas_tactic: AML.TA0006
+    condition: "identity.overreach_signals | length > 0"
+    action: audit
+    severity: MEDIUM
+
+  - id: identity-002
+    description: "Audit context bleed between critic agents"
+    owasp: [A02]
+    arc: [FAIR]
+    atlas_tactic: AML.TA0006
+    condition: "identity.context_bleed_signals | length > 0"
+    action: audit
+    severity: MEDIUM
+
+  - id: identity-003
+    description: "Deny CRITICAL tool errors (may indicate compromised capability)"
+    owasp: [A02, A06]
+    arc: [ACC]
+    atlas_tactic: AML.TA0006
+    condition: "identity.tool_errors | selectattr('severity', 'eq', 'CRITICAL') | list | length > 0"
+    action: deny
+    severity: CRITICAL
+
+  - id: identity-004
+    description: "Audit critic modules with unexpected file hashes vs git HEAD"
+    owasp: [A02]
+    arc: [ACC, FAIR]
+    atlas_tactic: AML.TA0006
+    condition: "identity.supply_chain_modified_modules | length > 0"
+    action: audit
+    severity: HIGH
+
+  # ── Dimension 5: Sovereignty (A07 Data Privacy, A08 Excessive Permissions) ──
+
+  - id: sov-001
+    description: "Audit cloud region identifiers detected in architecture node labels"
+    owasp: [A07]
+    arc: [PRIV, SEC]
+    atlas_tactic: AML.TA0010
+    condition: "sovereignty.cross_boundary_nodes | length > 0"
+    action: audit
+    severity: LOW
+
+  - id: sov-002
+    description: "Deny if ZDR/data-residency signal detected with HIGH+ severity"
+    owasp: [A07, A08]
+    arc: [PRIV, SOC]
+    atlas_tactic: AML.TA0010
+    condition: "sovereignty.zdr_signals | length > 0 and sovereignty.severity in ['HIGH', 'CRITICAL']"
+    action: deny
+    severity: HIGH
+
+  - id: sov-003
+    description: "Audit inference-to-external-service data flow paths"
+    owasp: [A07]
+    arc: [PRIV, SEC]
+    atlas_tactic: AML.TA0015
+    condition: "sovereignty.zdr_signals | length > 0"
+    action: audit
+    severity: MEDIUM
+
+  - id: sov-004
+    description: "Require approval if explicit boundary violations are detected"
+    owasp: [A07, A08]
+    arc: [PRIV, SEC, SOC]
+    atlas_tactic: AML.TA0015
+    condition: "sovereignty.boundary_violations | length > 0"
+    action: require_approval
+    severity: HIGH
+    approvers: ["data-protection-officer"]
+
+audit_log:
+  enabled: true
+  merkle_chain: true
+  output: "logs/governance_audit.jsonl"
+
+metadata:
+  version: "1.0"
+  framework_mappings:
+    owasp_agentic: "OWASP Top 10 for LLM Applications (Agentic, 2025)"
+    arc: "AI Risk Classification Framework (ARC)"
+    atlas: "MITRE ATLAS (Adversarial Threat Landscape for AI Systems)"

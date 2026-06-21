@@ -279,6 +279,13 @@ class ThreatAssessorHarness:
         # Forward any extra kwargs into ctx (e.g. architecture_name, include_validation)
         ctx.update(kwargs)
 
+        # Inject governance adapter so QualityStage reuses the same instance
+        try:
+            from chatbot.modules.harness_governance import get_governance_adapter
+            ctx["_governance_adapter"] = get_governance_adapter()
+        except ImportError:
+            pass
+
         stages = list(self.stages)
 
         if enable_moe and not any(s.name == "critics" for s in stages):
@@ -322,9 +329,9 @@ def _api_only() -> List[PipelineStage]:
 @register_scenario(ScenarioConfig.FULL_MOE)
 def _full_moe() -> List[PipelineStage]:
     from chatbot.modules.harness_stages import (
-        AnalysisStage, ReportStage, CriticStage, ScrumMasterStage,
+        AnalysisStage, ReportStage, QualityStage, CriticStage, ScrumMasterStage,
     )
-    return [AnalysisStage(), ReportStage(), CriticStage(), ScrumMasterStage()]
+    return [AnalysisStage(), ReportStage(), QualityStage(), CriticStage(), ScrumMasterStage()]
 
 
 @register_scenario(ScenarioConfig.BACKTEST)

@@ -1,0 +1,9 @@
+graph TD
+    DI["Dependency Injection Container"]
+    AppService["Application Service"]
+    ConfigLoader["inject config values"]
+    DB[("PostgreSQL DB")]
+
+    DI --> AppService
+    AppService --> ConfigLoader
+    ConfigLoader --> DB

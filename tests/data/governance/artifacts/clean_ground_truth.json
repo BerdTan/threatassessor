@@ -1,0 +1,20 @@
+{
+  "architecture_name": "clean_test",
+  "rapids_assessment": {
+    "ransomware": 30,
+    "application_vulns": 40,
+    "phishing": 25,
+    "insider_threat": 20,
+    "dos": 15,
+    "supply_chain": 35
+  },
+  "control_recommendations": [
+    {"control": "WAF", "priority": "high"},
+    {"control": "MFA", "priority": "high"}
+  ],
+  "expected_attack_paths": [],
+  "metadata": {
+    "node_count": 6,
+    "edge_count": 5
+  }
+}

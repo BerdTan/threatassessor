@@ -1,0 +1,7 @@
+graph TD
+    AppServer["Application Server (ap-southeast-1)"]
+    DB[("Primary DB (ap-southeast-1)")]
+    Backup[("Backup (australiaeast)")]
+
+    AppServer --> DB
+    DB --> Backup

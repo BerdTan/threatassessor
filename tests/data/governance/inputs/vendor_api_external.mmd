@@ -1,0 +1,9 @@
+graph TD
+    UserInput["User Input"]
+    LLMService["LLM Service"]
+    VendorAPI["Vendor API"]
+    InternalDB[("Internal DB")]
+
+    UserInput --> LLMService
+    LLMService --> VendorAPI
+    LLMService --> InternalDB

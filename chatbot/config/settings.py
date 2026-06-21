@@ -497,6 +497,26 @@ class BlackhatSettings(BaseModel):
         return self
 
 
+class GovernanceSettings(BaseModel):
+    agt_enabled: bool = Field(
+        default=False,
+        description="Enable AGT policy engine (requires: pip install agent-governance-toolkit). "
+                    "When False, InhouseGovernanceAdapter runs instead.",
+    )
+    mcp_governance_enabled: bool = Field(
+        default=False,
+        description="Govern MCP outbound capability calls via wrap_capability() (disabled by default).",
+    )
+    policy_path: str = Field(
+        default="policies/agent_governance.yaml",
+        description="Path to the AGT YAML policy file. Ignored when agt_enabled=False.",
+    )
+    save_signals_per_run: bool = Field(
+        default=True,
+        description="Write governance_signals.json to each report directory after every pipeline run.",
+    )
+
+
 class AppSettings(BaseModel):
     engine: AnalysisEngineSettings = Field(default_factory=AnalysisEngineSettings)
     confidence: ConfidenceSettings = Field(default_factory=ConfidenceSettings)
@@ -515,6 +535,7 @@ class AppSettings(BaseModel):
     purple_team: PurpleTeamSettings = Field(default_factory=PurpleTeamSettings)
     blackhat: BlackhatSettings = Field(default_factory=BlackhatSettings)
     scrum_master: "ScrumMasterSettings" = Field(default_factory=lambda: ScrumMasterSettings())
+    governance: GovernanceSettings = Field(default_factory=GovernanceSettings)
 
 
 # ---------------------------------------------------------------------------

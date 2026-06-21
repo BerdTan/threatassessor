@@ -1,0 +1,14 @@
+{
+  "final_confidence": 81.0,
+  "base_confidence": 89.0,
+  "synthesis_quality": "PARTIAL",
+  "expert_validations": {
+    "architect": {"score": 92, "verdict": "PASS"},
+    "tester":    {"score": 55, "verdict": "MINOR_GAPS"},
+    "red_team":  {"score": 40, "verdict": "MAJOR_GAPS"}
+  },
+  "consensus_recommendations": [
+    {"action": "Patch SQL injection", "priority": "critical", "source": "red_team+tester", "contested": true},
+    {"action": "Add logging", "priority": "medium", "source": "architect", "contested": false}
+  ]
+}

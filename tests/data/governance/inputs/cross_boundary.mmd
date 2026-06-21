@@ -1,0 +1,9 @@
+graph TD
+    AppServer["Application Server (ap-southeast-1)"]
+    SGDB[("Primary DB (ap-southeast-1)")]
+    USBackup[("Backup DB (us-east-1)")]
+    CDN["CloudFront CDN (us-east-1)"]
+
+    AppServer --> SGDB
+    SGDB --> USBackup
+    AppServer --> CDN

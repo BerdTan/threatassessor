@@ -1,0 +1,14 @@
+{
+  "final_confidence": 74.0,
+  "base_confidence": 89.0,
+  "synthesis_quality": "FALLBACK",
+  "expert_validations": {
+    "architect": {"score": 90, "verdict": "PASS"},
+    "tester":    {"score": 45, "verdict": "MAJOR_GAPS"},
+    "red_team":  {"score": 80, "verdict": "MEDIUM"}
+  },
+  "consensus_recommendations": [
+    {"action": "Fix input validation", "priority": "critical", "source": "tester", "contested": true},
+    {"action": "Add WAF", "priority": "high", "source": "architect", "contested": false}
+  ]
+}

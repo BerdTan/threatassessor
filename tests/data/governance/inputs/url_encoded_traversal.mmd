@@ -1,0 +1,7 @@
+graph TD
+    Upload["File Upload"]
+    Processor["..%2fetc%2fpasswd"]
+    Storage["Local Filesystem"]
+
+    Upload --> Processor
+    Processor --> Storage

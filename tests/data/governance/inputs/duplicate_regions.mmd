@@ -1,0 +1,9 @@
+graph TD
+    Primary[("Primary DB (us-east-1)")]
+    Replica1[("Replica A (us-east-1)")]
+    Replica2[("Replica B (us-east-1)")]
+    App["App Server"]
+
+    App --> Primary
+    App --> Replica1
+    App --> Replica2

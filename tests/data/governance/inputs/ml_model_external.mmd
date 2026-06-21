@@ -1,0 +1,11 @@
+graph TD
+    UserInput["User Input"]
+    AIEngine["AI Engine"]
+    MLModel["ML Model (inference)"]
+    VendorAPI["Vendor API"]
+    InternalDB[("Internal DB")]
+
+    UserInput --> AIEngine
+    AIEngine --> MLModel
+    MLModel --> VendorAPI
+    MLModel --> InternalDB

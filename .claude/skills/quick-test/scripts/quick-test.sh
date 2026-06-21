@@ -65,9 +65,7 @@ r = requests.get('https://openrouter.ai/api/v1/models',
 assert r.status_code == 200, f'Models endpoint: {r.status_code}'
 print(f'  Connected ({len(r.json()[\"data\"])} models available)')
 
-from chatbot.modules import embeddings as emb_mod
-from chatbot.modules.mitre_embeddings import get_embedding_model
-model = get_embedding_model()
+from chatbot.modules.embeddings import DEFAULT_EMBEDDING_MODEL as model
 t0 = time.time()
 resp = requests.post('https://openrouter.ai/api/v1/embeddings',
     headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},

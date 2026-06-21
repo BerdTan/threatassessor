@@ -1,0 +1,21 @@
+{
+  "architecture_name": "stale_test",
+  "rapids_assessment": {
+    "ransomware": 30,
+    "application_vulns": 40,
+    "phishing": 25,
+    "insider_threat": 20,
+    "dos": 15,
+    "supply_chain": 35
+  },
+  "control_recommendations": [],
+  "expected_attack_paths": [],
+  "metadata": {
+    "node_count": 4,
+    "edge_count": 3,
+    "data_sources": [
+      {"file": "enterprise-attack.json", "age_days": 120},
+      {"file": "technique_embeddings.json", "age_days": 95}
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "architecture_name": "email_only_test",
+  "rapids_assessment": {
+    "ransomware": 30,
+    "application_vulns": 40,
+    "phishing": 25,
+    "insider_threat": 20,
+    "dos": 15,
+    "supply_chain": 35
+  },
+  "control_recommendations": [],
+  "expected_attack_paths": [],
+  "metadata": {
+    "node_count": 3,
+    "edge_count": 2,
+    "analyst_note": "Submitted by reviewer@example.com and user@test.org for review"
+  }
+}

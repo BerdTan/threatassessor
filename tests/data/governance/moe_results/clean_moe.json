@@ -1,0 +1,14 @@
+{
+  "final_confidence": 91.5,
+  "base_confidence": 89.0,
+  "synthesis_quality": "FULL",
+  "expert_validations": {
+    "architect": {"score": 88, "verdict": "PASS"},
+    "tester":    {"score": 85, "verdict": "PASS"},
+    "red_team":  {"score": 82, "verdict": "PASS"}
+  },
+  "consensus_recommendations": [
+    {"action": "Add WAF", "priority": "high", "source": "architect", "contested": false},
+    {"action": "Enable MFA", "priority": "high", "source": "tester", "contested": false}
+  ]
+}

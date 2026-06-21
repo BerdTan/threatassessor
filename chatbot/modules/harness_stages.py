@@ -26,6 +26,12 @@ class AnalysisStage(PipelineStage):
     def _logic(self, ctx: PipelineContext, **kw) -> PipelineContext:
         from chatbot.services import ThreatAnalysisService
 
+        # Capture raw MMD content before service call (used by QualityStage)
+        try:
+            ctx["_raw_mmd_content"] = Path(ctx["architecture_path"]).read_text(errors="replace")
+        except Exception:
+            ctx["_raw_mmd_content"] = ""
+
         service = ThreatAnalysisService()
         safe_kw = {}
         if ctx.get("architecture_name"):
@@ -303,3 +309,57 @@ class ScrumMasterStage(PipelineStage):
             _log.info("ScrumMasterStage: regenerated 08_improvement_summary.md")
         except Exception as exc:
             _log.warning(f"ScrumMasterStage: could not regenerate improvement summary: {exc}")
+
+
+class QualityStage(PipelineStage):
+    """Governance checks on input MMD and ground_truth artifact.
+
+    Optional — never fatal. Writes governance_signals.json to report_dir and
+    stores the signals dict in ctx["governance_signals"] for SSE emission.
+    Blocks the pipeline only if exploitation.severity == CRITICAL and blocked == True
+    (by appending to ctx.errors, which halts a required-stage check upstream).
+    """
+
+    name = "quality"
+    required = False
+
+    def _logic(self, ctx: PipelineContext, **kw) -> PipelineContext:
+        try:
+            from chatbot.modules.harness_governance import (
+                get_governance_adapter,
+                save_governance_signals,
+            )
+        except ImportError:
+            return ctx  # governance module absent — skip silently
+
+        try:
+            adapter = ctx.get("_governance_adapter") or get_governance_adapter()
+
+            input_sig = adapter.check_input(
+                ctx.get("_raw_mmd_content", ""),
+                ctx.get("architecture_path", ""),
+            )
+            artifact_sig = adapter.check_artifact(ctx.get("ground_truth", {}))
+            merged = input_sig.merge(artifact_sig)
+            merged.architecture_name = ctx.get("architecture_name", "")
+
+            ctx["governance_signals"] = merged.to_dict()
+
+            from chatbot.config.settings import get_settings
+            if get_settings().governance.save_signals_per_run and ctx.get("report_dir"):
+                save_governance_signals(merged, ctx["report_dir"])
+
+            # Only surface as pipeline error on CRITICAL blocked input
+            if merged.exploitation.get("severity") == "CRITICAL" and merged.exploitation.get("blocked"):
+                patterns = merged.exploitation.get("injection_patterns", []) or \
+                           merged.exploitation.get("path_traversal", [])
+                ctx.errors.append(f"quality: input blocked — {patterns[:3]}")
+
+            if cb := kw.get("progress_callback"):
+                cb("quality", 60, f"Governance check — risk: {merged.overall_risk_level}")
+
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(f"QualityStage failed (non-fatal): {exc}")
+
+        return ctx
