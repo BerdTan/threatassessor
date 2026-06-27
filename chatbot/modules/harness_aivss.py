@@ -217,9 +217,9 @@ class AIVSSFlowScorer:
         coverage = 0
 
         exploit = governance_signals.get("exploitation", {})
-        d3 = governance_signals.get("data_leakage", {})
-        d4 = governance_signals.get("identity_integrity", {})
-        d5 = governance_signals.get("data_sovereignty", {})
+        d3 = governance_signals.get("leakage", {})
+        d4 = governance_signals.get("identity", {})
+        d5 = governance_signals.get("sovereignty", {})
 
         cs_subs: Dict[str, float] = {}
         if exploit.get("path_traversal"):
@@ -276,8 +276,8 @@ class AIVSSFlowScorer:
         metrics: Dict[str, AIVSSMetricScore] = {}
         coverage = 0
 
-        d2 = governance_signals.get("manipulation_resistance", {})
-        d4 = governance_signals.get("identity_integrity", {})
+        d2 = governance_signals.get("manipulation", {})
+        d4 = governance_signals.get("identity", {})
 
         aa_subs: Dict[str, float] = {}
         if d2.get("confidence_swing_detected"):
@@ -339,9 +339,9 @@ class AIVSSFlowScorer:
         metrics: Dict[str, AIVSSMetricScore] = {}
         coverage = 0
 
-        d3 = governance_signals.get("data_leakage", {})
-        d4 = governance_signals.get("identity_integrity", {})
-        d5 = governance_signals.get("data_sovereignty", {})
+        d3 = governance_signals.get("leakage", {})
+        d4 = governance_signals.get("identity", {})
+        d5 = governance_signals.get("sovereignty", {})
 
         ds_subs: Dict[str, float] = {}
         pii = d3.get("pii_indicators", [])
@@ -492,7 +492,7 @@ class AIVSSFlowScorer:
         )
         per_threat = self.score_per_threat(ground_truth)
 
-        identity = governance_signals.get("identity_integrity", {})
+        identity = governance_signals.get("identity", {})
         per_agent: Dict[str, AIVSSFlowScore] = {}
         for critic in ["architect", "tester", "red_team", "purple_team", "blackhat"]:
             agent_score = self.score_per_agent(critic, identity, moe_result)

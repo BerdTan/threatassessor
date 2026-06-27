@@ -18,10 +18,10 @@ from chatbot.modules.harness_aivss import (
 def clean_signals():
     return {
         "exploitation": {"severity": "LOW", "injection_patterns": [], "path_traversal": [], "homoglyph_count": 0, "url_encoded_count": 0},
-        "manipulation_resistance": {"severity": "LOW", "confidence_swing_detected": False, "divergence_detected": False},
-        "data_leakage": {"severity": "LOW", "pii_indicators": [], "supply_chain_risk": False},
-        "identity_integrity": {"severity": "LOW", "tool_errors": [], "critic_tool_calls": {}, "supply_chain_modified_modules": False},
-        "data_sovereignty": {"severity": "LOW", "cross_boundary_nodes": []},
+        "manipulation": {"severity": "LOW", "confidence_swing_detected": False, "divergence_detected": False},
+        "leakage": {"severity": "LOW", "pii_indicators": [], "supply_chain_risk": False},
+        "identity": {"severity": "LOW", "tool_errors": [], "critic_tool_calls": {}, "supply_chain_modified_modules": False},
+        "sovereignty": {"severity": "LOW", "cross_boundary_nodes": []},
     }
 
 
@@ -41,7 +41,7 @@ def injection_signals(clean_signals):
 @pytest.fixture
 def pii_signals(clean_signals):
     s = dict(clean_signals)
-    s["data_leakage"] = {
+    s["leakage"] = {
         "severity": "HIGH",
         "pii_indicators": ["S1234567A", "john@example.com"],
         "supply_chain_risk": False,
@@ -151,12 +151,12 @@ class TestInbound:
 
     def test_sovereignty_adds_gv(self, scorer, clean_signals):
         signals = dict(clean_signals)
-        signals["data_sovereignty"] = {"severity": "MEDIUM", "cross_boundary_nodes": ["SG→AU"]}
+        signals["sovereignty"] = {"severity": "MEDIUM", "cross_boundary_nodes": ["SG→AU"]}
         result = scorer.score_inbound(signals)
         assert "GV" in result.metrics
 
     def test_coverage_pct_increases_with_signals(self, scorer, injection_signals):
-        clean_result = scorer.score_inbound({"exploitation": {}, "data_leakage": {}, "identity_integrity": {}, "data_sovereignty": {}, "manipulation_resistance": {}})
+        clean_result = scorer.score_inbound({"exploitation": {}, "leakage": {}, "identity": {}, "sovereignty": {}, "manipulation": {}})
         inject_result = scorer.score_inbound(injection_signals)
         assert inject_result.coverage_pct >= clean_result.coverage_pct
 
@@ -172,14 +172,14 @@ class TestInternal:
 
     def test_confidence_swing_populates_aa_dc(self, scorer, clean_signals):
         signals = dict(clean_signals)
-        signals["manipulation_resistance"] = {"severity": "HIGH", "confidence_swing_detected": True, "divergence_detected": False}
+        signals["manipulation"] = {"severity": "HIGH", "confidence_swing_detected": True, "divergence_detected": False}
         result = scorer.score_internal(signals)
         assert "AA" in result.metrics
         assert "DC" in result.metrics
 
     def test_tool_errors_populate_gv_ll(self, scorer, clean_signals):
         signals = dict(clean_signals)
-        signals["identity_integrity"] = {"severity": "MEDIUM", "tool_errors": ["architect: PermissionError"], "critic_tool_calls": {}, "supply_chain_modified_modules": False}
+        signals["identity"] = {"severity": "MEDIUM", "tool_errors": ["architect: PermissionError"], "critic_tool_calls": {}, "supply_chain_modified_modules": False}
         result = scorer.score_internal(signals)
         assert "GV" in result.metrics
         assert "LL" in result.metrics
@@ -208,7 +208,7 @@ class TestOutbound:
 
     def test_sovereignty_adds_ei(self, scorer, clean_signals):
         signals = dict(clean_signals)
-        signals["data_sovereignty"] = {"severity": "HIGH", "cross_boundary_nodes": ["SG→US"]}
+        signals["sovereignty"] = {"severity": "HIGH", "cross_boundary_nodes": ["SG→US"]}
         result = scorer.score_outbound(signals)
         assert "EI" in result.metrics
 
@@ -350,10 +350,10 @@ class TestAgentGate:
 def traversal_signals_for_gate():
     return {
         "exploitation": {"severity": "CRITICAL", "injection_patterns": [], "path_traversal": ["../../etc"], "homoglyph_count": 0, "url_encoded_count": 0},
-        "manipulation_resistance": {"severity": "LOW"},
-        "data_leakage": {"severity": "LOW", "pii_indicators": []},
-        "identity_integrity": {"severity": "LOW", "tool_errors": [], "critic_tool_calls": {}},
-        "data_sovereignty": {"severity": "LOW", "cross_boundary_nodes": []},
+        "manipulation": {"severity": "LOW"},
+        "leakage": {"severity": "LOW", "pii_indicators": []},
+        "identity": {"severity": "LOW", "tool_errors": [], "critic_tool_calls": {}},
+        "sovereignty": {"severity": "LOW", "cross_boundary_nodes": []},
     }
 
 
