@@ -11482,74 +11482,6 @@ class Dashboard {
                 effects: ef('N/A','Larger = accepts bigger diagrams','None','None') },
             ]
           },
-          {
-            title: '🔀 Agent Model Routing',
-            subtitle: 'Per-agent primary model and fallback chain. Leave blank to use the active LLM provider from .env (LLM_PROVIDER / BEDROCK_MODEL / OPENROUTER_MODEL). API keys always stay in .env — never set here. Fallbacks are tried in order on failure; any use is flagged as a pipeline warning.',
-            renderFn: (data) => {
-              const agentSwarm = data.agent_models || {};
-              const provChain  = (data._provider_chain || {}).provider_chain || '';
-              // Derive the env default model label from provider chain
-              const envDefault = provChain ? `env default (${provChain.split('→')[0].trim()})` : 'env default (LLM_PROVIDER)';
-              const inp = `width:100%; padding:0.35rem 0.55rem; border:1px solid var(--border-color); border-radius:5px; background:#1e293b; color:#e2e8f0; font-size:0.8rem; box-sizing:border-box;`;
-              const agents = [
-                { key:'architect',        icon:'🏛️', label:'Architect',       layer:'2A', desc:'Validates threat model design quality and structural completeness.' },
-                { key:'tester',           icon:'🧪', label:'Tester',           layer:'2B', desc:'Validates MITRE technique mappings and internal consistency.' },
-                { key:'red_team',         icon:'🔴', label:'Red Team',         layer:'2C', desc:'Validates exploit difficulty and control bypass feasibility.' },
-                { key:'purple_team',      icon:'🟣', label:'Purple Team',      layer:'2D', desc:'Validates detection chain coverage and TM/ADR operability.' },
-                { key:'blackhat',         icon:'⚔️', label:'Blackhat',         layer:'2E', desc:'Supreme critic — cross-path chain analysis with all prior context.' },
-                { key:'moe_orchestrator', icon:'⚙️', label:'MoE Orchestrator', layer:'L3', desc:'Impartial synthesis and consensus across all critics.' },
-                { key:'scrum_master',     icon:'🧩', label:'ScrumMaster',      layer:'SM', desc:'Meta-critic that resolves impediments and drives re-triggering.' },
-                { key:'storycaster',      icon:'📖', label:'StoryCaster',      layer:'ST', desc:'Generates user journey stories (LLM enrichment path).' },
-                { key:'threat_analyst',   icon:'🔍', label:'Threat Analyst',   layer:'TA', desc:'Deterministic RAPIDS engine — source of truth for all critics.' },
-              ];
-              return `<div style="display:flex; flex-direction:column; gap:0.75rem; padding:0.25rem 0;">` +
-                agents.map(a => {
-                  const cfg = agentSwarm[a.key] || {};
-                  const modelVal    = cfg.model    || '';
-                  const fallbackVal = Array.isArray(cfg.fallbacks) ? cfg.fallbacks.join(', ') : (cfg.fallbacks || '');
-                  const isConfigured = !!modelVal;
-                  const badge = isConfigured
-                    ? `<span style="font-size:0.65rem; padding:1px 6px; background:#0d9f6e18; color:#0d9f6e; border:1px solid #0d9f6e44; border-radius:8px;">custom</span>`
-                    : `<span style="font-size:0.65rem; padding:1px 6px; background:var(--nav-hover-bg); color:var(--text-tertiary); border:1px solid var(--border-color); border-radius:8px;">${envDefault}</span>`;
-                  return `<div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
-                    <div style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.875rem; background:var(--nav-hover-bg); border-bottom:1px solid var(--border-color);">
-                      <span style="font-size:0.9rem;">${a.icon}</span>
-                      <span style="font-weight:700; font-size:0.85rem; color:var(--text-color);">${a.label}</span>
-                      <span style="font-size:0.68rem; color:var(--text-tertiary); background:var(--card-bg); padding:1px 5px; border-radius:4px; border:1px solid var(--border-color);">${a.layer}</span>
-                      <span style="flex:1;"></span>
-                      ${badge}
-                    </div>
-                    <div style="padding:0.65rem 0.875rem; display:flex; flex-direction:column; gap:0.5rem;">
-                      <div style="font-size:0.72rem; color:var(--text-tertiary); margin-bottom:0.1rem;">${a.desc}</div>
-                      <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
-                        <div style="flex:2; min-width:200px;">
-                          <label style="display:block; font-size:0.72rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.2rem;">Primary model</label>
-                          <input type="text"
-                            data-section="agent_models.${a.key}" data-field="model" data-vtype="string"
-                            value="${modelVal.replace(/"/g,'&quot;')}"
-                            placeholder="${envDefault}"
-                            style="${inp}" />
-                          <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">
-                            Full model string, e.g. <code>bedrock/us.anthropic.claude-sonnet-4-5</code>. Blank = use .env default.
-                          </div>
-                        </div>
-                        <div style="flex:3; min-width:240px;">
-                          <label style="display:block; font-size:0.72rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.2rem;">Fallback chain <span style="font-weight:400; color:var(--text-tertiary);">(comma-separated, in order)</span></label>
-                          <input type="text"
-                            data-section="agent_models.${a.key}" data-field="fallbacks" data-vtype="string"
-                            value="${fallbackVal.replace(/"/g,'&quot;')}"
-                            placeholder="e.g. bedrock/us.anthropic.claude-haiku-4-5"
-                            style="${inp}" />
-                          <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">
-                            Tried in order when primary fails. Any fallback use is flagged as a pipeline warning.
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>`;
-                }).join('') + `</div>`;
-            }
-          },
         ];
 
         // ── Warning banner ────────────────────────────────────────────────────
@@ -11568,7 +11500,7 @@ class Dashboard {
                 </div>
             </div>`;
 
-        // ── Provider chain status block ───────────────────────────────────────
+        // ── Provider chain + Agent Model Routing (combined card) ─────────────
         const pc = data._provider_chain || {};
         const creds = pc.credentials || {};
         const notes = pc.notes || {};
@@ -11578,52 +11510,139 @@ class Dashboard {
                 ? `<span style="color:#0d9f6e; font-weight:700;">✅ Set</span>`
                 : `<span style="color:#ef4444; font-weight:700;">❌ Not set</span>`;
         };
+
+        // ── Sub-section toggle helper ─────────────────────────────────────────
+        const _subToggle = (id, title, subtitle, bodyHtml, defaultOpen) => {
+            const lsKey = 'cfg_open_' + id;
+            const open  = localStorage.getItem(lsKey) !== null ? localStorage.getItem(lsKey) === 'true' : defaultOpen;
+            return `<div style="border:1px solid var(--border-color); border-radius:8px; overflow:hidden; margin-bottom:0.75rem;">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:0.6rem 0.875rem; cursor:pointer; user-select:none; background:var(--nav-hover-bg);"
+                     onclick="(function(el){var b=document.getElementById('${id}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-sub-chev').textContent=open?'▶':'▼';localStorage.setItem('${lsKey}',String(!open));})(this)">
+                    <div>
+                        <span style="font-weight:700; font-size:0.85rem; color:var(--text-color);">${title}</span>
+                        ${subtitle ? `<span style="margin-left:0.6rem; font-size:0.72rem; color:var(--text-tertiary);">${subtitle}</span>` : ''}
+                    </div>
+                    <span class="cfg-sub-chev" style="font-size:0.65rem; color:var(--text-secondary);">${open ? '▼' : '▶'}</span>
+                </div>
+                <div id="${id}" style="display:${open ? 'block' : 'none'}; padding:0.875rem;">
+                    ${bodyHtml}
+                </div>
+            </div>`;
+        };
+
+        // ── Sub-section A: Provider chain (read-only) ─────────────────────────
+        const providerChainBody = `
+            <table style="width:100%; border-collapse:collapse; font-size:0.84rem;">
+                <tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:0.4rem 0; color:var(--text-secondary); width:210px; vertical-align:top;">Active chain</td>
+                    <td style="font-weight:700; color:var(--primary-color);">${pc.provider_chain || '—'}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">Verifier / Judge</td>
+                    <td>${pc.verifier_provider || '—'}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">OpenRouter API Key</td>
+                    <td>${flagHtml(creds.OPENROUTER_API_KEY)}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">
+                        AWS Bedrock API Key
+                        <div style="font-size:0.7rem; color:#64748b; margin-top:0.15rem;">${notes.AWS_BEDROCK_API_KEY || ''}</div>
+                    </td>
+                    <td>
+                        ${flagHtml(creds.AWS_BEDROCK_API_KEY)}
+                        ${creds.AWS_BEDROCK_API_KEY === 'set' ? `<div style="font-size:0.7rem; color:#64748b; margin-top:0.15rem;">${notes.LLM_FALLBACK_PROVIDERS || ''}</div>` : ''}
+                    </td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">Anthropic API Key</td>
+                    <td>${flagHtml(creds.ANTHROPIC_API_KEY)}</td>
+                </tr>
+                <tr>
+                    <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">Dashboard API Key</td>
+                    <td>${flagHtml(creds.API_KEY)}</td>
+                </tr>
+            </table>
+            <div style="margin-top:0.75rem; font-size:0.75rem; color:var(--text-tertiary);">
+                Provider selection and API keys are configured in <code>.env</code> and are read-only here.
+                Use <code>LLM_PROVIDER</code>, <code>BEDROCK_MODEL</code>, and <code>OPENROUTER_MODEL</code> to change the global default.
+            </div>`;
+
+        // ── Sub-section B: Per-agent model routing (editable) ─────────────────
+        const agentSwarm = data.agent_models || {};
+        const envDefault = pc.provider_chain ? `env default (${pc.provider_chain.split('→')[0].trim()})` : 'env default';
+        const inp = `width:100%; padding:0.35rem 0.55rem; border:1px solid var(--border-color); border-radius:5px; background:#1e293b; color:#e2e8f0; font-size:0.8rem; box-sizing:border-box;`;
+        const agentDefs = [
+            { key:'architect',        icon:'🏛️', label:'Architect',       layer:'2A', desc:'Validates threat model design quality and structural completeness.' },
+            { key:'tester',           icon:'🧪', label:'Tester',           layer:'2B', desc:'Validates MITRE technique mappings and internal consistency.' },
+            { key:'red_team',         icon:'🔴', label:'Red Team',         layer:'2C', desc:'Validates exploit difficulty and control bypass feasibility.' },
+            { key:'purple_team',      icon:'🟣', label:'Purple Team',      layer:'2D', desc:'Validates detection chain coverage and TM/ADR operability.' },
+            { key:'blackhat',         icon:'⚔️', label:'Blackhat',         layer:'2E', desc:'Supreme critic — cross-path chain analysis with all prior context.' },
+            { key:'moe_orchestrator', icon:'⚙️', label:'MoE Orchestrator', layer:'L3', desc:'Impartial synthesis and consensus across all critics.' },
+            { key:'scrum_master',     icon:'🧩', label:'ScrumMaster',      layer:'SM', desc:'Meta-critic that resolves impediments and drives re-triggering.' },
+            { key:'storycaster',      icon:'📖', label:'StoryCaster',      layer:'ST', desc:'Generates user journey stories (LLM enrichment path).' },
+            { key:'threat_analyst',   icon:'🔍', label:'Threat Analyst',   layer:'TA', desc:'Deterministic RAPIDS engine — source of truth for all critics.' },
+        ];
+        const agentRoutingBody = `
+            <div style="font-size:0.77rem; color:var(--text-tertiary); margin-bottom:0.875rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px; border:1px solid var(--border-color);">
+                Leave <strong>Primary model</strong> blank to use the global default from <code>.env</code>.
+                The <strong>Fallback chain</strong> is tried in order when the primary fails — any fallback event is flagged as a pipeline warning in the run output.
+                Model strings must match the provider prefix: <code>bedrock/…</code>, <code>openrouter/…</code>, etc.
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0.625rem;">` +
+            agentDefs.map(a => {
+                const cfg = agentSwarm[a.key] || {};
+                const modelVal    = cfg.model || '';
+                const fallbackVal = Array.isArray(cfg.fallbacks) ? cfg.fallbacks.join(', ') : (cfg.fallbacks || '');
+                const badge = modelVal
+                    ? `<span style="font-size:0.62rem; padding:1px 6px; background:#0d9f6e18; color:#0d9f6e; border:1px solid #0d9f6e44; border-radius:8px;">custom</span>`
+                    : `<span style="font-size:0.62rem; padding:1px 6px; background:var(--card-bg); color:var(--text-tertiary); border:1px solid var(--border-color); border-radius:8px;">${envDefault}</span>`;
+                return `<div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:7px; overflow:hidden;">
+                    <div style="display:flex; align-items:center; gap:0.5rem; padding:0.45rem 0.75rem; background:var(--nav-hover-bg); border-bottom:1px solid var(--border-color);">
+                        <span style="font-size:0.85rem;">${a.icon}</span>
+                        <span style="font-weight:700; font-size:0.82rem; color:var(--text-color);">${a.label}</span>
+                        <span style="font-size:0.65rem; color:var(--text-tertiary); background:var(--card-bg); padding:1px 5px; border-radius:4px; border:1px solid var(--border-color);">${a.layer}</span>
+                        <span style="font-size:0.7rem; color:var(--text-tertiary); flex:1;">${a.desc}</span>
+                        ${badge}
+                    </div>
+                    <div style="padding:0.55rem 0.75rem; display:flex; gap:0.75rem; flex-wrap:wrap;">
+                        <div style="flex:2; min-width:180px;">
+                            <label style="display:block; font-size:0.7rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.2rem;">Primary model</label>
+                            <input type="text"
+                                data-section="agent_models.${a.key}" data-field="model" data-vtype="string"
+                                value="${modelVal.replace(/"/g,'&quot;')}"
+                                placeholder="${envDefault}"
+                                style="${inp}" />
+                        </div>
+                        <div style="flex:3; min-width:220px;">
+                            <label style="display:block; font-size:0.7rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.2rem;">Fallback chain <span style="font-weight:400; color:var(--text-tertiary);">(comma-separated)</span></label>
+                            <input type="text"
+                                data-section="agent_models.${a.key}" data-field="fallbacks" data-vtype="string"
+                                value="${fallbackVal.replace(/"/g,'&quot;')}"
+                                placeholder="e.g. bedrock/us.anthropic.claude-haiku-4-5"
+                                style="${inp}" />
+                        </div>
+                    </div>
+                </div>`;
+            }).join('') + `</div>`;
+
         const providerBodyId = 'cfg-section-body-provider';
-        const providerLsKey = 'cfg_open_' + providerBodyId;
-        const providerOpen = localStorage.getItem(providerLsKey) === 'true';
+        const providerLsKey  = 'cfg_open_' + providerBodyId;
+        const providerOpen   = localStorage.getItem(providerLsKey) !== 'false'; // default open
         const providerHtml = `
             <div class="card" style="margin-bottom:1rem;">
                 <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1.1rem; cursor:pointer; user-select:none;"
                      onclick="(function(el){var b=document.getElementById('${providerBodyId}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';localStorage.setItem('${providerLsKey}',String(!open));})(this)">
                     <div>
-                        <span style="font-weight:700; font-size:0.95rem;">🔑 LLM Provider Chain</span>
-                        <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">Read-only — configure in .env</span>
+                        <span style="font-weight:700; font-size:0.95rem;">🔑 LLM Provider &amp; Model Routing</span>
+                        <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">Provider chain from .env · per-agent overrides in user_config.json</span>
                     </div>
                     <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">${providerOpen ? '▼' : '▶'}</span>
                 </div>
-                <div id="${providerBodyId}" style="display:${providerOpen ? 'block' : 'none'}; border-top:1px solid var(--border-color); padding:0.9rem 1.1rem;">
-                    <table style="width:100%; border-collapse:collapse; font-size:0.84rem;">
-                        <tr style="border-bottom:1px solid var(--border-color);">
-                            <td style="padding:0.4rem 0; color:var(--text-secondary); width:210px; vertical-align:top;">Active chain</td>
-                            <td style="font-weight:700; color:var(--primary-color);">${pc.provider_chain || '—'}</td>
-                        </tr>
-                        <tr style="border-bottom:1px solid var(--border-color);">
-                            <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">Verifier / Judge</td>
-                            <td>${pc.verifier_provider || '—'}</td>
-                        </tr>
-                        <tr style="border-bottom:1px solid var(--border-color);">
-                            <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">OpenRouter API Key</td>
-                            <td>${flagHtml(creds.OPENROUTER_API_KEY)}</td>
-                        </tr>
-                        <tr style="border-bottom:1px solid var(--border-color);">
-                            <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">
-                                AWS Bedrock API Key
-                                <div style="font-size:0.7rem; color:#64748b; margin-top:0.15rem;">${notes.AWS_BEDROCK_API_KEY || ''}</div>
-                            </td>
-                            <td>
-                                ${flagHtml(creds.AWS_BEDROCK_API_KEY)}
-                                ${creds.AWS_BEDROCK_API_KEY === 'set' ? `<div style="font-size:0.7rem; color:#64748b; margin-top:0.15rem;">${notes.LLM_FALLBACK_PROVIDERS || ''}</div>` : ''}
-                            </td>
-                        </tr>
-                        <tr style="border-bottom:1px solid var(--border-color);">
-                            <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">Anthropic API Key</td>
-                            <td>${flagHtml(creds.ANTHROPIC_API_KEY)}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">Dashboard API Key</td>
-                            <td>${flagHtml(creds.API_KEY)}</td>
-                        </tr>
-                    </table>
+                <div id="${providerBodyId}" style="display:${providerOpen ? 'block' : 'none'}; border-top:1px solid var(--border-color); padding:0.875rem 1.1rem;">
+                    ${_subToggle('cfg-sub-provider-chain',  '🔗 Active Provider Chain',      'Read-only — set in .env',           providerChainBody,  true)}
+                    ${_subToggle('cfg-sub-agent-routing',   '🔀 Per-Agent Model Routing',    'Overrides per agent — saved to user_config.json', agentRoutingBody, true)}
                 </div>
             </div>`;
 
@@ -11638,7 +11657,7 @@ class Dashboard {
             {filter:'harness',    label:'⚙️ Harness'},
             {filter:'llm_system', label:'🤖 LLM & System'},
             {filter:'patterns',   label:'🧩 Patterns'},
-            {filter:'provider',   label:'🔑 Provider Chain'},
+            {filter:'provider',   label:'🔑 Provider &amp; Models'},
         ].map(c => `<button class="cfg-chip" data-filter="${c.filter}" style="${chipStyle}">${c.label}</button>`).join('');
         const filterRow = `<div id="cfg-filter-chips" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">${chips}</div>`;
 
@@ -11929,7 +11948,6 @@ class Dashboard {
             '🔒 Residual Risk':                          'residual_risk',
             '🗺️ StoryCaster — User Journey Stories':     'story_caster',
             '🤖 LLM & System':                           'llm_system',
-            '🔀 Agent Model Routing':                    'llm_system',
         };
 
         const sectionCards = sections.map(s => {
