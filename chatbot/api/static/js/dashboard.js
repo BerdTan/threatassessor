@@ -321,7 +321,7 @@ class Dashboard {
 
     // Tabs that require a completed analysis to be meaningful
     _contentTabs() {
-        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data'];
+        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data', 'insights'];
     }
 
     _setOverviewDetailVisible(visible) {
@@ -423,6 +423,7 @@ class Dashboard {
             'expert-review': 'Expert Review',
             'reports': 'Reports',
             'raw-data': 'Raw Data',
+            'insights': 'Insights',
             'config': 'Configuration'
         };
         this.updateStatusMessage(`📂 Viewing ${tabNames[tabName] || tabName}`);
@@ -966,6 +967,9 @@ class Dashboard {
                 break;
             case 'raw-data':
                 this.loadRawDataTab();
+                break;
+            case 'insights':
+                this.loadInsightsTab();
                 break;
         }
     }
@@ -9433,6 +9437,139 @@ class Dashboard {
                     errBox.style.display = 'block';
                 }
             });
+    }
+
+    // ── Insights Tab ────────────────────────────────────────────────────────
+    async loadInsightsTab() {
+        const container = document.getElementById('insights-content');
+        if (!container) return;
+
+        container.innerHTML = '<p style="color:var(--text-tertiary); font-size:0.85rem;">Loading insights…</p>';
+
+        const archName = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+        if (!archName) {
+            container.innerHTML = '<p class="placeholder">No analysis loaded. Run an analysis first.</p>';
+            return;
+        }
+
+        // Load governance_signals (has AIVSS block) + ground_truth in parallel
+        let gov = null, gt = null;
+        await Promise.all([
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/governance_signals.json`)
+                .then(r => r.ok ? r.json() : null).then(d => { gov = d; }).catch(() => {}),
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/ground_truth.json`)
+                .then(r => r.ok ? r.json() : null).then(d => { gt = d; }).catch(() => {}),
+        ]);
+
+        const _esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const _sev = (s) => {
+            if (!s) return '';
+            const c = s === 'CRITICAL' ? '#dc2626' : s === 'HIGH' ? '#f97316' : s === 'MEDIUM' ? '#ca8a04' : '#16a34a';
+            return `<span style="padding:1px 6px; background:${c}18; color:${c}; border:1px solid ${c}44; border-radius:3px; font-size:0.7rem; font-weight:700;">${s}</span>`;
+        };
+        const _score = (v) => v != null ? `<span style="font-weight:700; font-size:0.88rem;">${Number(v).toFixed(1)}</span>` : '—';
+
+        // ── Section A: Input Safety ──────────────────────────────────────────
+        let sectionA = `<div style="font-size:0.78rem; color:var(--text-tertiary);">No governance data for this run.</div>`;
+        if (gov) {
+            const aivss = gov.aivss || {};
+            const overall = aivss.overall || {};
+            const aivssRow = aivss.overall ? `
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem;">
+                    ${['inbound','internal','outbound'].map(k => {
+                        const f = aivss[k] || {};
+                        const fc = (f.severity === 'CRITICAL') ? '#dc2626' : (f.severity === 'HIGH') ? '#f97316' : (f.severity === 'MEDIUM') ? '#ca8a04' : '#16a34a';
+                        return `<div style="padding:0.3rem 0.75rem; background:${fc}12; color:${fc}; border:1px solid ${fc}44; border-radius:6px; font-size:0.78rem; font-weight:700;">${k.charAt(0).toUpperCase()+k.slice(1)} ${_score(f.composite)} ${f.severity||''}</div>`;
+                    }).join('')}
+                    <div style="padding:0.3rem 0.75rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem; font-weight:700; color:var(--text-color);">Overall ${_score(overall.composite)} ${overall.severity||''}</div>
+                </div>` : '';
+
+            const dimDefs = [
+                ['D1 — Exploitation',         gov.exploitation,            'CS / LL / MR'],
+                ['D2 — Manipulation',          gov.manipulation_resistance, 'AA / DC'],
+                ['D3 — Data Leakage',          gov.data_leakage,            'DS / CS'],
+                ['D4 — Identity Integrity',    gov.identity_integrity,      'GV / LL'],
+                ['D5 — Data Sovereignty',      gov.data_sovereignty,        'GV / EI'],
+            ];
+            const dimCards = dimDefs.map(([label, dim, metrics]) => {
+                if (!dim) return '';
+                const sev = dim.severity || 'LOW';
+                const c = sev === 'CRITICAL' ? '#dc2626' : sev === 'HIGH' ? '#f97316' : sev === 'MEDIUM' ? '#ca8a04' : '#16a34a';
+                const blocked = dim.blocked ? ' <span style="font-size:0.65rem; color:#dc2626; font-weight:700;">BLOCKED</span>' : '';
+                return `<div style="padding:0.65rem 0.75rem; background:var(--nav-hover-bg); border:1px solid ${c}44; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-weight:600; font-size:0.82rem; color:var(--text-color);">${label}${blocked}</div>
+                        <div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.15rem;">AIVSS metrics: ${metrics}</div>
+                    </div>
+                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                        ${_sev(sev)}
+                    </div>
+                </div>`;
+            }).join('');
+
+            sectionA = aivssRow + `<div style="display:flex; flex-direction:column; gap:0.5rem;">${dimCards}</div>`;
+        }
+
+        // ── Section B: Design Patterns (cross-run) ───────────────────────────
+        // Build from current ground_truth; future multi-arch cross-run requires /api/v1/insights endpoint
+        let sectionB = `<div style="font-size:0.78rem; color:var(--text-tertiary);">Load more architectures via Reports tab to compare patterns.</div>`;
+        if (gt) {
+            const paths = (gt.expected_attack_paths || []).slice(0, 10);
+            const aivssPerThreat = (gov && gov.aivss && gov.aivss.per_threat) || [];
+            const aivssMap = {};
+            aivssPerThreat.forEach(t => { aivssMap[t.technique_id] = t; });
+
+            const threatRows = paths.map(p => {
+                const aivssEntry = aivssMap[p.id];
+                const aivssCell = aivssEntry
+                    ? `${_score(aivssEntry.composite)} ${_sev(aivssEntry.severity)}`
+                    : '—';
+                return `<tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:0.35rem 0.5rem; font-size:0.8rem; font-weight:600; cursor:pointer; color:var(--primary-color);"
+                        onclick="window.dashboard.switchTab('attacks'); window.dashboard.showAttackPathDetailById('${_esc(p.id)}')">${_esc(p.id)}</td>
+                    <td style="padding:0.35rem 0.5rem; font-size:0.78rem; color:var(--text-secondary);">${_esc(p.title || p.id)}</td>
+                    <td style="padding:0.35rem 0.5rem; text-align:right;">${_sev(p.criticality_tier || 'MEDIUM')}</td>
+                    <td style="padding:0.35rem 0.5rem; text-align:right; font-size:0.8rem;">${aivssCell}</td>
+                </tr>`;
+            }).join('');
+
+            if (threatRows) {
+                sectionB = `
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead><tr style="border-bottom:2px solid var(--border-color);">
+                            <th style="padding:0.3rem 0.5rem; text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Path</th>
+                            <th style="padding:0.3rem 0.5rem; text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Title</th>
+                            <th style="padding:0.3rem 0.5rem; text-align:right; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Severity</th>
+                            <th style="padding:0.3rem 0.5rem; text-align:right; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">AIVSS</th>
+                        </tr></thead>
+                        <tbody>${threatRows}</tbody>
+                    </table>
+                    <div style="margin-top:0.5rem; font-size:0.72rem; color:var(--text-tertiary);">
+                        Click a path ID to view details in Threat Paths tab.
+                        Multi-architecture comparison available in a future update via <code>/api/v1/insights</code>.
+                    </div>`;
+            }
+        }
+
+        const _section = (id, icon, title, desc, body) => `
+            <div style="margin-bottom:1.5rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem; padding-bottom:0.4rem; border-bottom:1px solid var(--border-color);">
+                    <span style="font-size:1rem;">${icon}</span>
+                    <div>
+                        <div style="font-size:0.9rem; font-weight:700; color:var(--text-color);">${title}</div>
+                        <div style="font-size:0.72rem; color:var(--text-tertiary); margin-top:0.1rem;">${desc}</div>
+                    </div>
+                </div>
+                ${body}
+            </div>`;
+
+        container.innerHTML =
+            _section('input-safety', '🔒', 'Input Safety',
+                `Was this architecture safe to process? Governance dimensions + AIVSS flow scores for <strong>${_esc(archName)}</strong>.`,
+                sectionA) +
+            _section('design-patterns', '📈', 'Design Patterns',
+                'Attack paths ranked by AIVSS score. Click any path to jump to the Threat Paths tab.',
+                sectionB);
     }
 
     async loadRawDataTab() {

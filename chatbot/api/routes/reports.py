@@ -765,3 +765,87 @@ async def get_technique_names(technique_ids: str = Query(..., description="Comma
             result[tid] = tech.get('name', 'Unknown') if tech else f"Unknown ({tid})"
 
     return {"techniques": result}
+
+
+@router.get("/insights")
+async def get_insights(archs: str = Query(default="", description="Comma-separated architecture names. Empty = current (most recent)")):
+    """
+    Merged Insights endpoint — returns governance signals (with AIVSS) + ground truth summary
+    for one or more architectures.
+
+    Used by the Insights tab (Section A: Input Safety, Section B: Design Patterns).
+
+    Args:
+        archs: Comma-separated architecture names. If empty, returns the most recently modified.
+
+    Returns:
+        Dict with `architectures` list, each entry containing governance_signals + ground_truth summary.
+    """
+    report_base = get_report_dir()
+    arch_names = [a.strip() for a in archs.split(',') if a.strip()] if archs else []
+
+    if not arch_names:
+        # Pick the most recently modified report directory
+        try:
+            dirs = sorted(
+                [d for d in report_base.iterdir() if d.is_dir()],
+                key=lambda d: d.stat().st_mtime,
+                reverse=True,
+            )
+            if dirs:
+                arch_names = [dirs[0].name]
+        except Exception:
+            pass
+
+    if not arch_names:
+        return {"architectures": []}
+
+    results = []
+    for name in arch_names[:10]:  # cap at 10
+        safe = Path(name).name
+        if safe != name or ".." in name:
+            continue
+        arch_dir = report_base / safe
+        if not arch_dir.is_dir():
+            continue
+
+        entry: Dict = {"name": safe}
+
+        gov_path = arch_dir / "governance_signals.json"
+        if gov_path.exists():
+            try:
+                entry["governance_signals"] = json.loads(gov_path.read_text())
+            except Exception:
+                entry["governance_signals"] = None
+
+        gt_path = arch_dir / "ground_truth.json"
+        if gt_path.exists():
+            try:
+                gt = json.loads(gt_path.read_text())
+                # Return lightweight summary only (full GT can be large)
+                entry["ground_truth_summary"] = {
+                    "architecture_name": gt.get("architecture_name", safe),
+                    "expected_risk_score": gt.get("expected_risk_score"),
+                    "expected_defensibility": gt.get("expected_defensibility"),
+                    "attack_path_count": len(gt.get("expected_attack_paths", [])),
+                    "technique_count": sum(
+                        len(p.get("techniques", []))
+                        for p in gt.get("expected_attack_paths", [])
+                    ),
+                    "top_threats": [
+                        {
+                            "id": p.get("id"),
+                            "title": p.get("title"),
+                            "criticality_tier": p.get("criticality_tier"),
+                            "aivss_score": p.get("aivss_score"),
+                            "aivss_severity": p.get("aivss_severity"),
+                        }
+                        for p in (gt.get("expected_attack_paths", []))[:5]
+                    ],
+                }
+            except Exception:
+                entry["ground_truth_summary"] = None
+
+        results.append(entry)
+
+    return {"architectures": results}

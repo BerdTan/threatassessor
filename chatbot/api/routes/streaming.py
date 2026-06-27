@@ -283,8 +283,17 @@ async def analyze_with_progress(
         )
         await asyncio.sleep(0.1)
 
-        # Send complete event with same shape as before (service_result dict)
-        if service_result:
+        # Inject governance_signals (includes AIVSS block) into complete payload for dashboard badge
+        gov_signals = ctx.get("governance_signals")
+        if gov_signals:
+            if service_result:
+                _complete_dict = service_result.to_dict()
+                _complete_dict["governance_signals"] = gov_signals
+                yield await SSEStream.send_complete(_complete_dict)
+            else:
+                result_data["governance_signals"] = gov_signals
+                yield await SSEStream.send_complete(result_data)
+        elif service_result:
             yield await SSEStream.send_complete(service_result.to_dict())
         else:
             yield await SSEStream.send_complete(result_data)
