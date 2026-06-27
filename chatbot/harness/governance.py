@@ -180,7 +180,7 @@ _RE_PATH_TRAVERSAL = re.compile(
 # NRIC: allow optional internal spaces ("S 1234567 A" is a common printed format)
 _RE_NRIC = re.compile(r"\b[SFTG]\s?\d{3}\s?\d{4}\s?[A-Z]\b")
 _RE_EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-_RE_PHONE = re.compile(r"\b(\+65[\s-]?)?\d{4}[\s-]?\d{4}\b")  # SG phone
+_RE_PHONE = re.compile(r"(?<!CVE-)(?<!cve-)(?<!\d-)(?<!\d)\b(\+65[\s-]?)?\d{4}[\s-]\d{4}\b")  # SG phone — excludes CVE-YYYY-NNNN patterns
 
 # Data Leakage — credentials (expanded keyword list)
 _RE_CRED = re.compile(
@@ -541,19 +541,27 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         return summary
 
     def _derive_arc_scores(self, ground_truth: dict) -> dict:
-        """Approximate ARC scores from RAPIDS category scores when not explicitly set."""
-        rapids = ground_truth.get("rapids_assessment", {})
-        scores = {
-            "INT": rapids.get("application_vulns", 50),
-            "SAF": rapids.get("dos", 50),
-            "SEC": max(rapids.get("ransomware", 50), rapids.get("supply_chain", 50)),
-            "PRIV": rapids.get("insider_threat", 50),
+        """Approximate ARC scores from RAPIDS per-threat initial_risk values."""
+        per_threat = ground_truth.get("residual_risks", {}).get("per_threat", {})
+
+        def _score(key: str, default: int = 50) -> int:
+            entry = per_threat.get(key, {})
+            if isinstance(entry, dict):
+                return int(entry.get("initial_risk", default))
+            if isinstance(entry, (int, float)):
+                return int(entry)
+            return default
+
+        return {
+            "INT":   _score("application_vulns"),
+            "SAF":   _score("dos"),
+            "SEC":   max(_score("ransomware"), _score("supply_chain")),
+            "PRIV":  _score("insider_threat"),
             "TRANS": 50,
-            "ACC":  50,
-            "FAIR": 50,
-            "SOC":  50,
+            "ACC":   50,
+            "FAIR":  50,
+            "SOC":   50,
         }
-        return scores
 
     def _compute_overall(self, sig: GovernanceSignals) -> str:
         _SEV = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}

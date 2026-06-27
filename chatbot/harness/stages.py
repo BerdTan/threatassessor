@@ -112,6 +112,11 @@ class CriticStage(PipelineStage):
 
         from chatbot.modules.agents.orchestrators.moe_orchestrator import run_moe_pipeline
 
+        guardian = ctx.get("_model_guardian")
+        agent_models = guardian.models_dict(
+            ["architect", "tester", "red_team", "purple_team", "blackhat", "moe_orchestrator"]
+        ) if guardian else {}
+
         ctx["moe_result"] = run_moe_pipeline(
             str(ctx["report_dir"]),
             base_confidence=ctx.get("confidence"),
@@ -119,6 +124,7 @@ class CriticStage(PipelineStage):
             run_blackhat=ctx.get("run_blackhat"),
             blocked_agents=ctx.get("blocked_agents", []),
             progress_callback=kw.get("progress_callback"),
+            agent_models=agent_models or None,
         )
 
         if cb := kw.get("progress_callback"):
@@ -147,9 +153,15 @@ class ScrumMasterStage(PipelineStage):
         from chatbot.modules.agents.critics.scrum_master_critic import ScrumMasterCritic
         import json
 
-        model = ctx.get("_scrum_master_model")
+        guardian = ctx.get("_model_guardian")
+        model = guardian.get_model("scrum_master") if guardian else None
 
         sm = ScrumMasterCritic(model=model)
+        # Expose per-critic models so ScrumMaster can thread them into re-triggered runs
+        if guardian:
+            sm._agent_models = guardian.models_dict(
+                ["architect", "tester", "red_team", "purple_team", "blackhat"]
+            )
         sm_result = sm.run(
             moe_result=ctx["moe_result"],
             report_dir=ctx["report_dir"],

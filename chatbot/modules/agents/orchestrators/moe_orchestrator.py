@@ -280,28 +280,47 @@ class MoEOrchestrator:
     Never allows LLM to override deterministic recommendations.
     """
 
-    def __init__(self, model: Optional[str] = None, progress_callback=None, blocked_agents: Optional[List[str]] = None):
+    def __init__(
+        self,
+        model: Optional[str] = None,
+        progress_callback=None,
+        blocked_agents: Optional[List[str]] = None,
+        agent_models: Optional[Dict[str, str]] = None,
+    ):
         """
         Initialize MoE orchestrator.
 
         Args:
-            model: Optional model override for LLM experts
+            model: Single model override applied to ALL experts (backward-compat path).
+                   Ignored when agent_models is provided.
             progress_callback: Optional callable(stage: str, result: ValidationResult)
                 called immediately after each critic finishes.  Must be non-blocking.
+            agent_models: Per-agent model dict from HarnessModelGuardian.models_dict().
+                Keys: "architect", "tester", "red_team", "purple_team", "blackhat",
+                      "moe_orchestrator". Takes precedence over `model`.
         """
         self.model = model
+        self.agent_models = agent_models or {}
         self.progress_callback = progress_callback
         self._synth_perf: Dict = {}  # accumulated perf for orchestrator LLM calls
+
+        # Build per-critic model dict:
+        # agent_models wins; fall back to broadcast `model` for backward compat.
+        _per_critic: Dict[str, str] = {}
+        for key in ["architect", "tester", "red_team", "purple_team"]:
+            m = self.agent_models.get(key) or model
+            if m:
+                _per_critic[key] = m
 
         # Activate critics via registry — governance can block by name
         _critics = _DEFAULT_REGISTRY.activate(
             blocked=blocked_agents or [],
-            models={k: model for k in ["architect", "tester", "red_team", "purple_team"]} if model else {},
+            models=_per_critic,
         )
-        self.architect   = _critics.get("architect")   or EnhancedArchitectCritic(model=model)
-        self.tester      = _critics.get("tester")      or TesterCritic(model=model)
-        self.red_team    = _critics.get("red_team")    or RedTeamerCritic(model=model)
-        self.purple_team = _critics.get("purple_team") or PurpleTeamerCritic(model=model)
+        self.architect   = _critics.get("architect")   or EnhancedArchitectCritic(model=_per_critic.get("architect") or model)
+        self.tester      = _critics.get("tester")      or TesterCritic(model=_per_critic.get("tester") or model)
+        self.red_team    = _critics.get("red_team")    or RedTeamerCritic(model=_per_critic.get("red_team") or model)
+        self.purple_team = _critics.get("purple_team") or PurpleTeamerCritic(model=_per_critic.get("purple_team") or model)
 
         logger.info("MoEOrchestrator initialized with 4 validation experts (2A/2B/2C/2D) + Blackhat (2E)")
 
@@ -522,10 +541,11 @@ class MoEOrchestrator:
         if _bh_enabled:
             logger.info("MoE Pipeline: Layer 2E — Running Blackhat (has all prior critic context — supreme critic)...")
             try:
-                blackhat_critic = _DEFAULT_REGISTRY.get("blackhat", model=self.model)
+                _bh_model = self.agent_models.get("blackhat") or self.model
+                blackhat_critic = _DEFAULT_REGISTRY.get("blackhat", model=_bh_model)
                 if blackhat_critic is None:
                     from chatbot.modules.agents.critics.blackhat_critic import BlackhatCritic
-                    blackhat_critic = BlackhatCritic(model=self.model)
+                    blackhat_critic = BlackhatCritic(model=_bh_model)
                 blackhat_critique_score = blackhat_critic.critique(
                     artifacts, ground_truth,
                     red_team_critique=red_team_critique,
@@ -1990,6 +2010,7 @@ def run_moe_pipeline(
     critic_mode: str = "sequential",
     run_blackhat: Optional[bool] = None,
     blocked_agents: Optional[List[str]] = None,
+    agent_models: Optional[Dict[str, str]] = None,
 ) -> MoEResult:
     """
     Convenience function to run full MoE pipeline.
@@ -2001,6 +2022,9 @@ def run_moe_pipeline(
             called immediately after each critic finishes.  Must be non-blocking.
         critic_mode: "sequential" | "parallel" | "auto" (see MoEOrchestrator.run_pipeline)
         run_blackhat: Override blackhat.enabled setting. None = use config setting.
+        agent_models: Per-agent model dict from HarnessModelGuardian.models_dict().
+            Keys: "architect", "tester", "red_team", "purple_team", "blackhat",
+                  "moe_orchestrator". Overrides env-var defaults per agent.
 
     Returns:
         MoEResult with unified assessment
@@ -2012,7 +2036,12 @@ def run_moe_pipeline(
         >>> result = run_moe_pipeline("report/10_complex_enterprise")
         >>> print(f"Final confidence: {result.final_confidence:.1f}%")
     """
-    orchestrator = MoEOrchestrator(progress_callback=progress_callback, blocked_agents=blocked_agents)
+    orchestrator = MoEOrchestrator(
+        model=agent_models.get("moe_orchestrator") if agent_models else None,
+        progress_callback=progress_callback,
+        blocked_agents=blocked_agents,
+        agent_models=agent_models,
+    )
     return orchestrator.run_pipeline(report_dir, base_confidence, critic_mode=critic_mode, run_blackhat=run_blackhat)
 
 

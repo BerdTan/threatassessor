@@ -10,7 +10,7 @@ import json
 import os
 import threading
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -503,6 +503,36 @@ class CriticSettings(BaseModel):
     max_aivss_score: float = Field(default=10.0, description="AIVSS gate threshold (10.0 = disabled)")
 
 
+class AgentModelConfig(BaseModel):
+    """Primary model + ordered fallback chain for a single agent."""
+    model: str = Field(
+        default="",
+        description="Primary model string passed to llm_client.generate(model=...). "
+                    "Empty string = use env-var LLM_PROVIDER default (backward-compat).",
+    )
+    fallbacks: List[str] = Field(
+        default_factory=list,
+        description="Ordered fallback model strings tried after primary fails.",
+    )
+
+
+class AgentSwarmConfig(BaseModel):
+    """Per-agent model assignments for the full ThreatAssessor agent swarm.
+
+    Defaults are empty strings so existing env-var behaviour is preserved when
+    no explicit config is present — no breakage.
+    """
+    architect:        AgentModelConfig = Field(default_factory=AgentModelConfig)
+    tester:           AgentModelConfig = Field(default_factory=AgentModelConfig)
+    red_team:         AgentModelConfig = Field(default_factory=AgentModelConfig)
+    purple_team:      AgentModelConfig = Field(default_factory=AgentModelConfig)
+    blackhat:         AgentModelConfig = Field(default_factory=AgentModelConfig)
+    storycaster:      AgentModelConfig = Field(default_factory=AgentModelConfig)
+    scrum_master:     AgentModelConfig = Field(default_factory=AgentModelConfig)
+    moe_orchestrator: AgentModelConfig = Field(default_factory=AgentModelConfig)
+    threat_analyst:   AgentModelConfig = Field(default_factory=AgentModelConfig)
+
+
 class GovernanceSettings(BaseModel):
     agt_enabled: bool = Field(
         default=False,
@@ -553,6 +583,10 @@ class AppSettings(BaseModel):
     critics: Dict[str, CriticSettings] = Field(
         default_factory=dict,
         description="Per-critic AIVSS gate config keyed by critic role name.",
+    )
+    agent_models: AgentSwarmConfig = Field(
+        default_factory=AgentSwarmConfig,
+        description="Per-agent model assignments. HarnessModelGuardian reads this at pipeline start.",
     )
 
 

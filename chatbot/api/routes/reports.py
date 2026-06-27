@@ -4,8 +4,10 @@ Reports API Routes
 Endpoints for accessing generated analysis reports.
 """
 
+import datetime
 import io
 import json
+import re
 import shutil
 import zipfile
 from pathlib import Path
@@ -193,7 +195,6 @@ async def add_sm_action_to_adr(
     if adr_path.exists():
         existing = adr_path.read_text(encoding="utf-8")
 
-    import re
     existing_indices = [int(m) for m in re.findall(r"SM-ADR-(\d+)", existing)]
     next_idx = (max(existing_indices) + 1) if existing_indices else 1
     entry_id = f"SM-ADR-{next_idx:02d}"
@@ -848,4 +849,144 @@ async def get_insights(archs: str = Query(default="", description="Comma-separat
 
         results.append(entry)
 
+    return {"architectures": results}
+
+
+# ---------------------------------------------------------------------------
+# Helpers for /insights/all
+# ---------------------------------------------------------------------------
+
+def _base_arch_name(name: str) -> str:
+    """Strip trailing _N rerun suffixes: '00_serviceentry_2_1_1' → '00_serviceentry'."""
+    parts = name.split('_')
+    i = len(parts)
+    while i > 1 and parts[i - 1].isdigit():
+        i -= 1
+    return '_'.join(parts[:i])
+
+
+_SSP_DOMAIN: Dict[str, str] = {
+    'low_risk_cloud':               'Cloud',
+    'medium_risk_cloud':            'Cloud',
+    'high_risk_cloud_cii':          'Cloud',
+    'low_risk_onprem':              'On-Premises',
+    'generative_ai':                'Agentic/AI',
+    'digital_services_others':      'Digital Services',
+    'digital_services_high_impact': 'Digital Services',
+    'sandbox':                      'General',
+}
+
+_KEYWORD_DOMAIN: List[tuple] = [
+    (['hybrid'],                                                     'Hybrid Cloud'),
+    (['iot', '_ot_', '_ot', 'cps', 'scada', 'plc'],                 'IoT/OT/CPS'),
+    (['agentic', 'llm', '_ai_', '_ai'],                              'Agentic/AI'),
+    (['azure', 'aws', 'gcp', 'serverless', 'lambda', 'cloud'],      'Cloud'),
+    (['dmz', 'legacy', 'flat_network', 'enterprise', 'on_prem'],    'On-Premises'),
+    (['digital', 'service', 'web_app', 'api_gw', 'mobile',
+      'zero_trust'],                                                  'Digital Services'),
+]
+
+
+def _classify_domain(ssp_profile: str, arch_name: str) -> str:
+    if ssp_profile and ssp_profile in _SSP_DOMAIN:
+        return _SSP_DOMAIN[ssp_profile]
+    name_lower = arch_name.lower()
+    for keywords, domain in _KEYWORD_DOMAIN:
+        if any(kw in name_lower for kw in keywords):
+            return domain
+    return 'General'
+
+
+# ---------------------------------------------------------------------------
+# /insights/all — full trending dataset for all architectures
+# ---------------------------------------------------------------------------
+
+@router.get("/insights/all")
+async def get_all_insights_trending():
+    """
+    Return all architectures with flattened trending metrics in one call.
+    Used by Insights tab: Single Arch trend, Multi-Arch comparison, Domain view.
+    No auth required — read-only reporting data.
+    """
+    report_base = get_report_dir()
+    if not report_base.exists():
+        return {"architectures": []}
+
+    _DIM_KEYS = {
+        'D1': 'exploitation',
+        'D2': 'manipulation',
+        'D3': 'leakage',
+        'D4': 'identity',
+        'D5': 'sovereignty',
+    }
+
+    results = []
+    for arch_dir in report_base.iterdir():
+        if not arch_dir.is_dir() or arch_dir.name.startswith('.'):
+            continue
+        gt_path = arch_dir / "ground_truth.json"
+        if not gt_path.exists():
+            continue
+
+        entry: Dict = {
+            "name":            arch_dir.name,
+            "base_name":       _base_arch_name(arch_dir.name),
+            "analysed_at":     datetime.datetime.utcfromtimestamp(
+                                   arch_dir.stat().st_mtime
+                               ).isoformat() + 'Z',
+            "domain":          'General',
+            "ssp_profile":     None,
+            "risk_score":      None,
+            "defensibility":   None,
+            "confidence":      None,
+            "controls_missing": [],
+            "techniques":      [],
+            "aivss_overall":   None,
+            "aivss_severity":  None,
+            "governance_dims": {},
+        }
+
+        try:
+            gt = json.loads(gt_path.read_text())
+            entry["risk_score"]      = gt.get("expected_risk_score")
+            entry["defensibility"]   = gt.get("expected_defensibility")
+            entry["controls_missing"] = gt.get("controls_missing") or []
+            # confidence: scalar float preferred, fall back to breakdown dict
+            conf = gt.get("confidence")
+            if isinstance(conf, dict):
+                conf = conf.get("final")
+            if conf is not None:
+                entry["confidence"] = round(float(conf) * 100, 1) if conf <= 1.0 else round(float(conf), 1)
+            # flatten all techniques across paths, deduplicated
+            all_techs: set = set()
+            for p in gt.get("expected_attack_paths", []):
+                all_techs.update(p.get("techniques", []))
+            entry["techniques"] = sorted(all_techs)
+            # domain classification
+            meta = gt.get("metadata", {})
+            ssp = meta.get("ssp_profile") or gt.get("ssp_profile")
+            entry["ssp_profile"] = ssp
+            entry["domain"] = _classify_domain(ssp or '', arch_dir.name)
+        except Exception:
+            pass
+
+        gov_path = arch_dir / "governance_signals.json"
+        if gov_path.exists():
+            try:
+                gov = json.loads(gov_path.read_text())
+                aivss_overall = (gov.get("aivss") or {}).get("overall") or {}
+                if aivss_overall.get("composite") is not None:
+                    entry["aivss_overall"]  = round(float(aivss_overall["composite"]), 2)
+                    entry["aivss_severity"] = aivss_overall.get("severity")
+                for dk, gk in _DIM_KEYS.items():
+                    dim = gov.get(gk) or {}
+                    sev = dim.get("severity")
+                    if sev:
+                        entry["governance_dims"][dk] = sev
+            except Exception:
+                pass
+
+        results.append(entry)
+
+    results.sort(key=lambda x: x["analysed_at"] or "", reverse=True)
     return {"architectures": results}

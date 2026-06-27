@@ -133,6 +133,64 @@ body {
     pointer-events: none;
 }
 
+/* Sidebar nav groups */
+.nav-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.nav-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 1rem 0.3rem;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+}
+
+.nav-group-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+}
+
+.nav-group-chevron {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    transition: transform 0.2s;
+    line-height: 1;
+}
+
+.nav-group.collapsed .nav-group-chevron {
+    transform: rotate(-90deg);
+}
+
+.nav-group-header:hover .nav-group-label,
+.nav-group-header:hover .nav-group-chevron {
+    color: var(--primary-color);
+}
+
+.nav-group-items {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    max-height: 500px;
+    transition: max-height 0.2s ease;
+}
+
+.nav-group.collapsed .nav-group-items {
+    max-height: 0;
+}
+
+.nav-group + .nav-group {
+    margin-top: 0.15rem;
+}
+
 /* Main Pane - Flexible, No Scrolling Issues */
 .main-pane {
     flex: 1;

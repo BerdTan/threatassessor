@@ -371,7 +371,24 @@ class Dashboard {
         this.initOverviewSubtabs();
     }
 
+    _toggleNavGroup(groupName) {
+        const group = document.querySelector(`.nav-group[data-group="${groupName}"]`);
+        if (!group) return;
+        group.classList.toggle('collapsed');
+    }
+
+    // Ensure the group containing the active tab is expanded
+    _expandGroupForTab(tabName) {
+        document.querySelectorAll('.nav-group').forEach(group => {
+            const hasActive = group.querySelector(`.nav-tab[data-tab="${tabName}"]`);
+            if (hasActive) group.classList.remove('collapsed');
+        });
+    }
+
     switchTab(tabName) {
+        // Ensure the containing group is expanded before switching
+        this._expandGroupForTab(tabName);
+
         // Hide right pane when switching tabs
         this.hideRightPane();
 
@@ -1304,82 +1321,92 @@ class Dashboard {
                 + '</div>';
         }
 
-        container.innerHTML = `
-        ${moeOverviewSummary}
-        <!-- Confidence + Scores Row -->
-        ${(() => {
-            const confDelta = validatedConf !== null ? (validatedConf - foundationConf).toFixed(1) : null;
-            const confDeltaLabel = confDelta !== null
-                ? (parseFloat(confDelta) >= 0
-                    ? `<div style="font-size:0.75rem; color:var(--secondary-color); font-weight:600;">Expert validated: ${validatedConf.toFixed(1)}% (+${confDelta}%)</div>`
-                    : `<div style="font-size:0.75rem; color:var(--warning-color); font-weight:600;">Expert validated: ${validatedConf.toFixed(1)}% (${confDelta}%)</div>`)
-                : `<div style="font-size:0.75rem; color:var(--text-tertiary);">how complete this analysis is · run Expert Review to validate</div>`;
-            return `<div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
-            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Current Risk ↓</div>
-                <div style="font-size:2rem; font-weight:700; color:${riskColor};">${risk}<span style="font-size:1rem; color:var(--text-secondary);">/100</span></div>
-                <div style="font-size:0.75rem; color:var(--text-tertiary);">baseline · lower = safer</div>
+        // Collapsible section builder — localStorage-persisted open/closed state
+        const _ovSection = (id, icon, title, subtitle, bodyHtml, defaultOpen = true) => {
+            const lsKey = 'ov_open_' + id;
+            const open  = localStorage.getItem(lsKey) !== null ? localStorage.getItem(lsKey) === 'true' : defaultOpen;
+            const chev  = open ? '∨' : '›';
+            return `<div class="er-panel" style="background:var(--card-bg); border-radius:10px; margin-bottom:0.875rem; border:1px solid var(--border-color); overflow:hidden;">
+                <div class="er-panel-header"
+                    onclick="(function(h){var b=h.closest('.er-panel').querySelector('.er-panel-body');var c=h.querySelector('.er-chevron');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.textContent=open?'›':'∨';localStorage.setItem('ov_open_${id}',String(!open));})(this)"
+                    style="padding:0.65rem 1rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:var(--nav-hover-bg);">
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <span style="font-size:0.875rem;">${icon}</span>
+                        <div>
+                            <div style="font-size:0.85rem; font-weight:700; color:var(--text-color);">${title}</div>
+                            ${subtitle ? `<div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.05rem;">${subtitle}</div>` : ''}
+                        </div>
+                    </div>
+                    <span class="er-chevron" style="font-size:1rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">${chev}</span>
+                </div>
+                <div class="er-panel-body" style="display:${open?'block':'none'}; padding:0.875rem 1rem 1rem;">
+                    ${bodyHtml}
+                </div>
+            </div>`;
+        };
+
+        // Score cards (always visible — top-line KPIs)
+        const confDelta = validatedConf !== null ? (validatedConf - foundationConf).toFixed(1) : null;
+        const confDeltaLabel = confDelta !== null
+            ? (parseFloat(confDelta) >= 0
+                ? `<div style="font-size:0.75rem; color:var(--secondary-color); font-weight:600;">Expert validated: ${validatedConf.toFixed(1)}% (+${confDelta}%)</div>`
+                : `<div style="font-size:0.75rem; color:var(--warning-color); font-weight:600;">Expert validated: ${validatedConf.toFixed(1)}% (${confDelta}%)</div>`)
+            : `<div style="font-size:0.75rem; color:var(--text-tertiary);">how complete this analysis is · run Expert Review to validate</div>`;
+        const scoreCardsHtml = `<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.875rem;">
+            <div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:0.875rem; text-align:center;">
+                <div style="font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.2rem; text-transform:uppercase; letter-spacing:.05em;">Current Risk ↓</div>
+                <div style="font-size:1.85rem; font-weight:700; color:${riskColor};">${risk}<span style="font-size:0.9rem; color:var(--text-secondary);">/100</span></div>
+                <div style="font-size:0.7rem; color:var(--text-tertiary);">baseline · lower = safer</div>
             </div>
-            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Recommended Tier ↓</div>
-                <div style="font-size:2rem; font-weight:700; color:var(--secondary-color);">${riskReductionPct}<span style="font-size:1rem;">%</span><span style="font-size:0.8rem; color:var(--text-secondary);"> risk reduction</span></div>
-                <div style="font-size:0.75rem; color:var(--text-tertiary);">\$${implCost}K est. · ${roi}x ROI</div>
+            <div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:0.875rem; text-align:center;">
+                <div style="font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.2rem; text-transform:uppercase; letter-spacing:.05em;">Recommended Tier ↓</div>
+                <div style="font-size:1.85rem; font-weight:700; color:var(--secondary-color);">${riskReductionPct}<span style="font-size:0.9rem;">%</span><span style="font-size:0.75rem; color:var(--text-secondary);"> reduction</span></div>
+                <div style="font-size:0.7rem; color:var(--text-tertiary);">\$${implCost}K est. · ${roi}x ROI</div>
             </div>
-            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Defensibility ↑</div>
-                <div style="font-size:2rem; font-weight:700; color:${defColor};">${def}<span style="font-size:1rem; color:var(--text-secondary);">/100</span></div>
-                <div style="font-size:0.75rem; color:var(--text-tertiary);">${controlsPresent.length} controls · higher = better</div>
+            <div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:0.875rem; text-align:center;">
+                <div style="font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.2rem; text-transform:uppercase; letter-spacing:.05em;">Defensibility ↑</div>
+                <div style="font-size:1.85rem; font-weight:700; color:${defColor};">${def}<span style="font-size:0.9rem; color:var(--text-secondary);">/100</span></div>
+                <div style="font-size:0.7rem; color:var(--text-tertiary);">${controlsPresent.length} controls · higher = better</div>
             </div>
-            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Threat Paths</div>
-                <div style="font-size:2rem; font-weight:700; color:var(--text-color);">${attackPaths.length}</div>
-                <div style="font-size:0.75rem; color:var(--text-tertiary);">active attack routes</div>
+            <div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:0.875rem; text-align:center;">
+                <div style="font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.2rem; text-transform:uppercase; letter-spacing:.05em;">Threat Paths</div>
+                <div style="font-size:1.85rem; font-weight:700; color:var(--text-color);">${attackPaths.length}</div>
+                <div style="font-size:0.7rem; color:var(--text-tertiary);">active attack routes</div>
             </div>
-            <div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1rem; text-align:center;">
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:.05em;">Analysis Confidence</div>
-                <div style="font-size:2rem; font-weight:700; color:var(--secondary-color);">${foundationConf.toFixed(1)}<span style="font-size:1rem;">%</span></div>
+            <div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:0.875rem; text-align:center;">
+                <div style="font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.2rem; text-transform:uppercase; letter-spacing:.05em;">Confidence</div>
+                <div style="font-size:1.85rem; font-weight:700; color:var(--secondary-color);">${foundationConf.toFixed(1)}<span style="font-size:0.9rem;">%</span></div>
                 ${confDeltaLabel}
             </div>
         </div>`;
-        })()}
 
-        <!-- Two-column: Residual Risk + Top Actions -->
-        <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
-            <!-- Threat Exposure Breakdown -->
-            <div style="flex:2; min-width:300px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem;">
-                <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.375rem; flex-wrap:wrap; gap:0.5rem;">
-                    <h3 style="margin:0; font-size:0.9375rem; color:var(--text-color);">Threat Exposure by Category</h3>
-                    <span style="font-size:0.7rem; color:var(--text-tertiary);">bar width = relative initial exposure</span>
-                </div>
-                <!-- Legend -->
-                <div style="display:flex; gap:0.75rem; font-size:0.7rem; color:var(--text-secondary); margin-bottom:1rem; flex-wrap:wrap; align-items:center;">
-                    <span style="display:flex; align-items:center; gap:0.25rem;"><span style="display:inline-block; width:14px; height:7px; background:var(--secondary-color); opacity:0.4; border-radius:2px;"></span>Existing controls</span>
-                    <span style="display:flex; align-items:center; gap:0.25rem;"><span style="display:inline-block; width:14px; height:7px; background:var(--secondary-color); opacity:0.85; border-radius:2px;"></span>Recommended controls</span>
-                    <span style="display:flex; align-items:center; gap:0.25rem;"><span style="display:inline-block; width:14px; height:7px; background:var(--warning-color); opacity:0.7; border-radius:2px;"></span>Residual (always present)</span>
-                    <span style="display:flex; align-items:center; gap:0.25rem; margin-left:auto;">
-                        <span style="display:inline-block; width:2px; height:12px; background:var(--text-secondary); opacity:0.5;"></span>⚡
-                        <span style="display:inline-block; width:2px; height:12px; background:var(--primary-color); opacity:0.8;"></span>⭐
-                        <span style="display:inline-block; width:2px; height:12px; background:var(--secondary-color);"></span>🔒
-                        <span style="color:var(--text-tertiary);">investment tiers</span>
-                    </span>
-                </div>
-                ${residualRows || '<div style="color:var(--text-tertiary); font-size:0.875rem; padding:0.5rem 0;">Run analysis to see threat breakdown</div>'}
-                ${residualNote}
-                <!-- Bridge to action plan -->
-                <div style="margin-top:0.875rem; padding:0.625rem 0.875rem; background:var(--primary-color)11; border-left:3px solid var(--primary-color); border-radius:0 6px 6px 0; font-size:0.8rem; color:var(--text-secondary);">
-                    The <strong style="color:var(--text-color);">Top Actions</strong> on the right are the highest-leverage controls to close these gaps.
-                    See <strong style="color:var(--primary-color); cursor:pointer;" onclick="window.dashboard?.switchTab('controls')">Mitigations tab</strong> for the full prioritised list.
-                </div>
+        container.innerHTML = `
+        ${moeOverviewSummary}
+        ${scoreCardsHtml}
+
+        <div style="display:flex; gap:0.875rem; flex-wrap:wrap; align-items:flex-start;">
+        <div style="flex:2; min-width:320px;">
+        ${_ovSection('exposure', '📊', 'Threat Exposure by Category', 'Risk reduction breakdown — existing controls, recommended controls, and residual exposure per threat type.',
+            `<div style="display:flex; gap:0.75rem; font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.875rem; flex-wrap:wrap; align-items:center;">
+                <span style="display:flex; align-items:center; gap:0.25rem;"><span style="display:inline-block; width:14px; height:7px; background:var(--secondary-color); opacity:0.4; border-radius:2px;"></span>Existing controls</span>
+                <span style="display:flex; align-items:center; gap:0.25rem;"><span style="display:inline-block; width:14px; height:7px; background:var(--secondary-color); opacity:0.85; border-radius:2px;"></span>Recommended controls</span>
+                <span style="display:flex; align-items:center; gap:0.25rem;"><span style="display:inline-block; width:14px; height:7px; background:var(--warning-color); opacity:0.7; border-radius:2px;"></span>Residual (always present)</span>
+                <span style="display:flex; align-items:center; gap:0.5rem; margin-left:auto;">
+                    <span style="display:inline-block; width:2px; height:12px; background:var(--text-secondary); opacity:0.5;"></span>⚡
+                    <span style="display:inline-block; width:2px; height:12px; background:var(--primary-color); opacity:0.8;"></span>⭐
+                    <span style="display:inline-block; width:2px; height:12px; background:var(--secondary-color);"></span>🔒
+                    <span style="color:var(--text-tertiary);">investment tiers</span>
+                </span>
             </div>
-            <!-- Top Actions by Risk Impact -->
-            <div style="flex:1; min-width:240px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem;">
-                <h3 style="margin:0 0 0.2rem; font-size:0.9375rem; color:var(--text-color);">⚡ Highest Impact Controls</h3>
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:1rem;">Ranked by paths covered × risk score${validatedConf !== null ? ' · expert-validated boost applied' : ''}</div>
-                ${top3.length > 0 ? top3.map((c, i) => {
-                    // Rank circle color follows position in ranked list, not RAPIDS priority
-                    // (a higher-scored "high" control outranks a lower-scored "critical" one)
+            ${residualRows || '<div style="color:var(--text-tertiary); font-size:0.875rem; padding:0.5rem 0;">Run analysis to see threat breakdown</div>'}
+            ${residualNote}
+            <div style="margin-top:0.75rem; font-size:0.78rem; color:var(--text-secondary);">See <strong style="color:var(--primary-color); cursor:pointer;" onclick="window.dashboard?.switchTab('controls')">Mitigations tab</strong> for the full prioritised control list.</div>`
+        )}
+        </div>
+        <div style="flex:1; min-width:240px;">
+        ${_ovSection('top-actions', '⚡', 'Highest Impact Controls', `Ranked by paths covered × risk score${validatedConf !== null ? ' · expert-validated boost applied' : ''}`,
+            `${top3.length > 0 ? top3.map((c, i) => {
                     const rankColor = i === 0 ? 'var(--danger-color)' : i === 1 ? 'var(--warning-color)' : 'var(--primary-color)';
-                    // Priority badge color = RAPIDS priority (separate from rank)
                     const priColor = c.priority === 'critical' ? 'var(--danger-color)' : c.priority === 'high' ? 'var(--warning-color)' : 'var(--primary-color)';
                     const riskScore = c.score ?? null;
                     const paths = c.attack_paths?.length || 0;
@@ -1396,65 +1423,45 @@ class Dashboard {
                         const sc = sl === 0 ? 'var(--danger-color)' : sl === 1 ? 'var(--warning-color)' : 'var(--text-tertiary)';
                         sspMiniPill = `<span style="padding:1px 4px; background:${sc}15; border:1px solid ${sc}44; border-radius:3px; font-size:0.62rem; font-weight:700; color:${sc};" title="${sspCtx.primary.title}">🏛 L${sl}</span>`;
                     }
-                    // Find most impactful corroborated journey covered by this control
                     const coveredApIndices = c.attack_paths || [];
                     const coveredAps = coveredApIndices.map(idx => (attackPaths[idx] || {}).id).filter(Boolean);
                     let topJourneyHtml = '';
                     if (coveredAps.length && this._tmJourneyByAp) {
-                        const covJourneys = coveredAps
-                            .map(id => this._tmJourneyByAp[id])
-                            .filter(j => j && !j.no_user_story);
+                        const covJourneys = coveredAps.map(id => this._tmJourneyByAp[id]).filter(j => j && !j.no_user_story);
                         if (covJourneys.length) {
-                            const j = covJourneys[0]; // first = highest-ranked AP
+                            const j = covJourneys[0];
                             const rIcon = {'end user':'👤','system administrator':'🔧','partner/third party':'🤝','API consumer':'⚙️','web user':'🌐','mobile user':'📱','customer':'👥'}[j.user_role] || '👤';
-                            topJourneyHtml = `
-                            <div style="margin-top:0.4rem; padding:0.35rem 0.5rem; background:var(--main-bg); border-radius:4px; border-left:2px solid #32CD3255; font-size:0.72rem; color:var(--text-secondary);">
-                                <span style="color:#32CD32; font-size:0.67rem;">✓ Protects journey:</span>
-                                <span style="margin-left:0.3rem;">${rIcon} ${this._esc(j.user_role||'user')} — ${this._esc(j.actor_label||'?')} → ${this._esc(j.resource_label||'?')}</span>
-                                <button onclick="window.dashboard.switchToThreatModelJourneys()" style="margin-left:0.5rem; font-size:0.65rem; padding:0 0.3rem; border:1px solid var(--border-color); border-radius:3px; background:transparent; color:var(--primary-color); cursor:pointer;">details →</button>
-                            </div>`;
+                            topJourneyHtml = `<div style="margin-top:0.4rem; padding:0.35rem 0.5rem; background:var(--main-bg); border-radius:4px; border-left:2px solid #32CD3255; font-size:0.72rem; color:var(--text-secondary);"><span style="color:#32CD32; font-size:0.67rem;">✓ Protects journey:</span> <span>${rIcon} ${this._esc(j.user_role||'user')} — ${this._esc(j.actor_label||'?')} → ${this._esc(j.resource_label||'?')}</span><button onclick="window.dashboard.switchToThreatModelJourneys()" style="margin-left:0.5rem; font-size:0.65rem; padding:0 0.3rem; border:1px solid var(--border-color); border-radius:3px; background:transparent; color:var(--primary-color); cursor:pointer;">details →</button></div>`;
                         } else if (coveredAps.some(id => (this._tmJourneyByAp||{})[id]?.no_user_story)) {
                             topJourneyHtml = `<div style="margin-top:0.4rem; font-size:0.7rem; color:#FF8C00; padding:0.3rem 0.5rem; background:#FF8C0008; border-radius:4px; border-left:2px solid #FF8C0044;">⚠ Covers post-compromise path — network controls needed, not user behaviour</div>`;
                         }
                     }
-                    return `
-                <div style="padding:0.625rem 0; border-bottom:1px solid var(--border-color);">
-                    <div style="display:flex; align-items:flex-start; gap:0.5rem;">
-                        <div style="width:20px; height:20px; border-radius:50%; background:${rankColor}; color:#fff; font-size:0.7rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">${i+1}</div>
-                        <div style="flex:1;">
-                            <div style="display:flex; align-items:baseline; justify-content:space-between; gap:0.4rem; flex-wrap:wrap;">
-                                <a href="#" onclick="window.dashboard._focusControl(this.dataset.ctrl); return false;" data-ctrl="${(c.control||'').replace(/"/g,'&quot;')}"
-                                   style="font-weight:600; color:var(--primary-color); font-size:0.8125rem; text-transform:uppercase; text-decoration:none;"
-                                   title="View in Mitigations tab">${c.control} ↗</a>
-                                ${riskScore !== null ? `<span style="font-size:0.75rem; font-weight:700; color:${rankColor};">${riskScore}/100</span>` : ''}
+                    return `<div style="padding:0.625rem 0; border-bottom:1px solid var(--border-color);">
+                        <div style="display:flex; align-items:flex-start; gap:0.5rem;">
+                            <div style="width:20px; height:20px; border-radius:50%; background:${rankColor}; color:#fff; font-size:0.7rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">${i+1}</div>
+                            <div style="flex:1;">
+                                <div style="display:flex; align-items:baseline; justify-content:space-between; gap:0.4rem; flex-wrap:wrap;">
+                                    <a href="#" onclick="window.dashboard._focusControl(this.dataset.ctrl); return false;" data-ctrl="${(c.control||'').replace(/"/g,'&quot;')}" style="font-weight:600; color:var(--primary-color); font-size:0.8125rem; text-transform:uppercase; text-decoration:none;" title="View in Mitigations tab">${c.control} ↗</a>
+                                    ${riskScore !== null ? `<span style="font-size:0.75rem; font-weight:700; color:${rankColor};">${riskScore}/100</span>` : ''}
+                                </div>
+                                <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-top:0.2rem;">
+                                    <span style="font-size:0.7rem; color:var(--text-secondary);">${paths} path${paths !== 1 ? 's' : ''}</span>
+                                    <span style="padding:0.1rem 0.3rem; background:${priColor}22; color:${priColor}; border-radius:3px; font-size:0.65rem; font-weight:700;">${c.priority}</span>
+                                    ${expertTag} ${sspMiniPill}
+                                </div>
+                                ${topJourneyHtml}
                             </div>
-                            <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-top:0.2rem;">
-                                <span style="font-size:0.7rem; color:var(--text-secondary);">${paths} path${paths !== 1 ? 's' : ''}</span>
-                                <span style="padding:0.1rem 0.3rem; background:${priColor}22; color:${priColor}; border-radius:3px; font-size:0.65rem; font-weight:700;">${c.priority}</span>
-                                ${expertTag}
-                                ${sspMiniPill}
-                            </div>
-                            ${topJourneyHtml}
                         </div>
-                    </div>
-                </div>`}).join('') : '<div style="color:var(--text-tertiary); font-size:0.875rem;">No critical actions identified</div>'}
-                ${top3.length > 0 ? `
-                <div style="margin-top:0.75rem; font-size:0.75rem; color:var(--text-tertiary); font-style:italic;">
-                    Full prioritised list →
-                    <strong style="color:var(--primary-color); cursor:pointer;" onclick="window.dashboard?.switchTab('controls')">Mitigations tab</strong>
-                </div>` : ''}
-            </div>
+                    </div>`;
+                }).join('') : '<div style="color:var(--text-tertiary); font-size:0.875rem;">No critical actions identified</div>'}
+            ${top3.length > 0 ? `<div style="margin-top:0.75rem; font-size:0.75rem; color:var(--text-tertiary);">Full list → <strong style="color:var(--primary-color); cursor:pointer;" onclick="window.dashboard?.switchTab('controls')">Mitigations tab</strong></div>` : ''}`
+        )}
         </div>
-
-        <!-- Improvement Tiers -->
-        <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:1.25rem; margin-bottom:0.5rem;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.375rem; flex-wrap:wrap; gap:0.5rem;">
-                <h3 style="margin:0; font-size:0.9375rem; color:var(--text-color);">Investment Tiers — What Each Level Achieves</h3>
-                ${!hasMoe ? `<span style="font-size:0.8125rem; color:var(--text-tertiary);">Run Expert Review to unlock diagrams</span>` : `<span style="font-size:0.8125rem; color:var(--secondary-color);">✅ Validated ${validatedConf ? validatedConf.toFixed(1) + '%' : ''}</span>`}
-            </div>
-            <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:1rem;">The tier markers on the bars above show where each investment level lands per threat category.</div>
-            <div style="display:flex; gap:1rem; flex-wrap:wrap;">${tierCards}</div>
         </div>
+        ${_ovSection('tiers', '🗺️', 'Investment Tiers',
+            !hasMoe ? 'Run Expert Review to unlock cost estimates and diagrams' : `Validated at ${validatedConf ? validatedConf.toFixed(1) + '%' : '—'} confidence · tier markers on the bars above show where each level lands`,
+            `<div style="display:flex; gap:1rem; flex-wrap:wrap;">${tierCards}</div>`
+        )}
         `;
 
         // Wire tier diagram buttons → Visualise tab
@@ -9452,12 +9459,13 @@ class Dashboard {
             return;
         }
 
-        // Load governance_signals (has AIVSS block) + ground_truth in parallel
+        // Load governance_signals (has AIVSS block) + ground_truth — no-store to bypass browser cache
+        const _nc = {cache: 'no-store'};
         let gov = null, gt = null;
         await Promise.all([
-            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/governance_signals.json`)
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/governance_signals.json`, _nc)
                 .then(r => r.ok ? r.json() : null).then(d => { gov = d; }).catch(() => {}),
-            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/ground_truth.json`)
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/ground_truth.json`, _nc)
                 .then(r => r.ok ? r.json() : null).then(d => { gt = d; }).catch(() => {}),
         ]);
 
@@ -9469,86 +9477,170 @@ class Dashboard {
         };
         const _score = (v) => v != null ? `<span style="font-weight:700; font-size:0.88rem;">${Number(v).toFixed(1)}</span>` : '—';
 
-        // ── Section A: Input Safety ──────────────────────────────────────────
-        let sectionA = `<div style="font-size:0.78rem; color:var(--text-tertiary);">No governance data for this run.</div>`;
+        // ── Section A: Pipeline Gate View (Ingress / Internal / Egress) ────────
+        let sectionA = `<div style="font-size:0.78rem; color:var(--text-tertiary);">No governance data for this run. Rerun analysis to populate.</div>`;
         if (gov) {
             const aivss = gov.aivss || {};
             const overall = aivss.overall || {};
-            const aivssRow = aivss.overall ? `
+
+            // AIVSS flow scores row (inbound=Ingress, internal=Internal, outbound=Egress)
+            const flowLabels = {inbound:'🔐 Ingress', internal:'⚙️ Internal', outbound:'📤 Egress'};
+            const aivssFlowRow = (aivss.inbound || aivss.internal || aivss.outbound) ? `
                 <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem;">
                     ${['inbound','internal','outbound'].map(k => {
                         const f = aivss[k] || {};
-                        const fc = (f.severity === 'CRITICAL') ? '#dc2626' : (f.severity === 'HIGH') ? '#f97316' : (f.severity === 'MEDIUM') ? '#ca8a04' : '#16a34a';
-                        return `<div style="padding:0.3rem 0.75rem; background:${fc}12; color:${fc}; border:1px solid ${fc}44; border-radius:6px; font-size:0.78rem; font-weight:700;">${k.charAt(0).toUpperCase()+k.slice(1)} ${_score(f.composite)} ${f.severity||''}</div>`;
-                    }).join('')}
-                    <div style="padding:0.3rem 0.75rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem; font-weight:700; color:var(--text-color);">Overall ${_score(overall.composite)} ${overall.severity||''}</div>
+                        if (f.composite == null && !f.severity) return '';
+                        const fc = f.severity==='CRITICAL'?'#dc2626':f.severity==='HIGH'?'#f97316':f.severity==='MEDIUM'?'#ca8a04':'#16a34a';
+                        return `<div style="padding:0.35rem 0.875rem; background:${fc}12; color:${fc}; border:1px solid ${fc}44; border-radius:6px; font-size:0.78rem; font-weight:700;">${flowLabels[k]} ${_score(f.composite)} ${f.severity||''}</div>`;
+                    }).filter(Boolean).join('')}
+                    ${overall.composite != null ? `<div style="padding:0.35rem 0.875rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem; font-weight:700; color:var(--text-color);">Overall ${_score(overall.composite)} ${overall.severity||''}</div>` : ''}
                 </div>` : '';
 
-            const dimDefs = [
-                ['D1 — Exploitation',         gov.exploitation,            'CS / LL / MR'],
-                ['D2 — Manipulation',          gov.manipulation_resistance, 'AA / DC'],
-                ['D3 — Data Leakage',          gov.data_leakage,            'DS / CS'],
-                ['D4 — Identity Integrity',    gov.identity_integrity,      'GV / LL'],
-                ['D5 — Data Sovereignty',      gov.data_sovereignty,        'GV / EI'],
+            // Three gate cards with dimensions, plain-language explanation, and actionable guidance
+            const gateConfigs = [
+                {
+                    icon: '🔐', label: 'Ingress Gate', flow: 'inbound',
+                    dims: [
+                        {key:'exploitation', label:'D1 — Exploitation', desc:'Prompt injection, path traversal, oversized labels in the input MMD — attacker-controlled content entering the pipeline.'},
+                        {key:'sovereignty',  label:'D5 — Data Sovereignty (inbound)', desc:'Cross-boundary nodes and ZDR-inferred regions detected at the boundary — data origin compliance.'},
+                    ],
+                    guidance: {
+                        LOW:      'Input boundary is clean. Maintain WAF rules and input validation cadence.',
+                        MEDIUM:   'Suspicious patterns present. Review injection indicators and tighten boundary controls.',
+                        HIGH:     'Active boundary threats detected. Prioritise WAF, input sanitisation, and rate limiting immediately.',
+                        CRITICAL: 'Pipeline blocked — confirmed injection or traversal. Do not process this input without remediation.',
+                    },
+                },
+                {
+                    icon: '⚙️', label: 'Internal Gate', flow: 'internal',
+                    dims: [
+                        {key:'manipulation', label:'D2 — Manipulation Resistance', desc:'Confidence swings and critic divergence inside the LLM/agent layer — signs of goal misalignment or adversarial steering.'},
+                        {key:'identity',     label:'D4 — Identity Integrity', desc:'Tool call errors, context bleed, overreach signals — agents acting outside their sanctioned roles.'},
+                    ],
+                    guidance: {
+                        LOW:      'Agent layer behaviour is stable. Continue monitoring critic divergence across runs.',
+                        MEDIUM:   'Confidence instability or tool errors observed. Review critic outputs and tighten tool permissions.',
+                        HIGH:     'Agent manipulation signals active. Audit all critic outputs; consider blocking affected agents.',
+                        CRITICAL: 'Agent layer compromised. Halt automated outputs; require human review before acting on results.',
+                    },
+                },
+                {
+                    icon: '📤', label: 'Egress Gate', flow: 'outbound',
+                    dims: [
+                        {key:'leakage',     label:'D3 — Data Leakage', desc:'PII indicators and sensitive keywords in outputs — data exfiltration risk in what the system produces.'},
+                        {key:'sovereignty', label:'D5 — Data Sovereignty (egress)', desc:'ZDR inference and region boundary violations in output data flows — sovereignty compliance of what leaves the system.'},
+                    ],
+                    guidance: {
+                        LOW:      'Output boundary is clean. Periodic DLP sweeps are sufficient.',
+                        MEDIUM:   'PII patterns or boundary hints detected in outputs. Apply output filtering and review data flows.',
+                        HIGH:     'Active data leakage risk. Apply DLP, redaction controls, and restrict downstream consumption.',
+                        CRITICAL: 'Sensitive data confirmed in outputs. Block distribution; apply immediate remediation.',
+                    },
+                },
             ];
-            const dimCards = dimDefs.map(([label, dim, metrics]) => {
-                if (!dim) return '';
-                const sev = dim.severity || 'LOW';
-                const c = sev === 'CRITICAL' ? '#dc2626' : sev === 'HIGH' ? '#f97316' : sev === 'MEDIUM' ? '#ca8a04' : '#16a34a';
-                const blocked = dim.blocked ? ' <span style="font-size:0.65rem; color:#dc2626; font-weight:700;">BLOCKED</span>' : '';
-                return `<div style="padding:0.65rem 0.75rem; background:var(--nav-hover-bg); border:1px solid ${c}44; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <div style="font-weight:600; font-size:0.82rem; color:var(--text-color);">${label}${blocked}</div>
-                        <div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.15rem;">AIVSS metrics: ${metrics}</div>
+
+            const gateCards = gateConfigs.map(gate => {
+                const sevOrd = {CRITICAL:3,HIGH:2,MEDIUM:1,LOW:0};
+                const sevLabel = ['LOW','MEDIUM','HIGH','CRITICAL'];
+
+                const dimData = gate.dims.map(d => {
+                    const raw = gov[d.key] || {};
+                    // Count how many signal fields are non-empty (checks performed)
+                    const signalFields = Object.values(raw).filter(v =>
+                        v !== null && v !== undefined && v !== '' && v !== false &&
+                        !(Array.isArray(v) && v.length === 0) &&
+                        !(typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0)
+                    );
+                    const checksRun = signalFields.length;
+                    // A dim has a real finding only if severity is MEDIUM or above, OR blocked
+                    const hasFinding = raw.severity && (sevOrd[raw.severity] >= 1 || raw.blocked);
+                    return { ...d, sev: raw.severity || null, blocked: raw.blocked || false, raw, checksRun, hasFinding };
+                });
+
+                // Gate is "clean" only if no dim has a finding (MEDIUM+)
+                const findingDims = dimData.filter(d => d.hasFinding);
+                const totalChecks = dimData.reduce((a,d) => a + d.checksRun, 0);
+                const isClean = findingDims.length === 0;
+
+                // Worst severity only from actual findings
+                const sevs = findingDims.map(d => sevOrd[d.sev] ?? -1).filter(s => s >= 0);
+                const worstIdx = sevs.length ? Math.max(...sevs) : -1;
+                const worstSev = worstIdx >= 0 ? sevLabel[worstIdx] : null;
+
+                // Border and accent colour: green when clean, severity colour when findings exist
+                const bc = isClean ? '#16a34a' : (worstSev==='CRITICAL'?'#dc2626':worstSev==='HIGH'?'#f97316':'#ca8a04');
+
+                // AIVSS flow score
+                const flowScore = aivss[gate.flow] || {};
+                const flowBadge = flowScore.composite != null
+                    ? ` · AIVSS <strong>${Number(flowScore.composite).toFixed(1)}</strong>` : '';
+
+                // Header status chip
+                const statusChip = isClean
+                    ? `<span style="padding:2px 9px; background:#16a34a18; color:#16a34a; border:1px solid #16a34a44; border-radius:4px; font-size:0.72rem; font-weight:700;">✓ Clear</span>`
+                    : `<span style="padding:2px 9px; background:${bc}18; color:${bc}; border:1px solid ${bc}44; border-radius:4px; font-size:0.72rem; font-weight:800;">${worstSev}</span>`;
+
+                // Check count line
+                const checkLine = `<div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.2rem;">
+                    ${totalChecks} signal${totalChecks!==1?'s':''} checked${flowBadge}
+                </div>`;
+
+                // Clean state — just a brief confirmation, no clutter
+                if (isClean) {
+                    return `<div style="flex:1; min-width:240px; background:var(--nav-hover-bg); border:1px solid #16a34a33; border-radius:8px; padding:0.875rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.2rem;">
+                            <div style="font-size:0.88rem; font-weight:700; color:var(--text-color);">${gate.icon} ${gate.label}</div>
+                            ${statusChip}
+                        </div>
+                        ${checkLine}
+                        <div style="margin-top:0.6rem; font-size:0.72rem; color:#16a34a; line-height:1.4;">
+                            No findings on ${gate.dims.map(d=>d.label).join(' or ')}. Gate is clear to proceed.
+                        </div>
+                        <div style="margin-top:0.4rem; font-size:0.7rem; color:var(--text-tertiary); line-height:1.4; font-style:italic;">
+                            💡 ${gate.guidance.LOW}
+                        </div>
+                    </div>`;
+                }
+
+                // Findings state — show only dims with actual findings, with what + what next
+                const findingRows = findingDims.map(d => {
+                    const dc = d.sev==='CRITICAL'?'#dc2626':d.sev==='HIGH'?'#f97316':'#ca8a04';
+                    // Extract concrete signals from raw for "what was found"
+                    const signals = [];
+                    if (d.raw.injection_patterns?.length)  signals.push(`${d.raw.injection_patterns.length} injection pattern${d.raw.injection_patterns.length>1?'s':''}`);
+                    if (d.raw.path_traversal?.length)       signals.push(`${d.raw.path_traversal.length} path traversal${d.raw.path_traversal.length>1?'s':''}`);
+                    if (d.raw.pii_indicators?.length)       signals.push(`PII: ${d.raw.pii_indicators.slice(0,2).join(', ')}${d.raw.pii_indicators.length>2?'…':''}`);
+                    if (d.raw.cross_boundary_nodes?.length) signals.push(`${d.raw.cross_boundary_nodes.length} cross-boundary node${d.raw.cross_boundary_nodes.length>1?'s':''}`);
+                    if (d.raw.zdr_signals?.length)          signals.push(`${d.raw.zdr_signals.length} ZDR signal${d.raw.zdr_signals.length>1?'s':''}`);
+                    if (d.raw.supply_chain_modified_modules?.length) signals.push(`${d.raw.supply_chain_modified_modules.length} modified module${d.raw.supply_chain_modified_modules.length>1?'s':''}`);
+                    if (d.raw.confidence_swing_detected)    signals.push('confidence swing detected');
+                    if (d.raw.divergence_detected)          signals.push('critic divergence detected');
+                    const foundText = signals.length ? signals.join(', ') : d.desc;
+
+                    return `<div style="margin-top:0.5rem; padding:0.45rem 0.65rem; background:var(--main-bg); border-radius:5px; border-left:3px solid ${dc};">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.2rem;">
+                            <span style="font-size:0.75rem; font-weight:700; color:var(--text-secondary);">${d.label}</span>
+                            <span style="padding:1px 6px; background:${dc}18; color:${dc}; border:1px solid ${dc}44; border-radius:3px; font-size:0.67rem; font-weight:700;">${d.sev}${d.blocked?' · BLOCKED':''}</span>
+                        </div>
+                        <div style="font-size:0.71rem; color:var(--text-color); margin-bottom:0.2rem;"><strong>Found:</strong> ${_esc(foundText)}</div>
+                        <div style="font-size:0.71rem; color:var(--text-tertiary);"><strong>Concern:</strong> ${d.desc}</div>
+                    </div>`;
+                }).join('');
+
+                return `<div style="flex:1; min-width:260px; background:var(--nav-hover-bg); border:1px solid ${bc}55; border-radius:8px; padding:0.875rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.2rem;">
+                        <div style="font-size:0.88rem; font-weight:700; color:var(--text-color);">${gate.icon} ${gate.label}</div>
+                        ${statusChip}
                     </div>
-                    <div style="display:flex; gap:0.5rem; align-items:center;">
-                        ${_sev(sev)}
+                    ${checkLine}
+                    ${findingRows}
+                    <div style="margin-top:0.65rem; padding:0.4rem 0.6rem; background:${bc}08; border:1px solid ${bc}33; border-radius:5px; font-size:0.72rem; color:var(--text-secondary); line-height:1.45;">
+                        💡 ${gate.guidance[worstSev]}
                     </div>
                 </div>`;
             }).join('');
 
-            sectionA = aivssRow + `<div style="display:flex; flex-direction:column; gap:0.5rem;">${dimCards}</div>`;
-        }
-
-        // ── Section B: Design Patterns (cross-run) ───────────────────────────
-        // Build from current ground_truth; future multi-arch cross-run requires /api/v1/insights endpoint
-        let sectionB = `<div style="font-size:0.78rem; color:var(--text-tertiary);">Load more architectures via Reports tab to compare patterns.</div>`;
-        if (gt) {
-            const paths = (gt.expected_attack_paths || []).slice(0, 10);
-            const aivssPerThreat = (gov && gov.aivss && gov.aivss.per_threat) || [];
-            const aivssMap = {};
-            aivssPerThreat.forEach(t => { aivssMap[t.technique_id] = t; });
-
-            const threatRows = paths.map(p => {
-                const aivssEntry = aivssMap[p.id];
-                const aivssCell = aivssEntry
-                    ? `${_score(aivssEntry.composite)} ${_sev(aivssEntry.severity)}`
-                    : '—';
-                return `<tr style="border-bottom:1px solid var(--border-color);">
-                    <td style="padding:0.35rem 0.5rem; font-size:0.8rem; font-weight:600; cursor:pointer; color:var(--primary-color);"
-                        onclick="window.dashboard.switchTab('attacks'); window.dashboard.showAttackPathDetailById('${_esc(p.id)}')">${_esc(p.id)}</td>
-                    <td style="padding:0.35rem 0.5rem; font-size:0.78rem; color:var(--text-secondary);">${_esc(p.title || p.id)}</td>
-                    <td style="padding:0.35rem 0.5rem; text-align:right;">${_sev(p.criticality_tier || 'MEDIUM')}</td>
-                    <td style="padding:0.35rem 0.5rem; text-align:right; font-size:0.8rem;">${aivssCell}</td>
-                </tr>`;
-            }).join('');
-
-            if (threatRows) {
-                sectionB = `
-                    <table style="width:100%; border-collapse:collapse;">
-                        <thead><tr style="border-bottom:2px solid var(--border-color);">
-                            <th style="padding:0.3rem 0.5rem; text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Path</th>
-                            <th style="padding:0.3rem 0.5rem; text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Title</th>
-                            <th style="padding:0.3rem 0.5rem; text-align:right; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Severity</th>
-                            <th style="padding:0.3rem 0.5rem; text-align:right; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">AIVSS</th>
-                        </tr></thead>
-                        <tbody>${threatRows}</tbody>
-                    </table>
-                    <div style="margin-top:0.5rem; font-size:0.72rem; color:var(--text-tertiary);">
-                        Click a path ID to view details in Threat Paths tab.
-                        Multi-architecture comparison available in a future update via <code>/api/v1/insights</code>.
-                    </div>`;
-            }
+            sectionA = aivssFlowRow + `<div style="display:flex; gap:0.75rem; flex-wrap:wrap;">${gateCards}</div>`;
         }
 
         const _section = (id, icon, title, desc, body) => `
@@ -9563,13 +9655,691 @@ class Dashboard {
                 ${body}
             </div>`;
 
+        // ── Section B: Trend views (Single / Multi / Domain) ─────────────────
+        const trendView = this._insightsTrendView || 'single';
+        const trendPlaceholder = `<div id="insights-trend-panel" style="min-height:120px;">
+            <p style="color:var(--text-tertiary); font-size:0.82rem;">Loading trend data…</p>
+        </div>`;
+
+        const _tabBtn = (view, label) => {
+            const active = view === trendView;
+            return `<button class="insight-trend-tab" data-view="${view}"
+                onclick="window.dashboard._switchTrendView('${view}')"
+                style="padding:0.5rem 1rem; border:none; border-bottom:2px solid ${active ? 'var(--primary-color)' : 'transparent'};
+                       background:transparent; color:${active ? 'var(--primary-color)' : 'var(--text-secondary)'};
+                       font-weight:${active ? '700' : '500'}; font-size:0.82rem; cursor:pointer; transition:all 0.15s;">${label}</button>`;
+        };
+
+        const trendTabs = `<div style="display:flex; gap:0; border-bottom:2px solid var(--border-color); margin-bottom:1rem;">
+            ${_tabBtn('single', '📈 Single Arch')}
+            ${_tabBtn('multi',  '🗂 Multi-Arch')}
+            ${_tabBtn('domain', '🌐 By Domain')}
+        </div>` + trendPlaceholder;
+
         container.innerHTML =
-            _section('input-safety', '🔒', 'Input Safety',
-                `Was this architecture safe to process? Governance dimensions + AIVSS flow scores for <strong>${_esc(archName)}</strong>.`,
+            _section('input-safety', '🛡️', 'Governance & AIVSS',
+                `Pipeline safety check for <strong>${_esc(archName)}</strong> — inbound/internal/outbound AI risk flows across 5 governance dimensions.`,
                 sectionA) +
-            _section('design-patterns', '📈', 'Design Patterns',
-                'Attack paths ranked by AIVSS score. Click any path to jump to the Threat Paths tab.',
-                sectionB);
+            _section('trending', '📊', 'Cross-Run Trends',
+                'Trend analysis across analysis runs — single architecture improvement, systemic multi-arch gaps, and domain-level sensing.',
+                trendTabs);
+
+        // Fetch all-arch data then render the active view
+        try {
+            const resp = await fetch('/api/v1/insights/all');
+            const data = resp.ok ? await resp.json() : null;
+            const allArchs = (data && data.architectures) || [];
+
+            // Pre-load technique names for multi-arch + domain views (batch, silent)
+            if (trendView === 'multi' || trendView === 'domain') {
+                const allTechIds = [...new Set(allArchs.flatMap(a => a.techniques || []))];
+                const uncached = allTechIds.filter(t => !this.techniqueNamesCache[t]);
+                if (uncached.length) {
+                    try {
+                        const tr = await fetch(`/api/v1/techniques?technique_ids=${uncached.slice(0,100).join(',')}`);
+                        if (tr.ok) {
+                            const td = await tr.json();
+                            // API returns {techniques: {T1059: "name", ...}} — merge the inner dict
+                            Object.assign(this.techniqueNamesCache, td.techniques || td);
+                        }
+                    } catch (_) {}
+                }
+            }
+
+            const panel = document.getElementById('insights-trend-panel');
+            if (panel) {
+                if (trendView === 'single')       panel.innerHTML = this._renderTrendSingle(allArchs, archName);
+                else if (trendView === 'multi')   panel.innerHTML = this._renderTrendMulti(allArchs);
+                else                               panel.innerHTML = this._renderTrendDomain(allArchs);
+            }
+        } catch (e) {
+            const panel = document.getElementById('insights-trend-panel');
+            if (panel) panel.innerHTML = `<div style="color:var(--text-tertiary); font-size:0.82rem;">Could not load trend data.</div>`;
+        }
+    }
+
+    _switchTrendView(view) {
+        this._insightsTrendView = view;
+        document.querySelectorAll('.insight-trend-tab').forEach(btn => {
+            const active = btn.dataset.view === view;
+            btn.style.borderBottomColor = active ? 'var(--primary-color)' : 'transparent';
+            btn.style.color = active ? 'var(--primary-color)' : 'var(--text-secondary)';
+            btn.style.fontWeight = active ? '700' : '500';
+        });
+        // Re-render by reloading the tab
+        this.loadInsightsTab();
+    }
+
+    // ── View A: Single Architecture Trend ────────────────────────────────────
+    _renderTrendSingle(allArchs, currentArchName) {
+        const _esc = (s) => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const _sev = (s) => {
+            if (!s) return '<span style="color:var(--text-tertiary);">—</span>';
+            const c = s==='CRITICAL'?'#dc2626':s==='HIGH'?'#f97316':s==='MEDIUM'?'#ca8a04':'#16a34a';
+            return `<span style="padding:1px 5px; background:${c}18; color:${c}; border:1px solid ${c}44; border-radius:3px; font-size:0.68rem; font-weight:700;">${s}</span>`;
+        };
+        const _riskC = (v) => v==null?'var(--text-tertiary)':v>=70?'#dc2626':v>=40?'#f97316':'#16a34a';
+        const _defC  = (v) => v==null?'var(--text-tertiary)':v>=60?'#16a34a':v>=30?'#f97316':'#dc2626';
+
+        // Group by base_name
+        const groups = {};
+        allArchs.forEach(a => {
+            const b = a.base_name;
+            if (!groups[b]) groups[b] = [];
+            groups[b].push(a);
+        });
+        Object.values(groups).forEach(g => g.sort((a,b) => (a.analysed_at||'').localeCompare(b.analysed_at||'')));
+
+        // Determine selected base
+        const currentBase = this._baseName(currentArchName);
+        const selectedBase = this._insightsTrendArch ||
+            (groups[currentBase] ? currentBase : Object.keys(groups).find(b => groups[b].length > 1) || Object.keys(groups)[0]);
+
+        // Build selector
+        const selectOpts = Object.entries(groups).map(([b, runs]) => {
+            const sel = b === selectedBase ? 'selected' : '';
+            return `<option value="${_esc(b)}" ${sel}>${_esc(b)} (${runs.length} run${runs.length>1?'s':''})${runs.length>1?' ✓':''}</option>`;
+        }).join('');
+        const selector = `<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; flex-wrap:wrap;">
+            <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary); white-space:nowrap;">Architecture:</label>
+            <select onchange="window.dashboard._insightsTrendArch=this.value; window.dashboard.loadInsightsTab();"
+                style="font-size:0.8rem; padding:0.25rem 0.5rem; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-color); cursor:pointer; min-width:220px;">
+                ${selectOpts}
+            </select>
+        </div>`;
+
+        const runs = groups[selectedBase] || [];
+        if (!runs.length) return selector + `<div style="color:var(--text-tertiary); font-size:0.82rem;">No data for this architecture.</div>`;
+
+        // Run-over-run table
+        const thead = `<tr style="border-bottom:2px solid var(--border-color);">
+            <th style="padding:0.3rem 0.6rem; text-align:left; font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Run</th>
+            <th style="padding:0.3rem 0.6rem; text-align:left; font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Analysed</th>
+            <th style="padding:0.3rem 0.6rem; text-align:right; font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Risk ↓</th>
+            <th style="padding:0.3rem 0.6rem; text-align:right; font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Defence ↑</th>
+            <th style="padding:0.3rem 0.6rem; text-align:right; font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Confidence</th>
+            <th style="padding:0.3rem 0.6rem; text-align:right; font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">AIVSS</th>
+        </tr>`;
+        const tbodyRows = runs.map((r, i) => {
+            const dt = r.analysed_at ? r.analysed_at.replace('T',' ').replace('Z','').slice(0,16) : '—';
+            const riskDelta = i > 0 && runs[i-1].risk_score != null && r.risk_score != null
+                ? runs[i-1].risk_score - r.risk_score : null;
+            const deltaHtml = riskDelta != null
+                ? `<span style="font-size:0.65rem; margin-left:0.3rem; color:${riskDelta>0?'#16a34a':riskDelta<0?'#dc2626':'var(--text-tertiary)'};">${riskDelta>0?'▼'+riskDelta:riskDelta<0?'▲'+Math.abs(riskDelta):'='}</span>`
+                : '';
+            return `<tr style="border-bottom:1px solid var(--border-color)22;">
+                <td style="padding:0.3rem 0.6rem; font-size:0.78rem; color:var(--text-secondary); white-space:nowrap;">${_esc(r.name)}</td>
+                <td style="padding:0.3rem 0.6rem; font-size:0.75rem; color:var(--text-tertiary); white-space:nowrap;">${dt}</td>
+                <td style="padding:0.3rem 0.6rem; text-align:right; font-weight:700; font-size:0.82rem; color:${_riskC(r.risk_score)};">${r.risk_score??'—'}${deltaHtml}</td>
+                <td style="padding:0.3rem 0.6rem; text-align:right; font-weight:700; font-size:0.82rem; color:${_defC(r.defensibility)};">${r.defensibility??'—'}</td>
+                <td style="padding:0.3rem 0.6rem; text-align:right; font-size:0.78rem; color:var(--text-secondary);">${r.confidence!=null?r.confidence+'%':'—'}</td>
+                <td style="padding:0.3rem 0.6rem; text-align:right; font-size:0.78rem;">${r.aivss_overall!=null?'<span style="font-weight:700;">'+r.aivss_overall+'</span> '+_sev(r.aivss_severity):'—'}</td>
+            </tr>`;
+        }).join('');
+        const runTable = `<table style="width:100%; border-collapse:collapse; margin-bottom:1.25rem;"><thead>${thead}</thead><tbody>${tbodyRows}</tbody></table>`;
+
+        // ── IPDR-mapped persistent control gaps ──────────────────────────────
+        // IPDR = Identify/Prevent/Detect/Respond — maps to dir_category in control recs
+        // We approximate from control name keywords since controls_missing is a flat list
+        const _ipdrBucket = (name) => {
+            const n = name.toLowerCase();
+            if (/backup|recovery|restore|incident|bcp|dr\b|failover|patch|vuln.*scan/.test(n)) return 'R';
+            if (/log|monitor|siem|alert|audit|detect|ids|ips|edr|soc|anomal/.test(n)) return 'D';
+            if (/firewall|waf|rate.limit|input.valid|sanitiz|filter|block|encrypt|tls|hsm|mfa|2fa|authent|zero.trust|least.priv|segregat|isolat|segment|quarantin/.test(n)) return 'P';
+            return 'I'; // Identify/baseline by default
+        };
+        const _ipdrLabel = {I:'Identify',P:'Prevent',D:'Detect',R:'Respond'};
+        const _ipdrColor = {I:'#6366f1',P:'#16a34a',D:'#0ea5e9',R:'#f97316'};
+        const _ipdrDesc  = {
+            I:'Foundational baseline — asset inventory, risk classification, policy. Controls here build situational awareness.',
+            P:'Stop the threat before it lands — authentication, input validation, encryption, network controls.',
+            D:'Catch what got through — monitoring, logging, anomaly detection, SIEM. Speed of detection limits blast radius.',
+            R:'Recover and contain — incident response, backup, patching cadence. Limits sustained attacker dwell time.'
+        };
+
+        const missingCount = {};
+        runs.forEach(r => (r.controls_missing||[]).forEach(c => { missingCount[c] = (missingCount[c]||0) + 1; }));
+        const persistent = Object.entries(missingCount).filter(([,n]) => n >= 2).sort((a,b) => b[1]-a[1]);
+
+        // Group persistent gaps by IPDR bucket
+        const ipdrGroups = {I:[],P:[],D:[],R:[]};
+        persistent.forEach(([c,n]) => ipdrGroups[_ipdrBucket(c)].push([c,n]));
+
+        // Colour band: ≥ all runs = red, ≥ half = amber, otherwise yellow
+        const _gapColor = (n, total) => n >= total ? '#dc2626' : n >= Math.ceil(total/2) ? '#f97316' : '#ca8a04';
+
+        // IPDR card format — one card per layer, only rendered if it has items
+        const ipdrCards = Object.entries(ipdrGroups).map(([bucket, items]) => {
+            if (!items.length) return '';
+            const bc = _ipdrColor[bucket];
+            // Sort within bucket: most-persistent first
+            const sorted = [...items].sort((a,b) => b[1]-a[1]);
+            // Count how many are critical (every run)
+            const critCount = sorted.filter(([,n]) => n >= runs.length).length;
+            const warnCount = sorted.filter(([,n]) => n >= Math.ceil(runs.length/2) && n < runs.length).length;
+
+            const rows = sorted.map(([c,n]) => {
+                const cc = _gapColor(n, runs.length);
+                const barW = Math.round((n / runs.length) * 100);
+                return `<div style="display:flex; align-items:center; gap:0.5rem; padding:0.3rem 0; border-bottom:1px solid var(--border-color)18;">
+                    <div style="flex:1; font-size:0.77rem; color:var(--text-color); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${_esc(c)}">${_esc(c)}</div>
+                    <div style="width:60px; height:5px; background:var(--border-color); border-radius:3px; flex-shrink:0; overflow:hidden;">
+                        <div style="width:${barW}%; height:100%; background:${cc}; border-radius:3px;"></div>
+                    </div>
+                    <span style="font-size:0.7rem; font-weight:700; color:${cc}; white-space:nowrap; min-width:2.5rem; text-align:right;">${n}/${runs.length}</span>
+                </div>`;
+            }).join('');
+
+            const summary = [
+                critCount ? `<span style="color:#dc2626; font-size:0.7rem; font-weight:700;">${critCount} every run</span>` : '',
+                warnCount ? `<span style="color:#f97316; font-size:0.7rem; font-weight:700;">${warnCount} most runs</span>` : '',
+            ].filter(Boolean).join(' · ');
+
+            return `<div style="flex:1; min-width:200px; background:var(--card-bg); border:1px solid ${bc}44; border-radius:8px; overflow:hidden;">
+                <div style="padding:0.6rem 0.875rem 0.5rem; background:${bc}12; border-bottom:1px solid ${bc}33;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:0.82rem; font-weight:800; color:${bc};">${bucket} — ${_ipdrLabel[bucket]}</span>
+                        <span style="font-size:0.68rem; background:${bc}20; color:${bc}; padding:1px 7px; border-radius:10px; font-weight:700;">${sorted.length} gap${sorted.length>1?'s':''}</span>
+                    </div>
+                    <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">${_ipdrDesc[bucket]}</div>
+                    ${summary ? `<div style="margin-top:0.25rem;">${summary}</div>` : ''}
+                </div>
+                <div style="padding:0.4rem 0.875rem 0.6rem;">
+                    ${rows}
+                    <div style="margin-top:0.4rem; font-size:0.67rem; color:var(--text-tertiary); font-style:italic;">Bar = proportion of runs where this control was missing.</div>
+                </div>
+            </div>`;
+        }).filter(Boolean).join('');
+
+        const gapsHtml = persistent.length
+            ? `<div style="font-size:0.82rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.6rem;">
+                ⚠ Persistent Control Gaps
+                <span style="font-weight:400; font-size:0.72rem; color:var(--text-tertiary); margin-left:0.5rem;">by IPDR layer · bar = runs missing · <span style="color:#dc2626;">red</span>=every run · <span style="color:#f97316;">amber</span>=most · <span style="color:#ca8a04;">yellow</span>=some</span>
+               </div>
+               <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">${ipdrCards}</div>`
+            : `<div style="font-size:0.78rem; color:var(--text-tertiary);">No persistent control gaps detected across runs.</div>`;
+
+        // ── Ingress / Internal / Egress gate drift ────────────────────────────
+        // Map the 5 governance dimensions to the 3 harness gates:
+        //   Ingress  = D1 Exploitation + D5 Sovereignty (external_boundary + data_boundary inbound)
+        //   Internal = D2 Manipulation + D4 Identity    (llm_layer + agent behaviour)
+        //   Egress   = D3 Data Leakage + D5 Sovereignty (data_boundary outbound + PII exfil)
+        const _gateConfig = [
+            {
+                key: 'ingress', label: 'Ingress Gate', icon: '🔐',
+                dims: ['D1','D5'],
+                what: 'Controls what enters the pipeline — prompt injection, path traversal, cross-boundary nodes.',
+                why: 'A HIGH here means attacker-controlled input reached the pipeline. Harden input validation, WAF, and boundary isolation first.',
+                dims_friendly: {D1:'Exploitation (injection/traversal)', D5:'Data Sovereignty (cross-boundary nodes)'},
+            },
+            {
+                key: 'internal', label: 'Internal Gate', icon: '⚙️',
+                dims: ['D2','D4'],
+                what: 'Controls what happens inside the agent/LLM layer — confidence manipulation, identity drift, tool abuse.',
+                why: 'A HIGH here means agent behaviour cannot be trusted at runtime. Address critic divergence, tool call auditing, and identity controls.',
+                dims_friendly: {D2:'Manipulation Resistance (confidence swing/divergence)', D4:'Identity Integrity (tool errors, context bleed)'},
+            },
+            {
+                key: 'egress', label: 'Egress Gate', icon: '📤',
+                dims: ['D3','D5'],
+                what: 'Controls what leaves the system — PII in outputs, ZDR data flows, sovereignty violations.',
+                why: 'A HIGH here means sensitive data is leaking outbound. Apply output filtering, DLP, and data residency controls.',
+                dims_friendly: {D3:'Data Leakage (PII indicators, sensitive keywords)', D5:'Data Sovereignty (ZDR inference, region violations)'},
+            },
+        ];
+
+        const hasDims = runs.some(r => Object.keys(r.governance_dims||{}).length > 0);
+        let govDrift = '';
+        if (hasDims) {
+            // Severity → numeric score for plotting (CRITICAL=3, HIGH=2, MEDIUM=1, LOW=0, none=-1)
+            const sevOrd = {CRITICAL:3, HIGH:2, MEDIUM:1, LOW:0};
+            const sevLabel = ['LOW','MEDIUM','HIGH','CRITICAL'];
+            const sevColor = ['#16a34a','#ca8a04','#f97316','#dc2626'];
+            const sevName  = {3:'CRITICAL',2:'HIGH',1:'MEDIUM',0:'LOW'};
+
+            // Build per-gate severity series across runs
+            const gateSeries = _gateConfig.map(gate => {
+                const points = runs.map(r => {
+                    const dims = gate.dims.map(dk => (r.governance_dims||{})[dk]).filter(Boolean);
+                    return dims.length ? Math.max(...dims.map(s => sevOrd[s]??0)) : -1;
+                });
+                return { gate, points };
+            });
+
+            // SVG line chart — shared x-axis (runs), y-axis 0-3 (LOW→CRITICAL)
+            const W = 520, H = 160, PAD_L = 72, PAD_R = 16, PAD_T = 12, PAD_B = 36;
+            const gW = W - PAD_L - PAD_R;
+            const gH = H - PAD_T - PAD_B;
+            const n = runs.length;
+            const xPos = (i) => PAD_L + (n <= 1 ? gW/2 : i * gW / (n-1));
+            const yPos = (v) => PAD_T + gH - (v < 0 ? 0 : (v / 3) * gH);
+
+            // Y-axis labels
+            const yLabels = [
+                {v:0, label:'LOW',      c:sevColor[0]},
+                {v:1, label:'MEDIUM',   c:sevColor[1]},
+                {v:2, label:'HIGH',     c:sevColor[2]},
+                {v:3, label:'CRITICAL', c:sevColor[3]},
+            ];
+            const yAxisSvg = yLabels.map(({v,label,c}) =>
+                `<text x="${PAD_L-6}" y="${yPos(v)+4}" text-anchor="end" font-size="9" fill="${c}" font-weight="600">${label}</text>
+                 <line x1="${PAD_L}" y1="${yPos(v)}" x2="${W-PAD_R}" y2="${yPos(v)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="3,3" opacity="0.35"/>`
+            ).join('');
+
+            // X-axis date labels
+            const xAxisSvg = runs.map((r,i) => {
+                const label = (r.analysed_at||'').slice(5,10); // MM-DD
+                return `<text x="${xPos(i)}" y="${H-6}" text-anchor="middle" font-size="8" fill="var(--text-tertiary)">${label}</text>`;
+            }).join('');
+
+            // Gate line colors
+            const gateColors = ['#6366f1','#0ea5e9','#f97316']; // ingress=indigo, internal=cyan, egress=amber
+
+            const linesSvg = gateSeries.map(({gate, points}, gi) => {
+                const validPoints = points.map((v,i) => ({v,i})).filter(p => p.v >= 0);
+                if (validPoints.length < 1) return '';
+                const color = gateColors[gi];
+
+                // Area fill under the line
+                if (validPoints.length === 1) {
+                    const {v,i} = validPoints[0];
+                    return `<circle cx="${xPos(i)}" cy="${yPos(v)}" r="4" fill="${color}" opacity="0.85"/>`;
+                }
+
+                const linePath = validPoints.map(({v,i},idx) => `${idx===0?'M':'L'}${xPos(i).toFixed(1)},${yPos(v).toFixed(1)}`).join(' ');
+                const areaPath = `${linePath} L${xPos(validPoints[validPoints.length-1].i).toFixed(1)},${(PAD_T+gH).toFixed(1)} L${xPos(validPoints[0].i).toFixed(1)},${(PAD_T+gH).toFixed(1)} Z`;
+
+                const dots = validPoints.map(({v,i}) => {
+                    const sev = sevName[v] || '';
+                    const dc = sevColor[v] || color;
+                    return `<circle cx="${xPos(i).toFixed(1)}" cy="${yPos(v).toFixed(1)}" r="3.5" fill="${dc}" stroke="var(--card-bg)" stroke-width="1.5">
+                        <title>${gate.label}: ${sev} (${(runs[i].analysed_at||'').slice(0,10)})</title>
+                    </circle>`;
+                }).join('');
+
+                return `<path d="${areaPath}" fill="${color}" opacity="0.06"/>
+                    <path d="${linePath}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                    ${dots}`;
+            }).join('');
+
+            // Legend
+            const legendSvg = gateSeries.map(({gate},gi) =>
+                `<g transform="translate(${PAD_L + gi*120},${H-2})">
+                    <line x1="0" y1="0" x2="14" y2="0" stroke="${gateColors[gi]}" stroke-width="2"/>
+                    <circle cx="7" cy="0" r="3" fill="${gateColors[gi]}"/>
+                    <text x="18" y="4" font-size="9" fill="var(--text-secondary)">${gate.icon} ${gate.label.replace(' Gate','')}</text>
+                </g>`
+            ).join('');
+
+            const chartSvg = `<svg viewBox="0 0 ${W} ${H+14}" width="100%" style="max-width:${W}px; display:block; overflow:visible; font-family:inherit;">
+                ${yAxisSvg}${xAxisSvg}${linesSvg}${legendSvg}
+                <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T+gH}" stroke="var(--border-color)" stroke-width="1"/>
+                <line x1="${PAD_L}" y1="${PAD_T+gH}" x2="${W-PAD_R}" y2="${PAD_T+gH}" stroke="var(--border-color)" stroke-width="1"/>
+            </svg>`;
+
+            // Analysis note: flag any gate that worsened run-over-run
+            const analysisNotes = gateSeries.map(({gate, points}) => {
+                const valid = points.filter(v => v >= 0);
+                if (valid.length < 2) return '';
+                const first = valid[0], last = valid[valid.length-1];
+                const delta = last - first;
+                if (delta > 0) return `<span style="color:#f97316; font-size:0.72rem;">⚠ ${gate.label} worsened (+${delta} severity level${delta>1?'s':''})</span>`;
+                if (delta < 0) return `<span style="color:#16a34a; font-size:0.72rem;">✓ ${gate.label} improved (${delta} severity level${delta<-1?'s':''})</span>`;
+                return `<span style="color:var(--text-tertiary); font-size:0.72rem;">→ ${gate.label} stable</span>`;
+            }).filter(Boolean).join(' · ');
+
+            govDrift = `<div style="margin-top:1.25rem;">
+                <div style="font-size:0.82rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">Pipeline Gate Drift — Ingress / Internal / Egress</div>
+                <div style="font-size:0.7rem; color:var(--text-tertiary); margin-bottom:0.75rem;">Y-axis: severity level across runs. A rising line means the gate is getting worse — falling means improvement.</div>
+                ${chartSvg}
+                ${analysisNotes ? `<div style="display:flex; flex-wrap:wrap; gap:0.75rem; margin-top:0.6rem; padding:0.4rem 0.6rem; background:var(--main-bg); border-radius:5px;">${analysisNotes}</div>` : ''}
+            </div>`;
+        }
+
+        return selector + runTable +
+            `<div style="padding:0.875rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px;">${gapsHtml}${govDrift}</div>`;
+    }
+
+    // ── View B: Multi-Architecture Comparison ────────────────────────────────
+    _renderTrendMulti(allArchs) {
+        const _esc = (s) => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const _sev = (s) => {
+            if (!s) return '—';
+            const c = s==='CRITICAL'?'#dc2626':s==='HIGH'?'#f97316':s==='MEDIUM'?'#ca8a04':'#16a34a';
+            return `<span style="padding:1px 4px; background:${c}18; color:${c}; border:1px solid ${c}44; border-radius:3px; font-size:0.68rem; font-weight:700;">${s}</span>`;
+        };
+        const _riskC = (v) => v==null?'var(--text-tertiary)':v>=70?'#dc2626':v>=40?'#f97316':'#16a34a';
+        const _defC  = (v) => v==null?'var(--text-tertiary)':v>=60?'#16a34a':v>=30?'#f97316':'#dc2626';
+
+        const col = this._multiSortCol || 'risk_score';
+        const dir = this._multiSortDir || 'desc';
+        const page = this._multiPage || 0;
+        const PAGE_SIZE = 10;
+
+        const sorted = [...allArchs].sort((a,b) => {
+            const av = a[col]??-Infinity, bv = b[col]??-Infinity;
+            return dir==='desc' ? (typeof bv==='string'?bv.localeCompare(av):bv-av) : (typeof av==='string'?av.localeCompare(bv):av-bv);
+        });
+
+        // ── Top-N architecture cards (like domain view) ─────────────────────
+        const topN = sorted.slice(0, 8);
+        const domainIcons = {'Cloud':'☁️','On-Premises':'🏢','Hybrid Cloud':'🔀','IoT/OT/CPS':'🔌','Agentic/AI':'🤖','Digital Services':'🌐','General':'⬜'};
+        const topCards = topN.map((a, i) => {
+            const bc = a.risk_score>=70?'#dc2626':a.risk_score>=40?'#f97316':'#16a34a';
+            const icon = domainIcons[a.domain] || '📐';
+            const top3Missing = (a.controls_missing||[]).slice(0,3);
+            const top3Techs = (a.techniques||[]).slice(0,3);
+            return `<div style="flex:1; min-width:200px; background:var(--card-bg); border:1px solid ${bc}44; border-radius:10px; padding:0.875rem; position:relative; cursor:pointer;"
+                onclick="window.dashboard._insightsTrendArch='${_esc(a.base_name)}'; window.dashboard._switchTrendView('single');" title="Click to view single-arch trend">
+                ${i===0 ? `<div style="position:absolute; top:-9px; right:0.75rem; background:${bc}; color:#fff; font-size:0.62rem; font-weight:700; padding:1px 7px; border-radius:8px;">#1 HIGHEST RISK</div>` : ''}
+                <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.5rem;">
+                    <span style="font-size:1rem;">${icon}</span>
+                    <div style="min-width:0;">
+                        <div style="font-size:0.78rem; font-weight:700; color:var(--text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${_esc(a.name)}">${_esc(a.name)}</div>
+                        <div style="font-size:0.68rem; color:var(--text-tertiary);">${_esc(a.domain)}</div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:0.5rem; margin-bottom:0.6rem;">
+                    <div style="text-align:center; flex:1;">
+                        <div style="font-size:0.62rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary);">Risk</div>
+                        <div style="font-size:1.2rem; font-weight:700; color:${_riskC(a.risk_score)};">${a.risk_score??'—'}</div>
+                    </div>
+                    <div style="text-align:center; flex:1;">
+                        <div style="font-size:0.62rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary);">Defence</div>
+                        <div style="font-size:1.2rem; font-weight:700; color:${_defC(a.defensibility)};">${a.defensibility??'—'}</div>
+                    </div>
+                    <div style="text-align:center; flex:1;">
+                        <div style="font-size:0.62rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-tertiary);">AIVSS</div>
+                        <div style="font-size:1.2rem; font-weight:700; color:var(--text-color);">${a.aivss_overall??'—'}</div>
+                    </div>
+                </div>
+                ${top3Missing.length ? `<div style="margin-bottom:0.35rem;">
+                    <div style="font-size:0.67rem; color:var(--text-tertiary); margin-bottom:0.2rem;">Top missing controls:</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:0.2rem;">${top3Missing.map(c=>`<span style="font-size:0.67rem; padding:1px 5px; background:var(--warning-color)12; border:1px solid var(--warning-color)44; border-radius:8px; color:var(--text-secondary);">${_esc(c)}</span>`).join('')}</div>
+                </div>` : ''}
+                ${top3Techs.length ? `<div>
+                    <div style="font-size:0.67rem; color:var(--text-tertiary); margin-bottom:0.2rem;">Top techniques:</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:0.2rem;">${top3Techs.map(t=>{
+                        const name=(this.techniqueNamesCache&&this.techniqueNamesCache[t])||'';
+                        return `<span style="font-size:0.67rem; padding:1px 5px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; font-family:monospace; color:var(--primary-color);" title="${_esc(name)}">${_esc(t)}</span>`;
+                    }).join('')}</div>
+                </div>` : ''}
+            </div>`;
+        }).join('');
+
+        // ── Paginated full table ─────────────────────────────────────────────
+        const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+        const pageSlice = sorted.slice(page * PAGE_SIZE, (page+1) * PAGE_SIZE);
+
+        const _thBtn = (key, label) => {
+            const active = col === key;
+            const arrow = active ? (dir==='desc'?'↓':'↑') : '';
+            return `<th onclick="window.dashboard._multiSortCol='${key}'; window.dashboard._multiSortDir=(window.dashboard._multiSortCol==='${key}'&&window.dashboard._multiSortDir==='desc'?'asc':'desc'); window.dashboard._multiPage=0; window.dashboard.loadInsightsTab();"
+                style="padding:0.3rem 0.5rem; text-align:${['risk_score','defensibility','aivss_overall'].includes(key)?'right':'left'}; font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:${active?'var(--primary-color)':'var(--text-tertiary)'}; cursor:pointer; white-space:nowrap; user-select:none;">${label} ${arrow}</th>`;
+        };
+
+        const rows = pageSlice.map(a => `<tr style="border-bottom:1px solid var(--border-color)22; cursor:pointer;" onclick="window.dashboard._insightsTrendArch='${_esc(a.base_name)}'; window.dashboard._switchTrendView('single');" title="Drill into single-arch trend">
+            <td style="padding:0.3rem 0.5rem; font-size:0.75rem; color:var(--primary-color);">${_esc(a.name)}</td>
+            <td style="padding:0.3rem 0.5rem; font-size:0.72rem; color:var(--text-tertiary);">${_esc(a.domain)}</td>
+            <td style="padding:0.3rem 0.5rem; text-align:right; font-weight:700; font-size:0.82rem; color:${_riskC(a.risk_score)};">${a.risk_score??'—'}</td>
+            <td style="padding:0.3rem 0.5rem; text-align:right; font-weight:700; font-size:0.82rem; color:${_defC(a.defensibility)};">${a.defensibility??'—'}</td>
+            <td style="padding:0.3rem 0.5rem; text-align:right; font-size:0.78rem;">${a.aivss_overall!=null?'<b>'+a.aivss_overall+'</b> '+_sev(a.aivss_severity):'—'}</td>
+        </tr>`).join('');
+
+        // Page buttons swap only the tbody — no full reload
+        const tableId = 'multi-arch-table-body';
+        const pageBtnId = 'multi-arch-page-btns';
+
+        // Render all rows for all pages as hidden divs — pagination swaps visibility inline
+        const allPageRows = Array.from({length:totalPages}, (_,pi) => {
+            const slice = sorted.slice(pi * PAGE_SIZE, (pi+1) * PAGE_SIZE);
+            return slice.map(a => `<tr style="border-bottom:1px solid var(--border-color)22; cursor:pointer;" onclick="window.dashboard._insightsTrendArch='${_esc(a.base_name)}'; window.dashboard._switchTrendView('single');" title="Drill into single-arch trend">
+                <td style="padding:0.3rem 0.5rem; font-size:0.75rem; color:var(--primary-color);">${_esc(a.name)}</td>
+                <td style="padding:0.3rem 0.5rem; font-size:0.72rem; color:var(--text-tertiary);">${_esc(a.domain)}</td>
+                <td style="padding:0.3rem 0.5rem; text-align:right; font-weight:700; font-size:0.82rem; color:${_riskC(a.risk_score)};">${a.risk_score??'—'}</td>
+                <td style="padding:0.3rem 0.5rem; text-align:right; font-weight:700; font-size:0.82rem; color:${_defC(a.defensibility)};">${a.defensibility??'—'}</td>
+                <td style="padding:0.3rem 0.5rem; text-align:right; font-size:0.78rem;">${a.aivss_overall!=null?'<b>'+a.aivss_overall+'</b> '+_sev(a.aivss_severity):'—'}</td>
+            </tr>`).join('');
+        });
+
+        const pageBtns = totalPages > 1 ? Array.from({length:totalPages},(_,i)=>
+            `<button id="multi-page-btn-${i}"
+                onclick="(function(){
+                    var tb=document.getElementById('${tableId}');
+                    if(tb){tb.innerHTML=window.dashboard._multiPageRows[${i}];}
+                    window.dashboard._multiPage=${i};
+                    document.querySelectorAll('[id^=multi-page-btn-]').forEach(function(b){
+                        var active=b.id==='multi-page-btn-${i}';
+                        b.style.background=active?'var(--primary-color)':'transparent';
+                        b.style.color=active?'#fff':'var(--text-secondary)';
+                    });
+                })()"
+                style="padding:0.2rem 0.55rem; border-radius:4px; border:1px solid var(--border-color); background:${i===page?'var(--primary-color)':'transparent'}; color:${i===page?'#fff':'var(--text-secondary)'}; font-size:0.75rem; cursor:pointer;"
+                >${i*PAGE_SIZE+1}–${Math.min((i+1)*PAGE_SIZE,sorted.length)}</button>`
+        ).join('') : '';
+
+        const table = `<div style="margin-bottom:1.25rem;">
+            <div style="font-size:0.8rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.5rem;">All Architectures (${sorted.length})</div>
+            <table style="width:100%; border-collapse:collapse;">
+                <thead><tr style="border-bottom:2px solid var(--border-color);">
+                    ${_thBtn('name','Architecture')}${_thBtn('domain','Domain')}${_thBtn('risk_score','Risk ↓')}${_thBtn('defensibility','Defence ↑')}${_thBtn('aivss_overall','AIVSS')}
+                </tr></thead>
+                <tbody id="${tableId}">${rows}</tbody>
+            </table>
+            ${pageBtns ? `<div id="${pageBtnId}" style="display:flex; gap:0.35rem; margin-top:0.6rem; align-items:center; flex-wrap:wrap;">
+                <span style="font-size:0.7rem; color:var(--text-tertiary); margin-right:0.25rem;">Show:</span>${pageBtns}
+            </div>` : ''}
+            <div style="margin-top:0.3rem; font-size:0.7rem; color:var(--text-tertiary);">Click any row to drill into that architecture's trend.</div>
+        </div>`;
+
+        // ── Systemic gaps ────────────────────────────────────────────────────
+        const gapBases = {};
+        allArchs.forEach(a => (a.controls_missing||[]).forEach(c => {
+            if (!gapBases[c]) gapBases[c] = new Set();
+            gapBases[c].add(a.base_name);
+        }));
+        const systemic = Object.entries(gapBases).filter(([,s]) => s.size >= 2).sort((a,b) => b[1].size-a[1].size).slice(0,20);
+        const maxGapCount = systemic.length ? systemic[0][1].size : 1;
+        const gapsHtml = systemic.length
+            ? systemic.map(([c,bases]) => {
+                const barW = Math.round((bases.size / allArchs.length) * 100);
+                const cc = bases.size >= Math.ceil(allArchs.length/2) ? '#f97316' : '#ca8a04';
+                const archItems = [...bases].map(a => `<div style="padding:0.15rem 0; border-bottom:1px solid rgba(255,255,255,0.08); font-size:0.68rem;">${_esc(a)}</div>`).join('');
+                return `<div style="display:flex; align-items:center; gap:0.5rem; padding:0.3rem 0; border-bottom:1px solid var(--border-color)11;">
+                    <div style="flex:1; font-size:0.77rem; color:var(--text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${_esc(c)}</div>
+                    <div style="width:70px; height:5px; background:var(--border-color); border-radius:3px; flex-shrink:0; overflow:hidden;">
+                        <div style="width:${barW}%; height:100%; background:${cc}; border-radius:3px;"></div>
+                    </div>
+                    <span style="position:relative; font-size:0.7rem; color:${cc}; font-weight:700; white-space:nowrap; min-width:3rem; text-align:right; cursor:pointer;"
+                        onmouseenter="this.querySelector('.gap-arch-pop').style.display='block'"
+                        onmouseleave="this.querySelector('.gap-arch-pop').style.display='none'">
+                        ${bases.size} arch${bases.size>1?'s':''}
+                        <div class="gap-arch-pop" style="display:none; position:absolute; right:0; bottom:calc(100% + 4px); background:#1e293b; border:1px solid #4da6ff44; border-radius:6px; padding:0.5rem 0.65rem; min-width:180px; max-width:280px; box-shadow:0 4px 16px #00000066; z-index:999; color:#e8e8e8;">
+                            <div style="font-size:0.68rem; font-weight:700; color:#4da6ff; margin-bottom:0.3rem;">${_esc(c)} — missing in ${bases.size} arch${bases.size>1?'s':''}:</div>
+                            ${archItems}
+                        </div>
+                    </span>
+                </div>`;
+              }).join('')
+            : `<div style="font-size:0.78rem; color:var(--text-tertiary);">No systemic gaps across ≥2 architectures.</div>`;
+
+        // ── Recurring techniques with name legend + arch tooltip ─────────────
+        const techCount = {};
+        const techArchMap = {};  // technique → Set of arch names
+        allArchs.forEach(a => (a.techniques||[]).forEach(t => {
+            techCount[t] = (techCount[t]||0) + 1;
+            if (!techArchMap[t]) techArchMap[t] = new Set();
+            techArchMap[t].add(a.name);
+        }));
+        const allTechs = Object.entries(techCount).sort((a,b) => b[1]-a[1]);
+        const topTechs = allTechs.slice(0, 15);
+        const maxTechCount = topTechs.length ? topTechs[0][1] : 1;
+        const techsHtml = topTechs.length
+            ? topTechs.map(([t,n]) => {
+                const name = (this.techniqueNamesCache && this.techniqueNamesCache[t]) || '';
+                const barW = Math.round((n / maxTechCount) * 100);
+                const cc = n >= Math.ceil(allArchs.length/2) ? '#f97316' : 'var(--primary-color)';
+                const archList = [...(techArchMap[t]||[])].join(', ');
+                const archItems = [...(techArchMap[t]||[])].map(a => `<div style="padding:0.15rem 0; border-bottom:1px solid rgba(255,255,255,0.08); font-size:0.68rem;">${_esc(a)}</div>`).join('');
+                return `<div style="display:flex; align-items:center; gap:0.5rem; padding:0.3rem 0; border-bottom:1px solid var(--border-color)11;">
+                    <span style="font-size:0.72rem; font-family:monospace; color:var(--primary-color); white-space:nowrap; min-width:4.5rem;">${_esc(t)}</span>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:0.7rem; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${name ? _esc(name) : `<span style="color:var(--text-tertiary); font-style:italic;">—</span>`}</div>
+                    </div>
+                    <div style="width:50px; height:5px; background:var(--border-color); border-radius:3px; flex-shrink:0; overflow:hidden;">
+                        <div style="width:${barW}%; height:100%; background:${cc}; border-radius:3px;"></div>
+                    </div>
+                    <span style="position:relative; font-size:0.7rem; color:${cc}; font-weight:700; white-space:nowrap; min-width:3rem; text-align:right; cursor:pointer;"
+                        onmouseenter="this.querySelector('.tech-arch-pop').style.display='block'"
+                        onmouseleave="this.querySelector('.tech-arch-pop').style.display='none'">
+                        ${n}/${allArchs.length}
+                        <div class="tech-arch-pop" style="display:none; position:absolute; right:0; bottom:calc(100% + 4px); background:#1e293b; border:1px solid #4da6ff44; border-radius:6px; padding:0.5rem 0.65rem; min-width:180px; max-width:280px; box-shadow:0 4px 16px #00000066; z-index:999; color:#e8e8e8;">
+                            <div style="font-size:0.68rem; font-weight:700; color:#4da6ff; margin-bottom:0.3rem;">${_esc(t)} — in ${n} arch${n>1?'s':''}:</div>
+                            ${archItems}
+                        </div>
+                    </span>
+                </div>`;
+              }).join('')
+            : `<div style="font-size:0.78rem; color:var(--text-tertiary);">No technique data available.</div>`;
+
+        const panels = `<div style="display:flex; gap:0.875rem; flex-wrap:wrap; margin-bottom:1.25rem;">
+            <div style="flex:1; min-width:240px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:0.875rem;">
+                <div style="font-size:0.8rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">⚠ Systemic Control Gaps</div>
+                <div style="font-size:0.7rem; color:var(--text-tertiary); margin-bottom:0.5rem;">Missing across ≥2 architectures — pattern-level weakness. Bar = proportion affected.</div>
+                ${gapsHtml}
+            </div>
+            <div style="flex:1; min-width:240px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:0.875rem;">
+                <div style="font-size:0.8rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">🎯 Most Frequent Techniques</div>
+                <div style="font-size:0.7rem; color:var(--text-tertiary); margin-bottom:0.5rem;">MITRE ATT&CK IDs recurring across architectures — bar = relative frequency. Technique name shown inline.</div>
+                ${techsHtml}
+            </div>
+        </div>`;
+
+        // Header: top-N cards + section label
+        const topCardsSection = topN.length ? `
+            <div style="font-size:0.8rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.6rem;">Top ${topN.length} by Risk</div>
+            <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1.25rem;">${topCards}</div>` : '';
+
+        // Store page rows on instance so pagination buttons can swap tbody without a full reload
+        this._multiPageRows = allPageRows;
+
+        return topCardsSection + panels + table;
+    }
+
+    // ── View C: Domain Trend ──────────────────────────────────────────────────
+    _renderTrendDomain(allArchs) {
+        const _esc = (s) => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const _riskC = (v) => v==null?'var(--text-tertiary)':v>=70?'#dc2626':v>=40?'#f97316':'#16a34a';
+        const _defC  = (v) => v==null?'var(--text-tertiary)':v>=60?'#16a34a':v>=30?'#f97316':'#dc2626';
+        const _avg = (arr) => { const f = arr.filter(v => v!=null); return f.length ? Math.round(f.reduce((a,b)=>a+b,0)/f.length*10)/10 : null; };
+
+        const groups = {};
+        allArchs.forEach(a => {
+            if (!groups[a.domain]) groups[a.domain] = [];
+            groups[a.domain].push(a);
+        });
+
+        const domainCards = Object.entries(groups)
+            .map(([domain, archs]) => {
+                const avgRisk = _avg(archs.map(a => a.risk_score));
+                const avgDef  = _avg(archs.map(a => a.defensibility));
+                const avgAivss = _avg(archs.map(a => a.aivss_overall));
+
+                // Top 3 missing controls by frequency
+                const missingFreq = {};
+                archs.forEach(a => (a.controls_missing||[]).forEach(c => { missingFreq[c] = (missingFreq[c]||0)+1; }));
+                const top3Missing = Object.entries(missingFreq).sort((a,b)=>b[1]-a[1]).slice(0,3);
+
+                // Top 3 techniques by frequency
+                const techFreq = {};
+                archs.forEach(a => (a.techniques||[]).forEach(t => { techFreq[t] = (techFreq[t]||0)+1; }));
+                const top3Tech = Object.entries(techFreq).sort((a,b)=>b[1]-a[1]).slice(0,3);
+
+                return { domain, archs, avgRisk, avgDef, avgAivss, top3Missing, top3Tech };
+            })
+            .sort((a,b) => (b.avgRisk??-1) - (a.avgRisk??-1)); // highest risk first
+
+        if (!domainCards.length) return `<div style="color:var(--text-tertiary); font-size:0.82rem;">No architecture data available.</div>`;
+
+        const cards = domainCards.map((d, i) => {
+            const isWorst = i === 0 && d.avgRisk != null;
+            const border = isWorst ? '2px solid #f97316' : '1px solid var(--border-color)';
+            const techIcons = {'Cloud':'☁️','On-Premises':'🏢','Hybrid Cloud':'🔀','IoT/OT/CPS':'🔌','Agentic/AI':'🤖','Digital Services':'🌐','General':'⬜'};
+            const icon = techIcons[d.domain] || '📐';
+            return `<div style="flex:1; min-width:260px; background:var(--card-bg); border:${border}; border-radius:10px; padding:1rem; position:relative;">
+                ${isWorst ? `<div style="position:absolute; top:-9px; right:0.75rem; background:#f97316; color:#000; font-size:0.65rem; font-weight:700; padding:1px 7px; border-radius:8px;">HIGHEST RISK</div>` : ''}
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;">
+                    <span style="font-size:1.2rem;">${icon}</span>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:0.88rem; font-weight:700; color:var(--text-color);">${_esc(d.domain)}</div>
+                        <div style="font-size:0.7rem; color:var(--primary-color); cursor:pointer; user-select:none;"
+                            onclick="(function(el){var list=el.nextElementSibling;var open=list.style.display!=='none';list.style.display=open?'none':'block';el.textContent=(open?'▸ ':'▾ ')+'${d.archs.length} architecture${d.archs.length>1?'s':''}';})(this)">
+                            ▸ ${d.archs.length} architecture${d.archs.length>1?'s':''}
+                        </div>
+                        <div style="display:none; margin-top:0.35rem; padding:0.35rem 0.5rem; background:var(--main-bg); border:1px solid var(--border-color); border-radius:6px;">
+                            ${d.archs.map(a => `<div style="font-size:0.7rem; color:var(--text-secondary); padding:0.1rem 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${_esc(a.name)}">${_esc(a.name)}</div>`).join('')}
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:0.75rem; margin-bottom:0.875rem;">
+                    <div style="text-align:center; flex:1;">
+                        <div style="font-size:0.65rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); margin-bottom:0.15rem;">Avg Risk</div>
+                        <div style="font-size:1.3rem; font-weight:700; color:${_riskC(d.avgRisk)};">${d.avgRisk??'—'}</div>
+                    </div>
+                    <div style="text-align:center; flex:1;">
+                        <div style="font-size:0.65rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); margin-bottom:0.15rem;">Avg Defence</div>
+                        <div style="font-size:1.3rem; font-weight:700; color:${_defC(d.avgDef)};">${d.avgDef??'—'}</div>
+                    </div>
+                    <div style="text-align:center; flex:1;">
+                        <div style="font-size:0.65rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); margin-bottom:0.15rem;">Avg AIVSS</div>
+                        <div style="font-size:1.3rem; font-weight:700; color:var(--text-color);">${d.avgAivss??'—'}</div>
+                    </div>
+                </div>
+                ${d.top3Missing.length ? `<div style="margin-bottom:0.5rem;">
+                    <div style="font-size:0.7rem; font-weight:600; color:var(--text-tertiary); margin-bottom:0.3rem;">Top missing controls:</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:0.3rem;">${d.top3Missing.map(([c,n]) =>
+                        `<span style="font-size:0.7rem; padding:1px 6px; background:var(--warning-color)12; border:1px solid var(--warning-color)44; border-radius:10px; color:var(--text-secondary);">${_esc(c)}</span>`).join('')}</div>
+                </div>` : ''}
+                ${d.top3Tech.length ? `<div>
+                    <div style="font-size:0.7rem; font-weight:600; color:var(--text-tertiary); margin-bottom:0.3rem;">Top techniques:</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:0.3rem;">${d.top3Tech.map(([t,n]) => {
+                        const name = (this.techniqueNamesCache && this.techniqueNamesCache[t]) || '';
+                        return `<span style="font-size:0.7rem; padding:1px 6px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:10px; font-family:monospace; color:var(--primary-color);" title="${_esc(name)||t}">${_esc(t)}</span>`;
+                    }).join('')}</div>
+                </div>` : ''}
+            </div>`;
+        }).join('');
+
+        return `<div style="display:flex; gap:1rem; flex-wrap:wrap;">${cards}</div>
+            <div style="margin-top:0.75rem; font-size:0.7rem; color:var(--text-tertiary);">Domain classification is based on SSP profile and architecture name. Sorted by average risk (highest first).</div>`;
+    }
+
+    // Helper: strip trailing _N from an arch name (mirrors backend _base_arch_name)
+    _baseName(name) {
+        const parts = String(name||'').split('_');
+        let i = parts.length;
+        while (i > 1 && /^\d+$/.test(parts[i-1])) i--;
+        return parts.slice(0, i).join('_');
     }
 
     async loadRawDataTab() {

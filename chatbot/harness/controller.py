@@ -15,12 +15,14 @@ patterns without importing them. Future swap is one line per stage:
 
 from __future__ import annotations
 
+import logging
 import time
-from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    pass
+    from chatbot.config.settings import AgentModelConfig, AgentSwarmConfig
+
+_log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +80,10 @@ class PipelineContext(dict):
     def stage_outputs(self) -> Dict[str, str]:
         return self.setdefault("stage_outputs", {})
 
+    @property
+    def model_fallbacks(self) -> List[Dict]:
+        return self.setdefault("model_fallbacks", [])
+
     def to_skill_output(self) -> Dict:
         """Trimmed JSON-serialisable dict for skill/MCP consumers.
 
@@ -105,6 +111,8 @@ class PipelineContext(dict):
                 if sm and sm.baseline_feedback else None
             ),
             "errors": self.get("errors", []),
+            "model_fallbacks": self.get("model_fallbacks", []),
+            "model_fallback_warning": len(self.get("model_fallbacks", [])) > 0,
         }
 
 
@@ -148,20 +156,150 @@ class AgentExecutor(StageExecutor):
 # ModelRouter — primary → fallback chain (mirrors LiteLLM pattern, no dep)
 # ---------------------------------------------------------------------------
 
+class ModelChainExhaustedError(RuntimeError):
+    """All models in a fallback chain have been tried and failed."""
+
+    def __init__(self, agent_name: str, chain: List[str]):
+        self.agent_name = agent_name
+        self.chain = chain
+        super().__init__(
+            f"Model chain exhausted for agent '{agent_name}'. "
+            f"Tried: {chain}. Add fallbacks in settings.agent_models.{agent_name}.fallbacks."
+        )
+
+
 class ModelRouter:
     """Selects a model from a fallback chain by attempt index.
 
     Uses llm_client.py as the underlying provider — no new packages needed.
     Future: swap implementation to LiteLLMRouter without changing the interface.
+
+    Empty primary string means "no per-agent config" — get_model() returns None
+    so callers fall through to the env-var LLM_PROVIDER default (backward-compat).
     """
 
-    def __init__(self, primary: str, fallbacks: Optional[List[str]] = None):
+    def __init__(
+        self,
+        primary: str,
+        fallbacks: Optional[List[str]] = None,
+        agent_name: str = "",
+    ):
         self.primary = primary
         self.fallbacks = fallbacks or []
+        self.agent_name = agent_name
+        self._fallback_events: List[Dict] = []
 
-    def get_model(self, attempt: int = 0) -> str:
+    @classmethod
+    def from_config(cls, config: "AgentModelConfig", agent_name: str) -> "ModelRouter":
+        return cls(
+            primary=config.model,
+            fallbacks=list(config.fallbacks),
+            agent_name=agent_name,
+        )
+
+    def get_model(self, attempt: int = 0) -> Optional[str]:
+        """Return the model string for this attempt.
+
+        Returns None when primary is '' (env-var fallback — backward compat).
+        Raises ModelChainExhaustedError when attempt exceeds the full chain.
+        """
+        if not self.primary:
+            return None
+
         chain = [self.primary] + self.fallbacks
-        return chain[min(attempt, len(chain) - 1)]
+        if attempt >= len(chain):
+            raise ModelChainExhaustedError(self.agent_name, chain)
+
+        model = chain[attempt]
+        if attempt > 0:
+            event = {
+                "agent": self.agent_name,
+                "attempt": attempt,
+                "model": model,
+                "primary": self.primary,
+            }
+            self._fallback_events.append(event)
+            _log.warning(
+                f"ModelRouter: fallback triggered for '{self.agent_name}' "
+                f"(attempt {attempt}) → {model}"
+            )
+        return model
+
+    def drain_events(self) -> List[Dict]:
+        """Return and clear all fallback events accumulated since last call."""
+        events, self._fallback_events = list(self._fallback_events), []
+        return events
+
+
+# ---------------------------------------------------------------------------
+# HarnessModelGuardian — owns one ModelRouter per agent; single source of truth
+# ---------------------------------------------------------------------------
+
+_SWARM_AGENT_NAMES = [
+    "architect", "tester", "red_team", "purple_team",
+    "blackhat", "storycaster", "scrum_master",
+    "moe_orchestrator", "threat_analyst",
+]
+
+
+class HarnessModelGuardian:
+    """Central guardian for per-agent model routing in ThreatAssessor.
+
+    Constructed once per pipeline run and stored in ctx["_model_guardian"].
+    All stages and agents pull their model through this object — no direct
+    env-var reads for model selection in stage logic.
+
+    Usage:
+        guardian = HarnessModelGuardian()
+        model = guardian.get_model("architect")         # None → env-var default
+        model = guardian.get_model("architect", attempt=1)  # first fallback
+
+    Fallback events are accumulated and drained into ctx["model_fallbacks"]
+    after each stage by ThreatAssessorHarness.run().
+    """
+
+    def __init__(self, swarm_config: Optional["AgentSwarmConfig"] = None):
+        if swarm_config is None:
+            try:
+                from chatbot.config.settings import get_settings
+                swarm_config = get_settings().agent_models
+            except Exception:
+                from chatbot.config.settings import AgentSwarmConfig
+                swarm_config = AgentSwarmConfig()
+
+        self._routers: Dict[str, ModelRouter] = {}
+        for name in _SWARM_AGENT_NAMES:
+            cfg = getattr(swarm_config, name, None)
+            if cfg is None:
+                from chatbot.config.settings import AgentModelConfig
+                cfg = AgentModelConfig()
+            self._routers[name] = ModelRouter.from_config(cfg, agent_name=name)
+
+    def get_model(self, agent_name: str, attempt: int = 0) -> Optional[str]:
+        """Return the configured model for an agent at a given attempt index.
+
+        Returns None if no per-agent config exists (env-var default applies).
+        Raises ModelChainExhaustedError if the attempt exceeds the chain length.
+        """
+        router = self._routers.get(agent_name)
+        return router.get_model(attempt) if router else None
+
+    def models_dict(self, agent_names: Optional[List[str]] = None) -> Dict[str, str]:
+        """Return a {name: model} dict for the given agents (or all), skipping None entries."""
+        names = agent_names or _SWARM_AGENT_NAMES
+        result = {}
+        for name in names:
+            m = self.get_model(name)
+            if m:
+                result[name] = m
+        return result
+
+    def drain_fallback_events(self) -> List[Dict]:
+        """Collect and clear fallback events from all routers since last call."""
+        events = []
+        for router in self._routers.values():
+            events.extend(router.drain_events())
+        return events
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +417,11 @@ class ThreatAssessorHarness:
         # Forward any extra kwargs into ctx (e.g. architecture_name, include_validation)
         ctx.update(kwargs)
 
+        # Instantiate the model guardian — single owner of all per-agent ModelRouters
+        guardian = HarnessModelGuardian()
+        ctx["_model_guardian"] = guardian
+        ctx.setdefault("model_fallbacks", [])
+
         # Inject governance adapter so QualityStage reuses the same instance
         try:
             from chatbot.harness.governance import get_governance_adapter
@@ -311,6 +454,22 @@ class ThreatAssessorHarness:
                 if stage.required:
                     raise
                 # optional stage failure: logged, pipeline continues
+            finally:
+                # Drain fallback events from the guardian after every stage
+                events = guardian.drain_fallback_events()
+                if events:
+                    ctx.model_fallbacks.extend(events)
+
+        if ctx.model_fallbacks:
+            agents_with_fallbacks = list({e["agent"] for e in ctx.model_fallbacks})
+            _log.warning(
+                f"Pipeline completed with {len(ctx.model_fallbacks)} model fallback(s) "
+                f"— agents affected: {agents_with_fallbacks}"
+            )
+            ctx.errors.append(
+                f"model_fallback_warning: {len(ctx.model_fallbacks)} fallback(s) used "
+                f"for agents: {agents_with_fallbacks}"
+            )
 
         return ctx
 
@@ -327,8 +486,8 @@ def _quick_det() -> List[PipelineStage]:
 
 @register_scenario(ScenarioConfig.API_ONLY)
 def _api_only() -> List[PipelineStage]:
-    from chatbot.harness.stages import AnalysisStage, ReportStage
-    return [AnalysisStage(), ReportStage()]
+    from chatbot.harness.stages import AnalysisStage, ReportStage, QualityStage
+    return [AnalysisStage(), ReportStage(), QualityStage()]
 
 
 @register_scenario(ScenarioConfig.FULL_MOE)

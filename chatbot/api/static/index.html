@@ -67,18 +67,45 @@
         <!-- Sidebar -->
         <aside class="sidebar">
             <nav class="sidebar-nav">
-                <button class="nav-tab active" data-tab="overview">📊 Overview</button>
-                <button class="nav-tab disabled" data-tab="attacks">🎯 Threat Paths</button>
-                <button class="nav-tab disabled" data-tab="controls">🛡️ Mitigations</button>
-                <button class="nav-tab disabled" data-tab="hardening">🔒 Visualise</button>
-                <button class="nav-tab disabled" data-tab="expert-review" style="display: none;">🧑‍🏫 Expert Review</button>
-                <!-- ScrumMaster surfaces inside Expert Review Section C — no separate nav tab -->
-                <button class="nav-tab disabled" data-tab="threat-model" id="threat-model-nav-tab" style="display:none;">🗺️ Threat Model</button>
-                <button class="nav-tab disabled" data-tab="reports">📄 Reports</button>
-                <button class="nav-tab disabled" data-tab="raw-data">💾 Raw Data</button>
-                <button class="nav-tab disabled" data-tab="insights" id="insights-nav-tab">🔍 Insights</button>
-                <button class="nav-tab" id="harness-nav-tab" data-tab="harness">🔧 Harness</button>
-                <button class="nav-tab" id="config-nav-tab" data-tab="config" style="display:none;">⚙️ Configuration</button>
+                <!-- Group: Analysis -->
+                <div class="nav-group" data-group="analysis">
+                    <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('analysis')">
+                        <span class="nav-group-label">Analysis</span>
+                        <span class="nav-group-chevron">▾</span>
+                    </button>
+                    <div class="nav-group-items">
+                        <button class="nav-tab active" data-tab="overview">📊 Overview</button>
+                        <button class="nav-tab disabled" data-tab="attacks">🎯 Threat Paths</button>
+                        <button class="nav-tab disabled" data-tab="controls">🛡️ Mitigations</button>
+                        <button class="nav-tab disabled" data-tab="hardening">🔒 Visualise</button>
+                        <button class="nav-tab disabled" data-tab="expert-review" style="display:none;">🧑‍🏫 Expert Review</button>
+                        <!-- ScrumMaster surfaces inside Expert Review Section C — no separate nav tab -->
+                        <button class="nav-tab disabled" data-tab="threat-model" id="threat-model-nav-tab" style="display:none;">🗺️ Threat Model</button>
+                        <button class="nav-tab disabled" data-tab="insights" id="insights-nav-tab">🔍 Insights</button>
+                    </div>
+                </div>
+                <!-- Group: Reporting -->
+                <div class="nav-group" data-group="reporting">
+                    <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('reporting')">
+                        <span class="nav-group-label">Reporting</span>
+                        <span class="nav-group-chevron">▾</span>
+                    </button>
+                    <div class="nav-group-items">
+                        <button class="nav-tab disabled" data-tab="reports">📄 Reports</button>
+                        <button class="nav-tab disabled" data-tab="raw-data">💾 Raw Data</button>
+                    </div>
+                </div>
+                <!-- Group: Settings -->
+                <div class="nav-group" data-group="settings">
+                    <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('settings')">
+                        <span class="nav-group-label">Settings</span>
+                        <span class="nav-group-chevron">▾</span>
+                    </button>
+                    <div class="nav-group-items">
+                        <button class="nav-tab" id="harness-nav-tab" data-tab="harness">🔧 Harness</button>
+                        <button class="nav-tab" id="config-nav-tab" data-tab="config" style="display:none;">⚙️ Configuration</button>
+                    </div>
+                </div>
             </nav>
         </aside>
 

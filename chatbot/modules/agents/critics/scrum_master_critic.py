@@ -136,11 +136,8 @@ class ScrumMasterCritic:
     MIN_DELTA = 1.0   # stop early if iteration gained < 1% confidence
 
     def __init__(self, model: Optional[str] = None):
-        try:
-            from chatbot.config import get_settings
-            self.model = model or get_settings().llm_model
-        except Exception:
-            self.model = model or "anthropic/claude-sonnet-4-6"
+        self.model = model  # None → env-var default in LLMClient
+        self._agent_models: Dict[str, str] = {}  # injected by ScrumMasterStage for re-trigger path
         self._perf_acc: Dict = {}  # accumulated LLM telemetry for this run
 
     def _reset_perf(self) -> None:
@@ -566,7 +563,10 @@ class ScrumMasterCritic:
     ) -> "MoEResult":
         """Calls MoEOrchestrator.run_targeted — loads saved results for others."""
         from chatbot.modules.agents.orchestrators.moe_orchestrator import MoEOrchestrator
-        orchestrator = MoEOrchestrator(model=self.model)
+        orchestrator = MoEOrchestrator(
+            model=self.model,
+            agent_models=self._agent_models if self._agent_models else None,
+        )
         return orchestrator.run_targeted(
             report_dir=report_dir,
             critics_to_run=critics,
