@@ -650,6 +650,17 @@ def save_settings(new_settings: AppSettings) -> None:
         _settings = new_settings
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge override into base, returning a new dict."""
+    result = dict(base)
+    for k, v in override.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = _deep_merge(result[k], v)
+        else:
+            result[k] = v
+    return result
+
+
 def update_settings(partial: dict) -> AppSettings:
     """Merge a partial dict into current settings, validate, persist, and reload singleton."""
     current = get_settings().model_dump()
@@ -658,7 +669,7 @@ def update_settings(partial: dict) -> AppSettings:
     ai_pattern_changed = "ai_pattern" in partial
     for section, values in partial.items():
         if section in current and isinstance(values, dict):
-            current[section].update(values)
+            current[section] = _deep_merge(current[section], values)
     new_settings = AppSettings.model_validate(current)
     save_settings(new_settings)
     # Invalidate the pattern registry singleton when pattern list or cloud scoring

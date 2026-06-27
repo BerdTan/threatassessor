@@ -6501,12 +6501,8 @@ class Dashboard {
         // ── Pipeline Performance — load from most recent report ─────────────
         const perfBody = await this._harnessLoadPerfSection();
 
-        // ── Per-Agent AIVSS Gate — load from most recent governance_signals.json ──
-        const aivssGateBody = await this._harnessLoadAivssGateSection();
-
         container.innerHTML = `<div style="max-width:860px;">` +
             _hSection('selfcheck',  '🔧', 'Harness Self-Check',    'Verify all pipeline components are reachable and functional.',                                                                   selfCheckBody,   true)  +
-            _hSection('aivss-gate', '🛡️', 'Per-Agent AIVSS Gate',  'AIVSS v4 inbound/internal/outbound scores from the last run, with per-critic last-run scores and gate thresholds.',            aivssGateBody,   true)  +
             _hSection('perf',       '📊', 'Pipeline Performance',  'LLM call counts, token usage, cost, and latency per critic — from the most recent Expert Review run.',                          perfBody,        true)  +
             _hSection('scenarios',  '🗺️', 'Scenario Registry',     'Named stage configurations — pass scenario="…" to ThreatAssessorHarness() to route a run.',                                    scenarioCards,   false) +
             _hSection('executors',  '🔌', 'Stage Executors',        'Each stage has a pluggable executor. Swap it to change how a stage runs without touching the harness or other stages.',         executorCards,   false) +
@@ -10816,18 +10812,28 @@ class Dashboard {
             else if (el.dataset.vtype === 'float' || FLOAT_FIELDS.has(leafField)) value = parseFloat(raw);
             else if (BOOL_FIELDS.has(leafField))                                value = (raw === 'true');
             else value = raw;
-            if (!payload[section]) payload[section] = {};
-            // Support nested dot-paths by building nested objects
+            // agent_models.*.fallbacks arrives as comma-separated string — convert to list
+            if (section.startsWith('agent_models.') && field === 'fallbacks') {
+                value = raw.trim() ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+            }
+            // Build nested payload — section may itself be a dot-path (e.g. "agent_models.architect")
+            const sectionParts = section.split('.');
+            let cursor = payload;
+            for (const part of sectionParts) {
+                if (!cursor[part]) cursor[part] = {};
+                cursor = cursor[part];
+            }
+            // Support nested dot-paths within the field too
             if (field.includes('.')) {
                 const parts = field.split('.');
-                let cursor = payload[section];
+                let fc = cursor;
                 for (let i = 0; i < parts.length - 1; i++) {
-                    if (!cursor[parts[i]]) cursor[parts[i]] = {};
-                    cursor = cursor[parts[i]];
+                    if (!fc[parts[i]]) fc[parts[i]] = {};
+                    fc = fc[parts[i]];
                 }
-                cursor[parts[parts.length - 1]] = value;
+                fc[parts[parts.length - 1]] = value;
             } else {
-                payload[section][field] = value;
+                cursor[field] = value;
             }
         });
         return payload;
@@ -11476,6 +11482,32 @@ class Dashboard {
                 effects: ef('N/A','Larger = accepts bigger diagrams','None','None') },
             ]
           },
+          {
+            title: '🔀 Agent Model Routing',
+            subtitle: 'Per-agent primary model and fallback chain. Empty = use the LLM_PROVIDER env-var default. Fallbacks are tried in order when the primary fails — any fallback event is flagged as a warning in the pipeline output.',
+            fields: [
+              ...[
+                { key:'architect',        label:'Architect Critic',       desc:'Layer 2A — validates threat model design quality and structural completeness.' },
+                { key:'tester',           label:'Tester Critic',          desc:'Layer 2B — validates MITRE technique mappings and internal consistency.' },
+                { key:'red_team',         label:'Red Team Critic',         desc:'Layer 2C — validates exploit difficulty and control bypass feasibility.' },
+                { key:'purple_team',      label:'Purple Team Critic',      desc:'Layer 2D — validates detection chain coverage and TM/ADR operability.' },
+                { key:'blackhat',         label:'Blackhat Critic',         desc:'Layer 2E (supreme critic) — cross-path chain analysis using all prior critic context.' },
+                { key:'moe_orchestrator', label:'MoE Orchestrator',        desc:'Layer 3 synthesis — impartial consensus across all critics.' },
+                { key:'scrum_master',     label:'ScrumMaster Meta-Critic', desc:'Meta-critic that resolves impediments and drives targeted re-triggering.' },
+                { key:'storycaster',      label:'StoryCaster',             desc:'Generates user journey stories from architecture nodes (LLM enrichment path).' },
+                { key:'threat_analyst',   label:'Threat Analyst',          desc:'Deterministic RAPIDS engine — source of truth for all LLM critics.' },
+              ].flatMap(agent => [
+                { section:`agent_models.${agent.key}`, field:'model', label:`${agent.label} — Primary Model`,
+                  vtype:'string',
+                  desc:`${agent.desc} Primary model string passed to LLMClient. Empty = env-var LLM_PROVIDER default. Example: openrouter/anthropic/claude-sonnet-4-6`,
+                  effects: ef('Overrides LLM_PROVIDER for this agent only','No change to other agents','None','None') },
+                { section:`agent_models.${agent.key}`, field:'fallbacks', label:`${agent.label} — Fallback Chain`,
+                  vtype:'string',
+                  desc:`Comma-separated ordered fallback models tried after primary fails. Example: openrouter/anthropic/claude-haiku-4-5,openrouter/anthropic/claude-sonnet-4-6. Any fallback use is flagged as a pipeline warning.`,
+                  effects: ef('Provides resilience when primary model is unavailable','Fallback events logged in ctx.model_fallbacks','Low','None') },
+              ])
+            ]
+          },
         ];
 
         // ── Warning banner ────────────────────────────────────────────────────
@@ -11907,7 +11939,11 @@ class Dashboard {
         const inpStyle = `width:100%; padding:0.38rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer; box-sizing:border-box; color-scheme:dark;`;
 
         const rows = sectionDef.fields.map(f => {
-            const sectionData = data[f.section] || {};
+            // Resolve section — supports dot-paths like "agent_models.architect"
+            let sectionData = data;
+            for (const part of f.section.split('.')) {
+                sectionData = (sectionData && sectionData[part] !== undefined) ? sectionData[part] : {};
+            }
             // Resolve dot-path fields (e.g. "rapids_category_weights.ransomware")
             let currentVal = '';
             if (f.field.includes('.')) {
@@ -11917,7 +11953,9 @@ class Dashboard {
                 }
                 currentVal = cursor !== undefined ? String(cursor) : '';
             } else {
-                currentVal = sectionData[f.field] !== undefined ? String(sectionData[f.field]) : '';
+                const raw2 = sectionData[f.field];
+                // Fallbacks is stored as a list — display as comma-separated string
+                currentVal = Array.isArray(raw2) ? raw2.join(', ') : (raw2 !== undefined ? String(raw2) : '');
             }
             let inputHtml;
 
