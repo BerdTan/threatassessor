@@ -101,6 +101,15 @@ class CriticStage(PipelineStage):
         if not ctx.get("enable_moe", False):
             return ctx
 
+        # Apply AIVSS gate tightening before critics run (inbound score already computed)
+        gate = ctx.get("_aivss_gate")
+        aivss = ctx.get("_aivss_score")
+        if gate is not None and aivss is not None:
+            try:
+                gate.tighten(ctx.get("_moe_orchestrator"), aivss.inbound)
+            except Exception:
+                pass
+
         from chatbot.modules.agents.orchestrators.moe_orchestrator import run_moe_pipeline
 
         ctx["moe_result"] = run_moe_pipeline(
@@ -375,8 +384,121 @@ class QualityStage(PipelineStage):
             if cb := kw.get("progress_callback"):
                 cb("quality", 60, f"Governance check — risk: {merged.overall_risk_level}")
 
+            # AIVSS scoring — runs after governance merge, enriches governance_signals in-place
+            try:
+                from chatbot.modules.harness_aivss import AIVSSFlowScorer, AIVSSAgentGate
+                from chatbot.config.settings import get_settings
+                _settings = get_settings()
+                scorer = AIVSSFlowScorer(industry=_settings.governance.industry)
+                aivss = scorer.compute(
+                    ctx["governance_signals"],
+                    ctx.get("ground_truth", {}),
+                    ctx.get("moe_result"),
+                    ctx.get("scrum_master_result"),
+                )
+                ctx["governance_signals"]["aivss"] = aivss.to_dict()
+                # Enrich each attack path with its AIVSS score in-place
+                _enrich_paths_with_aivss(ctx.get("ground_truth", {}), aivss.per_threat)
+                # Store gate so CriticStage can tighten before critics run
+                gate = AIVSSAgentGate(critic_settings=_settings.critics)
+                ctx["_aivss_gate"] = gate
+                ctx["_aivss_score"] = aivss
+                if cb:
+                    cb("quality", 80, f"AIVSS overall: {aivss.overall} {aivss.overall_severity}")
+            except Exception as aivss_exc:
+                import logging as _log
+                _log.getLogger(__name__).warning(f"AIVSS scoring failed (non-fatal): {aivss_exc}")
+
         except Exception as exc:
             import logging
             logging.getLogger(__name__).warning(f"QualityStage failed (non-fatal): {exc}")
+
+        return ctx
+
+
+# ---------------------------------------------------------------------------
+# Helper: enrich ground_truth attack paths with AIVSS scores in-place
+# ---------------------------------------------------------------------------
+
+def _enrich_paths_with_aivss(ground_truth: dict, per_threat) -> None:
+    paths = ground_truth.get("expected_attack_paths", [])
+    threat_map = {t.technique_id: t for t in (per_threat or [])}
+    for path in paths:
+        pid = path.get("id", "")
+        ts = threat_map.get(pid)
+        if ts:
+            path["aivss_score"] = round(ts.composite, 2)
+            path["aivss_severity"] = ts.severity
+
+
+# ---------------------------------------------------------------------------
+# OutboundAIVSSGate — optional stage after ScrumMasterStage
+# ---------------------------------------------------------------------------
+
+class OutboundAIVSSGate(PipelineStage):
+    """
+    Gate outbound report data on AIVSS outbound score.
+    Emits a SIEM event after every run (regardless of severity).
+    """
+
+    name = "outbound_aivss"
+    required = False
+
+    def _logic(self, ctx: PipelineContext, **kw) -> PipelineContext:
+        import logging as _log
+        _logger = _log.getLogger(__name__)
+
+        aivss: "AIVSSScore | None" = ctx.get("_aivss_score")  # type: ignore[name-defined]
+        if aivss is None:
+            return ctx
+
+        outbound_score = aivss.outbound.composite
+        if outbound_score >= 9.0:
+            _logger.warning(
+                f"AIVSS outbound {outbound_score:.1f} CRITICAL — "
+                "report may contain high-risk disclosure signals; flagging run."
+            )
+            ctx["_outbound_blocked"] = True
+        elif outbound_score >= 7.0:
+            _logger.warning(
+                f"AIVSS outbound {outbound_score:.1f} HIGH — "
+                "elevated outbound risk signals detected."
+            )
+
+        # Always emit SIEM event
+        try:
+            from chatbot.modules.harness_siem import SiemEmitter, SiemEvent
+            from chatbot.config.settings import get_settings
+            gov = ctx.get("governance_signals", {})
+            per_threat = aivss.per_threat
+            top = max(per_threat, key=lambda t: t.composite) if per_threat else None
+            event = SiemEvent(
+                event_type="threat_assessment_complete",
+                architecture=ctx.get("architecture_name", ctx.get("architecture_path", "")),
+                aivss_inbound=aivss.inbound.composite,
+                aivss_internal=aivss.internal.composite,
+                aivss_outbound=aivss.outbound.composite,
+                overall_severity=aivss.overall_severity,
+                top_threat={
+                    "technique_id": top.technique_id if top else "",
+                    "technique_name": top.technique_name if top else "",
+                    "aivss_score": round(top.composite, 2) if top else 0.0,
+                    "severity": top.severity if top else "LOW",
+                } if top else {},
+                governance_dims={
+                    "D1": gov.get("exploitation", {}).get("severity", "LOW"),
+                    "D2": gov.get("manipulation_resistance", {}).get("severity", "LOW"),
+                    "D3": gov.get("data_leakage", {}).get("severity", "LOW"),
+                    "D4": gov.get("identity_integrity", {}).get("severity", "LOW"),
+                    "D5": gov.get("data_sovereignty", {}).get("severity", "LOW"),
+                },
+                run_id=ctx.get("_run_id", ""),
+                ts=ctx.get("_run_ts", ""),
+            )
+            settings = get_settings()
+            emitter = SiemEmitter(webhook_url=settings.governance.siem_webhook_url)
+            emitter.emit(event)
+        except Exception as exc:
+            _logger.warning(f"OutboundAIVSSGate SIEM emit failed (non-fatal): {exc}")
 
         return ctx

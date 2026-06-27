@@ -497,6 +497,12 @@ class BlackhatSettings(BaseModel):
         return self
 
 
+class CriticSettings(BaseModel):
+    allowed_models: List[str] = Field(default_factory=list, description="Allowed model IDs (empty = unrestricted)")
+    allowed_tools: List[str] = Field(default_factory=list, description="Allowed tool names (empty = unrestricted)")
+    max_aivss_score: float = Field(default=10.0, description="AIVSS gate threshold (10.0 = disabled)")
+
+
 class GovernanceSettings(BaseModel):
     agt_enabled: bool = Field(
         default=False,
@@ -514,6 +520,14 @@ class GovernanceSettings(BaseModel):
     save_signals_per_run: bool = Field(
         default=True,
         description="Write governance_signals.json to each report directory after every pipeline run.",
+    )
+    industry: str = Field(
+        default="government_public",
+        description="AIVSS industry profile (government_public | financial | healthcare | general).",
+    )
+    siem_webhook_url: Optional[str] = Field(
+        default=None,
+        description="Optional SIEM webhook URL (Splunk/ELK). Events always written to logs/siem.jsonl.",
     )
 
 
@@ -536,6 +550,10 @@ class AppSettings(BaseModel):
     blackhat: BlackhatSettings = Field(default_factory=BlackhatSettings)
     scrum_master: "ScrumMasterSettings" = Field(default_factory=lambda: ScrumMasterSettings())
     governance: GovernanceSettings = Field(default_factory=GovernanceSettings)
+    critics: Dict[str, CriticSettings] = Field(
+        default_factory=dict,
+        description="Per-critic AIVSS gate config keyed by critic role name.",
+    )
 
 
 # ---------------------------------------------------------------------------

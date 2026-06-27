@@ -286,6 +286,11 @@ class ThreatAssessorHarness:
         except ImportError:
             pass
 
+        # Inject run metadata consumed by OutboundAIVSSGate + SIEM
+        import datetime as _dt
+        ctx["_run_ts"] = _dt.datetime.utcnow().isoformat() + "Z"
+        ctx["_run_id"] = f"{ctx.get('architecture_name', 'run')}_{ctx['_run_ts'][:19].replace(':', '-')}"
+
         stages = list(self.stages)
 
         if enable_moe and not any(s.name == "critics" for s in stages):
@@ -330,8 +335,12 @@ def _api_only() -> List[PipelineStage]:
 def _full_moe() -> List[PipelineStage]:
     from chatbot.harness.stages import (
         AnalysisStage, ReportStage, QualityStage, CriticStage, ScrumMasterStage,
+        OutboundAIVSSGate,
     )
-    return [AnalysisStage(), ReportStage(), QualityStage(), CriticStage(), ScrumMasterStage()]
+    return [
+        AnalysisStage(), ReportStage(), QualityStage(),
+        CriticStage(), ScrumMasterStage(), OutboundAIVSSGate(),
+    ]
 
 
 @register_scenario(ScenarioConfig.BACKTEST)

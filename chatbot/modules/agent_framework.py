@@ -451,6 +451,20 @@ SCORING GUIDANCE:
                 logger.warning(f"{self.role}: Unknown tool: {tool_name}")
                 continue
 
+            # AIVSS tool gate — check standing per-critic config
+            aivss_gate = getattr(self, "_aivss_gate", None)
+            if aivss_gate is not None:
+                try:
+                    if not aivss_gate.check_tool_allowed(
+                        self.role, tool_name,
+                        aivss_gate.critic_settings.get(self.role),
+                    ):
+                        logger.warning(f"AIVSS gate: tool '{tool_name}' blocked for {self.role}")
+                        results.append({"tool": tool_name, "error": f"AIVSS gate: tool '{tool_name}' not allowed"})
+                        continue
+                except Exception:
+                    pass
+
             # Execute tool (wrapped by governance adapter if present)
             fn = tool.function
             governance_adapter = getattr(self, "_governance_adapter", None)

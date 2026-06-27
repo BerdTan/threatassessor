@@ -734,6 +734,7 @@ class Dashboard {
 
         // Show analysis status bar
         this._updateAnalysisStatusBar();
+        this._updateAivssBadge(this.analysisData && this.analysisData.governance_signals);
 
         // Refresh history dropdown so new analysis appears at the top
         this._loadArchHistory();
@@ -2140,6 +2141,11 @@ class Dashboard {
                         <div style="padding: 0.25rem 0.75rem; background: ${criticalityColor}22; color: ${criticalityColor}; border-radius: 8px; font-weight: 700; font-size: 0.75rem;" title="Severity score: ${path.criticality_score ? path.criticality_score.toFixed(2) : 'N/A'}">
                             ${path.criticality_tier || 'MEDIUM'} SEVERITY
                         </div>
+                        ${path.aivss_score != null ? (() => {
+                            const as = path.aivss_score, av = path.aivss_severity || 'LOW';
+                            const ac = av === 'CRITICAL' ? '#dc2626' : av === 'HIGH' ? '#f97316' : av === 'MEDIUM' ? '#ca8a04' : '#16a34a';
+                            return `<div style="padding:0.25rem 0.6rem; background:${ac}18; color:${ac}; border:1px solid ${ac}44; border-radius:8px; font-weight:700; font-size:0.72rem;" title="AIVSS v4 risk score for this attack path">AIVSS ${as.toFixed(1)} ${av}</div>`;
+                        })() : ''}
                         <span class="expand-icon" style="font-size: 1.25rem; transition: transform 0.2s;">▼</span>
                     </div>
                 </div>
@@ -2844,6 +2850,23 @@ class Dashboard {
         if (placeholder) placeholder.style.display = 'none';
     }
 
+    // Update the header AIVSS badge from governance_signals.aivss.overall
+    _updateAivssBadge(governanceSignals) {
+        const badge = document.getElementById('aivss-badge');
+        const label = document.getElementById('aivss-badge-label');
+        if (!badge || !label) return;
+        const aivss = governanceSignals && governanceSignals.aivss && governanceSignals.aivss.overall;
+        if (!aivss) { badge.style.display = 'none'; return; }
+        const score = aivss.composite != null ? Number(aivss.composite).toFixed(1) : '?';
+        const sev   = aivss.severity || 'LOW';
+        const color = sev === 'CRITICAL' ? '#dc2626' : sev === 'HIGH' ? '#f97316' : sev === 'MEDIUM' ? '#ca8a04' : '#16a34a';
+        badge.style.display = 'inline-flex';
+        badge.style.background = color + '12';
+        badge.style.borderColor = color + '44';
+        badge.style.color = color;
+        label.textContent = `${score} ${sev}`;
+    }
+
     // Call after MoE completes to update the MoE status pill with final confidence + mode
     _updateMoePill(moeData) {
         const moeEl = document.getElementById('status-moe');
@@ -3079,10 +3102,12 @@ class Dashboard {
                 if (mmdResp.ok) this.originalMmdContent = await mmdResp.text();
             } catch (_) {}
 
-            // Update status bar (fetch moe json for pill if it exists)
+            // Update status bar (fetch moe json + governance signals for pills if they exist)
             this._updateAnalysisStatusBar();
             fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/07_moe_orchestrator.json`)
                 .then(r => r.ok ? r.json() : null).then(m => { if (m) this._updateMoePill(m); }).catch(() => {});
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/governance_signals.json`)
+                .then(r => r.ok ? r.json() : null).then(g => { this._updateAivssBadge(g); }).catch(() => {});
 
             this.loadTabData(this.currentTab);
         } catch (e) {
@@ -6465,8 +6490,12 @@ class Dashboard {
         // ── Pipeline Performance — load from most recent report ─────────────
         const perfBody = await this._harnessLoadPerfSection();
 
+        // ── Per-Agent AIVSS Gate — load from most recent governance_signals.json ──
+        const aivssGateBody = await this._harnessLoadAivssGateSection();
+
         container.innerHTML = `<div style="max-width:860px;">` +
             _hSection('selfcheck',  '🔧', 'Harness Self-Check',    'Verify all pipeline components are reachable and functional.',                                                                   selfCheckBody,   true)  +
+            _hSection('aivss-gate', '🛡️', 'Per-Agent AIVSS Gate',  'AIVSS v4 inbound/internal/outbound scores from the last run, with per-critic last-run scores and gate thresholds.',            aivssGateBody,   true)  +
             _hSection('perf',       '📊', 'Pipeline Performance',  'LLM call counts, token usage, cost, and latency per critic — from the most recent Expert Review run.',                          perfBody,        true)  +
             _hSection('scenarios',  '🗺️', 'Scenario Registry',     'Named stage configurations — pass scenario="…" to ThreatAssessorHarness() to route a run.',                                    scenarioCards,   false) +
             _hSection('executors',  '🔌', 'Stage Executors',        'Each stage has a pluggable executor. Swap it to change how a stage runs without touching the harness or other stages.',         executorCards,   false) +
@@ -6650,6 +6679,87 @@ class Dashboard {
                 <strong>Wall clock</strong> = full critic time including JSON parse and validation.
                 <strong>Efficiency</strong> = tokens per second — lower suggests a slow model or large prompt.
                 Values appear after the first Expert Review run on any architecture.
+            </div>`;
+    }
+
+    async _harnessLoadAivssGateSection() {
+        const _na = '<span style="color:var(--text-tertiary);">—</span>';
+        const _sev = (s) => {
+            if (!s) return _na;
+            const c = s === 'CRITICAL' ? '#dc2626' : s === 'HIGH' ? '#f97316' : s === 'MEDIUM' ? '#ca8a04' : '#16a34a';
+            return `<span style="padding:1px 6px; background:${c}18; color:${c}; border:1px solid ${c}44; border-radius:3px; font-size:0.7rem; font-weight:700;">${s}</span>`;
+        };
+        const _score = (v, s) => v != null ? `<span style="font-weight:700;">${Number(v).toFixed(1)}</span> ${_sev(s)}` : _na;
+
+        // Try to load governance_signals.json from most recent report
+        let govData = null;
+        const archName = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+        if (archName) {
+            try {
+                const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/governance_signals.json`);
+                if (r.ok) govData = await r.json();
+            } catch (_) {}
+        }
+
+        if (!govData || !govData.aivss) {
+            return `<div style="padding:1rem; font-size:0.82rem; color:var(--text-tertiary); text-align:center;">
+                No AIVSS data for this run.<br>
+                <span style="font-size:0.75rem;">Run a full analysis to populate AIVSS scores.</span>
+            </div>`;
+        }
+
+        const a = govData.aivss;
+        const flowRow = (label, flow) => {
+            if (!flow) return '';
+            return `<tr>
+                <td style="padding:0.35rem 0.5rem; font-weight:600; color:var(--text-secondary); font-size:0.8rem;">${label}</td>
+                <td style="padding:0.35rem 0.5rem; text-align:right; font-size:0.82rem;">${_score(flow.composite, flow.severity)}</td>
+                <td style="padding:0.35rem 0.5rem; text-align:right; font-size:0.78rem; color:var(--text-tertiary);">${flow.coverage_pct != null ? flow.coverage_pct + '%' : _na}</td>
+            </tr>`;
+        };
+
+        const flowTable = `
+            <table style="width:100%; border-collapse:collapse; margin-bottom:1rem;">
+                <thead><tr style="border-bottom:1px solid var(--border-color);">
+                    <th style="padding:0.3rem 0.5rem; text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Flow</th>
+                    <th style="padding:0.3rem 0.5rem; text-align:right; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Score</th>
+                    <th style="padding:0.3rem 0.5rem; text-align:right; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Coverage</th>
+                </tr></thead>
+                <tbody>
+                    ${flowRow('Inbound', a.inbound)}
+                    ${flowRow('Internal', a.internal)}
+                    ${flowRow('Outbound', a.outbound)}
+                    <tr style="border-top:1px solid var(--border-color);">
+                        <td style="padding:0.4rem 0.5rem; font-weight:700; font-size:0.82rem;">Overall</td>
+                        <td style="padding:0.4rem 0.5rem; text-align:right; font-size:0.85rem;">${_score(a.overall && a.overall.composite, a.overall && a.overall.severity)}</td>
+                        <td style="padding:0.4rem 0.5rem; text-align:right; font-size:0.78rem; color:var(--text-tertiary);">${a.coverage_pct != null ? a.coverage_pct + '% avg' : _na}</td>
+                    </tr>
+                </tbody>
+            </table>`;
+
+        const perAgent = a.per_agent || {};
+        const agentRows = Object.entries(perAgent).map(([name, score]) =>
+            `<tr>
+                <td style="padding:0.3rem 0.5rem; font-size:0.8rem; font-weight:600; color:var(--text-secondary);">${name}</td>
+                <td style="padding:0.3rem 0.5rem; text-align:right; font-size:0.82rem;">${_score(score.composite, score.severity)}</td>
+            </tr>`
+        ).join('');
+
+        const agentTable = agentRows ? `
+            <div style="font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary); margin:0.75rem 0 0.4rem;">Per-Critic Last Run</div>
+            <table style="width:100%; border-collapse:collapse;">
+                <thead><tr style="border-bottom:1px solid var(--border-color);">
+                    <th style="padding:0.3rem 0.5rem; text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Critic</th>
+                    <th style="padding:0.3rem 0.5rem; text-align:right; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Internal Score</th>
+                </tr></thead>
+                <tbody>${agentRows}</tbody>
+            </table>` : `<div style="font-size:0.78rem; color:var(--text-tertiary); margin-top:0.5rem;">No per-critic data (MoE not run for this architecture).</div>`;
+
+        return flowTable + agentTable +
+            `<div style="margin-top:0.75rem; font-size:0.72rem; color:var(--text-tertiary);">
+                Industry profile: <strong>${a.industry || 'government_public'}</strong>.
+                Gate tightens at inbound ≥ 7.0 (HIGH) — disables tools; ≥ 9.0 (CRITICAL) — forces smallest allowed model.
+                Configure per-critic thresholds via <code>settings.critics</code>.
             </div>`;
     }
 
