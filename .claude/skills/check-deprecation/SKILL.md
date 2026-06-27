@@ -11,7 +11,7 @@ Runs 5 checks in sequence. Exit code equals the number of issues found.
 ## Run
 
 ```bash
-bash /mnt/c/BACKUP/DEV-TEST/.claude/skills/check-deprecation/scripts/check-deprecation.sh
+bash "$(git rev-parse --show-toplevel)/.claude/skills/check-deprecation/scripts/check-deprecation.sh
 ```
 
 ## What it checks

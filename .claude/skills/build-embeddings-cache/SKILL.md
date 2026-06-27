@@ -13,18 +13,18 @@ Generates `chatbot/data/technique_embeddings.json` (~45 MB) from `chatbot/data/e
 
 ```bash
 # Confirm MITRE data exists
-ls -lh /mnt/c/BACKUP/DEV-TEST/chatbot/data/enterprise-attack.json
+ls -lh "$(git rev-parse --show-toplevel)/chatbot/data/enterprise-attack.json
 
 # Check current embedding model is still available on OpenRouter
 # Visit https://openrouter.ai/models and search for the model name below
 # Free-tier models rotate — verify before running if it has been >30 days
-grep -r "embed" /mnt/c/BACKUP/DEV-TEST/chatbot/modules/mitre_embeddings.py | grep "model"
+grep -r "embed" "$(git rev-parse --show-toplevel)/chatbot/modules/mitre_embeddings.py | grep "model"
 ```
 
 ## Run
 
 ```bash
-cd /mnt/c/BACKUP/DEV-TEST
+cd "$(git rev-parse --show-toplevel)"
 python3 -c "
 from chatbot.modules.mitre_embeddings import build_technique_embeddings, save_embeddings_json
 from chatbot.modules.mitre import MitreHelper

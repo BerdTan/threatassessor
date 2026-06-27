@@ -28,7 +28,7 @@ Fetches the 5 ATLAS YAML files from `mitre-atlas/atlas-data` into `chatbot/data/
 ## 3 — SSP Catalog
 
 ```bash
-cd /mnt/c/BACKUP/DEV-TEST
+cd "$(git rev-parse --show-toplevel)"
 python3 scripts/ingest/scrape_ssp_catalog.py
 ```
 
@@ -49,7 +49,7 @@ Fetches 5 YAML files (capabilities, components, controls, design, risks) from `g
 ## 5 — CAVEAT (Cloud Adversarial, Vulnerability, Exploitation, and Threat)
 
 ```bash
-cd /mnt/c/BACKUP/DEV-TEST
+cd "$(git rev-parse --show-toplevel)"
 python3 scripts/data/fetch_caveat.py
 ```
 
@@ -73,7 +73,7 @@ Do NOT overwrite it with the fetch script.
 ## 6 — CCM (CSA Cloud Controls Matrix → ATT&CK Mapping)
 
 ```bash
-cd /mnt/c/BACKUP/DEV-TEST
+cd "$(git rev-parse --show-toplevel)"
 python3 scripts/data/fetch_ccm.py
 ```
 

@@ -12,13 +12,13 @@ Read-only audit of the four maintenance directories. Output a findings table; pr
 
 ```bash
 # Files outside archive/ not modified in last 30 days
-find /mnt/c/BACKUP/DEV-TEST/docs -maxdepth 1 -name "*.md" -mmin +43200
-find /mnt/c/BACKUP/DEV-TEST/docs -mindepth 2 -maxdepth 2 -name "*.md" \
+find "$(git rev-parse --show-toplevel)/docs -maxdepth 1 -name "*.md" -mmin +43200
+find "$(git rev-parse --show-toplevel)/docs -mindepth 2 -maxdepth 2 -name "*.md" \
      -not -path "*/archive/*" -mmin +43200
 
 # Verify docs/README.md index covers all subdirectories
-ls /mnt/c/BACKUP/DEV-TEST/docs/
-grep -o '\[.*\]' /mnt/c/BACKUP/DEV-TEST/docs/README.md | head -40
+ls "$(git rev-parse --show-toplevel)/docs/
+grep -o '\[.*\]' $(git rev-parse --show-toplevel)/docs/README.md | head -40
 ```
 
 Propose: move stale files to `docs/archive/`. Flag any subdirectory not listed in `docs/README.md`.
@@ -27,10 +27,10 @@ Propose: move stale files to `docs/archive/`. Flag any subdirectory not listed i
 
 ```bash
 # Architecture names in tests
-ls /mnt/c/BACKUP/DEV-TEST/tests/data/architectures/ | sed 's/\.mmd$//'
+ls "$(git rev-parse --show-toplevel)/tests/data/architectures/ | sed 's/\.mmd$//'
 
 # Report directories that exist
-ls /mnt/c/BACKUP/DEV-TEST/report/
+ls "$(git rev-parse --show-toplevel)/report/
 ```
 
 Diff the two lists. Known gap: architectures 12–20 have no report. Flag any new gaps.
@@ -39,10 +39,10 @@ Diff the two lists. Known gap: architectures 12–20 have no report. Flag any ne
 
 ```bash
 # Hard-coded absolute paths (fragile if repo moves)
-grep -r "BACKUP/DEV-TEST" /mnt/c/BACKUP/DEV-TEST/scripts/ --include="*.sh" --include="*.py" -l
+grep -r "BACKUP/DEV-TEST" "$(git rev-parse --show-toplevel)/scripts/ --include="*.sh" --include="*.py" -l
 
 # Scripts with no header comment (first non-blank line not a comment)
-for f in $(find /mnt/c/BACKUP/DEV-TEST/scripts -name "*.sh" -o -name "*.py"); do
+for f in $(find "$(git rev-parse --show-toplevel)/scripts -name "*.sh" -o -name "*.py"); do
   head -3 "$f" | grep -qE "^#|^\"\"\"" || echo "No header: $f"
 done
 ```
@@ -53,7 +53,7 @@ Propose: replace absolute paths with `$(git rev-parse --show-toplevel)` or `$(di
 
 ```bash
 # Report directories older than 14 days
-find /mnt/c/BACKUP/DEV-TEST/report -maxdepth 1 -mindepth 1 -type d \
+find "$(git rev-parse --show-toplevel)/report -maxdepth 1 -mindepth 1 -type d \
      -mtime +14 -exec ls -ld {} \;
 ```
 

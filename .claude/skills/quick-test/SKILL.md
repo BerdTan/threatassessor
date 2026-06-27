@@ -8,7 +8,7 @@ compatibility: Requires OPENROUTER_API_KEY in .env and internet access. Makes 1 
 # Quick Test
 
 ```bash
-bash /mnt/c/BACKUP/DEV-TEST/.claude/skills/quick-test/scripts/quick-test.sh
+cd "$(git rev-parse --show-toplevel)" && bash .claude/skills/quick-test/scripts/quick-test.sh
 ```
 
 ## What it tests
