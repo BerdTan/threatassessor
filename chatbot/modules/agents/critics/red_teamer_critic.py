@@ -834,3 +834,14 @@ def critique_red_team(
     # Run critique
     critic = RedTeamerCritic()
     return critic.critique(artifacts, ground_truth, tester_critique)
+
+
+# CriticRegistry self-registration
+try:
+    from chatbot.harness.registry import _DEFAULT_REGISTRY, CriticDescriptor
+    _DEFAULT_REGISTRY.register(CriticDescriptor(
+        name="red_team", cls=RedTeamerCritic,
+        governance_tier="standard", model_key="red_team",
+    ))
+except Exception:
+    pass

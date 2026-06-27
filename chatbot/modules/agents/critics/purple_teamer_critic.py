@@ -596,3 +596,14 @@ Context: {mode_context}
             strengths=[reason],
             improvement_roadmap=[],
         )
+
+
+# CriticRegistry self-registration
+try:
+    from chatbot.harness.registry import _DEFAULT_REGISTRY, CriticDescriptor
+    _DEFAULT_REGISTRY.register(CriticDescriptor(
+        name="purple_team", cls=PurpleTeamerCritic,
+        governance_tier="standard", model_key="purple_team",
+    ))
+except Exception:
+    pass

@@ -178,8 +178,47 @@ audit_log:
   merkle_chain: true
   output: "logs/governance_audit.jsonl"
 
+# ── Agent blocking policy ──────────────────────────────────────────────────
+# Critics listed here are blocked (not activated) when their trigger condition
+# is met. GovernanceSignals.blocked_agents is populated from this list when
+# the corresponding condition fires during QualityStage.
+#
+# blocked_agents_on_critical: critics blocked when exploitation.severity == CRITICAL
+# blocked_agents_on_high:     critics blocked when overall_risk_level == HIGH
+
+agent_policy:
+  blocked_agents_on_critical: ["red_team", "blackhat"]
+  blocked_agents_on_high: []
+
+
+# ── Event broker configuration ────────────────────────────────────────────
+# Controls which events flow to each sink and at what verbosity level.
+# Edit via Config tab in the dashboard (Settings → Event Broker section).
+
+event_broker:
+  sinks:
+    siem:
+      enabled: true
+      events: ["governance", "aivss"]
+    langfuse:
+      enabled: false
+      host: "http://localhost:3000"
+      public_key: ""
+      secret_key: ""
+      events: ["stage_trace", "governance", "aivss"]
+    webhook:
+      enabled: false
+      url: ""
+      events: ["governance"]
+
+  verbosity_presets:
+    minimal:  ["governance", "aivss"]
+    standard: ["stage_trace", "governance", "aivss"]
+    debug:    ["stage_trace", "critic_trace", "governance", "aivss"]
+
+
 metadata:
-  version: "1.0"
+  version: "1.1"
   framework_mappings:
     owasp_agentic: "OWASP Top 10 for LLM Applications (Agentic, 2025)"
     arc: "AI Risk Classification Framework (ARC)"

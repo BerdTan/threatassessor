@@ -1216,3 +1216,14 @@ if __name__ == "__main__":
 
     print(f"\n📄 Saved to: {output_path}")
     print(f"\n{'='*70}\n")
+
+
+# CriticRegistry self-registration
+try:
+    from chatbot.harness.registry import _DEFAULT_REGISTRY, CriticDescriptor
+    _DEFAULT_REGISTRY.register(CriticDescriptor(
+        name="tester", cls=TesterCritic,
+        governance_tier="standard", model_key="tester",
+    ))
+except Exception:
+    pass

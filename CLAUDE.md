@@ -84,6 +84,13 @@ OpenAPI spec: `openapi.yaml` (root of repo)
 - `chatbot/api/models/` - Pydantic request/response schemas
 - `chatbot/api/static/` - Dashboard UI (index.html + JS + CSS)
 
+**Harness (pipeline controller + governance + registry):**
+- `chatbot/harness/controller.py` - ThreatAssessorHarness, PipelineContext, ScenarioConfig
+- `chatbot/harness/stages.py` - AnalysisStage, ReportStage, QualityStage, CriticStage, ScrumMasterStage
+- `chatbot/harness/governance.py` - GovernanceSignals, InhouseGovernanceAdapter, AGTGovernanceAdapter
+- `chatbot/harness/registry.py` - CriticRegistry (control tower for agent activation + governance policy)
+- `chatbot/modules/harness*.py` - Re-export shims (backwards compat — canonical source is `chatbot/harness/`)
+
 **Agent Architecture (MoE):**
 - `chatbot/modules/agents/critics/` - Architect, Tester, Red Team
 - `chatbot/modules/agents/analysts/` - ThreatAnalyst + patterns

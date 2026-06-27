@@ -679,3 +679,14 @@ without needing separate entry points. Per-path mitigations cannot stop this.)
   ]
 }}
 ```"""
+
+
+# CriticRegistry self-registration (elevated tier — requires policy allow)
+try:
+    from chatbot.harness.registry import _DEFAULT_REGISTRY, CriticDescriptor
+    _DEFAULT_REGISTRY.register(CriticDescriptor(
+        name="blackhat", cls=BlackhatCritic,
+        governance_tier="elevated", model_key="blackhat", enabled=False,
+    ))
+except Exception:
+    pass

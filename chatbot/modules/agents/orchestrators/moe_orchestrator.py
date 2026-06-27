@@ -41,6 +41,7 @@ from chatbot.modules.agents.critics.tester_critic import TesterCritic
 from chatbot.modules.agents.critics.red_teamer_critic import RedTeamerCritic
 from chatbot.modules.agents.critics.purple_teamer_critic import PurpleTeamerCritic
 from chatbot.modules.artifact_extractor import extract_artifacts, ArtifactSet
+from chatbot.harness.registry import _DEFAULT_REGISTRY
 from chatbot.modules.agent_framework import CritiqueScore
 from agentic.llm_client import LLMClient
 
@@ -279,7 +280,7 @@ class MoEOrchestrator:
     Never allows LLM to override deterministic recommendations.
     """
 
-    def __init__(self, model: Optional[str] = None, progress_callback=None):
+    def __init__(self, model: Optional[str] = None, progress_callback=None, blocked_agents: Optional[List[str]] = None):
         """
         Initialize MoE orchestrator.
 
@@ -292,11 +293,15 @@ class MoEOrchestrator:
         self.progress_callback = progress_callback
         self._synth_perf: Dict = {}  # accumulated perf for orchestrator LLM calls
 
-        # Create expert agents
-        self.architect = EnhancedArchitectCritic(model=model)
-        self.tester = TesterCritic(model=model)
-        self.red_team = RedTeamerCritic(model=model)
-        self.purple_team = PurpleTeamerCritic(model=model)
+        # Activate critics via registry — governance can block by name
+        _critics = _DEFAULT_REGISTRY.activate(
+            blocked=blocked_agents or [],
+            models={k: model for k in ["architect", "tester", "red_team", "purple_team"]} if model else {},
+        )
+        self.architect   = _critics.get("architect")   or EnhancedArchitectCritic(model=model)
+        self.tester      = _critics.get("tester")      or TesterCritic(model=model)
+        self.red_team    = _critics.get("red_team")    or RedTeamerCritic(model=model)
+        self.purple_team = _critics.get("purple_team") or PurpleTeamerCritic(model=model)
 
         logger.info("MoEOrchestrator initialized with 4 validation experts (2A/2B/2C/2D) + Blackhat (2E)")
 
@@ -517,8 +522,10 @@ class MoEOrchestrator:
         if _bh_enabled:
             logger.info("MoE Pipeline: Layer 2E — Running Blackhat (has all prior critic context — supreme critic)...")
             try:
-                from chatbot.modules.agents.critics.blackhat_critic import BlackhatCritic
-                blackhat_critic = BlackhatCritic(model=self.model)
+                blackhat_critic = _DEFAULT_REGISTRY.get("blackhat", model=self.model)
+                if blackhat_critic is None:
+                    from chatbot.modules.agents.critics.blackhat_critic import BlackhatCritic
+                    blackhat_critic = BlackhatCritic(model=self.model)
                 blackhat_critique_score = blackhat_critic.critique(
                     artifacts, ground_truth,
                     red_team_critique=red_team_critique,
@@ -1982,6 +1989,7 @@ def run_moe_pipeline(
     progress_callback=None,
     critic_mode: str = "sequential",
     run_blackhat: Optional[bool] = None,
+    blocked_agents: Optional[List[str]] = None,
 ) -> MoEResult:
     """
     Convenience function to run full MoE pipeline.
@@ -2004,7 +2012,7 @@ def run_moe_pipeline(
         >>> result = run_moe_pipeline("report/10_complex_enterprise")
         >>> print(f"Final confidence: {result.final_confidence:.1f}%")
     """
-    orchestrator = MoEOrchestrator(progress_callback=progress_callback)
+    orchestrator = MoEOrchestrator(progress_callback=progress_callback, blocked_agents=blocked_agents)
     return orchestrator.run_pipeline(report_dir, base_confidence, critic_mode=critic_mode, run_blackhat=run_blackhat)
 
 
