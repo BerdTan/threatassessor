@@ -11484,29 +11484,71 @@ class Dashboard {
           },
           {
             title: '🔀 Agent Model Routing',
-            subtitle: 'Per-agent primary model and fallback chain. Empty = use the LLM_PROVIDER env-var default. Fallbacks are tried in order when the primary fails — any fallback event is flagged as a warning in the pipeline output.',
-            fields: [
-              ...[
-                { key:'architect',        label:'Architect Critic',       desc:'Layer 2A — validates threat model design quality and structural completeness.' },
-                { key:'tester',           label:'Tester Critic',          desc:'Layer 2B — validates MITRE technique mappings and internal consistency.' },
-                { key:'red_team',         label:'Red Team Critic',         desc:'Layer 2C — validates exploit difficulty and control bypass feasibility.' },
-                { key:'purple_team',      label:'Purple Team Critic',      desc:'Layer 2D — validates detection chain coverage and TM/ADR operability.' },
-                { key:'blackhat',         label:'Blackhat Critic',         desc:'Layer 2E (supreme critic) — cross-path chain analysis using all prior critic context.' },
-                { key:'moe_orchestrator', label:'MoE Orchestrator',        desc:'Layer 3 synthesis — impartial consensus across all critics.' },
-                { key:'scrum_master',     label:'ScrumMaster Meta-Critic', desc:'Meta-critic that resolves impediments and drives targeted re-triggering.' },
-                { key:'storycaster',      label:'StoryCaster',             desc:'Generates user journey stories from architecture nodes (LLM enrichment path).' },
-                { key:'threat_analyst',   label:'Threat Analyst',          desc:'Deterministic RAPIDS engine — source of truth for all LLM critics.' },
-              ].flatMap(agent => [
-                { section:`agent_models.${agent.key}`, field:'model', label:`${agent.label} — Primary Model`,
-                  vtype:'string',
-                  desc:`${agent.desc} Primary model string passed to LLMClient. Empty = env-var LLM_PROVIDER default. Example: openrouter/anthropic/claude-sonnet-4-6`,
-                  effects: ef('Overrides LLM_PROVIDER for this agent only','No change to other agents','None','None') },
-                { section:`agent_models.${agent.key}`, field:'fallbacks', label:`${agent.label} — Fallback Chain`,
-                  vtype:'string',
-                  desc:`Comma-separated ordered fallback models tried after primary fails. Example: openrouter/anthropic/claude-haiku-4-5,openrouter/anthropic/claude-sonnet-4-6. Any fallback use is flagged as a pipeline warning.`,
-                  effects: ef('Provides resilience when primary model is unavailable','Fallback events logged in ctx.model_fallbacks','Low','None') },
-              ])
-            ]
+            subtitle: 'Per-agent primary model and fallback chain. Leave blank to use the active LLM provider from .env (LLM_PROVIDER / BEDROCK_MODEL / OPENROUTER_MODEL). API keys always stay in .env — never set here. Fallbacks are tried in order on failure; any use is flagged as a pipeline warning.',
+            renderFn: (data) => {
+              const agentSwarm = data.agent_models || {};
+              const provChain  = (data._provider_chain || {}).provider_chain || '';
+              // Derive the env default model label from provider chain
+              const envDefault = provChain ? `env default (${provChain.split('→')[0].trim()})` : 'env default (LLM_PROVIDER)';
+              const inp = `width:100%; padding:0.35rem 0.55rem; border:1px solid var(--border-color); border-radius:5px; background:#1e293b; color:#e2e8f0; font-size:0.8rem; box-sizing:border-box;`;
+              const agents = [
+                { key:'architect',        icon:'🏛️', label:'Architect',       layer:'2A', desc:'Validates threat model design quality and structural completeness.' },
+                { key:'tester',           icon:'🧪', label:'Tester',           layer:'2B', desc:'Validates MITRE technique mappings and internal consistency.' },
+                { key:'red_team',         icon:'🔴', label:'Red Team',         layer:'2C', desc:'Validates exploit difficulty and control bypass feasibility.' },
+                { key:'purple_team',      icon:'🟣', label:'Purple Team',      layer:'2D', desc:'Validates detection chain coverage and TM/ADR operability.' },
+                { key:'blackhat',         icon:'⚔️', label:'Blackhat',         layer:'2E', desc:'Supreme critic — cross-path chain analysis with all prior context.' },
+                { key:'moe_orchestrator', icon:'⚙️', label:'MoE Orchestrator', layer:'L3', desc:'Impartial synthesis and consensus across all critics.' },
+                { key:'scrum_master',     icon:'🧩', label:'ScrumMaster',      layer:'SM', desc:'Meta-critic that resolves impediments and drives re-triggering.' },
+                { key:'storycaster',      icon:'📖', label:'StoryCaster',      layer:'ST', desc:'Generates user journey stories (LLM enrichment path).' },
+                { key:'threat_analyst',   icon:'🔍', label:'Threat Analyst',   layer:'TA', desc:'Deterministic RAPIDS engine — source of truth for all critics.' },
+              ];
+              return `<div style="display:flex; flex-direction:column; gap:0.75rem; padding:0.25rem 0;">` +
+                agents.map(a => {
+                  const cfg = agentSwarm[a.key] || {};
+                  const modelVal    = cfg.model    || '';
+                  const fallbackVal = Array.isArray(cfg.fallbacks) ? cfg.fallbacks.join(', ') : (cfg.fallbacks || '');
+                  const isConfigured = !!modelVal;
+                  const badge = isConfigured
+                    ? `<span style="font-size:0.65rem; padding:1px 6px; background:#0d9f6e18; color:#0d9f6e; border:1px solid #0d9f6e44; border-radius:8px;">custom</span>`
+                    : `<span style="font-size:0.65rem; padding:1px 6px; background:var(--nav-hover-bg); color:var(--text-tertiary); border:1px solid var(--border-color); border-radius:8px;">${envDefault}</span>`;
+                  return `<div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+                    <div style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.875rem; background:var(--nav-hover-bg); border-bottom:1px solid var(--border-color);">
+                      <span style="font-size:0.9rem;">${a.icon}</span>
+                      <span style="font-weight:700; font-size:0.85rem; color:var(--text-color);">${a.label}</span>
+                      <span style="font-size:0.68rem; color:var(--text-tertiary); background:var(--card-bg); padding:1px 5px; border-radius:4px; border:1px solid var(--border-color);">${a.layer}</span>
+                      <span style="flex:1;"></span>
+                      ${badge}
+                    </div>
+                    <div style="padding:0.65rem 0.875rem; display:flex; flex-direction:column; gap:0.5rem;">
+                      <div style="font-size:0.72rem; color:var(--text-tertiary); margin-bottom:0.1rem;">${a.desc}</div>
+                      <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+                        <div style="flex:2; min-width:200px;">
+                          <label style="display:block; font-size:0.72rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.2rem;">Primary model</label>
+                          <input type="text"
+                            data-section="agent_models.${a.key}" data-field="model" data-vtype="string"
+                            value="${modelVal.replace(/"/g,'&quot;')}"
+                            placeholder="${envDefault}"
+                            style="${inp}" />
+                          <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">
+                            Full model string, e.g. <code>bedrock/us.anthropic.claude-sonnet-4-5</code>. Blank = use .env default.
+                          </div>
+                        </div>
+                        <div style="flex:3; min-width:240px;">
+                          <label style="display:block; font-size:0.72rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.2rem;">Fallback chain <span style="font-weight:400; color:var(--text-tertiary);">(comma-separated, in order)</span></label>
+                          <input type="text"
+                            data-section="agent_models.${a.key}" data-field="fallbacks" data-vtype="string"
+                            value="${fallbackVal.replace(/"/g,'&quot;')}"
+                            placeholder="e.g. bedrock/us.anthropic.claude-haiku-4-5"
+                            style="${inp}" />
+                          <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">
+                            Tried in order when primary fails. Any fallback use is flagged as a pipeline warning.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>`;
+                }).join('') + `</div>`;
+            }
           },
         ];
 
@@ -11887,6 +11929,7 @@ class Dashboard {
             '🔒 Residual Risk':                          'residual_risk',
             '🗺️ StoryCaster — User Journey Stories':     'story_caster',
             '🤖 LLM & System':                           'llm_system',
+            '🔀 Agent Model Routing':                    'llm_system',
         };
 
         const sectionCards = sections.map(s => {
@@ -11937,6 +11980,25 @@ class Dashboard {
         const cs = `color:var(--text-secondary); font-size:0.78rem;`;
         const sectionId = 'cfg-section-body-' + sectionDef.title.replace(/\W+/g,'').toLowerCase();
         const inpStyle = `width:100%; padding:0.38rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer; box-sizing:border-box; color-scheme:dark;`;
+
+        // Custom renderer — bypasses the flat field table entirely
+        if (sectionDef.renderFn) {
+            const lsKey = 'cfg_open_' + sectionId;
+            const open  = localStorage.getItem(lsKey) !== 'false'; // default open
+            return `<div class="card" style="margin-bottom:1rem;">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1.1rem; cursor:pointer; user-select:none;"
+                     onclick="(function(el){var b=document.getElementById('${sectionId}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';localStorage.setItem('${lsKey}',String(!open));})(this)">
+                    <div>
+                        <span style="font-weight:700; font-size:0.95rem;">${sectionDef.title}</span>
+                        <div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.1rem;">${sectionDef.subtitle || ''}</div>
+                    </div>
+                    <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">${open ? '▼' : '▶'}</span>
+                </div>
+                <div id="${sectionId}" style="display:${open ? 'block' : 'none'}; border-top:1px solid var(--border-color); padding:0.9rem 1.1rem;">
+                    ${sectionDef.renderFn(data)}
+                </div>
+            </div>`;
+        }
 
         const rows = sectionDef.fields.map(f => {
             // Resolve section — supports dot-paths like "agent_models.architect"
