@@ -6517,6 +6517,16 @@ class Dashboard {
         const _fmtTime = s => s ? `${parseFloat(s).toFixed(1)}s` : _na;
         const _fmtTok  = t => t ? t.toLocaleString() : _na;
 
+        // Load harness_perf.json for stage timeline (independent of critic perf)
+        let harnessPerf = null;
+        const currentArch0 = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+        if (currentArch0) {
+            try {
+                const hp = await fetch(`/api/v1/reports/${encodeURIComponent(currentArch0)}/files/harness_perf.json`);
+                if (hp.ok) harnessPerf = await hp.json();
+            } catch (_) {}
+        }
+
         // Try to find the most recent report with pipeline_perf data
         let perf = null, archName = '', runTime = '';
         try {
@@ -6686,7 +6696,81 @@ class Dashboard {
                 <strong>Wall clock</strong> = full critic time including JSON parse and validation.
                 <strong>Efficiency</strong> = tokens per second — lower suggests a slow model or large prompt.
                 Values appear after the first Expert Review run on any architecture.
-            </div>`;
+            </div>
+            ${(() => {
+                if (!harnessPerf || !harnessPerf.stages) return '';
+                const stages = harnessPerf.stages;
+                const _STAGE_LABEL = {
+                    analysis: '⚙️ Analysis',
+                    report: '📄 Report',
+                    quality: '🛡️ Quality Gate',
+                    critics: '🎭 Critics (MoE)',
+                    scrum_master: '🧩 ScrumMaster',
+                    aivss: '📊 AIVSS Scoring',
+                    outbound_aivss: '📤 Outbound Gate',
+                };
+                const stageOrder = ['analysis','report','quality','critics','scrum_master','aivss','outbound_aivss'];
+                const pipelineWall = harnessPerf.pipeline_wall_s || 0;
+                const stageRows = stageOrder
+                    .filter(k => stages[k])
+                    .map(k => {
+                        const s = stages[k];
+                        const w = s.wall_s || 0;
+                        const pct = pipelineWall > 0 ? Math.round((w / pipelineWall) * 100) : 0;
+                        const statusCol = s.status === 'error' ? '#dc2626' : '#16a34a';
+                        const barWidth = Math.max(2, pct);
+                        const model = s.model ? s.model.split('/').pop() : '—';
+                        const isLlm = ['critics','scrum_master'].includes(k);
+                        return `<tr style="border-bottom:1px solid var(--border-color);">
+                            <td style="padding:0.4rem 0.75rem; font-size:0.82rem; font-weight:600; color:var(--text-color); white-space:nowrap;">${_STAGE_LABEL[k]||k}</td>
+                            <td style="padding:0.4rem 0.75rem; text-align:right; font-size:0.82rem; color:var(--text-color); font-weight:700; white-space:nowrap;">${_fmtTime(w)}</td>
+                            <td style="padding:0.4rem 0.75rem; min-width:80px;">
+                                <div style="background:var(--border-color); border-radius:3px; height:6px; overflow:hidden;">
+                                    <div style="width:${barWidth}%; background:${w > 30 ? 'var(--warning-color)' : 'var(--primary-color)'}; height:100%; border-radius:3px; transition:width 0.3s;"></div>
+                                </div>
+                            </td>
+                            <td style="padding:0.4rem 0.75rem; text-align:right; font-size:0.75rem; color:var(--text-tertiary);">${pct}%</td>
+                            <td style="padding:0.4rem 0.75rem; text-align:center;">
+                                <span style="font-size:0.7rem; padding:1px 6px; border-radius:3px; background:${statusCol}18; color:${statusCol}; border:1px solid ${statusCol}44; font-weight:700;">${s.status||'ok'}</span>
+                            </td>
+                            <td style="padding:0.4rem 0.75rem; font-size:0.72rem; color:${isLlm ? 'var(--text-secondary)' : 'var(--text-tertiary)'}; white-space:nowrap;" title="${s.model||''}">
+                                ${isLlm ? model : '<span style="color:var(--text-tertiary);">deterministic</span>'}
+                            </td>
+                        </tr>`;
+                    }).join('');
+                const runTs = harnessPerf.run_ts ? new Date(harnessPerf.run_ts).toLocaleString() : '';
+                return `
+                <div style="margin-top:1.25rem; padding-top:1rem; border-top:1px solid var(--border-color);">
+                    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem; flex-wrap:wrap;">
+                        <span style="font-size:0.78rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em;">Harness Stage Timeline</span>
+                        <span style="font-size:0.72rem; color:var(--text-tertiary);">${harnessPerf.scenario ? `scenario: <strong>${harnessPerf.scenario}</strong>` : ''}</span>
+                        ${runTs ? `<span style="font-size:0.7rem; color:var(--text-tertiary); margin-left:auto;">${runTs}</span>` : ''}
+                    </div>
+                    <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                        <thead><tr style="border-bottom:2px solid var(--border-color); background:var(--nav-hover-bg);">
+                            <th style="padding:0.35rem 0.75rem; text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-tertiary);">Stage</th>
+                            <th style="padding:0.35rem 0.75rem; text-align:right; font-size:0.7rem; text-transform:uppercase; color:var(--text-tertiary);">Wall clock</th>
+                            <th style="padding:0.35rem 0.75rem; font-size:0.7rem; text-transform:uppercase; color:var(--text-tertiary);">Share</th>
+                            <th style="padding:0.35rem 0.75rem; text-align:right; font-size:0.7rem; color:var(--text-tertiary);">%</th>
+                            <th style="padding:0.35rem 0.75rem; text-align:center; font-size:0.7rem; text-transform:uppercase; color:var(--text-tertiary);">Status</th>
+                            <th style="padding:0.35rem 0.75rem; text-align:left; font-size:0.7rem; text-transform:uppercase; color:var(--text-tertiary);">LLM / type</th>
+                        </tr></thead>
+                        <tbody>${stageRows}</tbody>
+                        <tfoot><tr style="border-top:2px solid var(--border-color); background:var(--nav-hover-bg); font-weight:700;">
+                            <td style="padding:0.4rem 0.75rem; font-size:0.82rem;">Total</td>
+                            <td style="padding:0.4rem 0.75rem; text-align:right; font-size:0.82rem;">${_fmtTime(pipelineWall)}</td>
+                            <td colspan="4"></td>
+                        </tfoot>
+                    </table>
+                    </div>
+                    <div style="margin-top:0.5rem; font-size:0.72rem; color:var(--text-tertiary);">
+                        <strong>Share bar</strong> = each stage's wall-clock as a % of total pipeline time.
+                        Stages &gt;30 s shown in amber. <strong>deterministic</strong> = no LLM call; time reflects RAPIDS graph analysis or file I/O.
+                        Populated after next analysis run.
+                    </div>
+                </div>`;
+            })()}`;
     }
 
     async _harnessLoadAivssGateSection() {

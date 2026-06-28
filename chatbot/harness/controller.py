@@ -81,6 +81,11 @@ class PipelineContext(dict):
         return self.setdefault("stage_outputs", {})
 
     @property
+    def stage_timings(self) -> Dict[str, Dict]:
+        """Per-stage wall-clock timing: {stage_name: {wall_s, status, model}}"""
+        return self.setdefault("stage_timings", {})
+
+    @property
     def model_fallbacks(self) -> List[Dict]:
         return self.setdefault("model_fallbacks", [])
 
@@ -434,6 +439,8 @@ class ThreatAssessorHarness:
         ctx["_run_ts"] = _dt.datetime.utcnow().isoformat() + "Z"
         ctx["_run_id"] = f"{ctx.get('architecture_name', 'run')}_{ctx['_run_ts'][:19].replace(':', '-')}"
 
+        import time as _time
+
         stages = list(self.stages)
 
         if enable_moe and not any(s.name == "critics" for s in stages):
@@ -444,21 +451,65 @@ class ThreatAssessorHarness:
             from chatbot.harness.stages import ScrumMasterStage
             stages.append(ScrumMasterStage())
 
+        _pipeline_start = _time.perf_counter()
+
         for stage in stages:
+            _stage_start = _time.perf_counter()
+            _status = "ok"
             try:
                 stage.run(ctx, progress_callback=self.progress_callback)
                 ctx.stage_outputs[stage.name] = "ok"
             except Exception as exc:
+                _status = "error"
                 ctx.errors.append(f"{stage.name}: {exc}")
                 ctx.stage_outputs[stage.name] = "error"
                 if stage.required:
                     raise
-                # optional stage failure: logged, pipeline continues
             finally:
-                # Drain fallback events from the guardian after every stage
+                _wall = round(_time.perf_counter() - _stage_start, 2)
+                # Map stage name to agent name for model lookup
+                _STAGE_TO_AGENT = {
+                    "critics": None,       # multiple agents — per-critic model shown elsewhere
+                    "scrum_master": "scrum_master",
+                    "aivss": None,
+                    "quality": None,
+                    "analysis": "threat_analyst",
+                    "report": None,
+                    "outbound_aivss": None,
+                }
+                _agent = _STAGE_TO_AGENT.get(stage.name)
+                try:
+                    _model = guardian.get_model(_agent, 0) if _agent else None
+                except Exception:
+                    _model = None
+                ctx.stage_timings[stage.name] = {
+                    "wall_s": _wall,
+                    "status": _status,
+                    "model": _model,
+                }
                 events = guardian.drain_fallback_events()
                 if events:
                     ctx.model_fallbacks.extend(events)
+
+        _pipeline_wall = round(_time.perf_counter() - _pipeline_start, 2)
+
+        # Save harness_perf.json alongside other report artefacts
+        if ctx.get("report_dir"):
+            try:
+                import json as _json
+                from pathlib import Path as _Path
+                _perf = {
+                    "run_id":          ctx.get("_run_id", ""),
+                    "run_ts":          ctx.get("_run_ts", ""),
+                    "scenario":        self.scenario,
+                    "pipeline_wall_s": _pipeline_wall,
+                    "stages":          ctx.stage_timings,
+                }
+                (_Path(ctx["report_dir"]) / "harness_perf.json").write_text(
+                    _json.dumps(_perf, indent=2), encoding="utf-8"
+                )
+            except Exception:
+                pass
 
         if ctx.model_fallbacks:
             agents_with_fallbacks = list({e["agent"] for e in ctx.model_fallbacks})
