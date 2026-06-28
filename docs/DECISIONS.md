@@ -4,6 +4,50 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-06-28 — SM worktree rerun + ADR closed-loop verification
+
+### 1. SM rerun as a named worktree — arch-sm{N} naming convention
+
+**What was decided:**
+ScrumMaster-recommended reruns use `{base_arch}-sm{N}` naming (e.g. `aivss_test_arch-sm1`, `aivss_test_arch-sm2`). Each is a first-class report directory — a full analysis run from the SM-recommended MMD (`08b_recommended_target.mmd`) treated exactly like any other architecture. Separate from the `_N` numeric suffix used for plain reruns. `N` is the count of SM-specific reruns for that base arch.
+
+**Three pieces (in dependency order):**
+1. **Worktree button + API route** — `POST /api/v1/reports/{name}/rerun-with-sm` copies `08b_recommended_target.mmd` to `{name}-sm{N}.mmd` in the architectures input location, triggers a deterministic analysis on it (same as `analyze-stream`), returns the new arch name. Button shown in arch history dropdown only when `08_scrum_master.json` exists.
+2. **Run diff** — `run_diff.json` written alongside the SM-run's report comparing `controls_missing`, `techniques`, and `confidence` between the base arch and `{name}-sm{N}`. Pure set arithmetic on `ground_truth.json` values — no LLM.
+3. **ADR verification** — SM-ADR entries store machine-readable `source_techniques` and `source_controls` at write time. Dashboard reads `run_diff.json` and renders ADR entries with a `VERIFIED` badge when the stored controls/techniques are absent from the SM-run's `controls_missing`. File is never auto-edited — verification is a display-only overlay.
+
+**Reasoning:**
+Treating SM reruns as first-class report directories gives them the full report set, Insights trending, and worktree chain view with no special-casing. The `_sm{N}` suffix is machine-parseable (base name extraction strips `-smN`) while being visually distinct from numeric reruns. The worktree is what generates the reference `ground_truth.json` that makes ADR verification data-driven instead of text-matching. Without the worktree run there is nothing to diff against.
+
+**Alternatives rejected:**
+- Storing SM reruns in a sub-directory of the base arch: breaks the flat report directory assumption throughout the codebase (API routes, Insights, file serving all expect `report/{arch_name}/`).
+- Auto-editing `10_adr_report.md` to flip status: risky (file corruption, concurrent edits), unnecessary — dashboard overlay achieves the same UX without touching the file.
+- Text-matching ADR prose to finding descriptions: unreliable. Storing technique IDs and control names at write time is O(1) lookup vs O(n) fuzzy match.
+
+**Confidence:**
+- Worktree button + API route: **90%** — copies a file and calls the existing analysis endpoint; no new pipeline logic.
+- Run diff: **88%** — pure set arithmetic on structured JSON; only uncertainty is prior-run lookup (base-name stripping, already done in Insights trending).
+- ADR write-time enrichment: **92%** — adding two fields to the existing `add-to-adr` payload and entry template.
+- ADR dashboard verification overlay: **75%** — reads two JSON files and matches sets; uncertainty is edge cases (partial control name matches, techniques that appear in multiple paths).
+- Insights SM-chain section: **70%** — data exists, chart infrastructure exists, but section layout needs thought to avoid duplicating existing cross-run trending.
+
+### 2. SM worktree UI — worktree chain view
+
+**What was decided:**
+The arch history dropdown shows SM reruns as an indented chain under the base arch:
+```
+aivss_test_arch            [reload] [rerun] [SM rerun] [delete]
+  └─ aivss_test_arch-sm1  [reload] [view diff]
+     └─ aivss_test_arch-sm2  [reload] [view diff]
+```
+SM reruns show a "vs base" delta (confidence change, controls resolved, techniques closed) inline in the dropdown. "View diff" opens a right-pane comparison. The Insights tab View A gains a SM-chain sub-section when `-smN` variants exist: confidence trend line per run, controls resolved count, techniques closed. This reuses the existing base-name grouping logic (`_base_arch_name()` in reports.py already strips `_N` suffixes — extend to also strip `-smN`).
+
+**Alternatives rejected:**
+- Flat list with SM runs mixed with numeric reruns: visually indistinguishable, defeats the purpose.
+- Separate "SM History" tab: over-engineering — the arch dropdown already has the right scope.
+
+---
+
 ## 2026-06-28 — Unified model provider strategy (deferred implementation)
 
 ### 1. Config-driven provider registry + harmonised model settings
