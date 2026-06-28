@@ -3064,7 +3064,8 @@ class Dashboard {
                     try {
                         const r = await fetch(`/api/v1/reports/${encodeURIComponent(a.name)}`, { method: 'DELETE', headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
                         if (!r.ok) throw new Error(`Server returned ${r.status}`);
-                        div.remove();
+                        // Remove the wrapper (div + chain) if wrapped, else just div
+                        (div.parentElement && div.parentElement !== list ? div.parentElement : div).remove();
                     } catch (err) {
                         alert(`Failed to delete "${a.name}": ${err.message}`);
                     }
@@ -3145,7 +3146,11 @@ class Dashboard {
                         chain.appendChild(smRow);
                         this._loadSmChainDelta(a.name, n);
                     });
-                    div.after(chain);
+                    // Wrap arch row + chain together so both land in the list
+                    const wrapper = document.createElement('div');
+                    wrapper.appendChild(div);
+                    wrapper.appendChild(chain);
+                    return wrapper;
                 }
 
                 return div;
