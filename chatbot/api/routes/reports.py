@@ -466,6 +466,115 @@ async def get_sm_diff(architecture_name: str, n: int):
     return json.loads(diff_path.read_text(encoding="utf-8"))
 
 
+@router.delete("/reports/{architecture_name}/sm/{n}")
+async def delete_sm_run(
+    architecture_name: str,
+    n: int,
+    _: str = Depends(verify_api_key),
+):
+    """Delete an SM worktree subfolder."""
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+
+    sm_dir = get_report_dir() / architecture_name / f"sm{n}"
+    if not sm_dir.exists():
+        raise HTTPException(status_code=404, detail=f"sm{n} not found for '{architecture_name}'")
+
+    import shutil as _shutil
+    _shutil.rmtree(sm_dir)
+    return {"status": "ok", "deleted": f"{architecture_name}/sm{n}"}
+
+
+@router.post("/reports/{architecture_name}/sm/{n}/rerun")
+async def rerun_sm_analysis(
+    architecture_name: str,
+    n: int,
+    _: str = Depends(verify_api_key),
+):
+    """Re-run api_only analysis on an existing SM run's before.mmd.
+
+    Refreshes ground_truth.json, governance_signals.json, and run_diff.json
+    without creating a new SM subfolder. Useful after manually editing before.mmd.
+    """
+    import asyncio, queue as _queue
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+
+    base_dir = get_report_dir() / architecture_name
+    sm_dir   = base_dir / f"sm{n}"
+    mmd_path = sm_dir / "before.mmd"
+
+    if not sm_dir.exists():
+        raise HTTPException(status_code=404, detail=f"sm{n} not found")
+    if not mmd_path.exists():
+        raise HTTPException(status_code=404, detail="before.mmd not found in sm subfolder")
+
+    import tempfile, os
+    clean_text = mmd_path.read_text(encoding="utf-8")
+    with tempfile.NamedTemporaryFile(suffix=".mmd", mode="w", delete=False, encoding="utf-8") as tmp:
+        tmp.write(clean_text)
+        tmp_path = tmp.name
+
+    ssp_profile = "low_risk_cloud"
+    base_gt = base_dir / "ground_truth.json"
+    if base_gt.exists():
+        try:
+            _gt = json.loads(base_gt.read_text(encoding="utf-8"))
+            ssp_profile = _gt.get("ssp_profile") or _gt.get("metadata", {}).get("ssp_profile") or ssp_profile
+        except Exception:
+            pass
+
+    try:
+        from chatbot.modules.harness import ThreatAssessorHarness, ScenarioConfig
+        q: _queue.SimpleQueue = _queue.SimpleQueue()
+        harness = ThreatAssessorHarness(
+            scenario=ScenarioConfig.API_ONLY,
+            progress_callback=lambda s, p, m: q.put((s, p, m)),
+        )
+        loop = asyncio.get_event_loop()
+        ctx = await loop.run_in_executor(
+            None,
+            lambda: harness.run(
+                architecture_path=tmp_path,
+                report_dir=str(sm_dir),
+                ssp_profile=ssp_profile,
+                enable_ssp=True,
+                include_validation=True,
+                architecture_name=f"sm{n}",
+            )
+        )
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+        if ctx.stage_outputs.get("analysis") == "error":
+            raise HTTPException(status_code=500,
+                detail=ctx.errors[0] if ctx.errors else "Analysis failed")
+
+        # Clean generated MMDs
+        try:
+            from chatbot.modules.mmd_cleaner import clean_recommended_mmd as _clean
+            _KEEP = {"recommended_template.mmd", "before.mmd"}
+            for p in sm_dir.glob("*.mmd"):
+                if p.name not in _KEEP and "NEW_" in p.read_text(encoding="utf-8"):
+                    p.write_text(_clean(p.read_text(encoding="utf-8")), encoding="utf-8")
+        except Exception:
+            pass
+
+        diff = _compute_sm_diff(base_dir, sm_dir, n, architecture_name)
+        (sm_dir / "run_diff.json").write_text(json.dumps(diff, indent=2), encoding="utf-8")
+
+        return {"status": "ok", "n": n, "diff": diff}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"SM rerun failed: {e}")
+
+
 @router.post("/reports/{architecture_name}/add-to-adr")
 async def add_sm_action_to_adr(
     architecture_name: str,

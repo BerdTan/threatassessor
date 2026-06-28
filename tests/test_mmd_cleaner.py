@@ -145,6 +145,29 @@ def test_extract_control_names():
     assert len(names) == 3
 
 
+def test_dangling_arrows_removed():
+    """Dangling arrows (NodeId --> with no target) must be removed — Mermaid rejects them."""
+    mmd_with_dangling = '''graph TD
+    A["Node A"]
+    B["Node B"]
+    Encryption["Encryption"]
+    Backup["Backup"]
+    A --> B
+    Encryption -->
+     -.->|respond| Backup
+     -.->|detect| Backup
+    B --> A
+'''
+    result = clean_recommended_mmd(mmd_with_dangling)
+    assert 'Encryption --> \n' not in result
+    assert 'Encryption -->' not in result, "dangling arrow line should be removed"
+    # The valid edge A --> B and B --> A must survive
+    assert 'A --> B' in result
+    assert 'B --> A' in result
+    # The orphaned continuation lines must also be gone
+    assert '-.->|respond|' not in result
+
+
 def test_node_ids_have_no_spaces():
     """Node IDs in the clean output must not contain spaces — Mermaid rejects them."""
     result = clean_recommended_mmd(SAMPLE_MITRE)

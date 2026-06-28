@@ -3080,39 +3080,69 @@ class Dashboard {
                     });
                 }
 
-                // SM chain — show indented runs if any exist
+                // SM chain — indented worktree entries with View / Rerun / Delete
                 if (a.sm_run_count > 0) {
                     const chain = document.createElement('div');
+                    chain.id = `sm-chain-${a.name}`;
                     chain.style.cssText = 'padding:0.2rem 0 0.1rem 2rem; border-left:2px solid #a855f722; margin-left:1.4rem;';
+                    const _smBtn = (label, title, extraStyle='') =>
+                        `<button style="background:transparent; border:1px solid #a855f733; color:#a855f7;
+                            padding:1px 6px; border-radius:3px; font-size:0.62rem; cursor:pointer;
+                            white-space:nowrap; ${extraStyle}" title="${title}">${label}</button>`;
                     (a.sm_runs || []).forEach(n => {
                         const smRow = document.createElement('div');
-                        smRow.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.3rem 0.5rem; font-size:0.75rem; color:#c4b5fd; cursor:pointer; border-radius:4px; transition:background 0.15s;';
-                        smRow.innerHTML = `<span style="color:#a855f7; font-size:0.8rem;">↳</span>`
-                            + `<span style="font-weight:600;">sm${n}</span>`
-                            + `<span id="sm-chain-delta-${a.name}-${n}" style="color:#64748b; font-size:0.68rem;">loading…</span>`
-                            + `<span style="margin-left:auto; display:flex; gap:0.3rem;">`
-                            + `<button class="sm-chain-tmpl" data-arch="${a.name}" data-n="${n}"
-                                style="background:transparent; border:1px solid #a855f733; color:#a855f7;
-                                       padding:1px 5px; border-radius:3px; font-size:0.62rem; cursor:pointer; white-space:nowrap;"
-                                title="View SM recommended template (annotated MMD)">📋</button>`
-                            + `<button class="sm-chain-view" data-arch="${a.name}" data-n="${n}"
-                                style="background:transparent; border:1px solid #a855f744; color:#a855f7;
-                                       padding:1px 6px; border-radius:3px; font-size:0.65rem; cursor:pointer; white-space:nowrap;">View</button>`
-                            + `</span>`;
+                        smRow.style.cssText = 'display:flex; align-items:center; gap:0.4rem; padding:0.3rem 0.5rem; font-size:0.75rem; color:#c4b5fd; border-radius:4px; transition:background 0.15s;';
+                        smRow.innerHTML =
+                            `<span style="color:#a855f7; font-size:0.8rem; flex-shrink:0;">↳</span>`
+                          + `<span style="font-weight:600; flex-shrink:0;">sm${n}</span>`
+                          + `<span id="sm-chain-delta-${a.name}-${n}" style="color:#64748b; font-size:0.68rem; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">loading…</span>`
+                          + `<span class="sm-chain-btns" style="display:flex; gap:0.25rem; flex-shrink:0;">`
+                          + _smBtn('👁 View',   'Load this SM run in the main view')
+                          + _smBtn('📋',        'View SM recommendation template (annotated MMD)')
+                          + _smBtn('▶ Rerun',  'Re-run deterministic analysis on this SM run\'s MMD')
+                          + _smBtn('🗑',        'Delete this SM run folder', 'border-color:#ef444433; color:#f87171;')
+                          + `</span>`;
                         smRow.addEventListener('mouseover', () => smRow.style.background = '#a855f711');
                         smRow.addEventListener('mouseout',  () => smRow.style.background = 'transparent');
-                        smRow.querySelector('.sm-chain-view').addEventListener('click', async (e) => {
+
+                        const [btnView, btnTmpl, btnRerun, btnDel] = smRow.querySelectorAll('.sm-chain-btns button');
+
+                        btnView.addEventListener('click', async (e) => {
                             e.stopPropagation();
                             this._closeArchDropdown();
                             await this._loadSmRun(a.name, n);
                         });
-                        smRow.querySelector('.sm-chain-tmpl').addEventListener('click', async (e) => {
+                        btnTmpl.addEventListener('click', async (e) => {
                             e.stopPropagation();
                             this._closeArchDropdown();
                             await this._viewSmFile(a.name, n, 'recommended_template.mmd', `✨ SM Recommendation — sm${n}`);
                         });
+                        btnRerun.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            this._closeArchDropdown();
+                            // Rerun the SM analysis against the existing sm{n}/before.mmd
+                            await this._rerunSmAnalysis(a.name, n, smRow);
+                        });
+                        btnDel.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            if (!confirm(`Delete SM run sm${n} for "${a.name}"?\n\nThis cannot be undone.`)) return;
+                            try {
+                                const r = await fetch(
+                                    `/api/v1/reports/${encodeURIComponent(a.name)}/sm/${n}`,
+                                    { method: 'DELETE', headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } }
+                                );
+                                if (!r.ok) throw new Error(`${r.status}`);
+                                smRow.remove();
+                                // Update sm_runs count on the parent arch item
+                                const remaining = chain.querySelectorAll('div[data-sm-row]').length;
+                                if (remaining === 0) chain.remove();
+                            } catch (err) {
+                                alert(`Failed to delete sm${n}: ${err.message}`);
+                            }
+                        });
+
+                        smRow.dataset.smRow = n;
                         chain.appendChild(smRow);
-                        // Load delta inline
                         this._loadSmChainDelta(a.name, n);
                     });
                     div.after(chain);
@@ -3378,6 +3408,31 @@ class Dashboard {
 
         const tabContent = document.getElementById('tab-content');
         if (tabContent) tabContent.insertBefore(banner, tabContent.firstChild);
+    }
+
+    async _rerunSmAnalysis(archName, n, rowEl) {
+        // Re-run api_only analysis on an existing SM run's before.mmd.
+        // This refreshes ground_truth.json and run_diff.json without creating
+        // a new sm subfolder — useful after manually editing sm{N}/before.mmd.
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const deltaEl = document.getElementById(`sm-chain-delta-${archName}-${n}`);
+        if (deltaEl) deltaEl.textContent = '⏳ rerunning…';
+
+        try {
+            const r = await fetch(
+                `/api/v1/reports/${encodeURIComponent(archName)}/sm/${n}/rerun`,
+                { method: 'POST', headers: { 'TM-API-KEY': apiKey } }
+            );
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                if (deltaEl) deltaEl.textContent = `❌ ${err.detail || r.status}`;
+                return;
+            }
+            // Reload delta
+            this._loadSmChainDelta(archName, n);
+        } catch (e) {
+            if (deltaEl) deltaEl.textContent = `❌ ${e.message}`;
+        }
     }
 
     _upgradeSmToMoe(smArchName) {

@@ -126,6 +126,10 @@ def _build_id_map(lines: list) -> Dict[str, _NodeInfo]:
     return id_map
 
 
+_DANGLING_ARROW_RE = re.compile(r'^\s*\S+\s+-->\s*$')
+_ORPHAN_EDGE_RE    = re.compile(r'^\s+(-\.->|--\>|-->)\s*')
+
+
 def _is_skip_line(line: str) -> bool:
     stripped = line.strip()
     if stripped.startswith("%%"):
@@ -167,12 +171,27 @@ def _rewrite_edge(line: str, id_map: Dict[str, _NodeInfo]) -> str:
 def _transform_lines(lines: list, id_map: Dict[str, _NodeInfo]) -> list:
     out = []
     prev_blank = False
+    skip_orphan_continuations = False   # True after a dangling-arrow line
 
     for line in lines:
         stripped = line.strip()
 
         if _is_skip_line(line):
+            skip_orphan_continuations = False
             continue
+
+        # Drop dangling-arrow lines: "NodeId --> " with nothing after the arrow.
+        # These come from the report generator splitting multi-target edges across
+        # lines in a way Mermaid cannot parse.
+        if _DANGLING_ARROW_RE.match(line):
+            skip_orphan_continuations = True
+            continue
+
+        # Drop orphaned continuation edges that had no source node
+        # (indented -.-> or --> lines immediately following a dangling arrow).
+        if skip_orphan_continuations and stripped and _ORPHAN_EDGE_RE.match(line):
+            continue
+        skip_orphan_continuations = False
 
         if stripped == "":
             if not prev_blank:
