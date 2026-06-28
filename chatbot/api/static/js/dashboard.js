@@ -3171,67 +3171,169 @@ class Dashboard {
     // Re-run analysis for an architecture by fetching its saved before.mmd
     async _smRerunArch(archName) {
         const apiKey = localStorage.getItem('tm_api_key') || '';
-        this.updateStatusMessage(`✨ Creating SM worktree for ${archName}…`);
 
-        // Show analysis progress UI — the SM rerun triggers a full api_only pipeline
-        this.resetForNewAnalysis();
-        this._showAnalysisProgress();
+        // Show a full-page overlay — SM rerun is a server-side operation,
+        // no upload form needed. Never call resetForNewAnalysis() here.
+        const overlay = document.createElement('div');
+        overlay.id = 'sm-rerun-overlay';
+        overlay.style.cssText = [
+            'position:fixed', 'inset:0', 'z-index:9999',
+            'background:rgba(0,0,0,0.55)', 'backdrop-filter:blur(2px)',
+            'display:flex', 'flex-direction:column',
+            'align-items:center', 'justify-content:center', 'gap:1rem',
+        ].join(';');
+        overlay.innerHTML = `
+            <div style="background:var(--card-bg,#1e1e2e); border:1px solid var(--border-color,#333);
+                        border-radius:12px; padding:2rem 2.5rem; max-width:380px; text-align:center;">
+                <div style="font-size:1.5rem; margin-bottom:0.5rem;">✨</div>
+                <div style="font-size:1rem; font-weight:700; color:var(--primary-color,#4da6ff);
+                             margin-bottom:0.25rem;">SM Worktree Rerun</div>
+                <div style="font-size:0.82rem; color:var(--text-secondary,#aaa); margin-bottom:1.25rem;">
+                    Cleaning recommended MMD and running analysis for<br>
+                    <strong style="color:var(--text-color,#fff);">${archName}</strong>
+                </div>
+                <div id="sm-rerun-steps" style="display:flex; flex-direction:column; gap:0.4rem; text-align:left; margin-bottom:1.25rem;">
+                    ${['🧹 Cleaning annotation MMD','⚙️ Running deterministic analysis','📊 Computing diff vs base','💾 Writing sm1/ subfolder']
+                        .map((s,i) => `<div id="sm-step-${i}" style="font-size:0.78rem; color:var(--text-tertiary,#666); display:flex; align-items:center; gap:0.5rem;">
+                            <span id="sm-step-icon-${i}" style="font-size:0.8rem;">⬜</span>${s}</div>`).join('')}
+                </div>
+                <div id="sm-rerun-status" style="font-size:0.75rem; color:var(--text-tertiary,#666);">Starting…</div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        const _step = (i, icon, col) => {
+            const el = document.getElementById(`sm-step-icon-${i}`);
+            const row = document.getElementById(`sm-step-${i}`);
+            if (el) el.textContent = icon;
+            if (row) row.style.color = col;
+        };
+        const _status = (msg) => {
+            const el = document.getElementById('sm-rerun-status');
+            if (el) el.textContent = msg;
+        };
+
+        // Animate steps — rough timing matched to backend (cleaning is instant, analysis ~30s)
+        _step(0, '🔄', 'var(--primary-color,#4da6ff)');
+        const t0 = setTimeout(() => { _step(0,'✅','var(--secondary-color,#4ade80)'); _step(1,'🔄','var(--primary-color,#4da6ff)'); _status('Analysis running…'); }, 400);
+        const t1 = setTimeout(() => { _step(2,'🔄','var(--primary-color,#4da6ff)'); _status('Computing improvement diff…'); }, 20000);
+        const t2 = setTimeout(() => { _step(3,'🔄','var(--primary-color,#4da6ff)'); _status('Saving results…'); }, 28000);
 
         try {
             const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/rerun-with-sm`, {
                 method: 'POST',
                 headers: { 'TM-API-KEY': apiKey },
             });
+
+            clearTimeout(t0); clearTimeout(t1); clearTimeout(t2);
+
             if (!r.ok) {
                 const err = await r.json().catch(() => ({}));
-                this.updateStatusMessage(`❌ SM rerun failed: ${err.detail || r.status}`);
+                _status(`❌ ${err.detail || 'Failed — check logs'}`);
+                [0,1,2,3].forEach(i => _step(i,'❌','var(--danger-color,#f87171)'));
+                setTimeout(() => overlay.remove(), 3000);
                 return;
             }
-            const d = await r.json();
-            const smDir = d.sm_dir || `${archName}/sm${d.n}`;
-            this.updateStatusMessage(`✅ SM rerun complete — sm${d.n} created`);
 
-            // Load the new SM run's results into the main view
-            // SM run is stored as a subfolder; load it via the sm-specific path
-            await this._loadSmRun(archName, d.n);
+            const d = await r.json();
+            [0,1,2,3].forEach(i => _step(i,'✅','var(--secondary-color,#4ade80)'));
+            _status(`✅ sm${d.n} created — loading results…`);
+
+            setTimeout(async () => {
+                overlay.remove();
+                await this._loadSmRun(archName, d.n);
+            }, 800);
 
         } catch (e) {
-            this.updateStatusMessage(`❌ SM rerun error: ${e.message}`);
+            clearTimeout(t0); clearTimeout(t1); clearTimeout(t2);
+            _status(`❌ ${e.message}`);
+            setTimeout(() => overlay.remove(), 3000);
         }
     }
 
     async _loadSmRun(archName, n) {
-        // Load an SM subrun into the main dashboard view
-        // Fetches ground_truth and diff from the sm{N} subfolder routes
+        // Load an SM subrun into the main dashboard view using the same
+        // path as _loadArchFromReports — which correctly shows tab-content
+        // and hides the upload form.
         const apiKey = localStorage.getItem('tm_api_key') || '';
         try {
             const [gtR, diffR] = await Promise.all([
                 fetch(`/api/v1/reports/${encodeURIComponent(archName)}/sm/${n}/files/ground_truth.json`),
                 fetch(`/api/v1/reports/${encodeURIComponent(archName)}/sm/${n}/diff`),
             ]);
-            if (!gtR.ok) throw new Error('ground_truth.json not found for sm' + n);
-            const gt  = await gtR.json();
+            if (!gtR.ok) throw new Error(`ground_truth.json not found for sm${n}`);
+            const gt   = await gtR.json();
             const diff = diffR.ok ? await diffR.json() : null;
 
-            // Inject SM context into analysisData so tabs render correctly
+            // Build an analysisData-compatible object.
+            // The architecture_name stored in ground_truth uses the full harness name
+            // (e.g. aivss_test_arch_sm1); we keep parent + n for UI labelling.
+            const smArchName = gt.architecture_name || `${archName}_sm${n}`;
             this.analysisData = {
-                ...(gt),
-                architecture_name: `${archName}/sm${n}`,
+                ...gt,
+                architecture_name: smArchName,
+                architecture: smArchName,
                 _sm_parent: archName,
                 _sm_n: n,
                 _sm_diff: diff,
                 analysis: gt,
             };
 
-            this.switchTab('attacks');
-            this.updateStatusMessage(
-                diff
-                    ? `✨ sm${n}: Δ${diff.confidence_delta >= 0 ? '+' : ''}${(diff.confidence_delta * 100).toFixed(1)}% conf · ${diff.controls_resolved_count} controls resolved · ${diff.techniques_closed_count} techniques closed`
-                    : `✨ Loaded SM run ${n} for ${archName}`
-            );
+            // Show the tab area (same as _loadArchFromReports does)
+            const uploadContainer = document.getElementById('upload-form-container');
+            const tabContent      = document.getElementById('tab-content');
+            if (uploadContainer) uploadContainer.style.display = 'none';
+            if (tabContent)      tabContent.style.display = 'block';
+
+            // Show the SM context banner above the tabs
+            this._showSmRunBanner(archName, n, diff);
+
+            // Switch to Overview which is always available
+            await this.loadOverviewTab();
+            this.switchTab('overview');
+
+            const deltaStr = diff
+                ? `Δ${diff.confidence_delta >= 0 ? '+' : ''}${(diff.confidence_delta * 100).toFixed(1)}% conf · ${diff.controls_resolved_count} controls resolved · ${diff.techniques_closed_count} techniques closed`
+                : '';
+            this.updateStatusMessage(`✨ SM run sm${n} loaded${deltaStr ? ' — ' + deltaStr : ''}`);
+
         } catch (e) {
             this.updateStatusMessage(`❌ Could not load sm${n}: ${e.message}`);
+            console.warn('_loadSmRun error', e);
         }
+    }
+
+    _showSmRunBanner(archName, n, diff) {
+        // Inject a persistent banner at the top of tab-content showing SM context
+        const existing = document.getElementById('sm-run-banner');
+        if (existing) existing.remove();
+
+        const deltaHtml = diff ? `
+            <span style="color:${diff.confidence_delta > 0 ? '#4ade80' : '#94a3b8'}; font-weight:700;">
+                Δ${diff.confidence_delta >= 0 ? '+' : ''}${(diff.confidence_delta * 100).toFixed(1)}%</span>
+            &nbsp;·&nbsp; <strong>${diff.controls_resolved_count}</strong> controls resolved
+            &nbsp;·&nbsp; <strong>${diff.techniques_closed_count}</strong> techniques closed`
+            : '';
+
+        const banner = document.createElement('div');
+        banner.id = 'sm-run-banner';
+        banner.style.cssText = [
+            'margin-bottom:0.75rem', 'padding:0.5rem 1rem',
+            'background:#a855f711', 'border:1px solid #a855f744',
+            'border-radius:8px', 'display:flex', 'align-items:center',
+            'gap:0.75rem', 'flex-wrap:wrap', 'font-size:0.8rem',
+        ].join(';');
+        banner.innerHTML = `
+            <span style="font-size:1rem;">✨</span>
+            <span style="font-weight:700; color:#c4b5fd;">SM Worktree — sm${n}</span>
+            <span style="color:var(--text-tertiary);">base: <strong style="color:var(--text-secondary);">${archName}</strong></span>
+            ${deltaHtml ? `<span style="margin-left:auto;">${deltaHtml}</span>` : ''}
+            <button onclick="window.dashboard._loadArchFromReports('${archName}')"
+                style="padding:0.15rem 0.6rem; border:1px solid #a855f744; background:transparent;
+                       color:#a855f7; border-radius:4px; font-size:0.72rem; cursor:pointer; white-space:nowrap;">
+                ← Back to base arch</button>`;
+
+        const tabContent = document.getElementById('tab-content');
+        if (tabContent) tabContent.insertBefore(banner, tabContent.firstChild);
     }
 
     async _loadSmChainDelta(archName, n) {
