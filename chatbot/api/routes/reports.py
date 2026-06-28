@@ -227,14 +227,18 @@ async def rerun_with_sm(
     # Write the clean version as before.mmd (what the engine analyses)
     (sm_dir / "before.mmd").write_text(clean_text, encoding="utf-8")
 
-    # Write the MMD to a temp file for the harness
+    # Write the clean MMD to a temp file for the harness
     import tempfile
     with tempfile.NamedTemporaryFile(suffix=".mmd", mode="w", delete=False,
                                      encoding="utf-8") as tmp:
-        tmp.write(mmd_text)
+        tmp.write(clean_text)
         tmp_path = tmp.name
 
-    arch_sm_name = f"{architecture_name}_sm{n}"
+    # arch_sm_name is used as the architecture_name kwarg passed to the harness.
+    # generate_report_package appends this name onto output_dir (the parent of
+    # sm_dir), so it must be just "sm{N}" so files land in sm_dir/ not
+    # sm_dir/{architecture_name}_sm{N}/.
+    arch_sm_name = f"sm{n}"
 
     # Read SSP profile from base arch ground_truth if available
     ssp_profile = "low_risk_cloud"
