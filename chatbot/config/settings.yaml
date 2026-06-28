@@ -1,0 +1,59 @@
+# ThreatAssessor — operator settings
+#
+# This file is committed to the repo and documents the current provider and
+# embedding configuration. It is loaded between the Python defaults and
+# user_config.json (which is gitignored and holds personal overrides).
+#
+# Load order: AppSettings Python defaults → settings.yaml (this file) → user_config.json
+#
+# To activate a new provider, uncomment its block and set the corresponding
+# environment variable. No Python code changes required.
+
+# ---------------------------------------------------------------------------
+# LLM provider registry
+# ---------------------------------------------------------------------------
+providers:
+  providers:
+    openrouter:
+      base_url: "https://openrouter.ai/api/v1"
+      api_key_env: "OPENROUTER_API_KEY"
+      auth_type: "bearer"
+
+    bedrock:
+      base_url: ""
+      api_key_env: null
+      auth_type: "sigv4"
+
+    # ── Uncomment to activate ────────────────────────────────────────────────
+    # doubleword:
+    #   base_url: "https://api.doubleword.ai/v1"
+    #   api_key_env: "DOUBLEWORD_API_KEY"
+    #   auth_type: "bearer"
+
+    # sakana:
+    #   base_url: "https://api.sakana.ai/v1"
+    #   api_key_env: "SAKANA_API_KEY"
+    #   auth_type: "bearer"
+
+    # ollama:
+    #   base_url: "http://localhost:11434/v1"
+    #   api_key_env: null
+    #   auth_type: "none"
+
+    # vllm_local:
+    #   base_url: "http://localhost:8000/v1"
+    #   api_key_env: null
+    #   auth_type: "none"
+
+    # vllm_cloud:
+    #   base_url: "https://your-vllm-endpoint/v1"
+    #   api_key_env: "VLLM_API_KEY"
+    #   auth_type: "bearer"
+
+# ---------------------------------------------------------------------------
+# Embedding model (used by MITRE technique similarity search)
+# ---------------------------------------------------------------------------
+embedding:
+  provider: "openrouter"
+  model: "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+  dimensions: 2048

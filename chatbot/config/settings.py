@@ -15,7 +15,8 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 CONFIG_DIR = Path(__file__).parent
-USER_CONFIG_PATH = CONFIG_DIR / "user_config.json"
+SETTINGS_YAML_PATH = CONFIG_DIR / "settings.yaml"   # committed, operator-editable
+USER_CONFIG_PATH   = CONFIG_DIR / "user_config.json" # gitignored, personal overrides
 
 
 # ---------------------------------------------------------------------------
@@ -677,23 +678,47 @@ _settings: Optional[AppSettings] = None
 _lock = threading.Lock()
 
 
+def _merge_overrides(base: dict, overrides: dict) -> dict:
+    """Shallow-merge overrides onto base, section by section."""
+    for section, values in overrides.items():
+        if section in base and isinstance(values, dict):
+            base[section].update(values)
+    return base
+
+
 def load_settings() -> AppSettings:
-    """Load settings from user_config.json merged over defaults. Falls back to defaults on error."""
+    """Load settings with a three-layer merge:
+      1. AppSettings Python defaults
+      2. settings.yaml  (committed, operator-editable — providers, embedding, etc.)
+      3. user_config.json  (gitignored, personal overrides)
+    Falls back to Python defaults if a layer is missing or malformed.
+    """
     global _settings
     with _lock:
-        defaults = AppSettings()
+        merged = AppSettings().model_dump()
+
+        # Layer 2 — settings.yaml
+        if SETTINGS_YAML_PATH.exists():
+            try:
+                import yaml
+                yaml_overrides = yaml.safe_load(SETTINGS_YAML_PATH.read_text()) or {}
+                merged = _merge_overrides(merged, yaml_overrides)
+            except Exception:
+                pass  # malformed YAML → keep Python defaults for that section
+
+        # Layer 3 — user_config.json
         if USER_CONFIG_PATH.exists():
             try:
-                overrides = json.loads(USER_CONFIG_PATH.read_text())
-                merged = defaults.model_dump()
-                for section, values in overrides.items():
-                    if section in merged and isinstance(values, dict):
-                        merged[section].update(values)
-                _settings = AppSettings.model_validate(merged)
+                json_overrides = json.loads(USER_CONFIG_PATH.read_text())
+                merged = _merge_overrides(merged, json_overrides)
             except Exception:
-                _settings = defaults
-        else:
-            _settings = defaults
+                pass  # malformed JSON → keep lower layers
+
+        try:
+            _settings = AppSettings.model_validate(merged)
+        except Exception:
+            _settings = AppSettings()
+
     return _settings
 
 
