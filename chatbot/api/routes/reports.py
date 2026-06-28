@@ -35,6 +35,28 @@ def get_report_dir() -> Path:
     return Path(__file__).parent.parent.parent.parent / cfg_dir
 
 
+_SM_RE = re.compile(r'^(.+?)_sm(\d+)$')
+
+
+def resolve_arch_dir(architecture_name: str) -> Path:
+    """Resolve an architecture name to its report directory.
+
+    Handles both flat names (aivss_test_arch → report/aivss_test_arch/)
+    and SM worktree names (aivss_test_arch_sm1 → report/aivss_test_arch/sm1/).
+    Falls back to the flat path so callers get a consistent Path (may not exist).
+    """
+    base = get_report_dir()
+    flat = base / architecture_name
+    if flat.exists():
+        return flat
+    m = _SM_RE.match(architecture_name)
+    if m:
+        subfolder = base / m.group(1) / f"sm{m.group(2)}"
+        if subfolder.exists():
+            return subfolder
+    return flat
+
+
 @router.get("/reports")
 async def list_architectures():
     """
@@ -131,7 +153,7 @@ async def list_reports(architecture_name: str):
         }
         ```
     """
-    report_dir = get_report_dir() / architecture_name
+    report_dir = resolve_arch_dir(architecture_name)
 
     if not report_dir.exists():
         raise HTTPException(
@@ -513,7 +535,7 @@ async def rescore_aivss(
     if safe_name != architecture_name or ".." in architecture_name:
         raise HTTPException(status_code=400, detail="Invalid architecture_name")
 
-    report_dir = get_report_dir() / architecture_name
+    report_dir = resolve_arch_dir(architecture_name)
     if not report_dir.exists():
         raise HTTPException(status_code=404, detail=f"Architecture '{architecture_name}' not found")
 
@@ -721,7 +743,7 @@ async def get_report_file(architecture_name: str, filename: str):
             detail="Invalid filename"
         )
 
-    file_path = get_report_dir() / architecture_name / filename
+    file_path = resolve_arch_dir(architecture_name) / filename
 
     if not file_path.exists():
         raise HTTPException(
@@ -757,7 +779,7 @@ async def get_report_summary(architecture_name: str):
     Returns:
         Summary with file counts and types
     """
-    report_dir = get_report_dir() / architecture_name
+    report_dir = resolve_arch_dir(architecture_name)
 
     if not report_dir.exists():
         raise HTTPException(
@@ -872,7 +894,7 @@ async def get_briefing(architecture_name: str, fmt: str = "md"):
         text/markdown attachment
     """
     import datetime
-    report_dir = get_report_dir() / architecture_name
+    report_dir = resolve_arch_dir(architecture_name)
 
     if not report_dir.exists():
         raise HTTPException(

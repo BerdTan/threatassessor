@@ -3306,55 +3306,37 @@ class Dashboard {
     }
 
     async _loadSmRun(archName, n) {
-        // Load an SM subrun into the main dashboard view using the same
-        // path as _loadArchFromReports — which correctly shows tab-content
-        // and hides the upload form.
-        const apiKey = localStorage.getItem('tm_api_key') || '';
-        try {
-            const [gtR, diffR] = await Promise.all([
-                fetch(`/api/v1/reports/${encodeURIComponent(archName)}/sm/${n}/files/ground_truth.json`),
-                fetch(`/api/v1/reports/${encodeURIComponent(archName)}/sm/${n}/diff`),
-            ]);
-            if (!gtR.ok) throw new Error(`ground_truth.json not found for sm${n}`);
-            const gt   = await gtR.json();
-            const diff = diffR.ok ? await diffR.json() : null;
+        // Virtual arch name that resolve_arch_dir() maps to
+        // report/{archName}/sm{n}/ — uses the same file routes as any normal arch.
+        const smVirtualName = `${archName}_sm${n}`;
 
-            // Build an analysisData-compatible object.
-            // The architecture_name stored in ground_truth uses the full harness name
-            // (e.g. aivss_test_arch_sm1); we keep parent + n for UI labelling.
-            const smArchName = gt.architecture_name || `${archName}_sm${n}`;
-            this.analysisData = {
-                ...gt,
-                architecture_name: smArchName,
-                architecture: smArchName,
-                _sm_parent: archName,
-                _sm_n: n,
-                _sm_diff: diff,
-                analysis: gt,
-            };
+        // Load exactly like a normal arch — _loadArchFromReports handles
+        // tab visibility, attack paths, MoE pill, diagram, status bar.
+        await this._loadArchFromReports(smVirtualName);
 
-            // Show the tab area (same as _loadArchFromReports does)
-            const uploadContainer = document.getElementById('upload-form-container');
-            const tabContent      = document.getElementById('tab-content');
-            if (uploadContainer) uploadContainer.style.display = 'none';
-            if (tabContent)      tabContent.style.display = 'block';
-
-            // Show the SM context banner above the tabs
-            this._showSmRunBanner(archName, n, diff);
-
-            // Switch to Overview which is always available
-            await this.loadOverviewTab();
-            this.switchTab('overview');
-
-            const deltaStr = diff
-                ? `Δ${diff.confidence_delta >= 0 ? '+' : ''}${(diff.confidence_delta * 100).toFixed(1)}% conf · ${diff.controls_resolved_count} controls resolved · ${diff.techniques_closed_count} techniques closed`
-                : '';
-            this.updateStatusMessage(`✨ SM run sm${n} loaded${deltaStr ? ' — ' + deltaStr : ''}`);
-
-        } catch (e) {
-            this.updateStatusMessage(`❌ Could not load sm${n}: ${e.message}`);
-            console.warn('_loadSmRun error', e);
+        // After load, inject SM context so guards know this is an SM run.
+        if (this.analysisData) {
+            this.analysisData._sm_parent = archName;
+            this.analysisData._sm_n      = n;
         }
+
+        // Fetch the diff separately and attach (lightweight, post-load)
+        try {
+            const diffR = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/sm/${n}/diff`);
+            if (diffR.ok && this.analysisData) {
+                this.analysisData._sm_diff = await diffR.json();
+            }
+        } catch (_) {}
+
+        // Re-render Overview so the SM context strip appears with delta metrics
+        await this.loadOverviewTab();
+
+        // Status bar message
+        const diff = this.analysisData && this.analysisData._sm_diff;
+        const deltaStr = diff && !diff.error
+            ? `Δ${diff.confidence_delta >= 0 ? '+' : ''}${(diff.confidence_delta * 100).toFixed(1)}% · ${diff.controls_resolved_count} controls resolved · ${diff.techniques_closed_count} techniques closed`
+            : '';
+        this.updateStatusMessage(`✨ SM run sm${n} loaded${deltaStr ? ' — ' + deltaStr : ''}`);
     }
 
     _showSmRunBanner(archName, n, diff) {
