@@ -251,22 +251,22 @@ async def rescore_aivss(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not read ground_truth.json: {e}")
 
+    import time as _time
+    _timings: Dict[str, float] = {}
+
     # ── Step 1: Build governance signals ────────────────────────────────────
-    # Prefer the saved file if it has the five dims; if it's missing or stale
-    # (only contains "aivss"), re-run the governance checks from before.mmd.
+    _t = _time.perf_counter()
     gov_signals: Dict = {}
     if sig_path.exists():
         try:
             saved = json.loads(sig_path.read_text(encoding="utf-8"))
             saved.pop("aivss", None)
-            # Only use if at least one governance dim is present
             if any(k in saved for k in ("exploitation", "leakage", "manipulation", "identity", "sovereignty")):
                 gov_signals = saved
         except Exception:
             pass
 
     if not gov_signals:
-        # Re-run governance checks from the saved MMD
         mmd_path = report_dir / "before.mmd"
         if mmd_path.exists():
             try:
@@ -280,23 +280,39 @@ async def rescore_aivss(
                 gov_signals = merged.to_dict()
             except Exception:
                 gov_signals = {}
+    _timings["governance"] = round(_time.perf_counter() - _t, 3)
 
-    # ── Step 2: Load MoE result + derive manipulation signals ────────────────
-    moe_result = None
+    # ── Step 2: Read saved MoE JSON + derive manipulation signals (no LLM) ──
+    # Never call run_moe_pipeline here — that re-runs all LLM critics (~75s).
+    # compute_manipulation_signals only needs final_confidence, base_confidence,
+    # synthesis_quality, expert_validations — all present in the saved JSON.
+    _t = _time.perf_counter()
+    moe_dict = None
     moe_path = report_dir / "07_moe_orchestrator.json"
     if moe_path.exists():
         try:
-            from chatbot.modules.agents.orchestrators.moe_orchestrator import run_moe_pipeline
-            moe_result = run_moe_pipeline(str(report_dir))
+            moe_dict = json.loads(moe_path.read_text(encoding="utf-8"))
         except Exception:
             pass
 
-    if moe_result is not None:
+    if moe_dict is not None:
         try:
             from chatbot.harness.governance import compute_manipulation_signals
-            manip = compute_manipulation_signals(moe_result)
-            # score_internal reads gov_signals["manipulation"] for confidence_swing_detected
-            # and divergence_detected — populate them from the computed signals.
+
+            # Wrap the raw dict so compute_manipulation_signals can use getattr.
+            # The saved JSON stores confidence as a nested dict; flatten to flat attrs.
+            class _MoEProxy:
+                def __init__(self, d: dict):
+                    self._d = d
+                    _conf = d.get("confidence", {})
+                    self.final_confidence = _conf.get("final") if isinstance(_conf, dict) else d.get("final_confidence")
+                    self.base_confidence  = _conf.get("base")  if isinstance(_conf, dict) else d.get("base_confidence")
+                    self.synthesis_quality  = d.get("synthesis_quality")
+                    self.expert_validations = d.get("expert_validations", {})
+                def __getattr__(self, k):
+                    return self._d.get(k)
+
+            manip = compute_manipulation_signals(_MoEProxy(moe_dict))
             existing_manip = gov_signals.get("manipulation", {})
             swing = manip.get("confidence_swing", 0.0)
             div   = manip.get("critic_divergence_score", 0)
@@ -314,8 +330,9 @@ async def rescore_aivss(
             gov_signals["manipulation"] = existing_manip
         except Exception:
             pass
+    _timings["manipulation"] = round(_time.perf_counter() - _t, 3)
 
-    # ── Step 3: Load SM result if available ─────────────────────────────────
+    # ── Step 3: Load SM result if available (JSON read only) ─────────────────
     sm_result = None
     sm_path = report_dir / "08_scrum_master.json"
     if sm_path.exists():
@@ -328,21 +345,49 @@ async def rescore_aivss(
         except Exception:
             pass
 
+    # ── Step 4: Score ────────────────────────────────────────────────────────
     try:
-        from chatbot.modules.harness_aivss import AIVSSFlowScorer, AIVSSAgentGate
+        from chatbot.modules.harness_aivss import AIVSSFlowScorer
         from chatbot.config.settings import get_settings
         _settings = get_settings()
 
+        _t = _time.perf_counter()
         scorer = AIVSSFlowScorer(industry=_settings.governance.industry)
-        aivss = scorer.compute(gov_signals, ground_truth, moe_result, sm_result)
+        aivss = scorer.compute(gov_signals, ground_truth, None, sm_result)
+        _timings["aivss"] = round(_time.perf_counter() - _t, 3)
 
+        # ── Step 5: Save ─────────────────────────────────────────────────────
+        _t = _time.perf_counter()
         gov_signals["aivss"] = aivss.to_dict()
         sig_path.write_text(json.dumps(gov_signals, indent=2), encoding="utf-8")
+        _timings["save"] = round(_time.perf_counter() - _t, 4)
+
+        # Write harness_perf.json so the Harness tab stage timeline populates
+        import datetime as _dt
+        _perf = {
+            "run_id":          f"{architecture_name}_rescore_{_dt.datetime.utcnow().strftime('%Y%m%dT%H%M%S')}",
+            "run_ts":          _dt.datetime.utcnow().isoformat() + "Z",
+            "scenario":        "rescore_aivss",
+            "pipeline_wall_s": round(sum(_timings.values()), 3),
+            "stages": {
+                "quality":      {"wall_s": _timings.get("governance", 0.0),   "status": "ok", "model": None},
+                "manipulation": {"wall_s": _timings.get("manipulation", 0.0), "status": "ok", "model": None},
+                "aivss":        {"wall_s": _timings.get("aivss", 0.0),        "status": "ok", "model": None},
+                "save":         {"wall_s": _timings.get("save", 0.0),         "status": "ok", "model": None},
+            },
+        }
+        try:
+            (report_dir / "harness_perf.json").write_text(
+                json.dumps(_perf, indent=2), encoding="utf-8"
+            )
+        except Exception:
+            pass
 
         return {
             "status": "ok",
             "architecture": architecture_name,
             "aivss": aivss.to_dict(),
+            "timings": _timings,
         }
 
     except Exception as e:
