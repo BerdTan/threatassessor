@@ -7584,6 +7584,19 @@ class Dashboard {
                 headers: { 'TM-API-KEY': apiKey }
             });
         } catch (_) {}
+
+        // Switch the tab to the progress shell BEFORE calling runExpertReview.
+        // When results are already showing, erp-btn-row and expert-review-progress
+        // don't exist in the DOM, so _syncErpButtons and progress updates have
+        // nowhere to render. Replacing the container first ensures all progress
+        // DOM elements exist when runExpertReview looks for them.
+        const container = document.getElementById('expert-review-content');
+        if (container) {
+            // Clear _erpState so _erpProgressShell renders the idle/starting shell
+            this._erpState = null;
+            container.innerHTML = this._erpProgressShell(archName, 'idle');
+        }
+
         // Sync the main mode selector if it exists, then kick off the run
         const mainSel = document.getElementById('erp-mode-select');
         if (mainSel) mainSel.value = mode;
