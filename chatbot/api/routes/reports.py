@@ -251,16 +251,37 @@ async def rescore_aivss(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not read ground_truth.json: {e}")
 
-    # Load existing governance signals (preserve dims, strip stale aivss)
+    # ── Step 1: Build governance signals ────────────────────────────────────
+    # Prefer the saved file if it has the five dims; if it's missing or stale
+    # (only contains "aivss"), re-run the governance checks from before.mmd.
     gov_signals: Dict = {}
     if sig_path.exists():
         try:
-            gov_signals = json.loads(sig_path.read_text(encoding="utf-8"))
-            gov_signals.pop("aivss", None)
+            saved = json.loads(sig_path.read_text(encoding="utf-8"))
+            saved.pop("aivss", None)
+            # Only use if at least one governance dim is present
+            if any(k in saved for k in ("exploitation", "leakage", "manipulation", "identity", "sovereignty")):
+                gov_signals = saved
         except Exception:
-            gov_signals = {}
+            pass
 
-    # Load MoE result if available
+    if not gov_signals:
+        # Re-run governance checks from the saved MMD
+        mmd_path = report_dir / "before.mmd"
+        if mmd_path.exists():
+            try:
+                from chatbot.harness.governance import InhouseGovernanceAdapter
+                mmd_text = mmd_path.read_text(encoding="utf-8")
+                adapter = InhouseGovernanceAdapter()
+                input_sig  = adapter.check_input(mmd_text, str(mmd_path))
+                artifact_sig = adapter.check_artifact(ground_truth)
+                merged = input_sig.merge(artifact_sig)
+                merged.architecture_name = architecture_name
+                gov_signals = merged.to_dict()
+            except Exception:
+                gov_signals = {}
+
+    # ── Step 2: Load MoE result if available (reads saved JSON, no LLM) ────
     moe_result = None
     moe_path = report_dir / "07_moe_orchestrator.json"
     if moe_path.exists():
@@ -270,13 +291,12 @@ async def rescore_aivss(
         except Exception:
             pass
 
-    # Load SM result if available
+    # ── Step 3: Load SM result if available ─────────────────────────────────
     sm_result = None
     sm_path = report_dir / "08_scrum_master.json"
     if sm_path.exists():
         try:
             sm_data = json.loads(sm_path.read_text(encoding="utf-8"))
-            # Wrap raw dict in a lightweight object with the attributes AIVSSStage expects
             class _SMResult:
                 def __init__(self, d):
                     self.retrigger_count = d.get("retrigger_count", 0)

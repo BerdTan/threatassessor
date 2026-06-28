@@ -6887,9 +6887,11 @@ class Dashboard {
     }
 
     // ── Append a SM action item to 10_adr_report.md ──────────────────────────────
-    async _rescoreAivss(archName) {
+    async _rescoreAivss(archName, btnEl) {
+        // btnEl is passed explicitly from the onclick so we don't rely on
+        // event.currentTarget (which is null after the first await).
         const apiKey = localStorage.getItem('tm_api_key') || '';
-        const btn = event && event.currentTarget;
+        const btn = btnEl || (event && event.currentTarget) || null;
         if (btn) { btn.textContent = '⏳ Scoring…'; btn.disabled = true; }
         try {
             const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/rescore-aivss`, {
@@ -6897,7 +6899,11 @@ class Dashboard {
                 headers: { 'TM-API-KEY': apiKey },
             });
             if (r.ok) {
-                if (btn) { btn.textContent = '✅ Done'; btn.style.background = 'var(--secondary-color)'; }
+                if (btn) {
+                    btn.textContent = '✅ Done';
+                    btn.style.background = 'var(--secondary-color)';
+                    btn.style.borderColor = 'var(--secondary-color)';
+                }
                 // Reload the Insights tab so the new scores appear
                 setTimeout(() => this.loadInsightsTab(), 400);
             } else {
@@ -9512,7 +9518,7 @@ class Dashboard {
 
         // ── Section A: Pipeline Gate View (Ingress / Internal / Egress) ────────
         const _rescoreAivssBtn = (archName) => `<button
-            onclick="window.dashboard._rescoreAivss('${archName}')"
+            onclick="window.dashboard._rescoreAivss('${archName}', this)"
             style="font-size:0.78rem; padding:0.25rem 0.75rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; margin-left:0.5rem;"
             title="Re-run AIVSS scoring using saved governance signals and available MoE/SM results — no full re-analysis needed">⚡ Re-score AIVSS</button>`;
         let sectionA = `<div style="font-size:0.78rem; color:var(--text-tertiary);">No governance data for this run. Rerun analysis to populate.${_rescoreAivssBtn(archName)}</div>`;
