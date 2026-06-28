@@ -80,12 +80,20 @@ async def list_architectures():
                         ssp_profile = (gt.get("metadata") or {}).get("ssp_profile")
                     except Exception:
                         pass
+                # Count SM reruns (subdirs named sm\d+)
+                sm_runs = sorted(
+                    int(p.name[2:]) for p in arch_dir.iterdir()
+                    if p.is_dir() and p.name.startswith("sm") and p.name[2:].isdigit()
+                )
                 architectures.append({
                     "name": arch_dir.name,
                     "report_count": len(files),
                     "files": sorted(files),
                     "analysed_at": int(arch_dir.stat().st_mtime),
                     "ssp_profile": ssp_profile,
+                    "has_scrum_master": (arch_dir / "08_scrum_master.json").exists(),
+                    "sm_run_count": len(sm_runs),
+                    "sm_runs": sm_runs,
                 })
 
     # Sort newest first
@@ -165,6 +173,245 @@ async def list_reports(architecture_name: str):
     }
 
 
+@router.post("/reports/{architecture_name}/rerun-with-sm")
+async def rerun_with_sm(
+    architecture_name: str,
+    _: str = Depends(verify_api_key),
+):
+    """Create an SM worktree rerun: copies 08b_recommended_target.mmd into
+    a new sm{N}/ subfolder, runs api_only analysis, then writes run_diff.json
+    comparing the result against the original base arch ground_truth.json.
+
+    Returns the new SM run number and basic delta metrics.
+    """
+    import asyncio
+    import queue
+    import time as _time
+
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+
+    base_dir = get_report_dir() / architecture_name
+    if not base_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Architecture '{architecture_name}' not found")
+
+    sm_mmd = base_dir / "08b_recommended_target.mmd"
+    if not sm_mmd.exists():
+        raise HTTPException(status_code=404,
+            detail="08b_recommended_target.mmd not found — run Expert Review with ScrumMaster first")
+
+    # Determine next SM run index
+    existing = sorted(
+        int(p.name[2:]) for p in base_dir.iterdir()
+        if p.is_dir() and p.name.startswith("sm") and p.name[2:].isdigit()
+    )
+    n = (existing[-1] + 1) if existing else 1
+    sm_dir = base_dir / f"sm{n}"
+    sm_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy SM-recommended MMD as before.mmd in the subfolder
+    mmd_text = sm_mmd.read_text(encoding="utf-8")
+    (sm_dir / "before.mmd").write_text(mmd_text, encoding="utf-8")
+
+    # Write the MMD to a temp file for the harness
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".mmd", mode="w", delete=False,
+                                     encoding="utf-8") as tmp:
+        tmp.write(mmd_text)
+        tmp_path = tmp.name
+
+    arch_sm_name = f"{architecture_name}_sm{n}"
+
+    # Read SSP profile from base arch ground_truth if available
+    ssp_profile = "low_risk_cloud"
+    base_gt_path = base_dir / "ground_truth.json"
+    if base_gt_path.exists():
+        try:
+            _gt = json.loads(base_gt_path.read_text(encoding="utf-8"))
+            ssp_profile = _gt.get("ssp_profile") or _gt.get("metadata", {}).get("ssp_profile") or ssp_profile
+        except Exception:
+            pass
+
+    try:
+        from chatbot.modules.harness import ThreatAssessorHarness, ScenarioConfig
+
+        q: queue.SimpleQueue = queue.SimpleQueue()
+
+        def _cb(stage: str, pct: int, msg: str) -> None:
+            q.put((stage, pct, msg))
+
+        harness = ThreatAssessorHarness(
+            scenario=ScenarioConfig.API_ONLY,
+            progress_callback=_cb,
+        )
+
+        loop = asyncio.get_event_loop()
+        ctx = await loop.run_in_executor(
+            None,
+            lambda: harness.run(
+                architecture_path=tmp_path,
+                report_dir=str(sm_dir),
+                ssp_profile=ssp_profile,
+                enable_ssp=True,
+                include_validation=True,
+                architecture_name=arch_sm_name,
+            )
+        )
+
+        import os
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+        if ctx.stage_outputs.get("analysis") == "error":
+            raise HTTPException(status_code=500,
+                detail=ctx.errors[0] if ctx.errors else "Analysis failed")
+
+        # Write run_diff.json — compare sm{N}/ground_truth vs base ground_truth
+        diff = _compute_sm_diff(base_dir, sm_dir, n, architecture_name)
+        (sm_dir / "run_diff.json").write_text(
+            json.dumps(diff, indent=2), encoding="utf-8"
+        )
+
+        return {
+            "status": "ok",
+            "architecture": architecture_name,
+            "n": n,
+            "sm_dir": f"{architecture_name}/sm{n}",
+            "diff": diff,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"SM rerun failed: {e}")
+
+
+def _compute_sm_diff(base_dir: Path, sm_dir: Path, n: int, arch_name: str) -> dict:
+    """Compare sm{N}/ground_truth.json against base arch ground_truth.json.
+    Always diffs against the original base — never against a previous SM run.
+    """
+    base_gt_path = base_dir / "ground_truth.json"
+    sm_gt_path   = sm_dir   / "ground_truth.json"
+
+    if not base_gt_path.exists() or not sm_gt_path.exists():
+        return {"error": "ground_truth.json missing in base or SM run"}
+
+    base_gt = json.loads(base_gt_path.read_text(encoding="utf-8"))
+    sm_gt   = json.loads(sm_gt_path.read_text(encoding="utf-8"))
+
+    base_controls  = set(c.lower().strip() for c in (base_gt.get("controls_missing") or []))
+    sm_controls    = set(c.lower().strip() for c in (sm_gt.get("controls_missing")   or []))
+    base_techs     = set(base_gt.get("techniques") or [])
+    sm_techs       = set(sm_gt.get("techniques")   or [])
+
+    controls_resolved = sorted(base_controls - sm_controls)
+    controls_new      = sorted(sm_controls - base_controls)
+    techniques_closed = sorted(base_techs - sm_techs)
+    techniques_new    = sorted(sm_techs - base_techs)
+
+    base_conf = float(base_gt.get("confidence") or 0)
+    sm_conf   = float(sm_gt.get("confidence")   or 0)
+
+    return {
+        "base_arch":          arch_name,
+        "sm_n":               n,
+        "base_confidence":    round(base_conf, 4),
+        "sm_confidence":      round(sm_conf, 4),
+        "confidence_delta":   round(sm_conf - base_conf, 4),
+        "controls_resolved":  controls_resolved,
+        "controls_new":       controls_new,
+        "techniques_closed":  techniques_closed,
+        "techniques_new":     techniques_new,
+        "controls_resolved_count":  len(controls_resolved),
+        "techniques_closed_count":  len(techniques_closed),
+    }
+
+
+@router.get("/reports/{architecture_name}/sm")
+async def list_sm_reruns(architecture_name: str):
+    """List all SM reruns for an architecture with diff metrics."""
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+
+    base_dir = get_report_dir() / architecture_name
+    if not base_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Architecture '{architecture_name}' not found")
+
+    runs = []
+    for p in sorted(base_dir.iterdir()):
+        if not (p.is_dir() and p.name.startswith("sm") and p.name[2:].isdigit()):
+            continue
+        n = int(p.name[2:])
+        entry: Dict = {"n": n, "dir": f"{architecture_name}/sm{n}"}
+
+        diff_path = p / "run_diff.json"
+        if diff_path.exists():
+            try:
+                entry.update(json.loads(diff_path.read_text(encoding="utf-8")))
+            except Exception:
+                pass
+
+        gt_path = p / "ground_truth.json"
+        if gt_path.exists():
+            try:
+                gt = json.loads(gt_path.read_text(encoding="utf-8"))
+                entry.setdefault("sm_confidence", gt.get("confidence"))
+            except Exception:
+                pass
+
+        # Run timestamp from harness_perf.json
+        perf_path = p / "harness_perf.json"
+        if perf_path.exists():
+            try:
+                perf = json.loads(perf_path.read_text(encoding="utf-8"))
+                entry["run_ts"] = perf.get("run_ts", "")
+            except Exception:
+                pass
+
+        runs.append(entry)
+
+    return {"architecture": architecture_name, "sm_runs": runs}
+
+
+@router.get("/reports/{architecture_name}/sm/{n}/files/{filename}")
+async def get_sm_file(architecture_name: str, n: int, filename: str):
+    """Serve a file from an SM worktree subfolder."""
+    safe_arch = Path(architecture_name).name
+    safe_file = Path(filename).name
+    if safe_arch != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+    if safe_file != filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    file_path = get_report_dir() / architecture_name / f"sm{n}" / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404,
+            detail=f"File '{filename}' not found in sm{n} for '{architecture_name}'")
+
+    media_type = "application/json" if filename.endswith(".json") else \
+                 "text/markdown"    if filename.endswith(".md")   else "text/plain"
+    return FileResponse(path=file_path, media_type=media_type,
+                        filename=filename, headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/reports/{architecture_name}/sm/{n}/diff")
+async def get_sm_diff(architecture_name: str, n: int):
+    """Return run_diff.json for a specific SM run."""
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+
+    diff_path = get_report_dir() / architecture_name / f"sm{n}" / "run_diff.json"
+    if not diff_path.exists():
+        raise HTTPException(status_code=404, detail=f"run_diff.json not found for sm{n}")
+
+    return json.loads(diff_path.read_text(encoding="utf-8"))
+
+
 @router.post("/reports/{architecture_name}/add-to-adr")
 async def add_sm_action_to_adr(
     architecture_name: str,
@@ -173,7 +420,11 @@ async def add_sm_action_to_adr(
 ):
     """Append a ScrumMaster action item as a new SM-ADR entry in 10_adr_report.md.
 
-    Body: {"action": str, "rationale": str, "priority": str, "first_step": str}
+    Body: {
+        "action": str, "rationale": str, "priority": str, "first_step": str,
+        "source_techniques": list[str],  # e.g. ["T1078", "T1213"] — for diff-based verification
+        "source_controls":   list[str],  # e.g. ["micro-segmentation"] — matched against controls_missing
+    }
     """
     safe_name = Path(architecture_name).name
     if safe_name != architecture_name or ".." in architecture_name:
@@ -182,15 +433,16 @@ async def add_sm_action_to_adr(
     report_dir = get_report_dir() / architecture_name
     adr_path = report_dir / "10_adr_report.md"
 
-    action    = str(payload.get("action",    "")).strip()
-    rationale = str(payload.get("rationale", "")).strip()
-    priority  = str(payload.get("priority",  "high")).strip()
+    action     = str(payload.get("action",    "")).strip()
+    rationale  = str(payload.get("rationale", "")).strip()
+    priority   = str(payload.get("priority",  "high")).strip()
     first_step = str(payload.get("first_step","")).strip()
+    source_techniques = [str(t).strip() for t in (payload.get("source_techniques") or []) if t]
+    source_controls   = [str(c).strip() for c in (payload.get("source_controls")   or []) if c]
 
     if not action:
         raise HTTPException(status_code=400, detail="action is required")
 
-    # Read existing ADR to find highest SM-ADR-XX index
     existing = ""
     if adr_path.exists():
         existing = adr_path.read_text(encoding="utf-8")
@@ -200,14 +452,22 @@ async def add_sm_action_to_adr(
     entry_id = f"SM-ADR-{next_idx:02d}"
 
     import datetime
+    tech_line = (f"**Source techniques:** {', '.join(source_techniques)}  \n"
+                 if source_techniques else "")
+    ctrl_line = (f"**Source controls:** {', '.join(source_controls)}  \n"
+                 if source_controls else "")
+
     entry = (
         f"\n\n## {entry_id} [{priority.upper()}] — {action}\n\n"
         f"**Status:** OPEN — added via ScrumMaster action plan  \n"
         f"**Added:** {datetime.date.today().isoformat()}  \n"
-        f"**Source:** ScrumMaster harmony synthesis\n\n"
+        f"**Source:** ScrumMaster harmony synthesis  \n"
+        + tech_line
+        + ctrl_line
+        + "\n"
         + (f"**Context:** {rationale}\n\n" if rationale else "")
         + (f"**First step:** {first_step}\n\n" if first_step else "")
-        + "_→ Verify this control is reflected in the architecture diagram and re-run analysis to confirm coverage._\n\n---\n"
+        + "_→ Run SM rerun (✨ Re-run with SM) to verify this control is resolved._\n\n---\n"
     )
 
     with open(adr_path, "a", encoding="utf-8") as f:

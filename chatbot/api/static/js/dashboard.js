@@ -2975,12 +2975,17 @@ class Dashboard {
                 const div = document.createElement('div');
                 div.style.cssText = itemStyle + (lazy ? 'opacity:0; transform:translateY(6px); transition:opacity 0.25s, transform 0.25s, background 0.15s;' : '');
                 if (lazy) div.classList.add('arch-item-lazy');
+                const smBtn = a.has_scrum_master
+                    ? `<button class="arch-item-sm-rerun" title="Re-run analysis with ScrumMaster recommendations (creates sm1/ subfolder)"
+                        style="${iconBtnStyle} color:#a855f7;">✨</button>`
+                    : '';
                 div.innerHTML = `<span style="font-size:0.9rem; flex-shrink:0;">📄</span>`
                     + `<span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;">${a.name}</span>`
                     + `<span style="font-size:0.72rem; color:#94a3b8; flex-shrink:0;">${dt}</span>`
                     + profilePill
                     + `<button class="arch-item-reload" title="View previous analysis" style="${iconBtnStyle}">👁</button>`
                     + `<button class="arch-item-rerun" title="Re-run analysis" style="${iconBtnStyle}">▶</button>`
+                    + smBtn
                     + `<button class="arch-item-delete" title="Delete report folder" style="${iconBtnStyle}">🗑</button>`;
                 div.addEventListener('mouseover', hoverOn);
                 div.addEventListener('mouseout',  hoverOff);
@@ -3020,6 +3025,43 @@ class Dashboard {
                         alert(`Failed to delete "${a.name}": ${err.message}`);
                     }
                 });
+
+                // SM rerun button — creates sm{N}/ subfolder and triggers analysis
+                const smRerunBtn = div.querySelector('.arch-item-sm-rerun');
+                if (smRerunBtn) {
+                    smRerunBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        this._closeArchDropdown();
+                        await this._smRerunArch(a.name);
+                    });
+                }
+
+                // SM chain — show indented runs if any exist
+                if (a.sm_run_count > 0) {
+                    const chain = document.createElement('div');
+                    chain.style.cssText = 'padding:0.2rem 0 0.1rem 2rem; border-left:2px solid #a855f722; margin-left:1.4rem;';
+                    (a.sm_runs || []).forEach(n => {
+                        const smRow = document.createElement('div');
+                        smRow.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.3rem 0.5rem; font-size:0.75rem; color:#c4b5fd; cursor:pointer; border-radius:4px; transition:background 0.15s;';
+                        smRow.innerHTML = `<span style="color:#a855f7; font-size:0.8rem;">↳</span>`
+                            + `<span style="font-weight:600;">sm${n}</span>`
+                            + `<span id="sm-chain-delta-${a.name}-${n}" style="color:#64748b; font-size:0.68rem;">loading…</span>`
+                            + `<button class="sm-chain-view" data-arch="${a.name}" data-n="${n}"
+                                style="margin-left:auto; background:transparent; border:1px solid #a855f744; color:#a855f7;
+                                       padding:1px 6px; border-radius:3px; font-size:0.65rem; cursor:pointer; white-space:nowrap;">View</button>`;
+                        smRow.addEventListener('mouseover', () => smRow.style.background = '#a855f711');
+                        smRow.addEventListener('mouseout',  () => smRow.style.background = 'transparent');
+                        smRow.querySelector('.sm-chain-view').addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            this._closeArchDropdown();
+                            await this._loadSmRun(a.name, n);
+                        });
+                        chain.appendChild(smRow);
+                        // Load delta inline
+                        this._loadSmChainDelta(a.name, n);
+                    });
+                    div.after(chain);
+                }
 
                 return div;
             };
@@ -3127,6 +3169,86 @@ class Dashboard {
     }
 
     // Re-run analysis for an architecture by fetching its saved before.mmd
+    async _smRerunArch(archName) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        this.updateStatusMessage(`✨ Creating SM worktree for ${archName}…`);
+
+        // Show analysis progress UI — the SM rerun triggers a full api_only pipeline
+        this.resetForNewAnalysis();
+        this._showAnalysisProgress();
+
+        try {
+            const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/rerun-with-sm`, {
+                method: 'POST',
+                headers: { 'TM-API-KEY': apiKey },
+            });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                this.updateStatusMessage(`❌ SM rerun failed: ${err.detail || r.status}`);
+                return;
+            }
+            const d = await r.json();
+            const smDir = d.sm_dir || `${archName}/sm${d.n}`;
+            this.updateStatusMessage(`✅ SM rerun complete — sm${d.n} created`);
+
+            // Load the new SM run's results into the main view
+            // SM run is stored as a subfolder; load it via the sm-specific path
+            await this._loadSmRun(archName, d.n);
+
+        } catch (e) {
+            this.updateStatusMessage(`❌ SM rerun error: ${e.message}`);
+        }
+    }
+
+    async _loadSmRun(archName, n) {
+        // Load an SM subrun into the main dashboard view
+        // Fetches ground_truth and diff from the sm{N} subfolder routes
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            const [gtR, diffR] = await Promise.all([
+                fetch(`/api/v1/reports/${encodeURIComponent(archName)}/sm/${n}/files/ground_truth.json`),
+                fetch(`/api/v1/reports/${encodeURIComponent(archName)}/sm/${n}/diff`),
+            ]);
+            if (!gtR.ok) throw new Error('ground_truth.json not found for sm' + n);
+            const gt  = await gtR.json();
+            const diff = diffR.ok ? await diffR.json() : null;
+
+            // Inject SM context into analysisData so tabs render correctly
+            this.analysisData = {
+                ...(gt),
+                architecture_name: `${archName}/sm${n}`,
+                _sm_parent: archName,
+                _sm_n: n,
+                _sm_diff: diff,
+                analysis: gt,
+            };
+
+            this.switchTab('attacks');
+            this.updateStatusMessage(
+                diff
+                    ? `✨ sm${n}: Δ${diff.confidence_delta >= 0 ? '+' : ''}${(diff.confidence_delta * 100).toFixed(1)}% conf · ${diff.controls_resolved_count} controls resolved · ${diff.techniques_closed_count} techniques closed`
+                    : `✨ Loaded SM run ${n} for ${archName}`
+            );
+        } catch (e) {
+            this.updateStatusMessage(`❌ Could not load sm${n}: ${e.message}`);
+        }
+    }
+
+    async _loadSmChainDelta(archName, n) {
+        const el = document.getElementById(`sm-chain-delta-${archName}-${n}`);
+        if (!el) return;
+        try {
+            const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/sm/${n}/diff`);
+            if (!r.ok) { el.textContent = '—'; return; }
+            const d = await r.json();
+            const sign = d.confidence_delta >= 0 ? '+' : '';
+            el.textContent = `Δ${sign}${(d.confidence_delta * 100).toFixed(1)}% · ${d.controls_resolved_count}✓ · ${d.techniques_closed_count}T`;
+            el.style.color = d.confidence_delta > 0 ? '#4ade80' : '#94a3b8';
+        } catch (_) {
+            el.textContent = '—';
+        }
+    }
+
     async _rerunArchAnalysis(archName, sspProfile) {
         try {
             const resp = await fetch(`/api/v1/reports/${archName}/files/before.mmd`);
@@ -7427,7 +7549,17 @@ class Dashboard {
                         background:var(--warning-color)15; color:var(--warning-color); border:1px solid var(--warning-color)44;">⚠ anti-pattern</span>`
                     : '';
                 const _smArchName = sm.architecture_name || '';
-                const _adrPayload = JSON.stringify({ action: p.action||'', rationale: p.rationale||'', priority: p.priority||'high', first_step: p.first_step||'' }).replace(/'/g, "\\'");
+                // source_controls and source_techniques anchor the ADR entry to
+                // specific findings so SM rerun diffs can mark it VERIFIED automatically.
+                const _gt = this.analysisData && this.analysisData.analysis;
+                const _srcControls = (_gt && _gt.controls_missing) ? _gt.controls_missing : [];
+                const _srcTechs    = (_gt && _gt.techniques)        ? _gt.techniques        : [];
+                const _adrPayload = JSON.stringify({
+                    action: p.action||'', rationale: p.rationale||'',
+                    priority: p.priority||'high', first_step: p.first_step||'',
+                    source_techniques: _srcTechs,
+                    source_controls:   _srcControls,
+                }).replace(/'/g, "\\'");
                 const addToAdrBtn = (!isAnti && (p.action||'').length > 0)
                     ? `<button onclick="window.dashboard._smAddToAdr('${_smArchName}', '${_adrPayload.replace(/"/g,'&quot;')}')"
                         style="margin-left:0.35rem; padding:0.1rem 0.45rem; border-radius:4px; border:1px solid var(--border-color);
