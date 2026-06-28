@@ -1,7 +1,7 @@
 # ThreatAssessor Documentation
 
-**Version:** 1.4 — REST API live, SSP enrichment, MoE expert review  
-**Last Updated:** 2026-05-30
+**Version:** 1.4 — REST API live, AIVSS governance, SM worktree, harness stage timeline  
+**Last Updated:** 2026-06-28
 
 ---
 
@@ -11,11 +11,10 @@
 |---|---|
 | Get started fast | [START_HERE.md](START_HERE.md) |
 | Understand architecture decisions | [DECISIONS.md](DECISIONS.md) |
-| Check current status and roadmap | [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) |
 | Run the API server | [operations/API_MANAGEMENT.md](operations/API_MANAGEMENT.md) |
 | Troubleshoot issues | [operations/OPERATIONS.md](operations/OPERATIONS.md) |
-| Understand the MoE agent design | [AGENTIC_DESIGN.md](AGENTIC_DESIGN.md) |
 | Browse all docs | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) |
+| Read the blog | [blog/](blog/) |
 
 ---
 
@@ -26,10 +25,7 @@
 | File | Purpose |
 |---|---|
 | [DECISIONS.md](DECISIONS.md) | Architectural decision log — read at session start |
-| [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) | Current status, feature list, roadmap |
-| [AGENTIC_DESIGN.md](AGENTIC_DESIGN.md) | MoE agent architecture, AgentTools, MCP server design |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Full directory map |
-| [ROOT_OVERVIEW.md](ROOT_OVERVIEW.md) | Root-level files explained |
 | [START_HERE.md](START_HERE.md) | Entry point for new/returning contributors |
 
 ### Operations
@@ -66,8 +62,6 @@
 |---|---|
 | [development/ARCHITECTURE.md](development/ARCHITECTURE.md) | System architecture overview |
 | [development/NEXT_STEPS.md](development/NEXT_STEPS.md) | Development backlog |
-| [development/LLM_PROVIDER_ARCHITECTURE.md](development/LLM_PROVIDER_ARCHITECTURE.md) | Multi-provider LLM client design |
-| [development/AGENT_MIGRATION_GUIDE.md](development/AGENT_MIGRATION_GUIDE.md) | Agent refactoring guide |
 
 ### AI Pattern
 
@@ -88,8 +82,12 @@
 | File | Purpose |
 |---|---|
 | [ui/DASHBOARD_GUIDE.md](ui/DASHBOARD_GUIDE.md) | Dashboard user guide |
-| [ui/DASHBOARD_COMPLETE.md](ui/DASHBOARD_COMPLETE.md) | Dashboard implementation summary |
-| [ui/MOE_UI_DESIGN.md](ui/MOE_UI_DESIGN.md) | Expert Review UI design |
+
+### Blog
+
+| File | Purpose |
+|---|---|
+| [blog/](blog/) | Medium draft series — Parts 1–7 (all published) |
 
 ### Testing
 

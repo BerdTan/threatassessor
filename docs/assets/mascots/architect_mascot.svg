@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480">
+  <rect width="100%" height="100%" fill="#fff"/>
+  <defs>
+    <linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#9CC4FF"/><stop offset="1" stop-color="#2F80ED"/></linearGradient>
+  </defs>
+  <g transform="translate(240,120)">
+    <circle r="80" fill="url(#g1)"/>
+    <rect x="-40" y="-10" width="80" height="6" fill="#fff" />
+    <rect x="-36" y="-2" width="72" height="6" fill="#fff" transform="rotate(10)"/>
+    <text x="0" y="10" font-size="36" text-anchor="middle" fill="#fff">🏛️</text>
+  </g>
+  <g transform="translate(120,320)">
+    <rect x="-80" y="-28" width="160" height="56" rx="8" fill="#F2F6FF" stroke="#D9E8FF"/>
+    <text x="0" y="10" font-size="20" text-anchor="middle" fill="#2D3748">Architect</text>
+  </g>
+</svg>

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="260" viewBox="0 0 1240 260">
+  <style>
+    .label { font: 14px/1.2 "Segoe UI", Roboto, Arial, sans-serif; fill: #222; text-anchor: middle; }
+    .emoji { font: 48px/1 "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; text-anchor: middle; }
+  </style>
+  <rect width="100%" height="100%" fill="#ffffff" />
+
+  <!-- Layout config -->
+  <!-- 8 avatars: diameter=120, spacing=40, margin=20 -->
+  <!-- x positions: 20 + 60 + i*(120+40) = 80 + i*160 -->
+
+  <!-- Architect -->
+  <g transform="translate(80,60)">
+    <circle cx="0" cy="0" r="60" fill="#2F80ED" />
+    <text class="emoji" x="0" y="14">🏛️</text>
+    <text class="label" x="0" y="100">Architect</text>
+  </g>
+
+  <!-- Tester -->
+  <g transform="translate(240,60)">
+    <circle cx="0" cy="0" r="60" fill="#27AE60" />
+    <text class="emoji" x="0" y="14">🔬</text>
+    <text class="label" x="0" y="100">Tester</text>
+  </g>
+
+  <!-- Red Team -->
+  <g transform="translate(400,60)">
+    <circle cx="0" cy="0" r="60" fill="#EB5757" />
+    <text class="emoji" x="0" y="14">🎯</text>
+    <text class="label" x="0" y="100">Red Team</text>
+  </g>
+
+  <!-- Purple Team -->
+  <g transform="translate(560,60)">
+    <circle cx="0" cy="0" r="60" fill="#8E44AD" />
+    <text class="emoji" x="0" y="14">🟣</text>
+    <text class="label" x="0" y="100">Purple Team</text>
+  </g>
+
+  <!-- Blackhat -->
+  <g transform="translate(720,60)">
+    <circle cx="0" cy="0" r="60" fill="#334155" />
+    <text class="emoji" x="0" y="14">🕶️</text>
+    <text class="label" x="0" y="100">Blackhat</text>
+  </g>
+
+  <!-- Orchestrator -->
+  <g transform="translate(880,60)">
+    <circle cx="0" cy="0" r="60" fill="#16A085" />
+    <text class="emoji" x="0" y="14">🎼</text>
+    <text class="label" x="0" y="100">Orchestrator</text>
+  </g>
+
+  <!-- ScrumMaster -->
+  <g transform="translate(1040,60)">
+    <circle cx="0" cy="0" r="60" fill="#F2C94C" />
+    <text class="emoji" x="0" y="14">📋</text>
+    <text class="label" x="0" y="100">ScrumMaster</text>
+  </g>
+
+  <!-- Trusted Analyst -->
+  <g transform="translate(1200,60)">
+    <circle cx="0" cy="0" r="60" fill="#2D3748" />
+    <text class="emoji" x="0" y="14">🛡️</text>
+    <text class="label" x="0" y="100">Trusted Analyst</text>
+  </g>
+
+</svg>

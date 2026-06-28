@@ -1,0 +1,11 @@
+{
+  "fetched_at": "2026-06-13T03:12:15.795476+00:00",
+  "ctid_source": "https://raw.githubusercontent.com/center-for-threat-informed-defense/mappings-explorer/main/mappings/kev/attack-16.1/kev-07.28.2025/enterprise/kev-07.28.2025_attack-16.1-enterprise.json",
+  "ctid_attack_version": "attack-16.1",
+  "ctid_kev_date": "kev-07.28.2025",
+  "ctid_technique_count": 155,
+  "ctid_total_mappings": 1177,
+  "cisa_source": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+  "cisa_cve_count": 1619,
+  "cisa_ransomware_count": 327
+}
