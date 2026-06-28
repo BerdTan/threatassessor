@@ -1007,6 +1007,50 @@ class Dashboard {
             return;
         }
 
+        // SM run context strip — shown at top of Overview when viewing an sm{N} run
+        if (this.analysisData._sm_parent) {
+            const smN    = this.analysisData._sm_n;
+            const parent = this.analysisData._sm_parent;
+            const smArch = this.analysisData.architecture_name || `${parent}_sm${smN}`;
+            const diff   = this.analysisData._sm_diff;
+            const deltaStr = diff
+                ? `<span style="color:${diff.confidence_delta > 0 ? '#4ade80' : '#94a3b8'}; font-weight:700;">
+                       Δ${diff.confidence_delta >= 0 ? '+' : ''}${(diff.confidence_delta * 100).toFixed(1)}%</span>
+                   &nbsp;·&nbsp; <strong>${diff.controls_resolved_count}</strong> controls resolved
+                   &nbsp;·&nbsp; <strong>${diff.techniques_closed_count}</strong> techniques closed`
+                : '';
+            const smNotice = document.createElement('div');
+            smNotice.style.cssText = [
+                'margin-bottom:1rem', 'padding:0.75rem 1rem',
+                'background:#a855f711', 'border:1px solid #a855f733',
+                'border-radius:8px', 'display:flex', 'align-items:center',
+                'gap:0.75rem', 'flex-wrap:wrap', 'font-size:0.8rem',
+            ].join(';');
+            smNotice.innerHTML = `
+                <span style="font-size:1rem;">✨</span>
+                <span style="font-weight:700; color:#c4b5fd;">SM Worktree — sm${smN}</span>
+                <span style="color:var(--text-tertiary);">deterministic only · base:
+                    <strong style="color:var(--text-secondary);">${parent}</strong></span>
+                ${deltaStr ? `<span>${deltaStr}</span>` : ''}
+                <span style="margin-left:auto; display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    <button onclick="window.dashboard._upgradeSmToMoe('${smArch}')"
+                        style="padding:0.25rem 0.75rem; background:var(--primary-color); color:#fff;
+                               border:none; border-radius:5px; cursor:pointer; font-size:0.75rem;
+                               font-weight:600; white-space:nowrap;">
+                        ▶ Run Expert Review
+                    </button>
+                    <button onclick="window.dashboard._loadArchFromReports('${parent}')"
+                        style="padding:0.25rem 0.75rem; background:transparent; color:#a855f7;
+                               border:1px solid #a855f744; border-radius:5px; cursor:pointer;
+                               font-size:0.75rem; white-space:nowrap;">
+                        ← Base arch
+                    </button>
+                </span>`;
+            container.innerHTML = '';
+            container.appendChild(smNotice);
+            // Continue rendering the rest of the overview below the notice
+        }
+
         const analysis = this.analysisData.analysis || {};
         const risk = analysis.expected_risk_score ?? this.analysisData.expected_risk_score ?? 0;
         const def  = analysis.expected_defensibility ?? this.analysisData.expected_defensibility ?? 0;
@@ -3352,6 +3396,32 @@ class Dashboard {
 
         const tabContent = document.getElementById('tab-content');
         if (tabContent) tabContent.insertBefore(banner, tabContent.firstChild);
+    }
+
+    _upgradeSmToMoe(smArchName) {
+        // Run the existing Expert Review pipeline against the SM run's arch.
+        // The SM run's ground_truth.json exists at report/{parent}/sm{N}/ground_truth.json
+        // but the expert-review route reads from report/{arch_name}/ directly.
+        // We stored architecture_name = "{parent}_sm{N}" in the harness run,
+        // so the route path is /api/v1/expert-review?architecture_name={parent}_sm{N}.
+        // That maps to report/{parent}_sm{N}/ — which doesn't exist (SM runs are
+        // subfolders). We need to point it at the subfolder path instead.
+        //
+        // Work around: the expert-review route needs the arch name to find
+        // ground_truth.json. We temporarily load the SM run under its harness
+        // name so the route can find it, then run Expert Review.
+        this.switchTab('expert-review');
+        // analysisData._sm_parent/_sm_n is set — the Expert Review tab's guard
+        // showed the upgrade button. Now that the user clicked it, clear the
+        // SM flag so the Expert Review tab renders normally after the run.
+        const smParent = this.analysisData && this.analysisData._sm_parent;
+        const smN      = this.analysisData && this.analysisData._sm_n;
+        if (this.analysisData) {
+            // Point archName at the SM subfolder via the harness-written name
+            this.analysisData._sm_upgrading = true;
+        }
+        // runExpertReview uses this.analysisData.architecture_name to fetch files
+        this.runExpertReview(smArchName);
     }
 
     async _viewSmFile(archName, n, filename, title) {
@@ -7583,6 +7653,35 @@ class Dashboard {
         const container = document.getElementById('scrum-master-content');
         if (!container) return;
 
+        // SM runs are deterministic-only — no ScrumMaster stage ran.
+        if (this.analysisData && this.analysisData._sm_parent) {
+            const smN    = this.analysisData._sm_n;
+            const parent = this.analysisData._sm_parent;
+            container.innerHTML = `
+                <div style="padding:2.5rem 2rem; text-align:center; max-width:480px; margin:0 auto;">
+                    <div style="font-size:2.5rem; margin-bottom:0.75rem;">🧩</div>
+                    <h3 style="color:var(--text-color); margin-bottom:0.5rem;">ScrumMaster not run for sm${smN}</h3>
+                    <p style="color:var(--text-secondary); font-size:0.875rem; line-height:1.6; margin-bottom:1.25rem;">
+                        ScrumMaster synthesis requires a full MoE Expert Review to have run first.
+                        Use <strong>Expert Review → Run Expert Review on sm${smN}</strong> to upgrade
+                        this run, then ScrumMaster will be available.
+                    </p>
+                    <div style="display:flex; gap:0.75rem; justify-content:center; flex-wrap:wrap;">
+                        <button onclick="window.dashboard.switchTab('expert-review')"
+                            style="padding:0.5rem 1.25rem; background:var(--primary-color); color:#fff;
+                                   border:none; border-radius:6px; cursor:pointer; font-size:0.875rem; font-weight:600;">
+                            Go to Expert Review →
+                        </button>
+                        <button onclick="window.dashboard._loadArchFromReports('${parent}').then(()=>window.dashboard.switchTab('scrum-master'))"
+                            style="padding:0.5rem 1.25rem; background:transparent; color:var(--primary-color);
+                                   border:1px solid var(--primary-color)44; border-radius:6px; cursor:pointer; font-size:0.875rem;">
+                            ← View base arch SM
+                        </button>
+                    </div>
+                </div>`;
+            return;
+        }
+
         const archName = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture)
                       || (this.analysisData && this.analysisData.analysis && (this.analysisData.analysis.architecture_name || this.analysisData.analysis.architecture));
 
@@ -8066,6 +8165,43 @@ class Dashboard {
         const container = document.getElementById('expert-review-content');
         if (!this.analysisData) {
             container.innerHTML = '<p class="placeholder">No analysis data available</p>';
+            return;
+        }
+
+        // SM runs are api_only — no critics ran. Show an honest placeholder with an
+        // upgrade button rather than the base arch's stale Expert Review data.
+        if (this.analysisData._sm_parent) {
+            const smN    = this.analysisData._sm_n;
+            const parent = this.analysisData._sm_parent;
+            const smArch = this.analysisData.architecture_name || `${parent}_sm${smN}`;
+            container.innerHTML = `
+                <div style="padding:2.5rem 2rem; text-align:center; max-width:520px; margin:0 auto;">
+                    <div style="font-size:2.5rem; margin-bottom:0.75rem;">✨</div>
+                    <h3 style="color:var(--text-color); margin-bottom:0.5rem;">Deterministic-only SM run</h3>
+                    <p style="color:var(--text-secondary); font-size:0.875rem; line-height:1.6; margin-bottom:0.5rem;">
+                        This SM worktree run (sm${smN}) used <strong>api_only</strong> — the deterministic
+                        engine ran but no MoE critics were called. The diff already shows which controls
+                        were resolved. To get a full expert assessment of the improved architecture, upgrade
+                        this run to MoE.
+                    </p>
+                    <p style="color:var(--text-tertiary); font-size:0.78rem; margin-bottom:1.5rem;">
+                        This will run 3–5 LLM critics (~$0.05–$0.10, ~90s) against
+                        <strong style="color:var(--text-color);">${smArch}</strong>.
+                    </p>
+                    <button onclick="window.dashboard._upgradeSmToMoe('${smArch}')"
+                        style="padding:0.6rem 1.5rem; background:var(--primary-color); color:#fff;
+                               border:none; border-radius:8px; cursor:pointer; font-size:0.875rem;
+                               font-weight:600;">
+                        ▶ Run Expert Review on sm${smN}
+                    </button>
+                    <div style="margin-top:1rem; font-size:0.75rem; color:var(--text-tertiary);">
+                        Or view the base arch's Expert Review:
+                        <a href="#" onclick="window.dashboard._loadArchFromReports('${parent}').then(()=>window.dashboard.switchTab('expert-review')); return false;"
+                           style="color:var(--primary-color); text-decoration:none; margin-left:0.25rem;">
+                            ← ${parent}
+                        </a>
+                    </div>
+                </div>`;
             return;
         }
 

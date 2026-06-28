@@ -28,6 +28,31 @@ def _report_base_dir() -> Path:
         return p
     return Path(__file__).parent.parent.parent.parent / cfg
 
+
+import re as _re
+_SM_SUFFIX_RE = _re.compile(r'^(.+?)_sm(\d+)$')
+
+def _resolve_report_dir(architecture_name: str) -> Path:
+    """Resolve the report directory for an architecture name.
+
+    Handles both flat names (aivss_test_arch → report/aivss_test_arch/) and
+    SM worktree names (aivss_test_arch_sm1 → report/aivss_test_arch/sm1/).
+    Falls back to the flat path so callers get a consistent Path back.
+    """
+    base = _report_base_dir()
+    flat = base / architecture_name
+    if flat.exists():
+        return flat
+    # Check SM subfolder convention: {parent}_sm{N}
+    m = _SM_SUFFIX_RE.match(architecture_name)
+    if m:
+        parent, n = m.group(1), m.group(2)
+        subfolder = base / parent / f"sm{n}"
+        if subfolder.exists():
+            return subfolder
+    return flat  # doesn't exist yet — return flat so callers get correct 404 behaviour
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -430,7 +455,7 @@ async def expert_review_with_progress(
         run_moe_pipeline, MissingPrerequisiteError
     )
 
-    report_dir = _report_base_dir() / architecture_name
+    report_dir = _resolve_report_dir(architecture_name)
 
     try:
         # Check prerequisites
@@ -839,7 +864,7 @@ async def run_single_critic(
 
 async def _run_single_critic_progress(architecture_name: str, critic: str):
     """SSE generator for running a single critic or ScrumMaster."""
-    report_dir = _report_base_dir() / architecture_name
+    report_dir = _resolve_report_dir(architecture_name)
 
     try:
         gt_path = report_dir / "ground_truth.json"
@@ -976,7 +1001,7 @@ async def expert_review_cancel(
     if safe_name != architecture_name or ".." in architecture_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid architecture_name")
 
-    report_dir = _report_base_dir() / architecture_name
+    report_dir = _resolve_report_dir(architecture_name)
     purged = []
     for fname in ("04_architect_critique.json", "05_tester_critique.json", "06_red_team_critique.json",
                   "06b_purple_team_critique.json", "06c_blackhat_critique.json",
