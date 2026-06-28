@@ -145,6 +145,25 @@ def test_extract_control_names():
     assert len(names) == 3
 
 
+def test_node_ids_have_no_spaces():
+    """Node IDs in the clean output must not contain spaces — Mermaid rejects them."""
+    result = clean_recommended_mmd(SAMPLE_MITRE)
+    node_def_re = re.compile(r'^(\s*)([^\s\[\]]+)\s*[\[\(]', re.MULTILINE)
+    for m in node_def_re.finditer(result):
+        node_id = m.group(2)
+        assert " " not in node_id, f"Node ID contains space: {node_id!r}"
+
+
+def test_edges_use_clean_ids_not_display_labels():
+    """Edge references must use the space-free clean ID, not the display label."""
+    result = clean_recommended_mmd(SAMPLE_MITRE)
+    # "Rate Limiting" is a display label with a space — must not appear in edges
+    edge_lines = [l for l in result.splitlines() if "-->" in l or "-..->" in l or "-.->"]
+    for line in edge_lines:
+        assert "Rate Limiting" not in line, \
+            f"Display label with space used in edge: {line!r}"
+
+
 def test_no_new_nodes_passthrough():
     """A plain MMD with no NEW_* nodes should pass through cleanly."""
     plain = "graph TD\n    A[\"Node A\"]\n    B[\"Node B\"]\n    A --> B\n"
