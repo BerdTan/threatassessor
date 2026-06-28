@@ -4,6 +4,52 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-06-28 — Omnigent meta-harness assessment; TA CLI consideration
+
+### 1. Omnigent not integrated into TA — patterns deferred to scale-out phase
+
+**What was decided:**
+Omnigent (v0.3.0-alpha, Apache 2.0) was assessed as a candidate meta-harness to augment or replace TA's harness. Decision: do not integrate. Two patterns worth borrowing — declarative cost ceiling gate and ALLOW/DENY/ASK verdict tier — are deferred until multi-tenant scale-out.
+
+**Reasoning:**
+The core architectural mismatch is runtime model. Omnigent supervises external CLI processes (Claude Code, Codex, Cursor) via a local server at `:6767`; TA makes direct Python LLM API calls via LiteLLM. Adapting TA's critics to Omnigent's model would require each critic to become an external CLI process, introduce a `:6767` server dependency, enforce a Python 3.12+ upgrade (TA runs on 3.10+), and replace `PipelineContext` state-passing with Omnigent's session/tool paradigm. The rewrite cost is high; the benefit is minimal because Omnigent has no domain intelligence (no concept of threats, techniques, AIVSS, or governance signals). The overlap in model routing, governance concepts, and stage isolation is real but superficial — they solve it at different layers for different problems.
+
+Where Omnigent genuinely does more: OS-level sandboxing (bwrap/seatbelt), multi-harness routing (swap Claude Code → Codex per agent), multi-device session sharing, declarative `max_cost_usd` spend caps, SaaS tool governance (GitHub, Gmail, GDrive). None of these are current TA requirements.
+
+Where TA does more: MITRE ATT&CK/ATLAS domain mapping, AIVSS three-flow safety scoring, MoE critic consensus with tier-sharpening, SIEM sink, 16-file report packages, Insights trending.
+
+**Patterns deferred (implement when scaling out, no Omnigent dependency):**
+- **Declarative cost ceiling** — `max_cost_usd` gate in `GovernanceSignals` that pauses the pipeline before expensive critic runs. Infrastructure already exists (`LLMClient` tracks `cost_usd` per call). Worth building when TA becomes multi-tenant.
+- **ASK verdict tier** — currently governance returns ALLOW or BLOCK. An ASK tier (HIGH severity → pause for human confirmation, not hard block) requires a pause/resume SSE event + dashboard UI response surface. Worth building when the dashboard gains a human-approval workflow.
+
+**Alternatives rejected:**
+- Thin wrapper only (borrow Omnigent's policy YAML, keep TA internals): YAML-based policy declaration adds config surface without reducing code complexity; TA's Python-native governance is already readable and testable.
+- Evaluate again at v1.0: captured here instead — no need to re-evaluate the same framework; revisit only if Omnigent adds native LiteLLM/API-call mode.
+
+---
+
+### 2. TA CLI as a future interface layer
+
+**What was decided:**
+The idea of a first-class TA CLI (beyond the existing `demo_deterministic_engine.sh` and `demo_expert_llm.sh` wrappers) was raised during the Omnigent assessment. Not implemented; captured as a future interface direction.
+
+**Reasoning:**
+Omnigent's strongest surface is its CLI (`omni run agent.yaml`), which prompted the question of whether TA should have an equivalent. The existing shell wrappers are functional but are not a proper CLI — no subcommands, no flags, no composability. A real CLI (`ta analyze architecture.mmd --scenario full_moe --ssp medium_risk_cloud`) would: lower the barrier for CI/CD integration (run threat assessment in a GitHub Action), enable piping output to other tools, and make TA scriptable without standing up the FastAPI server. The Omnigent comparison confirmed the pattern — a CLI wrapper over `ThreatAssessorHarness.run()` is a natural next interface layer that doesn't conflict with the REST API.
+
+**Deferred because:** REST API + dashboard is the primary delivery surface right now. CLI is the right next interface once the core pipeline stabilises further and there is a concrete CI/CD integration use case.
+
+**Proposed shape when implemented:**
+- Entry point: `chatbot/cli/main.py` using `click` or `typer`
+- Commands: `ta analyze <mmd>`, `ta validate <mmd>`, `ta report <arch-name>`, `ta insights`
+- Thin wrapper over `ThreatAssessorHarness` — no new pipeline logic
+- Output modes: `--fmt json` (machine-readable), `--fmt md` (markdown briefing), default (human summary)
+- No new dependency beyond `click`/`typer` (already common in the Python ecosystem)
+
+**Alternatives rejected:**
+- Omnigent's YAML agent spec as the TA CLI definition: requires Omnigent as a runtime dependency and reduces TA to one of many harnesses it can drive — wrong ownership model.
+
+---
+
 ## 2026-06-27 (Session 7) — Per-Agent Model Routing, Insights Cross-Run Trending, Governance Gate Redesign
 
 ### 1. HarnessModelGuardian — single owner of all agent model routing
@@ -80,52 +126,6 @@ The harness controller is designed around three flow gates (inbound/internal/out
 
 **Alternatives rejected:**
 - Keeping D1–D5 cards and adding gate labels: D5 Sovereignty appears in both Ingress and Egress with different signals — splitting it across two cards is confusing. Gate cards with constituent dims shown inside is cleaner.
-
----
-
-## 2026-06-28 — Omnigent meta-harness assessment; TA CLI consideration
-
-### 1. Omnigent not integrated into TA — patterns deferred to scale-out phase
-
-**What was decided:**
-Omnigent (v0.3.0-alpha, Apache 2.0) was assessed as a candidate meta-harness to augment or replace TA's harness. Decision: do not integrate. Two patterns worth borrowing — declarative cost ceiling gate and ALLOW/DENY/ASK verdict tier — are deferred until multi-tenant scale-out.
-
-**Reasoning:**
-The core architectural mismatch is runtime model. Omnigent supervises external CLI processes (Claude Code, Codex, Cursor) via a local server at `:6767`; TA makes direct Python LLM API calls via LiteLLM. Adapting TA's critics to Omnigent's model would require each critic to become an external CLI process, introduce a `:6767` server dependency, enforce a Python 3.12+ upgrade (TA runs on 3.10+), and replace `PipelineContext` state-passing with Omnigent's session/tool paradigm. The rewrite cost is high; the benefit is minimal because Omnigent has no domain intelligence (no concept of threats, techniques, AIVSS, or governance signals). The overlap in model routing, governance concepts, and stage isolation is real but superficial — they solve it at different layers for different problems.
-
-Where Omnigent genuinely does more: OS-level sandboxing (bwrap/seatbelt), multi-harness routing (swap Claude Code → Codex per agent), multi-device session sharing, declarative `max_cost_usd` spend caps, SaaS tool governance (GitHub, Gmail, GDrive). None of these are current TA requirements.
-
-Where TA does more: MITRE ATT&CK/ATLAS domain mapping, AIVSS three-flow safety scoring, MoE critic consensus with tier-sharpening, SIEM sink, 16-file report packages, Insights trending.
-
-**Patterns deferred (implement when scaling out, no Omnigent dependency):**
-- **Declarative cost ceiling** — `max_cost_usd` gate in `GovernanceSignals` that pauses the pipeline before expensive critic runs. Infrastructure already exists (`LLMClient` tracks `cost_usd` per call). Worth building when TA becomes multi-tenant.
-- **ASK verdict tier** — currently governance returns ALLOW or BLOCK. An ASK tier (HIGH severity → pause for human confirmation, not hard block) requires a pause/resume SSE event + dashboard UI response surface. Worth building when the dashboard gains a human-approval workflow.
-
-**Alternatives rejected:**
-- Thin wrapper only (borrow Omnigent's policy YAML, keep TA internals): YAML-based policy declaration adds config surface without reducing code complexity; TA's Python-native governance is already readable and testable.
-- Evaluate again at v1.0: captured here instead — no need to re-evaluate the same framework; revisit only if Omnigent adds native LiteLLM/API-call mode.
-
----
-
-### 2. TA CLI as a future interface layer
-
-**What was decided:**
-The idea of a first-class TA CLI (beyond the existing `demo_deterministic_engine.sh` and `demo_expert_llm.sh` wrappers) was raised during the Omnigent assessment. Not implemented; captured as a future interface direction.
-
-**Reasoning:**
-Omnigent's strongest surface is its CLI (`omni run agent.yaml`), which prompted the question of whether TA should have an equivalent. The existing shell wrappers are functional but are not a proper CLI — no subcommands, no flags, no composability. A real CLI (`ta analyze architecture.mmd --scenario full_moe --ssp medium_risk_cloud`) would: lower the barrier for CI/CD integration (run threat assessment in a GitHub Action), enable piping output to other tools, and make TA scriptable without standing up the FastAPI server. The Omnigent comparison confirmed the pattern — a CLI wrapper over `ThreatAssessorHarness.run()` is a natural next interface layer that doesn't conflict with the REST API.
-
-**Deferred because:** REST API + dashboard is the primary delivery surface right now. CLI is the right next interface once the core pipeline stabilises further and there is a concrete CI/CD integration use case.
-
-**Proposed shape when implemented:**
-- Entry point: `chatbot/cli/main.py` using `click` or `typer`
-- Commands: `ta analyze <mmd>`, `ta validate <mmd>`, `ta report <arch-name>`, `ta insights`
-- Thin wrapper over `ThreatAssessorHarness` — no new pipeline logic
-- Output modes: `--fmt json` (machine-readable), `--fmt md` (markdown briefing), default (human summary)
-- No new dependency beyond `click`/`typer` (already common in the Python ecosystem)
-
-**Alternatives rejected:**
-- Omnigent's YAML agent spec as the TA CLI definition: requires Omnigent as a runtime dependency and reduces TA to one of many harnesses it can drive — wrong ownership model.
 
 ---
 
