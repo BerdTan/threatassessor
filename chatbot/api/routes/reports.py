@@ -281,13 +281,37 @@ async def rescore_aivss(
             except Exception:
                 gov_signals = {}
 
-    # ── Step 2: Load MoE result if available (reads saved JSON, no LLM) ────
+    # ── Step 2: Load MoE result + derive manipulation signals ────────────────
     moe_result = None
     moe_path = report_dir / "07_moe_orchestrator.json"
     if moe_path.exists():
         try:
             from chatbot.modules.agents.orchestrators.moe_orchestrator import run_moe_pipeline
             moe_result = run_moe_pipeline(str(report_dir))
+        except Exception:
+            pass
+
+    if moe_result is not None:
+        try:
+            from chatbot.harness.governance import compute_manipulation_signals
+            manip = compute_manipulation_signals(moe_result)
+            # score_internal reads gov_signals["manipulation"] for confidence_swing_detected
+            # and divergence_detected — populate them from the computed signals.
+            existing_manip = gov_signals.get("manipulation", {})
+            swing = manip.get("confidence_swing", 0.0)
+            div   = manip.get("critic_divergence_score", 0)
+            existing_manip.update({
+                "confidence_swing_detected": swing > 10,
+                "divergence_detected":       div > 20,
+                "confidence_swing":          swing,
+                "critic_divergence_score":   div,
+                "synthesis_quality":         manip.get("synthesis_quality", "UNKNOWN"),
+                "severity":                  manip.get("severity", "LOW"),
+                "arc_categories":            manip.get("arc_categories", []),
+                "atlas_tactics":             manip.get("atlas_tactics", []),
+                "kill_chain_stage":          manip.get("kill_chain_stage", "llm_layer"),
+            })
+            gov_signals["manipulation"] = existing_manip
         except Exception:
             pass
 

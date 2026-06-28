@@ -469,11 +469,36 @@ class AIVSSStage(PipelineStage):
                     except Exception:
                         gov_signals = {}
 
+            # Enrich manipulation dim from moe_result before scoring so that
+            # score_internal can read confidence_swing_detected / divergence_detected.
+            moe_result = ctx.get("moe_result")
+            if moe_result is not None:
+                try:
+                    from chatbot.harness.governance import compute_manipulation_signals
+                    manip = compute_manipulation_signals(moe_result)
+                    existing = gov_signals.get("manipulation", {})
+                    swing = manip.get("confidence_swing", 0.0)
+                    div   = manip.get("critic_divergence_score", 0)
+                    existing.update({
+                        "confidence_swing_detected": swing > 10,
+                        "divergence_detected":       div > 20,
+                        "confidence_swing":          swing,
+                        "critic_divergence_score":   div,
+                        "synthesis_quality":         manip.get("synthesis_quality", "UNKNOWN"),
+                        "severity":                  manip.get("severity", "LOW"),
+                        "arc_categories":            manip.get("arc_categories", []),
+                        "atlas_tactics":             manip.get("atlas_tactics", []),
+                        "kill_chain_stage":          manip.get("kill_chain_stage", "llm_layer"),
+                    })
+                    gov_signals["manipulation"] = existing
+                except Exception:
+                    pass
+
             scorer = AIVSSFlowScorer(industry=_settings.governance.industry)
             aivss = scorer.compute(
                 gov_signals,
                 ctx.get("ground_truth", {}),
-                ctx.get("moe_result"),
+                moe_result,
                 ctx.get("scrum_master_result"),
             )
 
