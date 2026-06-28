@@ -50,12 +50,20 @@ Treating SM reruns as first-class report directories gives them the full report 
 - Auto-editing `10_adr_report.md` to flip status: risky (file corruption, concurrent edits), unnecessary — dashboard overlay achieves the same UX without touching the file.
 - Text-matching ADR prose to finding descriptions: unreliable. Storing technique IDs and control names at write time is O(1) lookup vs O(n) fuzzy match.
 
+**ADR verification reference rule (decided):**
+All SM runs diff against the **original base arch** `ground_truth.json` — never against the previous SM run. ADR entries were written against original findings, so the comparison is always:
+- Was `source_control` in `report/{arch}/ground_truth.json → controls_missing`?
+- Is it absent from `report/{arch}/sm{N}/ground_truth.json → controls_missing`?
+If yes → **VERIFIED** by `sm{N}`. Pure set membership, no fuzzy matching, no chain traversal.
+
+Multiple SM runs can each independently verify different ADR entries (sm1 resolves ADR-01, sm2 resolves ADR-02). A later SM run that also resolves ADR-01 shows it as VERIFIED by sm1 (first resolver wins). Eventually the TM/ADR can be merged — adopting the best SM run's architecture as the new base — but this is optional and deferred; SM runs stay isolated and never modify the base arch.
+
 **Confidence:**
-- Worktree button + API route: **90%** — copies a file and calls the existing analysis endpoint; no new pipeline logic.
-- Run diff: **88%** — pure set arithmetic on structured JSON; only uncertainty is prior-run lookup (base-name stripping, already done in Insights trending).
+- Worktree button + API route: **92%** — copies a file and calls the existing analysis endpoint; no new pipeline logic.
+- Run diff: **90%** — pure set arithmetic on structured JSON; reference is always the fixed base arch.
 - ADR write-time enrichment: **92%** — adding two fields to the existing `add-to-adr` payload and entry template.
-- ADR dashboard verification overlay: **75%** — reads two JSON files and matches sets; uncertainty is edge cases (partial control name matches, techniques that appear in multiple paths).
-- Insights SM-chain section: **70%** — data exists, chart infrastructure exists, but section layout needs thought to avoid duplicating existing cross-run trending.
+- ADR dashboard verification overlay: **88%** — exact set membership against fixed reference, no fuzzy matching; uncertainty only in control name normalisation (whitespace, case).
+- Insights SM-chain section: **72%** — data exists, chart infrastructure exists, section layout needs care to avoid duplicating existing cross-run trending.
 
 ### 2. SM worktree UI — worktree chain view
 
