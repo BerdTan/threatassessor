@@ -216,6 +216,95 @@ async def add_sm_action_to_adr(
     return {"status": "ok", "entry_id": entry_id, "architecture": architecture_name}
 
 
+@router.post("/reports/{architecture_name}/rescore-aivss")
+async def rescore_aivss(
+    architecture_name: str,
+    _: str = Depends(verify_api_key),
+):
+    """Re-run AIVSS scoring for an existing report on demand.
+
+    Reads governance_signals.json and ground_truth.json from disk,
+    loads moe_result and scrum_master_result if available, runs the
+    full three-flow AIVSS scorer, and saves the updated
+    governance_signals.json in-place.  Works whether or not MoE has
+    been run — governance dims are preserved, only the aivss section
+    is replaced.
+
+    Returns the new aivss scores dict.
+    """
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+
+    report_dir = get_report_dir() / architecture_name
+    if not report_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Architecture '{architecture_name}' not found")
+
+    gt_path  = report_dir / "ground_truth.json"
+    sig_path = report_dir / "governance_signals.json"
+
+    if not gt_path.exists():
+        raise HTTPException(status_code=404, detail="ground_truth.json not found — run analysis first")
+
+    try:
+        ground_truth = json.loads(gt_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not read ground_truth.json: {e}")
+
+    # Load existing governance signals (preserve dims, strip stale aivss)
+    gov_signals: Dict = {}
+    if sig_path.exists():
+        try:
+            gov_signals = json.loads(sig_path.read_text(encoding="utf-8"))
+            gov_signals.pop("aivss", None)
+        except Exception:
+            gov_signals = {}
+
+    # Load MoE result if available
+    moe_result = None
+    moe_path = report_dir / "07_moe_orchestrator.json"
+    if moe_path.exists():
+        try:
+            from chatbot.modules.agents.orchestrators.moe_orchestrator import run_moe_pipeline
+            moe_result = run_moe_pipeline(str(report_dir))
+        except Exception:
+            pass
+
+    # Load SM result if available
+    sm_result = None
+    sm_path = report_dir / "08_scrum_master.json"
+    if sm_path.exists():
+        try:
+            sm_data = json.loads(sm_path.read_text(encoding="utf-8"))
+            # Wrap raw dict in a lightweight object with the attributes AIVSSStage expects
+            class _SMResult:
+                def __init__(self, d):
+                    self.retrigger_count = d.get("retrigger_count", 0)
+            sm_result = _SMResult(sm_data)
+        except Exception:
+            pass
+
+    try:
+        from chatbot.modules.harness_aivss import AIVSSFlowScorer, AIVSSAgentGate
+        from chatbot.config.settings import get_settings
+        _settings = get_settings()
+
+        scorer = AIVSSFlowScorer(industry=_settings.governance.industry)
+        aivss = scorer.compute(gov_signals, ground_truth, moe_result, sm_result)
+
+        gov_signals["aivss"] = aivss.to_dict()
+        sig_path.write_text(json.dumps(gov_signals, indent=2), encoding="utf-8")
+
+        return {
+            "status": "ok",
+            "architecture": architecture_name,
+            "aivss": aivss.to_dict(),
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AIVSS scoring failed: {e}")
+
+
 @router.delete("/reports/{architecture_name}")
 async def delete_report(architecture_name: str, _: str = Depends(verify_api_key)):
     """

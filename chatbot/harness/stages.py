@@ -449,34 +449,46 @@ class AIVSSStage(PipelineStage):
 
     def _logic(self, ctx: PipelineContext, **kw) -> PipelineContext:
         try:
+            import json as _json
+            from pathlib import Path as _Path
             from chatbot.modules.harness_aivss import AIVSSFlowScorer, AIVSSAgentGate
             from chatbot.config.settings import get_settings
-            from chatbot.harness.governance import save_governance_signals
             _settings = get_settings()
+
+            # Resolve governance_signals: prefer ctx (from QualityStage in full pipeline),
+            # fall back to reading governance_signals.json from disk (expert-review SSE path
+            # where QualityStage didn't run and ctx has no governance_signals).
+            gov_signals = ctx.get("governance_signals") or {}
+            if not gov_signals and ctx.get("report_dir"):
+                sig_path = _Path(ctx["report_dir"]) / "governance_signals.json"
+                if sig_path.exists():
+                    try:
+                        gov_signals = _json.loads(sig_path.read_text(encoding="utf-8"))
+                        # Strip stale aivss block — we are about to recompute it
+                        gov_signals.pop("aivss", None)
+                    except Exception:
+                        gov_signals = {}
 
             scorer = AIVSSFlowScorer(industry=_settings.governance.industry)
             aivss = scorer.compute(
-                ctx.get("governance_signals", {}),
+                gov_signals,
                 ctx.get("ground_truth", {}),
                 ctx.get("moe_result"),
                 ctx.get("scrum_master_result"),
             )
 
-            # Enrich governance_signals dict in-place
-            if "governance_signals" not in ctx or ctx["governance_signals"] is None:
-                ctx["governance_signals"] = {}
-            ctx["governance_signals"]["aivss"] = aivss.to_dict()
+            # Merge AIVSS result into governance_signals (never replace the whole dict)
+            gov_signals["aivss"] = aivss.to_dict()
+            ctx["governance_signals"] = gov_signals
 
             # Enrich each attack path with its per-threat AIVSS score
             _enrich_paths_with_aivss(ctx.get("ground_truth", {}), aivss.per_threat)
 
-            # Re-save governance_signals.json with AIVSS section now populated
+            # Save the merged governance_signals.json (governance dims + aivss together)
             if _settings.governance.save_signals_per_run and ctx.get("report_dir"):
-                import json as _json
-                from pathlib import Path as _Path
                 sig_path = _Path(ctx["report_dir"]) / "governance_signals.json"
                 sig_path.write_text(
-                    _json.dumps(ctx["governance_signals"], indent=2),
+                    _json.dumps(gov_signals, indent=2),
                     encoding="utf-8",
                 )
 

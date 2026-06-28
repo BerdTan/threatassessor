@@ -6887,6 +6887,30 @@ class Dashboard {
     }
 
     // ── Append a SM action item to 10_adr_report.md ──────────────────────────────
+    async _rescoreAivss(archName) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const btn = event && event.currentTarget;
+        if (btn) { btn.textContent = '⏳ Scoring…'; btn.disabled = true; }
+        try {
+            const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/rescore-aivss`, {
+                method: 'POST',
+                headers: { 'TM-API-KEY': apiKey },
+            });
+            if (r.ok) {
+                if (btn) { btn.textContent = '✅ Done'; btn.style.background = 'var(--secondary-color)'; }
+                // Reload the Insights tab so the new scores appear
+                setTimeout(() => this.loadInsightsTab(), 400);
+            } else {
+                const err = await r.json().catch(() => ({}));
+                if (btn) { btn.textContent = '❌ Failed'; btn.disabled = false; }
+                console.warn('_rescoreAivss error:', err);
+            }
+        } catch (e) {
+            if (btn) { btn.textContent = '❌'; btn.disabled = false; }
+            console.warn('_rescoreAivss error:', e);
+        }
+    }
+
     async _smAddToAdr(archName, payloadStr) {
         const apiKey = localStorage.getItem('tm_api_key') || '';
         let payload;
@@ -9487,7 +9511,11 @@ class Dashboard {
         const _score = (v) => v != null ? `<span style="font-weight:700; font-size:0.88rem;">${Number(v).toFixed(1)}</span>` : '—';
 
         // ── Section A: Pipeline Gate View (Ingress / Internal / Egress) ────────
-        let sectionA = `<div style="font-size:0.78rem; color:var(--text-tertiary);">No governance data for this run. Rerun analysis to populate.</div>`;
+        const _rescoreAivssBtn = (archName) => `<button
+            onclick="window.dashboard._rescoreAivss('${archName}')"
+            style="font-size:0.78rem; padding:0.25rem 0.75rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; margin-left:0.5rem;"
+            title="Re-run AIVSS scoring using saved governance signals and available MoE/SM results — no full re-analysis needed">⚡ Re-score AIVSS</button>`;
+        let sectionA = `<div style="font-size:0.78rem; color:var(--text-tertiary);">No governance data for this run. Rerun analysis to populate.${_rescoreAivssBtn(archName)}</div>`;
         if (gov) {
             const aivss = gov.aivss || {};
             const overall = aivss.overall || {};
@@ -9503,7 +9531,8 @@ class Dashboard {
                         return `<div style="padding:0.35rem 0.875rem; background:${fc}12; color:${fc}; border:1px solid ${fc}44; border-radius:6px; font-size:0.78rem; font-weight:700;">${flowLabels[k]} ${_score(f.composite)} ${f.severity||''}</div>`;
                     }).filter(Boolean).join('')}
                     ${overall.composite != null ? `<div style="padding:0.35rem 0.875rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem; font-weight:700; color:var(--text-color);">Overall ${_score(overall.composite)} ${overall.severity||''}</div>` : ''}
-                </div>` : '';
+                    ${_rescoreAivssBtn(archName)}
+                </div>` : `<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem; font-size:0.78rem; color:var(--text-tertiary);">No AIVSS data yet.${_rescoreAivssBtn(archName)}</div>`;
 
             // Three gate cards with dimensions, plain-language explanation, and actionable guidance
             const gateConfigs = [
