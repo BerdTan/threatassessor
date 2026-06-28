@@ -533,6 +533,77 @@ class AgentSwarmConfig(BaseModel):
     threat_analyst:   AgentModelConfig = Field(default_factory=AgentModelConfig)
 
 
+class ProviderConfig(BaseModel):
+    """Connection config for one LLM provider (OpenAI-compatible or special-cased)."""
+    base_url: str = Field(description="API base URL for this provider.")
+    api_key_env: Optional[str] = Field(
+        default=None,
+        description="Environment variable name holding the API key. None = no auth (local).",
+    )
+    auth_type: Literal["bearer", "sigv4", "none"] = Field(
+        default="bearer",
+        description="bearer = Authorization header; sigv4 = AWS SigV4 (Bedrock); none = local.",
+    )
+
+
+class ProviderRegistry(BaseModel):
+    """Config-driven provider table. Add a new provider here; zero Python code required.
+
+    All current TA providers (openrouter, bedrock) are listed with their live
+    defaults so existing env-var behaviour is preserved. Inactive providers are
+    commented out — uncomment and populate the env var to activate.
+    """
+    providers: Dict[str, ProviderConfig] = Field(
+        default_factory=lambda: {
+            "openrouter": ProviderConfig(
+                base_url="https://openrouter.ai/api/v1",
+                api_key_env="OPENROUTER_API_KEY",
+            ),
+            "bedrock": ProviderConfig(
+                base_url="",            # SigV4 — handled by existing Bedrock client path
+                api_key_env=None,
+                auth_type="sigv4",
+            ),
+            # ── Future providers (uncomment + set env var to activate) ──────────
+            # "doubleword": ProviderConfig(
+            #     base_url="https://api.doubleword.ai/v1",
+            #     api_key_env="DOUBLEWORD_API_KEY",
+            # ),
+            # "sakana": ProviderConfig(
+            #     base_url="https://api.sakana.ai/v1",
+            #     api_key_env="SAKANA_API_KEY",
+            # ),
+            # "ollama": ProviderConfig(
+            #     base_url="http://localhost:11434/v1",
+            #     api_key_env=None,
+            #     auth_type="none",
+            # ),
+            # "vllm_local": ProviderConfig(
+            #     base_url="http://localhost:8000/v1",
+            #     api_key_env=None,
+            #     auth_type="none",
+            # ),
+        }
+    )
+
+
+class EmbeddingModelConfig(BaseModel):
+    """Settings for the embedding model used by MITRE technique similarity search."""
+    provider: str = Field(
+        default="openrouter",
+        description="Provider key from ProviderRegistry (must have a compatible embeddings endpoint).",
+    )
+    model: str = Field(
+        default="nvidia/llama-nemotron-embed-vl-1b-v2:free",
+        description="Model ID passed to the embeddings endpoint.",
+    )
+    dimensions: int = Field(
+        default=2048,
+        ge=64,
+        description="Expected embedding vector dimension. Used for validation and cache headers.",
+    )
+
+
 class GovernanceSettings(BaseModel):
     agt_enabled: bool = Field(
         default=False,
@@ -587,6 +658,14 @@ class AppSettings(BaseModel):
     agent_models: AgentSwarmConfig = Field(
         default_factory=AgentSwarmConfig,
         description="Per-agent model assignments. HarnessModelGuardian reads this at pipeline start.",
+    )
+    providers: ProviderRegistry = Field(
+        default_factory=ProviderRegistry,
+        description="Config-driven provider registry. Add new providers here without code changes.",
+    )
+    embedding: EmbeddingModelConfig = Field(
+        default_factory=EmbeddingModelConfig,
+        description="Embedding model used for MITRE technique similarity search.",
     )
 
 

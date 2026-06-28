@@ -5,6 +5,9 @@ Provides embedding generation using OpenRouter's free tier:
 - Model: nvidia/llama-nemotron-embed-vl-1b-v2:free
 - Dimensions: 2048
 - Rate limit: 20 requests/minute (handled automatically)
+
+Model and URL are read from settings.embedding so they can be changed
+via user_config.json without touching this file.
 """
 
 import os
@@ -17,7 +20,33 @@ from agentic.helper import get_openrouter_api_key
 
 logger = logging.getLogger(__name__)
 
-# OpenRouter API configuration
+
+def _embedding_url() -> str:
+    """Derive embeddings endpoint from settings.providers + settings.embedding."""
+    try:
+        from chatbot.config.settings import get_settings
+        s = get_settings()
+        provider_key = s.embedding.provider
+        provider_cfg = s.providers.providers.get(provider_key)
+        if provider_cfg and provider_cfg.base_url:
+            base = provider_cfg.base_url.rstrip("/")
+            return f"{base}/embeddings"
+    except Exception:
+        pass
+    return "https://openrouter.ai/api/v1/embeddings"
+
+
+def _default_embedding_model() -> str:
+    try:
+        from chatbot.config.settings import get_settings
+        return get_settings().embedding.model
+    except Exception:
+        return "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+
+
+# Module-level constants preserved for any external callers that import them directly.
+# Values reflect the live settings at import time; use the helper functions for
+# runtime-accurate values inside this module.
 EMBEDDING_URL = "https://openrouter.ai/api/v1/embeddings"
 DEFAULT_EMBEDDING_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
 
@@ -25,14 +54,14 @@ DEFAULT_EMBEDDING_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
 @rate_limited(max_retries=3, base_delay=2.0)
 def get_embedding(
     text: str,
-    model: str = DEFAULT_EMBEDDING_MODEL
+    model: str = "",
 ) -> List[float]:
     """
     Get embedding vector for a single text using OpenRouter.
 
     Args:
         text: Input text to embed
-        model: Embedding model name (default: nvidia/llama-nemotron-embed-vl-1b-v2:free)
+        model: Embedding model name. Empty string = use settings.embedding.model.
 
     Returns:
         List of floats representing the embedding vector (2048 dimensions)
@@ -44,6 +73,9 @@ def get_embedding(
     Note:
         Rate limited to 20 requests/minute automatically via @rate_limited decorator
     """
+    resolved_model = model or _default_embedding_model()
+    endpoint = _embedding_url()
+
     api_key = get_openrouter_api_key()
     if not api_key:
         raise ValueError(
@@ -59,13 +91,13 @@ def get_embedding(
     }
 
     payload = {
-        "model": model,
+        "model": resolved_model,
         "input": text
     }
 
     try:
         response = requests.post(
-            EMBEDDING_URL,
+            endpoint,
             headers=headers,
             json=payload,
             timeout=30
@@ -90,7 +122,7 @@ def get_embedding(
 
 def get_embeddings_batch(
     texts: List[str],
-    model: str = DEFAULT_EMBEDDING_MODEL
+    model: str = "",
 ) -> List[List[float]]:
     """
     Get embeddings for multiple texts.
@@ -110,11 +142,12 @@ def get_embeddings_batch(
     embeddings = []
     total = len(texts)
 
-    logger.info(f"Generating embeddings for {total} texts...")
+    resolved_model = model or _default_embedding_model()
+    logger.info(f"Generating embeddings for {total} texts using model '{resolved_model}'...")
 
     for i, text in enumerate(texts, 1):
         try:
-            embedding = get_embedding(text, model)
+            embedding = get_embedding(text, resolved_model)
             embeddings.append(embedding)
 
             if i % 10 == 0 or i == total:
