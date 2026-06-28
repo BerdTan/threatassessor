@@ -4,6 +4,40 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-06-28 (Session 8) — SM Worktree, AIVSS closed loop, settings.yaml, blog TM
+
+### Summary of session 8 decisions and implementations
+
+**AIVSS closed-loop fixes (committed):**
+- `AIVSSStage` split from `QualityStage` — AIVSS scoring now runs after ScrumMaster so `moe_result` and `scrum_master_result` are available for internal flow (manipulation signals). Stage order: analysis → report → quality → critics → scrum_master → **aivss** → outbound_aivss.
+- `compute_manipulation_signals()` wired into both `AIVSSStage` and `rescore_aivss` route — `confidence_swing_detected` / `divergence_detected` boolean flags now populated from saved `07_moe_orchestrator.json` (JSON read, no LLM re-run).
+- `POST /api/v1/reports/{arch}/rescore-aivss` — on-demand AIVSS rescore from Insights page. Rebuilds governance signals from `before.mmd` if missing. Now completes in ~0.15s (was 76s — `run_moe_pipeline` call replaced with direct JSON read + `_MoEProxy`).
+- ⚡ Re-score AIVSS button in Insights tab with animated progress overlay (4 stage cards).
+
+**Settings.yaml + provider registry (committed):**
+- Three-layer settings load: Python defaults → `settings.yaml` (committed, operator-editable) → `user_config.json` (gitignored).
+- `ProviderRegistry` and `EmbeddingModelConfig` added to `AppSettings`. New providers = uncomment in `settings.yaml`, zero code.
+- `embeddings.py` reads model and URL from settings at call time; module-level constants preserved for backward compat.
+
+**SM worktree (committed — see detailed entry below):**
+- `POST /api/v1/reports/{arch}/rerun-with-sm` — creates `sm{N}/` subfolder, cleans annotation MMD, runs `api_only`, writes `run_diff.json`.
+- `chatbot/modules/mmd_cleaner.py` — deterministic annotation stripper. 75/75 tests. Handles `NEW_*` node IDs, metadata labels, RAPIDS annotations, dangling arrows.
+- SM runs as first-class arch views via virtual name resolution (`aivss_test_arch_sm1` → `report/aivss_test_arch/sm1/`).
+- SM chain in dropdown: 👁 View / 📋 template / ▶ Rerun / 🗑 Delete.
+- Tab guards: Expert Review + ScrumMaster show honest "deterministic-only" placeholder with ▶ Run Expert Review upgrade button.
+- Harness stage timeline in Harness tab — per-stage wall-clock, proportional bar, populated by `harness_perf.json` on every pipeline run.
+
+**Blog (published):**
+- Part 7 published: "Threat Modeling Is the Art of Storytelling a Graph" — https://medium.com/@breadtan/threat-modeling-is-the-art-of-storytelling-a-graph-719d0ef5a536
+
+**Deferred (captured in earlier entries):**
+- ADR VERIFIED display overlay (Piece 4) — depends on SM diff data now available.
+- Insights SM-chain improvement trend section.
+- TA CLI (`chatbot/cli/`) — deferred until CI/CD use case.
+- Omnigent cost ceiling / ASK verdict patterns — deferred to scale-out.
+
+---
+
 ## 2026-06-28 — SM worktree rerun + ADR closed-loop verification
 
 ### 1. SM rerun as a named worktree — arch-sm{N} naming convention
