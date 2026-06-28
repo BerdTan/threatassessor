@@ -14,6 +14,9 @@ Upload a Mermaid (`.mmd`) architecture diagram and receive a full, MITRE-mapped 
 | **Policy alignment** | Singapore Government ICT&SS SSP baseline overlay — mandatory controls surfaced per profile (cloud, on-prem, GenAI, etc.) |
 | **Expert Review** | Five MoE critic agents — Architect → Tester → Red Team → Purple Team → Blackhat — each receiving user journey context relevant to their rubric, producing a consensus with tiered improvement recommendations |
 | **ScrumMaster** | Synthesises critic findings into sprint-ready impediments, redesign proposals, and an 8-week action plan; runs a harmony check before calling the LLM — zero spend when all impediments are unresolvable architectural issues |
+| **Governance & AIVSS** | AIVSS v4 three-flow safety scoring (inbound / internal / outbound) per run; per-agent governance gate blocks critics when scores breach thresholds; SIEM emitter for audit trails |
+| **Per-agent model routing** | HarnessModelGuardian assigns different LLM models to different critics and stages; env-var defaults with per-run overrides via the Config tab |
+| **Insights & trending** | Cross-run Insights tab — AIVSS score trends, critic consensus drift, and governance signal history across all analysed architectures |
 | **Performance telemetry** | Per-critic cost, token count, and latency for every run — full pipeline tracked at ~$0.10 / 32k tokens / 113s on Claude Sonnet 4 |
 | **Confidence scoring** | Architecture-sensitive confidence band; recovers toward ceiling only when coverage signals prove the surface was thoroughly mapped |
 
@@ -97,6 +100,7 @@ Set `API_KEY` in your `.env` file; the server reads it on startup.
 ```
 chatbot/          Core analysis engine and REST API
   api/            FastAPI application (app.py, routes/, models/, static/)
+  harness/        Pipeline controller + governance + registry (controller.py, stages.py, governance.py, registry.py)
   modules/        Threat analysis, RAPIDS, MoE agents, SSP mapper, self-validation
     story_caster.py          User journey co-generation (StoryCaster)
     threat_scene_deepener.py APT attribution + KEV CVE enrichment
@@ -127,7 +131,7 @@ openapi.yaml      OpenAPI 3.0 spec
 
 ## Read more
 
-The full build story is on Medium — five parts covering the pipeline, cloud threat modelling, user journey intelligence, and the MoE critic system:
+The full build story is on Medium — six parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, and the harness that holds it all together:
 
 | # | Title | What it covers |
 |---|-------|----------------|
@@ -136,6 +140,7 @@ The full build story is on Medium — five parts covering the pipeline, cloud th
 | 3 | [When Good Enough Is Not Enough: Teaching a Threat Assessor to See What It Couldn't](https://medium.com/@breadtan/when-good-enough-is-not-enough-teaching-a-threat-assessor-to-see-what-it-couldnt-0e027d6578fe) | MoE critics, self-validation, and closing the gaps a deterministic engine misses |
 | 4 | [StoryCaster: Read the Human Stories Hidden in Your Architecture](https://medium.com/@breadtan/storycaster-read-the-human-stories-hidden-in-your-architecture-4fed8dfdcf05) | User journey co-generation — corroborated vs post-compromise paths, APT attribution, KEV CVEs |
 | 5 | [When the Critics Disagree: ScrumMaster and the Art of Security Harmony](https://medium.com/@breadtan/when-the-critics-disagree-scrummaster-and-the-art-of-security-harmony-6cfacb7eb05e) | ScrumMaster synthesis, harmony checking, performance telemetry across the full critic pipeline |
+| 6 | [The Conductor's Job: How a Lightweight Harness Keeps Your AI Pipeline Together](https://medium.com/@breadtan/the-conductors-job-how-a-lightweight-harness-keeps-your-ai-pipeline-together-9667f5712d9f) | Harness architecture — scenario registry, stage isolation, model guardian, and governance gate |
 
 ---
 
