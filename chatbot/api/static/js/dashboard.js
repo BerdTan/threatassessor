@@ -6767,10 +6767,16 @@ class Dashboard {
                     <div style="margin-top:0.5rem; font-size:0.72rem; color:var(--text-tertiary);">
                         <strong>Share bar</strong> = each stage's wall-clock as a % of total pipeline time.
                         Stages &gt;30 s shown in amber. <strong>deterministic</strong> = no LLM call; time reflects RAPIDS graph analysis or file I/O.
-                        Populated after next analysis run.
                     </div>
                 </div>`;
-            })()}`;
+            })()} ${!harnessPerf ? `
+                <div style="margin-top:1.25rem; padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px dashed var(--border-color); text-align:center;">
+                    <div style="font-size:0.78rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.3rem;">Harness Stage Timeline</div>
+                    <div style="font-size:0.78rem; color:var(--text-tertiary);">
+                        No stage timing data yet for this architecture.<br>
+                        <span style="font-size:0.72rem;">Populated automatically after the next analysis run (api_only or full_moe).</span>
+                    </div>
+                </div>` : ''}`;
     }
 
     async _harnessLoadAivssGateSection() {
@@ -6972,33 +6978,89 @@ class Dashboard {
 
     // ── Append a SM action item to 10_adr_report.md ──────────────────────────────
     async _rescoreAivss(archName, btnEl) {
-        // btnEl is passed explicitly from the onclick so we don't rely on
-        // event.currentTarget (which is null after the first await).
         const apiKey = localStorage.getItem('tm_api_key') || '';
-        const btn = btnEl || (event && event.currentTarget) || null;
+        const btn = btnEl || null;
+
+        // ── Step 1: Gray out the gate section and inject progress overlay ────
+        const gateSection = document.getElementById('insights-gate-section');
+        const overlay = document.createElement('div');
+        overlay.id = 'rescore-overlay';
+        overlay.style.cssText = 'position:absolute; inset:0; background:var(--card-bg,#fff); opacity:0.92; border-radius:8px; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.75rem; padding:1.5rem;';
+
+        const STEPS = [
+            { id:'gov',   label:'Governance checks',       icon:'🛡️' },
+            { id:'manip', label:'Manipulation signals',     icon:'⚙️' },
+            { id:'aivss', label:'AIVSS three-flow scoring', icon:'📊' },
+            { id:'save',  label:'Saving results',           icon:'💾' },
+        ];
+
+        overlay.innerHTML = `
+            <div style="font-size:0.85rem; font-weight:700; color:var(--primary-color); margin-bottom:0.25rem;">⚡ Re-scoring AIVSS…</div>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:center;">
+                ${STEPS.map(s => `
+                    <div id="rescore-card-${s.id}" style="display:flex; flex-direction:column; align-items:center; gap:0.25rem; padding:0.5rem 0.75rem; min-width:100px;
+                         border-radius:8px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.4; transition:all 0.25s;">
+                        <div style="font-size:1.1rem;">${s.icon}</div>
+                        <div style="font-size:0.72rem; font-weight:600; color:var(--text-secondary); text-align:center; white-space:nowrap;">${s.label}</div>
+                        <div id="rescore-card-${s.id}-status" style="font-size:0.65rem; color:var(--text-tertiary);">Waiting</div>
+                    </div>`).join('')}
+            </div>`;
+
+        if (gateSection) {
+            gateSection.style.position = 'relative';
+            gateSection.appendChild(overlay);
+        }
         if (btn) { btn.textContent = '⏳ Scoring…'; btn.disabled = true; }
+
+        // ── Step 2: Animate cards sequentially while the fetch runs ──────────
+        const _activateCard = (id, statusText) => {
+            const card = document.getElementById(`rescore-card-${id}`);
+            const stat = document.getElementById(`rescore-card-${id}-status`);
+            if (card) { card.style.opacity = '1'; card.style.borderColor = 'var(--primary-color)44'; card.style.background = 'var(--primary-color)08'; }
+            if (stat) stat.textContent = statusText;
+        };
+        const _doneCard = (id, ok) => {
+            const card = document.getElementById(`rescore-card-${id}`);
+            const stat = document.getElementById(`rescore-card-${id}-status`);
+            const col = ok ? 'var(--secondary-color)' : 'var(--danger-color)';
+            if (card) { card.style.borderColor = col + '44'; card.style.background = col + '0a'; }
+            if (stat) { stat.textContent = ok ? '✓ Done' : '✗ Error'; stat.style.color = col; }
+        };
+
+        // Start animating — rough timing matched to the real backend steps
+        _activateCard('gov', 'Running…');
+        const t1 = setTimeout(() => { _doneCard('gov', true); _activateCard('manip', 'Running…'); }, 300);
+        const t2 = setTimeout(() => { _doneCard('manip', true); _activateCard('aivss', 'Scoring…'); }, 700);
+        const t3 = setTimeout(() => { _doneCard('aivss', true); _activateCard('save', 'Writing…'); }, 1400);
+
+        // ── Step 3: Fire the actual API call ──────────────────────────────────
+        let ok = false;
         try {
             const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/rescore-aivss`, {
                 method: 'POST',
                 headers: { 'TM-API-KEY': apiKey },
             });
-            if (r.ok) {
-                if (btn) {
-                    btn.textContent = '✅ Done';
-                    btn.style.background = 'var(--secondary-color)';
-                    btn.style.borderColor = 'var(--secondary-color)';
-                }
-                // Reload the Insights tab so the new scores appear
-                setTimeout(() => this.loadInsightsTab(), 400);
-            } else {
-                const err = await r.json().catch(() => ({}));
-                if (btn) { btn.textContent = '❌ Failed'; btn.disabled = false; }
-                console.warn('_rescoreAivss error:', err);
-            }
+            ok = r.ok;
+            if (!r.ok) console.warn('_rescoreAivss error:', await r.json().catch(() => ({})));
         } catch (e) {
-            if (btn) { btn.textContent = '❌'; btn.disabled = false; }
             console.warn('_rescoreAivss error:', e);
         }
+
+        clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+
+        // ── Step 4: Complete all cards, remove overlay, reload ────────────────
+        STEPS.forEach(s => _doneCard(s.id, ok));
+        if (btn) {
+            btn.textContent = ok ? '✅ Done' : '❌ Failed';
+            btn.style.background = ok ? 'var(--secondary-color)' : 'var(--danger-color)';
+            if (!ok) btn.disabled = false;
+        }
+
+        setTimeout(() => {
+            overlay.remove();
+            if (gateSection) gateSection.style.position = '';
+            if (ok) this.loadInsightsTab();
+        }, ok ? 600 : 2000);
     }
 
     async _smAddToAdr(archName, payloadStr) {
@@ -9807,7 +9869,7 @@ class Dashboard {
         container.innerHTML =
             _section('input-safety', '🛡️', 'Governance & AIVSS',
                 `Pipeline safety check for <strong>${_esc(archName)}</strong> — inbound/internal/outbound AI risk flows across 5 governance dimensions.`,
-                sectionA) +
+                `<div id="insights-gate-section" style="position:relative;">${sectionA}</div>`) +
             _section('trending', '📊', 'Cross-Run Trends',
                 'Trend analysis across analysis runs — single architecture improvement, systemic multi-arch gaps, and domain-level sensing.',
                 trendTabs);
