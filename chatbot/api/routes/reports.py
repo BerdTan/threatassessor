@@ -210,9 +210,22 @@ async def rerun_with_sm(
     sm_dir = base_dir / f"sm{n}"
     sm_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy SM-recommended MMD as before.mmd in the subfolder
-    mmd_text = sm_mmd.read_text(encoding="utf-8")
-    (sm_dir / "before.mmd").write_text(mmd_text, encoding="utf-8")
+    # Clean the annotation-style MMD into an analysis-ready one.
+    # The recommended MMD has NEW_* nodes with MITRE/RAPIDS metadata in
+    # labels — clean_recommended_mmd() strips the metadata, renames nodes
+    # to readable IDs, and removes comment/style lines so the analysis
+    # engine sees a proper architecture graph, not an annotation file.
+    annotation_text = sm_mmd.read_text(encoding="utf-8")
+    try:
+        from chatbot.modules.mmd_cleaner import clean_recommended_mmd
+        clean_text = clean_recommended_mmd(annotation_text)
+    except Exception:
+        clean_text = annotation_text  # fallback: use as-is
+
+    # Preserve the original annotation as a template for the architect
+    (sm_dir / "recommended_template.mmd").write_text(annotation_text, encoding="utf-8")
+    # Write the clean version as before.mmd (what the engine analyses)
+    (sm_dir / "before.mmd").write_text(clean_text, encoding="utf-8")
 
     # Write the MMD to a temp file for the harness
     import tempfile

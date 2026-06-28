@@ -37,6 +37,16 @@ report/
 - `GET /api/v1/reports/{arch}/sm/{n}/files/{filename}` — serve files from the SM subfolder
 - `GET /api/v1/reports/{arch}/sm/{n}/diff` — return `run_diff.json`
 
+**MMD cleaning — deterministic, no LLM (decided):**
+`08b_recommended_target.mmd` is annotation-style: `NEW_MFA["Mfa<br/>MITRE: M1032<br/>Prevents: T1078"]`. The analysis engine matches controls by node label text so the `NEW_*` nodes are recognisable — but the `<br/>` metadata must be stripped. `chatbot/modules/mmd_cleaner.py` performs a fully deterministic transformation:
+1. Strip everything after the first `<br/>` from `NEW_*` node labels (MITRE/RAPIDS metadata, technique refs, action words)
+2. Rename `NEW_*` node IDs to readable names (`NEW_MFA` → `MFA`, `NEW_RATELIMITING` → `RateLimiting`)
+3. Short labels (≤4 chars, alpha) uppercased (`Mfa` → `MFA`, `Edr` → `EDR`)
+4. Remove `%%` comment lines and `style` directives
+5. Rewrite all edge references from `NEW_*` IDs to clean names
+
+Confidence: **96%** — 72/72 tests pass across 10 real architectures (unit + parametrised). The original annotation file is preserved as `sm{N}/recommended_template.mmd` for architect reference.
+
 **Three pieces (in dependency order):**
 1. **Worktree button + API route** — `POST /api/v1/reports/{arch}/rerun-with-sm` reads `08b_recommended_target.mmd`, creates `sm{N}/` subfolder, writes the MMD as `before.mmd`, runs `ThreatAssessorHarness(scenario="api_only")` with that subfolder as `report_dir`, writes `run_diff.json` on completion. Button shown in arch history only when `08_scrum_master.json` exists.
 2. **Run diff** — `run_diff.json` written into `sm{N}/` comparing `controls_missing`, `techniques`, and `confidence` between the base arch and this SM run. Pure set arithmetic on `ground_truth.json` values — no LLM.
