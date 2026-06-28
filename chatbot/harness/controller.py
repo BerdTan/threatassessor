@@ -486,19 +486,23 @@ def _quick_det() -> List[PipelineStage]:
 
 @register_scenario(ScenarioConfig.API_ONLY)
 def _api_only() -> List[PipelineStage]:
-    from chatbot.harness.stages import AnalysisStage, ReportStage, QualityStage
-    return [AnalysisStage(), ReportStage(), QualityStage()]
+    from chatbot.harness.stages import AnalysisStage, ReportStage, QualityStage, AIVSSStage
+    # AIVSSStage runs after QualityStage; no critics/SM so internal flow scores
+    # with governance signals only (moe_result=None, sm_result=None).
+    return [AnalysisStage(), ReportStage(), QualityStage(), AIVSSStage()]
 
 
 @register_scenario(ScenarioConfig.FULL_MOE)
 def _full_moe() -> List[PipelineStage]:
     from chatbot.harness.stages import (
         AnalysisStage, ReportStage, QualityStage, CriticStage, ScrumMasterStage,
-        OutboundAIVSSGate,
+        AIVSSStage, OutboundAIVSSGate,
     )
+    # AIVSSStage runs after ScrumMasterStage so moe_result + scrum_master_result
+    # are available for internal flow (manipulation, drift signals).
     return [
         AnalysisStage(), ReportStage(), QualityStage(),
-        CriticStage(), ScrumMasterStage(), OutboundAIVSSGate(),
+        CriticStage(), ScrumMasterStage(), AIVSSStage(), OutboundAIVSSGate(),
     ]
 
 

@@ -383,6 +383,8 @@ class QualityStage(PipelineStage):
 
             ctx["governance_signals"] = merged.to_dict()
 
+            # Save governance signals now (without AIVSS — full score happens in AIVSSStage
+            # after critics + SM have run, so moe_result and scrum_master_result are available)
             from chatbot.config.settings import get_settings
             if get_settings().governance.save_signals_per_run and ctx.get("report_dir"):
                 save_governance_signals(merged, ctx["report_dir"])
@@ -396,30 +398,16 @@ class QualityStage(PipelineStage):
             if cb := kw.get("progress_callback"):
                 cb("quality", 60, f"Governance check — risk: {merged.overall_risk_level}")
 
-            # AIVSS scoring — runs after governance merge, enriches governance_signals in-place
+            # Pre-build the gate object so CriticStage can tighten thresholds before critics run.
+            # Full AIVSS scoring (inbound/internal/outbound) happens in AIVSSStage after SM.
             try:
-                from chatbot.modules.harness_aivss import AIVSSFlowScorer, AIVSSAgentGate
-                from chatbot.config.settings import get_settings
-                _settings = get_settings()
-                scorer = AIVSSFlowScorer(industry=_settings.governance.industry)
-                aivss = scorer.compute(
-                    ctx["governance_signals"],
-                    ctx.get("ground_truth", {}),
-                    ctx.get("moe_result"),
-                    ctx.get("scrum_master_result"),
-                )
-                ctx["governance_signals"]["aivss"] = aivss.to_dict()
-                # Enrich each attack path with its AIVSS score in-place
-                _enrich_paths_with_aivss(ctx.get("ground_truth", {}), aivss.per_threat)
-                # Store gate so CriticStage can tighten before critics run
-                gate = AIVSSAgentGate(critic_settings=_settings.critics)
+                from chatbot.modules.harness_aivss import AIVSSAgentGate
+                from chatbot.config.settings import get_settings as _gs
+                gate = AIVSSAgentGate(critic_settings=_gs().critics)
                 ctx["_aivss_gate"] = gate
-                ctx["_aivss_score"] = aivss
-                if cb:
-                    cb("quality", 80, f"AIVSS overall: {aivss.overall} {aivss.overall_severity}")
-            except Exception as aivss_exc:
+            except Exception as gate_exc:
                 import logging as _log
-                _log.getLogger(__name__).warning(f"AIVSS scoring failed (non-fatal): {aivss_exc}")
+                _log.getLogger(__name__).warning(f"AIVSS gate setup failed (non-fatal): {gate_exc}")
 
         except Exception as exc:
             import logging
@@ -441,6 +429,70 @@ def _enrich_paths_with_aivss(ground_truth: dict, per_threat) -> None:
         if ts:
             path["aivss_score"] = round(ts.composite, 2)
             path["aivss_severity"] = ts.severity
+
+
+# ---------------------------------------------------------------------------
+# AIVSSStage — full three-flow scoring after critics + SM have run
+# ---------------------------------------------------------------------------
+
+class AIVSSStage(PipelineStage):
+    """Full AIVSS v4 three-flow scoring (inbound / internal / outbound).
+
+    Runs after ScrumMasterStage so moe_result and scrum_master_result are
+    available for the internal flow's manipulation and drift signals.
+    Enriches ctx["governance_signals"]["aivss"] in-place and re-saves
+    governance_signals.json with the complete picture.
+    """
+
+    name = "aivss"
+    required = False
+
+    def _logic(self, ctx: PipelineContext, **kw) -> PipelineContext:
+        try:
+            from chatbot.modules.harness_aivss import AIVSSFlowScorer, AIVSSAgentGate
+            from chatbot.config.settings import get_settings
+            from chatbot.harness.governance import save_governance_signals
+            _settings = get_settings()
+
+            scorer = AIVSSFlowScorer(industry=_settings.governance.industry)
+            aivss = scorer.compute(
+                ctx.get("governance_signals", {}),
+                ctx.get("ground_truth", {}),
+                ctx.get("moe_result"),
+                ctx.get("scrum_master_result"),
+            )
+
+            # Enrich governance_signals dict in-place
+            if "governance_signals" not in ctx or ctx["governance_signals"] is None:
+                ctx["governance_signals"] = {}
+            ctx["governance_signals"]["aivss"] = aivss.to_dict()
+
+            # Enrich each attack path with its per-threat AIVSS score
+            _enrich_paths_with_aivss(ctx.get("ground_truth", {}), aivss.per_threat)
+
+            # Re-save governance_signals.json with AIVSS section now populated
+            if _settings.governance.save_signals_per_run and ctx.get("report_dir"):
+                import json as _json
+                from pathlib import Path as _Path
+                sig_path = _Path(ctx["report_dir"]) / "governance_signals.json"
+                sig_path.write_text(
+                    _json.dumps(ctx["governance_signals"], indent=2),
+                    encoding="utf-8",
+                )
+
+            # Update gate and store score for OutboundAIVSSGate
+            gate = AIVSSAgentGate(critic_settings=_settings.critics)
+            ctx["_aivss_gate"] = gate
+            ctx["_aivss_score"] = aivss
+
+            if cb := kw.get("progress_callback"):
+                cb("aivss", 100, f"AIVSS overall: {aivss.overall} {aivss.overall_severity}")
+
+        except Exception as exc:
+            import logging as _log
+            _log.getLogger(__name__).warning(f"AIVSSStage failed (non-fatal): {exc}")
+
+        return ctx
 
 
 # ---------------------------------------------------------------------------
