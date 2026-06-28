@@ -698,6 +698,17 @@ async def expert_review_with_progress(
                     eta_seconds=0
                 )
                 await asyncio.sleep(0.1)
+
+                # Run AIVSSStage now that SM result is in context —
+                # gives internal flow access to moe_result + scrum_master_result
+                try:
+                    from chatbot.modules.harness_stages import AIVSSStage as _AIVSSStage
+                    _aivss_stage = _AIVSSStage()
+                    _sm_ctx["scrum_master_result"] = _sm_ctx.get("scrum_master_result")
+                    await loop.run_in_executor(None, lambda: _aivss_stage.run(_sm_ctx))
+                except Exception as _aivss_exc:
+                    logger.warning(f"AIVSSStage skipped in expert-review path: {_aivss_exc}")
+
             except Exception as _sm_exc:
                 logger.warning(f"ScrumMaster stage skipped: {_sm_exc}")
 

@@ -6,4 +6,5 @@ from chatbot.harness.stages import (
     CriticStage,
     ScrumMasterStage,
     QualityStage,
+    AIVSSStage,
 )
