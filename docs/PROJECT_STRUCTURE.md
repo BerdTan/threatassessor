@@ -1,7 +1,7 @@
 # Project Documentation Structure
 
 **Version:** 1.4  
-**Last Updated:** 2026-05-30
+**Last Updated:** 2026-06-28
 
 Navigation map for the ThreatAssessor documentation. All docs are Markdown — no generated HTML files.
 
@@ -12,9 +12,7 @@ Navigation map for the ThreatAssessor documentation. All docs are Markdown — n
 | I want to… | File |
 |---|---|
 | Get started fast | [START_HERE.md](START_HERE.md) |
-| Read architectural decisions | [DECISIONS.md](DECISIONS.md) |
-| Check current status + roadmap | [STATUS_AND_PLAN.md](STATUS_AND_PLAN.md) |
-| Understand the MoE agent design | [AGENTIC_DESIGN.md](AGENTIC_DESIGN.md) |
+| Read architectural decisions | DECISIONS.md (local only — not in git) |
 | Developer quick reference | [../CLAUDE.md](../CLAUDE.md) |
 | Run / operate the API | [operations/API_MANAGEMENT.md](operations/API_MANAGEMENT.md) |
 | Troubleshoot | [operations/OPERATIONS.md](operations/OPERATIONS.md) |
@@ -35,26 +33,27 @@ Navigation map for the ThreatAssessor documentation. All docs are Markdown — n
 │
 ├── chatbot/                       ← Application code
 │   ├── api/                       ← FastAPI app, routes, models, static dashboard
+│   ├── harness/                   ← Pipeline controller, stages, governance, registry
 │   ├── modules/                   ← Analysis engine, RAPIDS, MoE agents, SSP mapper
 │   ├── services/                  ← Thread-safe service layer
+│   ├── config/                    ← Settings (settings.py + settings.yaml)
 │   └── data/                      ← ATLAS YAML, SSP catalog JSON, ARC YAML (in repo)
 │                                     MITRE ATT&CK + embeddings (large, not in git)
 │
 ├── agentic/                       ← Multi-provider LLM client (OpenRouter, Bedrock)
 │
 ├── docs/                          ← Documentation (this directory)
-│   ├── DECISIONS.md               ← ⭐ Read at session start
-│   ├── STATUS_AND_PLAN.md         ← Current status and roadmap
-│   ├── AGENTIC_DESIGN.md          ← MoE architecture, AgentTools, MCP design
+│   ├── DECISIONS.md               ← ⭐ Read at session start (local only — gitignored)
+│   ├── blog/                      ← Medium draft series (Parts 1–7 published)
 │   ├── api/                       ← API specification and integration guides
 │   ├── core/                      ← Confidence methodology, features, frameworks
-│   ├── development/               ← Architecture, LLM client, migration guides
+│   ├── development/               ← Architecture, NEXT_STEPS backlog
 │   ├── operations/                ← API management, troubleshooting, validation
 │   ├── patterns/                  ← AI/ML pattern (ARC + ATLAS) documentation
-│   ├── phases/phase3d/            ← MoE implementation reference (complete)
 │   ├── ssp/                       ← Singapore Government SSP reference notes
 │   ├── testing/                   ← Test strategy and ground truth guide
-│   └── ui/                        ← Dashboard design and guide
+│   ├── ui/                        ← Dashboard user guide
+│   └── archive/                   ← Completed/superseded docs (for reference)
 │
 ├── scripts/                       ← Utility scripts (see scripts/README.md)
 │   ├── api/                       ← Server lifecycle (used by Makefile)
@@ -85,12 +84,10 @@ README.md              ← External-facing (GitHub landing page)
     │
     └── CLAUDE.md      ← Developer context (AI assistant + human reference)
             │
-            └── docs/DECISIONS.md  ← Authoritative decision log (read every session)
-                    │
-                    └── docs/STATUS_AND_PLAN.md  ← Current state + next priorities
+            └── docs/DECISIONS.md  ← Authoritative decision log (local only)
 ```
 
 ---
 
 **Getting help:** Start with [README.md](README.md) for the full active file index.  
-**For AI assistants:** Load `CLAUDE.md` first, then read `docs/DECISIONS.md`.
+**For AI assistants:** Load `CLAUDE.md` first, then read `docs/DECISIONS.md` (local file, not in git).
