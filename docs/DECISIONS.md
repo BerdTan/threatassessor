@@ -11,10 +11,36 @@ Read this file at the start of every session. After any significant decision abo
 **What was decided:**
 ScrumMaster-recommended reruns use `{base_arch}-sm{N}` naming (e.g. `aivss_test_arch-sm1`, `aivss_test_arch-sm2`). Each is a first-class report directory — a full analysis run from the SM-recommended MMD (`08b_recommended_target.mmd`) treated exactly like any other architecture. Separate from the `_N` numeric suffix used for plain reruns. `N` is the count of SM-specific reruns for that base arch.
 
+**Storage layout (decided):**
+SM reruns live as **subfolders under the base arch directory**, not as siblings in `report/`:
+```
+report/
+  aivss_test_arch/             ← original run, untouched
+    ground_truth.json
+    08_scrum_master.json
+    08b_recommended_target.mmd ← SM recommends this
+    sm1/                       ← first SM rerun, self-contained
+      before.mmd               ← copy of 08b_recommended_target.mmd
+      ground_truth.json
+      governance_signals.json
+      run_diff.json            ← diff vs parent arch
+      harness_perf.json
+      [all standard report files]
+    sm2/                       ← second SM rerun
+      ...
+```
+`report/` stays clean — only original arch names at the top level. All SM artifacts are scoped under their parent. The harness writes to whatever `report_dir` is passed — `report/{arch}/sm{N}/` works with no pipeline changes.
+
+**API surface for SM runs (dedicated routes to avoid touching path-traversal checks on existing routes):**
+- `POST /api/v1/reports/{arch}/rerun-with-sm` — creates `sm{N}/` subfolder, runs analysis, returns `{n: 1, report_dir: "aivss_test_arch/sm1"}`
+- `GET /api/v1/reports/{arch}/sm` — list all SM reruns for an arch (returns `[{n, run_ts, confidence, controls_resolved, techniques_closed}]`)
+- `GET /api/v1/reports/{arch}/sm/{n}/files/{filename}` — serve files from the SM subfolder
+- `GET /api/v1/reports/{arch}/sm/{n}/diff` — return `run_diff.json`
+
 **Three pieces (in dependency order):**
-1. **Worktree button + API route** — `POST /api/v1/reports/{name}/rerun-with-sm` copies `08b_recommended_target.mmd` to `{name}-sm{N}.mmd` in the architectures input location, triggers a deterministic analysis on it (same as `analyze-stream`), returns the new arch name. Button shown in arch history dropdown only when `08_scrum_master.json` exists.
-2. **Run diff** — `run_diff.json` written alongside the SM-run's report comparing `controls_missing`, `techniques`, and `confidence` between the base arch and `{name}-sm{N}`. Pure set arithmetic on `ground_truth.json` values — no LLM.
-3. **ADR verification** — SM-ADR entries store machine-readable `source_techniques` and `source_controls` at write time. Dashboard reads `run_diff.json` and renders ADR entries with a `VERIFIED` badge when the stored controls/techniques are absent from the SM-run's `controls_missing`. File is never auto-edited — verification is a display-only overlay.
+1. **Worktree button + API route** — `POST /api/v1/reports/{arch}/rerun-with-sm` reads `08b_recommended_target.mmd`, creates `sm{N}/` subfolder, writes the MMD as `before.mmd`, runs `ThreatAssessorHarness(scenario="api_only")` with that subfolder as `report_dir`, writes `run_diff.json` on completion. Button shown in arch history only when `08_scrum_master.json` exists.
+2. **Run diff** — `run_diff.json` written into `sm{N}/` comparing `controls_missing`, `techniques`, and `confidence` between the base arch and this SM run. Pure set arithmetic on `ground_truth.json` values — no LLM.
+3. **ADR verification** — SM-ADR entries store machine-readable `source_techniques` and `source_controls` at write time. Dashboard reads `sm{N}/run_diff.json` and renders ADR entries with a `VERIFIED` badge when the stored controls/techniques are absent from the SM run's `controls_missing`. File is never auto-edited — verification is display-only.
 
 **Reasoning:**
 Treating SM reruns as first-class report directories gives them the full report set, Insights trending, and worktree chain view with no special-casing. The `_sm{N}` suffix is machine-parseable (base name extraction strips `-smN`) while being visually distinct from numeric reruns. The worktree is what generates the reference `ground_truth.json` that makes ADR verification data-driven instead of text-matching. Without the worktree run there is nothing to diff against.
@@ -34,16 +60,20 @@ Treating SM reruns as first-class report directories gives them the full report 
 ### 2. SM worktree UI — worktree chain view
 
 **What was decided:**
-The arch history dropdown shows SM reruns as an indented chain under the base arch:
+SM reruns are shown as an indented chain *within* the base arch's history entry — not as siblings in the flat arch list:
 ```
-aivss_test_arch            [reload] [rerun] [SM rerun] [delete]
-  └─ aivss_test_arch-sm1  [reload] [view diff]
-     └─ aivss_test_arch-sm2  [reload] [view diff]
+aivss_test_arch            [reload] [rerun] [✨ SM rerun] [delete]
+  └─ sm1  Δ+12% conf · 3 controls resolved  [view] [↻ SM rerun]
+     └─ sm2  Δ+6% conf · 1 control resolved  [view]
 ```
-SM reruns show a "vs base" delta (confidence change, controls resolved, techniques closed) inline in the dropdown. "View diff" opens a right-pane comparison. The Insights tab View A gains a SM-chain sub-section when `-smN` variants exist: confidence trend line per run, controls resolved count, techniques closed. This reuses the existing base-name grouping logic (`_base_arch_name()` in reports.py already strips `_N` suffixes — extend to also strip `-smN`).
+Each SM entry shows the delta vs its parent (confidence change, controls resolved, techniques closed) fetched from `run_diff.json`. "View" loads the SM subfolder's reports into the main view. "↻ SM rerun" on an existing SM run creates `sm{N+1}` from that run's `08b_recommended_target.mmd` — chaining further improvements.
+
+The Insights tab View A gains a SM-chain sub-section when `sm1/` exists: confidence trend line per run, controls resolved count, techniques closed. Data source is `GET /api/v1/reports/{arch}/sm` list endpoint.
+
+`_base_arch_name()` in `reports.py` already strips `_N` suffixes for Insights grouping. No change needed — SM runs are subfolders not siblings so they don't appear in the top-level arch list at all.
 
 **Alternatives rejected:**
-- Flat list with SM runs mixed with numeric reruns: visually indistinguishable, defeats the purpose.
+- SM runs as flat siblings (`aivss_test_arch-sm1/` in `report/`): pollutes the top-level arch list, breaks `_base_arch_name()` grouping, and loses the parent-child relationship.
 - Separate "SM History" tab: over-engineering — the arch dropdown already has the right scope.
 
 ---
