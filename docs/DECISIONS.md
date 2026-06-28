@@ -4,6 +4,92 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-06-28 — Unified model provider strategy (deferred implementation)
+
+### 1. Config-driven provider registry + harmonised model settings
+
+**What was decided:**
+Extend `chatbot/config/settings.py` with a `ProviderRegistry` block and an `EmbeddingModelConfig` block. All current TA model behaviour is preserved via backward-compat defaults — no code changes required at decision time. The strategy is captured now so future provider integrations require only config additions, not code changes.
+
+**Target shape (settings.py additions, not yet implemented):**
+
+```python
+class ProviderConfig(BaseModel):
+    base_url: str
+    api_key_env: Optional[str] = None   # None = no auth (local Ollama/vLLM)
+    auth_type: str = "bearer"           # bearer | sigv4 | none
+
+class ProviderRegistry(BaseModel):
+    """Config-driven provider table. New providers = new entries here, zero code."""
+    providers: Dict[str, ProviderConfig] = Field(default_factory=lambda: {
+        "openrouter": ProviderConfig(
+            base_url="https://openrouter.ai/api/v1",
+            api_key_env="OPENROUTER_API_KEY",
+        ),
+        "bedrock": ProviderConfig(
+            base_url="",            # SigV4 path — handled by existing Bedrock client
+            auth_type="sigv4",
+        ),
+        # Future — zero code to add:
+        # "doubleword": ProviderConfig(base_url="https://api.doubleword.ai/v1", api_key_env="DOUBLEWORD_API_KEY"),
+        # "sakana":     ProviderConfig(base_url="https://api.sakana.ai/v1",     api_key_env="SAKANA_API_KEY"),
+        # "ollama":     ProviderConfig(base_url="http://localhost:11434/v1",     api_key_env=None, auth_type="none"),
+        # "vllm_local": ProviderConfig(base_url="http://localhost:8000/v1",      api_key_env=None, auth_type="none"),
+    })
+
+class EmbeddingModelConfig(BaseModel):
+    provider: str = "openrouter"
+    model: str = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+    dimensions: int = 2048
+```
+
+`AppSettings` gains two new fields with backward-compat defaults:
+```python
+providers: ProviderRegistry = Field(default_factory=ProviderRegistry)
+embedding: EmbeddingModelConfig = Field(default_factory=EmbeddingModelConfig)
+```
+
+**Model name convention (once implemented):**
+`AgentModelConfig.model` strings use `provider/model-id` format:
+```yaml
+agent_models:
+  blackhat:    openrouter/anthropic/claude-opus-4-8   # today's value, explicit
+  red_team:    ollama/llama3.1:70b                    # future local model
+  tester:      vllm_local/mistral-7b-instruct         # future cloud-hosted open weight
+```
+Empty string (`""`) continues to fall through to `LLM_PROVIDER` env-var default — full backward compat.
+
+**`LLMClient.generate()` dispatch (once implemented):**
+```python
+provider_name, _, model_id = model.partition("/")
+cfg = settings.providers.providers.get(provider_name)
+if cfg.auth_type == "sigv4":
+    # existing Bedrock path, unchanged
+else:
+    litellm.completion(model=f"openai/{model_id}", api_base=cfg.base_url, ...)
+```
+Special case for Responses API models (o3, o4-mini) — single `_needs_responses_api()` dispatch inside `generate()`, ~20 lines, callers unchanged.
+
+**Embeddings (`chatbot/modules/embeddings.py`):**
+`DEFAULT_EMBEDDING_MODEL` and `EMBEDDING_URL` become reads from `settings.embedding` instead of module-level constants. `get_embedding()` signature unchanged — callers unaffected.
+
+**Reasoning:**
+All the target providers (OpenRouter, Doubleword, Sakana.ai, Ollama, vLLM) expose OpenAI-compatible `/v1/chat/completions`. LiteLLM routes to any of them via `api_base` + `api_key` — the integration cost per new provider is config, not code. The current `LLMProvider` enum in `llm_client.py` hardcodes providers as Python, which requires a code change for every new one. Moving to a registry flips that: the enum stays for the two live providers (OpenRouter, Bedrock) during transition and can be removed once all callers use the registry path. The embedding model is currently hardcoded as a module-level constant in `embeddings.py` with no settings entry — consolidating it into `AppSettings` means the Config tab and `user_config.json` can expose it alongside agent model routing.
+
+**What is NOT changing now:**
+- `LLMProvider` enum — stays, two active values (openrouter, bedrock)
+- `PROVIDER_MODELS` dict in `llm_client.py` — stays
+- `ProviderConfig` dataclass in `llm_client.py` — stays (different class from the new settings one; rename deferred)
+- All critic, stage, and harness code — untouched
+- All existing env-var defaults — preserved
+
+**Alternatives rejected:**
+- Implement immediately: no current provider gap; adding infrastructure ahead of need is premature. The design is clear enough to implement correctly when the first new provider is needed.
+- Single flat `providers.yaml` file separate from settings: splits config into two sources and breaks `user_config.json` / Config tab integration. Everything in `AppSettings` is the single source of truth.
+- Wrap each provider in its own adapter class: over-engineered for what is a URL + key difference. LiteLLM already abstracts the HTTP layer; adapters add indirection with no benefit.
+
+---
+
 ## 2026-06-28 — Omnigent meta-harness assessment; TA CLI consideration
 
 ### 1. Omnigent not integrated into TA — patterns deferred to scale-out phase
