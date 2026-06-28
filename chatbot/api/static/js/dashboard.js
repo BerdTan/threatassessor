@@ -3046,15 +3046,26 @@ class Dashboard {
                         smRow.innerHTML = `<span style="color:#a855f7; font-size:0.8rem;">↳</span>`
                             + `<span style="font-weight:600;">sm${n}</span>`
                             + `<span id="sm-chain-delta-${a.name}-${n}" style="color:#64748b; font-size:0.68rem;">loading…</span>`
+                            + `<span style="margin-left:auto; display:flex; gap:0.3rem;">`
+                            + `<button class="sm-chain-tmpl" data-arch="${a.name}" data-n="${n}"
+                                style="background:transparent; border:1px solid #a855f733; color:#a855f7;
+                                       padding:1px 5px; border-radius:3px; font-size:0.62rem; cursor:pointer; white-space:nowrap;"
+                                title="View SM recommended template (annotated MMD)">📋</button>`
                             + `<button class="sm-chain-view" data-arch="${a.name}" data-n="${n}"
-                                style="margin-left:auto; background:transparent; border:1px solid #a855f744; color:#a855f7;
-                                       padding:1px 6px; border-radius:3px; font-size:0.65rem; cursor:pointer; white-space:nowrap;">View</button>`;
+                                style="background:transparent; border:1px solid #a855f744; color:#a855f7;
+                                       padding:1px 6px; border-radius:3px; font-size:0.65rem; cursor:pointer; white-space:nowrap;">View</button>`
+                            + `</span>`;
                         smRow.addEventListener('mouseover', () => smRow.style.background = '#a855f711');
                         smRow.addEventListener('mouseout',  () => smRow.style.background = 'transparent');
                         smRow.querySelector('.sm-chain-view').addEventListener('click', async (e) => {
                             e.stopPropagation();
                             this._closeArchDropdown();
                             await this._loadSmRun(a.name, n);
+                        });
+                        smRow.querySelector('.sm-chain-tmpl').addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            this._closeArchDropdown();
+                            await this._viewSmFile(a.name, n, 'recommended_template.mmd', `✨ SM Recommendation — sm${n}`);
                         });
                         chain.appendChild(smRow);
                         // Load delta inline
@@ -3322,18 +3333,55 @@ class Dashboard {
             'border-radius:8px', 'display:flex', 'align-items:center',
             'gap:0.75rem', 'flex-wrap:wrap', 'font-size:0.8rem',
         ].join(';');
+        const _smBtnStyle = 'padding:0.15rem 0.6rem; border:1px solid #a855f744; background:transparent; color:#a855f7; border-radius:4px; font-size:0.72rem; cursor:pointer; white-space:nowrap;';
         banner.innerHTML = `
             <span style="font-size:1rem;">✨</span>
             <span style="font-weight:700; color:#c4b5fd;">SM Worktree — sm${n}</span>
             <span style="color:var(--text-tertiary);">base: <strong style="color:var(--text-secondary);">${archName}</strong></span>
-            ${deltaHtml ? `<span style="margin-left:auto;">${deltaHtml}</span>` : ''}
-            <button onclick="window.dashboard._loadArchFromReports('${archName}')"
-                style="padding:0.15rem 0.6rem; border:1px solid #a855f744; background:transparent;
-                       color:#a855f7; border-radius:4px; font-size:0.72rem; cursor:pointer; white-space:nowrap;">
-                ← Back to base arch</button>`;
+            ${deltaHtml ? `<span>${deltaHtml}</span>` : ''}
+            <span style="margin-left:auto; display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
+                <button style="${_smBtnStyle}" title="View annotated SM recommendation (with MITRE metadata)"
+                    onclick="window.dashboard._viewSmFile('${archName}', ${n}, 'recommended_template.mmd', '✨ SM Recommendation (annotated)')">
+                    📋 SM recommendation</button>
+                <button style="${_smBtnStyle}" title="View clean architecture MMD used for analysis"
+                    onclick="window.dashboard._viewSmFile('${archName}', ${n}, 'before.mmd', '🏗️ Analysis MMD (clean)')">
+                    🏗️ Analysis MMD</button>
+                <button onclick="window.dashboard._loadArchFromReports('${archName}')"
+                    style="${_smBtnStyle}">← Back to base arch</button>
+            </span>`;
 
         const tabContent = document.getElementById('tab-content');
         if (tabContent) tabContent.insertBefore(banner, tabContent.firstChild);
+    }
+
+    async _viewSmFile(archName, n, filename, title) {
+        // Fetch a file from an SM subfolder and display it in the right pane.
+        // For MMD files renders the raw text in a scrollable code block.
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            const r = await fetch(
+                `/api/v1/reports/${encodeURIComponent(archName)}/sm/${n}/files/${encodeURIComponent(filename)}`,
+                { headers: { 'TM-API-KEY': apiKey } }
+            );
+            if (!r.ok) throw new Error(`${filename} not found (${r.status})`);
+            const text = await r.text();
+
+            if (filename.endsWith('.mmd')) {
+                const lineCount = text.split('\n').length;
+                this.showRightPane(title, `
+                    <div style="font-size:0.72rem; color:var(--text-tertiary); margin-bottom:0.5rem;">
+                        ${filename} · ${lineCount} lines · sm${n}/${archName}
+                    </div>
+                    <pre style="font-size:0.72rem; line-height:1.6; white-space:pre-wrap; word-break:break-word;
+                                background:var(--nav-hover-bg); border-radius:6px; padding:0.75rem;
+                                border:1px solid var(--border-color); max-height:70vh; overflow-y:auto;
+                                font-family:monospace; color:var(--text-color);">${this._esc(text)}</pre>`);
+            } else {
+                this.showRightPane(title, `<pre style="font-size:0.75rem; white-space:pre-wrap;">${this._esc(text)}</pre>`);
+            }
+        } catch (e) {
+            this.showRightPane(title, `<p style="color:var(--danger-color); padding:1rem;">❌ ${e.message}</p>`);
+        }
     }
 
     async _loadSmChainDelta(archName, n) {
