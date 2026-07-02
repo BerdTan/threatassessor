@@ -639,6 +639,95 @@ async def add_sm_action_to_adr(
     return {"status": "ok", "entry_id": entry_id, "architecture": architecture_name}
 
 
+@router.post("/reports/{architecture_name}/add-all-to-adr")
+async def add_all_sm_actions_to_adr(
+    architecture_name: str,
+    _: str = Depends(verify_api_key),
+):
+    """Batch-append all non-antipattern ScrumMaster actions to 10_adr_report.md.
+
+    Reads 08_scrum_master.json, skips items where is_antipattern is True,
+    skips duplicates (action text already present in ADR), and appends the
+    rest as SM-ADR-XX entries in a single atomic write.
+
+    Returns:
+        {"status":"ok","added":N,"skipped_antipattern":M,"skipped_duplicate":K,"entry_ids":[...]}
+    """
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+
+    report_dir = get_report_dir() / architecture_name
+    sm_path  = report_dir / "08_scrum_master.json"
+    adr_path = report_dir / "10_adr_report.md"
+
+    if not sm_path.exists():
+        raise HTTPException(status_code=404, detail="08_scrum_master.json not found — run Expert Review first")
+
+    sm_data = json.loads(sm_path.read_text(encoding="utf-8"))
+    action_plan = sm_data.get("action_plan") or []
+
+    existing = adr_path.read_text(encoding="utf-8") if adr_path.exists() else ""
+    existing_indices = [int(m) for m in re.findall(r"SM-ADR-(\d+)", existing)]
+    next_idx = (max(existing_indices) + 1) if existing_indices else 1
+
+    import datetime
+    today = datetime.date.today().isoformat()
+
+    batch_buffer = ""
+    entry_ids: list[str] = []
+    skipped_antipattern = 0
+    skipped_duplicate = 0
+
+    for item in action_plan:
+        if item.get("is_antipattern") is True:
+            skipped_antipattern += 1
+            continue
+        action = str(item.get("action", "")).strip()
+        if not action:
+            continue
+        if action[:60].lower() in existing.lower():
+            skipped_duplicate += 1
+            continue
+
+        rationale  = str(item.get("rationale",  "")).strip()
+        priority   = str(item.get("priority",   "high")).strip()
+        first_step = str(item.get("first_step", "")).strip()
+        source_techniques = [str(t).strip() for t in (item.get("source_techniques") or []) if t]
+        source_controls   = [str(c).strip() for c in (item.get("source_controls")   or []) if c]
+
+        entry_id = f"SM-ADR-{next_idx:02d}"
+        tech_line = (f"**Source techniques:** {', '.join(source_techniques)}  \n" if source_techniques else "")
+        ctrl_line = (f"**Source controls:** {', '.join(source_controls)}  \n"     if source_controls   else "")
+
+        batch_buffer += (
+            f"\n\n## {entry_id} [{priority.upper()}] — {action}\n\n"
+            f"**Status:** OPEN — added via ScrumMaster action plan  \n"
+            f"**Added:** {today}  \n"
+            f"**Source:** ScrumMaster harmony synthesis  \n"
+            + tech_line + ctrl_line + "\n"
+            + (f"**Context:** {rationale}\n\n" if rationale else "")
+            + (f"**First step:** {first_step}\n\n" if first_step else "")
+            + "_→ Run SM rerun (✨ Re-run with SM) to verify this control is resolved._\n\n---\n"
+        )
+        entry_ids.append(entry_id)
+        existing += batch_buffer  # keep running text updated for dedup check on subsequent items
+        next_idx += 1
+
+    if batch_buffer:
+        with open(adr_path, "a", encoding="utf-8") as f:
+            f.write(batch_buffer)
+
+    return {
+        "status": "ok",
+        "added": len(entry_ids),
+        "skipped_antipattern": skipped_antipattern,
+        "skipped_duplicate": skipped_duplicate,
+        "entry_ids": entry_ids,
+        "architecture": architecture_name,
+    }
+
+
 @router.post("/reports/{architecture_name}/rescore-aivss")
 async def rescore_aivss(
     architecture_name: str,

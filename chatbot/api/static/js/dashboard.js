@@ -397,16 +397,19 @@ class Dashboard {
             tab.classList.toggle('active', tab.dataset.tab === tabName);
         });
 
-        const isConfig   = tabName === 'config';
-        const isHarness  = tabName === 'harness';
-        const uploadContainer  = document.getElementById('upload-form-container');
-        const tabContent       = document.getElementById('tab-content');
-        const configWrapper    = document.getElementById('config-pane-wrapper');
-        const harnessWrapper   = document.getElementById('harness-pane-wrapper');
+        const isConfig     = tabName === 'config';
+        const isHarness    = tabName === 'harness';
+        const isWorkspace  = tabName === 'workspace';
+        const uploadContainer    = document.getElementById('upload-form-container');
+        const tabContent         = document.getElementById('tab-content');
+        const configWrapper      = document.getElementById('config-pane-wrapper');
+        const harnessWrapper     = document.getElementById('harness-pane-wrapper');
+        const workspaceWrapper   = document.getElementById('workspace-pane-wrapper');
 
         // Hide all full-pane wrappers first, then show the right one
-        if (configWrapper)  configWrapper.style.display  = 'none';
-        if (harnessWrapper) harnessWrapper.style.display = 'none';
+        if (configWrapper)    configWrapper.style.display    = 'none';
+        if (harnessWrapper)   harnessWrapper.style.display   = 'none';
+        if (workspaceWrapper) workspaceWrapper.style.display = 'none';
 
         if (isConfig) {
             if (uploadContainer) uploadContainer.style.display = 'none';
@@ -416,6 +419,10 @@ class Dashboard {
             if (uploadContainer) uploadContainer.style.display = 'none';
             if (tabContent)      tabContent.style.display      = 'none';
             if (harnessWrapper)  { harnessWrapper.style.display = 'flex'; harnessWrapper.style.flexDirection = 'column'; }
+        } else if (isWorkspace) {
+            if (uploadContainer)  uploadContainer.style.display  = 'none';
+            if (tabContent)       tabContent.style.display       = 'none';
+            if (workspaceWrapper) { workspaceWrapper.style.display = 'flex'; workspaceWrapper.style.flexDirection = 'column'; }
         } else {
             if (this.analysisData) {
                 if (uploadContainer) uploadContainer.style.display = 'none';
@@ -441,7 +448,8 @@ class Dashboard {
             'reports': 'Reports',
             'raw-data': 'Raw Data',
             'insights': 'Insights',
-            'config': 'Configuration'
+            'config': 'Configuration',
+            'workspace': 'Workspace',
         };
         this.updateStatusMessage(`📂 Viewing ${tabNames[tabName] || tabName}`);
 
@@ -449,6 +457,8 @@ class Dashboard {
             this.loadConfigTab();
         } else if (isHarness) {
             this.loadHarnessTab();
+        } else if (isWorkspace) {
+            this.loadWorkspaceTab();
         } else if (this.analysisData) {
             this.loadTabData(tabName);
         }
@@ -6680,6 +6690,553 @@ class Dashboard {
         ];
     }
 
+    // ── Workspace Tab ─────────────────────────────────────────────────────────
+
+    async loadWorkspaceTab() {
+        const container = document.getElementById('workspace-content');
+        if (!container) return;
+
+        // If re-entering from the refresh button, briefly dim the existing content
+        // so the user gets feedback without a full blank-page flash.
+        const existing = container.querySelector('#workspace-cards');
+        if (existing) existing.style.opacity = '0.45';
+
+        // Fetch workspaces and available architectures in parallel (always fresh)
+        let workspaces = [], availableArchs = [];
+        try {
+            const [wsResp, archResp] = await Promise.all([
+                fetch('/api/v1/workspaces'),
+                fetch('/api/v1/reports'),
+            ]);
+            if (wsResp.ok)   { const d = await wsResp.json();   workspaces    = d.workspaces || []; }
+            if (archResp.ok) { const d = await archResp.json(); availableArchs = d.architectures || []; }
+        } catch (e) {
+            container.innerHTML = `<div style="color:var(--error-color); padding:1rem;">Failed to load workspace data: ${e.message}</div>`;
+            return;
+        }
+
+        this._workspacesCache     = workspaces;
+        this._availableArchsCache = availableArchs;
+
+        container.innerHTML = this._renderWorkspaceTab(workspaces, availableArchs);
+    }
+
+    _renderWorkspaceTab(workspaces, availableArchs) {
+        const createForm = this._renderWorkspaceCreateForm(availableArchs);
+        const cards = workspaces.length
+            ? workspaces.map(ws => this._renderWorkspaceCard(ws)).join('')
+            : `<div style="color:var(--text-tertiary); font-size:0.875rem; padding:1rem 0;">No workspaces yet. Create one below to group related architectures.</div>`;
+
+        return `
+        <div style="display:flex; gap:1.5rem; height:100%; min-height:0;">
+            <!-- Left panel: list + create form -->
+            <div style="flex:0 0 420px; display:flex; flex-direction:column; gap:1rem; overflow-y:auto;">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <h2 style="margin:0; font-size:1.125rem; font-weight:700;">🏢 Workspaces</h2>
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <span style="font-size:0.78rem; color:var(--text-tertiary);">${workspaces.length} workspace${workspaces.length !== 1 ? 's' : ''} · ${availableArchs.length} arch${availableArchs.length !== 1 ? 's' : ''} available</span>
+                        <button onclick="window.dashboard.loadWorkspaceTab()"
+                            title="Refresh — pick up newly analysed architectures"
+                            style="padding:0.15rem 0.5rem; border:1px solid var(--border-color); border-radius:5px; background:transparent; color:var(--text-tertiary); font-size:0.78rem; cursor:pointer; transition:all 0.12s; line-height:1.4;"
+                            onmouseover="this.style.borderColor='var(--primary-color)';this.style.color='var(--primary-color)'"
+                            onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'">↻ Refresh</button>
+                    </div>
+                </div>
+                <div id="workspace-cards">${cards}</div>
+                ${createForm}
+            </div>
+            <!-- Right panel: chat area (populated when workspace is opened) -->
+            <div id="workspace-chat-panel" style="flex:1; min-width:0; border-left:1px solid var(--border-color); padding-left:1.5rem; display:flex; flex-direction:column;">
+                <div style="display:flex; flex:1; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:0.875rem; text-align:center; padding:2rem;">
+                    <div>
+                        <div style="font-size:2rem; margin-bottom:0.5rem;">💬</div>
+                        <div>Select a workspace and click <strong>Open Chat</strong> to start a conversation with TA-Wiz</div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    _renderWorkspaceCard(ws) {
+        const agg = ws.aggregate || {};
+        const risk = agg.avg_risk_score != null ? `risk ${agg.avg_risk_score}` : 'risk —';
+        const def  = agg.avg_defensibility != null ? `def ${Math.round(agg.avg_defensibility * 100)}%` : '';
+        const aivss = agg.avg_aivss != null
+            ? `<span style="font-size:0.72rem; padding:1px 6px; border-radius:4px; background:var(--warning-color)18; color:var(--warning-color); border:1px solid var(--warning-color)44;">AIVSS ${agg.avg_aivss.toFixed(1)}</span>`
+            : '';
+        const redesign = agg.redesign_count > 0
+            ? `<span style="font-size:0.72rem; padding:1px 6px; border-radius:4px; background:var(--error-color)18; color:var(--error-color); border:1px solid var(--error-color)44;">⚠ ${agg.redesign_count} redesign</span>`
+            : '';
+        const gaps = (agg.common_controls_missing || []).slice(0, 4).join(', ');
+        const chips = (ws.architectures || []).map(a =>
+            `<span onclick="window.dashboard._loadArchFromReports('${a}')"
+                style="display:inline-block; padding:1px 8px; border-radius:12px; border:1px solid var(--border-color); font-size:0.72rem; cursor:pointer; background:var(--nav-hover-bg); color:var(--text-secondary); transition:all 0.12s;"
+                onmouseover="this.style.borderColor='var(--primary-color)';this.style.color='var(--primary-color)'"
+                onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-secondary)'">${a}</span>`
+        ).join(' ');
+
+        const domainBadge = ws.domain
+            ? `<span style="font-size:0.7rem; color:var(--text-tertiary); padding:1px 6px; border-radius:4px; border:1px solid var(--border-color);">${ws.domain}</span>`
+            : '';
+
+        return `<div style="border:1px solid var(--border-color); border-radius:10px; padding:1rem; background:var(--card-bg); margin-bottom:0.75rem;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.4rem;">
+                <div>
+                    <span style="font-weight:700; font-size:0.9375rem;">${ws.name}</span>
+                    ${domainBadge}
+                </div>
+                <div style="display:flex; gap:0.35rem; flex-shrink:0;">
+                    <button onclick="window.dashboard._editWorkspace('${ws.name}')"
+                        style="padding:0.1rem 0.5rem; border:1px solid var(--border-color); border-radius:4px; background:transparent; color:var(--text-tertiary); font-size:0.72rem; cursor:pointer;"
+                        title="Edit workspace">✏️</button>
+                    <button onclick="window.dashboard._deleteWorkspace('${ws.name}')"
+                        style="padding:0.1rem 0.5rem; border:1px solid var(--border-color); border-radius:4px; background:transparent; color:var(--text-tertiary); font-size:0.72rem; cursor:pointer;"
+                        title="Delete workspace">🗑</button>
+                </div>
+            </div>
+            ${ws.description ? `<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.4rem;">${ws.description}</div>` : ''}
+            <div style="font-size:0.78rem; color:var(--text-tertiary); margin-bottom:0.35rem;">${ws.architectures.length} arch · ${risk}${def ? ' · ' + def : ''}${aivss ? ' · ' + aivss : ''}${redesign ? ' ' + redesign : ''}</div>
+            ${gaps ? `<div style="font-size:0.72rem; color:var(--text-tertiary); margin-bottom:0.5rem;">Common gaps: ${gaps}${(agg.common_controls_missing||[]).length > 4 ? ' +' + ((agg.common_controls_missing||[]).length - 4) + ' more' : ''}</div>` : ''}
+            <div style="display:flex; flex-wrap:wrap; gap:0.3rem; align-items:center; margin-bottom:0.6rem;">${chips}</div>
+            <div style="text-align:right;">
+                <button onclick="window.dashboard._openWorkspaceChat('${ws.name}')"
+                    style="padding:0.25rem 0.75rem; border:1px solid #a855f744; border-radius:5px; background:#a855f708; color:#a855f7; font-size:0.78rem; cursor:pointer; font-weight:600; transition:all 0.15s;"
+                    onmouseover="this.style.background='#a855f718'" onmouseout="this.style.background='#a855f708'">
+                    💬 Open Chat →</button>
+            </div>
+        </div>`;
+    }
+
+    _renderWorkspaceCreateForm(availableArchs) {
+        const archCheckboxes = availableArchs.map(a => {
+            const analysedAt = a.analysed_at ? new Date(a.analysed_at).toLocaleDateString() : '';
+            const risk = a.risk_score != null ? `risk ${a.risk_score}` : '';
+            const aivss = a.aivss_severity ? ` · AIVSS ${a.aivss_severity}` : '';
+            return `<label style="display:flex; align-items:center; gap:0.4rem; padding:0.3rem 0; cursor:pointer; font-size:0.8rem;">
+                <input type="checkbox" name="ws-arch" value="${a.name}" style="cursor:pointer;">
+                <span style="flex:1;">${a.name}</span>
+                <span style="font-size:0.7rem; color:var(--text-tertiary);">${risk}${aivss}${analysedAt ? ' · ' + analysedAt : ''}</span>
+            </label>`;
+        }).join('');
+
+        return `<div id="ws-create-form" style="border:1px dashed var(--border-color); border-radius:10px; padding:1rem; background:var(--nav-hover-bg);">
+            <div style="font-size:0.875rem; font-weight:700; margin-bottom:0.75rem; color:var(--text-color);">+ Create Workspace</div>
+            <input id="ws-name-input" type="text" placeholder="Name (letters, digits, _ -)" maxlength="80"
+                style="width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-color); font-size:0.8rem; margin-bottom:0.5rem;">
+            <input id="ws-desc-input" type="text" placeholder="Description (optional)" maxlength="300"
+                style="width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-color); font-size:0.8rem; margin-bottom:0.5rem;">
+            <input id="ws-domain-input" type="text" placeholder="Domain (e.g. financial, healthcare)" maxlength="80"
+                style="width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-color); font-size:0.8rem; margin-bottom:0.5rem;">
+            <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:0.4rem; font-weight:600;">Select architectures:</div>
+            <div id="ws-arch-checkboxes" style="max-height:180px; overflow-y:auto; border:1px solid var(--border-color); border-radius:6px; padding:0.4rem 0.6rem; background:var(--card-bg); margin-bottom:0.6rem;">
+                ${archCheckboxes || '<span style="color:var(--text-tertiary); font-size:0.78rem;">No architectures available — run an analysis first.</span>'}
+            </div>
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+                <button onclick="window.dashboard._submitCreateWorkspace()"
+                    style="padding:0.3rem 0.9rem; border:none; border-radius:6px; background:var(--primary-color); color:#fff; font-size:0.8rem; cursor:pointer; font-weight:600;">Create</button>
+            </div>
+            <div id="ws-create-msg" style="font-size:0.75rem; margin-top:0.4rem;"></div>
+        </div>`;
+    }
+
+    async _submitCreateWorkspace() {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const name   = (document.getElementById('ws-name-input')?.value  || '').trim();
+        const desc   = (document.getElementById('ws-desc-input')?.value  || '').trim();
+        const domain = (document.getElementById('ws-domain-input')?.value || '').trim();
+        const checked = [...document.querySelectorAll('input[name="ws-arch"]:checked')].map(el => el.value);
+        const msg = document.getElementById('ws-create-msg');
+
+        if (!name) { if (msg) msg.style.color = 'var(--error-color)', msg.textContent = 'Name is required.'; return; }
+        if (!checked.length) { if (msg) msg.style.color = 'var(--error-color)', msg.textContent = 'Select at least one architecture.'; return; }
+        if (!/^[a-zA-Z0-9_\-]+$/.test(name)) { if (msg) msg.style.color = 'var(--error-color)', msg.textContent = 'Name must contain only letters, digits, _ or -.'; return; }
+
+        if (msg) { msg.style.color = 'var(--text-tertiary)'; msg.textContent = 'Creating…'; }
+        try {
+            const r = await fetch('/api/v1/workspaces', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'TM-API-KEY': apiKey },
+                body: JSON.stringify({ name, description: desc, domain, architectures: checked }),
+            });
+            if (r.ok) {
+                if (msg) { msg.style.color = 'var(--secondary-color)'; msg.textContent = `✅ Workspace '${name}' created.`; }
+                setTimeout(() => this.loadWorkspaceTab(), 600);
+            } else {
+                const e = await r.json().catch(() => ({}));
+                if (msg) { msg.style.color = 'var(--error-color)'; msg.textContent = `❌ ${e.detail || 'Create failed'}`; }
+            }
+        } catch (e) {
+            if (msg) { msg.style.color = 'var(--error-color)'; msg.textContent = `❌ ${e.message}`; }
+        }
+    }
+
+    async _deleteWorkspace(name) {
+        if (!confirm(`Delete workspace '${name}'? (Architecture reports are not affected.)`)) return;
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            const r = await fetch(`/api/v1/workspaces/${encodeURIComponent(name)}`, {
+                method: 'DELETE', headers: { 'TM-API-KEY': apiKey },
+            });
+            if (r.ok) this.loadWorkspaceTab();
+            else alert(`Delete failed: ${(await r.json().catch(()=>({}))).detail || 'unknown error'}`);
+        } catch (e) { alert(`Delete failed: ${e.message}`); }
+    }
+
+    async _editWorkspace(name) {
+        const ws = (this._workspacesCache || []).find(w => w.name === name);
+        if (!ws) return;
+        const availableArchs = this._availableArchsCache || [];
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:#00000088;z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+        const archCheckboxes = availableArchs.map(a =>
+            `<label style="display:flex;align-items:center;gap:0.4rem;padding:0.25rem 0;cursor:pointer;font-size:0.8rem;">
+                <input type="checkbox" class="edit-ws-arch" value="${a.name}" ${(ws.architectures||[]).includes(a.name) ? 'checked' : ''}>
+                <span>${a.name}</span>
+            </label>`
+        ).join('');
+
+        overlay.innerHTML = `<div style="background:var(--card-bg);border-radius:12px;padding:1.5rem;width:400px;max-width:90vw;max-height:80vh;overflow-y:auto;border:1px solid var(--border-color);">
+            <div style="font-size:1rem;font-weight:700;margin-bottom:1rem;">✏️ Edit: ${name}</div>
+            <input id="edit-ws-desc" type="text" value="${ws.description||''}" placeholder="Description" maxlength="300"
+                style="width:100%;box-sizing:border-box;padding:0.4rem 0.6rem;border:1px solid var(--border-color);border-radius:6px;background:var(--main-bg);color:var(--text-color);font-size:0.8rem;margin-bottom:0.5rem;">
+            <input id="edit-ws-domain" type="text" value="${ws.domain||''}" placeholder="Domain" maxlength="80"
+                style="width:100%;box-sizing:border-box;padding:0.4rem 0.6rem;border:1px solid var(--border-color);border-radius:6px;background:var(--main-bg);color:var(--text-color);font-size:0.8rem;margin-bottom:0.5rem;">
+            <div style="font-size:0.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.4rem;">Architectures:</div>
+            <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border-color);border-radius:6px;padding:0.4rem 0.6rem;background:var(--main-bg);margin-bottom:0.75rem;">
+                ${archCheckboxes}
+            </div>
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+                <button onclick="this.closest('div[style*=fixed]').remove()"
+                    style="padding:0.3rem 0.75rem;border:1px solid var(--border-color);border-radius:6px;background:transparent;color:var(--text-color);font-size:0.8rem;cursor:pointer;">Cancel</button>
+                <button id="edit-ws-save"
+                    style="padding:0.3rem 0.9rem;border:none;border-radius:6px;background:var(--primary-color);color:#fff;font-size:0.8rem;cursor:pointer;font-weight:600;">Save</button>
+            </div>
+            <div id="edit-ws-msg" style="font-size:0.75rem;margin-top:0.4rem;"></div>
+        </div>`;
+
+        document.body.appendChild(overlay);
+        overlay.querySelector('#edit-ws-save').addEventListener('click', async () => {
+            const apiKey = localStorage.getItem('tm_api_key') || '';
+            const desc   = overlay.querySelector('#edit-ws-desc')?.value.trim() ?? '';
+            const domain = overlay.querySelector('#edit-ws-domain')?.value.trim() ?? '';
+            const archs  = [...overlay.querySelectorAll('.edit-ws-arch:checked')].map(el => el.value);
+            const msg    = overlay.querySelector('#edit-ws-msg');
+            if (!archs.length) { msg.style.color='var(--error-color)'; msg.textContent='Select at least one architecture.'; return; }
+            try {
+                const r = await fetch(`/api/v1/workspaces/${encodeURIComponent(name)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'TM-API-KEY': apiKey },
+                    body: JSON.stringify({ description: desc, domain, architectures: archs }),
+                });
+                if (r.ok) { overlay.remove(); this.loadWorkspaceTab(); }
+                else { const e = await r.json().catch(()=>({})); msg.style.color='var(--error-color)'; msg.textContent=`❌ ${e.detail||'Save failed'}`; }
+            } catch (e) { msg.style.color='var(--error-color)'; msg.textContent=`❌ ${e.message}`; }
+        });
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    }
+
+    // ── TA-Wiz Chat ──────────────────────────────────────────────────────────
+
+    _openWorkspaceChat(workspaceName) {
+        const panel = document.getElementById('workspace-chat-panel');
+        if (!panel) return;
+
+        const ws = (this._workspacesCache || []).find(w => w.name === workspaceName);
+        const archs = ws ? (ws.architectures || []) : [];
+
+        // Per-workspace history and selected-arch state
+        if (!this._taWizHistory) this._taWizHistory = {};
+        if (!this._taWizHistory[workspaceName]) this._taWizHistory[workspaceName] = [];
+        if (!this._taWizSelected) this._taWizSelected = {};
+        if (!this._taWizSelected[workspaceName]) this._taWizSelected[workspaceName] = new Set(archs);
+
+        const suggested = this._taWizSuggestedPrompts(ws || { architectures: archs });
+        const chipHtml = archs.map(a => {
+            const active = this._taWizSelected[workspaceName].has(a);
+            return `<span id="tawiz-chip-${workspaceName.replace(/\W/g,'_')}-${a.replace(/\W/g,'_')}"
+                onclick="window.dashboard._taWizToggleArch('${workspaceName}','${a}')"
+                style="display:inline-block; padding:2px 10px; border-radius:12px; border:1px solid ${active ? 'var(--primary-color)' : 'var(--border-color)'}; font-size:0.72rem; cursor:pointer; background:${active ? 'var(--primary-color)1a' : 'var(--nav-hover-bg)'}; color:${active ? 'var(--primary-color)' : 'var(--text-tertiary)'}; transition:all 0.12s; user-select:none;"
+                title="${active ? 'Click to exclude from next query' : 'Click to include in next query'}">${active ? '✓' : '✗'} ${a}</span>`;
+        }).join(' ');
+
+        const suggHtml = suggested.map((s, i) =>
+            `<button onclick="window.dashboard._taWizUseSuggestion('${workspaceName}','${s.replace(/'/g,"\\'")}')"
+                style="font-size:0.75rem; padding:0.25rem 0.6rem; border:1px solid var(--border-color); border-radius:16px; background:var(--nav-hover-bg); color:var(--text-secondary); cursor:pointer; transition:all 0.12s; text-align:left;"
+                onmouseover="this.style.borderColor='var(--primary-color)';this.style.color='var(--primary-color)'"
+                onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-secondary)'">${s}</button>`
+        ).join('');
+
+        panel.innerHTML = `
+        <div style="display:flex; flex-direction:column; height:100%; min-height:0;">
+            <!-- Header -->
+            <div style="flex-shrink:0; margin-bottom:0.75rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                    <span style="font-weight:700; font-size:0.9375rem;">💬 TA-Wiz — ${workspaceName}</span>
+                    <div style="display:flex; gap:0.4rem;">
+                        <button onclick="window.dashboard._taWizNewConversation('${workspaceName}')"
+                            style="padding:0.2rem 0.6rem; font-size:0.72rem; border:1px solid var(--border-color); border-radius:4px; background:transparent; color:var(--text-tertiary); cursor:pointer;">
+                            ↺ New conversation</button>
+                        <button onclick="document.getElementById('workspace-chat-panel').innerHTML='<div style=\\'display:flex;flex:1;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:0.875rem;text-align:center;padding:2rem;\\'><div><div style=\\'font-size:2rem;margin-bottom:0.5rem;\\'>💬</div><div>Select a workspace and click <strong>Open Chat</strong> to start a conversation with TA-Wiz</div></div></div>'"
+                            style="padding:0.2rem 0.5rem; font-size:0.72rem; border:1px solid var(--border-color); border-radius:4px; background:transparent; color:var(--text-tertiary); cursor:pointer;" title="Close chat">✕</button>
+                    </div>
+                </div>
+                <div style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:0.35rem;">Sources in context (click to toggle):</div>
+                <div id="tawiz-chips-${workspaceName.replace(/\W/g,'_')}" style="display:flex; flex-wrap:wrap; gap:0.3rem;">${chipHtml}</div>
+            </div>
+            <!-- Suggested prompts -->
+            <div id="tawiz-suggestions-${workspaceName.replace(/\W/g,'_')}" style="flex-shrink:0; display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.75rem; padding-bottom:0.75rem; border-bottom:1px solid var(--border-color);">
+                <span style="font-size:0.72rem; color:var(--text-tertiary); align-self:center;">Try:</span>
+                ${suggHtml}
+            </div>
+            <!-- Messages -->
+            <div id="tawiz-messages-${workspaceName.replace(/\W/g,'_')}" style="flex:1; overflow-y:auto; padding:0.5rem 0; display:flex; flex-direction:column; gap:0.75rem;"></div>
+            <!-- Input -->
+            <div style="flex-shrink:0; display:flex; gap:0.5rem; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-color);">
+                <textarea id="tawiz-input-${workspaceName.replace(/\W/g,'_')}"
+                    placeholder="Ask about this workspace…"
+                    style="flex:1; padding:0.5rem 0.65rem; border:1px solid var(--border-color); border-radius:6px; resize:vertical; min-height:52px; max-height:120px; font-size:0.8125rem; background:var(--card-bg); color:var(--text-color); line-height:1.4;"
+                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();window.dashboard._taWizSend('${workspaceName}');}"></textarea>
+                <button onclick="window.dashboard._taWizSend('${workspaceName}')"
+                    style="align-self:flex-end; padding:0.5rem 1.1rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:0.8125rem; white-space:nowrap;">Send →</button>
+            </div>
+        </div>`;
+
+        // Replay existing history
+        const hist = this._taWizHistory[workspaceName];
+        hist.forEach(msg => this._taWizAppendBubble(workspaceName, msg.role, msg.content));
+    }
+
+    _taWizSuggestedPrompts(ws) {
+        const archs       = (ws && ws.architectures) || [];
+        const agg         = (ws && ws.aggregate)     || {};
+        const details     = (ws && ws.member_details) || [];
+        const n2          = archs.slice(0, 2).join(' and ');
+        const prompts     = [];
+
+        // 1. Redesign signal — surfaces the cross-arch finding that is hardest to
+        //    spot from tabs (SM tab is per-arch only; no workspace-level summary exists)
+        const redesignNames = details
+            .filter(d => d.redesign_signal)
+            .map(d => d.name);
+        if (redesignNames.length > 0) {
+            prompts.push(
+                `${redesignNames[0]} has a redesign signal — what are the structural blockers ` +
+                `and which controls are ineffective until the architecture is changed?`
+            );
+        }
+
+        // 2. Residual risk gap — per-threat residuals after controls are in the JSON but
+        //    never shown side-by-side in any tab; this comparison requires correlation
+        if (archs.length >= 2) {
+            prompts.push(
+                `Compare the residual risk per threat category across ${n2} after all ` +
+                `recommended controls are applied — where does the gap remain?`
+            );
+        }
+
+        // 3. Shared entry technique — AP entry nodes + techniques exist in Attacks tab
+        //    per-arch but cross-arch correlation is not surfaced anywhere in the UI
+        prompts.push(
+            `Which MITRE techniques appear as entry points across all architectures in this ` +
+            `workspace, and what single control would block the most of them?`
+        );
+
+        // 4. Control sequencing — not in any tab; SM actions + ADR are per-arch
+        if (archs.length >= 2) {
+            const gaps = (agg.common_controls_missing || []).slice(0, 3);
+            const gapStr = gaps.length ? gaps.join(', ') : 'the shared control gaps';
+            prompts.push(
+                `If we can only implement two controls this sprint across the whole workspace, ` +
+                `which two give the best combined risk reduction and why — considering ${gapStr}?`
+            );
+        }
+
+        // 5. Single-arch deep-dive (only when multi-arch) — ADR walkthrough is per-arch
+        //    in the Threat Model tab but comparing ADR decisions cross-arch requires chat
+        if (archs.length >= 3) {
+            prompts.push(
+                `Which architecture in this workspace has the weakest zero-trust posture and ` +
+                `what is the highest-priority hop that lacks isolate or respond controls?`
+            );
+        }
+
+        return prompts.slice(0, 4);  // cap at 4 to keep the panel compact
+    }
+
+    _taWizToggleArch(workspaceName, archName) {
+        if (!this._taWizSelected) this._taWizSelected = {};
+        if (!this._taWizSelected[workspaceName]) {
+            const ws = (this._workspacesCache || []).find(w => w.name === workspaceName);
+            this._taWizSelected[workspaceName] = new Set(ws ? ws.architectures : []);
+        }
+        const sel = this._taWizSelected[workspaceName];
+        if (sel.has(archName)) sel.delete(archName); else sel.add(archName);
+
+        const safeWs = workspaceName.replace(/\W/g,'_');
+        const safeArch = archName.replace(/\W/g,'_');
+        const chip = document.getElementById(`tawiz-chip-${safeWs}-${safeArch}`);
+        if (chip) {
+            const active = sel.has(archName);
+            chip.style.borderColor  = active ? 'var(--primary-color)' : 'var(--border-color)';
+            chip.style.background   = active ? 'var(--primary-color)1a' : 'var(--nav-hover-bg)';
+            chip.style.color        = active ? 'var(--primary-color)' : 'var(--text-tertiary)';
+            chip.title              = active ? 'Click to exclude from next query' : 'Click to include in next query';
+            chip.textContent        = (active ? '✓ ' : '✗ ') + archName;
+        }
+    }
+
+    _taWizUseSuggestion(workspaceName, text) {
+        const inputId = `tawiz-input-${workspaceName.replace(/\W/g,'_')}`;
+        const inp = document.getElementById(inputId);
+        if (inp) { inp.value = text; inp.focus(); }
+    }
+
+    _taWizNewConversation(workspaceName) {
+        if (!this._taWizHistory) this._taWizHistory = {};
+        this._taWizHistory[workspaceName] = [];
+        const safeWs = workspaceName.replace(/\W/g,'_');
+        const msgs = document.getElementById(`tawiz-messages-${safeWs}`);
+        if (msgs) msgs.innerHTML = '';
+        // Restore suggested prompts
+        const sugg = document.getElementById(`tawiz-suggestions-${safeWs}`);
+        if (sugg) sugg.style.display = 'flex';
+    }
+
+    _taWizAppendBubble(workspaceName, role, content, id) {
+        const safeWs = workspaceName.replace(/\W/g,'_');
+        const container = document.getElementById(`tawiz-messages-${safeWs}`);
+        if (!container) return;
+        const isUser = role === 'user';
+        const div = document.createElement('div');
+        if (id) div.id = id;
+        div.style.cssText = `display:flex; flex-direction:column; align-items:${isUser ? 'flex-end' : 'flex-start'};`;
+        div.innerHTML = `
+            <div style="max-width:90%; padding:0.6rem 0.9rem; border-radius:${isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px'};
+                background:${isUser ? 'var(--primary-color)' : 'var(--card-bg)'};
+                color:${isUser ? '#fff' : 'var(--text-color)'};
+                border:1px solid ${isUser ? 'transparent' : 'var(--border-color)'};
+                font-size:0.8125rem; line-height:1.5; white-space:pre-wrap; word-break:break-word;">
+                ${isUser ? this._escHtml(content) : this._taWizRenderMd(content)}
+            </div>`;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+        return div;
+    }
+
+    _taWizRenderMd(text) {
+        // Minimal markdown: bold, inline code, newlines → <br>
+        return this._escHtml(text)
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/`([^`]+)`/g, '<code style="background:var(--nav-hover-bg);padding:0 3px;border-radius:3px;font-size:0.9em;">$1</code>')
+            .replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>')
+            .replace(/\n/g, '<br>');
+    }
+
+    _escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async _taWizSend(workspaceName) {
+        const safeWs = workspaceName.replace(/\W/g,'_');
+        const inputEl = document.getElementById(`tawiz-input-${safeWs}`);
+        const question = (inputEl?.value || '').trim();
+        if (!question) return;
+
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const selected = [...(this._taWizSelected?.[workspaceName] || [])];
+        if (!this._taWizHistory) this._taWizHistory = {};
+        if (!this._taWizHistory[workspaceName]) this._taWizHistory[workspaceName] = [];
+
+        // Hide suggestions after first message
+        const sugg = document.getElementById(`tawiz-suggestions-${safeWs}`);
+        if (sugg) sugg.style.display = 'none';
+
+        // Append user bubble, update history
+        this._taWizAppendBubble(workspaceName, 'user', question);
+        this._taWizHistory[workspaceName].push({ role: 'user', content: question });
+        if (inputEl) inputEl.value = '';
+
+        // Thinking bubble
+        const thinkingId = `tawiz-thinking-${Date.now()}`;
+        const thinkingDiv = this._taWizAppendBubble(workspaceName, 'assistant', '⏳ Thinking…', thinkingId);
+
+        // Sliding window — keep last 12 turns
+        const history = this._taWizHistory[workspaceName].slice(-12);
+
+        try {
+            const resp = await fetch('/api/v1/ta-wiz/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'TM-API-KEY': apiKey },
+                body: JSON.stringify({
+                    workspace_name: workspaceName,
+                    question,
+                    selected_architectures: selected.length ? selected : null,
+                    history: history.slice(0, -1),  // exclude the turn we just added
+                }),
+            });
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let answered = false;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.answer !== undefined) {
+                            // Replace thinking bubble with answer
+                            document.getElementById(thinkingId)?.remove();
+                            this._taWizAppendBubble(workspaceName, 'assistant', data.answer);
+                            this._taWizHistory[workspaceName].push({ role: 'assistant', content: data.answer });
+
+                            // Source chips below answer
+                            if (data.sources_used?.length) {
+                                const msgs = document.getElementById(`tawiz-messages-${safeWs}`);
+                                if (msgs) {
+                                    const chips = document.createElement('div');
+                                    chips.style.cssText = 'display:flex; flex-wrap:wrap; gap:0.3rem; align-items:center; padding-left:0.2rem;';
+                                    chips.innerHTML = '<span style="font-size:0.68rem;color:var(--text-tertiary);">Sources:</span>'
+                                        + data.sources_used.map(a =>
+                                            `<span onclick="window.dashboard._loadArchFromReports('${a}')"
+                                                style="font-size:0.68rem; padding:1px 7px; border-radius:10px; border:1px solid var(--border-color); background:var(--nav-hover-bg); color:var(--text-secondary); cursor:pointer; transition:all 0.12s;"
+                                                onmouseover="this.style.color='var(--primary-color)';this.style.borderColor='var(--primary-color)'"
+                                                onmouseout="this.style.color='var(--text-secondary)';this.style.borderColor='var(--border-color)'">${a}</span>`
+                                        ).join('');
+                                    msgs.appendChild(chips);
+                                    msgs.scrollTop = msgs.scrollHeight;
+                                }
+                            }
+                            answered = true;
+                        } else if (data.message && !answered) {
+                            // Update thinking bubble text on progress events
+                            const t = document.getElementById(thinkingId);
+                            if (t) {
+                                const inner = t.querySelector('div');
+                                if (inner) inner.textContent = `⏳ ${data.message}`;
+                            }
+                        }
+                    } catch (_) {}
+                }
+            }
+            if (!answered) {
+                document.getElementById(thinkingId)?.remove();
+                this._taWizAppendBubble(workspaceName, 'assistant', '❌ No response received.');
+            }
+        } catch (e) {
+            document.getElementById(thinkingId)?.remove();
+            this._taWizAppendBubble(workspaceName, 'assistant', `❌ Error: ${e.message}`);
+        }
+    }
+
     async loadHarnessTab() {
         const container = document.getElementById('harness-content');
         if (!container) return;
@@ -7488,6 +8045,41 @@ class Dashboard {
         }
     }
 
+    async _smAddAllToAdr(archName, btnId) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const btn = document.getElementById(btnId);
+        if (btn) { btn.textContent = '⏳ Adding…'; btn.disabled = true; }
+
+        try {
+            const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/add-all-to-adr`, {
+                method: 'POST',
+                headers: { 'TM-API-KEY': apiKey },
+            });
+            if (r.ok) {
+                const d = await r.json();
+                if (btn) {
+                    btn.textContent = d.added > 0 ? `✅ ${d.added} SM-ADR${d.added !== 1 ? 's' : ''} added` : '✅ Nothing new to add';
+                    btn.title = `Added ${d.added}, skipped ${d.skipped_duplicate} duplicate(s), ${d.skipped_antipattern} anti-pattern(s). View in Reports tab.`;
+                    btn.style.color = 'var(--secondary-color)';
+                    btn.style.borderColor = 'var(--secondary-color)44';
+                    btn.style.background = 'var(--secondary-color)0a';
+                    btn.disabled = true;
+                    const note = document.createElement('span');
+                    note.textContent = ` → saved to 10_adr_report.md`;
+                    note.style.cssText = 'font-size:0.68rem; color:var(--secondary-color); margin-left:0.3rem; opacity:0.8;';
+                    btn.parentNode && btn.parentNode.insertBefore(note, btn.nextSibling);
+                }
+            } else {
+                const err = await r.json().catch(() => ({}));
+                if (btn) { btn.textContent = '❌ Failed'; btn.disabled = false; }
+                console.warn('_smAddAllToAdr error:', err);
+            }
+        } catch (e) {
+            if (btn) { btn.textContent = '❌'; btn.disabled = false; }
+            console.warn('_smAddAllToAdr error:', e);
+        }
+    }
+
     // ── Run a single critic (or ScrumMaster) without rerunning the full pipeline ──
     // After the critic completes, the backend runs MoE synthesis automatically.
     // If SM is enabled in config, the backend also runs SM as part of run_targeted().
@@ -7941,7 +8533,20 @@ class Dashboard {
 
             ${imps.length ? _panel('🚧 Impediments Found', impHtml, false) : ''}
 
-            ${planHtml ? _panel('✅ Priority Action Plan', planHtml + `<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.75rem;">→ This plan is also reflected in <strong>03_action_plan.md</strong> and <strong>10_adr_report.md</strong></div>`, true) : ''}
+            ${planHtml ? (() => {
+                const addableCount = (sm.action_plan || []).filter(p => !p.is_antipattern && p.action).length;
+                const safeArch = _smArchName.replace(/\W/g, '_');
+                const batchBtnId = `sm-add-all-adr-btn-${safeArch}`;
+                const batchBtn = `<button id="${batchBtnId}"
+                    onclick="window.dashboard._smAddAllToAdr('${_smArchName}','${batchBtnId}')"
+                    style="padding:0.2rem 0.65rem; border:1px solid #a855f744; border-radius:5px; background:#a855f708; color:#a855f7; font-size:0.72rem; cursor:pointer; transition:all 0.15s; margin-left:0.5rem;"
+                    title="Append all ${addableCount} non-antipattern action item(s) to 10_adr_report.md">
+                    📋 Add All to ADR (${addableCount})</button>`;
+                const footer = `<div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.35rem; font-size:0.75rem; color:var(--text-tertiary); margin-top:0.75rem;">
+                    <span>→ This plan is also reflected in <strong>03_action_plan.md</strong> and <strong>10_adr_report.md</strong></span>${batchBtn}
+                </div>`;
+                return _panel('✅ Priority Action Plan', planHtml + footer, true);
+            })() : ''}
 
             ${bfHtml ? _panel('📋 Engine Improvement Notes', bfHtml, false) : ''}
         `;
@@ -8646,6 +9251,20 @@ class Dashboard {
                         + '</div>' : '')
 
                     + planHtml
+                    + (() => {
+                        const addableCount2 = smPlan.filter(p => !p.is_antipattern && p.action).length;
+                        const safeArch2 = archName.replace(/\W/g, '_');
+                        const batchBtnId2 = `sm-add-all-adr-btn-er-${safeArch2}`;
+                        return addableCount2 > 0
+                            ? `<div style="text-align:right; margin-top:0.5rem; padding:0 0.25rem;">
+                                <button id="${batchBtnId2}"
+                                    onclick="window.dashboard._smAddAllToAdr('${archName}','${batchBtnId2}')"
+                                    style="padding:0.2rem 0.65rem; border:1px solid #a855f744; border-radius:5px; background:#a855f708; color:#a855f7; font-size:0.72rem; cursor:pointer; transition:all 0.15s;"
+                                    title="Append all ${addableCount2} non-antipattern action item(s) to 10_adr_report.md">
+                                    📋 Add All to ADR (${addableCount2})</button>
+                              </div>`
+                            : '';
+                    })()
                     + bfHtml
                     + '</div></div>';
 

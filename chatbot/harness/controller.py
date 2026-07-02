@@ -244,6 +244,7 @@ _SWARM_AGENT_NAMES = [
     "architect", "tester", "red_team", "purple_team",
     "blackhat", "storycaster", "scrum_master",
     "moe_orchestrator", "threat_analyst",
+    "ta_wiz",
 ]
 
 
@@ -298,6 +299,32 @@ class HarnessModelGuardian:
             if m:
                 result[name] = m
         return result
+
+    def resolve(self, agent_name: str, quality: str = "default") -> Optional[str]:
+        """Return the fully-resolved model string for an agent.
+
+        Resolution order:
+          1. AgentSwarmConfig.{agent_name}.model (settings.yaml / user_config override),
+             skipped if the string is an unresolved ${VAR} placeholder.
+          2. PROVIDER_MODELS[primary_provider][quality] from llm_client.py.
+          3. None — LLMClient picks its own default.
+
+        This is the sole model resolution point for all components.
+        """
+        from agentic.llm_client import PROVIDER_MODELS, LLMProvider
+        from agentic.helper import get_llm_provider
+
+        router = self._routers.get(agent_name)
+        if router:
+            m = router.get_model(0)
+            if m and not m.startswith("${"):
+                return m
+
+        try:
+            provider = LLMProvider(get_llm_provider())
+            return PROVIDER_MODELS.get(provider, {}).get(quality)
+        except Exception:
+            return None
 
     def drain_fallback_events(self) -> List[Dict]:
         """Collect and clear fallback events from all routers since last call."""

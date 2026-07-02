@@ -21,6 +21,7 @@ Usage:
 """
 
 import logging
+import os
 import time
 from typing import Optional, Dict, Any, List, Literal
 from dataclasses import dataclass, field
@@ -50,6 +51,20 @@ class LLMProvider(str, Enum):
     VERTEX = "vertex"
 
 
+def _bedrock_models() -> Dict[str, str]:
+    """Build Bedrock model map, honouring BEDROCK_MODEL / BEDROCK_MODEL_FAST env vars."""
+    from agentic.helper import load_env
+    load_env()
+    default = os.getenv("BEDROCK_MODEL", "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0")
+    fast    = os.getenv("BEDROCK_MODEL_FAST", "bedrock/us.anthropic.claude-haiku-4-20250514-v1:0")
+    # Ensure the bedrock/ prefix is present
+    if not default.startswith("bedrock/"):
+        default = f"bedrock/{default}"
+    if not fast.startswith("bedrock/"):
+        fast = f"bedrock/{fast}"
+    return {"default": default, "high_quality": default, "fast": fast}
+
+
 # Model configurations per provider
 PROVIDER_MODELS = {
     LLMProvider.OPENROUTER: {
@@ -57,11 +72,7 @@ PROVIDER_MODELS = {
         "high_quality": "openrouter/anthropic/claude-sonnet-4",  # Paid tier
         "fast": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"  # Same as default (fast & reliable)
     },
-    LLMProvider.BEDROCK: {
-        "default": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0",
-        "high_quality": "bedrock/us.anthropic.claude-opus-4-20250514-v1:0",
-        "fast": "bedrock/us.anthropic.claude-haiku-4-20250514-v1:0"
-    },
+    LLMProvider.BEDROCK: _bedrock_models(),
     # INACTIVE PROVIDERS (kept for reference, not used by default)
     LLMProvider.ANTHROPIC: {
         "default": "anthropic/claude-sonnet-4-20250514",

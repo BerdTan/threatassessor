@@ -532,6 +532,10 @@ class AgentSwarmConfig(BaseModel):
     scrum_master:     AgentModelConfig = Field(default_factory=AgentModelConfig)
     moe_orchestrator: AgentModelConfig = Field(default_factory=AgentModelConfig)
     threat_analyst:   AgentModelConfig = Field(default_factory=AgentModelConfig)
+    ta_wiz:           AgentModelConfig = Field(
+        default_factory=AgentModelConfig,
+        description="Model for TA-Wiz workspace chat. Defaults to primary provider default.",
+    )
 
 
 class ProviderConfig(BaseModel):
@@ -700,8 +704,25 @@ def load_settings() -> AppSettings:
         # Layer 2 — settings.yaml
         if SETTINGS_YAML_PATH.exists():
             try:
-                import yaml
-                yaml_overrides = yaml.safe_load(SETTINGS_YAML_PATH.read_text()) or {}
+                import re, yaml
+                raw = SETTINGS_YAML_PATH.read_text()
+                yaml_overrides = yaml.safe_load(raw) or {}
+
+                def _interpolate_env(obj):
+                    """Replace ${VAR_NAME} with os.environ[VAR_NAME]; leave literal if unset."""
+                    if isinstance(obj, str):
+                        return re.sub(
+                            r'\$\{([^}]+)\}',
+                            lambda m: os.environ.get(m.group(1), m.group(0)),
+                            obj,
+                        )
+                    if isinstance(obj, dict):
+                        return {k: _interpolate_env(v) for k, v in obj.items()}
+                    if isinstance(obj, list):
+                        return [_interpolate_env(v) for v in obj]
+                    return obj
+
+                yaml_overrides = _interpolate_env(yaml_overrides)
                 merged = _merge_overrides(merged, yaml_overrides)
             except Exception:
                 pass  # malformed YAML → keep Python defaults for that section

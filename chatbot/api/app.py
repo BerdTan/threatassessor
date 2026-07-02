@@ -410,10 +410,12 @@ Run deterministic threat analysis (Team 1: ThreatAnalysisService).
         """
 
     # Include routers
-    from chatbot.api.routes import streaming_router, reports_router, config_router
+    from chatbot.api.routes import streaming_router, reports_router, config_router, workspaces_router, ta_wiz_router
     app.include_router(streaming_router)
     app.include_router(reports_router)
     app.include_router(config_router)
+    app.include_router(workspaces_router)
+    app.include_router(ta_wiz_router)
 
     # Enrich OpenAPI spec: add server URL and API key security scheme
     from fastapi.openapi.utils import get_openapi

@@ -96,6 +96,16 @@
                     </div>
                 </div>
                 <!-- Group: Settings -->
+                <div class="nav-group" data-group="workspace">
+                    <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('workspace')">
+                        <span class="nav-group-label">Workspace</span>
+                        <span class="nav-group-chevron">▾</span>
+                    </button>
+                    <div class="nav-group-items">
+                        <button class="nav-tab" id="workspace-nav-tab" data-tab="workspace">🏢 Workspace</button>
+                    </div>
+                </div>
+
                 <div class="nav-group" data-group="settings">
                     <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('settings')">
                         <span class="nav-group-label">Settings</span>
@@ -372,6 +382,11 @@
                         <p class="placeholder">Run an analysis to populate Insights.</p>
                     </div>
                 </div>
+            </div>
+
+            <!-- Workspace Tab — full main-pane takeover, always accessible -->
+            <div id="workspace-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:auto; background:var(--main-bg);">
+                <div id="workspace-content" style="padding:1.5rem; height:100%; box-sizing:border-box;"></div>
             </div>
 
             <!-- Harness Tab — full main-pane takeover, always accessible -->

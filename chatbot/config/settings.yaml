@@ -57,3 +57,23 @@ embedding:
   provider: "openrouter"
   model: "nvidia/llama-nemotron-embed-vl-1b-v2:free"
   dimensions: 2048
+
+# ---------------------------------------------------------------------------
+# Per-agent model assignments (HarnessModelGuardian is the sole broker)
+#
+# Model strings are resolved from env vars at startup — no secrets here.
+# If an env var is unset the slot is empty and Guardian falls through to the
+# primary provider default (LLM_PROVIDER + BEDROCK_MODEL from .env).
+#
+# Example .env entries:
+#   AGENT_MODEL_ARCHITECT=bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
+#   AGENT_MODEL_TA_WIZ=bedrock/us.anthropic.claude-haiku-4-20250514-v1:0
+# ---------------------------------------------------------------------------
+agent_models:
+  architect:        {model: "${AGENT_MODEL_ARCHITECT}"}
+  tester:           {model: "${AGENT_MODEL_TESTER}"}
+  red_team:         {model: "${AGENT_MODEL_RED_TEAM}"}
+  scrum_master:     {model: "${AGENT_MODEL_SCRUM_MASTER}"}
+  moe_orchestrator: {model: "${AGENT_MODEL_MOE}"}
+  threat_analyst:   {model: "${AGENT_MODEL_THREAT_ANALYST}"}
+  ta_wiz:           {model: "${AGENT_MODEL_TA_WIZ}"}
