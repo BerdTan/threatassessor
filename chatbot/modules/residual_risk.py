@@ -238,9 +238,11 @@ def calculate_residual_risk_for_threat(
     from chatbot.config import get_settings
     _rr = get_settings().residual_risk
     min_failure_prob = _rr.min_failure_probability
+    residual_risk_floor_applied = False
     if failure_probability < min_failure_prob:
         failure_probability = min_failure_prob
         combined_effectiveness = 1.0 - failure_probability
+        residual_risk_floor_applied = True
 
     residual_risk = int(initial_risk * failure_probability)
 
@@ -261,6 +263,7 @@ def calculate_residual_risk_for_threat(
         "controls": control_details,
         "combined_effectiveness": round(combined_effectiveness, 3),
         "residual_risk": residual_risk,
+        "residual_risk_floor_applied": residual_risk_floor_applied,
         "status": status,
         "rationale": rationale
     }

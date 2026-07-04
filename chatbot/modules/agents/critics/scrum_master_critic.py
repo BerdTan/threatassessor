@@ -190,7 +190,7 @@ class ScrumMasterCritic:
                 f"ScrumMaster: confidence {initial_confidence:.1f}% >= {confidence_target}% "
                 "— skipping re-triggers, focusing on prioritisation"
             )
-            action_plan = self._build_action_plan(current_result, resolved_impediments, redesign_signal=False)
+            action_plan = self._build_action_plan(current_result, resolved_impediments, redesign_signal=False, ground_truth=ground_truth)
             baseline_fb = self._build_baseline_feedback(current_result, ground_truth, impediments, report_dir) \
                 if self._has_persistent_gaps(impediments) else None
             self._perf_acc["wall_clock_s"] = round(_time.time() - _run_start, 3)
@@ -219,7 +219,7 @@ class ScrumMasterCritic:
         if not harmony_ok:
             logger.info("ScrumMaster: harmony check failed — redesign_signal=True")
             baseline_fb = self._build_baseline_feedback(current_result, ground_truth, impediments, report_dir)
-            action_plan = self._build_action_plan(current_result, [], redesign_signal=True)
+            action_plan = self._build_action_plan(current_result, [], redesign_signal=True, ground_truth=ground_truth)
             self._perf_acc["wall_clock_s"] = round(_time.time() - _run_start, 3)
             return ScrumMasterResult(
                 architecture_name=arch_name,
@@ -325,7 +325,7 @@ class ScrumMasterCritic:
         if progress_callback:
             progress_callback("scrum_master", 95, "ScrumMaster: building action plan...")
 
-        action_plan = self._build_action_plan(current_result, resolved_impediments, redesign_signal=False)
+        action_plan = self._build_action_plan(current_result, resolved_impediments, redesign_signal=False, ground_truth=ground_truth)
 
         self._perf_acc["wall_clock_s"] = round(_time.time() - _run_start, 3)
         return ScrumMasterResult(
@@ -583,6 +583,7 @@ class ScrumMasterCritic:
         moe_result: "MoEResult",
         resolved_impediments: List[ImpedimentItem],
         redesign_signal: bool,
+        ground_truth: Optional[Dict] = None,
     ) -> List[Dict]:
         """Strategist action plan — Less controls, more defensible.
 
@@ -697,10 +698,33 @@ class ScrumMasterCritic:
         base_conf = getattr(moe_result, "base_confidence", 99.5)
         final_conf = getattr(moe_result, "final_confidence", base_conf)
 
+        # Build AP-ID context from ground_truth so items can explicitly reference paths
+        ap_context = ""
+        if ground_truth:
+            aps = ground_truth.get("expected_attack_paths", [])
+            if aps:
+                ap_lines = []
+                for ap in aps:
+                    ap_id = ap.get("id", "")
+                    tier  = ap.get("criticality_tier", "")
+                    path  = " → ".join(ap.get("path", [])) or ap.get("entry", "")
+                    if ap_id:
+                        ap_lines.append(f"  {ap_id} [{tier}]: {path}")
+                if ap_lines:
+                    ap_context = (
+                        "Attack paths in this architecture:\n"
+                        + "\n".join(ap_lines)
+                        + "\n\n"
+                        "REQUIREMENT: For each CRITICAL attack path above, at least one action item "
+                        "MUST explicitly reference that path by its AP-ID (e.g. 'AP-1', 'AP-2') "
+                        "in the 'action' field so stakeholders know which threat is being addressed.\n\n"
+                    )
+
         prompt = (
             "You are a security architect applying a strategist mindset to an action plan.\n\n"
             f"Current validated confidence: {final_conf:.1f}%. Target: 90%.\n"
             f"Gap to close: {max(0, 90 - final_conf):.1f}%.\n\n"
+            f"{ap_context}"
             "Principles:\n"
             "1. Simplicity is king — fewer controls with genuine path-blocking effect beat a long list.\n"
             "2. Design with less control yet more defensible — each item must directly block or "
@@ -715,14 +739,17 @@ class ScrumMasterCritic:
             f"{recs_text}\n\n"
             "Return the top 5 as a JSON array. For each item:\n"
             "- Rewrite 'action' as a concrete, one-sentence engineering instruction "
-            "(what to build/configure/add — not what to review or consider)\n"
+            "(what to build/configure/add — not what to review or consider). "
+            "If this item addresses a CRITICAL attack path, begin with its AP-ID: e.g. 'AP-1: Add WAF...'\n"
             "- 'rationale': ONE sentence — why this specific control blocks the attack path\n"
             "- 'confidence_gain': estimated % confidence recovery if implemented (from conf_gain input)\n"
             "- 'priority': critical | high | medium (based on conf_gain and path coverage)\n"
             "- 'effort': days | weeks | months\n"
             "- 'risk_reduction_estimate': high | medium | low\n"
             "- 'is_antipattern': true | false\n"
-            "- 'first_step': the single most concrete first action (tool, config, code change)\n\n"
+            "- 'first_step': the single most concrete first action naming the specific tool, "
+            "node, or configuration target (e.g. 'Install Falco on Database node', "
+            "'Configure Snyk in CI/CD pipeline with fail-on-critical policy')\n\n"
             "JSON only, no explanation outside the array."
         )
 

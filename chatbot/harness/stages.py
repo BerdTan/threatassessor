@@ -174,8 +174,28 @@ class ScrumMasterStage(PipelineStage):
         try:
             sm_path = Path(ctx["report_dir"]) / "08_scrum_master.json"
             sm_path.parent.mkdir(parents=True, exist_ok=True)
+            sm_dict = sm_result.to_dict()
+
+            # TATB rollup: priority_tier_counts summarises action_plan by tier +
+            # priority so downstream consumers (TATB Plan-Actionable rubric) do
+            # not need to iterate action_plan[] to count severity distribution.
+            ap = sm_dict.get("action_plan") or []
+            tier_counts = {"immediate": 0, "structural": 0, "other": 0}
+            priority_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            for item in ap:
+                t = (item.get("tier") or "").lower()
+                tier_counts[t if t in tier_counts else "other"] += 1
+                p = (item.get("priority") or "").lower()
+                if p in priority_counts:
+                    priority_counts[p] += 1
+            sm_dict["priority_tier_counts"] = {
+                "by_tier":     tier_counts,
+                "by_priority": priority_counts,
+                "total":       len(ap),
+            }
+
             with open(sm_path, "w") as f:
-                json.dump(sm_result.to_dict(), f, indent=2)
+                json.dump(sm_dict, f, indent=2)
         except Exception as exc:
             import logging
             logging.getLogger(__name__).warning(f"ScrumMasterStage: could not save result: {exc}")

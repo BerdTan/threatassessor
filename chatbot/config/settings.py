@@ -134,8 +134,8 @@ class MoESettings(BaseModel):
         description="Starting confidence percentage before expert critic adjustments")
     temperature_synthesis: float = Field(default=0.2, ge=0.0, le=2.0,
         description="LLM temperature for the Layer-3 orchestrator synthesis call")
-    max_tokens_synthesis: int = Field(default=4000, ge=500, le=16000,
-        description="Max tokens for the synthesis LLM call (higher = more complete reasoning)")
+    max_tokens_synthesis: int = Field(default=16000, ge=500, le=16000,
+        description="Max tokens for the synthesis LLM call. 5-critic full_moe runs regularly produce 30k+ char responses; 16000 is the safe default.")
     complexity_threshold: int = Field(default=60, ge=10, le=200,
         description="Complexity score above which 'auto' critic mode uses sequential (not parallel)")
     critic_mode: Literal["sequential", "parallel", "auto"] = Field(default="sequential",

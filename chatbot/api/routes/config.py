@@ -115,6 +115,47 @@ async def put_config(payload: dict, _: str = Depends(verify_api_key)):
     return {"status": "ok", "config": result}
 
 
+@router.get("/llm-check")
+async def llm_check(_: str = Depends(verify_api_key)):
+    """
+    Verify the configured LLM provider is reachable and responds.
+
+    Makes a minimal probe call (max_tokens=5) using the resolved synthesis model.
+    Returns: {ok, provider, model, latency_ms, error?}
+    Authenticated — exposes model name which is internal config.
+    """
+    import time
+    from chatbot.harness.controller import HarnessModelGuardian
+    result = {"ok": False, "provider": None, "model": None, "latency_ms": None, "error": None}
+    try:
+        guardian = HarnessModelGuardian()
+        model = guardian.resolve("synthesis") or guardian.resolve("ta_wiz")
+        result["model"] = model
+    except Exception as e:
+        result["error"] = f"Model resolution failed: {e}"
+        return result
+
+    try:
+        from agentic.llm_client import LLMClient
+        client = LLMClient()
+        t0 = time.monotonic()
+        resp = client.generate(
+            prompt="Reply with the single word: ok",
+            system_message="You are a connectivity probe. Reply only with the word 'ok'.",
+            model=model,
+            max_tokens=5,
+        )
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        result["ok"]         = True
+        result["provider"]   = str(getattr(resp, "provider", "unknown"))
+        result["model"]      = str(getattr(resp, "model", model))
+        result["latency_ms"] = latency_ms
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
 @router.post("/config/reset")
 async def reset_config(_: str = Depends(verify_api_key)):
     """

@@ -210,9 +210,11 @@ def validate_technique_for_path(
         overlap = len(path_keywords & tech_keywords)
 
         if overlap >= 3:
-            validations.append((True, 0.05, f"Generic match ({overlap} keywords overlap)"))
+            # PLAUSIBLE prefix signals to downstream consumers (TATB) that this is a
+            # keyword-heuristic match, not structural evidence — should carry half weight.
+            validations.append((True, 0.05, f"[PLAUSIBLE] Generic match ({overlap} keywords overlap)"))
         else:
-            validations.append((False, 0.0, "Generic technique, no specific validation"))
+            validations.append((False, 0.0, "[PLAUSIBLE] Generic technique, no specific validation"))
 
     # Aggregate validations
     if not validations:

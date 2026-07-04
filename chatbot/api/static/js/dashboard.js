@@ -321,7 +321,7 @@ class Dashboard {
 
     // Tabs that require a completed analysis to be meaningful
     _contentTabs() {
-        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data', 'insights'];
+        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data', 'insights', 'benchmark'];
     }
 
     _setOverviewDetailVisible(visible) {
@@ -448,6 +448,7 @@ class Dashboard {
             'reports': 'Reports',
             'raw-data': 'Raw Data',
             'insights': 'Insights',
+            'benchmark': 'TATB Scorecard',
             'config': 'Configuration',
             'workspace': 'Workspace',
         };
@@ -997,6 +998,9 @@ class Dashboard {
                 break;
             case 'insights':
                 this.loadInsightsTab();
+                break;
+            case 'benchmark':
+                this.loadBenchmarkTab();
                 break;
         }
     }
@@ -6687,6 +6691,13 @@ class Dashboard {
                 run: () => this._harnessCheckPatterns(),
                 fix: 'Check Configuration → Patterns. If a pattern is missing, inspect chatbot/modules/pattern_registry.py for import errors.',
             },
+            {
+                id: 'llm',
+                label: 'LLM Connectivity',
+                desc: 'Sends a minimal probe call (max_tokens=5) to the configured LLM provider and verifies a response. Catches misconfigured API keys, rate limits, network failures, and model unavailability before a full Expert Review run.',
+                run: () => this._harnessCheckLlm(),
+                fix: 'Check OPENROUTER_API_KEY or AWS Bedrock credentials in .env. Verify model name in .env (BEDROCK_MODEL). Run /quick-test for a full key check.',
+            },
         ];
     }
 
@@ -6719,6 +6730,74 @@ class Dashboard {
         this._availableArchsCache = availableArchs;
 
         container.innerHTML = this._renderWorkspaceTab(workspaces, availableArchs);
+        this._initWsSplitDrag();
+        // Apply initial page size for arch list in create form
+        this._wsSetArchPageSize('ws-arch-list', 10, null);
+    }
+
+    _wsToggleLeft() {
+        const left    = document.getElementById('ws-left');
+        const handle  = document.getElementById('ws-drag');
+        const strip   = document.getElementById('ws-restore-strip');
+        if (!left) return;
+
+        const isCollapsed = localStorage.getItem('tw_left_collapsed') === '1';
+
+        if (isCollapsed) {
+            // Expand
+            const w = parseInt(localStorage.getItem('tw_left_w') || '400', 10);
+            left.style.width        = w + 'px';
+            left.style.paddingRight = '0.75rem';
+            if (handle) { handle.style.display = 'block'; handle.style.width = '6px'; }
+            if (strip)  { strip.style.width = '0px'; }
+            localStorage.setItem('tw_left_collapsed', '0');
+        } else {
+            // Collapse — save current width first
+            const curW = left.offsetWidth;
+            if (curW > 0) localStorage.setItem('tw_left_w', curW);
+            left.style.width        = '0px';
+            left.style.paddingRight = '0';
+            if (handle) { handle.style.display = 'none'; }
+            if (strip)  { strip.style.width = '20px'; }
+            localStorage.setItem('tw_left_collapsed', '1');
+        }
+    }
+
+    _initWsSplitDrag() {
+        const handle = document.getElementById('ws-drag');
+        const left   = document.getElementById('ws-left');
+        const split  = document.getElementById('ws-split');
+        if (!handle || !left || !split) return;
+
+        let dragging = false, startX = 0, startW = 0;
+
+        handle.addEventListener('mousedown', e => {
+            // Don't start drag if panel is collapsed
+            if (localStorage.getItem('tw_left_collapsed') === '1') return;
+            dragging = true;
+            startX = e.clientX;
+            startW = left.offsetWidth;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (!dragging) return;
+            const delta = e.clientX - startX;
+            const splitW = split.offsetWidth;
+            const newW = Math.max(260, Math.min(startW + delta, splitW * 0.65));
+            left.style.width = newW + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!dragging) return;
+            dragging = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            const w = left.offsetWidth;
+            if (w > 0) localStorage.setItem('tw_left_w', w);
+        });
     }
 
     _renderWorkspaceTab(workspaces, availableArchs) {
@@ -6727,26 +6806,72 @@ class Dashboard {
             ? workspaces.map(ws => this._renderWorkspaceCard(ws)).join('')
             : `<div style="color:var(--text-tertiary); font-size:0.875rem; padding:1rem 0;">No workspaces yet. Create one below to group related architectures.</div>`;
 
+        const savedLeftPx  = parseInt(localStorage.getItem('tw_left_w')   || '400',   10);
+        const collapsed    = localStorage.getItem('tw_left_collapsed') === '1';
         return `
-        <div style="display:flex; gap:1.5rem; height:100%; min-height:0;">
-            <!-- Left panel: list + create form -->
-            <div style="flex:0 0 420px; display:flex; flex-direction:column; gap:1rem; overflow-y:auto;">
-                <div style="display:flex; align-items:center; justify-content:space-between;">
-                    <h2 style="margin:0; font-size:1.125rem; font-weight:700;">🏢 Workspaces</h2>
-                    <div style="display:flex; align-items:center; gap:0.5rem;">
-                        <span style="font-size:0.78rem; color:var(--text-tertiary);">${workspaces.length} workspace${workspaces.length !== 1 ? 's' : ''} · ${availableArchs.length} arch${availableArchs.length !== 1 ? 's' : ''} available</span>
-                        <button onclick="window.dashboard.loadWorkspaceTab()"
-                            title="Refresh — pick up newly analysed architectures"
-                            style="padding:0.15rem 0.5rem; border:1px solid var(--border-color); border-radius:5px; background:transparent; color:var(--text-tertiary); font-size:0.78rem; cursor:pointer; transition:all 0.12s; line-height:1.4;"
-                            onmouseover="this.style.borderColor='var(--primary-color)';this.style.color='var(--primary-color)'"
-                            onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'">↻ Refresh</button>
+        <div id="ws-split" style="display:flex; height:100%; min-height:0; overflow:hidden;">
+            <!-- Left panel -->
+            <div id="ws-left" style="
+                width:${collapsed ? '0' : savedLeftPx + 'px'};
+                min-width:0; max-width:60%; flex-shrink:0;
+                display:flex; flex-direction:column; gap:1rem;
+                overflow:hidden;
+                transition:width 0.2s ease;
+                padding-right:${collapsed ? '0' : '0.75rem'};
+            ">
+                <div style="width:${savedLeftPx}px; display:flex; flex-direction:column; gap:1rem; overflow-y:auto; height:100%;">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                        <h2 style="margin:0; font-size:1.125rem; font-weight:700;">🏢 Workspaces</h2>
+                        <div style="display:flex; align-items:center; gap:0.4rem;">
+                            <span style="font-size:0.78rem; color:var(--text-tertiary);">${workspaces.length} ws · ${availableArchs.length} arch</span>
+                            <button onclick="window.dashboard.loadWorkspaceTab()"
+                                title="Refresh"
+                                style="padding:0.15rem 0.5rem; border:1px solid var(--border-color); border-radius:5px; background:transparent; color:var(--text-tertiary); font-size:0.78rem; cursor:pointer;"
+                                onmouseover="this.style.borderColor='var(--primary-color)';this.style.color='var(--primary-color)'"
+                                onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'">↻</button>
+                            <button id="ws-collapse-btn"
+                                onclick="window.dashboard._wsToggleLeft()"
+                                title="Hide panel"
+                                style="padding:0.15rem 0.45rem; border:1px solid var(--border-color); border-radius:5px; background:transparent; color:var(--text-tertiary); font-size:0.78rem; cursor:pointer; line-height:1;"
+                                onmouseover="this.style.borderColor='var(--primary-color)';this.style.color='var(--primary-color)'"
+                                onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'">⟨</button>
+                        </div>
                     </div>
+                    <div id="workspace-cards">${cards}</div>
+                    ${createForm}
                 </div>
-                <div id="workspace-cards">${cards}</div>
-                ${createForm}
             </div>
-            <!-- Right panel: chat area (populated when workspace is opened) -->
-            <div id="workspace-chat-panel" style="flex:1; min-width:0; border-left:1px solid var(--border-color); padding-left:1.5rem; display:flex; flex-direction:column;">
+            <!-- Drag + collapse strip -->
+            <div id="ws-drag" style="
+                flex-shrink:0; cursor:col-resize;
+                background:transparent;
+                border-left:2px solid var(--border-color);
+                transition:border-color 0.15s, width 0.2s ease;
+                display:${collapsed ? 'none' : 'block'};
+                width:6px;
+            "
+                onmouseenter="this.style.borderColor='var(--primary-color)'"
+                onmouseleave="this.style.borderColor='var(--border-color)'"
+                title="Drag to resize"></div>
+            <!-- Collapsed restore strip (visible only when left is hidden) -->
+            <div id="ws-restore-strip" onclick="window.dashboard._wsToggleLeft()"
+                title="Show panel"
+                style="
+                    flex-shrink:0;
+                    width:${collapsed ? '20px' : '0px'};
+                    overflow:hidden;
+                    display:flex; align-items:center; justify-content:center;
+                    cursor:pointer;
+                    border-right:2px solid var(--border-color);
+                    background:transparent;
+                    transition:width 0.2s ease, border-color 0.15s;
+                    color:var(--text-tertiary);
+                    font-size:0.85rem;
+                "
+                onmouseenter="this.style.borderColor='var(--primary-color)';this.style.color='var(--primary-color)'"
+                onmouseleave="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'">⟩</div>
+            <!-- Right panel: chat -->
+            <div id="workspace-chat-panel" style="flex:1; min-width:240px; overflow:hidden; padding-left:1rem; display:flex; flex-direction:column;">
                 <div style="display:flex; flex:1; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:0.875rem; text-align:center; padding:2rem;">
                     <div>
                         <div style="font-size:2rem; margin-bottom:0.5rem;">💬</div>
@@ -6760,7 +6885,7 @@ class Dashboard {
     _renderWorkspaceCard(ws) {
         const agg = ws.aggregate || {};
         const risk = agg.avg_risk_score != null ? `risk ${agg.avg_risk_score}` : 'risk —';
-        const def  = agg.avg_defensibility != null ? `def ${Math.round(agg.avg_defensibility * 100)}%` : '';
+        const def  = agg.avg_defensibility != null ? `def ${Math.round(agg.avg_defensibility)}%` : '';
         const aivss = agg.avg_aivss != null
             ? `<span style="font-size:0.72rem; padding:1px 6px; border-radius:4px; background:var(--warning-color)18; color:var(--warning-color); border:1px solid var(--warning-color)44;">AIVSS ${agg.avg_aivss.toFixed(1)}</span>`
             : '';
@@ -6775,8 +6900,11 @@ class Dashboard {
                 onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-secondary)'">${a}</span>`
         ).join(' ');
 
+        const _domainLabel = (v) => (this._wsDomains().find(d => d.value === v) || {}).label || v;
         const domainBadge = ws.domain
-            ? `<span style="font-size:0.7rem; color:var(--text-tertiary); padding:1px 6px; border-radius:4px; border:1px solid var(--border-color);">${ws.domain}</span>`
+            ? ws.domain.split(',').map(d => d.trim()).filter(Boolean)
+                .map(d => `<span style="font-size:0.7rem; color:var(--primary-color); padding:1px 6px; border-radius:4px; border:1px solid var(--primary-color)44; background:var(--primary-color)0d;">${_domainLabel(d)}</span>`)
+                .join(' ')
             : '';
 
         return `<div style="border:1px solid var(--border-color); border-radius:10px; padding:1rem; background:var(--card-bg); margin-bottom:0.75rem;">
@@ -6807,17 +6935,157 @@ class Dashboard {
         </div>`;
     }
 
-    _renderWorkspaceCreateForm(availableArchs) {
-        const archCheckboxes = availableArchs.map(a => {
-            const analysedAt = a.analysed_at ? new Date(a.analysed_at).toLocaleDateString() : '';
-            const risk = a.risk_score != null ? `risk ${a.risk_score}` : '';
+    // Canonical domain list — shared by create form, edit modal, and card badge renderer
+    _wsDomains() {
+        return [
+            { value: 'digital_services',     label: 'Digital Services' },
+            { value: 'financial',            label: 'Financial' },
+            { value: 'healthcare',           label: 'Healthcare' },
+            { value: 'government',           label: 'Government' },
+            { value: 'critical_infrastructure', label: 'Critical Infra' },
+            { value: 'defence',              label: 'Defence' },
+            { value: 'education',            label: 'Education' },
+            { value: 'retail',               label: 'Retail' },
+            { value: 'logistics',            label: 'Logistics' },
+            { value: 'internal_tools',       label: 'Internal Tools' },
+        ];
+    }
+
+    // Render multi-select domain chip picker (fully styled, no OS <select>)
+    // containerId is used for the hidden input; selected is array of active values.
+    _renderDomainPicker(inputId, selected = []) {
+        const chips = this._wsDomains().map(d => {
+            const on = selected.includes(d.value);
+            return `<button type="button" data-dv="${d.value}"
+                onclick="window.dashboard._toggleDomainChip(this,'${inputId}')"
+                style="padding:2px 10px; border-radius:12px; font-size:0.72rem; cursor:pointer; border:1px solid ${on ? 'var(--primary-color)' : 'var(--border-color)'}; background:${on ? 'var(--primary-color)18' : 'transparent'}; color:${on ? 'var(--primary-color)' : 'var(--text-secondary)'}; font-weight:${on ? '700' : '400'}; transition:all 0.12s;">${d.label}</button>`;
+        }).join('');
+        return `<div style="display:flex; flex-wrap:wrap; gap:0.3rem; margin-bottom:0.15rem;" id="${inputId}-chips">${chips}</div>
+        <input type="hidden" id="${inputId}" value="${selected.join(',')}">`;
+    }
+
+    _toggleDomainChip(btn, inputId) {
+        const val = btn.dataset.dv;
+        const hidden = document.getElementById(inputId);
+        if (!hidden) return;
+        const cur = hidden.value ? hidden.value.split(',') : [];
+        const idx = cur.indexOf(val);
+        if (idx === -1) cur.push(val); else cur.splice(idx, 1);
+        hidden.value = cur.join(',');
+        const on = cur.includes(val);
+        btn.style.border = `1px solid ${on ? 'var(--primary-color)' : 'var(--border-color)'}`;
+        btn.style.background = on ? 'var(--primary-color)18' : 'transparent';
+        btn.style.color = on ? 'var(--primary-color)' : 'var(--text-secondary)';
+        btn.style.fontWeight = on ? '700' : '400';
+    }
+
+    // Arch list pagination — show first `pageSize` unchecked items; checked items always visible.
+    // containerId: the <div> holding the <label> rows.
+    // cbSel: selector for checkboxes inside each label (e.g. '[name=ws-arch]').
+    // activeBtn: the clicked pill button (to update active styling).
+    // cbSel is stored as data-cbsel on the container — never embedded in onclick strings
+    // (avoids HTML attribute double-quote escaping issues).
+    _wsSetArchPageSize(containerId, pageSize, activeBtn) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        const cbSel = container.dataset.cbsel;
+        const labels = [...container.querySelectorAll('label')];
+        const total = labels.length;
+        let shownUnchecked = 0;
+        labels.forEach(lbl => {
+            const cb = cbSel ? lbl.querySelector(cbSel) : lbl.querySelector('input[type=checkbox]');
+            if (cb && cb.checked) {
+                lbl.style.display = 'flex';   // always show checked
+            } else if (shownUnchecked < pageSize) {
+                lbl.style.display = 'flex';
+                shownUnchecked++;
+            } else {
+                lbl.style.display = 'none';
+            }
+        });
+        const checkedCount = labels.filter(l => {
+            const cb = cbSel ? l.querySelector(cbSel) : l.querySelector('input[type=checkbox]');
+            return cb && cb.checked;
+        }).length;
+        const countEl = document.getElementById(containerId + '-count');
+        if (countEl) {
+            const showing = shownUnchecked + checkedCount;
+            countEl.textContent = showing < total
+                ? ` · ${showing} of ${total}${checkedCount ? `, ${checkedCount} selected` : ''}`
+                : `${checkedCount ? ` · ${checkedCount} selected` : ''}`;
+        }
+        // Update pill active state
+        if (activeBtn) {
+            const pills = activeBtn.closest('.ws-pg-pills');
+            if (pills) pills.querySelectorAll('button').forEach(b => {
+                const on = b === activeBtn;
+                b.style.background = on ? 'var(--primary-color)' : 'transparent';
+                b.style.color      = on ? '#fff' : 'var(--text-secondary)';
+                b.style.fontWeight = on ? '700' : '400';
+            });
+        }
+    }
+
+    _renderArchList(items, listId, cbName, cbClass, defaultPage) {
+        const cbSel = cbName ? `[name=${cbName}]` : `.${cbClass}`;
+        const rows = items.map(a => {
+            const analysedAt = a.analysed_at
+                ? new Date(a.analysed_at * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                : '';
+            const risk  = a.risk_score != null ? `risk ${a.risk_score}` : '';
             const aivss = a.aivss_severity ? ` · AIVSS ${a.aivss_severity}` : '';
-            return `<label style="display:flex; align-items:center; gap:0.4rem; padding:0.3rem 0; cursor:pointer; font-size:0.8rem;">
-                <input type="checkbox" name="ws-arch" value="${a.name}" style="cursor:pointer;">
-                <span style="flex:1;">${a.name}</span>
-                <span style="font-size:0.7rem; color:var(--text-tertiary);">${risk}${aivss}${analysedAt ? ' · ' + analysedAt : ''}</span>
+            const meta  = [risk, aivss, analysedAt].filter(Boolean).join(' ');
+            const cbAttr = cbName
+                ? `name="${cbName}" value="${a.name}"`
+                : `class="${cbClass}" value="${a.name}"`;
+            const preChecked = a._preChecked ? 'checked' : '';
+            return `<label style="display:flex; align-items:center; gap:0.5rem; padding:0.28rem 0.4rem; cursor:pointer; font-size:0.8rem; border-radius:4px; box-sizing:border-box; width:100%;">
+                <input type="checkbox" ${cbAttr} ${preChecked} style="cursor:pointer; flex-shrink:0; margin:0;">
+                <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${a.name}</span>
+                ${meta ? `<span style="font-size:0.68rem; color:var(--text-tertiary); white-space:nowrap; flex-shrink:0;">${meta}</span>` : ''}
             </label>`;
         }).join('');
+
+        const total = items.length;
+        const pageSizes = [10, 20, 50].filter(n => n < total);
+        if (pageSizes.length === 0 || total > 50) pageSizes.push(0);  // 0 = All
+        else pageSizes.push(0);
+        const pgPills = pageSizes.map(n => {
+            const label   = n === 0 ? 'All' : String(n);
+            const pg      = n === 0 ? 999999 : n;
+            const isFirst = n === (pageSizes[0]);
+            return `<button type="button" class="ws-pg-btn"
+                data-pg="${pg}"
+                data-listid="${listId}"
+                onclick="window.dashboard._wsSetArchPageSize('${listId}',+this.dataset.pg,this)"
+                style="padding:1px 7px; border:1px solid var(--border-color); border-radius:10px; font-size:0.68rem; cursor:pointer;
+                    background:${isFirst ? 'var(--primary-color)' : 'transparent'};
+                    color:${isFirst ? '#fff' : 'var(--text-secondary)'};
+                    font-weight:${isFirst ? '700' : '400'};">${label}</button>`;
+        }).join('');
+
+        return `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.35rem; flex-wrap:wrap; gap:0.25rem;">
+            <span style="font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Architectures<span id="${listId}-count" style="font-weight:400; color:var(--text-tertiary); font-size:0.72rem;"></span></span>
+            <span style="display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
+                <button type="button" onclick="document.querySelectorAll('#${listId} input[type=checkbox]').forEach(c=>c.checked=true);window.dashboard._wsSetArchPageSize('${listId}',999999,null)"
+                    style="padding:1px 8px; border:1px solid var(--border-color); border-radius:4px; background:transparent; color:var(--text-secondary); font-size:0.72rem; cursor:pointer;" title="Select all">All ✓</button>
+                <button type="button" onclick="document.querySelectorAll('#${listId} input[type=checkbox]').forEach(c=>c.checked=false);window.dashboard._wsSetArchPageSize('${listId}',999999,null)"
+                    style="padding:1px 8px; border:1px solid var(--border-color); border-radius:4px; background:transparent; color:var(--text-secondary); font-size:0.72rem; cursor:pointer;" title="Deselect all">None ✗</button>
+                <span style="color:var(--border-color);">|</span>
+                <span style="font-size:0.68rem; color:var(--text-tertiary);">Show:</span>
+                <span class="ws-pg-pills" style="display:flex; gap:0.2rem;">${pgPills}</span>
+            </span>
+        </div>
+        <div id="${listId}" data-cbsel="${cbSel}"
+            style="display:flex; flex-direction:column; border:1px solid var(--border-color); border-radius:6px; padding:0.25rem 0.4rem; background:var(--card-bg); margin-bottom:0.6rem;">
+            ${rows || '<span style="color:var(--text-tertiary); font-size:0.78rem; padding:0.25rem 0.2rem;">No architectures available — run an analysis first.</span>'}
+        </div>`;
+    }
+
+    _renderWorkspaceCreateForm(availableArchs) {
+        const domainPicker = this._renderDomainPicker('ws-domain-input', []);
+        const archList = this._renderArchList(availableArchs, 'ws-arch-list', 'ws-arch', null, 10);
 
         return `<div id="ws-create-form" style="border:1px dashed var(--border-color); border-radius:10px; padding:1rem; background:var(--nav-hover-bg);">
             <div style="font-size:0.875rem; font-weight:700; margin-bottom:0.75rem; color:var(--text-color);">+ Create Workspace</div>
@@ -6825,12 +7093,15 @@ class Dashboard {
                 style="width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-color); font-size:0.8rem; margin-bottom:0.5rem;">
             <input id="ws-desc-input" type="text" placeholder="Description (optional)" maxlength="300"
                 style="width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-color); font-size:0.8rem; margin-bottom:0.5rem;">
-            <input id="ws-domain-input" type="text" placeholder="Domain (e.g. financial, healthcare)" maxlength="80"
-                style="width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-color); font-size:0.8rem; margin-bottom:0.5rem;">
-            <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:0.4rem; font-weight:600;">Select architectures:</div>
-            <div id="ws-arch-checkboxes" style="max-height:180px; overflow-y:auto; border:1px solid var(--border-color); border-radius:6px; padding:0.4rem 0.6rem; background:var(--card-bg); margin-bottom:0.6rem;">
-                ${archCheckboxes || '<span style="color:var(--text-tertiary); font-size:0.78rem;">No architectures available — run an analysis first.</span>'}
+            <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.3rem;">
+                <span style="font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Domain</span>
+                <span title="Tag this workspace with one or more industry domains. Domains let you filter and compare workspaces across sectors (e.g. all Financial workspaces). They also let TA-Wiz apply domain-specific compliance context — e.g. MAS TRM for Financial, IM8 for Government. Select as many as apply; leave blank for internal/experimental workspaces."
+                    style="font-size:0.72rem; color:var(--text-tertiary); cursor:help; border:1px solid var(--border-color); border-radius:50%; width:14px; height:14px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">?</span>
+                <span style="font-size:0.72rem; color:var(--text-tertiary);">optional · multi-select</span>
             </div>
+            ${domainPicker}
+            <div style="margin-bottom:0.5rem;"></div>
+            ${archList}
             <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
                 <button onclick="window.dashboard._submitCreateWorkspace()"
                     style="padding:0.3rem 0.9rem; border:none; border-radius:6px; background:var(--primary-color); color:#fff; font-size:0.8rem; cursor:pointer; font-weight:600;">Create</button>
@@ -6890,23 +7161,28 @@ class Dashboard {
         const overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed;inset:0;background:#00000088;z-index:9999;display:flex;align-items:center;justify-content:center;';
 
-        const archCheckboxes = availableArchs.map(a =>
-            `<label style="display:flex;align-items:center;gap:0.4rem;padding:0.25rem 0;cursor:pointer;font-size:0.8rem;">
-                <input type="checkbox" class="edit-ws-arch" value="${a.name}" ${(ws.architectures||[]).includes(a.name) ? 'checked' : ''}>
-                <span>${a.name}</span>
-            </label>`
-        ).join('');
+        // Tag pre-checked archs on the objects so _renderArchList can mark them
+        const archsWithCheck = availableArchs.map(a => ({
+            ...a, _preChecked: (ws.architectures || []).includes(a.name)
+        }));
 
-        overlay.innerHTML = `<div style="background:var(--card-bg);border-radius:12px;padding:1.5rem;width:400px;max-width:90vw;max-height:80vh;overflow-y:auto;border:1px solid var(--border-color);">
+        const existingDomains = ws.domain ? ws.domain.split(',').map(d => d.trim()).filter(Boolean) : [];
+        const domainPicker = this._renderDomainPicker('edit-ws-domain', existingDomains);
+        const archList = this._renderArchList(archsWithCheck, 'edit-ws-arch-list', null, 'edit-ws-arch', 10);
+
+        overlay.innerHTML = `<div style="background:var(--card-bg);border-radius:12px;padding:1.5rem;width:460px;max-width:92vw;max-height:88vh;overflow-y:auto;border:1px solid var(--border-color);">
             <div style="font-size:1rem;font-weight:700;margin-bottom:1rem;">✏️ Edit: ${name}</div>
             <input id="edit-ws-desc" type="text" value="${ws.description||''}" placeholder="Description" maxlength="300"
                 style="width:100%;box-sizing:border-box;padding:0.4rem 0.6rem;border:1px solid var(--border-color);border-radius:6px;background:var(--main-bg);color:var(--text-color);font-size:0.8rem;margin-bottom:0.5rem;">
-            <input id="edit-ws-domain" type="text" value="${ws.domain||''}" placeholder="Domain" maxlength="80"
-                style="width:100%;box-sizing:border-box;padding:0.4rem 0.6rem;border:1px solid var(--border-color);border-radius:6px;background:var(--main-bg);color:var(--text-color);font-size:0.8rem;margin-bottom:0.5rem;">
-            <div style="font-size:0.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.4rem;">Architectures:</div>
-            <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border-color);border-radius:6px;padding:0.4rem 0.6rem;background:var(--main-bg);margin-bottom:0.75rem;">
-                ${archCheckboxes}
+            <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem;">
+                <span style="font-size:0.78rem;font-weight:600;color:var(--text-secondary);">Domain</span>
+                <span title="Tag this workspace with one or more industry domains. Domains let you filter and compare workspaces across sectors. TA-Wiz uses these to apply domain-specific compliance context — e.g. MAS TRM for Financial, IM8 for Government."
+                    style="font-size:0.72rem;color:var(--text-tertiary);cursor:help;border:1px solid var(--border-color);border-radius:50%;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">?</span>
+                <span style="font-size:0.72rem;color:var(--text-tertiary);">optional · multi-select</span>
             </div>
+            ${domainPicker}
+            <div style="margin-bottom:0.5rem;"></div>
+            ${archList}
             <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
                 <button onclick="this.closest('div[style*=fixed]').remove()"
                     style="padding:0.3rem 0.75rem;border:1px solid var(--border-color);border-radius:6px;background:transparent;color:var(--text-color);font-size:0.8rem;cursor:pointer;">Cancel</button>
@@ -6917,10 +7193,13 @@ class Dashboard {
         </div>`;
 
         document.body.appendChild(overlay);
+        // Apply initial page size so only first 10 unchecked show (checked always visible)
+        this._wsSetArchPageSize('edit-ws-arch-list', 10, null);
+
         overlay.querySelector('#edit-ws-save').addEventListener('click', async () => {
             const apiKey = localStorage.getItem('tm_api_key') || '';
             const desc   = overlay.querySelector('#edit-ws-desc')?.value.trim() ?? '';
-            const domain = overlay.querySelector('#edit-ws-domain')?.value.trim() ?? '';
+            const domain = overlay.querySelector('#edit-ws-domain')?.value ?? '';
             const archs  = [...overlay.querySelectorAll('.edit-ws-arch:checked')].map(el => el.value);
             const msg    = overlay.querySelector('#edit-ws-msg');
             if (!archs.length) { msg.style.color='var(--error-color)'; msg.textContent='Select at least one architecture.'; return; }
@@ -6971,41 +7250,103 @@ class Dashboard {
         panel.innerHTML = `
         <div style="display:flex; flex-direction:column; height:100%; min-height:0;">
             <!-- Header -->
-            <div style="flex-shrink:0; margin-bottom:0.75rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+            <div style="flex-shrink:0; margin-bottom:0.5rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
                     <span style="font-weight:700; font-size:0.9375rem;">💬 TA-Wiz — ${workspaceName}</span>
                     <div style="display:flex; gap:0.4rem;">
                         <button onclick="window.dashboard._taWizNewConversation('${workspaceName}')"
                             style="padding:0.2rem 0.6rem; font-size:0.72rem; border:1px solid var(--border-color); border-radius:4px; background:transparent; color:var(--text-tertiary); cursor:pointer;">
-                            ↺ New conversation</button>
+                            ↺ New</button>
                         <button onclick="document.getElementById('workspace-chat-panel').innerHTML='<div style=\\'display:flex;flex:1;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:0.875rem;text-align:center;padding:2rem;\\'><div><div style=\\'font-size:2rem;margin-bottom:0.5rem;\\'>💬</div><div>Select a workspace and click <strong>Open Chat</strong> to start a conversation with TA-Wiz</div></div></div>'"
                             style="padding:0.2rem 0.5rem; font-size:0.72rem; border:1px solid var(--border-color); border-radius:4px; background:transparent; color:var(--text-tertiary); cursor:pointer;" title="Close chat">✕</button>
                     </div>
                 </div>
-                <div style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:0.35rem;">Sources in context (click to toggle):</div>
+                <div style="font-size:0.72rem; color:var(--text-tertiary); margin-bottom:0.3rem;">Sources (click to toggle):</div>
                 <div id="tawiz-chips-${workspaceName.replace(/\W/g,'_')}" style="display:flex; flex-wrap:wrap; gap:0.3rem;">${chipHtml}</div>
             </div>
             <!-- Suggested prompts -->
-            <div id="tawiz-suggestions-${workspaceName.replace(/\W/g,'_')}" style="flex-shrink:0; display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.75rem; padding-bottom:0.75rem; border-bottom:1px solid var(--border-color);">
+            <div id="tawiz-suggestions-${workspaceName.replace(/\W/g,'_')}" style="flex-shrink:0; display:flex; flex-wrap:wrap; gap:0.35rem; margin-bottom:0.5rem; padding-bottom:0.5rem; border-bottom:1px solid var(--border-color);">
                 <span style="font-size:0.72rem; color:var(--text-tertiary); align-self:center;">Try:</span>
                 ${suggHtml}
             </div>
-            <!-- Messages -->
-            <div id="tawiz-messages-${workspaceName.replace(/\W/g,'_')}" style="flex:1; overflow-y:auto; padding:0.5rem 0; display:flex; flex-direction:column; gap:0.75rem;"></div>
-            <!-- Input -->
-            <div style="flex-shrink:0; display:flex; gap:0.5rem; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-color);">
+            <!-- Input — at top, always visible -->
+            <div style="flex-shrink:0; display:flex; gap:0.5rem; margin-bottom:0.6rem; padding-bottom:0.6rem; border-bottom:1px solid var(--border-color);">
                 <textarea id="tawiz-input-${workspaceName.replace(/\W/g,'_')}"
-                    placeholder="Ask about this workspace…"
-                    style="flex:1; padding:0.5rem 0.65rem; border:1px solid var(--border-color); border-radius:6px; resize:vertical; min-height:52px; max-height:120px; font-size:0.8125rem; background:var(--card-bg); color:var(--text-color); line-height:1.4;"
+                    placeholder="Ask about this workspace… (Enter to send, Shift+Enter for newline)"
+                    style="flex:1; padding:0.5rem 0.65rem; border:1px solid var(--border-color); border-radius:6px; resize:none; min-height:48px; max-height:110px; font-size:0.8125rem; background:var(--card-bg); color:var(--text-color); line-height:1.4;"
                     onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();window.dashboard._taWizSend('${workspaceName}');}"></textarea>
                 <button onclick="window.dashboard._taWizSend('${workspaceName}')"
-                    style="align-self:flex-end; padding:0.5rem 1.1rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:0.8125rem; white-space:nowrap;">Send →</button>
+                    style="align-self:flex-start; padding:0.5rem 1rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:0.8125rem; white-space:nowrap; margin-top:0;">Send →</button>
             </div>
+            <!-- Turns (newest on top, scroll down for older) -->
+            <div id="tawiz-messages-${workspaceName.replace(/\W/g,'_')}" style="flex:1; overflow-y:auto; padding:0.1rem 0; display:flex; flex-direction:column; gap:0;"></div>
         </div>`;
 
-        // Replay existing history
+        // Inject shared chat styles once
+        if (!document.getElementById('tawiz-chat-style')) {
+            const s = document.createElement('style');
+            s.id = 'tawiz-chat-style';
+            s.textContent = `
+                @keyframes tawiz-spin { to { transform: rotate(360deg); } }
+                .tawiz-turn { border-bottom: 1px solid var(--border-color); padding: 0.6rem 0; }
+                .tawiz-turn:last-child { border-bottom: none; }
+                .tawiz-turn-summary {
+                    list-style: none; cursor: pointer;
+                    display: flex; align-items: baseline; gap: 0.4rem;
+                    font-size: 0.75rem; color: var(--text-tertiary); padding: 0.15rem 0;
+                    user-select: none;
+                }
+                .tawiz-turn-summary::-webkit-details-marker { display: none; }
+                .tawiz-turn-summary::before { content: '▶'; font-size: 0.6rem; flex-shrink: 0; }
+                details[open] > .tawiz-turn-summary::before { content: '▼'; }
+                .tawiz-turn-summary .tw-q-preview {
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    max-width: 240px; color: var(--text-secondary);
+                }
+                .tawiz-bubble-user {
+                    align-self: flex-end;
+                    max-width: 82%;
+                    padding: 0.55rem 0.85rem;
+                    border-radius: 18px 18px 4px 18px;
+                    background: var(--primary-color);
+                    color: #fff;
+                    font-size: 0.8125rem; line-height: 1.5;
+                    word-break: break-word; white-space: pre-wrap;
+                }
+                .tawiz-bubble-assistant {
+                    align-self: flex-start;
+                    max-width: 92%;
+                    font-size: 0.8125rem; line-height: 1.6;
+                    word-break: break-word;
+                }
+                .tawiz-avatar {
+                    width: 22px; height: 22px; border-radius: 50%;
+                    background: var(--primary-color)22;
+                    border: 1px solid var(--primary-color)55;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 0.6rem; font-weight: 800; color: var(--primary-color);
+                    flex-shrink: 0; margin-top: 0.1rem;
+                }
+            `;
+            document.head.appendChild(s);
+        }
+
+        // Replay existing history as turns
         const hist = this._taWizHistory[workspaceName];
-        hist.forEach(msg => this._taWizAppendBubble(workspaceName, msg.role, msg.content));
+        if (!this._taWizTurnCount) this._taWizTurnCount = {};
+        this._taWizTurnCount[workspaceName] = 0;
+        // Pair up user+assistant messages into turns
+        for (let i = 0; i < hist.length - 1; i += 2) {
+            const q = hist[i], a = hist[i + 1];
+            if (q && a && q.role === 'user' && a.role === 'assistant') {
+                this._taWizTurnCount[workspaceName]++;
+                this._taWizInsertTurn(workspaceName, q.content, a.content, null);
+            }
+        }
+        // If last message is a lone user (answer pending), show it
+        if (hist.length % 2 === 1 && hist[hist.length - 1]?.role === 'user') {
+            this._taWizInsertTurn(workspaceName, hist[hist.length - 1].content, null, null);
+        }
     }
 
     _taWizSuggestedPrompts(ws) {
@@ -7096,42 +7437,138 @@ class Dashboard {
     _taWizNewConversation(workspaceName) {
         if (!this._taWizHistory) this._taWizHistory = {};
         this._taWizHistory[workspaceName] = [];
+        if (!this._taWizTurnCount) this._taWizTurnCount = {};
+        this._taWizTurnCount[workspaceName] = 0;
         const safeWs = workspaceName.replace(/\W/g,'_');
         const msgs = document.getElementById(`tawiz-messages-${safeWs}`);
         if (msgs) msgs.innerHTML = '';
-        // Restore suggested prompts
         const sugg = document.getElementById(`tawiz-suggestions-${safeWs}`);
         if (sugg) sugg.style.display = 'flex';
     }
 
-    _taWizAppendBubble(workspaceName, role, content, id) {
+    // Insert a Q+A turn at the TOP of the messages list.
+    // answerHtml=null means the answer slot is pending (filled later).
+    // Returns { turnEl, answerSlot, sourcesSlot }
+    _taWizInsertTurn(workspaceName, question, answerContent, turnIdOverride) {
         const safeWs = workspaceName.replace(/\W/g,'_');
         const container = document.getElementById(`tawiz-messages-${safeWs}`);
-        if (!container) return;
-        const isUser = role === 'user';
-        const div = document.createElement('div');
-        if (id) div.id = id;
-        div.style.cssText = `display:flex; flex-direction:column; align-items:${isUser ? 'flex-end' : 'flex-start'};`;
-        div.innerHTML = `
-            <div style="max-width:90%; padding:0.6rem 0.9rem; border-radius:${isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px'};
-                background:${isUser ? 'var(--primary-color)' : 'var(--card-bg)'};
-                color:${isUser ? '#fff' : 'var(--text-color)'};
-                border:1px solid ${isUser ? 'transparent' : 'var(--border-color)'};
-                font-size:0.8125rem; line-height:1.5; white-space:pre-wrap; word-break:break-word;">
-                ${isUser ? this._escHtml(content) : this._taWizRenderMd(content)}
+        if (!container) return {};
+
+        if (!this._taWizTurnCount) this._taWizTurnCount = {};
+        if (!this._taWizTurnCount[workspaceName]) this._taWizTurnCount[workspaceName] = 0;
+        const turnIdx = this._taWizTurnCount[workspaceName];  // 0 = newest
+
+        // Collapse all existing open turns (they're now older)
+        container.querySelectorAll('details.tawiz-turn[open]').forEach(d => d.removeAttribute('open'));
+
+        const turnEl = document.createElement('details');
+        turnEl.className = 'tawiz-turn';
+        turnEl.setAttribute('open', '');
+        if (turnIdOverride) turnEl.id = turnIdOverride;
+
+        const preview = question.length > 60 ? question.slice(0, 57) + '…' : question;
+
+        turnEl.innerHTML = `
+            <summary class="tawiz-turn-summary">
+                <span class="tw-q-preview">${this._escHtml(preview)}</span>
+            </summary>
+            <div class="tawiz-turn-body" style="display:flex; flex-direction:column; gap:0.5rem; padding-top:0.5rem;">
+                <!-- User bubble -->
+                <div style="display:flex; justify-content:flex-end;">
+                    <div class="tawiz-bubble-user">${this._escHtml(question)}</div>
+                </div>
+                <!-- Assistant row -->
+                <div class="tawiz-answer-row" style="display:flex; align-items:flex-start; gap:0.5rem;">
+                    <div class="tawiz-avatar">TW</div>
+                    <div class="tawiz-answer-slot tawiz-bubble-assistant"></div>
+                </div>
+                <!-- Sources row -->
+                <div class="tawiz-sources-row" style="padding-left:2rem; display:none;"></div>
             </div>`;
-        container.appendChild(div);
-        container.scrollTop = container.scrollHeight;
-        return div;
+
+        // Prepend — newest turn at top
+        container.insertBefore(turnEl, container.firstChild);
+
+        const answerSlot = turnEl.querySelector('.tawiz-answer-slot');
+        const sourcesSlot = turnEl.querySelector('.tawiz-sources-row');
+
+        if (answerContent !== null) {
+            answerSlot.innerHTML = this._taWizRenderMd(answerContent);
+        }
+
+        return { turnEl, answerSlot, sourcesSlot };
+    }
+
+    // Legacy compat shim — kept so history replay in _openWorkspaceChat still works
+    _taWizAppendBubble(workspaceName, role, content, id) {
+        if (role === 'user') {
+            this._taWizInsertTurn(workspaceName, content, null, id);
+        }
+        // assistant-only calls (old path) ignored — turns handle both sides together
     }
 
     _taWizRenderMd(text) {
-        // Minimal markdown: bold, inline code, newlines → <br>
-        return this._escHtml(text)
+        // Full markdown render: headers, bold, italic, code blocks, inline code,
+        // tables, bullet lists, numbered lists, horizontal rules.
+        const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+        // 1. Fenced code blocks
+        let out = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+            `<pre style="background:var(--nav-hover-bg);border:1px solid var(--border-color);border-radius:6px;padding:0.6rem 0.75rem;overflow-x:auto;font-size:0.78rem;margin:0.5rem 0;"><code>${esc(code.trim())}</code></pre>`);
+
+        // 2. Tables — parse | ... | rows
+        out = out.replace(/((?:\|.+\|\n?)+)/g, (block) => {
+            const rows = block.trim().split('\n').filter(r => r.trim());
+            if (rows.length < 2) return block;
+            const isSep = (r) => /^\|[-| :]+\|$/.test(r.trim());
+            let html = '<table style="border-collapse:collapse;width:100%;font-size:0.78rem;margin:0.5rem 0;">';
+            let inHead = true;
+            rows.forEach((row, i) => {
+                if (isSep(row)) { inHead = false; return; }
+                const cells = row.trim().replace(/^\||\|$/g,'').split('|');
+                const tag = inHead ? 'th' : 'td';
+                const cellStyle = inHead
+                    ? 'padding:0.3rem 0.6rem;border:1px solid var(--border-color);background:var(--nav-hover-bg);font-weight:600;text-align:left;'
+                    : 'padding:0.3rem 0.6rem;border:1px solid var(--border-color);';
+                html += '<tr>' + cells.map(c => `<${tag} style="${cellStyle}">${esc(c.trim())}</${tag}>`).join('') + '</tr>';
+            });
+            html += '</table>';
+            return html;
+        });
+
+        // 3. Headers
+        out = out
+            .replace(/^### (.+)$/gm, '<h4 style="margin:0.75rem 0 0.3rem;font-size:0.85rem;font-weight:700;color:var(--text-color);">$1</h4>')
+            .replace(/^## (.+)$/gm,  '<h3 style="margin:0.9rem 0 0.35rem;font-size:0.9rem;font-weight:700;color:var(--text-color);">$1</h3>')
+            .replace(/^# (.+)$/gm,   '<h2 style="margin:1rem 0 0.4rem;font-size:1rem;font-weight:700;color:var(--text-color);">$1</h2>');
+
+        // 4. Bullet lists (lines starting with - or *)
+        out = out.replace(/((?:^[-*] .+\n?)+)/gm, (block) => {
+            const items = block.trim().split('\n').map(l => l.replace(/^[-*] /,'').trim());
+            return '<ul style="margin:0.4rem 0 0.4rem 1.2rem;padding:0;list-style:disc;">'
+                + items.map(i => `<li style="margin-bottom:0.2rem;">${i}</li>`).join('')
+                + '</ul>';
+        });
+
+        // 5. Numbered lists
+        out = out.replace(/((?:^\d+\. .+\n?)+)/gm, (block) => {
+            const items = block.trim().split('\n').map(l => l.replace(/^\d+\. /,'').trim());
+            return '<ol style="margin:0.4rem 0 0.4rem 1.2rem;padding:0;">'
+                + items.map(i => `<li style="margin-bottom:0.2rem;">${i}</li>`).join('')
+                + '</ol>';
+        });
+
+        // 6. Inline: bold, italic, inline code, HR
+        out = out
+            .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
             .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-            .replace(/`([^`]+)`/g, '<code style="background:var(--nav-hover-bg);padding:0 3px;border-radius:3px;font-size:0.9em;">$1</code>')
-            .replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>')
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            .replace(/`([^`]+)`/g, '<code style="background:var(--nav-hover-bg);padding:1px 4px;border-radius:3px;font-size:0.88em;border:1px solid var(--border-color)40;">$1</code>')
+            .replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid var(--border-color);margin:0.75rem 0;">')
+            .replace(/\n\n/g, '<div style="height:0.5rem;"></div>')
             .replace(/\n/g, '<br>');
+
+        return out;
     }
 
     _escHtml(s) {
@@ -7148,21 +7585,30 @@ class Dashboard {
         const selected = [...(this._taWizSelected?.[workspaceName] || [])];
         if (!this._taWizHistory) this._taWizHistory = {};
         if (!this._taWizHistory[workspaceName]) this._taWizHistory[workspaceName] = [];
+        if (!this._taWizTurnCount) this._taWizTurnCount = {};
+        if (!this._taWizTurnCount[workspaceName]) this._taWizTurnCount[workspaceName] = 0;
 
         // Hide suggestions after first message
         const sugg = document.getElementById(`tawiz-suggestions-${safeWs}`);
         if (sugg) sugg.style.display = 'none';
 
-        // Append user bubble, update history
-        this._taWizAppendBubble(workspaceName, 'user', question);
         this._taWizHistory[workspaceName].push({ role: 'user', content: question });
-        if (inputEl) inputEl.value = '';
+        if (inputEl) { inputEl.value = ''; inputEl.style.height = ''; }
+        this._taWizTurnCount[workspaceName]++;
 
-        // Thinking bubble
-        const thinkingId = `tawiz-thinking-${Date.now()}`;
-        const thinkingDiv = this._taWizAppendBubble(workspaceName, 'assistant', '⏳ Thinking…', thinkingId);
+        // Insert turn with spinner in answer slot
+        const { turnEl, answerSlot, sourcesSlot } = this._taWizInsertTurn(workspaceName, question, null);
 
-        // Sliding window — keep last 12 turns
+        // Show spinner in the answer slot
+        const spinnerId = `tawiz-sp-${Date.now()}`;
+        if (answerSlot) {
+            answerSlot.innerHTML = `<div style="display:flex;align-items:center;gap:0.45rem;color:var(--text-tertiary);font-size:0.78rem;padding:0.3rem 0;">
+                <span id="${spinnerId}" style="display:inline-block;width:13px;height:13px;border:2px solid var(--border-color);border-top-color:var(--primary-color);border-radius:50%;animation:tawiz-spin 0.8s linear infinite;flex-shrink:0;"></span>
+                <span id="${spinnerId}-lbl">Loading sources…</span>
+            </div>`;
+        }
+
+        // Sliding window — keep last 12 turns (6 Q+A pairs)
         const history = this._taWizHistory[workspaceName].slice(-12);
 
         try {
@@ -7173,7 +7619,7 @@ class Dashboard {
                     workspace_name: workspaceName,
                     question,
                     selected_architectures: selected.length ? selected : null,
-                    history: history.slice(0, -1),  // exclude the turn we just added
+                    history: history.slice(0, -1),
                 }),
             });
 
@@ -7193,47 +7639,36 @@ class Dashboard {
                     try {
                         const data = JSON.parse(line.slice(6));
                         if (data.answer !== undefined) {
-                            // Replace thinking bubble with answer
-                            document.getElementById(thinkingId)?.remove();
-                            this._taWizAppendBubble(workspaceName, 'assistant', data.answer);
+                            if (answerSlot) answerSlot.innerHTML = this._taWizRenderMd(data.answer);
                             this._taWizHistory[workspaceName].push({ role: 'assistant', content: data.answer });
 
-                            // Source chips below answer
-                            if (data.sources_used?.length) {
-                                const msgs = document.getElementById(`tawiz-messages-${safeWs}`);
-                                if (msgs) {
-                                    const chips = document.createElement('div');
-                                    chips.style.cssText = 'display:flex; flex-wrap:wrap; gap:0.3rem; align-items:center; padding-left:0.2rem;';
-                                    chips.innerHTML = '<span style="font-size:0.68rem;color:var(--text-tertiary);">Sources:</span>'
-                                        + data.sources_used.map(a =>
-                                            `<span onclick="window.dashboard._loadArchFromReports('${a}')"
-                                                style="font-size:0.68rem; padding:1px 7px; border-radius:10px; border:1px solid var(--border-color); background:var(--nav-hover-bg); color:var(--text-secondary); cursor:pointer; transition:all 0.12s;"
-                                                onmouseover="this.style.color='var(--primary-color)';this.style.borderColor='var(--primary-color)'"
-                                                onmouseout="this.style.color='var(--text-secondary)';this.style.borderColor='var(--border-color)'">${a}</span>`
-                                        ).join('');
-                                    msgs.appendChild(chips);
-                                    msgs.scrollTop = msgs.scrollHeight;
-                                }
+                            // Source chips inside the turn
+                            if (data.sources_used?.length && sourcesSlot) {
+                                sourcesSlot.style.display = 'flex';
+                                sourcesSlot.style.flexWrap = 'wrap';
+                                sourcesSlot.style.gap = '0.3rem';
+                                sourcesSlot.style.alignItems = 'center';
+                                sourcesSlot.innerHTML = '<span style="font-size:0.68rem;color:var(--text-tertiary);">Sources:</span>'
+                                    + data.sources_used.map(a =>
+                                        `<span onclick="window.dashboard._loadArchFromReports('${a}')"
+                                            style="font-size:0.68rem;padding:1px 7px;border-radius:10px;border:1px solid var(--border-color);background:var(--nav-hover-bg);color:var(--text-secondary);cursor:pointer;"
+                                            onmouseover="this.style.color='var(--primary-color)';this.style.borderColor='var(--primary-color)'"
+                                            onmouseout="this.style.color='var(--text-secondary)';this.style.borderColor='var(--border-color)'">${a}</span>`
+                                    ).join('');
                             }
                             answered = true;
                         } else if (data.message && !answered) {
-                            // Update thinking bubble text on progress events
-                            const t = document.getElementById(thinkingId);
-                            if (t) {
-                                const inner = t.querySelector('div');
-                                if (inner) inner.textContent = `⏳ ${data.message}`;
-                            }
+                            const lbl = document.getElementById(`${spinnerId}-lbl`);
+                            if (lbl) lbl.textContent = data.message;
                         }
                     } catch (_) {}
                 }
             }
-            if (!answered) {
-                document.getElementById(thinkingId)?.remove();
-                this._taWizAppendBubble(workspaceName, 'assistant', '❌ No response received.');
+            if (!answered && answerSlot) {
+                answerSlot.innerHTML = '<span style="color:var(--text-tertiary);font-size:0.8rem;">❌ No response received.</span>';
             }
         } catch (e) {
-            document.getElementById(thinkingId)?.remove();
-            this._taWizAppendBubble(workspaceName, 'assistant', `❌ Error: ${e.message}`);
+            if (answerSlot) answerSlot.innerHTML = `<span style="color:var(--error-color);font-size:0.8rem;">❌ ${this._escHtml(e.message)}</span>`;
         }
     }
 
@@ -8282,6 +8717,31 @@ class Dashboard {
         } catch (e) { return { ok: false, detail: 'Pattern check failed: ' + e.message }; }
     }
 
+    async _harnessCheckLlm() {
+        const key = localStorage.getItem('tm_api_key') || '';
+        if (!key) return { ok: null, detail: 'API key required — enter it in the header bar first.' };
+        try {
+            const r = await fetch('/api/v1/llm-check', { headers: { 'TM-API-KEY': key } });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                return { ok: false, detail: `HTTP ${r.status} — ${err.detail || 'check server logs'}` };
+            }
+            const data = await r.json();
+            if (data.ok) {
+                return {
+                    ok: true,
+                    detail: `✓ LLM reachable · model: ${data.model} · latency: ${data.latency_ms}ms`,
+                };
+            }
+            return {
+                ok: false,
+                detail: `✗ LLM call failed — ${data.error || 'unknown error'}. Model attempted: ${data.model || '—'}`,
+            };
+        } catch (e) {
+            return { ok: false, detail: 'LLM check request failed: ' + e.message };
+        }
+    }
+
     // ── ScrumMaster tab ───────────────────────────────────────────────────────
     async loadScrumMasterTab() {
         const container = document.getElementById('scrum-master-content');
@@ -8870,6 +9330,51 @@ class Dashboard {
         try {
             const response = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
             if (!response.ok) {
+                // 07_moe_orchestrator.json missing — could be never-run or crashed mid-synthesis.
+                // Check whether critic JSON files already exist (crash-at-synthesis state).
+                // Use GET (the /files/ route only supports GET, not HEAD).
+                // Fetch all five critic files in parallel — small JSONs, parallel is fast.
+                const criticFileMap = {
+                    architect:   '04_architect_critique.json',
+                    tester:      '05_tester_critique.json',
+                    red_team:    '06_red_team_critique.json',
+                    purple_team: '06b_purple_team_critique.json',
+                    blackhat:    '06c_blackhat_critique.json',
+                };
+                const base = `/api/v1/reports/${encodeURIComponent(archName)}/files/`;
+                const fileResults = await Promise.all(
+                    Object.entries(criticFileMap).map(async ([key, fname]) => {
+                        const r = await fetch(base + fname, { cache: 'no-store' }).catch(() => null);
+                        return { key, ok: r && r.ok };
+                    })
+                );
+                const presentKeys = fileResults.filter(x => x.ok).map(x => x.key);
+                const corePresent = ['architect', 'tester', 'red_team'].every(
+                    k => presentKeys.includes(k)
+                );
+
+                if (corePresent) {
+                    // Critics ran but synthesis crashed — reconstruct paused state so Resume works.
+                    this._erpState = {
+                        archName,
+                        status: 'paused',
+                        stage: 'synthesis',
+                        pct: 75,
+                        message: 'Critics completed — Synthesis did not finish. Click Resume to run Synthesis only (critics loaded from disk, no LLM re-calls).',
+                        criticMode: 'sequential',
+                        cardStates: {},
+                        abortController: null,
+                    };
+                    presentKeys.forEach(k => {
+                        this._erpState.cardStates[k] = { isCriticResult: true, statusColor: '#16a34a' };
+                    });
+                    container.innerHTML = this._erpProgressShell(archName, 'paused');
+                    this._erpRestoreState();
+                    const msgEl = document.getElementById('erp-message');
+                    if (msgEl) msgEl.textContent = this._erpState.message;
+                    return;
+                }
+
                 container.innerHTML = this._erpProgressShell(archName, 'idle');
                 this._erpShowModeHint('sequential');
                 return;
@@ -11027,12 +11532,14 @@ class Dashboard {
         // Build selector
         const selectOpts = Object.entries(groups).map(([b, runs]) => {
             const sel = b === selectedBase ? 'selected' : '';
-            return `<option value="${_esc(b)}" ${sel}>${_esc(b)} (${runs.length} run${runs.length>1?'s':''})${runs.length>1?' ✓':''}</option>`;
+            // Explicit light-mode colours on <option> so the OS-native dropdown is readable
+            // regardless of whether the page is in dark mode (browsers ignore CSS vars on options)
+            return `<option value="${_esc(b)}" ${sel} style="background:#ffffff; color:#111111;">${_esc(b)} (${runs.length} run${runs.length>1?'s':''})${runs.length>1?' ✓':''}</option>`;
         }).join('');
         const selector = `<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; flex-wrap:wrap;">
             <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary); white-space:nowrap;">Architecture:</label>
             <select onchange="window.dashboard._insightsTrendArch=this.value; window.dashboard.loadInsightsTab();"
-                style="font-size:0.8rem; padding:0.25rem 0.5rem; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-color); cursor:pointer; min-width:220px;">
+                style="font-size:0.8rem; padding:0.25rem 0.5rem; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-color); cursor:pointer; min-width:220px; color-scheme:light dark;">
                 ${selectOpts}
             </select>
         </div>`;
@@ -11602,6 +12109,1572 @@ class Dashboard {
         return `<div style="display:flex; gap:1rem; flex-wrap:wrap;">${cards}</div>
             <div style="margin-top:0.75rem; font-size:0.7rem; color:var(--text-tertiary);">Domain classification is based on SSP profile and architecture name. Sorted by average risk (highest first).</div>`;
     }
+
+    // ── TATB (TA Test Benchmark) Scorecard ──────────────────────────────────
+    // Rubric-based quality assessment of the current TM/ADR output.
+    // Four rubrics: Threat-Relevant · TTP-Accurate · Risk-Defensible · Plan-Actionable.
+    // All scores derive from files the analysis already produces. Warn-only.
+
+    async loadBenchmarkTab() {
+        const container = document.getElementById('benchmark-content');
+        if (!container) return;
+
+        container.innerHTML = '<p style="color:var(--text-tertiary); font-size:0.85rem;">Loading TATB scorecard…</p>';
+
+        const archName = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+        if (!archName) {
+            container.innerHTML = '<p class="placeholder">No analysis loaded. Run an analysis first.</p>';
+            return;
+        }
+
+        await this._tatbFetchAndRender(archName, false);
+    }
+
+    async _tatbRefresh() {
+        const archName = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+        if (!archName) return;
+        await this._tatbFetchAndRender(archName, true);
+    }
+
+    _tatbShowRubricDoc() {
+        this.showRightPane('🧪 TATB Rubric — Methodology', `
+        <div style="font-size:0.8rem; color:var(--text-secondary); line-height:1.65;">
+            <p style="margin-top:0; color:var(--text-color);">TATB scores every threat model against four rubrics. Each rubric is computed from files the analysis already produces — no extra runs needed.</p>
+
+            <div style="margin-bottom:0.9rem;">
+                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">🎯 Threat-Relevant</div>
+                <div>Do the threats match <em>this</em> architecture, or are they generic?</div>
+                <ul style="margin:0.3rem 0 0 1rem; padding:0; font-size:0.75rem;">
+                    <li><strong>Pattern diversity</strong> — how many independent analysis engines flagged threats</li>
+                    <li><strong>Node binding</strong> — each attack path traces back to a real diagram node</li>
+                    <li><strong>Generic fallback</strong> — detects copy-paste default threats (same opening techniques on every path)</li>
+                    <li><strong>AI/ML coverage</strong> — only shown for AI architectures; checks ATLAS techniques were applied</li>
+                </ul>
+            </div>
+
+            <div style="margin-bottom:0.9rem;">
+                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">🎭 TTP-Accurate</div>
+                <div>Are MITRE technique IDs correctly matched to attacker behaviours?</div>
+                <ul style="margin:0.3rem 0 0 1rem; padding:0; font-size:0.75rem;">
+                    <li><strong>Validation pass</strong> — TA's own checker found no obvious mismatches</li>
+                    <li><strong>Justification</strong> — each technique has a written reason it applies here</li>
+                    <li><strong>Cross-critic</strong> — multiple AI reviewers independently flagged the same techniques</li>
+                    <li><strong>MoE lift</strong> — how much expert review moved the confidence score</li>
+                </ul>
+            </div>
+
+            <div style="margin-bottom:0.9rem;">
+                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">⚖️ Risk-Defensible</div>
+                <div>Can every risk number be traced back to its inputs?</div>
+                <ul style="margin:0.3rem 0 0 1rem; padding:0; font-size:0.75rem;">
+                    <li><strong>AIVSS completeness</strong> — all three data-flow directions (in/internal/out) scored</li>
+                    <li><strong>Residual sanity</strong> — no threat claims to be fully eliminated (NIST 10% floor)</li>
+                    <li><strong>Confidence trail</strong> — final score can be decomposed step-by-step</li>
+                    <li><strong>Governance markers</strong> — critic agreement and confidence swing are recorded</li>
+                </ul>
+            </div>
+
+            <div style="margin-bottom:0.6rem;">
+                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">✅ Plan-Actionable</div>
+                <div>Can an engineer act on the recommendations today?</div>
+                <ul style="margin:0.3rem 0 0 1rem; padding:0; font-size:0.75rem;">
+                    <li><strong>ADR completeness</strong> — each decision record has context, hops, and risk delta</li>
+                    <li><strong>Defence layers</strong> — Prevent / Detect / Isolate / Respond all addressed</li>
+                    <li><strong>Priority balance</strong> — items spread across urgency levels (not all CRITICAL)</li>
+                    <li><strong>Control specificity</strong> — <em>not yet scored</em>; future version checks controls name real artefacts</li>
+                </ul>
+            </div>
+
+            <div style="border-top:1px solid var(--border-color); padding-top:0.6rem; font-size:0.72rem; color:var(--text-tertiary);">
+                <strong>Overall score</strong>: simple average of the four rubrics (25% each).<br>
+                85–100 Excellent · 70–84 Solid · 50–69 Weak · &lt;50 Draft<br><br>
+                Full source: <code>docs/TATB_RUBRIC.md</code> in the repository.
+            </div>
+        </div>`);
+    }
+
+    async _tatbFetchAndRender(archName, isRefresh) {
+        const container = document.getElementById('benchmark-content');
+        if (!container) return;
+
+        // Preserve prior scores for delta chips (null on first load — no leak)
+        const prev = isRefresh ? this._lastTatbScores : null;
+
+        const _nc = { cache: 'no-store' };
+        let gt = null, gov = null, moe = null, sm = null, perf = null;
+        await Promise.all([
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/ground_truth.json`, _nc)
+                .then(r => r.ok ? r.json() : null).then(d => { gt = d; }).catch(() => {}),
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/governance_signals.json`, _nc)
+                .then(r => r.ok ? r.json() : null).then(d => { gov = d; }).catch(() => {}),
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/07_moe_orchestrator.json`, _nc)
+                .then(r => r.ok ? r.json() : null).then(d => { moe = d; }).catch(() => {}),
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/08_scrum_master.json`, _nc)
+                .then(r => r.ok ? r.json() : null).then(d => { sm = d; }).catch(() => {}),
+            fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/harness_perf.json`, _nc)
+                .then(r => r.ok ? r.json() : null).then(d => { perf = d; }).catch(() => {}),
+        ]);
+
+        if (!gt) {
+            container.innerHTML = `<p class="placeholder">Could not load ground_truth.json for ${this._esc(archName)}.</p>`;
+            return;
+        }
+
+        // Fetch MITRE technique→mitigation mappings for this arch's techniques.
+        // Used by TTP-Accurate (control alignment) and Risk-Defensible (binding depth).
+        // The /api/v1/technique-mitigations endpoint reads from the pre-built cache — fast.
+        let mitreMitigations = {};   // { T1133: ['M1021','M1030',...], ... }
+        let mitreNames = {};         // { M1021: 'Restrict Web-Based Content', ... }
+        try {
+            const apTechIds = [...new Set(
+                (gt.expected_attack_paths || []).flatMap(ap => ap.techniques || [])
+            )];
+            if (apTechIds.length) {
+                const mitResp = await fetch(
+                    `/api/v1/technique-mitigations?technique_ids=${apTechIds.join(',')}`, _nc
+                ).catch(() => null);
+                if (mitResp && mitResp.ok) {
+                    const mitData = await mitResp.json();
+                    mitreMitigations = mitData.mappings || {};
+                    // Collect all unique M-IDs then fetch names in one call
+                    const allMids = [...new Set(Object.values(mitreMitigations).flat())];
+                    if (allMids.length) {
+                        const nameResp = await fetch(
+                            `/api/v1/mitigations?mitigation_ids=${allMids.join(',')}`, _nc
+                        ).catch(() => null);
+                        if (nameResp && nameResp.ok) {
+                            const nameData = await nameResp.json();
+                            mitreNames = nameData.mitigations || nameData || {};
+                        }
+                    }
+                }
+            }
+        } catch (_) {}
+
+        let scores, html;
+        try {
+            scores = this._computeTatbScores({ gt, gov, moe, sm, mitreMitigations, mitreNames });
+            this._lastTatbScores = { threat: scores.threat.score, ttp: scores.ttp.score, risk: scores.risk.score, plan: scores.plan.score, overall: scores.overall };
+            html = this._renderTatbScorecard(archName, scores, { gt, gov, moe, sm, perf, mitreMitigations, mitreNames }, prev);
+        } catch (e) {
+            container.innerHTML = `<div style="padding:1.5rem; color:var(--error-color); font-size:0.85rem;">
+                <strong>TATB render error:</strong> ${this._esc(e.message)}<br>
+                <pre style="font-size:0.72rem; color:var(--text-tertiary); white-space:pre-wrap; margin-top:0.5rem;">${this._esc(e.stack || '')}</pre>
+            </div>`;
+            console.error('[TATB] render error:', e);
+            return;
+        }
+        container.innerHTML = html;
+
+        // Event delegation for tile evidence clicks (data-tatb-key avoids embedding HTML in onclick).
+        // Attach once per container replacement — listener is fresh because innerHTML replaced the subtree.
+        container.addEventListener('click', (ev) => {
+            const tile = ev.target.closest('[data-tatb-key]');
+            if (!tile) return;
+            const key = tile.dataset.tatbKey;
+            const entry = window._tatbTileEvidence && window._tatbTileEvidence[key];
+            if (entry) this.showRightPane(entry.title, entry.html);
+        });
+    }
+
+    // ── Rubric computation ──────────────────────────────────────────────────
+    _computeTatbScores({ gt, gov, moe, sm, mitreMitigations = {}, mitreNames = {} }) {
+        const aps = (gt && gt.expected_attack_paths) || [];
+        const nAP = aps.length;
+        const nCritical = aps.filter(a => a.criticality_tier === 'CRITICAL').length;
+        const nHigh = aps.filter(a => a.criticality_tier === 'HIGH').length;
+        const hasAI = (gt && gt.pattern_sources && gt.pattern_sources.some(s => s.includes('AI') || s.includes('ATLAS'))) || false;
+        const parsedNodes = (gt && gt.metadata && gt.metadata.parsed_nodes) || {};
+        const parsedNodeIds = Object.keys(parsedNodes);
+        const patternSources = (gt && gt.pattern_sources) || [];
+        const techValidation = (gt && gt.technique_validation) || ((gt && gt.validation_report && gt.validation_report.validations && gt.validation_report.validations.technique_relevance) || []);
+        const residualRisks = (gt && gt.residual_risks && gt.residual_risks.per_threat) || {};
+        const adrs = (gt && gt.architecture_decision_records) || [];
+        const criticDivergence = (gov && gov.manipulation && gov.manipulation.critic_divergence_score);
+        const confidenceSwing = (gov && gov.manipulation && gov.manipulation.confidence_swing);
+        const aivss = (gov && gov.aivss) || {};
+
+        // ── Rubric 1: Threat-Relevant ─────────────────────────────────────────
+        // Question: does the analysis cover THIS architecture's threat surface,
+        // not whether the architecture has many component types.
+        //
+        // Signals:
+        //   A. Attack path coverage  — do paths start from distinct entry points across nodes?
+        //   B. Node coverage         — what fraction of diagram nodes appear in at least one path?
+        //   C. Technique variety     — how many distinct techniques were surfaced overall?
+        //   D. Generic-fallback flag — do all paths share an identical technique signature?
+        //   E. ATLAS-when-AI         — only relevant when AI/ML components are present.
+        //
+        // "Pattern sources" (engine count) is NOT used as a diversity score because
+        // it reflects architecture type, not analysis quality. A traditional 4-node
+        // architecture correctly triggers only RAPIDS; that is correct behaviour, not
+        // a shortcoming.
+
+        // A. Entry-point diversity — unique entry nodes across paths / total nodes
+        //    Measures whether the analysis explored threats from multiple angles.
+        let boundPaths = 0;
+        const entryNodes = new Set();
+        aps.forEach(ap => {
+            const entry = ap.entry_node || ap.entry || (ap.path && ap.path[0]);
+            const pivot  = (ap.path && ap.path[1]) || null;
+            if (entry && parsedNodeIds.includes(entry)) { boundPaths++; entryNodes.add(entry); }
+            else if (pivot && parsedNodeIds.includes(pivot)) { boundPaths++; entryNodes.add(pivot); }
+            else if (entry) entryNodes.add(entry);
+        });
+        const nodeBindingPct = aps.length ? Math.round((boundPaths / aps.length) * 100) : 0;
+
+        // B. Node coverage — fraction of diagram nodes that appear in at least one path
+        const nodesInPaths = new Set();
+        aps.forEach(ap => {
+            const path = ap.path || [];
+            path.forEach(n => { if (parsedNodeIds.includes(n)) nodesInPaths.add(n); });
+            const entry = ap.entry_node || ap.entry;
+            if (entry && parsedNodeIds.includes(entry)) nodesInPaths.add(entry);
+        });
+        const nodeCoveragePct = parsedNodeIds.length
+            ? Math.round((nodesInPaths.size / parsedNodeIds.length) * 100)
+            : 50;
+
+        // C. Technique variety — unique techniques across all paths, normalised.
+        //    12 unique techniques is excellent; 5 is thin; 0 is a problem.
+        const allTechsInPaths = new Set();
+        aps.forEach(ap => (ap.techniques || []).forEach(t => allTechsInPaths.add(t)));
+        const techVarietyPct = Math.min(100, Math.round((allTechsInPaths.size / 12) * 100));
+
+        // D. Generic-fallback — if every path has *identical* technique set it is
+        //    boilerplate regardless of which techniques. Strict-identical only.
+        const techSigs = aps.map(ap => (ap.techniques || []).slice().sort().join(','));
+        const allIdentical = techSigs.length >= 2 && new Set(techSigs).size === 1;
+        const genericPenalty = allIdentical ? 20 : 0;
+
+        // E. ATLAS-when-AI — only applicable when AI/ML components detected.
+        const atlasPresent = patternSources.some(s => s.toLowerCase().includes('atlas'));
+        const atlasFlaggedElsewhere = !!((gov && gov.exploitation && (gov.exploitation.atlas_signals || gov.exploitation.atlas)) || (gt && gt.ai_ml_assessment && gt.ai_ml_assessment.atlas_techniques && gt.ai_ml_assessment.atlas_techniques.length));
+        const atlasMismatchPenalty = (hasAI && atlasFlaggedElsewhere && !atlasPresent) ? 15 : 0;
+
+        // Composite — weighted toward binding (did we find real architecture-specific paths?)
+        // and variety (did we cover the threat surface broadly?).
+        // Pattern sources kept for display only — not in the score formula.
+        const patternDiversityPct = Math.min(100, patternSources.length * 25);  // display only
+        const threatScore = Math.max(0, Math.round(
+            nodeBindingPct * 0.40 + nodeCoveragePct * 0.25 + techVarietyPct * 0.35
+            - genericPenalty - atlasMismatchPenalty
+        ));
+
+        // ── Rubric 2: TTP-Accurate ────────────────────────────────────────────
+        // Classify each validation by reason quality:
+        //   CONFIRMED  = structural evidence ("Execution environment present") — full weight
+        //   PLAUSIBLE  = heuristic match ("Generic match (N keywords overlap)") — half weight
+        //   FAILED     = valid=false — zero weight
+        const _reasonClass = (v) => {
+            if (v.valid === false || v.passed === false) return 'FAILED';
+            const r = (v.reason || v.justification || '').toLowerCase();
+            if (!r || r.includes('[plausible]') || r.includes('generic match') || r.includes('keyword overlap')) return 'PLAUSIBLE';
+            return 'CONFIRMED';
+        };
+        const tvConfirmed = techValidation.filter(v => _reasonClass(v) === 'CONFIRMED').length;
+        const tvPlausible = techValidation.filter(v => _reasonClass(v) === 'PLAUSIBLE').length;
+        const tvFailed    = techValidation.filter(v => _reasonClass(v) === 'FAILED').length;
+        // Weighted pass rate: CONFIRMED=1.0, PLAUSIBLE=0.5, FAILED=0
+        const validationPassRate = techValidation.length
+            ? Math.round((tvConfirmed * 1.0 + tvPlausible * 0.5) / techValidation.length * 100)
+            : 50;
+
+        const justificationPct = techValidation.length
+            ? Math.round(techValidation.filter(v => (v.reason || v.justification || '').trim().length > 10).length / techValidation.length * 100)
+            : 50;
+
+        // MITRE alignment: for each (technique, control) pair in control_recommendations,
+        // does the control name match any of MITRE's recommended mitigations for that technique?
+        // Uses the mitreNames map (M-ID → name) pre-fetched from the API.
+        const controlRecs2 = (gt && gt.control_recommendations) || [];
+        const mitreAlignedPairs = new Set();  // "T1133::Network Segmentation"
+        const mitreUnalignedPairs = [];       // for evidence display
+        const mitreAlignmentChecked = new Set();
+        // Synonym map: TA control name fragments → MITRE mitigation name fragments they correspond to
+        const _CTRL_SYNONYMS = {
+            'mfa':                  ['multi-factor','multifactor','authentication'],
+            'waf':                  ['filter network','web application firewall','application layer'],
+            'edr':                  ['endpoint detection','behavior prevention','restrict execution','endpoint'],
+            'dlp':                  ['data loss prevention','data exfiltration'],
+            'siem':                 ['security monitoring','audit','logging'],
+            'backup':               ['data backup','recovery','resilience','backup'],
+            'least privilege':      ['privileged account','account management','restrict','limit access','minimum'],
+            'rate limiting':        ['filter network traffic','limit access to resource','restrict'],
+            'input validation':     ['exploit protection','application isolation','update software','disable or remove'],
+            'vulnerability scanning':['update software','patch','configuration management','vulnerability'],
+            'logging':              ['audit','monitoring','log management','audit policies'],
+            'audit log':            ['audit','monitoring','log management'],
+            'patching':             ['update software','patch management'],
+            'user training':        ['user training','security awareness','train users'],
+            'network segmentation': ['network segmentation','network isolation','segment'],
+            'api gateway':          ['filter network','application layer','web application'],
+            'behavioral analysis':  ['behavior prevention','restrict execution','audit','behavioral'],
+            'web content filtering':['restrict web-based','filter network','web content'],
+        };
+        const _ctrlMatchesMit = (ctrlName, mitName) => {
+            const c = ctrlName.toLowerCase();
+            const m = mitName.toLowerCase();
+            if (c === m || c.includes(m) || m.includes(c)) return true;
+            // Synonym expansion
+            for (const [abbrev, expansions] of Object.entries(_CTRL_SYNONYMS)) {
+                if (c.includes(abbrev) || abbrev.includes(c)) {
+                    if (expansions.some(e => m.includes(e))) return true;
+                }
+            }
+            // Significant word overlap (words > 4 chars)
+            const cw = new Set(c.split(/\W+/).filter(w => w.length > 4));
+            const mw = new Set(m.split(/\W+/).filter(w => w.length > 4));
+            return cw.size > 0 && mw.size > 0 && [...cw].some(w => mw.has(w));
+        };
+
+        controlRecs2.forEach(c => {
+            const ctrlName = (c.control || c.name || '').toLowerCase();
+            ((c.mitre_techniques || c.techniques || [])).forEach(tid => {
+                const mids = mitreMitigations[tid] || [];
+                const pair = `${tid}::${ctrlName}`;
+                if (mitreAlignmentChecked.has(pair)) return;
+                mitreAlignmentChecked.add(pair);
+                const mitreRecommendedNames = mids.map(mid => mitreNames[mid] || '').filter(Boolean);
+                const aligned = mitreRecommendedNames.some(m => _ctrlMatchesMit(ctrlName, m));
+                if (aligned) {
+                    mitreAlignedPairs.add(pair);
+                } else if (mids.length > 0) {
+                    mitreUnalignedPairs.push({
+                        technique: tid, control: c.control || c.name,
+                        mitreSuggests: mids.slice(0,3).map(mid => mitreNames[mid] || mid).filter(Boolean).join(', ')
+                    });
+                }
+            });
+        });
+        const mitrePairsChecked = mitreAlignmentChecked.size;
+        const mitreAlignmentPct = mitrePairsChecked > 0
+            ? Math.round((mitreAlignedPairs.size / mitrePairsChecked) * 100)
+            : 50;  // no MITRE data available — neutral
+        // Cross-critic agreement — extract technique IDs from expert_validations (correct key path)
+        // moe.expert_validations.{architect,tester,red_team,...} — NOT moe.architect_critique (always null)
+        const critics = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat'];
+        const critTechs = {};
+        critics.forEach(k => {
+            const ev = (moe && moe.expert_validations && moe.expert_validations[k]) || {};
+            // Also check ground_truth fallback keys for backwards compat
+            const c = Object.keys(ev).length ? ev : ((gt && gt[k + '_critique']) || {});
+            const blob = JSON.stringify(c);
+            const ids = [...new Set(blob.match(/T\d{4}(?:\.\d{3})?/g) || [])];
+            critTechs[k] = new Set(ids);
+        });
+        const allTechs = new Set();
+        Object.values(critTechs).forEach(s => s.forEach(t => allTechs.add(t)));
+        let crossValidated = 0;
+        allTechs.forEach(t => {
+            const count = Object.values(critTechs).filter(s => s.has(t)).length;
+            if (count >= 2) crossValidated++;
+        });
+        const crossPct = allTechs.size ? Math.round((crossValidated / allTechs.size) * 100) : 0;
+        const cb = (gt && gt.confidence_breakdown) || {};
+        // MoE lift = how much the expert critics moved the final confidence from the base.
+        // Correct source: moe.confidence.{base, final} (percentage scale 0-100) → convert to fraction.
+        // confidence_breakdown.validation_adjustment is NOT a delta — it stores the base confidence
+        // value (0.95 = 95%) and should not be used as a signed adjustment. Use the actual delta instead.
+        const moeConf = (moe && moe.confidence) || {};
+        const moeLift = (moeConf.final != null && moeConf.base != null)
+            ? (moeConf.final - moeConf.base) / 100   // negative = critics found gaps, positive = critics validated
+            : Number(cb.validation_adjustment) || 0;
+        const moeLiftScore = Math.max(0, Math.min(100, 50 + moeLift * 500));  // -0.1 = 0, 0 = 50 (neutral), +0.1 = 100
+
+        // TTP score — MITRE alignment replaces generic justification coverage as the primary
+        // control-binding signal. Justification coverage is kept but down-weighted.
+        const ttpScore = Math.round(
+            validationPassRate   * 0.30 +   // weighted: CONFIRMED=full, PLAUSIBLE=half
+            mitreAlignmentPct    * 0.30 +   // control names align with MITRE mitigations for the technique
+            crossPct             * 0.25 +   // multi-critic agreement
+            moeLiftScore         * 0.15     // MoE delta
+        );
+
+        // ── Rubric 3: Risk-Defensible ─────────────────────────────────────────
+        // Question: given the threats found, how well does this architecture defend itself
+        // with the controls in place — and what is genuinely hard to defend?
+        //
+        // Three architecture-facing signals:
+        //   A. Technique mitigation coverage — for each attack-path technique, does a control exist?
+        //   B. Hop layer completeness — across all ADR hops, what fraction have all four zero-trust layers?
+        //   C. Hard-to-defend exposure — what fraction of threats remain MONITOR/MITIGATE after controls?
+        //
+        // Analysis hygiene (AIVSS, confidence provenance, governance markers) is moved to
+        // an unscored display section — it reflects pipeline completeness, not arch defensibility.
+
+        // A. Technique mitigation coverage
+        const apTechSet = new Set();
+        aps.forEach(ap => (ap.techniques || []).forEach(t => apTechSet.add(t)));
+        // controlRecs2 already declared in Rubric 2 (TTP) — reuse it here
+        const mitigatedTechs = new Set();
+        controlRecs2.forEach(c => {
+            ((c.mitre_techniques || c.techniques || []).forEach(t => mitigatedTechs.add(t)));
+        });
+        const techCovered = [...apTechSet].filter(t => mitigatedTechs.has(t)).length;
+        const techMitigationPct = apTechSet.size
+            ? Math.round((techCovered / apTechSet.size) * 100)
+            : 50;
+
+        // B. Per-hop zero-trust layer completeness from ADR hops
+        // Each hop's gap_note encodes which layers are missing ("missing detect, isolate, respond layer(s)")
+        const allHops = [];
+        adrs.forEach(a => (a.hops || []).forEach(h => allHops.push(h)));
+        let hopsFullyCovered = 0;
+        const hopGapDetails = [];
+        allHops.forEach(h => {
+            const gap = (h.gap_note || h.gap_type || '').toLowerCase();
+            const hasMissingLayer = gap.includes('missing');
+            if (!hasMissingLayer) hopsFullyCovered++;
+            hopGapDetails.push({
+                node: h.node_label || h.node || '',
+                gap: h.gap_note || h.gap_type || null,
+                controls: (h.controls || []).length,
+            });
+        });
+        const hopLayerPct = allHops.length
+            ? Math.round((hopsFullyCovered / allHops.length) * 100)
+            : 50;
+
+        // C. Hard-to-defend exposure — MONITOR/MITIGATE threats after controls
+        const rrEntries = Object.values(residualRisks);
+        const rrHardCount = rrEntries.filter(r =>
+            r.status === 'MONITOR' || r.status === 'MITIGATE'
+        ).length;
+        // Score: 0 hard threats = 100; all hard = 0.
+        const hardExposurePct = rrEntries.length
+            ? Math.round(((rrEntries.length - rrHardCount) / rrEntries.length) * 100)
+            : 50;
+
+        // Keep floor-field check for hygiene display only (not scored)
+        const rrHasFloorField = rrEntries.some(r => r.residual_risk_floor_applied === true || r.residual_risk_floor_applied === false);
+        const rrSuspicious = rrHasFloorField
+            ? rrEntries.filter(r => (r.combined_effectiveness >= 0.90) && !r.residual_risk_floor_applied).length : 0;
+
+        // Hygiene signals (display only — not in riskScore)
+        const aivssFlows = ['inbound', 'internal', 'outbound'];
+        const aivssPresent = aivssFlows.filter(f => aivss[f] && (aivss[f].composite != null || aivss[f].severity)).length;
+        const aivssCompleteness = Math.round((aivssPresent / 3) * 100);
+        const expectedCbKeys = ['base', 'complexity_penalty', 'coverage_recovery', 'validation_adjustment', 'final'];
+        const cbCoverage = Math.round(expectedCbKeys.filter(k => cb[k] != null).length / expectedCbKeys.length * 100);
+        let govPresence = 0;
+        if (criticDivergence != null) govPresence += 33;
+        if (confidenceSwing != null) govPresence += 33;
+        if (gov && gov.sovereignty) govPresence += 34;
+
+        const riskScore = Math.round(
+            techMitigationPct * 0.40 + hopLayerPct * 0.35 + hardExposurePct * 0.25
+        );
+
+        // ── Rubric 4: Plan-Actionable ─────────────────────────────────────────
+        // Question: is the improvement plan rigorous enough for a stakeholder to
+        // commission, assign, and track — with no guesswork required?
+        //
+        // Four signals — all from SM action_plan[], no overlap with Risk-Defensible:
+        //   A. Item completeness  — each item has action + rationale + first_step + effort
+        //   B. Measurable outcome — item has confidence_gain > 0 OR risk_reduction in (high/medium)
+        //   C. Sprint spreadability — mix of effort levels (days/weeks) and priorities
+        //   D. Control specificity — item names a real tool, node, or technique
+
+        const smItems = (sm && Array.isArray(sm.action_plan)) ? sm.action_plan : [];
+
+        // A. Item completeness — all four fields that make an item assignable
+        const completeItems = smItems.filter(it =>
+            (it.action||'').trim().length > 10 &&
+            (it.rationale||'').trim().length > 10 &&
+            (it.first_step||'').trim().length > 10 &&
+            (it.effort||'').trim().length > 0
+        );
+        const itemCompletenessPct = smItems.length
+            ? Math.round((completeItems.length / smItems.length) * 100)
+            : 30;
+
+        // B. Measurable outcome — confidence_gain > 0 or risk_reduction_estimate is high/medium
+        const measurableItems = smItems.filter(it =>
+            parseFloat(it.confidence_gain || 0) > 0 ||
+            ['high','medium'].includes((it.risk_reduction_estimate || '').toLowerCase())
+        );
+        const measurablePct = smItems.length
+            ? Math.round((measurableItems.length / smItems.length) * 100)
+            : 30;
+
+        // C. Sprint spreadability — good plan has a mix of effort levels AND priority levels
+        const effortSet = new Set(smItems.map(it => (it.effort||'').toLowerCase()).filter(Boolean));
+        const prioritySet = new Set(smItems.map(it => (it.priority||'').toLowerCase()).filter(Boolean));
+        // Ideal: at least days + weeks effort options AND at least 2 priority levels
+        const hasEffortMix = effortSet.size >= 2;
+        const hasPriorityMix = prioritySet.size >= 2;
+        // All items critical+weeks = not sprint-plannable; all medium+days = not urgent enough for arch gaps
+        const allCriticalWeeks = smItems.length > 0 &&
+            smItems.every(it => it.priority === 'critical' && it.effort === 'weeks');
+        const sprintabilityPct = allCriticalWeeks ? 30
+            : (hasEffortMix && hasPriorityMix) ? 100
+            : hasEffortMix || hasPriorityMix ? 65 : 40;
+
+        // D. Control specificity — item names a concrete tool, node, or technique
+        const _SPECIFIC_RE = /\b(install|deploy|configure|enable|enforce|integrate|create|add|block|baseline|query|fingerprint|scan|alert|segment|isolate|log|monitor|firewall|WAF|ACL|IAM|MFA|TOTP|FIDO2|RBAC|TLS|OAuth|JWT|PKCE|RASP|DAM|SIEM|DLP|EDR|CDN|API.?[Gg]ateway|Snyk|Grype|Falco|Vault|Purview|CloudWatch|Splunk|Datadog|Nginx|Kong|Envoy|Kubernetes|Docker|k8s|Redis|Postgres|MySQL|MongoDB|S3|Azure|AWS|GCP|RFC\s?\d{4}|CVE-\d{4}|AP-\d+|T\d{4}|node|endpoint|service|database|cache|queue|pipeline|CI.?CD|policy|rule|role|group|subnet|VPC|peering|cert|token|secret)\b/i;
+        let specificCount = 0, totalScoredItems = 0;
+        const specificityExamples = [];
+        smItems.forEach(item => {
+            const text = ((item.first_step || '') + ' ' + (item.action || '')).trim();
+            if (!text) return;
+            totalScoredItems++;
+            if (_SPECIFIC_RE.test(text)) {
+                specificCount++;
+                if (specificityExamples.length < 2) {
+                    const match = text.match(_SPECIFIC_RE);
+                    specificityExamples.push({ text, keyword: match ? match[0] : '' });
+                }
+            }
+        });
+        const controlSpecificity = totalScoredItems
+            ? Math.round((specificCount / totalScoredItems) * 100)
+            : 50;
+
+        // Anti-pattern bonus: SM flagged structural design flaws (not just controls to add)
+        const antiPatternItems = smItems.filter(it =>
+            String(it.is_antipattern).toLowerCase() === 'true'
+        );
+        const antiPatternBonus = antiPatternItems.length > 0 ? 5 : 0;
+
+        // Per-AP plan closure: for each CRITICAL attack path, does at least one SM item
+        // reference it by AP-ID or describe its path? Unaddressed CRITICAL paths are a
+        // genuine gap — the analysis found a threat but the plan ignores it.
+        const criticalAps = aps.filter(ap => ap.criticality_tier === 'CRITICAL');
+        const apClosureDetails = criticalAps.map(ap => {
+            const apId = ap.id || '';
+            const apPath = (ap.attack_path || ap.path || []).join(' → ');
+            const addressed = smItems.some(it => {
+                const text = (it.action || '') + ' ' + (it.rationale || '') + ' ' + (it.first_step || '');
+                return apId && text.includes(apId);
+            });
+            return { apId, tier: ap.criticality_tier, addressed };
+        });
+        const criticalApsAddressed = apClosureDetails.filter(a => a.addressed).length;
+        // Score: if no CRITICAL APs exist, full marks. Otherwise fraction addressed.
+        const apClosurePct = criticalAps.length === 0 ? 100
+            : Math.round((criticalApsAddressed / criticalAps.length) * 100);
+
+        const planScore = Math.min(100, Math.round(
+            itemCompletenessPct * 0.25 + measurablePct * 0.20 + sprintabilityPct * 0.15
+            + controlSpecificity * 0.20 + apClosurePct * 0.20
+            + antiPatternBonus
+        ));
+
+        // Keep adrs for ADR evidence display (not scored — structural completeness is in Risk-Defensible)
+        const _adrFieldPopulated = (v) => {
+            if (v == null) return false;
+            if (typeof v === 'string') return v.trim().length > 20;
+            if (Array.isArray(v)) return v.length > 0;
+            if (typeof v === 'object') return Object.keys(v).length > 0;
+            return false;
+        };
+        const adrsPopulated = adrs.filter(a =>
+            a && _adrFieldPopulated(a.context) && Array.isArray(a.hops) && a.hops.length > 0 && _adrFieldPopulated(a.consequences)
+        ).length;
+        // ptc kept for display only
+        let ptc = (sm && sm.priority_tier_counts) || null;
+        if (!ptc && sm && Array.isArray(sm.action_plan)) {
+            const byP = { critical: 0, high: 0, medium: 0, low: 0 };
+            smItems.forEach(it => { const p = (it.priority||'').toLowerCase(); if (p in byP) byP[p]++; });
+            ptc = { by_priority: byP, total: smItems.length };
+        }
+
+        // ── Overall ────────────────────────────────────────────────────────────
+        const overall = Math.round((threatScore + ttpScore + riskScore + planScore) / 4);
+
+        return {
+            threat: {
+                score: threatScore,
+                subs: { nodeBindingPct, nodeCoveragePct, techVarietyPct, genericPenalty, atlasMismatchPenalty,
+                        patternDiversityPct },  // display-only, not in score
+                evidence: { patternSources, boundPaths, apsLen: aps.length, hasAI, atlasPresent, aps,
+                            parsedNodeIds, nodesInPaths: [...nodesInPaths], entryNodes: [...entryNodes],
+                            allTechsInPaths: [...allTechsInPaths], allIdentical },
+            },
+            ttp: {
+                score: ttpScore,
+                subs: { validationPassRate, justificationPct, crossPct, moeLiftScore, moeLift,
+                        mitreAlignmentPct, tvConfirmed, tvPlausible, tvFailed },
+                evidence: { techValidation, critTechs, allTechsSize: allTechs.size, crossValidated,
+                            moeConf,
+                            mitreAlignedCount: mitreAlignedPairs.size, mitrePairsChecked,
+                            mitreUnalignedPairs, mitreNames, mitreMitigations },
+            },
+            risk: {
+                score: riskScore,
+                subs: { techMitigationPct, hopLayerPct, hardExposurePct,
+                        aivssCompleteness, cbCoverage, govPresence },
+                evidence: {
+                    // Architecture-facing signals
+                    apTechSet: [...apTechSet], mitigatedTechs: [...mitigatedTechs], techCovered,
+                    hopGapDetails, allHopsLen: allHops.length, hopsFullyCovered,
+                    rrEntries: rrEntries.length, rrHardCount,
+                    residualRisksRaw: residualRisks,
+                    // Hygiene (display only)
+                    aivss, cb, criticDivergence, confidenceSwing, rrSuspicious, rrHasFloorField,
+                    aivssCompleteness, cbCoverage, govPresence,
+                },
+            },
+            plan: {
+                score: planScore,
+                subs: { itemCompletenessPct, measurablePct, sprintabilityPct, controlSpecificity,
+                        apClosurePct, antiPatternBonus, antiPatternCount: antiPatternItems.length },
+                evidence: {
+                    smItems, completeItems: completeItems.length, measurableItems: measurableItems.length,
+                    effortSet: [...effortSet], prioritySet: [...prioritySet],
+                    specificCount, totalScoredItems, specificityExamples,
+                    antiPatternItems,
+                    apClosureDetails, criticalApsAddressed, criticalApsTotal: criticalAps.length,
+                    // For ADR display pane (not scored here)
+                    adrs, adrsPopulated, ptc, nCritical,
+                },
+            },
+            overall,
+            context: { nAP, nCritical, nHigh, hasAI },
+        };
+    }
+
+    // ── Rendering ───────────────────────────────────────────────────────────
+    _renderTatbScorecard(archName, scores, sources, prev) {
+        const { threat, ttp, risk, plan, overall, context } = scores;
+        const { perf } = sources;
+
+        // Rating band for overall score
+        const bandFor = (s) => {
+            if (s >= 85) return { label: 'Excellent',   color: '#16a34a', hint: 'This TM would pass an external audit.' };
+            if (s >= 70) return { label: 'Solid',       color: '#65a30d', hint: 'Usable for internal decisions.' };
+            if (s >= 50) return { label: 'Weak',        color: '#ca8a04', hint: 'Improve before sharing externally.' };
+            return { label: 'Draft',       color: '#dc2626', hint: 'TM is skeletal — re-run with fuller inputs.' };
+        };
+        const overallBand = bandFor(overall);
+
+        // Delta chip if we have prior scores
+        const delta = (key, cur) => {
+            if (!prev || prev[key] == null) return '';
+            const d = cur - prev[key];
+            if (d === 0) return '';
+            const c = d > 0 ? '#16a34a' : '#dc2626';
+            const sign = d > 0 ? '+' : '';
+            return `<span class="tatb-delta" style="margin-left:0.35rem; padding:1px 6px; border-radius:8px; background:${c}22; color:${c}; border:1px solid ${c}66; font-size:0.65rem; font-weight:700; animation:tatb-fade 5s ease-out forwards;">${sign}${d}</span>`;
+        };
+        // Inject delta-fade animation once
+        if (!document.getElementById('tatb-anim-style')) {
+            const s = document.createElement('style');
+            s.id = 'tatb-anim-style';
+            s.textContent = '@keyframes tatb-fade { 0%{opacity:1} 80%{opacity:1} 100%{opacity:0} }';
+            document.head.appendChild(s);
+        }
+
+        // Helpers
+        const _esc = (s) => this._esc(String(s || ''));
+        const runTs = perf && perf.run_ts ? new Date(perf.run_ts).toLocaleString('en-GB') : '—';
+        const runId = perf && perf.run_id ? perf.run_id : '—';
+
+        // Tile evidence store — keyed by short id; onclick reads from here so we
+        // don't need to escape arbitrary HTML inside an attribute string.
+        if (!window._tatbTileEvidence) window._tatbTileEvidence = {};
+        let _tileSeq = 0;
+
+        // Small colored tile: label = short name, value+unit = big number, hint = what it means,
+        // tooltip = hover text, evidenceTitle + evidenceHtml = right-pane content on click.
+        const _tile = (label, value, unit, color, hint, tooltip, evidenceTitle, evidenceHtml) => {
+            let onclickAttr = '';
+            if (evidenceTitle && evidenceHtml) {
+                const key = `tatb_tile_${_tileSeq++}`;
+                window._tatbTileEvidence[key] = { title: evidenceTitle, html: evidenceHtml };
+                // Use data-key + event delegation so the onclick never embeds HTML chars
+                onclickAttr = `data-tatb-key="${key}"`;
+            }
+            const clickable = !!evidenceHtml;
+            return `
+            <div ${onclickAttr} style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-left:3px solid ${color}; border-radius:6px; padding:0.55rem 0.75rem; ${clickable ? 'cursor:pointer;' : ''} transition:box-shadow 0.15s;"
+                ${tooltip ? `title="${tooltip.replace(/"/g,"'")}"` : ''}
+                ${clickable ? 'onmouseover="this.style.boxShadow=\'0 0 0 2px var(--primary-color)44\'" onmouseout="this.style.boxShadow=\'\'"' : ''}>
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div style="font-size:0.65rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-tertiary); margin-bottom:0.15rem;">${label}</div>
+                    ${clickable ? '<div style="font-size:0.6rem; color:var(--text-tertiary); opacity:0.7;">↗</div>' : ''}
+                </div>
+                <div style="font-size:1.15rem; font-weight:800; color:${color}; line-height:1.1;">${value}${unit ? `<span style="font-size:0.7rem; color:var(--text-tertiary); margin-left:0.15rem;">${unit}</span>` : ''}</div>
+                ${hint ? `<div style="font-size:0.68rem; color:var(--text-secondary); margin-top:0.2rem; line-height:1.35;">${hint}</div>` : ''}
+            </div>`;
+        };
+
+        // Rubric section wrapper (collapsible)
+        const _rubric = (id, icon, title, score, deltaHtml, question, soWhat, tiles, evidenceHtml) => {
+            const band = bandFor(score);
+            return `
+            <details id="tatb-sec-${id}" open style="margin-bottom:1rem; border:1px solid var(--border-color); border-radius:10px; overflow:hidden;">
+                <summary style="display:flex; align-items:center; gap:0.6rem; padding:0.65rem 1rem; background:var(--nav-hover-bg); cursor:pointer; user-select:none; list-style:none;">
+                    <span style="font-size:1rem;">${icon}</span>
+                    <span style="font-weight:700; font-size:0.9rem; color:var(--text-color); flex:1;">${title}</span>
+                    <span style="display:flex; align-items:baseline; gap:0.35rem;">
+                        <span style="font-size:1.2rem; font-weight:800; color:${band.color};">${score}</span>
+                        <span style="font-size:0.68rem; color:var(--text-tertiary);">/100 · ${band.label}</span>
+                        ${deltaHtml}
+                    </span>
+                </summary>
+                <div style="padding:0.9rem 1rem;">
+                    <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:0.65rem; font-style:italic;">${question}</div>
+                    <div style="padding:0.55rem 0.8rem; background:${band.color}0d; border-left:3px solid ${band.color}88; border-radius:0 6px 6px 0; margin-bottom:0.75rem; font-size:0.79rem; color:var(--text-secondary); line-height:1.55;">${soWhat}</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">${tiles}</div>
+                    ${evidenceHtml}
+                </div>
+            </details>`;
+        };
+
+        // Colour ramp for sub-metric tiles
+        const rampC = (v) => v >= 75 ? '#16a34a' : v >= 50 ? '#ca8a04' : '#dc2626';
+
+        // ── Section 1: Threat-Relevant ────────────────────────────────────────
+        const t = threat.subs;
+        const tE = threat.evidence;
+
+        // Pre-build right-pane evidence HTML for each Threat tile
+        const _rpRow = (label, val, color) => `<div style="display:flex;gap:0.5rem;padding:0.25rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.79rem;"><span style="min-width:160px;color:var(--text-tertiary);">${label}</span><span style="font-weight:600;color:${color||'var(--text-color)'};">${val}</span></div>`;
+        const _rpHead = (txt) => `<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-tertiary);margin:0.75rem 0 0.3rem;border-top:1px solid var(--border-color);padding-top:0.5rem;">${txt}</div>`;
+        // Citation chip — shown at top of each evidence pane to tell user which file the data came from
+        const _rpCite = (...files) => `<div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.65rem;">
+            ${files.map(f => `<span style="font-size:0.68rem;padding:1px 7px;border-radius:8px;background:var(--primary-color)14;color:var(--primary-color);border:1px solid var(--primary-color)44;font-family:monospace;">📄 ${f}</span>`).join('')}
+        </div>`;
+
+        const pn = (sources.gt && sources.gt.metadata && sources.gt.metadata.parsed_nodes) || {};
+        const pnIds = Object.keys(pn);
+
+        // Threat evidence builders
+        const threatEngineEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → pattern_sources')}
+                <p style="margin-top:0;color:var(--text-secondary);">Shows which analysis engines were active for this run. Engine count is displayed for transparency but is <strong>not used in the Threat-Relevant score</strong> — it reflects architecture type, not analysis quality. A traditional web-app architecture correctly triggers only RAPIDS.</p>
+                ${_rpHead('Engines active')}
+                ${tE.patternSources.length
+                    ? tE.patternSources.map(s => `<div style="padding:0.2rem 0;font-size:0.79rem;"><span style="color:#16a34a;margin-right:0.4rem;">✓</span>${_esc(s)}</div>`).join('')
+                    : '<div style="font-size:0.79rem;color:var(--text-tertiary);">None recorded.</div>'}
+                <div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:var(--nav-hover-bg);border-radius:5px;font-size:0.78rem;color:var(--text-secondary);">
+                    The Threat-Relevant score uses node binding, node coverage, and technique variety — not engine count.
+                    ${!tE.hasAI ? ' AI/ML engines (ARC/ATLAS) are not applicable for this architecture.' : ''}
+                </div>
+            </div>`;
+
+        const threatBindingEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → expected_attack_paths', 'ground_truth.json → metadata.parsed_nodes')}
+                <p style="margin-top:0;color:var(--text-secondary);">Each attack path should start from a real node in the diagram. ✓ = entry is a known component. ✗ = entry node is not in the diagram — threat exists in the report but cannot be traced to a specific component.</p>
+                ${_rpHead(`Diagram nodes (${pnIds.length})`)}
+                <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.5rem;">
+                    ${pnIds.map(n => {
+                        const inPath = tE.nodesInPaths && tE.nodesInPaths.includes(n);
+                        return `<code style="font-size:0.72rem;padding:1px 5px;background:${inPath?'#16a34a14':'var(--nav-hover-bg)'};border-radius:3px;border:1px solid ${inPath?'#16a34a66':'var(--border-color)'}; color:${inPath?'#16a34a':'var(--text-secondary)'};">${_esc(n)}</code>`;
+                    }).join('')}
+                </div>
+                <div style="font-size:0.72rem;color:var(--text-tertiary);margin-bottom:0.4rem;">Green = node appears in at least one attack path</div>
+                ${_rpHead('Attack paths')}
+                ${tE.aps.map((ap, i) => {
+                    const entry = ap.entry_node || ap.entry || (ap.path && ap.path[0]) || '—';
+                    const isBound = pnIds.includes(entry);
+                    const pathNodes = (ap.path || []).filter(n => pnIds.includes(n));
+                    return `<div style="padding:0.3rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.79rem;">
+                        <div style="display:flex;gap:0.5rem;align-items:baseline;">
+                            <span style="color:${isBound?'#16a34a':'#dc2626'};flex-shrink:0;">${isBound?'✓':'✗'}</span>
+                            <span style="color:var(--text-tertiary);flex-shrink:0;">${ap.id||('AP-'+(i+1))}</span>
+                            <span>entry=<code style="color:var(--primary-color);">${_esc(entry)}</code></span>
+                            <span style="color:var(--text-tertiary);">${ap.criticality_tier||'—'}</span>
+                        </div>
+                        <div style="padding-left:1.2rem;font-size:0.72rem;color:var(--text-tertiary);">path nodes: ${(ap.path||[]).map(n => `<code style="color:${pnIds.includes(n)?'var(--primary-color)':'var(--text-tertiary)'};">${_esc(n)}</code>`).join(' → ')}</div>
+                    </div>`;
+                }).join('')}
+            </div>`;
+
+        const threatCoverageEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → expected_attack_paths', 'ground_truth.json → metadata.parsed_nodes')}
+                <p style="margin-top:0;color:var(--text-secondary);">Measures what fraction of the architecture's nodes were included in threat analysis. A node not in any path may be an unanalysed component — it could have threats the engine didn't reach.</p>
+                ${_rpHead(`Node coverage: ${tE.nodesInPaths ? tE.nodesInPaths.length : 0} of ${pnIds.length} nodes in paths`)}
+                ${pnIds.map(n => {
+                    const inPath = tE.nodesInPaths && tE.nodesInPaths.includes(n);
+                    const asEntry = tE.entryNodes && tE.entryNodes.includes(n);
+                    return `<div style="padding:0.2rem 0;font-size:0.79rem;display:flex;gap:0.5rem;">
+                        <span style="color:${inPath?'#16a34a':'#dc2626'};flex-shrink:0;">${inPath?'✓':'✗'}</span>
+                        <code style="color:var(--primary-color);">${_esc(n)}</code>
+                        ${asEntry ? '<span style="font-size:0.68rem;color:var(--text-tertiary);">entry point</span>' : ''}
+                        ${!inPath ? '<span style="font-size:0.68rem;color:#dc2626;">not in any attack path</span>' : ''}
+                    </div>`;
+                }).join('')}
+            </div>`;
+
+        const threatTechEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → expected_attack_paths[].techniques')}
+                <p style="margin-top:0;color:var(--text-secondary);">How many distinct MITRE ATT&CK techniques were surfaced across all attack paths. More techniques = broader threat surface coverage. Fewer = analysis may have missed threat angles.</p>
+                ${_rpHead(`Unique techniques (${tE.allTechsInPaths ? tE.allTechsInPaths.length : 0} total)`)}
+                <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.5rem;">
+                    ${(tE.allTechsInPaths || []).map(t2 => `<code style="font-size:0.72rem;padding:1px 5px;background:var(--nav-hover-bg);border-radius:3px;border:1px solid var(--border-color);color:var(--primary-color);">${_esc(t2)}</code>`).join('')}
+                </div>
+                ${_rpHead('Techniques per path')}
+                ${tE.aps.map((ap, i) => {
+                    return `<div style="padding:0.2rem 0;font-size:0.79rem;"><span style="color:var(--text-tertiary);margin-right:0.4rem;">${ap.id||('AP-'+(i+1))}</span>${(ap.techniques||[]).map(t2 => `<code style="font-size:0.72rem;margin-right:0.2rem;">${_esc(t2)}</code>`).join('')||'—'}</div>`;
+                }).join('')}
+                <div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:${tE.allIdentical?'#f9731614':'#16a34a14'};border-radius:5px;font-size:0.79rem;color:${tE.allIdentical?'#f97316':'#16a34a'};">
+                    ${tE.allIdentical
+                        ? '⚠ All paths have an identical technique set — may indicate structural repetition in the architecture rather than a boilerplate fallback. Check whether the diagram genuinely has identical threat exposure across all nodes.'
+                        : '✓ Paths have distinct technique sets — threats are differentiated by component.'}
+                </div>
+            </div>`;
+
+        const threatTiles = [
+            // Engine activity — informational only, not scored
+            _tile('Analysis engines',
+                tE.patternSources.join(', ') || '—', '', '#6b7280',
+                `${tE.patternSources.length} engine${tE.patternSources.length!==1?'s':''} active — displayed for transparency, not scored`,
+                'Which analysis engines ran. Engine count is NOT in the Threat-Relevant score — it reflects architecture type, not analysis quality.',
+                '🎯 Analysis engines — detail', threatEngineEv),
+            // Scored tiles
+            _tile('Node binding',       t.nodeBindingPct, '%', rampC(t.nodeBindingPct),
+                `${tE.boundPaths} of ${tE.apsLen} path${tE.apsLen!==1?'s':''} start at a known diagram node`,
+                'Each attack path should start at a real component. Unbound paths exist in the report but cannot be traced back to your architecture.',
+                '🎯 Node binding — evidence', threatBindingEv),
+            _tile('Node coverage',      t.nodeCoveragePct, '%', rampC(t.nodeCoveragePct),
+                `${tE.nodesInPaths ? tE.nodesInPaths.length : 0} of ${pnIds.length} nodes appear in at least one path`,
+                'Fraction of diagram nodes included in threat analysis. Uncovered nodes may have unanalysed threats.',
+                '🎯 Node coverage — evidence', threatCoverageEv),
+            _tile('Technique variety',  t.techVarietyPct, '%', rampC(t.techVarietyPct),
+                `${tE.allTechsInPaths ? tE.allTechsInPaths.length : 0} unique MITRE techniques surfaced`,
+                'More distinct techniques = broader threat surface coverage. Scored as N/12 (12 = excellent breadth).',
+                '🎯 Technique variety — evidence', threatTechEv),
+            ...(tE.hasAI ? [
+                _tile('AI/ML coverage', tE.atlasPresent ? 'ATLAS ✓' : 'ARC only', '', tE.atlasPresent ? '#16a34a' : '#ca8a04',
+                    tE.atlasPresent ? 'MITRE ATLAS AI/ML techniques mapped' : 'Only ARC governance applied — no adversarial ML techniques',
+                    'For AI/ML architectures, MITRE ATLAS techniques (model evasion, prompt injection) should appear alongside standard ATT&CK.')
+            ] : []),
+        ].join('');
+        const threatEvidence = `
+            <details style="margin-top:0.5rem; border:1px solid var(--border-color); border-radius:6px;">
+                <summary style="padding:0.4rem 0.7rem; cursor:pointer; font-size:0.75rem; color:var(--text-secondary); user-select:none;">▸ Evidence: attack path grounding</summary>
+                <div style="padding:0.5rem 0.8rem; max-height:220px; overflow-y:auto;">
+                    ${(() => {
+                        const pn = (sources.gt && sources.gt.metadata && sources.gt.metadata.parsed_nodes) || {};
+                        const pnIds = Object.keys(pn);
+                        return tE.aps.slice(0, 10).map((ap, i) => {
+                            const entry = ap.entry_node || (ap.path && ap.path[0]) || '—';
+                            const isBound = pnIds.includes(entry);
+                            return `<div style="font-size:0.72rem; padding:0.15rem 0; color:var(--text-secondary);">
+                                <span style="color:${isBound ? '#16a34a' : '#dc2626'};">${isBound ? '✓' : '✗'}</span>
+                                <span style="color:var(--text-tertiary); margin:0 0.3rem;">AP-${i+1}</span>
+                                entry=<code style="color:var(--primary-color);">${_esc(entry)}</code>
+                                <span style="color:var(--text-tertiary);"> · ${ap.criticality_tier || '—'}</span>
+                            </div>`;
+                        }).join('');
+                    })()}
+                </div>
+            </details>`;
+
+        // ── Section 2: TTP-Accurate ───────────────────────────────────────────
+        const tt = ttp.subs;
+        const ttE = ttp.evidence;
+
+        const ttpValidEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → technique_validation (alias for validation_report.validations.technique_relevance)')}
+                <p style="margin-top:0;color:var(--text-secondary);">Each technique ID is checked: does it make sense for this architecture? A failure means the validator found the technique unlikely or irrelevant given what it knows about the system.</p>
+                ${_rpHead(`Technique validation results (${ttE.techValidation.length} techniques)`)}
+                <div style="max-height:280px;overflow-y:auto;">
+                ${ttE.techValidation.length
+                    ? ttE.techValidation.map(v => {
+                        const pass = v.valid === true || v.status === 'PASS' || v.passed === true;
+                        return `<div style="padding:0.25rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.78rem;">
+                            <span style="color:${pass?'#16a34a':'#dc2626'};margin-right:0.35rem;">${pass?'✓':'✗'}</span>
+                            <code style="color:var(--primary-color);margin-right:0.4rem;">${_esc(v.technique||'')}</code>
+                            <span style="color:var(--text-secondary);">${_esc(v.reason||'no reason given')}</span>
+                        </div>`;
+                      }).join('')
+                    : '<div style="color:var(--text-tertiary);">No validation data.</div>'}
+                </div>
+            </div>`;
+
+        const ttpJustEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → technique_validation[].reason')}
+                <p style="margin-top:0;color:var(--text-secondary);">A technique without a written reason is just an ID — an auditor cannot tell if it was chosen carefully or generated automatically. Below are the justifications for each technique.</p>
+                ${_rpHead(`Technique justifications (${ttE.techValidation.length} techniques)`)}
+                <div style="max-height:300px;overflow-y:auto;">
+                ${ttE.techValidation.length
+                    ? ttE.techValidation.map(v => {
+                        const reason = (v.reason||'').trim();
+                        const hasReason = reason.length > 10;
+                        return `<div style="padding:0.3rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.78rem;">
+                            <div style="display:flex;gap:0.4rem;align-items:baseline;">
+                                <span style="color:${hasReason?'#16a34a':'#dc2626'};flex-shrink:0;">${hasReason?'✓':'✗'}</span>
+                                <code style="color:var(--primary-color);">${_esc(v.technique||'')}</code>
+                            </div>
+                            <div style="color:${hasReason?'var(--text-secondary)':'var(--text-tertiary)'};font-size:0.75rem;margin-top:0.1rem;padding-left:1rem;">${hasReason ? _esc(reason) : 'No justification written.'}</div>
+                        </div>`;
+                      }).join('')
+                    : '<div style="color:var(--text-tertiary);">No validation data.</div>'}
+                </div>
+            </div>`;
+
+        const ttpCrossEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('07_moe_orchestrator.json → architect_critique / tester_critique / red_team_critique / purple_team_critique / blackhat_critique')}
+                <p style="margin-top:0;color:var(--text-secondary);">Techniques mentioned independently by two or more critics are more reliable — convergent findings have less chance of being hallucinated or misapplied.</p>
+                ${_rpHead('Techniques per critic (extracted from critic prose)')}
+                ${Object.entries(ttE.critTechs).filter(([,s]) => s.size > 0).map(([k,s]) =>
+                    `<div style="padding:0.2rem 0;font-size:0.79rem;"><span style="color:var(--primary-color);font-weight:600;margin-right:0.4rem;">${_esc(k.replace('_critique',''))}</span>${[...s].join(', ')}</div>`
+                ).join('') || '<div style="color:var(--text-tertiary);">No technique IDs extracted.</div>'}
+                ${_rpHead(`Cross-validated (≥2 critics): ${ttE.crossValidated} of ${ttE.allTechsSize}`)}
+                ${ttE.allTechsSize
+                    ? (() => {
+                        const allT = new Set(Object.values(ttE.critTechs).flatMap(s => [...s]));
+                        return [...allT].map(t => {
+                            const count = Object.values(ttE.critTechs).filter(s => s.has(t)).length;
+                            const critics = Object.entries(ttE.critTechs).filter(([,s])=>s.has(t)).map(([k])=>k.replace('_critique','')).join(', ');
+                            return `<div style="padding:0.2rem 0;font-size:0.79rem;"><code style="color:var(--primary-color);">${_esc(t)}</code> <span style="color:${count>=2?'#16a34a':'var(--text-tertiary)'};">${count>=2?'✓':''} ${count} critic${count!==1?'s':''}</span> <span style="color:var(--text-tertiary);font-size:0.72rem;">(${_esc(critics)})</span></div>`;
+                        }).join('');
+                      })()
+                    : '<div style="color:var(--text-tertiary);">No technique data.</div>'}
+            </div>`;
+
+        const ttpMoeEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('07_moe_orchestrator.json → confidence', 'ground_truth.json → confidence_breakdown')}
+                <p style="margin-top:0;color:var(--text-secondary);">Each AI critic can raise or lower the confidence score. A negative adjustment means that critic found gaps. The overall delta = final − base.</p>
+                ${ttE.moeConf && ttE.moeConf.base != null ? `
+                ${_rpHead('Per-critic adjustments (from 07_moe_orchestrator.json)')}
+                ${_rpRow('Base confidence', (ttE.moeConf.base||0).toFixed(1) + '%', 'var(--text-color)')}
+                ${Object.entries(ttE.moeConf.adjustments || {}).map(([critic, adj]) => {
+                    const pct = (adj * 100).toFixed(1);
+                    const c = adj >= 0 ? '#16a34a' : '#dc2626';
+                    return _rpRow(critic, (adj >= 0 ? '+' : '') + pct + '%', c);
+                }).join('')}
+                ${_rpRow('Final confidence', (ttE.moeConf.final||0).toFixed(1) + '%', 'var(--text-color)')}
+                ${_rpRow('Net delta', ((ttE.moeConf.final||0) - (ttE.moeConf.base||0)).toFixed(1) + 'pp',
+                    (ttE.moeConf.final||0) >= (ttE.moeConf.base||0) ? '#16a34a' : '#dc2626')}
+                <div style="font-size:0.72rem;color:var(--text-tertiary);margin-top:0.3rem;">${ttE.moeConf.interpretation || ''}</div>
+                ` : ''}
+                ${_rpHead('confidence_breakdown (ground_truth.json — reference only)')}
+                ${Object.entries((sources.gt&&sources.gt.confidence_breakdown)||{}).filter(([k])=>k!=='signals').map(([k,v])=>{
+                    const n = Number(v); if(isNaN(n)) return '';
+                    const isBig = k==='base'||k==='final';
+                    const c = isBig ? 'var(--text-color)' : (n>=0?'#16a34a':'#dc2626');
+                    return `<div style="display:flex;gap:0.5rem;padding:0.2rem 0;font-size:0.79rem;border-bottom:1px solid var(--border-color)22;">
+                        <span style="min-width:180px;color:var(--text-tertiary);">${_esc(k)}</span>
+                        <span style="font-weight:${isBig?'800':'600'};color:${c};">${isBig?n.toFixed(3):(n>=0?'+':'')+n.toFixed(3)}</span>
+                    </div>`;
+                }).join('') || '<div style="color:var(--text-tertiary);">No breakdown data.</div>'}
+                <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-tertiary);">
+                    MoE delta = moe.confidence.final − moe.confidence.base (shown in pp above).
+                    Note: confidence_breakdown.validation_adjustment stores the base confidence value, not a signed delta — the actual critic adjustment is computed from 07_moe_orchestrator.json.
+                </div>
+            </div>`;
+
+        // MITRE alignment evidence builder
+        const ttpMitreEv = ttE.mitrePairsChecked > 0 ? `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('API /api/v1/technique-mitigations', 'API /api/v1/mitigations', 'ground_truth.json → control_recommendations[].mitre_techniques')}
+                <p style="margin-top:0;color:var(--text-secondary);">For each (technique, control) pair, checks whether the control name appears in MITRE ATT&CK's official recommended mitigations for that technique. A mismatch does not mean the control is wrong — it means MITRE's guidance suggests different or more specific controls that may be more effective.</p>
+                ${_rpHead(`Alignment: ${ttE.mitreAlignedCount} of ${ttE.mitrePairsChecked} technique-control pairs match MITRE recommendations`)}
+                ${ttE.mitreUnalignedPairs && ttE.mitreUnalignedPairs.length > 0 ? `
+                ${_rpHead('Mismatches — MITRE suggests alternatives')}
+                <div style="max-height:260px;overflow-y:auto;">
+                ${[...new Map(ttE.mitreUnalignedPairs.map(p => [p.technique+p.control, p])).values()].map(p => `
+                    <div style="padding:0.3rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.78rem;">
+                        <div style="display:flex;gap:0.4rem;align-items:baseline;">
+                            <span style="color:#f97316;flex-shrink:0;">⚠</span>
+                            <code style="color:var(--primary-color);">${_esc(p.technique)}</code>
+                            <span style="color:var(--text-secondary);">mapped to <strong>${_esc(p.control)}</strong></span>
+                        </div>
+                        <div style="padding-left:1.2rem;font-size:0.72rem;color:var(--text-tertiary);">MITRE recommends: ${_esc(p.mitreSuggests)}</div>
+                    </div>`).join('')}
+                </div>` : '<div style="color:#16a34a;font-size:0.79rem;margin-top:0.3rem;">✓ All checked pairs align with MITRE recommendations.</div>'}
+                <div style="margin-top:0.5rem;font-size:0.72rem;color:var(--text-tertiary);">A mismatch is an amber flag, not a failure. It means the control may address the threat through a different mechanism than MITRE's canonical guidance — worth human review before finalising the TM.</div>
+            </div>` : `
+            <div style="font-size:0.8rem;color:var(--text-secondary);">
+                ${_rpCite('API /api/v1/technique-mitigations')}
+                <p>MITRE mitigation data not available — check that enterprise-attack.json is loaded and the /api/v1/technique-mitigations endpoint responds.</p>
+            </div>`;
+
+        // Validation pass evidence with CONFIRMED/PLAUSIBLE breakdown
+        const ttpValidClassEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → technique_validation (alias for validation_report.validations.technique_relevance)')}
+                <p style="margin-top:0;color:var(--text-secondary);">Validation reasons are classified by confidence:<br>
+                <strong style="color:#16a34a;">CONFIRMED</strong> = structural evidence ("Execution environment present") — full weight in score.<br>
+                <strong style="color:#ca8a04;">PLAUSIBLE</strong> = heuristic match ("Generic match, N keywords overlap") — half weight.<br>
+                <strong style="color:#dc2626;">FAILED</strong> = validator found the technique unlikely for this architecture — zero weight.</p>
+                ${_rpHead(`Breakdown: ${tt.tvConfirmed} CONFIRMED · ${tt.tvPlausible} PLAUSIBLE · ${tt.tvFailed} FAILED`)}
+                <div style="max-height:280px;overflow-y:auto;">
+                ${ttE.techValidation.length
+                    ? ttE.techValidation.map(v => {
+                        const cls = (v.valid === false || v.passed === false) ? 'FAILED'
+                            : ((v.reason||'').toLowerCase().includes('generic') || (v.reason||'').toLowerCase().includes('keyword')) ? 'PLAUSIBLE'
+                            : 'CONFIRMED';
+                        const col = cls==='CONFIRMED'?'#16a34a':cls==='PLAUSIBLE'?'#ca8a04':'#dc2626';
+                        return `<div style="padding:0.25rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.78rem;">
+                            <div style="display:flex;gap:0.4rem;align-items:baseline;">
+                                <span style="font-size:0.65rem;font-weight:700;padding:1px 5px;border-radius:3px;background:${col}22;color:${col};">${cls}</span>
+                                <code style="color:var(--primary-color);">${_esc(v.technique||'')}</code>
+                            </div>
+                            <div style="color:var(--text-secondary);font-size:0.75rem;margin-top:0.1rem;padding-left:0.5rem;">${_esc(v.reason||'no reason given')}</div>
+                        </div>`;
+                      }).join('')
+                    : '<div style="color:var(--text-tertiary);">No validation data.</div>'}
+                </div>
+            </div>`;
+
+        const ttpTiles = [
+            _tile('Validation depth',  tt.validationPassRate, '%', rampC(tt.validationPassRate),
+                `${tt.tvConfirmed} CONFIRMED · ${tt.tvPlausible} PLAUSIBLE · ${tt.tvFailed} FAILED`,
+                'CONFIRMED = structural evidence. PLAUSIBLE = heuristic keyword match (half weight). Score = (CONFIRMED×1 + PLAUSIBLE×0.5) ÷ total.',
+                '🎭 Validation depth — evidence', ttpValidClassEv),
+            _tile('MITRE alignment',   tt.mitreAlignmentPct, '%', rampC(tt.mitreAlignmentPct),
+                ttE.mitrePairsChecked > 0
+                    ? `${ttE.mitreAlignedCount} of ${ttE.mitrePairsChecked} technique-control pairs match MITRE guidance`
+                    : 'MITRE data not available',
+                'Checks each (technique, control) pair against MITRE ATT&CK official mitigations. Mismatches = controls that may not address the technique\'s attack vector.',
+                '🎭 MITRE alignment — evidence', ttpMitreEv),
+            _tile('Cross-critic',     tt.crossPct, '%', rampC(tt.crossPct),
+                `${ttE.crossValidated} of ${ttE.allTechsSize} confirmed by 2+ reviewers`,
+                'Techniques multiple critics independently flagged are more reliable.',
+                '🎭 Cross-critic agreement — evidence', ttpCrossEv),
+            _tile('MoE confidence lift', (tt.moeLift >= 0 ? '+' : '') + (tt.moeLift * 100).toFixed(1), 'pp', tt.moeLift >= 0 ? '#16a34a' : '#dc2626',
+                'How much expert review changed the confidence score',
+                'Positive = experts confirmed the analysis. Negative = gaps found.',
+                '🎭 MoE confidence lift — evidence', ttpMoeEv),
+        ].join('');
+        const ttpCritList = Object.entries(ttE.critTechs)
+            .filter(([, s]) => s.size > 0)
+            .map(([k, s]) => `<div style="font-size:0.72rem; padding:0.15rem 0;"><code style="color:var(--primary-color);">${k.replace('_critique','')}</code>: ${[...s].join(', ')} <span style="color:var(--text-tertiary);">(${s.size})</span></div>`)
+            .join('');
+        const ttpEvidence = `
+            <details style="margin-top:0.5rem; border:1px solid var(--border-color); border-radius:6px;">
+                <summary style="padding:0.4rem 0.7rem; cursor:pointer; font-size:0.75rem; color:var(--text-secondary); user-select:none;">▸ Evidence: per-critic technique coverage</summary>
+                <div style="padding:0.5rem 0.8rem; max-height:220px; overflow-y:auto;">
+                    ${ttpCritList || '<div style="font-size:0.72rem; color:var(--text-tertiary);">No technique IDs extracted from critic prose.</div>'}
+                </div>
+            </details>`;
+
+        // ── Section 3: Risk-Defensible ────────────────────────────────────────
+        const r = risk.subs;
+        const rE = risk.evidence;
+
+        // ── Risk tile evidence builders ───────────────────────────────────────────
+
+        const riskTechEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → expected_attack_paths[].techniques', 'ground_truth.json → control_recommendations[].mitre_techniques')}
+                <p style="margin-top:0;color:var(--text-secondary);">For each technique appearing in an attack path, at least one recommended control should address it. Unmitigated techniques are known attack steps with no defensive response mapped.</p>
+                ${_rpHead(`Coverage: ${rE.techCovered} of ${rE.apTechSet.length} attack-path techniques have a mapped control`)}
+                <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.5rem;">
+                    ${rE.apTechSet.map(t => {
+                        const covered = rE.mitigatedTechs.includes(t);
+                        return `<span style="font-size:0.72rem;padding:1px 6px;border-radius:4px;border:1px solid ${covered?'#16a34a66':'#dc262666'};background:${covered?'#16a34a14':'#dc262614'};color:${covered?'#16a34a':'#dc2626'};font-family:monospace;" title="${covered?'Control mapped':'No control mapped'}">${covered?'✓':'✗'} ${_esc(t)}</span>`;
+                    }).join('')}
+                </div>
+                ${rE.apTechSet.some(t => !rE.mitigatedTechs.includes(t))
+                    ? `<div style="padding:0.4rem 0.6rem;background:#dc262614;border-radius:5px;font-size:0.79rem;color:#dc2626;">
+                        Unmitigated techniques: <strong>${rE.apTechSet.filter(t => !rE.mitigatedTechs.includes(t)).join(', ')}</strong> — attack steps with no defensive control mapped.
+                      </div>` : ''}
+            </div>`;
+
+        const riskHopEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → architecture_decision_records[].hops[].gap_note')}
+                <p style="margin-top:0;color:var(--text-secondary);">Zero-trust defence requires controls at every hop across all four layers: Prevent (block), Detect (notice), Isolate (contain), Respond (recover). A gap means an attacker who reaches that hop has a phase of the kill-chain undefended.</p>
+                ${_rpHead(`Hop layer completeness: ${rE.hopsFullyCovered} of ${rE.allHopsLen} hops fully covered`)}
+                <div style="max-height:300px;overflow-y:auto;">
+                ${rE.hopGapDetails.map(h => {
+                    const hasGap = !!(h.gap);
+                    const missingMatch = h.gap ? h.gap.match(/missing ([^.]+)/i) : null;
+                    const missing = missingMatch ? missingMatch[1] : null;
+                    return `<div style="padding:0.3rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.79rem;">
+                        <div style="display:flex;gap:0.5rem;align-items:baseline;">
+                            <span style="color:${hasGap?'#f97316':'#16a34a'};flex-shrink:0;">${hasGap?'⚠':'✓'}</span>
+                            <span style="font-weight:600;">${_esc(h.node)}</span>
+                            <span style="color:var(--text-tertiary);font-size:0.72rem;">${h.controls} control${h.controls!==1?'s':''}</span>
+                        </div>
+                        ${hasGap ? `<div style="padding-left:1.2rem;font-size:0.72rem;color:#f97316;">${_esc(h.gap)}</div>` : ''}
+                    </div>`;
+                }).join('')}
+                </div>
+            </div>`;
+
+        const riskResidualEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → residual_risks.per_threat')}
+                <p style="margin-top:0;color:var(--text-secondary);">After all controls are applied, what risk remains? ACCEPT = low residual, manageable. MONITOR = still significant, needs watching. MITIGATE = high residual — the architecture may be too exposed to fully defend this threat type without structural change.</p>
+                ${_rpHead(`${rE.rrHardCount} of ${rE.rrEntries} threats remain MONITOR/MITIGATE after controls`)}
+                <div style="max-height:300px;overflow-y:auto;">
+                ${Object.entries(rE.residualRisksRaw||{}).map(([threat, d]) => {
+                    const hard = d.status === 'MONITOR' || d.status === 'MITIGATE';
+                    const reductionPct = d.initial_risk ? Math.round((1 - d.residual_risk/d.initial_risk)*100) : 0;
+                    return `<div style="padding:0.3rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.79rem;">
+                        <div style="display:flex;gap:0.5rem;align-items:baseline;flex-wrap:wrap;">
+                            <span style="font-size:0.68rem;font-weight:700;padding:1px 5px;border-radius:3px;
+                                background:${d.status==='ACCEPT'?'#16a34a14':d.status==='MONITOR'?'#ca8a0414':'#dc262614'};
+                                color:${d.status==='ACCEPT'?'#16a34a':d.status==='MONITOR'?'#ca8a04':'#dc2626'};">${d.status||'—'}</span>
+                            <span style="font-weight:600;">${_esc(threat)}</span>
+                            <span style="color:var(--text-tertiary);">initial=${d.initial_risk} → residual=${d.residual_risk} (−${reductionPct}%)</span>
+                        </div>
+                        ${hard ? `<div style="padding-left:1.2rem;font-size:0.72rem;color:${d.status==='MONITOR'?'#ca8a04':'#dc2626'};">
+                            ${d.status==='MITIGATE' ? '⚠ Structural exposure — controls alone may not be sufficient. Architecture change may be needed.' : '⚑ Significant residual — monitor and review quarterly.'}
+                        </div>` : ''}
+                    </div>`;
+                }).join('')||'<div style="color:var(--text-tertiary);">No residual risk data.</div>'}
+                </div>
+                ${!rE.rrHasFloorField ? '<div style="margin-top:0.4rem;font-size:0.72rem;color:var(--text-tertiary);">ℹ Floor-applied field not present on this run (pre-dates recent schema). Re-run for live floor check.</div>' : ''}
+            </div>`;
+
+        // Hygiene evidence (AIVSS, confidence provenance, governance) — informational, not in score
+        const riskHygieneEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('governance_signals.json → aivss', 'ground_truth.json → confidence_breakdown', 'governance_signals.json → manipulation')}
+                <p style="margin-top:0;color:var(--text-secondary);">These signals reflect whether the analysis pipeline ran completely. They are <strong>not used in the Risk-Defensible score</strong> — they are pipeline hygiene, not architecture defensibility.</p>
+                ${_rpHead('AIVSS flow coverage')}
+                ${['inbound','internal','outbound'].map(f => {
+                    const flow = (rE.aivss||{})[f] || {};
+                    const present = flow.composite != null || flow.severity;
+                    return _rpRow(f, present ? `composite=${(flow.composite||0).toFixed(2)} · ${flow.severity||'—'}` : '— not scored', present?'#16a34a':'#dc2626');
+                }).join('')}
+                ${_rpHead('Confidence provenance')}
+                ${['base','complexity_penalty','coverage_recovery','validation_adjustment','final'].map(k =>
+                    _rpRow(k, (rE.cb||{})[k] != null ? String((rE.cb||{})[k]) : '— missing', (rE.cb||{})[k] != null ? 'var(--text-color)' : '#dc2626')
+                ).join('')}
+                ${_rpHead('Governance markers')}
+                ${_rpRow('Critic divergence score', rE.criticDivergence != null ? rE.criticDivergence.toFixed(2) : '— missing', rE.criticDivergence != null ? '#16a34a' : '#dc2626')}
+                ${_rpRow('Confidence swing', rE.confidenceSwing != null ? rE.confidenceSwing.toFixed(2) : '— missing', rE.confidenceSwing != null ? '#16a34a' : '#dc2626')}
+            </div>`;
+
+        const riskTiles = [
+            _tile('Technique mitigation', r.techMitigationPct, '%', rampC(r.techMitigationPct),
+                `${rE.techCovered} of ${rE.apTechSet.length} attack-path techniques have a mapped control`,
+                'For each MITRE technique in an attack path, at least one recommended control should address it.',
+                '⚖️ Technique mitigation — evidence', riskTechEv),
+            _tile('Hop layer coverage',   r.hopLayerPct, '%', rampC(r.hopLayerPct),
+                `${rE.hopsFullyCovered} of ${rE.allHopsLen} hops have all four zero-trust layers`,
+                'Each hop should have Prevent + Detect + Isolate + Respond controls. Missing layers leave attack phases undefended.',
+                '⚖️ Hop layer coverage — evidence', riskHopEv),
+            _tile('Residual exposure',    r.hardExposurePct, '%', rampC(r.hardExposurePct),
+                `${rE.rrHardCount} of ${rE.rrEntries} threat${rE.rrEntries!==1?'s':''} remain MONITOR/MITIGATE after controls`,
+                'ACCEPT = well-defended. MONITOR = significant residual, watch it. MITIGATE = structurally hard to defend — design may need to change.',
+                '⚖️ Residual exposure — evidence', riskResidualEv),
+            _tile('Analysis hygiene',
+                [rE.aivssCompleteness, rE.cbCoverage, rE.govPresence].every(v=>v===100) ? 'Complete' : 'Partial',
+                '', [rE.aivssCompleteness, rE.cbCoverage, rE.govPresence].every(v=>v===100) ? '#16a34a' : '#ca8a04',
+                'AIVSS, confidence trail, governance markers — pipeline completeness only, not scored',
+                'Pipeline hygiene — confirms the analysis ran completely. Does not affect the Risk-Defensible score.',
+                '⚖️ Analysis hygiene — detail', riskHygieneEv),
+        ].join('');
+        const riskEvidence = '';
+
+        // ── Section 4: Plan-Actionable ────────────────────────────────────────
+        const p = plan.subs;
+        const pE = plan.evidence;
+        const _effortColor = (e) => e==='days'?'#16a34a':e==='weeks'?'#ca8a04':'#6b7280';
+        const _prioColor  = (pr) => pr==='critical'?'#dc2626':pr==='high'?'#f97316':pr==='medium'?'#ca8a04':'#6b7280';
+        const layerBadges = ''; // removed — layer coverage is now in Risk-Defensible
+        // Plan evidence builders — all focused on action plan quality, not arch state
+        const planCompleteEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('08_scrum_master.json → action_plan[].{action, rationale, first_step, effort}')}
+                <p style="margin-top:0;color:var(--text-secondary);">An assignable action item needs four things: what to do (action), why it matters (rationale), how to start (first_step), and roughly how long (effort). Items missing any of these cannot be handed to an engineer or scheduled in a sprint.</p>
+                ${_rpHead(`Completeness: ${pE.completeItems} of ${pE.smItems.length} items fully specified`)}
+                <div style="max-height:320px;overflow-y:auto;">
+                ${pE.smItems.map((item, i) => {
+                    const hasAction    = (item.action||'').trim().length > 10;
+                    const hasRationale = (item.rationale||'').trim().length > 10;
+                    const hasFirstStep = (item.first_step||'').trim().length > 10;
+                    const hasEffort    = (item.effort||'').trim().length > 0;
+                    const ok = hasAction && hasRationale && hasFirstStep && hasEffort;
+                    return `<div style="padding:0.35rem 0;border-bottom:1px solid var(--border-color)22;">
+                        <div style="display:flex;gap:0.4rem;align-items:baseline;flex-wrap:wrap;">
+                            <span style="color:${ok?'#16a34a':'#dc2626'};flex-shrink:0;">${ok?'✓':'✗'}</span>
+                            <span style="font-size:0.68rem;font-weight:700;padding:1px 5px;border-radius:3px;background:${_prioColor(item.priority)}22;color:${_prioColor(item.priority)};">${(item.priority||'').toUpperCase()}</span>
+                            <span style="font-size:0.68rem;padding:1px 5px;border-radius:3px;background:${_effortColor(item.effort)}22;color:${_effortColor(item.effort)};">${item.effort||'—'}</span>
+                            ${item.is_antipattern==='True'||item.is_antipattern===true ? '<span style="font-size:0.68rem;padding:1px 5px;border-radius:3px;background:#8b5cf622;color:#8b5cf6;">anti-pattern</span>' : ''}
+                        </div>
+                        <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:0.15rem;">${_esc(item.action||'')}</div>
+                        ${!ok ? `<div style="font-size:0.72rem;color:#dc2626;padding-left:0.5rem;">Missing: ${[!hasAction?'action':null,!hasRationale?'rationale':null,!hasFirstStep?'first_step':null,!hasEffort?'effort':null].filter(Boolean).join(', ')}</div>` : ''}
+                        <div style="font-size:0.72rem;color:var(--text-tertiary);padding-left:0.5rem;margin-top:0.1rem;">First step: ${_esc(item.first_step||'—')}</div>
+                    </div>`;
+                }).join('')||'<div style="color:var(--text-tertiary);">No action plan items.</div>'}
+                </div>
+            </div>`;
+
+        const planMeasurableEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('08_scrum_master.json → action_plan[].{confidence_gain, risk_reduction_estimate}')}
+                <p style="margin-top:0;color:var(--text-secondary);">A stakeholder reviewing the plan should be able to see what each item buys. Items with a confidence gain or high/medium risk reduction estimate are measurable — you can check if the outcome was achieved. Items with no estimate are activities without success criteria.</p>
+                ${_rpHead(`${pE.measurableItems} of ${pE.smItems.length} items have measurable outcomes`)}
+                ${pE.smItems.map(item => {
+                    const gain = parseFloat(item.confidence_gain || 0);
+                    const rre  = (item.risk_reduction_estimate||'').toLowerCase();
+                    const measurable = gain > 0 || ['high','medium'].includes(rre);
+                    const rreColor = rre==='high'?'#16a34a':rre==='medium'?'#ca8a04':'#6b7280';
+                    return `<div style="padding:0.25rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.79rem;display:flex;gap:0.5rem;align-items:baseline;">
+                        <span style="color:${measurable?'#16a34a':'var(--text-tertiary)'};flex-shrink:0;">${measurable?'✓':'○'}</span>
+                        <span style="flex:1;">${_esc((item.action||'').slice(0,70))}…</span>
+                        ${gain > 0 ? `<span style="font-size:0.72rem;color:#16a34a;white-space:nowrap;">+${gain}% conf</span>` : ''}
+                        <span style="font-size:0.72rem;font-weight:600;color:${rreColor};white-space:nowrap;">${rre||'no estimate'}</span>
+                    </div>`;
+                }).join('')||'<div style="color:var(--text-tertiary);">No items.</div>'}
+            </div>`;
+
+        const planSprintEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('08_scrum_master.json → action_plan[].{effort, priority}')}
+                <p style="margin-top:0;color:var(--text-secondary);">A plan that is all critical + weeks cannot be sprint-planned — engineers cannot start everything at once. A good plan has quick-wins (days) mixed with strategic changes (weeks), and a spread of priorities so teams can schedule meaningfully.</p>
+                ${_rpHead('Effort distribution')}
+                ${[...(new Set(pE.smItems.map(it=>(it.effort||'').toLowerCase()).filter(Boolean)))].map(e => {
+                    const cnt = pE.smItems.filter(it=>(it.effort||'').toLowerCase()===e).length;
+                    return `<div style="padding:0.2rem 0;font-size:0.79rem;display:flex;gap:0.5rem;">
+                        <span style="min-width:60px;font-weight:600;color:${_effortColor(e)};">${e}</span>
+                        <span>${cnt} item${cnt!==1?'s':''}</span>
+                        ${cnt===pE.smItems.length&&pE.smItems.length>2?'<span style="color:#dc2626;font-size:0.72rem;">⚠ all items same effort — hard to schedule</span>':''}
+                    </div>`;
+                }).join('')||'<div style="color:var(--text-tertiary);">No effort data.</div>'}
+                ${_rpHead('Priority distribution')}
+                ${[...(new Set(pE.smItems.map(it=>(it.priority||'').toLowerCase()).filter(Boolean)))].map(pr => {
+                    const cnt = pE.smItems.filter(it=>(it.priority||'').toLowerCase()===pr).length;
+                    return `<div style="padding:0.2rem 0;font-size:0.79rem;display:flex;gap:0.5rem;">
+                        <span style="min-width:70px;font-weight:600;color:${_prioColor(pr)};">${pr}</span>
+                        <span>${cnt} item${cnt!==1?'s':''}</span>
+                    </div>`;
+                }).join('')||'<div style="color:var(--text-tertiary);">No priority data.</div>'}
+                ${pE.antiPatternItems.length > 0 ? `
+                ${_rpHead(`Anti-pattern items (${pE.antiPatternItems.length}) — structural design flaws flagged`)}
+                ${pE.antiPatternItems.map(it => `<div style="padding:0.2rem 0;font-size:0.79rem;color:#8b5cf6;">⬦ ${_esc((it.action||'').slice(0,100))}</div>`).join('')}
+                <div style="font-size:0.72rem;color:var(--text-tertiary);margin-top:0.3rem;">Anti-pattern items flag design decisions that need removal or restructuring — not just controls to add. Their presence in the plan is a positive signal: the analysis identified root causes, not just symptoms.</div>
+                ` : ''}
+            </div>`;
+
+        const planSpecEv = pE.totalScoredItems > 0 ? `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('08_scrum_master.json → action_plan[].first_step', '08_scrum_master.json → action_plan[].action')}
+                <p style="margin-top:0;color:var(--text-secondary);">Specific controls name a real tool, node, or technique. Generic controls ("add monitoring") leave engineers guessing what to implement.</p>
+                ${_rpHead(`Score: ${pE.specificCount} of ${pE.totalScoredItems} items are specific`)}
+                <div style="max-height:360px;overflow-y:auto;">
+                ${pE.smItems.map((item, i) => {
+                    const text = ((item.first_step||'') + ' ' + (item.action||'')).trim();
+                    const SPECIFIC_RE = /\b(install|deploy|configure|enable|enforce|integrate|create|add|block|baseline|fingerprint|scan|alert|segment|isolate|log|monitor|firewall|WAF|ACL|IAM|MFA|TOTP|FIDO2|RBAC|TLS|OAuth|JWT|PKCE|RASP|DAM|SIEM|DLP|EDR|Snyk|Grype|Falco|Vault|Purview|CloudWatch|Splunk|Datadog|Nginx|Kong|Envoy|Kubernetes|Docker|Redis|Postgres|MySQL|MongoDB|S3|Azure|AWS|GCP|RFC\s?\d{4}|AP-\d+|T\d{4}|node|endpoint|service|database|cache|queue|pipeline|CI.?CD|policy|rule|cert|token|secret)\b/i;
+                    const m = SPECIFIC_RE.exec(text);
+                    const specific = !!m;
+                    return `<div style="padding:0.35rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.78rem;">
+                        <div style="display:flex;gap:0.4rem;align-items:baseline;">
+                            <span style="color:${specific?'#16a34a':'#dc2626'};flex-shrink:0;">${specific?'✓':'✗'}</span>
+                            <span style="font-size:0.68rem;padding:1px 5px;border-radius:3px;background:${_prioColor(item.priority)}22;color:${_prioColor(item.priority)};">${(item.priority||'').toUpperCase()}</span>
+                            ${m ? `<span style="color:var(--primary-color);font-weight:600;">${_esc(m[0])}</span>` : ''}
+                        </div>
+                        <div style="padding-left:1rem;font-size:0.75rem;color:var(--text-secondary);margin-top:0.1rem;">${_esc(item.first_step||item.action||'')}</div>
+                    </div>`;
+                }).join('') || '<div style="color:var(--text-tertiary);">No action plan items.</div>'}
+                </div>
+            </div>` : null;
+
+        // ADR display pane (not scored in Plan — structural completeness belongs to Risk-Defensible)
+        const planAdrEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → architecture_decision_records')}
+                <p style="margin-top:0;color:var(--text-secondary);">Each attack path should have an Architecture Decision Record (ADR) with: context (why this path matters), hops (which nodes are involved and what controls apply per hop), and consequences (how much risk is reduced). <strong>ADR structural completeness is scored in Risk-Defensible (Hop layer coverage).</strong> This panel is for reference.</p>
+                ${_rpHead(`ADRs (${pE.adrs.length} total · ${pE.adrsPopulated} complete)`)}
+                <div style="max-height:360px;overflow-y:auto;">
+                ${pE.adrs.length
+                    ? pE.adrs.map((a) => {
+                        const _pop = (v) => { if(v==null) return false; if(typeof v==='string') return v.trim().length>20; if(Array.isArray(v)) return v.length>0; return Object.keys(v).length>0; };
+                        const ok = _pop(a.context) && Array.isArray(a.hops) && a.hops.length>0 && _pop(a.consequences);
+                        const cons = a.consequences || {};
+                        return `<div style="padding:0.4rem 0;border-bottom:1px solid var(--border-color)22;">
+                            <div style="display:flex;gap:0.4rem;align-items:baseline;margin-bottom:0.2rem;">
+                                <span style="color:${ok?'#16a34a':'#dc2626'};flex-shrink:0;">${ok?'✓':'✗'}</span>
+                                <span style="font-weight:700;">${_esc(a.adr_id||'')}</span>
+                                <span style="color:var(--text-tertiary);font-size:0.72rem;">${_esc(a.attack_path_tier||'')} · ${(a.hops||[]).length} hop${(a.hops||[]).length!==1?'s':''}</span>
+                            </div>
+                            ${typeof cons === 'object' && cons.overall_risk_before != null
+                                ? `<div style="font-size:0.75rem;color:var(--text-secondary);padding-left:1rem;">Risk: ${cons.overall_risk_before} → ${cons.overall_risk_after} (${cons.risk_reduction_pct||0}% reduction)</div>`
+                                : ''}
+                            ${(a.hops||[]).slice(0,3).map(h => `<div style="font-size:0.72rem;color:var(--text-tertiary);padding-left:1rem;">⤷ ${_esc(h.node_label||h.node||'')} · ${(h.controls||[]).length} control${(h.controls||[]).length!==1?'s':''}</div>`).join('')}
+                        </div>`;
+                      }).join('')
+                    : '<div style="color:var(--text-tertiary);">No ADRs found.</div>'}
+                </div>
+            </div>`;
+
+        // Recompute layer presence from GT control_recommendations (layers removed from plan.subs
+        // when Plan-Actionable was redesigned — layer coverage is now in Risk-Defensible)
+        const _planLayers = { prevent: false, detect: false, isolate: false, respond: false };
+        (sources.gt && sources.gt.control_recommendations || []).forEach(c => {
+            const cat = (c.dir_category || c.category || '').toLowerCase();
+            if (cat.includes('prevent')) _planLayers.prevent = true;
+            if (cat.includes('detect'))  _planLayers.detect  = true;
+            if (cat.includes('isolat'))  _planLayers.isolate = true;
+            if (cat.includes('isolat') || cat.includes('respond') || cat.includes('recover')) _planLayers.respond = true;
+        });
+
+        const planLayerEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('ground_truth.json → control_recommendations[].dir_category')}
+                <p style="margin-top:0;color:var(--text-secondary);">Defence-in-depth requires all four layers. Missing any layer means that phase of an attack is unaddressed — a detection-only plan cannot prevent, an isolation-only plan cannot detect.</p>
+                ${_rpHead('Layer presence')}
+                ${['prevent','detect','isolate','respond'].map(k => {
+                    const on = _planLayers[k];
+                    const desc = {prevent:'Stop the attack before it reaches critical assets',detect:'Notice if an attack is in progress',isolate:'Limit the blast radius if an attacker gets in',respond:'Recover and remediate after an incident'}[k]||'';
+                    return `<div style="padding:0.3rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.79rem;display:flex;gap:0.5rem;align-items:baseline;">
+                        <span style="color:${on?'#16a34a':'#dc2626'};flex-shrink:0;">${on?'✓':'✗'}</span>
+                        <span style="font-weight:600;min-width:70px;">${k}</span>
+                        <span style="color:var(--text-secondary);">${desc}</span>
+                    </div>`;
+                }).join('')}
+                ${_rpHead('Controls by layer')}
+                ${['prevent','detect','isolate','respond'].map(k => {
+                    const ctrls = (sources.gt&&sources.gt.control_recommendations||[]).filter(c => {
+                        const cat=(c.dir_category||c.category||'').toLowerCase();
+                        return cat.includes(k) || (k==='respond' && (cat.includes('recover')||cat.includes('respond')));
+                    });
+                    return ctrls.length ? `<div style="margin-bottom:0.3rem;font-size:0.75rem;"><span style="font-weight:600;color:${_planLayers[k]?'#16a34a':'#dc2626'};margin-right:0.4rem;">${k}</span>${ctrls.slice(0,5).map(c=>_esc(c.control_name||c.name||c.control||'')).join(', ')}${ctrls.length>5?' +more':''}</div>` : '';
+                }).join('') || '<div style="color:var(--text-tertiary);">No control data.</div>'}
+            </div>`;
+
+        const planPriorityEv = `
+            <div style="font-size:0.8rem;line-height:1.6;">
+                ${_rpCite('08_scrum_master.json → priority_tier_counts', '08_scrum_master.json → action_plan')}
+                <p style="margin-top:0;color:var(--text-secondary);">A well-balanced action plan has items spread across urgency levels. All-CRITICAL causes alarm fatigue. Zero-CRITICAL when critical threats exist is dishonest prioritisation.</p>
+                ${pE.ptc ? `
+                ${_rpHead('Priority distribution')}
+                ${Object.entries(pE.ptc.by_priority||{}).map(([k,v])=>_rpRow(k.toUpperCase(), `${v} item${v!==1?'s':''}`, v>0?'var(--text-color)':'var(--text-tertiary)')).join('')}
+                ${_rpHead('Tier distribution')}
+                ${Object.entries(pE.ptc.by_tier||{}).map(([k,v])=>_rpRow(k, `${v} item${v!==1?'s':''}`, v>0?'var(--text-color)':'var(--text-tertiary)')).join('')}
+                ` : '<div style="color:#ca8a04;">No tier data — run ScrumMaster stage (full_moe scenario).</div>'}
+                ${_rpHead('Action items')}
+                <div style="max-height:300px;overflow-y:auto;">
+                ${(sources.sm&&sources.sm.action_plan||[]).map(item =>
+                    `<div style="padding:0.3rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.78rem;">
+                        <div style="display:flex;gap:0.4rem;align-items:baseline;">
+                            <span style="font-size:0.68rem;font-weight:700;padding:1px 5px;border-radius:3px;background:${item.priority==='critical'?'#dc262622':item.priority==='high'?'#f9731622':'var(--nav-hover-bg)'};color:${item.priority==='critical'?'#dc2626':item.priority==='high'?'#f97316':'var(--text-tertiary)'};">${(item.priority||'').toUpperCase()}</span>
+                            <span style="color:var(--text-secondary);">${_esc((item.action||'').slice(0,80))}…</span>
+                        </div>
+                        ${item.first_step ? `<div style="padding-left:1rem;font-size:0.72rem;color:var(--text-tertiary);margin-top:0.1rem;">First step: ${_esc(item.first_step)}</div>` : ''}
+                    </div>`
+                ).join('') || '<div style="color:var(--text-tertiary);">No action plan data.</div>'}
+                </div>
+            </div>`;
+
+        const noSmData = pE.smItems.length === 0;
+        const planTiles = noSmData ? [
+            `<div style="flex:1; padding:1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px dashed var(--border-color); font-size:0.8rem; color:var(--text-tertiary);">
+                No ScrumMaster data — run <code>full_moe</code> scenario to generate an actionable plan with effort estimates, confidence gains, and first-step guidance.
+            </div>`
+        ] : [
+            _tile('Item completeness', p.itemCompletenessPct, '%', rampC(p.itemCompletenessPct),
+                `${pE.completeItems} of ${pE.smItems.length} items have action + rationale + first_step + effort`,
+                'An assignable item needs all four fields. Missing any one = engineer cannot start without asking follow-up questions.',
+                '✅ Item completeness — evidence', planCompleteEv),
+            _tile('Measurable outcomes', p.measurablePct, '%', rampC(p.measurablePct),
+                `${pE.measurableItems} of ${pE.smItems.length} items have a quantified outcome`,
+                'Items with confidence_gain > 0 or high/medium risk_reduction_estimate have a success criterion. Items without have no way to confirm the work was worth doing.',
+                '✅ Measurable outcomes — evidence', planMeasurableEv),
+            _tile('Sprint spreadability', p.sprintabilityPct, '%', rampC(p.sprintabilityPct),
+                `Effort: ${pE.effortSet.join(', ')} · Priority: ${pE.prioritySet.join(', ')}${p.antiPatternCount > 0 ? ` · ${p.antiPatternCount} anti-pattern${p.antiPatternCount!==1?'s':''} flagged +${p.antiPatternBonus}%` : ''}`,
+                'A good plan has quick-wins (days) mixed with strategic changes (weeks) so teams can start immediately while scheduling larger items.',
+                '✅ Sprint spreadability — evidence', planSprintEv),
+            pE.totalScoredItems > 0
+                ? _tile('Control specificity', p.controlSpecificity, '%', rampC(p.controlSpecificity),
+                    `${pE.specificCount} of ${pE.totalScoredItems} items name a specific tool, node, or technique`,
+                    'Specific items name what to implement. Generic items ("add monitoring") leave engineers guessing.',
+                    '✅ Control specificity — evidence', planSpecEv)
+                : `<div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-left:3px dashed var(--text-tertiary); border-radius:6px; padding:0.55rem 0.75rem; opacity:0.55;">
+                    <div style="font-size:0.65rem; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:0.15rem;">Control specificity</div>
+                    <div style="font-size:0.85rem; font-weight:600; color:var(--text-tertiary);">No SM data</div>
+                    <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">Run ScrumMaster stage (full_moe)</div>
+                </div>`,
+            // AP closure: each CRITICAL path should have at least one plan item addressing it
+            (() => {
+                const apClosureEv = `
+                    <div style="font-size:0.8rem;line-height:1.6;">
+                        ${_rpCite('08_scrum_master.json → action_plan[].action', 'ground_truth.json → expected_attack_paths')}
+                        <p style="margin-top:0;color:var(--text-secondary);">For each CRITICAL attack path, at least one SM action item should reference it by ID. An unaddressed CRITICAL path means the analysis found a threat but the improvement plan ignores it — creating a false sense of completeness.</p>
+                        ${_rpHead(`CRITICAL path coverage: ${pE.criticalApsAddressed} of ${pE.criticalApsTotal} addressed`)}
+                        ${pE.apClosureDetails.map(d => `
+                            <div style="padding:0.25rem 0;border-bottom:1px solid var(--border-color)22;font-size:0.79rem;display:flex;gap:0.5rem;align-items:baseline;">
+                                <span style="color:${d.addressed?'#16a34a':'#dc2626'};flex-shrink:0;">${d.addressed?'✓':'✗'}</span>
+                                <code style="color:var(--primary-color);">${_esc(d.apId)}</code>
+                                <span style="color:var(--text-tertiary);">${_esc(d.tier)}</span>
+                                ${!d.addressed?`<span style="color:#dc2626;font-size:0.72rem;">no SM item references this path</span>`:''}
+                            </div>`).join('')||'<div style="color:var(--text-tertiary);">No CRITICAL paths.</div>'}
+                        <div style="margin-top:0.4rem;font-size:0.72rem;color:var(--text-tertiary);">Note: SM items are synthesised recommendations — direct AP-ID references may be sparse. A CRITICAL path without any explicit reference may still be partially addressed through general structural improvements (e.g. micro-segmentation), but cannot be confirmed without an explicit link.</div>
+                    </div>`;
+                return pE.criticalApsTotal > 0
+                    ? _tile('AP plan closure', p.apClosurePct, '%', rampC(p.apClosurePct),
+                        `${pE.criticalApsAddressed} of ${pE.criticalApsTotal} CRITICAL paths have an explicit plan item`,
+                        'An unaddressed CRITICAL path means the analysis found a threat but the plan ignores it.',
+                        '✅ AP plan closure — evidence', apClosureEv)
+                    : `<div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid #16a34a66; border-left:3px solid #16a34a; border-radius:6px; padding:0.55rem 0.75rem;">
+                        <div style="font-size:0.65rem; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:0.15rem;">AP plan closure</div>
+                        <div style="font-size:1.15rem; font-weight:800; color:#16a34a;">N/A</div>
+                        <div style="font-size:0.68rem; color:var(--text-secondary); margin-top:0.2rem;">No CRITICAL paths — full marks</div>
+                    </div>`;
+            })(),
+        ].join('');
+        const planEvidence = pE.adrs.length ? `
+            <details style="margin-top:0.5rem; border:1px solid var(--border-color); border-radius:6px;">
+                <summary style="padding:0.4rem 0.7rem; cursor:pointer; font-size:0.75rem; color:var(--text-secondary); user-select:none;">▸ ADR reference (structural completeness scored in Risk-Defensible)</summary>
+                <div style="padding:0.5rem 0.8rem; max-height:220px; overflow-y:auto;">
+                    ${pE.adrs.map((a, i) => {
+                        const _pop = (v) => { if(v==null) return false; if(typeof v==='string') return v.trim().length>20; if(Array.isArray(v)) return v.length>0; return Object.keys(v).length>0; };
+                        const ok = _pop(a.context) && Array.isArray(a.hops) && a.hops.length>0 && _pop(a.consequences);
+                        return `<div style="font-size:0.72rem; padding:0.15rem 0; color:var(--text-secondary);">
+                            <span style="color:${ok?'#16a34a':'#dc2626'};">${ok?'✓':'✗'}</span>
+                            <span style="color:var(--text-tertiary); margin:0 0.3rem;">${_esc(a.adr_id||`ADR-${i+1}`)}</span>
+                            ${_esc(a.attack_path_tier||'')} · hops=${(a.hops||[]).length}
+                        </div>`;
+                    }).join('')}
+                </div>
+            </details>` : '';
+
+        // ── Weak-spot advice ──────────────────────────────────────────────────
+        const scoreList = [
+            { key: 'Threat-Relevant', score: threat.score, hint: 'improve node binding (check entry node names match diagram exactly) or run full_moe to reach more nodes and surface more techniques' },
+            { key: 'TTP-Accurate',    score: ttp.score,    hint: 'run full_moe scenario so RedTeam and PurpleTeam critics can cross-validate techniques' },
+            { key: 'Risk-Defensible', score: risk.score,   hint: 'check which attack techniques lack a mapped control, and which hops are missing detect/isolate/respond layers' },
+            { key: 'Plan-Actionable', score: plan.score,   hint: 'run ScrumMaster stage (full_moe scenario) to generate items with effort estimates, confidence gains, and specific first steps that engineers can act on' },
+        ];
+        const weakest = scoreList.reduce((a, b) => a.score <= b.score ? a : b);
+        const advice = weakest.score < 70
+            ? `<strong>${weakest.key}</strong> is the weakest rubric at <strong>${weakest.score}/100</strong> → ${weakest.hint}.`
+            : `All four rubrics score ≥70. Focus on iteration in your usual analysis flow.`;
+
+        // ── Executive header ──────────────────────────────────────────────────
+        const overallHeader = `
+        <div style="margin-bottom:1rem; background:var(--card-bg); border:1px solid ${overallBand.color}44; border-radius:10px; overflow:hidden;">
+            <div style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; background:${overallBand.color}14; border-bottom:1px solid ${overallBand.color}33;">
+                <div style="display:flex; align-items:baseline; gap:0.5rem;">
+                    <span style="font-size:2rem; font-weight:800; color:${overallBand.color}; line-height:1;">${overall}</span>
+                    <span style="font-size:0.72rem; color:var(--text-tertiary);">/100</span>
+                    <span style="font-size:0.95rem; font-weight:700; color:${overallBand.color};">${overallBand.label}</span>
+                    ${delta('overall', overall)}
+                </div>
+                <div style="flex:1; font-size:0.75rem; color:var(--text-secondary);">${overallBand.hint}</div>
+                <div style="display:flex; align-items:center; gap:0.35rem;">
+                    <button onclick="window.dashboard._tatbRefresh()"
+                        title="Reload rubric-source files and recompute scores"
+                        style="padding:0.3rem 0.7rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:var(--text-color); font-size:0.75rem; cursor:pointer; font-weight:600;">↻ Refresh</button>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:0.5rem 1rem; font-size:0.7rem; color:var(--text-tertiary); border-bottom:1px solid var(--border-color);">
+                <span>Loaded: <strong style="color:var(--text-secondary);">${runTs}</strong> · run_id <code>${_esc(runId)}</code></span>
+                <span>${context.nAP} attack path${context.nAP!==1?'s':''} · ${context.nCritical} CRITICAL · ${context.hasAI ? 'AI/ML detected' : 'no AI/ML'}</span>
+            </div>
+            <div style="padding:0.6rem 1rem; font-size:0.8rem; color:var(--text-secondary); line-height:1.55;">
+                ${advice}
+            </div>
+        </div>`;
+
+        // ── Philosophy strip ──────────────────────────────────────────────────
+        const philosophy = `
+        <details style="margin-bottom:1rem; border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+            <summary style="padding:0.55rem 0.85rem; background:var(--nav-hover-bg); cursor:pointer; font-size:0.78rem; font-weight:600; color:var(--text-secondary); list-style:none; user-select:none;">
+                ℹ What is TATB and why does it exist?
+            </summary>
+            <div style="padding:0.7rem 1rem; font-size:0.78rem; color:var(--text-secondary); line-height:1.6;">
+                <strong>TATB (TA Test Benchmark)</strong> scores every threat model against four rubrics:
+                <strong>Threat-Relevant</strong>, <strong>TTP-Accurate</strong>, <strong>Risk-Defensible</strong>, <strong>Plan-Actionable</strong>.
+                We built these rubrics because <strong>no public benchmark exists for threat-model quality</strong> —
+                HELM/AgentBench measure LLM reasoning, MITRE ATT&amp;CK Evaluations measure detection coverage,
+                but neither scores whether <em>this</em> TM/ADR is right for <em>this</em> architecture.
+                <div style="margin-top:0.5rem; padding-top:0.5rem; border-top:1px solid var(--border-color); color:var(--text-tertiary); font-size:0.72rem;">
+                    Note: "<em>Harness</em>" (pipeline controller, in the Harness tab) is not the same as "<em>Test Harness</em>" (evaluation criteria, this tab).
+                    <a onclick="window.dashboard._tatbShowRubricDoc(); return false;" href="#"
+                        style="color:var(--primary-color); text-decoration:none; margin-left:0.25rem;">📄 Full methodology →</a>
+                </div>
+            </div>
+        </details>`;
+
+        // ── Cross-links ───────────────────────────────────────────────────────
+        const links = `
+        <div style="margin-top:1rem; padding:0.6rem 0.9rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--border-color);">
+            <div style="font-size:0.7rem; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.35rem;">Where else to look</div>
+            <div style="display:flex; flex-wrap:wrap; gap:0.5rem; font-size:0.75rem;">
+                <a onclick="window.dashboard.switchTab('insights'); return false;" href="#" style="padding:0.25rem 0.6rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:var(--text-color); text-decoration:none;">📊 Insights → outcome trends, gate drift, systemic gaps</a>
+                <a onclick="window.dashboard.switchTab('harness'); return false;" href="#" style="padding:0.25rem 0.6rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:var(--text-color); text-decoration:none;">⚙️ Harness → stage timings, critic cost/tokens</a>
+                <span style="padding:0.25rem 0.6rem; border:1px dashed var(--border-color); border-radius:5px; color:var(--text-tertiary);">📎 CLI: <code>scripts/integration/backtest_all_architectures.py</code> (full 26-arch corpus)</span>
+            </div>
+        </div>`;
+
+        return `
+        <div style="max-width:1020px;">
+            <div style="margin-bottom:0.85rem;">
+                <h2 style="font-size:1.05rem; font-weight:700; margin:0 0 0.15rem;">🧪 TATB Scorecard — <span style="color:var(--text-secondary); font-weight:500;">${_esc(archName)}</span></h2>
+                <p style="font-size:0.75rem; color:var(--text-tertiary); margin:0;">Threat-Model quality assessment across four rubrics. Warn-only — no analysis is blocked. All scores derive from files this run already produced.</p>
+            </div>
+            ${overallHeader}
+            ${philosophy}
+            ${_rubric('threat', '🎯', 'Threat-Relevant',  threat.score, delta('threat', threat.score),
+                'Are the identified threats architecturally grounded, not boilerplate?',
+                (() => {
+                    if (threat.subs.genericPenalty)
+                        return `All attack paths have an <strong>identical technique set</strong> — every path uses the exact same techniques, which may indicate the engine could not differentiate threats by component. Check whether your diagram nodes have distinct labels and roles. If the architecture genuinely has identical exposure at every node (unusual), this is expected.`;
+                    if (threat.subs.nodeBindingPct < 75)
+                        return `${threat.evidence.apsLen - threat.evidence.boundPaths} of ${threat.evidence.apsLen} attack path${threat.evidence.apsLen!==1?'s':''} could not be tied to a diagram node. The threat is in the report but cannot be traced to a specific component. <strong>Check that AP entry nodes match the exact node IDs</strong> in your .mmd file — e.g. "api_gateway" vs "API Gateway" will not match.`;
+                    if (threat.subs.nodeCoveragePct < 60)
+                        return `Only ${threat.evidence.nodesInPaths ? threat.evidence.nodesInPaths.length : 0} of ${threat.evidence.parsedNodeIds ? threat.evidence.parsedNodeIds.length : 0} diagram nodes appear in any attack path. Components not in any path may have threats the engine did not reach. Run <code>full_moe</code> to let RedTeam and Blackhat critics explore additional threat angles.`;
+                    if (threat.subs.techVarietyPct < 50)
+                        return `Only ${threat.evidence.allTechsInPaths ? threat.evidence.allTechsInPaths.length : 0} distinct MITRE techniques were surfaced. A 4-node architecture typically yields 8–12 unique techniques across all paths. Running <code>full_moe</code> often surfaces additional techniques through per-path critic analysis.`;
+                    if (threat.score >= 80)
+                        return `The threats in this TM are specific to <strong>${_esc(archName)}</strong>. ${threat.evidence.boundPaths}/${threat.evidence.apsLen} paths are node-bound, ${threat.evidence.nodesInPaths ? threat.evidence.nodesInPaths.length : 0}/${threat.evidence.parsedNodeIds ? threat.evidence.parsedNodeIds.length : 0} diagram nodes are covered, and ${threat.evidence.allTechsInPaths ? threat.evidence.allTechsInPaths.length : 0} distinct techniques were mapped. This is a grounded, architecture-specific TM.`;
+                    return `Threats are partially grounded. Click the tiles above to see which nodes and techniques were covered, and where gaps exist.`;
+                })(),
+                threatTiles, threatEvidence)}
+            ${_rubric('ttp', '🎭', 'TTP-Accurate',      ttp.score,    delta('ttp', ttp.score),
+                'Do MITRE ATT&CK/ATLAS technique IDs correctly bind to attacker behaviours?',
+                (() => {
+                    if (ttp.subs.validationPassRate < 70)
+                        return `${100 - ttp.subs.validationPassRate}% of technique IDs failed self-validation. This means TA's own validator found mismatches between the technique description and the context it was applied in. <strong>This does not mean the TM is wrong</strong> — it means these specific IDs should be reviewed by a human. Example: if T1566 (Phishing) is mapped to an internal microservice with no email capability, the validator will flag it.`;
+                    if (ttp.subs.crossPct < 30 && ttp.evidence.allTechsSize >= 3)
+                        return `Only ${ttp.evidence.crossValidated} of ${ttp.evidence.allTechsSize} techniques were independently confirmed by two or more critics. Low cross-validation means each technique was flagged by only one perspective — higher confidence comes when Architect, RedTeam, and Blackhat all agree a technique applies. <strong>Run <code>full_moe</code> scenario</strong> to get cross-critic validation; technique agreement typically rises to 50–70% under full MoE.`;
+                    if (ttp.subs.justificationPct < 80)
+                        return `${100 - ttp.subs.justificationPct}% of techniques lack a written justification for why they apply to this architecture. A justification-less TM is hard to defend in a review: "T1078 (Valid Accounts) is in the report" is not the same as "T1078 applies because the login service accepts OAuth tokens from untrusted third-party IdPs." <strong>Re-run with <code>full_moe</code></strong> so critics populate the justification field.`;
+                    if (ttp.score >= 80)
+                        return `Technique mapping looks solid. ${ttp.subs.validationPassRate}% of techniques passed self-validation, ${ttp.subs.justificationPct}% have written justifications, and ${ttp.subs.crossPct}% were independently confirmed by multiple critics. This TM would hold up to a MITRE ATT&CK attribution review.`;
+                    return `Technique accuracy is acceptable but has room to improve. The MoE confidence lift was ${(ttp.subs.moeLift * 100).toFixed(1)}pp — running additional critic passes typically lifts TTP accuracy another 5–15%.`;
+                })(),
+                ttpTiles, ttpEvidence)}
+            ${_rubric('risk', '⚖️', 'Risk-Defensible',   risk.score,   delta('risk', risk.score),
+                'Can the identified threats actually be defended against with the controls in place?',
+                (() => {
+                    const unmit = (risk.evidence.apTechSet||[]).filter(t => !(risk.evidence.mitigatedTechs||[]).includes(t));
+                    if (unmit.length > 0)
+                        return `<strong>${unmit.length} attack technique${unmit.length!==1?'s':''} (${unmit.join(', ')}) have no mapped control.</strong> These are known attacker moves with no defensive response in the recommended control set. Add controls that address these techniques — click the Technique mitigation tile for the full list.`;
+                    if (risk.subs.hopLayerPct < 60) {
+                        const gapCount = (risk.evidence.allHopsLen||0) - (risk.evidence.hopsFullyCovered||0);
+                        return `<strong>${gapCount} of ${risk.evidence.allHopsLen} hops have missing zero-trust layers</strong> (detect, isolate, or respond missing). An attacker reaching those hops has a phase of the kill-chain undefended — they can operate in the gap. Click the Hop layer coverage tile to see which nodes are affected.`;
+                    }
+                    if (risk.subs.hardExposurePct < 60)
+                        return `<strong>${risk.evidence.rrHardCount} of ${risk.evidence.rrEntries} threat categories remain MONITOR or MITIGATE after all controls.</strong> This means the architecture has structurally hard-to-defend exposures — the design itself leaves attack surface that controls alone cannot close. Residual exposure at MITIGATE level warrants an architectural review (e.g. adding network segmentation, removing unnecessary external exposure, or splitting high-risk components).`;
+                    if (risk.score >= 80)
+                        return `The architecture is well-defended against the identified threats. All ${risk.evidence.apTechSet ? risk.evidence.apTechSet.length : '—'} attack-path techniques have mapped controls, most hops cover all four zero-trust layers, and only ${risk.evidence.rrHardCount} of ${risk.evidence.rrEntries} threats remain at MONITOR/MITIGATE after controls.`;
+                    return `Partial defensibility. Most threats are addressed but some gaps remain. Click the tiles to identify which techniques are unmitigated and which hops are missing defensive layers.`;
+                })(),
+                riskTiles, riskEvidence)}
+            ${_rubric('plan', '✅', 'Plan-Actionable',   plan.score,   delta('plan', plan.score),
+                'Is the improvement plan rigorous enough for a stakeholder to commission, assign, and track?',
+                (() => {
+                    if (plan.evidence.smItems.length === 0)
+                        return `No ScrumMaster action plan found. Run the <code>full_moe</code> scenario to generate an actionable plan with effort estimates, confidence gains, first steps, and sprint-schedulable priorities. Without this, there is no commissioning artefact — only a list of controls with no assignment or timeline.`;
+                    if (plan.subs.itemCompletenessPct < 70)
+                        return `${plan.evidence.smItems.length - plan.evidence.completeItems} of ${plan.evidence.smItems.length} action items are missing at least one of: action description, rationale, first step, or effort estimate. These items cannot be assigned to an engineer — the person receiving them would need to ask clarifying questions before starting. <strong>Re-run ScrumMaster</strong> to regenerate complete items.`;
+                    if (plan.subs.measurablePct < 60)
+                        return `${plan.evidence.smItems.length - plan.evidence.measurableItems} of ${plan.evidence.smItems.length} items have no measurable outcome (no confidence gain or risk reduction estimate). A stakeholder reviewing progress two weeks later has no way to confirm these items were worth doing. Items should state what improves — e.g. "+3.5% analysis confidence" or "high risk reduction for supply chain threat."`;
+                    if (plan.subs.sprintabilityPct < 50)
+                        return `The plan is hard to schedule: ${plan.evidence.effortSet.join('/')} effort levels and ${plan.evidence.prioritySet.join('/')} priority levels. A plan that is all critical+weeks means nothing can start immediately. Engineers need a mix — some quick-wins (days) to show progress while strategic changes are planned over weeks.`;
+                    if (plan.subs.controlSpecificity < 50 && plan.evidence.totalScoredItems > 0)
+                        return `${plan.evidence.totalScoredItems - plan.evidence.specificCount} of ${plan.evidence.totalScoredItems} items use generic language without naming a specific tool, node, or configuration target. "Add monitoring" is not an instruction — "configure CloudWatch alarm on the Database node with 5-minute latency threshold" is. Click Control specificity for the full breakdown.`;
+                    if (plan.score >= 80)
+                        return `The action plan is commission-ready. ${plan.evidence.completeItems}/${plan.evidence.smItems.length} items are fully specified, ${plan.evidence.measurableItems}/${plan.evidence.smItems.length} have measurable outcomes, and the effort mix (${plan.evidence.effortSet.join('/')}) is sprint-schedulable.${plan.subs.antiPatternCount > 0 ? ` ${plan.subs.antiPatternCount} anti-pattern item${plan.subs.antiPatternCount!==1?'s':''} correctly identify structural design flaws — not just controls to add.` : ''}`;
+                    return `The plan is usable but has gaps. Click the tiles above for the specific issues — incomplete items, missing outcome estimates, or generic control descriptions that need refinement before handing to an engineering team.`;
+                })(),
+                planTiles, planEvidence)}
+            ${links}
+        </div>`;
+    }
+
 
     // Helper: strip trailing _N from an arch name (mirrors backend _base_arch_name)
     _baseName(name) {

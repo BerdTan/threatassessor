@@ -1282,20 +1282,23 @@ class MoEOrchestrator:
         # ---- fallback: union of all gaps, no consensus scoring ----
         logger.warning("Orchestrator: LLM synthesis failed — using gap-union fallback")
 
-        # PT gaps are high-confidence when coverage or detection blindspots are present
+        # PT gaps are high-confidence when coverage or detection blindspots are present.
+        # ValidationResult stores this data in .breakdown (not .raw_data — that field
+        # does not exist on ValidationResult; .raw_data was a stale reference to
+        # CritiqueScore.breakdown that was never promoted to the dataclass).
+        pt_bd = (purple_team_result.breakdown or {}) if purple_team_result else {}
         pt_has_coverage_gaps = bool(
             purple_team_result
-            and purple_team_result.raw_data
             and (
-                purple_team_result.raw_data.get("coverage_gaps")
-                or purple_team_result.raw_data.get("detection_blindspots")
+                pt_bd.get("coverage_gaps")
+                or pt_bd.get("detection_blindspots")
             )
         )
         # BH pivot-diverge chains are cross-path facts — mark KNOWN if present
+        bh_bd = (blackhat_result.breakdown or {}) if blackhat_result else {}
         bh_has_pivots = bool(
             blackhat_result
-            and blackhat_result.raw_data
-            and blackhat_result.raw_data.get("pivot_diverge_chains")
+            and bh_bd.get("pivot_diverge_chains")
         )
 
         pt_gap_set = set(str(g.get("description", ""))[:80] for g in (purple_team_result.gaps if purple_team_result else []))
@@ -1635,13 +1638,70 @@ RULES:
             else:
                 raw = content.strip()
 
-            result = json.loads(raw)
+            # Attempt clean parse first; fall back to truncation recovery if it fails.
+            result = None
+            try:
+                result = json.loads(raw)
+            except json.JSONDecodeError as jde:
+                # Most common cause: max_tokens truncation mid-string or mid-array.
+                # Recovery: walk the string tracking bracket depth. Every position where
+                # depth returns to 1 after closing an array (']') is a candidate cut point.
+                # Try candidates from last to first, close the object, and attempt parse.
+                logger.warning(
+                    f"Orchestrator: synthesis JSON parse failed ({jde}) — "
+                    f"response length={len(raw)} chars. Attempting truncation recovery."
+                )
+                try:
+                    depth, in_str, escape = 0, False, False
+                    candidate_positions = []
+                    for i, ch in enumerate(raw):
+                        if escape:
+                            escape = False
+                            continue
+                        if ch == '\\' and in_str:
+                            escape = True
+                            continue
+                        if ch == '"' and not escape:
+                            in_str = not in_str
+                            continue
+                        if in_str:
+                            continue
+                        if ch in ('{', '['):
+                            depth += 1
+                        elif ch in ('}', ']'):
+                            depth -= 1
+                            if depth == 1 and ch == ']':
+                                candidate_positions.append(i)
 
-            # Minimal validation
-            required = ["critical", "high", "review", "improvement_tiers"]
-            if not all(k in result for k in required):
-                logger.warning("Orchestrator: LLM synthesis response missing required keys")
+                    for pos in reversed(candidate_positions):
+                        try:
+                            result = json.loads(raw[:pos + 1] + '\n}')
+                            logger.info(
+                                f"Orchestrator: truncation recovery succeeded at pos={pos} — "
+                                f"salvaged {len(result)} keys."
+                            )
+                            break
+                        except json.JSONDecodeError:
+                            continue
+
+                    if result is None:
+                        logger.warning("Orchestrator: truncation recovery found no valid cut point.")
+                except Exception as rec_err:
+                    logger.warning(f"Orchestrator: truncation recovery error: {rec_err}")
+
+            if result is None:
                 return None
+
+            # Minimal validation — only require keys that were likely present before truncation
+            required_keys = ["critical", "high", "review"]
+            if not any(k in result for k in required_keys):
+                logger.warning("Orchestrator: LLM synthesis response missing all required keys")
+                return None
+
+            # Ensure expected keys exist (may have been truncated away — default to empty)
+            for k in ["critical", "high", "review", "blindspots", "contradictions", "improvement_tiers"]:
+                result.setdefault(k, [] if k != "improvement_tiers" else {})
+            result.setdefault("synthesis_quality", "LLM")
 
             logger.info(
                 f"Orchestrator: LLM synthesis complete — "

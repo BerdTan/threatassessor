@@ -1399,6 +1399,13 @@ def generate_ground_truth(
     ground_truth["control_recommendations"] = adjusted_recommendations
     ground_truth["validation_report"] = validation_report
 
+    # TATB alias — promote technique-relevance validation to a top-level key so
+    # downstream consumers (TATB Scorecard, tests, external tools) don't need
+    # to navigate the nested validation_report structure.
+    ground_truth["technique_validation"] = (
+        (validation_report or {}).get("validations", {}).get("technique_relevance", [])
+    )
+
     # Update controls_missing with potentially re-prioritized list
     controls_missing_names = extract_control_names(adjusted_recommendations)
     ground_truth["controls_missing"] = controls_missing_names
