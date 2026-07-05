@@ -233,7 +233,27 @@ def score_plan(gt: dict, sm: Optional[dict]) -> dict:
     spec_ct = sum(1 for it in items if SPEC.search((it.get('first_step') or '') + ' ' + (it.get('action') or '')))
     spec_pct = round(spec_ct / len(items) * 100)
 
-    # E. AP closure
+    # E. ADR alignment — high-priority items should reference ADR-mandated controls
+    adr_controls = set()
+    for adr in adrs:
+        for hop in (adr.get('hops') or []):
+            for ctrl in (hop.get('controls') or []):
+                name = (ctrl.get('name') or '').lower().strip()
+                if name:
+                    adr_controls.add(name)
+    if adr_controls:
+        high_items = [it for it in items if (it.get('priority') or '').lower() in ('critical', 'high')]
+        if high_items:
+            aligned = sum(1 for it in high_items
+                          if any(c in ((it.get('first_step') or '') + ' ' + (it.get('action') or '')).lower()
+                                 for c in adr_controls))
+            adr_align_pct = round(aligned / len(high_items) * 100)
+        else:
+            adr_align_pct = 50
+    else:
+        adr_align_pct = 50
+
+    # F. AP closure
     crit_aps = [ap for ap in aps if ap.get('criticality_tier') == 'CRITICAL']
     addr     = [ap for ap in crit_aps
                 if any(ap.get('id', '') in ((it.get('action') or '') + (it.get('rationale') or ''))
@@ -242,17 +262,19 @@ def score_plan(gt: dict, sm: Optional[dict]) -> dict:
     anti_bonus  = 5 if any(str(it.get('is_antipattern', '')).lower() == 'true' for it in items) else 0
 
     score = min(100, round(comp_pct * 0.25 + meas_pct * 0.20 + sprint_pct * 0.15
-                           + spec_pct * 0.20 + closure_pct * 0.20 + anti_bonus))
+                           + spec_pct * 0.10 + adr_align_pct * 0.10 + closure_pct * 0.20 + anti_bonus))
     return {
         'score': score,
         'comp_pct': comp_pct,
         'meas_pct': meas_pct,
         'sprint_pct': sprint_pct,
         'spec_pct': spec_pct,
+        'adr_align_pct': adr_align_pct,
         'closure_pct': closure_pct,
         'n_items': len(items),
         'n_crit_aps': len(crit_aps),
         'n_addr': len(addr),
+        'n_adr_controls': len(adr_controls),
     }
 
 
@@ -456,6 +478,421 @@ def render_stage_attribution(results: list, use_color: bool):
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+def _resolve_labeller_model() -> str:
+    """Return the configured TATB labeller model, falling back to Haiku if unset."""
+    raw = os.getenv('AGENT_MODEL_TATB_LABELLER', 'bedrock/us.amazon.nova-pro-v1:0')
+    return raw if raw.startswith('bedrock/') else f'bedrock/{raw}'
+
+
+def _mmd_for_arch(arch_name: str, report_dir: Path) -> Optional[str]:
+    """Find the .mmd source for an arch — checks report dir first, then tests/data."""
+    repo = Path(__file__).parents[4]  # …/DEV-TEST
+    candidates = [
+        report_dir / arch_name / 'before.mmd',
+        repo / 'tests' / 'data' / 'architectures' / f'{arch_name}.mmd',
+        # strip trailing _N suffix and retry
+        repo / 'tests' / 'data' / 'architectures' / (re.sub(r'_\d+$', '', arch_name) + '.mmd'),
+    ]
+    for p in candidates:
+        if p.exists():
+            return p.read_text(encoding='utf-8')
+    return None
+
+
+def auto_label(report_dir: Path, force: bool, use_color: bool):
+    """
+    Auto-generate expected_threats.json for each arch that is missing one,
+    using the TATB labeller model (Nova Pro by default — independent of pipeline).
+
+    Writes to report/<arch>/expected_threats.json (co-located with ground_truth.json).
+    Idempotent — skips existing labels unless --force.
+    """
+    sys.path.insert(0, str(Path(__file__).parents[4]))
+    try:
+        from agentic.helper import load_env
+        load_env()
+        from agentic.llm_client import LLMClient, LLMProvider
+    except ImportError as e:
+        print(f'  Auto-label requires agentic/llm_client — {e}', file=sys.stderr)
+        return
+
+    model    = _resolve_labeller_model()
+    fallback = os.getenv('AGENT_MODEL_TATB_LABELLER_FALLBACK', 'bedrock/us.anthropic.claude-haiku-4-20250514-v1:0')
+    client   = LLMClient(primary_provider=LLMProvider.BEDROCK)
+
+    arch_dirs = sorted([d for d in report_dir.iterdir()
+                        if d.is_dir() and (d / 'ground_truth.json').exists()])
+    if not arch_dirs:
+        print('  No architectures found.', file=sys.stderr)
+        return
+
+    skipped = labeled = failed = 0
+    for arch_dir in arch_dirs:
+        label_path = arch_dir / 'expected_threats.json'
+        if label_path.exists() and not force:
+            skipped += 1
+            continue
+
+        mmd = _mmd_for_arch(arch_dir.name, report_dir)
+        if not mmd:
+            print((('\033[33m' if use_color else '') +
+                   f'  SKIP {arch_dir.name} — no .mmd source found' +
+                   ('\033[0m' if use_color else '')))
+            skipped += 1
+            continue
+
+        prompt = f"""You are an independent threat-modelling expert acting as a TATB (TA Test Benchmark) verifier.
+Your task: given only the architecture diagram below, identify the MITRE ATT&CK technique IDs that a competent threat analyst should expect to find in a thorough threat model for this architecture.
+
+Rules:
+- Base your answer ONLY on the topology shown — do not assume techniques the diagram does not support.
+- Include techniques that are clearly applicable given the node types and connectivity.
+- Output ONLY valid JSON in this exact format, no prose:
+{{"techniques": ["T1190", "T1059", ...], "notes": "one sentence rationale"}}
+
+Architecture diagram ({arch_dir.name}):
+{mmd[:6000]}"""
+
+        try:
+            for attempt_model in [model, fallback]:
+                try:
+                    resp = client.generate(prompt=prompt, model=attempt_model, max_tokens=400)
+                    text = resp.content if hasattr(resp, 'content') else str(resp)
+                    # Extract JSON from response
+                    match = re.search(r'\{[^{}]*"techniques"\s*:\s*\[[^\]]*\][^{}]*\}', text, re.DOTALL)
+                    if not match:
+                        raise ValueError(f'No valid JSON found in response: {text[:200]}')
+                    label = json.loads(match.group(0))
+                    if not isinstance(label.get('techniques'), list):
+                        raise ValueError('techniques must be a list')
+                    # Normalise — uppercase, filter valid T-IDs
+                    label['techniques'] = sorted(set(
+                        t.upper() for t in label['techniques']
+                        if re.match(r'^T\d{4}(\.\d{3})?$', str(t).strip(), re.I)
+                    ))
+                    label['labeller_model'] = attempt_model
+                    label['arch']           = arch_dir.name
+                    label_path.write_text(json.dumps(label, indent=2))
+                    col = '\033[92m' if use_color else ''
+                    rst = '\033[0m'  if use_color else ''
+                    print(f"  {col}LABELLED{rst} {arch_dir.name} — {len(label['techniques'])} techniques via {attempt_model.split('/')[-1]}")
+                    labeled += 1
+                    break
+                except Exception as inner:
+                    if attempt_model == fallback:
+                        raise inner
+                    continue
+        except Exception as e:
+            col = '\033[31m' if use_color else ''
+            rst = '\033[0m'  if use_color else ''
+            print(f"  {col}FAILED{rst}  {arch_dir.name} — {str(e)[:120]}")
+            failed += 1
+
+    print()
+    print(f'  Auto-label complete: {labeled} labelled, {skipped} skipped, {failed} failed')
+    if labeled:
+        print(f'  Labels written to report/<arch>/expected_threats.json')
+        print(f'  Run with --regression to score recall/precision against these labels.')
+
+
+def run_regression(report_dir: Path, label_dir: Path, use_color: bool):
+    """
+    Labelled-corpus regression: compare detected technique IDs against expected_threats.json.
+
+    Label files are resolved in priority order:
+      1. report/<arch>/expected_threats.json  (auto-labeller writes here)
+      2. <label_dir>/<arch>/expected_threats.json  (manual labels)
+    """
+    # Collect all label files — co-located in report/ first, then label_dir
+    seen = {}
+    for lf in sorted(report_dir.glob('*/expected_threats.json')):
+        seen[lf.parent.name] = lf
+    for lf in sorted(label_dir.glob('*/expected_threats.json')):
+        if lf.parent.name not in seen:
+            seen[lf.parent.name] = lf
+
+    if not seen:
+        if use_color:
+            print(GREY + '  No expected_threats.json files found.' + RESET)
+        else:
+            print('  No expected_threats.json files found.')
+        print('  Run --auto-label to generate labels via Nova Pro, or create manually.')
+        print('  Format: { "techniques": ["T1190", "T1059", ...], "notes": "optional" }')
+        return
+
+    rows = []
+    for arch_name, lf in sorted(seen.items()):
+        arch_dir  = report_dir / arch_name
+        gt_path   = arch_dir / 'ground_truth.json'
+        if not gt_path.exists():
+            continue
+        try:
+            gt       = json.load(open(gt_path))
+            expected = set(json.load(open(lf)).get('techniques', []))
+            detected = set(t for ap in gt.get('expected_attack_paths', [])
+                           for t in ap.get('techniques', []))
+            tp       = len(expected & detected)
+            fp       = len(detected - expected)
+            fn       = len(expected - detected)
+            recall    = round(tp / len(expected) * 100) if expected else 100
+            precision = round(tp / (tp + fp) * 100)     if (tp + fp) else 0
+            f1_num    = 2 * recall * precision
+            f1        = round(f1_num / (recall + precision)) if (recall + precision) else 0
+            rows.append({
+                'arch': arch_name,
+                'recall': recall, 'precision': precision, 'f1': f1,
+                'tp': tp, 'fp': fp, 'fn': fn,
+                'missed': sorted(expected - detected),
+                'extra':  sorted(detected - expected),
+            })
+        except Exception as e:
+            rows.append({'arch': arch_name, 'error': str(e)})
+
+    if not rows:
+        print('  No labelled architectures matched report directories.')
+        return
+
+    def _col(v):
+        if v is None: return GREY
+        if v >= 90:   return '\033[92m'
+        if v >= 75:   return '\033[32m'
+        if v >= 60:   return '\033[33m'
+        return '\033[31m'
+
+    print()
+    if use_color:
+        print(BOLD + '📐 Labelled-Corpus Regression' + RESET)
+    else:
+        print('Labelled-Corpus Regression')
+    print(f'  {len(rows)} labelled architecture(s) found\n')
+
+    hdr = f"  {'Architecture':<30}  {'Recall':>7}  {'Precision':>9}  {'F1':>5}  {'TP':>4}  {'FP':>4}  {'FN':>4}"
+    sep = '  ' + '─' * (len(hdr) - 2)
+    print(hdr)
+    print(sep)
+
+    for r in rows:
+        if 'error' in r:
+            print(f"  {r['arch']:<30}  ERROR: {r['error']}")
+            continue
+        rc = _col(r['recall'])
+        pc = _col(r['precision'])
+        fc = _col(r['f1'])
+        row = (f"  {r['arch']:<30}  "
+               + (rc if use_color else '') + f"{r['recall']:>6}%" + (RESET if use_color else '') + '  '
+               + (pc if use_color else '') + f"{r['precision']:>8}%" + (RESET if use_color else '') + '  '
+               + (fc if use_color else '') + f"{r['f1']:>4}%" + (RESET if use_color else '') + '  '
+               + f"{r['tp']:>4}  {r['fp']:>4}  {r['fn']:>4}")
+        print(row)
+        if r['missed']:
+            missed_str = ', '.join(r['missed'][:8]) + (f' +{len(r["missed"])-8} more' if len(r['missed']) > 8 else '')
+            print((GREY if use_color else '') + f"    ↳ Missed: {missed_str}" + (RESET if use_color else ''))
+
+    # Corpus averages
+    valid = [r for r in rows if 'error' not in r]
+    if not valid:
+        return
+
+    avg_r = round(sum(r['recall']    for r in valid) / len(valid))
+    avg_p = round(sum(r['precision'] for r in valid) / len(valid))
+    avg_f = round(sum(r['f1']        for r in valid) / len(valid))
+    print(sep)
+    print(f"  {'Corpus average':<30}  {avg_r:>6}%  {avg_p:>8}%  {avg_f:>4}%")
+
+    # ── Corpus health bar ─────────────────────────────────────────────────────
+    print()
+    rc = _col(avg_r); pc = _col(avg_p); fc = _col(avg_f)
+    def _hbar(v, w=20):
+        filled = round(v / 100 * w)
+        _, color, _ = band(v) if v is not None else ('?', GREY, '')
+        return (color if use_color else '') + '█'*filled + (GREY if use_color else '') + '░'*(w-filled) + (RESET if use_color else '')
+    print(f"  Corpus health:")
+    print(f"    Recall    {_hbar(avg_r)}  {(rc if use_color else '')}{avg_r}%{(RESET if use_color else '')}")
+    print(f"    Precision {_hbar(avg_p)}  {(pc if use_color else '')}{avg_p}%{(RESET if use_color else '')}")
+    print(f"    F1        {_hbar(avg_f)}  {(fc if use_color else '')}{avg_f}%{(RESET if use_color else '')}")
+
+    # ── Top missed techniques frequency ──────────────────────────────────────
+    from collections import Counter
+    missed_freq = Counter(t for r in valid for t in r.get('missed', []))
+    extra_freq  = Counter(t for r in valid for t in r.get('extra',  []))
+
+    TECHNIQUE_NAMES = {
+        # Initial Access
+        'T1190': 'Exploit Public-Facing App',  'T1133': 'External Remote Services',
+        'T1566': 'Phishing',                   'T1078': 'Valid Accounts',
+        'T1189': 'Drive-by Compromise',        'T1199': 'Trusted Relationship',
+        'T1195': 'Supply Chain Compromise',
+        # Execution
+        'T1059': 'Command & Scripting',        'T1203': 'Exploit Client Execution',
+        'T1204.003': 'User Exec: Malicious Image',
+        # Persistence
+        'T1098': 'Account Manipulation',       'T1136': 'Create Account',
+        'T1505': 'Server Software Component',  'T1505.003': 'Web Shell',
+        'T1556': 'Modify Auth Process',
+        # Privilege Escalation
+        'T1068': 'Exploit Priv Escalation',    'T1548': 'Abuse Elevation Control',
+        'T1134': 'Access Token Manipulation',
+        # Defense Evasion
+        'T1027': 'Obfuscated Files',           'T1036': 'Masquerading',
+        'T1055': 'Process Injection',          'T1055.012': 'Process Hollowing',
+        'T1070': 'Indicator Removal',          'T1078.004': 'Valid Cloud Accounts',
+        'T1207': 'Rogue Domain Controller',    'T1562': 'Impair Defenses',
+        'T1562.001': 'Disable Security Tools', 'T1578': 'Modify Cloud Compute',
+        # Credential Access
+        'T1003': 'OS Credential Dumping',      'T1040': 'Network Sniffing',
+        'T1056': 'Input Capture',              'T1056.001': 'Keylogging',
+        'T1056.002': 'GUI Input Capture',      'T1110': 'Brute Force',
+        'T1111': 'MFA Interception',           'T1185': 'Browser Session Hijack',
+        'T1212': 'Exploit Credential Access',  'T1539': 'Steal Web Session Cookie',
+        'T1550': 'Use Alt Auth Material',      'T1552': 'Unsecured Credentials',
+        'T1552.001': 'Credentials In Files',   'T1557': 'AiTM / MitM',
+        # Discovery
+        'T1018': 'Remote System Discovery',    'T1046': 'Network Svc Discovery',
+        'T1049': 'System Network Connections', 'T1057': 'Process Discovery',
+        'T1069': 'Permission Groups Discovery','T1082': 'System Info Discovery',
+        'T1083': 'File & Dir Discovery',       'T1087': 'Account Discovery',
+        'T1119': 'Automated Collection',       'T1135': 'Network Share Discovery',
+        'T1201': 'Password Policy Discovery',  'T1482': 'Domain Trust Discovery',
+        'T1590': 'Gather Victim Network Info', 'T1592': 'Gather Victim Host Info',
+        'T1595': 'Active Scanning',
+        # Lateral Movement
+        'T1021': 'Remote Services',            'T1021.001': 'Remote Desktop Protocol',
+        'T1021.002': 'SMB/Windows Admin Shares','T1021.004': 'SSH',
+        'T1021.007': 'Cloud Services',         'T1210': 'Exploit Remote Services',
+        'T1563': 'Remote Service Session Hijack','T1570': 'Lateral Tool Transfer',
+        # Collection
+        'T1005': 'Data from Local System',     'T1039': 'Data from Network Share',
+        'T1074': 'Data Staged',                'T1114': 'Email Collection',
+        'T1213': 'Data from Info Repositories','T1213.002': 'SharePoint',
+        'T1530': 'Data from Cloud Storage',    'T1560': 'Archive Collected Data',
+        # C2
+        'T1071': 'Application Layer Protocol', 'T1071.001': 'Web Protocols',
+        'T1090': 'Proxy',                      'T1102': 'Web Service',
+        'T1572': 'Protocol Tunneling',         'T1573': 'Encrypted Channel',
+        # Exfiltration
+        'T1020': 'Automated Exfiltration',     'T1041': 'Exfil over C2 Channel',
+        'T1048': 'Exfil Over Alt Protocol',    'T1537': 'Transfer to Cloud Account',
+        'T1567': 'Exfil to Web Service',
+        # Impact
+        'T1485': 'Data Destruction',           'T1486': 'Data Encrypted for Impact',
+        'T1489': 'Service Stop',               'T1490': 'Inhibit System Recovery',
+        'T1491': 'Defacement',                 'T1496': 'Resource Hijacking',
+        'T1498': 'Network DoS',                'T1499': 'Endpoint DoS',
+        'T1529': 'System Shutdown/Reboot',     'T1531': 'Account Access Removal',
+        'T1565': 'Data Manipulation',          'T1565.001': 'Stored Data Manipulation',
+        # Reconnaissance
+        'T1588.001': 'Obtain: Malware',        'T1588.002': 'Obtain: Tool',
+        'T1588.006': 'Obtain: Vuln',           'T1589': 'Gather Victim Identity',
+        # Resource Development / Other
+        'T1648': 'Serverless Execution',
+    }
+    TACTIC_MAP = {
+        # Initial Access
+        'T1190': 'Initial Access',  'T1133': 'Initial Access',  'T1566': 'Initial Access',
+        'T1078': 'Initial Access',  'T1189': 'Initial Access',  'T1199': 'Initial Access',
+        'T1195': 'Initial Access',
+        # Execution
+        'T1059': 'Execution',       'T1203': 'Execution',       'T1648': 'Execution',
+        # Persistence
+        'T1098': 'Persistence',     'T1136': 'Persistence',     'T1505': 'Persistence',
+        'T1505.003': 'Persistence', 'T1556': 'Persistence',
+        # Privilege Escalation
+        'T1068': 'Priv Escalation', 'T1548': 'Priv Escalation', 'T1134': 'Priv Escalation',
+        # Defense Evasion
+        'T1027': 'Defense Evasion', 'T1036': 'Defense Evasion', 'T1055': 'Defense Evasion',
+        'T1055.012': 'Defense Evasion', 'T1070': 'Defense Evasion', 'T1078.004': 'Defense Evasion',
+        'T1207': 'Defense Evasion', 'T1562': 'Defense Evasion', 'T1562.001': 'Defense Evasion',
+        'T1578': 'Defense Evasion',
+        # Credential Access
+        'T1003': 'Credential Access', 'T1040': 'Discovery',     'T1056': 'Credential Access',
+        'T1056.001': 'Credential Access', 'T1056.002': 'Credential Access',
+        'T1110': 'Credential Access', 'T1111': 'Credential Access', 'T1185': 'Credential Access',
+        'T1212': 'Credential Access', 'T1539': 'Credential Access', 'T1550': 'Credential Access',
+        'T1552': 'Credential Access', 'T1552.001': 'Credential Access', 'T1557': 'Credential Access',
+        # Discovery
+        'T1018': 'Discovery',       'T1046': 'Discovery',       'T1049': 'Discovery',
+        'T1057': 'Discovery',       'T1069': 'Discovery',       'T1082': 'Discovery',
+        'T1083': 'Discovery',       'T1087': 'Discovery',       'T1119': 'Collection',
+        'T1135': 'Discovery',       'T1201': 'Discovery',       'T1482': 'Discovery',
+        'T1590': 'Reconnaissance',  'T1592': 'Reconnaissance',  'T1595': 'Reconnaissance',
+        # Lateral Movement
+        'T1021': 'Lateral Movement', 'T1021.001': 'Lateral Movement', 'T1021.002': 'Lateral Movement',
+        'T1021.004': 'Lateral Movement', 'T1021.007': 'Lateral Movement',
+        'T1210': 'Lateral Movement', 'T1563': 'Lateral Movement', 'T1570': 'Lateral Movement',
+        # Collection
+        'T1005': 'Collection',      'T1039': 'Collection',      'T1074': 'Collection',
+        'T1114': 'Collection',      'T1213': 'Collection',      'T1213.002': 'Collection',
+        'T1530': 'Collection',      'T1560': 'Collection',
+        # C2
+        'T1071': 'C2',              'T1071.001': 'C2',          'T1090': 'C2',
+        'T1102': 'C2',              'T1572': 'C2',              'T1573': 'C2',
+        # Exfiltration
+        'T1020': 'Exfiltration',    'T1041': 'Exfiltration',    'T1048': 'Exfiltration',
+        'T1537': 'Exfiltration',    'T1567': 'Exfiltration',
+        # Impact
+        'T1485': 'Impact',          'T1486': 'Impact',          'T1489': 'Impact',
+        'T1490': 'Impact',          'T1491': 'Impact',          'T1496': 'Impact',
+        'T1498': 'Impact',          'T1499': 'Impact',          'T1529': 'Impact',
+        'T1531': 'Impact',          'T1565': 'Impact',          'T1565.001': 'Impact',
+        # Resource Development
+        'T1588.001': 'Resource Dev', 'T1588.002': 'Resource Dev', 'T1588.006': 'Resource Dev',
+        'T1589': 'Reconnaissance',
+    }
+
+    n_archs = len(valid)
+    top_missed = missed_freq.most_common(12)
+    if top_missed:
+        print()
+        print((BOLD if use_color else '') + '  Top missed techniques (engine detection gaps):' + (RESET if use_color else ''))
+        print(f"  {'Technique':<8}  {'Name':<34}  {'Tactic':<20}  {'Archs':<6}  Fix priority")
+        print('  ' + '─'*85)
+        for tid, cnt in top_missed:
+            name   = TECHNIQUE_NAMES.get(tid, tid)
+            tactic = TACTIC_MAP.get(tid, '?')
+            pct    = round(cnt / n_archs * 100)
+            bar_w  = round(pct / 100 * 14)
+            pri    = 'HIGH' if pct >= 60 else 'MED' if pct >= 35 else 'LOW'
+            pri_c  = ('\033[31m' if pct>=60 else '\033[33m' if pct>=35 else '\033[32m') if use_color else ''
+            bar_s  = (pri_c if use_color else '') + '█'*bar_w + (GREY if use_color else '') + '░'*(14-bar_w) + (RESET if use_color else '')
+            print(f"  {tid:<8}  {name:<34}  {tactic:<20}  {bar_s}  {cnt}/{n_archs} archs  {pri_c}{pri}{RESET if use_color else ''}")
+
+    # ── Tactic coverage heatmap ───────────────────────────────────────────────
+    tactic_missed = Counter(TACTIC_MAP.get(t, 'Other') for r in valid for t in r.get('missed', []))
+    tactic_total  = Counter(TACTIC_MAP.get(t, 'Other') for r in valid
+                            for t in (r.get('missed', []) + r.get('tp_list', r.get('missed', []))))
+    if tactic_missed:
+        print()
+        print((BOLD if use_color else '') + '  Tactic coverage gaps (missed technique distribution):' + (RESET if use_color else ''))
+        tactic_order = ['Initial Access','Execution','Persistence','Privilege Escalation',
+                        'Defense Evasion','Credential Access','Discovery','Lateral Movement',
+                        'Collection','C2','Exfiltration','Impact']
+        for tac in tactic_order:
+            cnt = tactic_missed.get(tac, 0)
+            if cnt == 0: continue
+            bar_w  = min(round(cnt / max(tactic_missed.values()) * 18), 18)
+            _, color, _ = band(max(0, 100 - round(cnt / n_archs * 10)))
+            bar_s  = (color if use_color else '') + '█'*bar_w + (GREY if use_color else '') + '░'*(18-bar_w) + (RESET if use_color else '')
+            print(f"  {tac:<22}  {bar_s}  {cnt} gaps")
+
+    # ── Fix-priority advice ───────────────────────────────────────────────────
+    print()
+    print((BOLD if use_color else '') + '  Fix-priority advice:' + (RESET if use_color else ''))
+    high = [(tid, cnt) for tid, cnt in top_missed if round(cnt/n_archs*100) >= 60]
+    med  = [(tid, cnt) for tid, cnt in top_missed if 35 <= round(cnt/n_archs*100) < 60]
+    if high:
+        ids = ', '.join(f"{tid} ({TECHNIQUE_NAMES.get(tid,tid)})" for tid,_ in high[:4])
+        print(f"  HIGH  Fix in per_node_ttp_mapper.py: {ids}")
+        print(f"        These are missed in ≥60% of labelled architectures — systematic gap.")
+    if med:
+        ids = ', '.join(f"{tid}" for tid,_ in med[:4])
+        print(f"  MED   Review: {ids} — missed in 35–60% of archs.")
+    if avg_r < 80:
+        print()
+        print((('\033[33m' if use_color else '') +
+               f'  ⚠ Corpus recall {avg_r}% < 80% target — apply HIGH fixes then re-run --regression to verify lift.' +
+               (RESET if use_color else '')))
+
+
 def main():
     parser = argparse.ArgumentParser(description='TATB Corpus Scorer')
     parser.add_argument('--report-dir', default='report', help='Path to report directory')
@@ -464,6 +901,14 @@ def main():
                         choices=['threat', 'ttp', 'risk', 'plan', 'overall'],
                         help='Sort column (default: overall)')
     parser.add_argument('--no-color',   action='store_true', help='Disable ANSI colours')
+    parser.add_argument('--regression', action='store_true',
+                        help='Run labelled-corpus regression against expected_threats.json files')
+    parser.add_argument('--label-dir',  default='tests/data/architectures',
+                        help='Fallback directory for manual label files (default: tests/data/architectures)')
+    parser.add_argument('--auto-label', action='store_true',
+                        help='Auto-generate expected_threats.json via Nova Pro labeller (skips existing)')
+    parser.add_argument('--force',      action='store_true',
+                        help='With --auto-label: regenerate labels even if they already exist')
     args = parser.parse_args()
 
     report_dir = Path(args.report_dir)
@@ -471,14 +916,25 @@ def main():
         print(f'Error: report directory not found: {report_dir}', file=sys.stderr)
         sys.exit(1)
 
+    use_color = not args.no_color and sys.stdout.isatty()
+
+    # Auto-label mode — run labeller then exit (or continue to scoring if --regression also set)
+    if args.auto_label:
+        print()
+        print(('\033[1m' if use_color else '') + '🏷  TATB Auto-Labeller — Nova Pro' + ('\033[0m' if use_color else ''))
+        print(f'  Model: {_resolve_labeller_model()}')
+        print(f'  Fallback: {os.getenv("AGENT_MODEL_TATB_LABELLER_FALLBACK", "bedrock/us.anthropic.claude-haiku-4-20250514-v1:0")}')
+        print()
+        auto_label(report_dir, args.force, use_color)
+        if not args.regression:
+            return
+
     # Collect all architectures that have at least ground_truth.json
     arch_dirs = sorted([d for d in report_dir.iterdir()
                         if d.is_dir() and (d / 'ground_truth.json').exists()])
     if not arch_dirs:
         print('No architectures with ground_truth.json found.', file=sys.stderr)
         sys.exit(1)
-
-    use_color = not args.no_color and sys.stdout.isatty()
 
     # Pre-fetch MITRE data: collect all technique IDs across all archs in one batch
     print(f'Scoring {len(arch_dirs)} architectures…', file=sys.stderr)
@@ -571,6 +1027,9 @@ def main():
               f'  avg={round(sum(all_overalls)/len(all_overalls))}  n={len(all_overalls)}')
 
     print()
+
+    if args.regression:
+        run_regression(report_dir, Path(args.label_dir), use_color)
 
 
 if __name__ == '__main__':

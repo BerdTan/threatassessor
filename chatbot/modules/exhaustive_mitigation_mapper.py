@@ -29,27 +29,11 @@ logger = logging.getLogger(__name__)
 
 def _infer_dir_category(control_name: str) -> str:
     """
-    Infer DIR category (Prevention/Detect/Isolate/Respond) from control name.
-
-    Used for gap-filling controls that don't come from RAPIDS-driven recommendations.
+    Infer primary DIR category from control name. Delegates to the canonical
+    multi-layer implementation in rapids_driven_controls for consistency.
     """
-    control_lower = control_name.lower()
-
-    # DETECT: Monitoring, logging, visibility
-    if any(kw in control_lower for kw in ["log", "monitor", "siem", "alert", "audit", "visibility", "detect", "scan", "inspect"]):
-        return "detect"
-
-    # ISOLATE: Access control, segmentation, containment
-    if any(kw in control_lower for kw in ["segment", "privilege", "rbac", "isolat", "contain", "acl", "vlan", "quarantine", "dlp", "timeout", "lockout"]):
-        return "isolate"
-
-    # RESPOND: Recovery, remediation, incident response
-    if any(kw in control_lower for kw in ["backup", "recover", "restore", "incident", "response", "rollback", "failover", "reimage", "forensic"]):
-        return "respond"
-
-    # PREVENTION: Default (blocks, filters, validates, hardens)
-    # Firewall, filtering, validation, hardening, patching, etc.
-    return "prevention"
+    from chatbot.modules.rapids_driven_controls import infer_dir_category
+    return infer_dir_category(control_name)
 
 
 # ============================================================================

@@ -28,29 +28,108 @@ logger = logging.getLogger(__name__)
 # DIR CATEGORY INFERENCE (for controls without hop-level enrichment)
 # ============================================================================
 
-def infer_dir_category(control_name: str) -> str:
+# Controls that span multiple zero-trust layers — keyed by name fragment, value = list of layers.
+# A control covering multiple layers should count for all of them in the hop gap check.
+_MULTI_LAYER_CONTROLS: dict = {
+    "edr":                  ["prevention", "detect", "respond"],
+    "endpoint detection":   ["prevention", "detect", "respond"],
+    "siem":                 ["detect", "respond"],
+    "waf":                  ["prevention", "detect"],
+    "web application":      ["prevention", "detect"],
+    "ids":                  ["detect", "respond"],
+    "ips":                  ["prevention", "detect"],
+    "dlp":                  ["detect", "isolate"],
+    "network segmentation": ["prevention", "isolate"],
+    "micro.segment":        ["prevention", "isolate"],
+    "zero.trust":           ["prevention", "isolate"],
+    "least privilege":      ["prevention", "isolate"],
+    "privilege":            ["prevention", "isolate"],
+    "rbac":                 ["prevention", "isolate"],
+    "acl":                  ["prevention", "isolate"],
+    "mfa":                  ["prevention", "isolate"],
+    "backup":               ["respond"],
+    "recovery":             ["respond"],
+    "incident":             ["respond"],
+    "forensic":             ["respond"],
+    "behavioral analysis":  ["detect", "respond"],
+    "anomaly":              ["detect", "respond"],
+    "audit log":            ["detect", "respond"],
+    "logging":              ["detect"],
+    "monitoring":           ["detect"],
+    "alert":                ["detect", "respond"],
+    "rate limiting":        ["prevention", "detect", "isolate"],  # limits access = isolate
+    "api gateway":          ["prevention", "detect", "isolate"],  # centralises access control
+    "api_key":              ["prevention", "isolate"],
+    "key rotation":         ["prevention", "respond"],
+    "tool_allowlist":       ["prevention", "isolate"],
+    "allowlist":            ["prevention", "isolate"],
+    "denylist":             ["prevention", "isolate"],
+    "rag_verification":     ["prevention", "detect"],
+    "prompt guard":         ["prevention", "detect"],
+    "output filter":        ["prevention", "detect"],
+    "anonymization":        ["prevention", "isolate"],
+    "anonymisation":        ["prevention", "isolate"],
+    "sanitization":         ["prevention"],
+    "sanitisation":         ["prevention"],
+    "user training":        ["prevention", "respond"],  # trained users respond to incidents
+    "input validation":     ["prevention"],
+    "patching":             ["prevention", "respond"],  # patching remediates vulnerabilities
+    "vulnerability scan":   ["detect", "respond"],  # scan → remediate = respond cycle
+    "penetration":          ["detect", "respond"],
+    "user training":        ["prevention"],
+    "firewall":             ["prevention", "isolate"],
+    "container scan":       ["detect"],
+    "container secur":      ["prevention", "detect"],
+    "sbom":                 ["detect"],
+    "secrets management":   ["prevention", "isolate"],
+    "secret management":    ["prevention", "isolate"],
+    "vault":                ["prevention", "isolate"],
+    "hsm":                  ["prevention", "isolate"],
+    "code signing":         ["prevention"],
+    "signing":              ["prevention"],
+    "encryption":           ["prevention", "isolate"],
+    "certificate":          ["prevention"],
+    "tls":                  ["prevention"],
+    "pki":                  ["prevention"],
+    "zero knowledge":       ["prevention", "isolate"],
+    "honeypot":             ["detect", "respond"],
+    "deception":            ["detect", "respond"],
+    "soar":                 ["detect", "respond"],
+    "xdr":                  ["prevention", "detect", "respond"],
+    "ndr":                  ["detect", "respond"],
+    "ueba":                 ["detect"],
+    "cspm":                 ["detect", "prevention"],
+    "cwpp":                 ["prevention", "detect"],
+    "ztna":                 ["prevention", "isolate"],
+    "pam":                  ["prevention", "isolate"],
+}
+
+
+def infer_dir_categories(control_name: str) -> list:
     """
-    Infer DIR category from control name.
-
-    Used when control is recommended by RAPIDS but not enriched by hop analysis.
-
-    Returns: "prevention", "detect", "isolate", or "respond"
+    Return all zero-trust layers this control covers.
+    A control may span multiple layers (e.g. EDR covers prevention + detect + respond).
+    Returns a non-empty list, defaulting to ["prevention"].
     """
     control_lower = control_name.lower()
+    layers: set = set()
+    for fragment, cats in _MULTI_LAYER_CONTROLS.items():
+        import re as _re
+        if _re.search(fragment.replace(".", r"\W*"), control_lower):
+            layers.update(cats)
+    return sorted(layers) if layers else ["prevention"]
 
-    # DETECT: Monitoring, logging, alerting, scanning, assessment
-    if any(kw in control_lower for kw in ["log", "monitor", "siem", "ids", "detect", "alert", "audit", "behavioral", "anomaly", "scan", "assessment", "intelligence", "dlp"]):
-        return "detect"
 
-    # ISOLATE: Access control, segmentation, containment
-    if any(kw in control_lower for kw in ["segment", "privilege", "rbac", "isolat", "contain", "acl", "vlan", "quarantine", "timeout", "lockout"]):
-        return "isolate"
-
-    # RESPOND: Recovery, remediation, incident response
-    if any(kw in control_lower for kw in ["backup", "recover", "restore", "incident", "response", "rollback", "failover", "reimage", "forensic"]):
-        return "respond"
-
-    # PREVENTION: Default (blocks, filters, validates)
+def infer_dir_category(control_name: str) -> str:
+    """
+    Infer primary DIR category from control name (single-value, backward compat).
+    Use infer_dir_categories() for multi-layer awareness.
+    """
+    cats = infer_dir_categories(control_name)
+    # Priority order: respond > isolate > detect > prevention
+    for preferred in ["respond", "isolate", "detect", "prevention"]:
+        if preferred in cats:
+            return preferred
     return "prevention"
 
 

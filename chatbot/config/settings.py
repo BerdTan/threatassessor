@@ -532,6 +532,11 @@ class AgentSwarmConfig(BaseModel):
     scrum_master:     AgentModelConfig = Field(default_factory=AgentModelConfig)
     moe_orchestrator: AgentModelConfig = Field(default_factory=AgentModelConfig)
     threat_analyst:   AgentModelConfig = Field(default_factory=AgentModelConfig)
+    tatb_labeller:    AgentModelConfig = Field(
+        default_factory=AgentModelConfig,
+        description="Independent verifier model for TATB auto-labelling. "
+                    "Should differ from the pipeline model to avoid shared blind spots.",
+    )
     ta_wiz:           AgentModelConfig = Field(
         default_factory=AgentModelConfig,
         description="Model for TA-Wiz workspace chat. Defaults to primary provider default.",

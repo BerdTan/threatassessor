@@ -327,11 +327,8 @@ Run deterministic threat analysis (Team 1: ThreatAnalysisService).
         """Add cache control headers to prevent stale JS/CSS."""
         response = await call_next(request)
 
-        # Static files should not be cached during development (allow Ctrl+F5)
-        if request.url.path.startswith("/static/"):
-            # Allow caching but require revalidation (Ctrl+F5 will refresh)
-            response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
-            response.headers["ETag"] = f'"{hash(request.url.path)}"'
+        if request.url.path.startswith("/static/") and request.url.path.endswith((".js", ".css")):
+            response.headers["Cache-Control"] = "no-store"
 
         return response
 

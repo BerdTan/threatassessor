@@ -779,6 +779,25 @@ def generate_action_plan(ground_truth: Dict) -> str:
     if not control_recs:
         control_recs = [{"control": c, "priority": "high", "attack_paths": []} for c in missing]
 
+    # ADR filter: build the set of controls the ADR mandated at each hop.
+    # Recommendations whose control name does not appear in any ADR hop are annotated
+    # with adr_gap=True so report tables can flag them — we never drop them, only annotate.
+    adrs = ground_truth.get("architecture_decision_records", [])
+    if adrs:
+        adr_control_names = {
+            (ctrl.get("name") or "").lower().strip()
+            for adr in adrs
+            for hop in (adr.get("hops") or [])
+            for ctrl in (hop.get("controls") or [])
+            if (ctrl.get("name") or "").strip()
+        }
+        for rec in control_recs:
+            rec_name = (rec.get("control") or "").lower().strip()
+            rec["adr_mandated"] = any(
+                rec_name in c or c in rec_name
+                for c in adr_control_names
+            ) if adr_control_names else None
+
     # Phase buckets: CRITICAL path-mapped → Phase 1, HIGH path-mapped → Phase 2,
     # MEDIUM path-mapped + all gap controls → Phase 3
     phase1 = [r for r in control_recs if r.get("priority", "").lower() == "critical" and r.get("attack_paths")]
@@ -838,7 +857,8 @@ def generate_action_plan(ground_truth: Dict) -> str:
             else:
                 ssp_badge = "—"
             protects = _journey_cell(aps)
-            out += f"| {i} | **{ctrl}** | {pri} | {ssp_badge} | {paths_str} | {protects} | {owner} | {effort} | {cost} | {impact} | {validation} |\n"
+            adr_flag = "" if rec.get("adr_mandated") is None else (" ✓ADR" if rec.get("adr_mandated") else " ⚠no-ADR")
+            out += f"| {i} | **{ctrl}**{adr_flag} | {pri} | {ssp_badge} | {paths_str} | {protects} | {owner} | {effort} | {cost} | {impact} | {validation} |\n"
         return out + "\n"
 
     report += format_section_header("Phase 1: Immediate (Week 1) — Critical Path Controls", "⚡", 2)

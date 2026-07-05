@@ -115,12 +115,38 @@ _ZT_NORMALISE: Dict[str, str] = {
 }
 
 
-def _zt_gap_note(controls: List[Dict]) -> Optional[str]:
+def _zt_gap_note(controls: List[Dict], node_label: str = "") -> Optional[str]:
     """
     Return a gap note if the hop does not satisfy zero-trust coverage
     (prevent + detect + isolate + respond), or None if fully covered.
+
+    Uses multi-layer control awareness — a control like EDR contributes to
+    prevention + detect + respond, not just its primary dir_category.
+    Also considers security capabilities embedded in the node label itself
+    (e.g. "Web Server with EDR" implies detect + respond at that node).
     """
-    covered = {_ZT_NORMALISE.get(c.get("dir_category", ""), "") for c in controls}
+    from chatbot.modules.rapids_driven_controls import infer_dir_categories
+    covered: set = set()
+
+    # Check explicit control recommendations
+    for c in controls:
+        ctrl_name = c.get("control", "")
+        primary = _ZT_NORMALISE.get(c.get("dir_category", ""), "")
+        if primary:
+            covered.add(primary)
+        for layer in infer_dir_categories(ctrl_name):
+            normalised = _ZT_NORMALISE.get(layer, layer)
+            if normalised in _ZT_REQUIRED:
+                covered.add(normalised)
+
+    # Also infer from node label — security capabilities baked into node name
+    # (e.g. "WAF", "EDR", "MFA Gateway", "Database with Encryption", "Firewall")
+    if node_label:
+        for layer in infer_dir_categories(node_label):
+            normalised = _ZT_NORMALISE.get(layer, layer)
+            if normalised in _ZT_REQUIRED:
+                covered.add(normalised)
+
     covered.discard("")
     missing = [cat for cat in _ZT_REQUIRED if cat not in covered]
     if not missing:
@@ -384,7 +410,7 @@ def _build_hop_controls(
 
         # Full zero-trust coverage check for hops that have controls
         if control_entries and not gap_note:
-            zt_note = _zt_gap_note(control_entries)
+            zt_note = _zt_gap_note(control_entries, node_label=node_label)
             if zt_note:
                 gap_type = "detection_only"
                 gap_note = zt_note

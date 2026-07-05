@@ -356,6 +356,16 @@ class Dashboard {
                 tab.classList.remove('disabled');
             }
         });
+        const nav = document.querySelector('.sidebar-nav');
+        if (nav) {
+            if (disabled && this._analysing) {
+                nav.style.opacity = '0.45';
+                nav.style.pointerEvents = 'none';
+            } else {
+                nav.style.opacity = '';
+                nav.style.pointerEvents = '';
+            }
+        }
     }
 
     initTabs() {
@@ -885,12 +895,17 @@ class Dashboard {
         }
 
         this._lastReportedPct = percent;
-        // Store the base message (without % and ETA) for the tick to update
         this._lastProgressMessage = message;
         this._lastProgressEta = eta && eta > 0 ? eta : null;
 
-        progressFill.style.width = `${percent}%`;
-        progressText.textContent = `${percent}%`;
+        const progressBar = document.getElementById('progress-fill')?.closest('.progress-bar');
+        if (percent >= 100 || percent === 0) {
+            if (progressBar) progressBar.style.display = 'none';
+        } else {
+            if (progressBar) progressBar.style.display = '';
+            progressFill.style.width = `${percent}%`;
+            progressText.textContent = `${percent}%`;
+        }
 
         // Replace inline % in message with live value and append live ETA
         const _buildStatusText = (pct, msg, etaSecs) => {
@@ -2263,6 +2278,7 @@ class Dashboard {
     async showAttackPathDetail(path) {
         const perNodeTechniques = path.per_node_techniques || {};
         const allTechniques = path.techniques || [];
+        const techniqueCtx = path.technique_context || {};
 
         // Fetch technique names + per-technique mitigations in parallel
         const [techniqueNames, tmData] = await Promise.all([
@@ -2307,12 +2323,22 @@ class Dashboard {
                             ${stepTechniques.map(tech => {
                                 const techName = techniqueNames[tech] || tech;
                                 const mits = techMitMappings[tech] || [];
+                                const ctx = techniqueCtx[tech];
+                                const dim = ctx && ctx.dimension;
+                                const isExploit = dim === 'exploitability';
+                                const dimPill = dim
+                                    ? (isExploit
+                                        ? `<span style="font-size:0.65rem;padding:1px 6px;border-radius:4px;font-weight:700;margin-left:0.4rem;background:#dc262622;color:#dc2626;border:1px solid #dc262644;" title="RAPIDS confirmed: ${ctx.rapids_signal||''} risk=${ctx.risk_score||''}">Exploitable</span>`
+                                        : `<span style="font-size:0.65rem;padding:1px 6px;border-radius:4px;font-weight:700;margin-left:0.4rem;background:#0891b222;color:#0891b2;border:1px solid #0891b244;" title="Topology exposure — ${ctx.node||''}">Applicable</span>`)
+                                    : '';
+                                const borderColor = isExploit ? '#dc2626' : 'var(--primary-color)';
                                 return `
-                                <div style="margin-bottom: 0.875rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; border-left: 3px solid var(--primary-color);">
+                                <div style="margin-bottom: 0.875rem; padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; border-left: 3px solid ${borderColor};">
                                     <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; margin-bottom: ${mits.length > 0 ? '0.625rem' : '0'};">
                                         <div>
                                             <code style="font-weight: 700; color: var(--primary-color); font-size: 0.875rem;">${tech}</code>
                                             <span style="margin-left: 0.5rem; color: var(--text-color); font-size: 0.875rem; font-weight: 600;">${techName !== tech ? `· ${techName}` : ''}</span>
+                                            ${dimPill}
                                         </div>
                                         <a href="https://attack.mitre.org/techniques/${tech}/" target="_blank" class="btn-icon" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; text-decoration: none; flex-shrink: 0;">🔗</a>
                                     </div>
@@ -2330,7 +2356,8 @@ class Dashboard {
                                         </div>
                                     ` : ''}
                                 </div>
-                            `}).join('')}
+                                `;
+                            }).join('')}
                         ` : `
                             <p style="color: var(--text-tertiary); font-style: italic; font-size: 0.875rem;">No techniques mapped to this step</p>
                         `}
@@ -12251,11 +12278,40 @@ class Dashboard {
             }
         } catch (_) {}
 
+        // Labelled-corpus regression — fetch expected_threats.json for all archs that have one
+        let corpusRows = [];
+        try {
+            const rResp = await fetch('/api/v1/reports', _nc).catch(() => null);
+            if (rResp && rResp.ok) {
+                const allArchs = ((await rResp.json()).architectures || []).map(a => a.name);
+                const checked = await Promise.all(allArchs.map(async a => {
+                    const lr = await fetch(`/api/v1/reports/${encodeURIComponent(a)}/files/expected_threats.json`, _nc).catch(() => null);
+                    if (!lr || !lr.ok) return null;
+                    const label = await lr.json().catch(() => null);
+                    if (!label || !Array.isArray(label.techniques)) return null;
+                    const gr = await fetch(`/api/v1/reports/${encodeURIComponent(a)}/files/ground_truth.json`, _nc).catch(() => null);
+                    if (!gr || !gr.ok) return null;
+                    const gt2 = await gr.json().catch(() => null);
+                    if (!gt2) return null;
+                    const expected = new Set(label.techniques);
+                    const detected = new Set((gt2.expected_attack_paths||[]).flatMap(ap => ap.techniques||[]));
+                    const tp = [...expected].filter(t => detected.has(t)).length;
+                    const fp = [...detected].filter(t => !expected.has(t)).length;
+                    const recall    = expected.size ? Math.round(tp/expected.size*100) : 100;
+                    const precision = (tp+fp) ? Math.round(tp/(tp+fp)*100) : 0;
+                    const f1        = (recall+precision) ? Math.round(2*recall*precision/(recall+precision)) : 0;
+                    return { arch: a, recall, precision, f1, tp, fp, fn: [...expected].filter(t=>!detected.has(t)).length,
+                             missed: [...expected].filter(t=>!detected.has(t)) };
+                }));
+                corpusRows = checked.filter(Boolean);
+            }
+        } catch(_) {}
+
         let scores, html;
         try {
             scores = this._computeTatbScores({ gt, gov, moe, sm, mitreMitigations, mitreNames });
             this._lastTatbScores = { threat: scores.threat.score, ttp: scores.ttp.score, risk: scores.risk.score, plan: scores.plan.score, overall: scores.overall };
-            html = this._renderTatbScorecard(archName, scores, { gt, gov, moe, sm, perf, mitreMitigations, mitreNames }, prev);
+            html = this._renderTatbScorecard(archName, scores, { gt, gov, moe, sm, perf, mitreMitigations, mitreNames }, prev, corpusRows);
         } catch (e) {
             container.innerHTML = `<div style="padding:1.5rem; color:var(--error-color); font-size:0.85rem;">
                 <strong>TATB render error:</strong> ${this._esc(e.message)}<br>
@@ -12504,16 +12560,29 @@ class Dashboard {
         // an unscored display section — it reflects pipeline completeness, not arch defensibility.
 
         // A. Technique mitigation coverage
-        const apTechSet = new Set();
-        aps.forEach(ap => (ap.techniques || []).forEach(t => apTechSet.add(t)));
-        // controlRecs2 already declared in Rubric 2 (TTP) — reuse it here
+        // Build two sets: all techniques (for display) and exploitability-only (for scoring).
+        // Applicability-only techniques are architectural exposure without confirmed RAPIDS signal —
+        // a missing control for these does not indicate a defensive gap, so they are excluded from
+        // the coverage denominator. Backward compat: when technique_context is absent, all techniques
+        // are treated as exploitability (old behaviour preserved).
+        const apTechSet = new Set();     // full set — for display
+        const apExploitSet = new Set();  // exploitability-only — for scoring
+        aps.forEach(ap => {
+            const ctx = ap.technique_context || {};
+            (ap.techniques || []).forEach(t => {
+                apTechSet.add(t);
+                const dim = ctx[t] && ctx[t].dimension;
+                if (!dim || dim === 'exploitability') apExploitSet.add(t);
+            });
+        });
+        const scoringSet = apExploitSet.size > 0 ? apExploitSet : apTechSet; // fallback to full
         const mitigatedTechs = new Set();
         controlRecs2.forEach(c => {
             ((c.mitre_techniques || c.techniques || []).forEach(t => mitigatedTechs.add(t)));
         });
-        const techCovered = [...apTechSet].filter(t => mitigatedTechs.has(t)).length;
-        const techMitigationPct = apTechSet.size
-            ? Math.round((techCovered / apTechSet.size) * 100)
+        const techCovered = [...scoringSet].filter(t => mitigatedTechs.has(t)).length;
+        const techMitigationPct = scoringSet.size
+            ? Math.round((techCovered / scoringSet.size) * 100)
             : 50;
 
         // B. Per-hop zero-trust layer completeness from ADR hops
@@ -12631,6 +12700,26 @@ class Dashboard {
             ? Math.round((specificCount / totalScoredItems) * 100)
             : 50;
 
+        // E. ADR alignment — high-priority items should reference ADR-mandated controls
+        const adrControls = new Set();
+        adrs.forEach(adr => (adr.hops || []).forEach(hop =>
+            (hop.controls || []).forEach(ctrl => {
+                const n = (ctrl.name || '').toLowerCase().trim();
+                if (n) adrControls.add(n);
+            })
+        ));
+        let adrAlignPct = 50;  // neutral when no ADR data
+        if (adrControls.size > 0) {
+            const highItems = smItems.filter(it => ['critical','high'].includes((it.priority||'').toLowerCase()));
+            if (highItems.length > 0) {
+                const aligned = highItems.filter(it => {
+                    const text = ((it.first_step||'') + ' ' + (it.action||'')).toLowerCase();
+                    return [...adrControls].some(c => text.includes(c));
+                }).length;
+                adrAlignPct = Math.round(aligned / highItems.length * 100);
+            }
+        }
+
         // Anti-pattern bonus: SM flagged structural design flaws (not just controls to add)
         const antiPatternItems = smItems.filter(it =>
             String(it.is_antipattern).toLowerCase() === 'true'
@@ -12657,7 +12746,7 @@ class Dashboard {
 
         const planScore = Math.min(100, Math.round(
             itemCompletenessPct * 0.25 + measurablePct * 0.20 + sprintabilityPct * 0.15
-            + controlSpecificity * 0.20 + apClosurePct * 0.20
+            + controlSpecificity * 0.10 + adrAlignPct * 0.10 + apClosurePct * 0.20
             + antiPatternBonus
         ));
 
@@ -12707,7 +12796,8 @@ class Dashboard {
                         aivssCompleteness, cbCoverage, govPresence },
                 evidence: {
                     // Architecture-facing signals
-                    apTechSet: [...apTechSet], mitigatedTechs: [...mitigatedTechs], techCovered,
+                    apTechSet: [...apTechSet], apExploitSet: [...apExploitSet],
+                    scoringSet: [...scoringSet], mitigatedTechs: [...mitigatedTechs], techCovered,
                     hopGapDetails, allHopsLen: allHops.length, hopsFullyCovered,
                     rrEntries: rrEntries.length, rrHardCount,
                     residualRisksRaw: residualRisks,
@@ -12719,12 +12809,13 @@ class Dashboard {
             plan: {
                 score: planScore,
                 subs: { itemCompletenessPct, measurablePct, sprintabilityPct, controlSpecificity,
+                        adrAlignPct, adrControlsCount: adrControls.size,
                         apClosurePct, antiPatternBonus, antiPatternCount: antiPatternItems.length },
                 evidence: {
                     smItems, completeItems: completeItems.length, measurableItems: measurableItems.length,
                     effortSet: [...effortSet], prioritySet: [...prioritySet],
                     specificCount, totalScoredItems, specificityExamples,
-                    antiPatternItems,
+                    antiPatternItems, adrControls: [...adrControls],
                     apClosureDetails, criticalApsAddressed, criticalApsTotal: criticalAps.length,
                     // For ADR display pane (not scored here)
                     adrs, adrsPopulated, ptc, nCritical,
@@ -12736,7 +12827,7 @@ class Dashboard {
     }
 
     // ── Rendering ───────────────────────────────────────────────────────────
-    _renderTatbScorecard(archName, scores, sources, prev) {
+    _renderTatbScorecard(archName, scores, sources, prev, corpusRows = []) {
         const { threat, ttp, risk, plan, overall, context } = scores;
         const { perf } = sources;
 
@@ -13163,13 +13254,18 @@ class Dashboard {
             <div style="font-size:0.8rem;line-height:1.6;">
                 ${_rpCite('ground_truth.json → expected_attack_paths[].techniques', 'ground_truth.json → control_recommendations[].mitre_techniques')}
                 <p style="margin-top:0;color:var(--text-secondary);">For each technique appearing in an attack path, at least one recommended control should address it. Unmitigated techniques are known attack steps with no defensive response mapped.</p>
-                ${_rpHead(`Coverage: ${rE.techCovered} of ${rE.apTechSet.length} attack-path techniques have a mapped control`)}
+                ${_rpHead(`Coverage: ${rE.techCovered} of ${rE.scoringSet.length} exploitability techniques have a mapped control`)}
+                ${rE.apExploitSet.length < rE.apTechSet.length ? `<p style="font-size:0.72rem;color:var(--text-tertiary);margin:0.2rem 0 0.4rem;">${rE.apTechSet.length - rE.apExploitSet.length} applicability-only technique${rE.apTechSet.length - rE.apExploitSet.length!==1?'s':''} excluded from scoring (topology exposure without RAPIDS confirmation).</p>` : ''}
                 <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.5rem;">
                     ${rE.apTechSet.map(t => {
-                        const covered = rE.mitigatedTechs.includes(t);
-                        return `<span style="font-size:0.72rem;padding:1px 6px;border-radius:4px;border:1px solid ${covered?'#16a34a66':'#dc262666'};background:${covered?'#16a34a14':'#dc262614'};color:${covered?'#16a34a':'#dc2626'};font-family:monospace;" title="${covered?'Control mapped':'No control mapped'}">${covered?'✓':'✗'} ${_esc(t)}</span>`;
+                        const covered  = rE.mitigatedTechs.includes(t);
+                        const inScoring = rE.scoringSet.includes(t);
+                        const dimLabel = !inScoring ? ' · applicable only' : '';
+                        const opacity  = inScoring ? '' : 'opacity:0.5;';
+                        return `<span style="font-size:0.72rem;padding:1px 6px;border-radius:4px;border:1px solid ${covered?'#16a34a66':'#dc262666'};background:${covered?'#16a34a14':'#dc262614'};color:${covered?'#16a34a':'#dc2626'};font-family:monospace;${opacity}" title="${covered?'Control mapped':'No control mapped'}${dimLabel}">${covered?'✓':'✗'} ${_esc(t)}${!inScoring?'*':''}</span>`;
                     }).join('')}
                 </div>
+                ${rE.apTechSet.length > rE.apExploitSet.length ? `<div style="font-size:0.68rem;color:var(--text-tertiary);">* Applicability-only (excluded from coverage score)</div>` : ''}
                 ${rE.apTechSet.some(t => !rE.mitigatedTechs.includes(t))
                     ? `<div style="padding:0.4rem 0.6rem;background:#dc262614;border-radius:5px;font-size:0.79rem;color:#dc2626;">
                         Unmitigated techniques: <strong>${rE.apTechSet.filter(t => !rE.mitigatedTechs.includes(t)).join(', ')}</strong> — attack steps with no defensive control mapped.
@@ -13246,7 +13342,7 @@ class Dashboard {
 
         const riskTiles = [
             _tile('Technique mitigation', r.techMitigationPct, '%', rampC(r.techMitigationPct),
-                `${rE.techCovered} of ${rE.apTechSet.length} attack-path techniques have a mapped control`,
+                `${rE.techCovered} of ${rE.scoringSet.length} exploitability techniques have a mapped control${rE.apExploitSet.length < rE.apTechSet.length ? ` (${rE.apTechSet.length - rE.apExploitSet.length} applicability-only excluded)` : ''}`,
                 'For each MITRE technique in an attack path, at least one recommended control should address it.',
                 '⚖️ Technique mitigation — evidence', riskTechEv),
             _tile('Hop layer coverage',   r.hopLayerPct, '%', rampC(r.hopLayerPct),
@@ -13485,6 +13581,26 @@ class Dashboard {
                     <div style="font-size:0.85rem; font-weight:600; color:var(--text-tertiary);">No SM data</div>
                     <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">Run ScrumMaster stage (full_moe)</div>
                 </div>`,
+            // ADR alignment: high-priority plan items should reference ADR-mandated controls
+            (() => {
+                const adrAlignEv = `
+                    <div style="font-size:0.8rem;line-height:1.6;">
+                        ${_rpCite('ground_truth.json → architecture_decision_records[].hops[].controls', '08_scrum_master.json → action_plan (priority=critical/high)')}
+                        <p style="margin-top:0;color:var(--text-secondary);">For each high-priority action item, at least one control named in its <code>first_step</code> or <code>action</code> field should match a control the ADR mandated at a hop. A mismatch means the plan recommends something the architecture's own decision record didn't account for — worth reviewing before implementation.</p>
+                        ${_rpHead(`ADR controls pool (${pE.adrControls.length}): ${pE.adrControls.slice(0,12).join(', ')}${pE.adrControls.length>12?' …':''}`)}
+                        <div style="font-size:0.72rem;color:var(--text-tertiary);margin-top:0.4rem;">${p.adrControlsCount === 0 ? 'No ADR data available — scored as neutral 50%.' : `${p.adrAlignPct}% of critical/high plan items reference at least one ADR-mandated control.`}</div>
+                    </div>`;
+                return p.adrControlsCount > 0
+                    ? _tile('ADR alignment', p.adrAlignPct, '%', rampC(p.adrAlignPct),
+                        `${p.adrAlignPct}% of high-priority items reference ADR-mandated controls`,
+                        'Plan items that ignore ADR-mandated controls may conflict with architecture decisions already made.',
+                        '✅ ADR alignment — evidence', adrAlignEv)
+                    : `<div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-left:3px dashed var(--text-tertiary); border-radius:6px; padding:0.55rem 0.75rem; opacity:0.55;">
+                        <div style="font-size:0.65rem; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:0.15rem;">ADR alignment</div>
+                        <div style="font-size:0.85rem; font-weight:600; color:var(--text-tertiary);">50%</div>
+                        <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">No ADR data — neutral</div>
+                    </div>`;
+            })(),
             // AP closure: each CRITICAL path should have at least one plan item addressing it
             (() => {
                 const apClosureEv = `
@@ -13671,10 +13787,287 @@ class Dashboard {
                     return `The plan is usable but has gaps. Click the tiles above for the specific issues — incomplete items, missing outcome estimates, or generic control descriptions that need refinement before handing to an engineering team.`;
                 })(),
                 planTiles, planEvidence)}
+            ${this._renderCorpusRegression(corpusRows)}
             ${links}
         </div>`;
     }
 
+
+    _renderCorpusRegression(rows) {
+        if (!rows || !rows.length) return '';
+        const _esc  = s => this._esc(String(s||''));
+        const _rc   = v => v>=90?'#16a34a':v>=75?'#65a30d':v>=60?'#ca8a04':'#dc2626';
+        const avg   = k => Math.round(rows.reduce((s,r)=>s+r[k],0)/rows.length);
+
+        const TECH_NAMES = {
+            // Initial Access
+            'T1190':'Exploit Public-Facing App', 'T1133':'External Remote Services',
+            'T1566':'Phishing',                  'T1078':'Valid Accounts',
+            'T1189':'Drive-by Compromise',       'T1199':'Trusted Relationship',
+            // Execution
+            'T1059':'Command & Scripting',       'T1203':'Exploit Client Execution',
+            'T1648':'Serverless Execution',
+            // Persistence
+            'T1098':'Account Manipulation',      'T1136':'Create Account',
+            'T1505':'Server Software Component', 'T1505.003':'Web Shell',
+            'T1556':'Modify Auth Process',
+            // Privilege Escalation
+            'T1068':'Exploit Priv Escalation',   'T1548':'Abuse Elevation Control',
+            'T1134':'Access Token Manipulation',
+            // Defense Evasion
+            'T1027':'Obfuscated Files',           'T1036':'Masquerading',
+            'T1055':'Process Injection',          'T1055.012':'Process Hollowing',
+            'T1070':'Indicator Removal',          'T1078.004':'Valid Cloud Accounts',
+            'T1562':'Impair Defenses',            'T1562.001':'Disable Security Tools',
+            'T1578':'Modify Cloud Compute',
+            // Credential Access
+            'T1003':'OS Credential Dumping',      'T1040':'Network Sniffing',
+            'T1056':'Input Capture',              'T1056.001':'Keylogging',
+            'T1110':'Brute Force',                'T1111':'MFA Interception',
+            'T1185':'Browser Session Hijack',     'T1212':'Exploit Credential Access',
+            'T1539':'Steal Web Session Cookie',   'T1550':'Use Alt Auth Material',
+            'T1552':'Unsecured Credentials',      'T1552.001':'Credentials In Files',
+            'T1557':'AiTM / MitM',
+            // Discovery
+            'T1018':'Remote System Discovery',    'T1046':'Network Svc Discovery',
+            'T1049':'System Network Connections', 'T1057':'Process Discovery',
+            'T1069':'Permission Groups Discovery','T1082':'System Info Discovery',
+            'T1083':'File & Dir Discovery',       'T1087':'Account Discovery',
+            'T1135':'Network Share Discovery',    'T1201':'Password Policy Discovery',
+            'T1482':'Domain Trust Discovery',
+            // Lateral Movement
+            'T1021':'Remote Services',            'T1021.001':'RDP',
+            'T1021.002':'SMB / Admin Shares',     'T1021.004':'SSH',
+            'T1021.007':'Cloud Services',         'T1210':'Exploit Remote Services',
+            'T1570':'Lateral Tool Transfer',
+            // Collection
+            'T1005':'Data from Local System',     'T1039':'Data from Network Share',
+            'T1074':'Data Staged',                'T1114':'Email Collection',
+            'T1213':'Data from Info Repositories','T1213.002':'SharePoint',
+            'T1530':'Data from Cloud Storage',    'T1560':'Archive Collected Data',
+            // C2
+            'T1071':'Application Layer Protocol', 'T1071.001':'Web Protocols',
+            'T1090':'Proxy',                      'T1102':'Web Service',
+            'T1572':'Protocol Tunneling',         'T1573':'Encrypted Channel',
+            // Exfiltration
+            'T1020':'Automated Exfiltration',     'T1041':'Exfil over C2 Channel',
+            'T1048':'Exfil Over Alt Protocol',    'T1537':'Transfer to Cloud Account',
+            'T1567':'Exfil to Web Service',
+            // Impact
+            'T1485':'Data Destruction',           'T1486':'Data Encrypted for Impact',
+            'T1489':'Service Stop',               'T1490':'Inhibit System Recovery',
+            'T1491':'Defacement',                 'T1496':'Resource Hijacking',
+            'T1498':'Network DoS',                'T1499':'Endpoint DoS',
+            'T1529':'System Shutdown/Reboot',     'T1531':'Account Access Removal',
+            'T1565':'Data Manipulation',          'T1565.001':'Stored Data Manipulation',
+        };
+        const TACTIC = {
+            // Initial Access
+            'T1190':'Initial Access',   'T1133':'Initial Access',   'T1566':'Initial Access',
+            'T1078':'Initial Access',   'T1189':'Initial Access',   'T1199':'Initial Access',
+            // Execution
+            'T1059':'Execution',        'T1203':'Execution',        'T1648':'Execution',
+            // Persistence
+            'T1098':'Persistence',      'T1136':'Persistence',      'T1505':'Persistence',
+            'T1505.003':'Persistence',  'T1556':'Persistence',
+            // Privilege Escalation
+            'T1068':'Priv Escalation',  'T1548':'Priv Escalation',  'T1134':'Priv Escalation',
+            // Defense Evasion
+            'T1027':'Defense Evasion',  'T1036':'Defense Evasion',  'T1055':'Defense Evasion',
+            'T1055.012':'Defense Evasion', 'T1070':'Defense Evasion', 'T1078.004':'Defense Evasion',
+            'T1562':'Defense Evasion',  'T1562.001':'Defense Evasion', 'T1578':'Defense Evasion',
+            // Credential Access
+            'T1003':'Credential Access', 'T1040':'Discovery',       'T1056':'Credential Access',
+            'T1056.001':'Credential Access', 'T1110':'Credential Access', 'T1111':'Credential Access',
+            'T1185':'Credential Access', 'T1212':'Credential Access', 'T1539':'Credential Access',
+            'T1550':'Credential Access', 'T1552':'Credential Access', 'T1552.001':'Credential Access',
+            'T1557':'Credential Access',
+            // Discovery
+            'T1018':'Discovery',        'T1046':'Discovery',        'T1049':'Discovery',
+            'T1057':'Discovery',        'T1069':'Discovery',        'T1082':'Discovery',
+            'T1083':'Discovery',        'T1087':'Discovery',        'T1135':'Discovery',
+            'T1201':'Discovery',        'T1482':'Discovery',
+            // Lateral Movement
+            'T1021':'Lateral Movement', 'T1021.001':'Lateral Movement', 'T1021.002':'Lateral Movement',
+            'T1021.004':'Lateral Movement', 'T1021.007':'Lateral Movement',
+            'T1210':'Lateral Movement', 'T1570':'Lateral Movement',
+            // Collection
+            'T1005':'Collection',       'T1039':'Collection',       'T1074':'Collection',
+            'T1114':'Collection',       'T1213':'Collection',       'T1213.002':'Collection',
+            'T1530':'Collection',       'T1560':'Collection',
+            // C2
+            'T1071':'C2',               'T1071.001':'C2',           'T1090':'C2',
+            'T1102':'C2',               'T1572':'C2',               'T1573':'C2',
+            // Exfiltration
+            'T1020':'Exfiltration',     'T1041':'Exfiltration',     'T1048':'Exfiltration',
+            'T1537':'Exfiltration',     'T1567':'Exfiltration',
+            // Impact
+            'T1485':'Impact',           'T1486':'Impact',           'T1489':'Impact',
+            'T1490':'Impact',           'T1491':'Impact',           'T1496':'Impact',
+            'T1498':'Impact',           'T1499':'Impact',           'T1529':'Impact',
+            'T1531':'Impact',           'T1565':'Impact',           'T1565.001':'Impact',
+        };
+        const TACTIC_ORDER = ['Initial Access','Execution','Persistence','Privilege Escalation',
+            'Defense Evasion','Credential Access','Discovery','Lateral Movement',
+            'Collection','C2','Exfiltration','Impact'];
+
+        // Frequency of missed techniques across all archs
+        const missedFreq = {};
+        rows.forEach(r => (r.missed||[]).forEach(t => { missedFreq[t] = (missedFreq[t]||0)+1; }));
+        const topMissed = Object.entries(missedFreq).sort((a,b)=>b[1]-a[1]).slice(0,12);
+
+        // Tactic distribution of missed techniques
+        const tacticGaps = {};
+        rows.forEach(r => (r.missed||[]).forEach(t => {
+            const tac = TACTIC[t] || 'Other';
+            tacticGaps[tac] = (tacticGaps[tac]||0) + 1;
+        }));
+        const maxTacticGap = Math.max(1, ...Object.values(tacticGaps));
+
+        const avgRecall    = avg('recall');
+        const avgPrecision = avg('precision');
+        const avgF1        = avg('f1');
+        const nArchs       = rows.length;
+
+        // ── Health bar ────────────────────────────────────────────────────────
+        const _hbar = (v, w=120) => {
+            const filled = Math.round(v/100*w);
+            const c = _rc(v);
+            return `<div style="display:inline-block;width:${w}px;height:8px;background:var(--border-color);border-radius:4px;vertical-align:middle;">
+                <div style="width:${filled}px;height:8px;background:${c};border-radius:4px;"></div></div>`;
+        };
+        const healthHtml = `
+            <div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+                ${[['Recall',avgRecall],['Precision',avgPrecision],['F1',avgF1]].map(([label,v])=>`
+                <div>
+                    <div style="font-size:0.68rem;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:0.2rem;">${label}</div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        ${_hbar(v)}
+                        <span style="font-size:1rem;font-weight:800;color:${_rc(v)};">${v}%</span>
+                    </div>
+                </div>`).join('')}
+                <div style="margin-left:auto;text-align:right;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:0.2rem;">Labelled archs</div>
+                    <div style="font-size:1.2rem;font-weight:800;color:var(--text-color);">${nArchs}</div>
+                </div>
+            </div>
+            ${avgRecall < 80 ? `<div style="padding:0.5rem 0.75rem;background:#ca8a0418;border:1px solid #ca8a0444;border-radius:6px;font-size:0.75rem;color:#ca8a04;margin-bottom:0.75rem;">
+                ⚠ Recall ${avgRecall}% is below the 80% target. Apply HIGH-priority fixes in <code>per_node_ttp_mapper.py</code> then re-run regression to verify lift.
+            </div>` : `<div style="padding:0.5rem 0.75rem;background:#16a34a18;border:1px solid #16a34a44;border-radius:6px;font-size:0.75rem;color:#16a34a;margin-bottom:0.75rem;">
+                ✓ Recall ${avgRecall}% meets target. Focus on precision to reduce false positives.
+            </div>`}`;
+
+        // ── Top missed bar chart ──────────────────────────────────────────────
+        const maxFreq = topMissed.length ? topMissed[0][1] : 1;
+        const missedHtml = topMissed.length ? `
+            <div style="margin-bottom:1rem;">
+                <div style="font-size:0.72rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.5rem;">Top missed techniques — engine detection gaps</div>
+                ${topMissed.map(([tid,cnt])=>{
+                    const pct    = Math.round(cnt/nArchs*100);
+                    const barW   = Math.round(cnt/maxFreq*160);
+                    const priC   = pct>=60?'#dc2626':pct>=35?'#ca8a04':'#65a30d';
+                    const priL   = pct>=60?'HIGH':pct>=35?'MED':'LOW';
+                    const tac    = TACTIC[tid]||'?';
+                    const name   = TECH_NAMES[tid]||tid;
+                    return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;border-bottom:1px solid var(--border-color)11;">
+                        <code style="width:52px;flex-shrink:0;font-size:0.75rem;color:var(--primary-color);">${_esc(tid)}</code>
+                        <span style="width:160px;flex-shrink:0;font-size:0.72rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_esc(name)}">${_esc(name)}</span>
+                        <span style="width:110px;flex-shrink:0;font-size:0.65rem;color:var(--text-tertiary);">${_esc(tac)}</span>
+                        <div style="flex:1;min-width:60px;max-width:160px;height:8px;background:var(--border-color);border-radius:3px;">
+                            <div style="width:${barW}px;max-width:100%;height:8px;background:${priC};border-radius:3px;opacity:0.8;"></div>
+                        </div>
+                        <span style="width:56px;flex-shrink:0;font-size:0.72rem;color:var(--text-tertiary);text-align:right;">${cnt}/${nArchs} archs</span>
+                        <span style="width:32px;flex-shrink:0;font-size:0.65rem;font-weight:700;color:${priC};">${priL}</span>
+                    </div>`;
+                }).join('')}
+            </div>` : '';
+
+        // ── Tactic heatmap ────────────────────────────────────────────────────
+        const tacticHtml = Object.keys(tacticGaps).length ? `
+            <div style="margin-bottom:1rem;">
+                <div style="font-size:0.72rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.5rem;">Tactic coverage gaps</div>
+                <div style="display:flex;flex-wrap:wrap;gap:0.35rem;">
+                    ${TACTIC_ORDER.filter(t=>tacticGaps[t]).map(tac=>{
+                        const cnt  = tacticGaps[tac]||0;
+                        const heat = Math.round(cnt/maxTacticGap*100);
+                        const bg   = heat>=80?'#dc262644':heat>=50?'#ca8a0444':heat>=25?'#ca8a0422':'#16a34a22';
+                        const col  = heat>=80?'#dc2626':heat>=50?'#ca8a04':heat>=25?'#ca8a04':'#16a34a';
+                        return `<div style="padding:0.3rem 0.6rem;background:${bg};border:1px solid ${col}44;border-radius:5px;font-size:0.72rem;color:${col};white-space:nowrap;" title="${cnt} missed technique-instances">
+                            ${_esc(tac)} <strong>${cnt}</strong>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>` : '';
+
+        // ── Fix-priority advice ───────────────────────────────────────────────
+        const highFixes = topMissed.filter(([tid,cnt])=>Math.round(cnt/nArchs*100)>=60);
+        const medFixes  = topMissed.filter(([tid,cnt])=>{const p=Math.round(cnt/nArchs*100);return p>=35&&p<60;});
+        const adviceHtml = `
+            <div style="margin-bottom:0.75rem;">
+                <div style="font-size:0.72rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.4rem;">Fix-priority advice</div>
+                ${highFixes.length ? `<div style="padding:0.45rem 0.7rem;background:#dc262618;border-left:3px solid #dc2626;border-radius:0 5px 5px 0;font-size:0.75rem;margin-bottom:0.3rem;">
+                    <strong style="color:#dc2626;">HIGH</strong> — Fix in <code>per_node_ttp_mapper.py</code>:
+                    ${highFixes.slice(0,4).map(([tid])=>`<code style="color:var(--primary-color);">${_esc(tid)}</code> ${_esc(TECH_NAMES[tid]||'')}`).join(', ')}.
+                    Missed in ≥60% of labelled architectures — systematic engine gap.
+                </div>` : ''}
+                ${medFixes.length ? `<div style="padding:0.45rem 0.7rem;background:#ca8a0418;border-left:3px solid #ca8a04;border-radius:0 5px 5px 0;font-size:0.75rem;margin-bottom:0.3rem;">
+                    <strong style="color:#ca8a04;">MED</strong> — Review:
+                    ${medFixes.slice(0,4).map(([tid])=>`<code style="color:var(--primary-color);">${_esc(tid)}</code>`).join(', ')}.
+                    Missed in 35–60% of archs — context-dependent gaps worth investigating.
+                </div>` : ''}
+                ${!highFixes.length && !medFixes.length ? `<div style="font-size:0.75rem;color:#16a34a;">✓ No systematic gaps above threshold. Corpus recall is healthy.</div>` : ''}
+            </div>`;
+
+        // ── Per-arch detail table (collapsed) ────────────────────────────────
+        const rowHtml = rows.map(r => `
+            <tr style="border-top:1px solid var(--border-color)22;">
+                <td style="padding:0.3rem 0.5rem;font-size:0.75rem;color:var(--text-color);">${_esc(r.arch)}</td>
+                <td style="padding:0.3rem 0.5rem;font-size:0.78rem;font-weight:700;color:${_rc(r.recall)};text-align:right;">${r.recall}%</td>
+                <td style="padding:0.3rem 0.5rem;font-size:0.78rem;font-weight:700;color:${_rc(r.precision)};text-align:right;">${r.precision}%</td>
+                <td style="padding:0.3rem 0.5rem;font-size:0.78rem;font-weight:700;color:${_rc(r.f1)};text-align:right;">${r.f1}%</td>
+                <td style="padding:0.3rem 0.5rem;font-size:0.7rem;color:var(--text-tertiary);">${(r.missed||[]).length?(r.missed.slice(0,5).join(', ')+((r.missed.length>5)?` +${r.missed.length-5}`:'')):'—'}</td>
+            </tr>`).join('');
+        const detailHtml = `
+            <details style="margin-top:0.5rem;border:1px solid var(--border-color);border-radius:6px;">
+                <summary style="padding:0.4rem 0.7rem;cursor:pointer;font-size:0.75rem;color:var(--text-secondary);user-select:none;">▸ Per-architecture detail (${rows.length} archs)</summary>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;min-width:480px;">
+                        <thead><tr style="font-size:0.68rem;color:var(--text-tertiary);text-transform:uppercase;">
+                            <th style="padding:0.25rem 0.5rem;text-align:left;">Architecture</th>
+                            <th style="padding:0.25rem 0.5rem;text-align:right;">Recall</th>
+                            <th style="padding:0.25rem 0.5rem;text-align:right;">Precision</th>
+                            <th style="padding:0.25rem 0.5rem;text-align:right;">F1</th>
+                            <th style="padding:0.25rem 0.5rem;text-align:left;">Missed</th>
+                        </tr></thead>
+                        <tbody>${rowHtml}</tbody>
+                        <tfoot><tr style="border-top:2px solid var(--border-color);font-weight:700;">
+                            <td style="padding:0.35rem 0.5rem;font-size:0.75rem;">Corpus avg</td>
+                            <td style="padding:0.35rem 0.5rem;font-size:0.78rem;color:${_rc(avgRecall)};text-align:right;">${avgRecall}%</td>
+                            <td style="padding:0.35rem 0.5rem;font-size:0.78rem;color:${_rc(avgPrecision)};text-align:right;">${avgPrecision}%</td>
+                            <td style="padding:0.35rem 0.5rem;font-size:0.78rem;color:${_rc(avgF1)};text-align:right;">${avgF1}%</td>
+                            <td></td>
+                        </tr></tfoot>
+                    </table>
+                </div>
+            </details>`;
+
+        return `
+        <details style="margin-top:1rem;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;">
+            <summary style="padding:0.6rem 1rem;background:var(--nav-hover-bg);cursor:pointer;font-size:0.82rem;font-weight:600;color:var(--text-secondary);list-style:none;user-select:none;display:flex;align-items:center;gap:0.5rem;">
+                📐 Labelled-Corpus Regression
+                <span style="font-size:0.7rem;font-weight:400;color:var(--text-tertiary);">${nArchs} labelled · Recall ${avgRecall}% · Precision ${avgPrecision}%</span>
+                ${avgRecall < 80 ? `<span style="margin-left:auto;font-size:0.68rem;padding:2px 7px;background:#dc262622;color:#dc2626;border-radius:4px;font-weight:700;">Below target</span>` : `<span style="margin-left:auto;font-size:0.68rem;padding:2px 7px;background:#16a34a22;color:#16a34a;border-radius:4px;font-weight:700;">On target</span>`}
+            </summary>
+            <div style="padding:0.85rem 1rem;">
+                <p style="font-size:0.72rem;color:var(--text-tertiary);margin:0 0 0.75rem;">Independent verifier (Nova Pro) labelled expected techniques from topology. <strong>Recall</strong> = engine found / expected. <strong>Precision</strong> = engine correct / engine total. Gaps → engine fixes in <code>per_node_ttp_mapper.py</code>.</p>
+                ${healthHtml}
+                ${missedHtml}
+                ${tacticHtml}
+                ${adviceHtml}
+                ${detailHtml}
+            </div>
+        </details>`;
+    }
 
     // Helper: strip trailing _N from an arch name (mirrors backend _base_arch_name)
     _baseName(name) {

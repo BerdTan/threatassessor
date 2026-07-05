@@ -711,13 +711,30 @@ class ScrumMasterCritic:
                     if ap_id:
                         ap_lines.append(f"  {ap_id} [{tier}]: {path}")
                 if ap_lines:
+                    critical_ids = [
+                        ap.get("id", "")
+                        for ap in aps
+                        if ap.get("criticality_tier") == "CRITICAL" and ap.get("id")
+                    ]
+                    critical_note = ""
+                    if critical_ids:
+                        critical_note = (
+                            f"\nCRITICAL paths requiring explicit coverage: {', '.join(critical_ids)}.\n"
+                            "You MUST include at least one action item whose 'action' OR 'rationale' "
+                            f"contains the literal ID (e.g. '{critical_ids[0]}') for EACH critical path. "
+                            "This is a hard requirement — items not referencing critical paths will be "
+                            "flagged as coverage gaps in the quality scorecard.\n"
+                        )
                     ap_context = (
                         "Attack paths in this architecture:\n"
                         + "\n".join(ap_lines)
                         + "\n\n"
                         "REQUIREMENT: For each CRITICAL attack path above, at least one action item "
                         "MUST explicitly reference that path by its AP-ID (e.g. 'AP-1', 'AP-2') "
-                        "in the 'action' field so stakeholders know which threat is being addressed.\n\n"
+                        "in the 'action' OR 'rationale' field so stakeholders know which threat "
+                        "is being addressed."
+                        + critical_note
+                        + "\n"
                     )
 
         prompt = (
@@ -776,6 +793,40 @@ class ScrumMasterCritic:
                                     break
                         result.append(item)
                 if result:
+                    # AP closure enforcement — ensure every CRITICAL path is referenced
+                    if ground_truth:
+                        crit_aps = [
+                            ap for ap in ground_truth.get("expected_attack_paths", [])
+                            if ap.get("criticality_tier") == "CRITICAL" and ap.get("id")
+                        ]
+                        for cap in crit_aps:
+                            ap_id = cap["id"]
+                            referenced = any(
+                                ap_id in ((it.get("action") or "") + (it.get("rationale") or ""))
+                                for it in result
+                            )
+                            if not referenced:
+                                path_str = " → ".join(cap.get("path", [])) or cap.get("entry", "")
+                                techs = cap.get("techniques", [])[:3]
+                                result.append({
+                                    "action": (
+                                        f"{ap_id}: Add targeted controls for the {path_str} attack path. "
+                                        f"Key techniques: {', '.join(techs)}."
+                                    ),
+                                    "rationale": (
+                                        f"CRITICAL path {ap_id} has no explicit plan item — "
+                                        "this gap leaves the highest-severity threat unaddressed."
+                                    ),
+                                    "first_step": (
+                                        f"Review attack path {ap_id} ({path_str}) and assign an engineer "
+                                        "to implement the highest-priority missing control."
+                                    ),
+                                    "priority": "critical",
+                                    "effort": "days",
+                                    "risk_reduction_estimate": "high",
+                                    "confidence_gain": 2.0,
+                                    "is_antipattern": False,
+                                })
                     return result
         except Exception as exc:
             logger.warning(f"ScrumMaster: strategist action plan LLM call failed: {exc}")

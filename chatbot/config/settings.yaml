@@ -76,4 +76,5 @@ agent_models:
   scrum_master:     {model: "${AGENT_MODEL_SCRUM_MASTER}"}
   moe_orchestrator: {model: "${AGENT_MODEL_MOE}"}
   threat_analyst:   {model: "${AGENT_MODEL_THREAT_ANALYST}"}
+  tatb_labeller:    {model: "${AGENT_MODEL_TATB_LABELLER}", fallbacks: ["${AGENT_MODEL_TATB_LABELLER_FALLBACK}"]}
   ta_wiz:           {model: "${AGENT_MODEL_TA_WIZ}"}

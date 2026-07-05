@@ -52,21 +52,36 @@ def validate_technique_for_path(
 
     # T1190 - Exploit Public-Facing Application
     if technique_id == "T1190":
-        has_internet_entry = any(kw in entry_label for kw in ["internet", "public", "external", "mobile"])
-        has_web_component = any(kw in path_str for kw in ["web", "api", "server", "gateway", "load balancer"])
+        # Valid if internet/public/partner entry OR if the path contains public-facing components
+        has_internet_entry = any(kw in entry_label for kw in [
+            "internet", "public", "external", "mobile", "user", "partner", "vendor",
+            "client", "ddos", "cdn", "waf", "vpn",
+        ])
+        has_internet_in_path = any(kw in path_str for kw in [
+            "internet", "public", "external", "ddos", "cdn", "partner",
+        ])
+        has_web_component = any(kw in path_str for kw in [
+            "web", "api", "server", "gateway", "load balancer", "service", "proxy", "app",
+        ])
 
-        if has_internet_entry and has_web_component:
-            validations.append((True, 0.1, "Clear public-facing entry with web components"))
-        elif has_internet_entry:
-            validations.append((True, 0.05, "Public entry present but web components unclear"))
+        if (has_internet_entry or has_internet_in_path) and has_web_component:
+            validations.append((True, 0.1, "Public-facing entry with exploitable web components"))
+        elif has_internet_entry or has_internet_in_path:
+            validations.append((True, 0.05, "Public entry present — exploitation applicable"))
+        elif has_web_component:
+            validations.append((True, 0.04, "Web component present — exploitation plausible"))
         else:
             validations.append((False, -0.1, "No clear public-facing entry point"))
 
     # T1078 - Valid Accounts
     elif technique_id == "T1078":
-        has_auth_component = any(kw in path_str for kw in ["auth", "login", "user", "identity", "sso", "mfa"])
-        has_credential_target = any(kw in target_label for kw in ["database", "user", "account", "credential"])
-
+        has_auth_component = any(kw in path_str for kw in [
+            "auth", "login", "user", "identity", "sso", "mfa", "vpn", "remote",
+            "portal", "admin", "api", "gateway",
+        ])
+        has_credential_target = any(kw in target_label for kw in [
+            "database", "db", "user", "account", "credential", "server", "service",
+        ])
         if has_auth_component or has_credential_target:
             validations.append((True, 0.1, "Authentication/credential components present"))
         else:
@@ -74,14 +89,16 @@ def validate_technique_for_path(
 
     # T1213 - Data from Information Repositories
     elif technique_id == "T1213":
-        # Check both the resolved label AND the raw node ID (CamelCase names like
-        # "AccessLogDB" or "UserDB" contain "db" but label lookup may return empty)
         target_node_id = path_nodes[-1].lower() if path_nodes else ""
-        has_data_target = any(kw in target_label for kw in [
-            "database", "db", "storage", "data", "repository", "file", "cache", "log", "registry",
-        ]) or any(kw in target_node_id for kw in [
-            "database", "db", "storage", "data", "repository", "file", "cache", "log", "registry",
-        ])
+        DATA_KW = [
+            "database", "db", "storage", "data", "repository", "file", "cache", "log",
+            "registry", "primary", "replica", "queue", "message", "record", "archive",
+        ]
+        has_data_target = (
+            any(kw in target_label for kw in DATA_KW)
+            or any(kw in target_node_id for kw in DATA_KW)
+            or any(kw in path_str for kw in DATA_KW)
+        )
 
         if has_data_target:
             validations.append((True, 0.1, "Data repository target confirmed"))
@@ -122,9 +139,9 @@ def validate_technique_for_path(
 
     # T1005 - Data from Local System
     elif technique_id == "T1005":
-        # Valid if architecture has any data store or file system component
         has_data_component = any(kw in path_str for kw in [
             "db", "database", "storage", "file", "cache", "log", "repository", "data",
+            "primary", "replica", "queue", "server", "record",
         ])
         if has_data_component:
             validations.append((True, 0.05, "Data storage component present"))
@@ -144,27 +161,24 @@ def validate_technique_for_path(
 
     # T1486 - Data Encrypted for Impact (ransomware)
     elif technique_id == "T1486":
-        # Valid if architecture has data stores (ransomware targets data at rest)
-        has_data = any(kw in path_str for kw in [
-            "db", "database", "storage", "file", "backup", "cache", "data",
-        ])
+        DATA_KW2 = ["db", "database", "storage", "file", "backup", "cache", "data",
+                    "primary", "replica", "queue", "server", "record"]
+        has_data = any(kw in path_str for kw in DATA_KW2)
         if has_data:
-            validations.append((True, 0.05, "Data storage target suitable for ransomware"))
+            validations.append((True, 0.05, "Data storage present — ransomware applicable"))
         else:
             validations.append((False, 0.0, "No data storage found for ransomware impact"))
 
     # T1490 - Inhibit System Recovery
     elif technique_id == "T1490":
-        # Valid if backup/recovery components are present (attacker targets them),
-        # OR any persistent data store including session/state caches
         has_recovery = any(kw in path_str for kw in [
-            "backup", "recovery", "restore", "snapshot", "replication",
+            "backup", "recovery", "restore", "snapshot", "replication", "replica",
         ])
         has_data = any(kw in path_str for kw in [
-            "db", "database", "storage", "data", "cache",
+            "db", "database", "storage", "data", "cache", "primary", "server",
         ])
         if has_recovery or has_data:
-            validations.append((True, 0.05, "Recovery/data components present — inhibition is relevant"))
+            validations.append((True, 0.05, "Recovery/data components present — inhibition applicable"))
         else:
             validations.append((False, 0.0, "No recovery or data components detected"))
 
@@ -172,9 +186,10 @@ def validate_technique_for_path(
     elif technique_id == "T1485":
         has_data = any(kw in path_str for kw in [
             "db", "database", "storage", "file", "cache", "data", "log",
+            "primary", "replica", "queue", "record", "server",
         ])
         if has_data:
-            validations.append((True, 0.05, "Data components present — destruction is relevant"))
+            validations.append((True, 0.05, "Data components present — destruction applicable"))
         else:
             validations.append((False, 0.0, "No data components found for destruction"))
 
@@ -191,17 +206,314 @@ def validate_technique_for_path(
 
     # T1212 - Exploitation for Credential Access
     elif technique_id == "T1212":
-        # Valid if authentication, credential, or access-control components exist.
-        # "Access Control API/Service" enforces AuthN/AuthZ and is a valid T1212 target
-        # even though its label doesn't contain the literal word "auth".
+        # Broadened: API gateways and service endpoints are valid T1212 targets
         has_auth = any(kw in path_str for kw in [
             "auth", "login", "credential", "user", "identity", "sso", "mfa", "password",
-            "access control",
+            "access control", "api", "gateway", "service", "endpoint",
         ])
         if has_auth:
-            validations.append((True, 0.05, "Authentication component present for credential exploitation"))
+            validations.append((True, 0.05, "Authentication/API component present for credential exploitation"))
         else:
             validations.append((False, 0.0, "No authentication component found"))
+
+    # T1071 - Application Layer Protocol (C2 over HTTP/HTTPS/DNS)
+    elif technique_id == "T1071":
+        has_network_path = any(kw in path_str for kw in [
+            "internet", "external", "api", "gateway", "web", "server", "service",
+            "application", "backend", "cloud", "function", "lambda",
+        ])
+        if has_network_path:
+            validations.append((True, 0.06, "Network-accessible component present — C2 over app layer applicable"))
+        else:
+            validations.append((False, 0.0, "No network-accessible component for application layer C2"))
+
+    # T1021 - Remote Services (lateral movement via RDP/SSH/SMB/WinRM)
+    elif technique_id == "T1021":
+        has_internal = any(kw in path_str for kw in [
+            "server", "workstation", "host", "internal", "network", "service",
+            "application", "vm", "instance", "backend",
+        ])
+        if has_internal:
+            validations.append((True, 0.08, "Internal services present — lateral movement applicable"))
+        else:
+            validations.append((False, 0.0, "No internal service components for lateral movement"))
+
+    # T1040 - Network Sniffing
+    elif technique_id == "T1040":
+        has_network = any(kw in path_str for kw in [
+            "network", "router", "switch", "vpn", "firewall", "gateway", "load balancer",
+            "proxy", "internet",
+        ])
+        if has_network:
+            validations.append((True, 0.06, "Network infrastructure present — sniffing applicable"))
+        else:
+            validations.append((False, 0.0, "No network infrastructure for sniffing"))
+
+    # T1041 - Exfiltration Over C2 Channel
+    elif technique_id == "T1041":
+        has_target = any(kw in path_str for kw in [
+            "database", "db", "storage", "data", "file", "secret", "credential",
+            "primary", "replica", "queue", "cache", "server", "record",
+        ])
+        has_egress = any(kw in path_str for kw in [
+            "internet", "external", "api", "gateway", "web", "service", "partner",
+        ])
+        if has_target:
+            validations.append((True, 0.06, "Data target present — C2 exfiltration applicable"))
+        elif has_egress:
+            validations.append((True, 0.04, "Outbound channel present for C2 exfiltration"))
+        else:
+            validations.append((False, 0.0, "No data target or egress channel for C2 exfiltration"))
+
+    # T1046 - Network Service Discovery
+    elif technique_id == "T1046":
+        has_network = any(kw in path_str for kw in [
+            "network", "server", "service", "host", "internal", "backend", "application",
+        ])
+        if has_network:
+            validations.append((True, 0.06, "Network services present — discovery scan applicable"))
+        else:
+            validations.append((False, 0.0, "No network services to discover"))
+
+    # T1083 - File and Directory Discovery
+    elif technique_id == "T1083":
+        has_system = any(kw in path_str for kw in [
+            "server", "application", "service", "host", "storage", "file", "system",
+            "backend", "api",
+        ])
+        if has_system:
+            validations.append((True, 0.06, "System components present — file discovery applicable"))
+        else:
+            validations.append((False, 0.0, "No system components for file discovery"))
+
+    # T1110 - Brute Force
+    elif technique_id == "T1110":
+        has_auth_surface = any(kw in path_str for kw in [
+            "auth", "login", "user", "identity", "sso", "mfa", "password", "account",
+            "internet", "external", "api", "gateway", "vpn", "portal", "remote",
+            "partner", "web", "service",
+        ])
+        if has_auth_surface:
+            validations.append((True, 0.07, "Authentication/access surface present — brute force applicable"))
+        else:
+            validations.append((False, 0.0, "No authentication surface for brute force"))
+
+    # T1133 - External Remote Services
+    elif technique_id == "T1133":
+        has_external = any(kw in path_str for kw in [
+            "internet", "external", "vpn", "remote", "public", "user", "client",
+            "mobile", "api", "gateway", "partner", "vendor", "ddos", "cdn",
+        ])
+        if has_external:
+            validations.append((True, 0.07, "External entry point present — remote services applicable"))
+        else:
+            validations.append((False, -0.05, "No external entry for remote services"))
+
+    # T1210 - Exploitation of Remote Services
+    elif technique_id == "T1210":
+        has_remote_service = any(kw in path_str for kw in [
+            "server", "service", "application", "api", "backend", "internal", "host",
+        ])
+        if has_remote_service:
+            validations.append((True, 0.06, "Remote services present — exploitation applicable"))
+        else:
+            validations.append((False, 0.0, "No remote services to exploit"))
+
+    # T1498 - Network Denial of Service
+    elif technique_id == "T1498":
+        has_network_surface = any(kw in path_str for kw in [
+            "internet", "external", "public", "gateway", "load balancer", "cdn",
+            "api", "web", "network", "ddos", "proxy", "reverse", "partner",
+        ])
+        if has_network_surface:
+            validations.append((True, 0.06, "Public network surface present — network DoS applicable"))
+        else:
+            validations.append((False, 0.0, "No public network surface for network DoS"))
+
+    # T1499 - Endpoint Denial of Service
+    elif technique_id == "T1499":
+        has_endpoint = any(kw in path_str for kw in [
+            "server", "application", "service", "api", "web", "backend",
+            "gateway", "internet", "external", "app", "portal", "proxy",
+        ])
+        if has_endpoint:
+            validations.append((True, 0.06, "Application endpoint present — endpoint DoS applicable"))
+        else:
+            validations.append((False, 0.0, "No application endpoint for DoS"))
+
+    # T1530 - Data from Cloud Storage Object
+    elif technique_id == "T1530":
+        has_cloud_storage = any(kw in path_str for kw in [
+            "cloud", "s3", "blob", "storage", "bucket", "gcs", "azure", "aws", "gcp",
+            "object", "data lake", "warehouse",
+        ])
+        has_data_target = any(kw in path_str for kw in [
+            "database", "db", "data", "repository", "primary", "replica", "queue",
+        ])
+        if has_cloud_storage:
+            validations.append((True, 0.08, "Cloud storage component confirmed"))
+        elif has_data_target:
+            validations.append((True, 0.04, "Data target present — cloud storage access plausible"))
+        else:
+            validations.append((False, 0.0, "No cloud storage components detected"))
+
+    # T1562 - Impair Defenses
+    elif technique_id == "T1562":
+        has_security_component = any(kw in path_str for kw in [
+            "firewall", "waf", "siem", "monitor", "log", "audit", "detection",
+            "edr", "gateway", "security",
+        ])
+        has_any_component = len(path_str.split("→")) >= 2
+        if has_security_component:
+            validations.append((True, 0.08, "Security controls present — impairment applicable"))
+        elif has_any_component:
+            validations.append((True, 0.04, "Multi-hop path — defense impairment plausible"))
+        else:
+            validations.append((False, 0.0, "No security components to impair"))
+
+    # T1565 - Data Manipulation
+    elif technique_id == "T1565":
+        has_data = any(kw in path_str for kw in [
+            "database", "db", "storage", "data", "file", "cache", "log", "record",
+            "primary", "replica", "queue", "server", "message",
+        ])
+        if has_data:
+            validations.append((True, 0.06, "Data components present — manipulation applicable"))
+        else:
+            validations.append((False, 0.0, "No data components for manipulation"))
+
+    # T1041 - Exfiltration Over C2 Channel (override for complex paths)
+    # Rule already defined above — if we get here via fallthrough, use path-wide check
+    # T1068 - Exploitation for Privilege Escalation
+    elif technique_id == "T1068":
+        has_system = any(kw in path_str for kw in [
+            "server", "application", "service", "host", "backend", "api",
+            "admin", "portal", "management",
+        ])
+        if has_system:
+            validations.append((True, 0.06, "System components present — privilege escalation applicable"))
+        else:
+            validations.append((False, 0.0, "No system components for privilege escalation"))
+
+    # T1087 - Account Discovery
+    elif technique_id == "T1087":
+        has_identity = any(kw in path_str for kw in [
+            "auth", "identity", "user", "account", "directory", "admin", "portal",
+            "ldap", "sso", "management", "server", "application",
+        ])
+        if has_identity:
+            validations.append((True, 0.06, "Identity/account components present — discovery applicable"))
+        else:
+            validations.append((False, 0.0, "No identity components for account discovery"))
+
+    # T1070 - Indicator Removal (log/artefact clearing)
+    elif technique_id == "T1070":
+        has_logging = any(kw in path_str for kw in [
+            "log", "monitor", "siem", "audit", "server", "application", "service",
+            "monitoring", "admin",
+        ])
+        if has_logging:
+            validations.append((True, 0.05, "Logging/monitoring components present — indicator removal applicable"))
+        else:
+            validations.append((False, 0.0, "No logging components for indicator removal"))
+
+    # T1199 - Trusted Relationship (3rd party / partner access)
+    elif technique_id == "T1199":
+        has_third_party = any(kw in path_str for kw in [
+            "partner", "vendor", "third", "supplier", "trusted", "external",
+            "vpn", "gateway", "api",
+        ])
+        if has_third_party:
+            validations.append((True, 0.07, "Third-party access path present — trusted relationship applicable"))
+        else:
+            validations.append((False, 0.0, "No third-party components for trusted relationship"))
+
+    # T1570 - Lateral Tool Transfer
+    elif technique_id == "T1570":
+        has_multi_hop = len([n for n in path_nodes if n]) >= 3
+        has_internal = any(kw in path_str for kw in [
+            "server", "application", "internal", "network", "host", "backend",
+        ])
+        if has_multi_hop and has_internal:
+            validations.append((True, 0.06, "Multi-hop internal path — lateral tool transfer applicable"))
+        elif has_internal:
+            validations.append((True, 0.04, "Internal components present — tool transfer plausible"))
+        else:
+            validations.append((False, 0.0, "No internal path for lateral tool transfer"))
+
+    # T1552 - Unsecured Credentials
+    elif technique_id == "T1552":
+        has_cred_surface = any(kw in path_str for kw in [
+            "server", "application", "service", "api", "backend", "config",
+            "database", "cache", "storage", "secret", "key", "credential",
+        ])
+        if has_cred_surface:
+            validations.append((True, 0.07, "Application/data components present — credential exposure applicable"))
+        else:
+            validations.append((False, 0.0, "No application components for credential exposure"))
+
+    # T1018 - Remote System Discovery
+    elif technique_id == "T1018":
+        has_network = any(kw in path_str for kw in [
+            "network", "server", "internal", "host", "backend", "service", "application",
+        ])
+        if has_network:
+            validations.append((True, 0.06, "Network environment present — system discovery applicable"))
+        else:
+            validations.append((False, 0.0, "No network environment for remote discovery"))
+
+    # T1027 - Obfuscated Files or Information
+    elif technique_id == "T1027":
+        has_execution = any(kw in path_str for kw in [
+            "server", "application", "service", "api", "backend", "web",
+        ])
+        if has_execution:
+            validations.append((True, 0.05, "Execution environment present — obfuscation applicable"))
+        else:
+            validations.append((False, 0.0, "No execution environment for obfuscation"))
+
+    # T1098 - Account Manipulation
+    elif technique_id == "T1098":
+        has_identity = any(kw in path_str for kw in [
+            "auth", "identity", "user", "account", "sso", "directory", "admin",
+            "management", "iam", "ldap",
+        ])
+        if has_identity:
+            validations.append((True, 0.07, "Identity/account management present — manipulation applicable"))
+        else:
+            validations.append((False, 0.0, "No identity components for account manipulation"))
+
+    # T1136 - Create Account
+    elif technique_id == "T1136":
+        has_identity = any(kw in path_str for kw in [
+            "auth", "identity", "user", "account", "sso", "directory", "admin",
+            "management", "iam",
+        ])
+        if has_identity:
+            validations.append((True, 0.06, "Identity management present — account creation applicable"))
+        else:
+            validations.append((False, 0.0, "No identity management for account creation"))
+
+    # T1557 - Adversary-in-the-Middle
+    elif technique_id == "T1557":
+        has_network_path = any(kw in path_str for kw in [
+            "network", "router", "gateway", "proxy", "load balancer", "vpn",
+            "server", "api",
+        ])
+        if has_network_path:
+            validations.append((True, 0.07, "Network path present — AiTM applicable"))
+        else:
+            validations.append((False, 0.0, "No network path for AiTM attack"))
+
+    # T1548 - Abuse Elevation Control Mechanism
+    elif technique_id == "T1548":
+        has_priv = any(kw in path_str for kw in [
+            "admin", "management", "server", "application", "service",
+        ])
+        if has_priv:
+            validations.append((True, 0.05, "Privileged component present — elevation abuse applicable"))
+        else:
+            validations.append((False, 0.0, "No privileged components for elevation abuse"))
 
     # Default: Check if technique name/description has keywords from path
     else:

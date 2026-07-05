@@ -1255,9 +1255,13 @@ def generate_ground_truth(
             rapids_assessment  # Pass RAPIDS for context-aware T1190
         )
 
-        # Store both per-node AND aggregated techniques
-        ap["per_node_techniques"] = per_node_techniques  # NEW: Detailed hop-by-hop
-        ap["techniques"] = get_all_techniques_from_path(per_node_techniques)  # Aggregated list (backwards compatible)
+        # Extract context sidecar before storing per_node_techniques
+        technique_context = per_node_techniques.pop("__context__", {})
+
+        # Store topology-derived techniques (applicability) + exploitability annotations
+        ap["per_node_techniques"] = per_node_techniques
+        ap["techniques"] = get_all_techniques_from_path(per_node_techniques)
+        ap["technique_context"] = technique_context  # dimension + RAPIDS signal per technique
 
     # StoryCaster: co-generate edge micro-stories and journey macro-stories
     from chatbot.modules.story_caster import cast_stories, cast_journey_story, build_ap_rationale_from_story

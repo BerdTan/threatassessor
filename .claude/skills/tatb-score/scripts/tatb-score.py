@@ -264,13 +264,37 @@ def score_plan(gt, sm):
     closure_pct = round(len(addr) / len(crit_aps) * 100) if crit_aps else 100
     anti_bonus  = 5 if any(str(it.get("is_antipattern","")).lower() == "true" for it in items) else 0
 
+    # ADR alignment: do high-priority action items recommend controls that the ADR mandated?
+    # Each ADR hop lists controls by type. We check whether each action item's first_step/action
+    # names at least one control that appears in any ADR hop for the corresponding path.
+    adrs = gt.get("architecture_decision_records", [])
+    adr_controls = set()
+    for adr in adrs:
+        for hop in (adr.get("hops") or []):
+            for ctrl in (hop.get("controls") or []):
+                name = (ctrl.get("name") or "").lower().strip()
+                if name:
+                    adr_controls.add(name)
+    if adr_controls and items:
+        high_items = [it for it in items if (it.get("priority") or "").lower() in ("critical", "high")]
+        if high_items:
+            aligned = sum(1 for it in high_items
+                          if any(c in ((it.get("first_step") or "") + " " + (it.get("action") or "")).lower()
+                                 for c in adr_controls))
+            adr_align_pct = round(aligned / len(high_items) * 100)
+        else:
+            adr_align_pct = 50
+    else:
+        adr_align_pct = 50  # no ADR data — neutral
+
+    # Reweight: spec_pct and adr_align_pct share the specificity slot (10% each)
     score = min(100, round(comp_pct * 0.25 + meas_pct * 0.20 + sprint_pct * 0.15
-                           + spec_pct * 0.20 + closure_pct * 0.20 + anti_bonus))
+                           + spec_pct * 0.10 + adr_align_pct * 0.10 + closure_pct * 0.20 + anti_bonus))
     return dict(score=score, comp_pct=comp_pct, meas_pct=meas_pct,
-                sprint_pct=sprint_pct, spec_pct=spec_pct, closure_pct=closure_pct,
-                n_items=len(items), n_crit_aps=len(crit_aps), n_addr=len(addr),
-                effort_set=sorted(effort_set), prio_set=sorted(prio_set),
-                anti_bonus=anti_bonus)
+                sprint_pct=sprint_pct, spec_pct=spec_pct, adr_align_pct=adr_align_pct,
+                closure_pct=closure_pct, n_items=len(items), n_crit_aps=len(crit_aps),
+                n_addr=len(addr), effort_set=sorted(effort_set), prio_set=sorted(prio_set),
+                anti_bonus=anti_bonus, n_adr_controls=len(adr_controls))
 
 
 # ─── MITRE fetch ─────────────────────────────────────────────────────────────
@@ -441,23 +465,29 @@ def main():
         print(grey(f"     {p_s.get('reason','')}"))
     else:
         print_rubric("✅","Plan-Actionable", p_s["score"], [
-            lambda: signal_line("Item completeness",   p_s["comp_pct"],    "%",
+            lambda: signal_line("Item completeness",   p_s["comp_pct"],      "%",
                                 f"{p_s['n_items']} action items, all 4 fields present"),
-            lambda: signal_line("Measurable outcomes", p_s["meas_pct"],    "%",
+            lambda: signal_line("Measurable outcomes", p_s["meas_pct"],      "%",
                                 f"confidence_gain or risk_reduction_estimate present"),
-            lambda: signal_line("Sprint spreadability",p_s["sprint_pct"],  "%",
+            lambda: signal_line("Sprint spreadability",p_s["sprint_pct"],    "%",
                                 f"effort: {'/'.join(p_s['effort_set'])} · priority: {'/'.join(p_s['prio_set'])}"),
-            lambda: signal_line("Control specificity", p_s["spec_pct"],    "%",
+            lambda: signal_line("Control specificity", p_s["spec_pct"],      "%",
                                 f"items naming a specific tool/node/technique"),
-            lambda: signal_line("AP plan closure",     p_s["closure_pct"], "%",
+            lambda: signal_line("ADR alignment",       p_s["adr_align_pct"], "%",
+                                f"high-priority items referencing ADR-mandated controls"
+                                + (f" ({p_s['n_adr_controls']} ADR controls)" if p_s["n_adr_controls"] else " (no ADR data — neutral 50%)")),
+            lambda: signal_line("AP plan closure",     p_s["closure_pct"],   "%",
                                 f"{p_s['n_addr']}/{p_s['n_crit_aps']} CRITICAL paths have an explicit plan item"),
         ])
         if p_s["anti_bonus"]:
             print(green(f"     +5% anti-pattern bonus — SM identified structural design flaws"))
+        if p_s["adr_align_pct"] < 70 and p_s["n_adr_controls"] > 0:
+            print(amber(f"     ⚠ High-priority items don't consistently reference ADR-mandated controls — plan may conflict with architecture decisions"))
         if p_s["closure_pct"] < 100 and p_s["n_crit_aps"] > 0:
             print(amber(f"     ⚠ {p_s['n_crit_aps'] - p_s['n_addr']} CRITICAL path(s) not explicitly addressed in plan"))
-        stage_attr("comp_pct",    p_s["comp_pct"],    "ScrumMasterStage → SM prompt (ensure all 4 item fields generated)")
-        stage_attr("closure_pct", p_s["closure_pct"], "ScrumMasterStage → SM prompt (add: reference AP-IDs in action items)")
+        stage_attr("comp_pct",      p_s["comp_pct"],      "ScrumMasterStage → SM prompt (ensure all 4 item fields generated)")
+        stage_attr("adr_align_pct", p_s["adr_align_pct"], "ScrumMasterStage → SM prompt (reference ADR controls in action items) + threat_report.py ADR filter")
+        stage_attr("closure_pct",   p_s["closure_pct"],   "ScrumMasterStage → SM prompt (add: reference AP-IDs in action items)")
 
     # ── Summary ───────────────────────────────────────────────────────────────
     print()
