@@ -208,6 +208,23 @@ def score_risk(gt, gov):
     mit_techs = set(t for c in ctrls for t in (c.get("mitre_techniques") or c.get("techniques") or []))
     tech_cov  = round(len(ap_techs & mit_techs) / len(ap_techs) * 100) if ap_techs else 50
 
+    # ap_coverage: per-(AP-index, technique) pairs that have an aligned control.
+    # Stronger than tech_cov: requires the control to explicitly list that AP index,
+    # not just the technique somewhere in the architecture.
+    ap_tech_pairs = {
+        (ap_idx, t)
+        for ap_idx, ap in enumerate(aps)
+        for t in ap.get("techniques", [])
+    }
+    covered_pairs = set()
+    for c in ctrls:
+        c_aps   = set(c.get("attack_paths") or [])
+        c_techs = set(c.get("mitre_techniques") or c.get("techniques") or [])
+        for pair in ap_tech_pairs:
+            if pair[0] in c_aps and pair[1] in c_techs:
+                covered_pairs.add(pair)
+    ap_cov = round(len(covered_pairs) / len(ap_tech_pairs) * 100) if ap_tech_pairs else 50
+
     all_hops  = [h for a in adrs for h in a.get("hops", [])]
     full_hops = sum(1 for h in all_hops
                     if "missing" not in (h.get("gap_note") or h.get("gap_type") or "").lower())
@@ -217,10 +234,12 @@ def score_risk(gt, gov):
     hard_ct  = sum(1 for r in rr_vals if r.get("status") in ("MONITOR","MITIGATE"))
     hard_pct = round((len(rr_vals) - hard_ct) / len(rr_vals) * 100) if rr_vals else 50
 
-    score = round(tech_cov * 0.40 + hop_pct * 0.35 + hard_pct * 0.25)
-    return dict(score=score, tech_cov=tech_cov, hop_pct=hop_pct, hard_pct=hard_pct,
+    # Score: tech_cov stays (architecture-wide baseline), ap_cov adds per-AP alignment signal
+    score = round(tech_cov * 0.30 + ap_cov * 0.15 + hop_pct * 0.30 + hard_pct * 0.25)
+    return dict(score=score, tech_cov=tech_cov, ap_cov=ap_cov, hop_pct=hop_pct, hard_pct=hard_pct,
                 n_hops=len(all_hops), full_hops=full_hops,
-                hard_threats=hard_ct, total_threats=len(rr_vals))
+                hard_threats=hard_ct, total_threats=len(rr_vals),
+                n_ap_pairs=len(ap_tech_pairs), covered_pairs=len(covered_pairs))
 
 
 SPEC_RE = re.compile(
@@ -445,7 +464,9 @@ def main():
     # ── Risk-Defensible ───────────────────────────────────────────────────────
     print_rubric("⚖️ ","Risk-Defensible", r_s["score"], [
         lambda: signal_line("Technique mitigation", r_s["tech_cov"],  "%",
-                            f"attack-path techniques with a mapped control"),
+                            f"attack-path techniques with a mapped control (arch-wide)"),
+        lambda: signal_line("AP-aligned mitigation", r_s["ap_cov"],  "%",
+                            f"{r_s['covered_pairs']}/{r_s['n_ap_pairs']} (AP, technique) pairs with a targeted control"),
         lambda: signal_line("Hop layer coverage",   r_s["hop_pct"],   "%",
                             f"{r_s['full_hops']}/{r_s['n_hops']} hops have all 4 zero-trust layers"),
         lambda: signal_line("Residual exposure",    r_s["hard_pct"],  "%",
@@ -455,7 +476,8 @@ def main():
         print(amber(f"     ⚠ {r_s['n_hops'] - r_s['full_hops']} hops missing detect/isolate/respond layers"))
     if r_s["hard_threats"] > 0:
         print(amber(f"     ⚠ {r_s['hard_threats']} threats structurally hard to defend — architecture review may be needed"))
-    stage_attr("tech_cov", r_s["tech_cov"], "ReportStage → control_recommendations technique mapping")
+    stage_attr("tech_cov", r_s["tech_cov"], "ReportStage → control_recommendations technique mapping (arch-wide)")
+    stage_attr("ap_cov",   r_s["ap_cov"],  "ReportStage → control_recommendations attack_paths field (per-AP technique alignment)")
     stage_attr("hop_pct",  r_s["hop_pct"],  "ReportStage → ADR generator (dir_category assignment — ensure all 4 layers)")
 
     # ── Plan-Actionable ───────────────────────────────────────────────────────

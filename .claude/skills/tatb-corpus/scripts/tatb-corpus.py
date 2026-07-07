@@ -166,10 +166,21 @@ def score_risk(gt: dict, gov: Optional[dict]) -> dict:
     rr    = (gt.get('residual_risks') or {}).get('per_threat', {})
     ctrls = gt.get('control_recommendations', [])
 
-    # A. Technique mitigation coverage
+    # A. Technique mitigation coverage (arch-wide)
     ap_techs    = set(t for ap in aps for t in ap.get('techniques', []))
     mit_techs   = set(t for c in ctrls for t in (c.get('mitre_techniques') or c.get('techniques') or []))
     tech_cov    = round(len(ap_techs & mit_techs) / len(ap_techs) * 100) if ap_techs else 50
+
+    # A2. Per-(AP-index, technique) alignment — stronger than tech_cov
+    ap_tech_pairs = {(i, t) for i, ap in enumerate(aps) for t in ap.get('techniques', [])}
+    covered_pairs = set()
+    for c in ctrls:
+        c_aps   = set(c.get('attack_paths') or [])
+        c_techs = set(c.get('mitre_techniques') or c.get('techniques') or [])
+        for pair in ap_tech_pairs:
+            if pair[0] in c_aps and pair[1] in c_techs:
+                covered_pairs.add(pair)
+    ap_cov = round(len(covered_pairs) / len(ap_tech_pairs) * 100) if ap_tech_pairs else 50
 
     # B. Hop layer completeness
     all_hops    = [h for a in adrs for h in a.get('hops', [])]
@@ -182,10 +193,11 @@ def score_risk(gt: dict, gov: Optional[dict]) -> dict:
     hard_ct     = sum(1 for r in rr_vals if r.get('status') in ('MONITOR', 'MITIGATE'))
     hard_pct    = round((len(rr_vals) - hard_ct) / len(rr_vals) * 100) if rr_vals else 50
 
-    score = round(tech_cov * 0.40 + hop_pct * 0.35 + hard_pct * 0.25)
+    score = round(tech_cov * 0.30 + ap_cov * 0.15 + hop_pct * 0.30 + hard_pct * 0.25)
     return {
         'score': score,
         'tech_cov': tech_cov,
+        'ap_cov': ap_cov,
         'hop_pct': hop_pct,
         'hard_pct': hard_pct,
         'n_hops': len(all_hops),
@@ -420,7 +432,7 @@ def render_stage_attribution(results: list, use_color: bool):
     sub_scores = {
         'node_binding': [], 'node_coverage': [], 'tech_variety': [],
         'val_pct': [], 'mitre_pct': [], 'cross_pct': [],
-        'tech_cov': [], 'hop_pct': [], 'hard_pct': [],
+        'tech_cov': [], 'ap_cov': [], 'hop_pct': [], 'hard_pct': [],
         'comp_pct': [], 'meas_pct': [], 'closure_pct': [],
     }
     for r in results:
@@ -451,7 +463,8 @@ def render_stage_attribution(results: list, use_color: bool):
         ('val_pct',        'QualityStage → self_validation.py (heuristic thresholds)'),
         ('mitre_pct',      'ReportStage → exhaustive_mitigation_mapper (M-ID coverage)'),
         ('cross_pct',      'CriticStage → MoE critic diversity (run full_moe)'),
-        ('tech_cov',       'ReportStage → control_recommendations technique mapping'),
+        ('tech_cov',       'ReportStage → control_recommendations technique mapping (arch-wide)'),
+        ('ap_cov',         'ReportStage → control_recommendations attack_paths field (per-AP alignment)'),
         ('hop_pct',        'ReportStage → ADR generator (dir_category assignment)'),
         ('hard_pct',       'Architecture — structural exposure (design change needed)'),
         ('comp_pct',       'ScrumMasterStage → SM prompt (item field completeness)'),
