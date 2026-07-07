@@ -77,12 +77,22 @@ fi
 echo -e "${GREEN}✅ Environment OK${NC}"
 echo ""
 
-# Clean existing reports
+# Clean existing reports — preserve hand-crafted / labeller files
 echo -e "${YELLOW}[2/6] Cleaning existing reports...${NC}"
 if [[ -d "$REPORT_DIR" ]]; then
-    # Remove all generated files
-    rm -rf "$REPORT_DIR"/*.md "$REPORT_DIR"/*.json "$REPORT_DIR"/*.mmd 2>/dev/null || true
-    echo -e "${GREEN}✅ Cleaned existing reports${NC}"
+    # Stash files that should survive a regeneration
+    STASH_DIR="$(mktemp -d)"
+    for f in expected_threats.json governance_signals.json; do
+        [[ -f "$REPORT_DIR/$f" ]] && cp "$REPORT_DIR/$f" "$STASH_DIR/$f"
+    done
+    # Remove only generated outputs, not the whole directory
+    rm -f "$REPORT_DIR"/*.md "$REPORT_DIR"/*.json "$REPORT_DIR"/*.mmd 2>/dev/null || true
+    # Restore stashed files
+    for f in expected_threats.json governance_signals.json; do
+        [[ -f "$STASH_DIR/$f" ]] && cp "$STASH_DIR/$f" "$REPORT_DIR/$f"
+    done
+    rm -rf "$STASH_DIR"
+    echo -e "${GREEN}✅ Cleaned existing reports (labels preserved)${NC}"
 else
     mkdir -p "$REPORT_DIR"
     echo -e "${GREEN}✅ Created report directory${NC}"

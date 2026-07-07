@@ -4,6 +4,61 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-07-07 (Session 12) — TATB Engine Round 2: 8 MED gap techniques + data pipeline domain + 26-arch corpus
+
+### What was decided
+
+**Engine fixes (per_node_ttp_mapper.py):**
+
+1. **T1567 gate**: Changed from `has_cloud` to `has_cloud OR has_internet` — exfiltration over web service (Dropbox, GitHub, S3 etc.) is applicable to any internet-facing architecture, not just cloud-native ones. 6/15 labelled archs had T1567 expected but no cloud keywords → were all misses.
+
+2. **T1090 (Proxy)**: Added to `gateway`, `server`, `application`, `app`, `firewall` traversal nodes. Compromised service nodes are commonly repurposed as proxy pivots. Previously only at `network`, `router`, `load balancer`, `cdn`, `proxy`.
+
+3. **T1098 (Account Manipulation)**: Added to `server`/`application` traversal AND to `admin`, `panel`, `dashboard`, `portal`, `console` TARGET_TECHNIQUES. AdminPanel as a target was getting no T1098 because TARGET_TECHNIQUES had no "admin" key — only TRAVERSAL did.
+
+4. **T1212 (Exploit Credential Access)**: Added to `server`, `application`, `app`, `service` traversal. Previously only at `api`, `auth`, `identity`, `sso` nodes.
+
+5. **T1570 (Lateral Tool Transfer)**: Re-added to `server`, `application`, `app`, `service` traversal. Had been removed in session 11 to reduce FPs but was the #1 MED gap across 14/26 archs in the full corpus.
+
+6. **T1087 (Account Discovery)**: Added to `server`, `application`, `app`, `service`, `gateway` traversal. Post-compromise discovery runs at any compromised service node.
+
+7. **T1040 (Network Sniffing)**: Added to `server`, `application`, `app`, `gateway` traversal + data-pipeline cluster nodes.
+
+8. **T1557 (AiTM/MitM)**: Added to `server`, `application`, `app`, `service`, `gateway` traversal.
+
+**Data pipeline domain (per_node_ttp_mapper.py):**
+Added traversal keyword entries for: `kafka` (T1040/T1565/T1059/T1213), `spark` (T1059/T1213/T1565/T1552), `stream`, `ingestion`, `broker`, `worker`, `processor`, `analytics`, `bi`, `reporting`, `etl`, `warehouse`, `data lake`. Previously nodes like "Kafka Cluster" fell to generic T1059/T1083 fallback. 20_data_pipeline: 67 → 83 overall (+16pp), Threat-Rel 76 → 96 (Excellent).
+
+**self_validation.py fixes:**
+Extended keyword lists in T1040, T1090, T1098, T1567, T1110, T1133, T1498, T1499, T1552, T1059, T1190 validators to include cluster/kafka/spark/source/node/data-pipeline labels so domain-specific architectures don't get FAILED validation.
+
+Added `_arch_has_internet_nodes()` helper function that checks for internet-facing node keywords (internet, public, external, user, client, mobile, browser).
+
+**26-arch corpus labelling:**
+Expanded from 15 labelled to 26 labelled architectures using Nova Pro labeller + Haiku fallback. 23_bookservices manual label written (57 techniques). Corpus-wide regression now covers full test suite.
+
+### Results
+
+| Metric | Before (session 11) | After (session 12) |
+|---|---|---|
+| Corpus recall (15 archs) | 62% | 67% |
+| Corpus recall (26 archs) | — | 63% |
+| Corpus F1 (15 archs) | 63% | 65% |
+| Corpus avg overall | 76 | 80 |
+| Corpus min overall | 67 | 70 |
+| TTP avg | 50% | 59% |
+| val_pct avg | 89% | 91% |
+| Excellent archs | 3 | 3+ (08_dmz_architecture added) |
+| All archs ≥Solid | No | Yes (min=70) |
+| 20_data_pipeline overall | 67 | 83 (+16) |
+
+### Alternatives rejected
+
+- **Re-adding T1570 to all traversal nodes**: Instead restricted to server/application/app/service — not at network infra (router/firewall) where tool transfer doesn't apply.
+- **Adding T1090 at all traversal nodes**: Kept at service-level nodes; too noisy at pure data nodes (database, storage).
+- **Changing T1567 gate to fire always**: That would be a regression — non-internet-facing isolated archs shouldn't emit T1567 (no exfil channel). `has_cloud OR has_internet` is the correct gate.
+
+
 ## 2026-07-05 (Session 11 continued) — Applicability vs Exploitability dual-dimension model
 
 ### What was decided
@@ -2126,56 +2181,3 @@ The reports are already condensed outputs designed for human+AI consumption. Pas
 
 ---
 
-## 2026-07-07 (Session 12) — TATB Engine Round 2: 8 MED gap techniques + data pipeline domain + 26-arch corpus
-
-### What was decided
-
-**Engine fixes (per_node_ttp_mapper.py):**
-
-1. **T1567 gate**: Changed from `has_cloud` to `has_cloud OR has_internet` — exfiltration over web service (Dropbox, GitHub, S3 etc.) is applicable to any internet-facing architecture, not just cloud-native ones. 6/15 labelled archs had T1567 expected but no cloud keywords → were all misses.
-
-2. **T1090 (Proxy)**: Added to `gateway`, `server`, `application`, `app`, `firewall` traversal nodes. Compromised service nodes are commonly repurposed as proxy pivots. Previously only at `network`, `router`, `load balancer`, `cdn`, `proxy`.
-
-3. **T1098 (Account Manipulation)**: Added to `server`/`application` traversal AND to `admin`, `panel`, `dashboard`, `portal`, `console` TARGET_TECHNIQUES. AdminPanel as a target was getting no T1098 because TARGET_TECHNIQUES had no "admin" key — only TRAVERSAL did.
-
-4. **T1212 (Exploit Credential Access)**: Added to `server`, `application`, `app`, `service` traversal. Previously only at `api`, `auth`, `identity`, `sso` nodes.
-
-5. **T1570 (Lateral Tool Transfer)**: Re-added to `server`, `application`, `app`, `service` traversal. Had been removed in session 11 to reduce FPs but was the #1 MED gap across 14/26 archs in the full corpus.
-
-6. **T1087 (Account Discovery)**: Added to `server`, `application`, `app`, `service`, `gateway` traversal. Post-compromise discovery runs at any compromised service node.
-
-7. **T1040 (Network Sniffing)**: Added to `server`, `application`, `app`, `gateway` traversal + data-pipeline cluster nodes.
-
-8. **T1557 (AiTM/MitM)**: Added to `server`, `application`, `app`, `service`, `gateway` traversal.
-
-**Data pipeline domain (per_node_ttp_mapper.py):**
-Added traversal keyword entries for: `kafka` (T1040/T1565/T1059/T1213), `spark` (T1059/T1213/T1565/T1552), `stream`, `ingestion`, `broker`, `worker`, `processor`, `analytics`, `bi`, `reporting`, `etl`, `warehouse`, `data lake`. Previously nodes like "Kafka Cluster" fell to generic T1059/T1083 fallback. 20_data_pipeline: 67 → 83 overall (+16pp), Threat-Rel 76 → 96 (Excellent).
-
-**self_validation.py fixes:**
-Extended keyword lists in T1040, T1090, T1098, T1567, T1110, T1133, T1498, T1499, T1552, T1059, T1190 validators to include cluster/kafka/spark/source/node/data-pipeline labels so domain-specific architectures don't get FAILED validation.
-
-Added `_arch_has_internet_nodes()` helper function that checks for internet-facing node keywords (internet, public, external, user, client, mobile, browser).
-
-**26-arch corpus labelling:**
-Expanded from 15 labelled to 26 labelled architectures using Nova Pro labeller + Haiku fallback. 23_bookservices manual label written (57 techniques). Corpus-wide regression now covers full test suite.
-
-### Results
-
-| Metric | Before (session 11) | After (session 12) |
-|---|---|---|
-| Corpus recall (15 archs) | 62% | 67% |
-| Corpus recall (26 archs) | — | 63% |
-| Corpus F1 (15 archs) | 63% | 65% |
-| Corpus avg overall | 76 | 80 |
-| Corpus min overall | 67 | 70 |
-| TTP avg | 50% | 59% |
-| val_pct avg | 89% | 91% |
-| Excellent archs | 3 | 3+ (08_dmz_architecture added) |
-| All archs ≥Solid | No | Yes (min=70) |
-| 20_data_pipeline overall | 67 | 83 (+16) |
-
-### Alternatives rejected
-
-- **Re-adding T1570 to all traversal nodes**: Instead restricted to server/application/app/service — not at network infra (router/firewall) where tool transfer doesn't apply.
-- **Adding T1090 at all traversal nodes**: Kept at service-level nodes; too noisy at pure data nodes (database, storage).
-- **Changing T1567 gate to fire always**: That would be a regression — non-internet-facing isolated archs shouldn't emit T1567 (no exfil channel). `has_cloud OR has_internet` is the correct gate.

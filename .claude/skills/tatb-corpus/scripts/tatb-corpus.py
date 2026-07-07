@@ -631,9 +631,15 @@ def run_regression(report_dir: Path, label_dir: Path, use_color: bool):
             expected = set(json.load(open(lf)).get('techniques', []))
             detected = set(t for ap in gt.get('expected_attack_paths', [])
                            for t in ap.get('techniques', []))
-            tp       = len(expected & detected)
-            fp       = len(detected - expected)
-            fn       = len(expected - detected)
+            # Parent-ID rollup: T1021 in detected covers T1021.001 in expected.
+            # A subtechnique expected is satisfied if its parent (before the dot) was detected.
+            def parent(t): return t.split('.')[0]
+            detected_parents = {parent(t) for t in detected}
+            covered = {t for t in expected if t in detected or parent(t) in detected_parents}
+            uncovered = expected - covered
+            tp       = len(covered)
+            fp       = len(detected - expected)   # FP stays exact — no rollup for overcounting
+            fn       = len(uncovered)
             recall    = round(tp / len(expected) * 100) if expected else 100
             precision = round(tp / (tp + fp) * 100)     if (tp + fp) else 0
             f1_num    = 2 * recall * precision
@@ -642,7 +648,7 @@ def run_regression(report_dir: Path, label_dir: Path, use_color: bool):
                 'arch': arch_name,
                 'recall': recall, 'precision': precision, 'f1': f1,
                 'tp': tp, 'fp': fp, 'fn': fn,
-                'missed': sorted(expected - detected),
+                'missed': sorted(uncovered),
                 'extra':  sorted(detected - expected),
             })
         except Exception as e:
