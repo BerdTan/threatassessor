@@ -60,18 +60,28 @@ TRAVERSAL_TECHNIQUES = {
     # T1212 kept at api (credential exploitation — valid for API auth endpoints)
     "web":         ["T1059", "T1083", "T1071", "T1078"],
     "api":         ["T1059", "T1212", "T1083", "T1071", "T1078"],
-    "gateway":     ["T1190", "T1071", "T1078", "T1562"],
+    # T1090 (Proxy): attacker uses gateway as proxy pivot after compromise
+    # T1087/T1040/T1557 added: discovery + sniffing + AiTM via compromised gateway
+    "gateway":     ["T1190", "T1071", "T1078", "T1562", "T1090", "T1087", "T1040", "T1557"],
 
     # Application Layer
-    # T1570 (lateral tool transfer) tightened — only at multi-hop server pivots
-    # T1018/T1027 kept at server (valid at system-level application servers)
-    # T1098/T1136 removed entirely — 100% FP, never expected at generic server nodes
+    # T1570 (lateral tool transfer) re-added: valid at any multi-hop server pivot
+    # T1087 (account discovery) added: post-compromise enumeration on server/app nodes
+    # T1040 (network sniffing) added: passive sniffing after server/app compromise
+    # T1557 (AiTM) added: compromised server can intercept traffic
+    # T1098 (Account Manipulation) added: post-exploitation persistence
+    # T1212 (Exploit Credential Access) added: credential exploitation at service level
+    # T1090 (Proxy) added: compromised server/app commonly used as proxy pivot
     "server":      ["T1059", "T1083", "T1046", "T1021", "T1210", "T1071",
-                    "T1078", "T1552", "T1557", "T1018", "T1027", "T1562"],
+                    "T1078", "T1552", "T1557", "T1018", "T1027", "T1562",
+                    "T1098", "T1212", "T1090", "T1087", "T1040", "T1570"],
     "application": ["T1059", "T1083", "T1046", "T1210", "T1071",
-                    "T1078", "T1552", "T1027", "T1562"],
-    "service":     ["T1059", "T1046", "T1210", "T1071", "T1078", "T1562"],
-    "app":         ["T1059", "T1083", "T1210", "T1071", "T1078"],
+                    "T1078", "T1552", "T1027", "T1562", "T1098", "T1212",
+                    "T1090", "T1087", "T1040", "T1570"],
+    "service":     ["T1059", "T1046", "T1210", "T1071", "T1078", "T1562",
+                    "T1212", "T1087", "T1040", "T1557"],
+    "app":         ["T1059", "T1083", "T1210", "T1071", "T1078", "T1212",
+                    "T1087", "T1040", "T1557"],
 
     # Data Layer
     "cache":       ["T1213", "T1552"],
@@ -83,14 +93,14 @@ TRAVERSAL_TECHNIQUES = {
     "identity":    ["T1110", "T1078", "T1021", "T1098", "T1136", "T1212"],
     "sso":         ["T1556", "T1078", "T1098", "T1212"],
 
-    # Network Layer — T1090 (Proxy) added to load balancer/cdn (MED gap fix)
+    # Network Layer — T1090 (Proxy) added throughout; firewall gets T1090 (evasion via proxy)
     # T1570 removed from network (lateral tool transfer not applicable at network infra)
     "network":     ["T1090", "T1021", "T1040", "T1046", "T1078", "T1018"],
     "router":      ["T1090", "T1557", "T1040", "T1046", "T1078", "T1018", "T1562"],
     "load balancer": ["T1090", "T1562"],
     "cdn":         ["T1090", "T1071", "T1562"],
     "vpn":         ["T1133", "T1021", "T1040", "T1078", "T1562"],
-    "firewall":    ["T1562", "T1040"],
+    "firewall":    ["T1562", "T1040", "T1090"],
     "proxy":       ["T1090", "T1071", "T1562"],
 
     # Admin/Management — T1087 (Account Discovery) kept here
@@ -126,6 +136,23 @@ TRAVERSAL_TECHNIQUES = {
     "cd":          ["T1195", "T1059"],
     "jenkins":     ["T1195", "T1059"],
 
+    # Data Pipeline / Streaming / Analytics
+    # These nodes are data-in-motion (Kafka/Spark) or analytics endpoints (BI/ML)
+    "kafka":       ["T1040", "T1565", "T1059", "T1213"],  # sniff stream + inject + query
+    "spark":       ["T1059", "T1213", "T1565", "T1552"],  # code execution + data access
+    "stream":      ["T1040", "T1565", "T1213"],
+    "ingestion":   ["T1190", "T1565", "T1059"],           # entry to pipeline — exploit + inject
+    "broker":      ["T1040", "T1565", "T1071"],           # message broker C2 channel
+    "worker":      ["T1059", "T1210", "T1021"],
+    "processor":   ["T1059", "T1210", "T1565"],
+    "analytics":   ["T1213", "T1041", "T1565"],
+    "bi":          ["T1213", "T1041", "T1565"],           # BI dashboard — data exfil target
+    "reporting":   ["T1213", "T1041"],
+    "etl":         ["T1565", "T1059", "T1213"],           # data manipulation in transform
+    "warehouse":   ["T1213", "T1530", "T1041", "T1565"],  # data warehouse — collection + exfil
+    "data lake":   ["T1213", "T1530", "T1041", "T1565"],
+    "datalake":    ["T1213", "T1530", "T1041", "T1565"],
+
     # Cloud-specific
     "lambda":      ["T1648", "T1059", "T1530"],
     "function":    ["T1648", "T1059", "T1530"],
@@ -146,7 +173,6 @@ TRAVERSAL_TECHNIQUES = {
 # Target Techniques (Collection - TA0009, Exfiltration - TA0010, Impact - TA0040)
 # NOTE: All matches are applied (no break) — a node may match multiple keywords.
 TARGET_TECHNIQUES = {
-    # T1567 (Exfil to Cloud Storage) removed from generic targets — only on explicit cloud targets
     "database": ["T1213", "T1005", "T1041", "T1530", "T1565"],
     "db":       ["T1213", "T1005", "T1041", "T1565"],
     "secret":   ["T1552", "T1555", "T1041"],
@@ -154,7 +180,7 @@ TARGET_TECHNIQUES = {
     "credentials": ["T1552", "T1555", "T1041"],
     "pii":      ["T1213", "T1005", "T1041", "T1530", "T1565"],
     "payment":  ["T1213", "T1005", "T1041", "T1530", "T1565"],
-    "model":    ["T1213", "T1041", "T1530", "T1567"],  # AI model theft → cloud exfil valid
+    "model":    ["T1213", "T1041", "T1530", "T1567"],
     "training_data": ["T1213", "T1530", "T1041", "T1565"],
     "file":     ["T1005", "T1083", "T1041", "T1565"],
     "share":    ["T1039", "T1041", "T1565"],
@@ -167,11 +193,16 @@ TARGET_TECHNIQUES = {
     "data":     ["T1213", "T1530", "T1041", "T1565"],
     "lake":     ["T1213", "T1530", "T1041"],
     "warehouse": ["T1213", "T1530", "T1041"],
+    # Admin panel as target: account takeover + privilege escalation persist
+    "admin":    ["T1098", "T1078", "T1213", "T1041"],
+    "panel":    ["T1098", "T1078", "T1213"],
+    "dashboard": ["T1213", "T1041", "T1098"],
+    "portal":   ["T1098", "T1078", "T1213"],
+    "console":  ["T1098", "T1078", "T1548"],
     "rds":      ["T1213", "T1530", "T1041"],
     "cosmos":   ["T1213", "T1530", "T1041"],
     "dynamo":   ["T1213", "T1530", "T1041"],
     "bigquery": ["T1213", "T1530", "T1041"],
-    "blob":     ["T1530", "T1041"],
     "gcs":      ["T1530", "T1041"],
     "cloud storage": ["T1530", "T1041"],
     "object store":  ["T1530", "T1041"],
@@ -200,6 +231,7 @@ def map_node_to_techniques(
     rapids: Optional[Dict] = None,
     has_backup: bool = False,
     has_cloud: bool = False,
+    has_internet: bool = False,
 ) -> List[str]:
     """
     Map a single node to MITRE techniques based on its role in the attack path.
@@ -290,8 +322,9 @@ def map_node_to_techniques(
             techniques.extend(["T1213", "T1530", "T1041"])
             logger.warning(f"Target {node_label}: No specific match, using generic fallback")
 
-        # T1567 (Exfiltration to Cloud Storage) — only applicable when arch has cloud nodes
-        if has_cloud and "T1567" not in techniques:
+        # T1567 (Exfil Over Web Service) — applicable when arch has internet access or cloud nodes
+        # Attackers use Dropbox/GitHub/S3 as exfil channels regardless of whether the arch uses cloud
+        if (has_cloud or has_internet) and "T1567" not in techniques:
             techniques.append("T1567")
 
         # ADD IMPACT TECHNIQUES
@@ -424,6 +457,15 @@ def _arch_has_backup_nodes(nodes: Dict[str, Dict]) -> bool:
     )
 
 
+def _arch_has_internet_nodes(nodes: Dict[str, Dict]) -> bool:
+    """Return True if any node label suggests an internet-facing entry point."""
+    kw = ["internet", "public", "external", "user", "client", "mobile", "browser"]
+    return any(
+        any(k in n.get("label", "").lower() for k in kw)
+        for n in nodes.values()
+    )
+
+
 def map_path_to_per_node_techniques(
     path: List[str],
     nodes: Dict[str, Dict],
@@ -450,8 +492,9 @@ def map_path_to_per_node_techniques(
     if not path or len(path) < 2:
         return per_node_techniques
 
-    has_backup = _arch_has_backup_nodes(nodes)
-    has_cloud  = _arch_has_cloud_nodes(nodes)
+    has_backup  = _arch_has_backup_nodes(nodes)
+    has_cloud   = _arch_has_cloud_nodes(nodes)
+    has_internet = _arch_has_internet_nodes(nodes)
 
     for idx, node_id in enumerate(path):
         node_label = nodes[node_id].get("label", node_id)
@@ -473,6 +516,7 @@ def map_path_to_per_node_techniques(
             rapids=rapids,
             has_backup=has_backup,
             has_cloud=has_cloud,
+            has_internet=has_internet,
         )
 
         per_node_techniques[node_id] = techniques

@@ -55,13 +55,14 @@ def validate_technique_for_path(
         # Valid if internet/public/partner entry OR if the path contains public-facing components
         has_internet_entry = any(kw in entry_label for kw in [
             "internet", "public", "external", "mobile", "user", "partner", "vendor",
-            "client", "ddos", "cdn", "waf", "vpn",
+            "client", "ddos", "cdn", "waf", "vpn", "source", "data", "sensor",
         ])
         has_internet_in_path = any(kw in path_str for kw in [
-            "internet", "public", "external", "ddos", "cdn", "partner",
+            "internet", "public", "external", "ddos", "cdn", "partner", "source",
         ])
         has_web_component = any(kw in path_str for kw in [
             "web", "api", "server", "gateway", "load balancer", "service", "proxy", "app",
+            "cluster", "node", "processor", "engine",
         ])
 
         if (has_internet_entry or has_internet_in_path) and has_web_component:
@@ -107,11 +108,11 @@ def validate_technique_for_path(
 
     # T1059 - Command and Scripting Interpreter
     elif technique_id == "T1059":
-        # Execution environments: classic names AND API/service/app patterns common in
-        # modern architectures (APIGateway, AuthService, MobileApp, AccessControlAPI, etc.)
+        # Execution environments: classic + modern + data-pipeline nodes
         has_exec_component = any(kw in path_str for kw in [
             "server", "application", "exec", "lambda", "function", "worker",
             "api", "service", "app", "microservice", "backend", "runtime",
+            "cluster", "node", "processor", "engine", "kafka", "spark", "source",
         ])
 
         if has_exec_component:
@@ -130,10 +131,13 @@ def validate_technique_for_path(
 
     # T1090 - Proxy
     elif technique_id == "T1090":
-        has_intermediary = any(kw in path_str for kw in ["proxy", "gateway", "load balancer", "cdn", "router"])
-
+        # Proxy technique valid at network intermediaries AND at any compromised server/app
+        has_intermediary = any(kw in path_str for kw in [
+            "proxy", "gateway", "load balancer", "cdn", "router", "firewall",
+            "server", "application", "app", "service",
+        ])
         if has_intermediary:
-            validations.append((True, 0.08, "Intermediary component detected"))
+            validations.append((True, 0.08, "Intermediary/service component detected — proxy pivot applicable"))
         else:
             validations.append((False, -0.05, "No proxy/intermediary component"))
 
@@ -150,14 +154,15 @@ def validate_technique_for_path(
 
     # T1567 - Exfiltration Over Web Service
     elif technique_id == "T1567":
-        # Valid if there's an outbound web component (API, gateway, external service)
+        # Valid when there is any internet/external connectivity; attackers use Dropbox/GitHub etc.
         has_web_out = any(kw in path_str for kw in [
             "api", "gateway", "internet", "external", "web", "cdn", "upload",
+            "user", "client", "mobile", "public", "server", "application", "app",
         ])
         if has_web_out:
-            validations.append((True, 0.05, "Outbound web component present for exfiltration path"))
+            validations.append((True, 0.05, "Outbound connectivity present — exfil to web service applicable"))
         else:
-            validations.append((False, 0.0, "No clear outbound web channel detected"))
+            validations.append((False, 0.0, "No clear outbound channel detected"))
 
     # T1486 - Data Encrypted for Impact (ransomware)
     elif technique_id == "T1486":
@@ -240,12 +245,14 @@ def validate_technique_for_path(
 
     # T1040 - Network Sniffing
     elif technique_id == "T1040":
+        # Valid at network infra AND any compromised server/app/cluster that can sniff local traffic
         has_network = any(kw in path_str for kw in [
             "network", "router", "switch", "vpn", "firewall", "gateway", "load balancer",
-            "proxy", "internet",
+            "proxy", "internet", "server", "application", "app", "service", "node",
+            "cluster", "kafka", "spark", "stream", "pipeline", "ingestion", "worker",
         ])
         if has_network:
-            validations.append((True, 0.06, "Network infrastructure present — sniffing applicable"))
+            validations.append((True, 0.06, "Network/service component present — sniffing applicable"))
         else:
             validations.append((False, 0.0, "No network infrastructure for sniffing"))
 
@@ -291,7 +298,7 @@ def validate_technique_for_path(
         has_auth_surface = any(kw in path_str for kw in [
             "auth", "login", "user", "identity", "sso", "mfa", "password", "account",
             "internet", "external", "api", "gateway", "vpn", "portal", "remote",
-            "partner", "web", "service",
+            "partner", "web", "service", "source", "cluster", "node", "data",
         ])
         if has_auth_surface:
             validations.append((True, 0.07, "Authentication/access surface present — brute force applicable"))
@@ -303,6 +310,7 @@ def validate_technique_for_path(
         has_external = any(kw in path_str for kw in [
             "internet", "external", "vpn", "remote", "public", "user", "client",
             "mobile", "api", "gateway", "partner", "vendor", "ddos", "cdn",
+            "source", "sensor", "device", "iot", "data",
         ])
         if has_external:
             validations.append((True, 0.07, "External entry point present — remote services applicable"))
@@ -324,6 +332,7 @@ def validate_technique_for_path(
         has_network_surface = any(kw in path_str for kw in [
             "internet", "external", "public", "gateway", "load balancer", "cdn",
             "api", "web", "network", "ddos", "proxy", "reverse", "partner",
+            "cluster", "source", "node", "service", "server",
         ])
         if has_network_surface:
             validations.append((True, 0.06, "Public network surface present — network DoS applicable"))
@@ -335,6 +344,7 @@ def validate_technique_for_path(
         has_endpoint = any(kw in path_str for kw in [
             "server", "application", "service", "api", "web", "backend",
             "gateway", "internet", "external", "app", "portal", "proxy",
+            "cluster", "node", "kafka", "spark", "warehouse", "lake", "bi",
         ])
         if has_endpoint:
             validations.append((True, 0.06, "Application endpoint present — endpoint DoS applicable"))
@@ -446,6 +456,7 @@ def validate_technique_for_path(
         has_cred_surface = any(kw in path_str for kw in [
             "server", "application", "service", "api", "backend", "config",
             "database", "cache", "storage", "secret", "key", "credential",
+            "cluster", "kafka", "spark", "node", "pipeline", "warehouse", "lake",
         ])
         if has_cred_surface:
             validations.append((True, 0.07, "Application/data components present — credential exposure applicable"))
@@ -476,10 +487,12 @@ def validate_technique_for_path(
     elif technique_id == "T1098":
         has_identity = any(kw in path_str for kw in [
             "auth", "identity", "user", "account", "sso", "directory", "admin",
-            "management", "iam", "ldap",
+            "management", "iam", "ldap", "server", "application", "panel", "console",
+            "portal", "cloud", "function", "lambda",
+            "bi", "warehouse", "dashboard", "analytics", "reporting",
         ])
         if has_identity:
-            validations.append((True, 0.07, "Identity/account management present — manipulation applicable"))
+            validations.append((True, 0.07, "Identity/service component present — account manipulation applicable"))
         else:
             validations.append((False, 0.0, "No identity components for account manipulation"))
 
