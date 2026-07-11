@@ -164,6 +164,18 @@ def validate_technique_for_path(
         else:
             validations.append((False, 0.0, "No clear outbound channel detected"))
 
+    # T1048 - Exfiltration Over Alternative Protocol (DNS/ICMP/custom channel)
+    elif technique_id == "T1048":
+        has_outbound = any(kw in path_str for kw in [
+            "server", "application", "app", "service", "gateway", "worker", "broker",
+            "internet", "external", "public", "api", "web", "user", "client",
+            "kafka", "spark", "stream", "ingestion",
+        ])
+        if has_outbound:
+            validations.append((True, 0.05, "Internet-facing node present — alt-protocol exfil applicable"))
+        else:
+            validations.append((False, 0.0, "No internet-facing node found for alt-protocol exfil"))
+
     # T1486 - Data Encrypted for Impact (ransomware)
     elif technique_id == "T1486":
         DATA_KW2 = ["db", "database", "storage", "file", "backup", "cache", "data",

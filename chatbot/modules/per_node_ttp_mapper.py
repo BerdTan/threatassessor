@@ -307,6 +307,13 @@ def map_node_to_techniques(
             techniques.extend(["T1059", "T1083"])  # Execution + Discovery (generic)
             logger.warning(f"Traversal {node_label}: No specific match, using generic fallback")
 
+        # T1048 (Exfil over Alt Protocol) — DNS/ICMP/custom channel exfil; applicable at any
+        # internet-facing traversal node where an attacker has code execution
+        if has_internet and any(kw in label_lower for kw in [
+            "server", "application", "app", "service", "gateway", "worker", "broker",
+        ]) and "T1048" not in techniques:
+            techniques.append("T1048")
+
     # ========================================================================
     # TARGET NODE
     # ========================================================================
