@@ -831,8 +831,10 @@ def apply_confidence_adjustments(
 
         if control in adjustments:
             adjustment = adjustments[control]
-            old_conf = rec.get("confidence", {})
-            old_score = old_conf.get("score", 0.0)
+            if "confidence" not in rec:
+                rec["confidence"] = {"score": 0.85, "level": "HIGH"}
+            old_conf = rec["confidence"]
+            old_score = old_conf.get("score", 0.85)
 
             new_score = max(0.0, min(1.0, old_score + adjustment))  # Clamp to [0, 1]
 

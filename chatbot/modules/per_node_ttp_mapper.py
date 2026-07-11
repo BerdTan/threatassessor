@@ -473,11 +473,51 @@ def _arch_has_internet_nodes(nodes: Dict[str, Dict]) -> bool:
     )
 
 
+def _arch_has_perimeter_nodes(nodes: Dict[str, Dict]) -> bool:
+    """Return True if the arch has any perimeter/filtering node (firewall, WAF, gateway, IDS)."""
+    kw = ["firewall", "waf", "gateway", "ids", "ips", "proxy", "router", "dmz",
+          "load balancer", "cdn", "perimeter", "edge", "ngfw"]
+    return any(
+        any(k in n.get("label", "").lower() for k in kw)
+        for n in nodes.values()
+    )
+
+
+def _arch_has_auth_nodes(nodes: Dict[str, Dict]) -> bool:
+    """Return True if the arch has a dedicated auth/identity node."""
+    kw = ["auth", "mfa", "sso", "identity", "iam", "ldap", "ad ", "active directory",
+          "keycloak", "okta", "cognito", "oauth", "idp", "login", "saml"]
+    return any(
+        any(k in n.get("label", "").lower() for k in kw)
+        for n in nodes.values()
+    )
+
+
+def _arch_has_direct_workstation_to_db(nodes: Dict[str, Dict], edges: List[Dict]) -> bool:
+    """Return True if any workstation/client node connects to a database with no auth node between them."""
+    workstation_ids = {
+        nid for nid, n in nodes.items()
+        if any(kw in n.get("label", "").lower() for kw in ["workstation", "laptop", "desktop", "pc", "endpoint", "worker"])
+    }
+    db_ids = {
+        nid for nid, n in nodes.items()
+        if any(kw in n.get("label", "").lower() for kw in ["database", "db", "sql", "postgres", "mysql", "mongo", "redis", "state"])
+    }
+    if not workstation_ids or not db_ids:
+        return False
+    # Build adjacency — any path from workstation to db within 2 hops
+    direct_targets = {e.get("to") for e in edges if e.get("from") in workstation_ids}
+    one_hop_targets = {e.get("to") for e in edges if e.get("from") in direct_targets}
+    reachable = direct_targets | one_hop_targets
+    return bool(reachable & db_ids)
+
+
 def map_path_to_per_node_techniques(
     path: List[str],
     nodes: Dict[str, Dict],
     controls_present: List[str],
-    rapids: Optional[Dict] = None
+    rapids: Optional[Dict] = None,
+    edges: Optional[List[Dict]] = None,
 ) -> Dict[str, List[str]]:
     """
     Map each node in attack path to specific MITRE techniques.
@@ -499,9 +539,17 @@ def map_path_to_per_node_techniques(
     if not path or len(path) < 2:
         return per_node_techniques
 
-    has_backup  = _arch_has_backup_nodes(nodes)
-    has_cloud   = _arch_has_cloud_nodes(nodes)
+    has_backup   = _arch_has_backup_nodes(nodes)
+    has_cloud    = _arch_has_cloud_nodes(nodes)
     has_internet = _arch_has_internet_nodes(nodes)
+
+    # Absence-of-security detection — arch-level anti-pattern signals
+    # These boost techniques the engine would miss by only looking at present nodes.
+    has_perimeter    = _arch_has_perimeter_nodes(nodes)
+    has_auth         = _arch_has_auth_nodes(nodes)
+    has_ws_to_db     = _arch_has_direct_workstation_to_db(nodes, edges or [])
+    no_perimeter     = has_internet and not has_perimeter
+    no_auth          = has_internet and not has_auth
 
     for idx, node_id in enumerate(path):
         node_label = nodes[node_id].get("label", node_id)
@@ -525,6 +573,33 @@ def map_path_to_per_node_techniques(
             has_cloud=has_cloud,
             has_internet=has_internet,
         )
+
+        # ── Absence-of-security boosts ────────────────────────────────────────
+        # Fire when the arch is missing expected security nodes — these are the
+        # techniques critics consistently catch that the base engine misses.
+
+        if no_perimeter and position in ("entry", "traversal"):
+            # No firewall/WAF/gateway → recon is unrestricted at every hop
+            for t in ["T1595", "T1590"]:
+                if t not in techniques:
+                    techniques.append(t)
+                    logger.info(f"  [no-perimeter] {node_label}: added {t}")
+
+        if no_auth and position in ("entry", "traversal"):
+            # No auth node → credential abuse is trivially easy
+            for t in ["T1078", "T1110"]:
+                if t not in techniques:
+                    techniques.append(t)
+                    logger.info(f"  [no-auth] {node_label}: added {t}")
+
+        if has_ws_to_db and any(kw in label_lower for kw in [
+            "workstation", "laptop", "desktop", "pc", "endpoint", "worker",
+        ]):
+            # Workstation with direct DB reach → lateral movement is the first step
+            for t in ["T1021", "T1570"]:
+                if t not in techniques:
+                    techniques.append(t)
+                    logger.info(f"  [ws-to-db] {node_label}: added {t}")
 
         per_node_techniques[node_id] = techniques
 

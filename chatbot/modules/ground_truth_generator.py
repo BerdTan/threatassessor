@@ -1252,7 +1252,8 @@ def generate_ground_truth(
             ap["path"],
             parsed["nodes"],
             controls_present,
-            rapids_assessment  # Pass RAPIDS for context-aware T1190
+            rapids_assessment,  # Pass RAPIDS for context-aware T1190
+            edges=parsed.get("edges", []),  # Absence-of-security detection
         )
 
         # Extract context sidecar before storing per_node_techniques
