@@ -466,6 +466,25 @@ class ThreatAssessorHarness:
         ctx["_run_ts"] = _dt.datetime.utcnow().isoformat() + "Z"
         ctx["_run_id"] = f"{ctx.get('architecture_name', 'run')}_{ctx['_run_ts'][:19].replace(':', '-')}"
 
+        # Instantiate EventBroker (no-op if disabled or package absent)
+        try:
+            from chatbot.harness.event_broker import EventBrokerCritic, HarnessEvent as _HE
+            _broker = EventBrokerCritic()
+            if _broker._enabled:
+                ctx["_event_broker"] = _broker
+                _broker.emit(_HE(
+                    event_type="run_start",
+                    source="harness",
+                    run_id=ctx["_run_id"],
+                    ts=ctx["_run_ts"],
+                    payload={
+                        "scenario": self.scenario,
+                        "architecture": ctx.get("architecture_name", ""),
+                    },
+                ))
+        except Exception:
+            pass
+
         import time as _time
 
         stages = list(self.stages)
@@ -548,6 +567,27 @@ class ThreatAssessorHarness:
                 f"model_fallback_warning: {len(ctx.model_fallbacks)} fallback(s) used "
                 f"for agents: {agents_with_fallbacks}"
             )
+
+        # Emit run_complete and flush broker (LangfuseSink sends buffered spans)
+        _broker = ctx.get("_event_broker")
+        if _broker is not None:
+            try:
+                from chatbot.harness.event_broker import HarnessEvent as _HE2
+                import datetime as _dt2
+                _broker.emit(_HE2(
+                    event_type="run_complete",
+                    source="harness",
+                    run_id=ctx.get("_run_id", ""),
+                    ts=_dt2.datetime.utcnow().isoformat() + "Z",
+                    payload={
+                        "confidence": ctx.get("confidence"),
+                        "errors": ctx.errors,
+                        "pipeline_wall_s": _pipeline_wall,
+                    },
+                ))
+                _broker.flush()
+            except Exception:
+                pass
 
         return ctx
 

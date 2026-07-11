@@ -7,10 +7,29 @@ avoid circular imports at module load time.
 
 from __future__ import annotations
 
+import datetime as _dt
 from pathlib import Path
 from typing import Optional
 
 from chatbot.harness.controller import PipelineContext, PipelineStage
+
+
+def _emit(ctx: PipelineContext, event_type: str, source: str, payload: dict) -> None:
+    """Non-raising helper — if broker absent or fails, pipeline continues unchanged."""
+    broker = ctx.get("_event_broker")
+    if broker is None:
+        return
+    try:
+        from chatbot.harness.event_broker import HarnessEvent
+        broker.emit(HarnessEvent(
+            event_type=event_type,
+            source=source,
+            run_id=ctx.get("_run_id", ""),
+            ts=_dt.datetime.utcnow().isoformat() + "Z",
+            payload=payload,
+        ))
+    except Exception:
+        pass
 
 
 class AnalysisStage(PipelineStage):
@@ -52,6 +71,10 @@ class AnalysisStage(PipelineStage):
         if cb := kw.get("progress_callback"):
             cb("analysis", 55, "Threat analysis complete")
 
+        _emit(ctx, "stage_complete", "analysis", {
+            "confidence": ctx.get("confidence", 0),
+            "patterns_applied": len(ctx.get("patterns_applied", [])),
+        })
         return ctx
 
 
@@ -84,6 +107,9 @@ class ReportStage(PipelineStage):
         if cb := kw.get("progress_callback"):
             cb("report", 75, "Reports generated")
 
+        _emit(ctx, "stage_complete", "report", {
+            "report_paths_count": len(ctx.get("report_paths", {})),
+        })
         return ctx
 
 
@@ -130,6 +156,17 @@ class CriticStage(PipelineStage):
         if cb := kw.get("progress_callback"):
             cb("critics", 88, "Expert review complete")
 
+        moe = ctx.get("moe_result")
+        if moe:
+            perf = getattr(moe, "pipeline_perf", None) or {}
+            _emit(ctx, "critic_complete", "critics", {
+                "critics_run": [k for k in ["architect", "tester", "red_team", "purple_team", "blackhat"]
+                                if getattr(moe, f"{k}_result", None) is not None],
+                "final_confidence": getattr(moe, "final_confidence", 0),
+                "moe_total_tokens": perf.get("total_tokens", 0),
+                "moe_total_cost": perf.get("total_cost_usd", 0.0),
+                "model": perf.get("model", ""),
+            })
         return ctx
 
 
@@ -225,6 +262,12 @@ class ScrumMasterStage(PipelineStage):
         if cb := kw.get("progress_callback"):
             cb("scrum_master", 96, "ScrumMaster synthesis complete")
 
+        _emit(ctx, "stage_complete", "scrum_master", {
+            "iterations_run": sm_result.iterations_run,
+            "redesign_signal": sm_result.redesign_signal,
+            "final_confidence": sm_result.final_confidence,
+            "action_plan_count": len(sm_result.action_plan or []),
+        })
         return ctx
 
     def _merge_sm_into_tiers(self, sm_result, report_dir: str) -> None:
@@ -433,6 +476,17 @@ class QualityStage(PipelineStage):
             import logging
             logging.getLogger(__name__).warning(f"QualityStage failed (non-fatal): {exc}")
 
+        gov = ctx.get("governance_signals", {})
+        _emit(ctx, "governance_complete", "quality", {
+            "architecture": ctx.get("architecture_name", ""),
+            "overall_risk_level": gov.get("overall_risk_level", "LOW"),
+            "D1": gov.get("exploitation", {}).get("severity", "LOW"),
+            "D2": gov.get("manipulation_resistance", {}).get("severity", "LOW"),
+            "D3": gov.get("data_leakage", {}).get("severity", "LOW"),
+            "D4": gov.get("identity_integrity", {}).get("severity", "LOW"),
+            "D5": gov.get("data_sovereignty", {}).get("severity", "LOW"),
+            "blocked_agents": gov.get("blocked_agents", []),
+        })
         return ctx
 
 
@@ -549,6 +603,14 @@ class AIVSSStage(PipelineStage):
             import logging as _log
             _log.getLogger(__name__).warning(f"AIVSSStage failed (non-fatal): {exc}")
 
+        aivss_score = ctx.get("_aivss_score")
+        if aivss_score:
+            _emit(ctx, "aivss_complete", "aivss", {
+                "inbound":  aivss_score.inbound.composite,
+                "internal": aivss_score.internal.composite,
+                "outbound": aivss_score.outbound.composite,
+                "overall_severity": aivss_score.overall_severity,
+            })
         return ctx
 
 
@@ -586,40 +648,59 @@ class OutboundAIVSSGate(PipelineStage):
                 "elevated outbound risk signals detected."
             )
 
-        # Always emit SIEM event
-        try:
-            from chatbot.modules.harness_siem import SiemEmitter, SiemEvent
-            from chatbot.config.settings import get_settings
-            gov = ctx.get("governance_signals", {})
-            per_threat = aivss.per_threat
-            top = max(per_threat, key=lambda t: t.composite) if per_threat else None
-            event = SiemEvent(
-                event_type="threat_assessment_complete",
-                architecture=ctx.get("architecture_name", ctx.get("architecture_path", "")),
-                aivss_inbound=aivss.inbound.composite,
-                aivss_internal=aivss.internal.composite,
-                aivss_outbound=aivss.outbound.composite,
-                overall_severity=aivss.overall_severity,
-                top_threat={
-                    "technique_id": top.technique_id if top else "",
-                    "technique_name": top.technique_name if top else "",
-                    "aivss_score": round(top.composite, 2) if top else 0.0,
-                    "severity": top.severity if top else "LOW",
-                } if top else {},
-                governance_dims={
-                    "D1": gov.get("exploitation", {}).get("severity", "LOW"),
-                    "D2": gov.get("manipulation_resistance", {}).get("severity", "LOW"),
-                    "D3": gov.get("data_leakage", {}).get("severity", "LOW"),
-                    "D4": gov.get("identity_integrity", {}).get("severity", "LOW"),
-                    "D5": gov.get("data_sovereignty", {}).get("severity", "LOW"),
-                },
-                run_id=ctx.get("_run_id", ""),
-                ts=ctx.get("_run_ts", ""),
-            )
-            settings = get_settings()
-            emitter = SiemEmitter(webhook_url=settings.governance.siem_webhook_url)
-            emitter.emit(event)
-        except Exception as exc:
-            _logger.warning(f"OutboundAIVSSGate SIEM emit failed (non-fatal): {exc}")
+        # Build SIEM payload (shared between broker path and direct fallback)
+        gov = ctx.get("governance_signals", {})
+        per_threat = aivss.per_threat
+        top = max(per_threat, key=lambda t: t.composite) if per_threat else None
+        arch_name = ctx.get("architecture_name", ctx.get("architecture_path", ""))
+        siem_payload = {
+            "architecture": arch_name,
+            "aivss_inbound":  aivss.inbound.composite,
+            "aivss_internal": aivss.internal.composite,
+            "aivss_outbound": aivss.outbound.composite,
+            "overall_severity": aivss.overall_severity,
+            "top_threat": {
+                "technique_id":   top.technique_id if top else "",
+                "technique_name": top.technique_name if top else "",
+                "aivss_score":    round(top.composite, 2) if top else 0.0,
+                "severity":       top.severity if top else "LOW",
+            } if top else {},
+            "governance_dims": {
+                "D1": gov.get("exploitation", {}).get("severity", "LOW"),
+                "D2": gov.get("manipulation_resistance", {}).get("severity", "LOW"),
+                "D3": gov.get("data_leakage", {}).get("severity", "LOW"),
+                "D4": gov.get("identity_integrity", {}).get("severity", "LOW"),
+                "D5": gov.get("data_sovereignty", {}).get("severity", "LOW"),
+            },
+        }
+
+        # Route through EventBroker when available; fall back to direct SiemEmitter
+        if ctx.get("_event_broker"):
+            _emit(ctx, "aivss_gate", "outbound_aivss", {
+                **siem_payload,
+                "outbound_score": outbound_score,
+                "blocked": ctx.get("_outbound_blocked", False),
+            })
+        else:
+            # Direct emit fallback (no EventBroker configured)
+            try:
+                from chatbot.modules.harness_siem import SiemEmitter, SiemEvent
+                from chatbot.config.settings import get_settings
+                event = SiemEvent(
+                    event_type="threat_assessment_complete",
+                    architecture=arch_name,
+                    aivss_inbound=siem_payload["aivss_inbound"],
+                    aivss_internal=siem_payload["aivss_internal"],
+                    aivss_outbound=siem_payload["aivss_outbound"],
+                    overall_severity=siem_payload["overall_severity"],
+                    top_threat=siem_payload["top_threat"],
+                    governance_dims=siem_payload["governance_dims"],
+                    run_id=ctx.get("_run_id", ""),
+                    ts=ctx.get("_run_ts", ""),
+                )
+                emitter = SiemEmitter(webhook_url=get_settings().governance.siem_webhook_url)
+                emitter.emit(event)
+            except Exception as exc:
+                _logger.warning(f"OutboundAIVSSGate SIEM emit failed (non-fatal): {exc}")
 
         return ctx

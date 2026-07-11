@@ -541,6 +541,11 @@ class AgentSwarmConfig(BaseModel):
         default_factory=AgentModelConfig,
         description="Model for TA-Wiz workspace chat. Defaults to primary provider default.",
     )
+    event_detector:   AgentModelConfig = Field(
+        default_factory=AgentModelConfig,
+        description="Model for EventDetector Detection Opportunity Generator (Phase B). "
+                    "Defaults to primary provider default when empty.",
+    )
 
 
 class ProviderConfig(BaseModel):
@@ -640,6 +645,25 @@ class GovernanceSettings(BaseModel):
         default=None,
         description="Optional SIEM webhook URL (Splunk/ELK). Events always written to logs/siem.jsonl.",
     )
+    langfuse_host: Optional[str] = Field(
+        default=None,
+        description="Langfuse self-hosted URL (e.g. http://localhost:3000). "
+                    "Credentials stay in .env (LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY). "
+                    "LangfuseSink is a no-op when None.",
+    )
+
+
+class EventBrokerSettings(BaseModel):
+    enabled: bool = Field(
+        default=False,
+        description="Enable EventBroker pub/sub. When False all sinks are no-ops. "
+                    "Configure sinks in policies/agent_governance.yaml → event_broker.sinks.",
+    )
+    verbosity: str = Field(
+        default="standard",
+        description="minimal=[governance,aivss]  standard=[stage_trace,governance,aivss]  "
+                    "debug=[stage_trace,critic_trace,governance,aivss]",
+    )
 
 
 class AppSettings(BaseModel):
@@ -661,6 +685,10 @@ class AppSettings(BaseModel):
     blackhat: BlackhatSettings = Field(default_factory=BlackhatSettings)
     scrum_master: "ScrumMasterSettings" = Field(default_factory=lambda: ScrumMasterSettings())
     governance: GovernanceSettings = Field(default_factory=GovernanceSettings)
+    event_broker: EventBrokerSettings = Field(
+        default_factory=EventBrokerSettings,
+        description="EventBroker pub/sub settings. Sinks configured in agent_governance.yaml.",
+    )
     critics: Dict[str, CriticSettings] = Field(
         default_factory=dict,
         description="Per-critic AIVSS gate config keyed by critic role name.",
