@@ -117,6 +117,41 @@ MITIGATION_TO_CONTROL = {
 }
 
 
+# Techniques that MITRE ATT&CK intentionally leaves without preventive mitigations
+# (discovery/reconnaissance techniques — ATT&CK's stance: detect, don't prevent).
+# We inject detection-oriented controls manually so they don't stay uncovered.
+DETECTION_ONLY_TECHNIQUES = {
+    "T1083": {
+        "control": "file integrity monitoring",
+        "mitre_id": "MANUAL-T1083",
+        "description": "File and Directory Discovery — monitor for enumeration of sensitive paths",
+        "dir_category": "detect",
+        "techniques": ["T1083"],
+    },
+    "T1018": {
+        "control": "network monitoring",
+        "mitre_id": "MANUAL-T1018",
+        "description": "Remote System Discovery — detect internal reconnaissance via network scan alerts",
+        "dir_category": "detect",
+        "techniques": ["T1018"],
+    },
+    "T1046": {
+        "control": "network monitoring",
+        "mitre_id": "MANUAL-T1046",
+        "description": "Network Service Discovery — detect port scanning and service enumeration",
+        "dir_category": "detect",
+        "techniques": ["T1046"],
+    },
+    "T1057": {
+        "control": "edr",
+        "mitre_id": "MANUAL-T1057",
+        "description": "Process Discovery — EDR detects anomalous process enumeration",
+        "dir_category": "detect",
+        "techniques": ["T1057"],
+    },
+}
+
+
 def get_all_mitigations_for_techniques(
     technique_ids: List[str],
     mitre: MitreHelper
@@ -764,8 +799,39 @@ def augment_with_exhaustive_mitigations(
     logger.info(f"⚠️  {len(uncovered_techniques)} techniques uncovered: {sorted(uncovered_techniques)}")
     logger.info(f"   Finding gap-filling controls...")
 
-    # Get mitigations for uncovered techniques only
+    # Get mitigations for remaining uncovered techniques (after manual injection)
     gap_mitigations = get_all_mitigations_for_techniques(list(uncovered_techniques), mitre)
+
+    # Inject manual detection controls for techniques MITRE intentionally leaves unmapped
+    manual_controls = []
+    still_uncovered = set()
+    for tid in list(uncovered_techniques):
+        if tid in DETECTION_ONLY_TECHNIQUES:
+            entry = DETECTION_ONLY_TECHNIQUES[tid]
+            ctrl_name = entry["control"]
+            already_present = ctrl_name in (controls_present + [c.get('control', '') for c in control_recommendations])
+            if not already_present:
+                manual_controls.append({
+                    "control": ctrl_name,
+                    "name": ctrl_name.upper(),
+                    "description": entry["description"],
+                    "techniques": entry["techniques"],
+                    "techniques_addressed": entry["techniques"],
+                    "dir_category": entry["dir_category"],
+                    "mitre_mitigations": [entry["mitre_id"]],
+                    "priority": "medium",
+                    "source": "manual_detection",
+                })
+                logger.info(f"✅ Manual detection control for {tid}: {ctrl_name}")
+        else:
+            still_uncovered.add(tid)
+
+    if manual_controls:
+        control_recommendations = control_recommendations + manual_controls
+        uncovered_techniques = still_uncovered
+
+    if not uncovered_techniques:
+        return control_recommendations
 
     if not gap_mitigations:
         logger.warning("No MITRE mitigations found for uncovered techniques")

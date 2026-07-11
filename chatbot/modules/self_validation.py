@@ -298,10 +298,11 @@ def validate_technique_for_path(
     elif technique_id == "T1083":
         has_system = any(kw in path_str for kw in [
             "server", "application", "service", "host", "storage", "file", "system",
-            "backend", "api",
+            "backend", "api", "node", "cluster", "database", "db", "function",
+            "worker", "broker", "kafka", "spark", "consensus", "validator",
         ])
         if has_system:
-            validations.append((True, 0.06, "System components present — file discovery applicable"))
+            validations.append((True, 0.06, "System components present — file discovery applicable; mitigated via file integrity monitoring"))
         else:
             validations.append((False, 0.0, "No system components for file discovery"))
 
@@ -479,9 +480,11 @@ def validate_technique_for_path(
     elif technique_id == "T1018":
         has_network = any(kw in path_str for kw in [
             "network", "server", "internal", "host", "backend", "service", "application",
+            "node", "cluster", "gateway", "router", "firewall", "switch", "consensus",
+            "validator", "database", "db", "function", "worker", "broker",
         ])
         if has_network:
-            validations.append((True, 0.06, "Network environment present — system discovery applicable"))
+            validations.append((True, 0.06, "Network environment present — system discovery applicable; mitigated via network monitoring"))
         else:
             validations.append((False, 0.0, "No network environment for remote discovery"))
 
@@ -644,8 +647,13 @@ def validate_control_addresses_technique(
     official_mits = mitre.get_technique_mitigations(technique_id)
     official_mit_ids = set(m.get("mitigation_id") for m in official_mits)
 
-    # Check overlap
+    # Detection-only techniques (MITRE explicitly provides no preventive mitigations).
+    # Manual detection controls (MANUAL-*) are valid — pass with neutral boost.
     claimed_mits = set(mitigation_ids)
+    if not official_mit_ids and any(m.startswith("MANUAL-") for m in claimed_mits):
+        return (True, 0.03, f"Detection-only technique — manual detection control accepted for {technique_id}")
+
+    # Check overlap
     overlap = claimed_mits & official_mit_ids
 
     if not overlap:
@@ -750,7 +758,7 @@ def run_self_validation(
     for rec in control_recs:
         control = rec["control"]
         techniques = rec.get("techniques", [])
-        mitigations = rec.get("mitigations", [])
+        mitigations = rec.get("mitigations", rec.get("mitre_mitigations", []))
 
         control_adjustments = []
 
