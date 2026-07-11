@@ -2042,7 +2042,8 @@ Reply with only the JSON array, no other text.
         self._scrum_master_proposals = new_proposals_context.get("scrum_master_proposals", [])
 
         try:
-            resolved_mode = critic_mode or self.config.critic_mode
+            from chatbot.config import get_settings as _gs_rt
+            resolved_mode = critic_mode or _gs_rt().moe.critic_mode
             resolved_confidence = base_confidence if base_confidence is not None else 99.5
 
             # Re-run the full pipeline — deleted files force re-generation of

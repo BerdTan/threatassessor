@@ -568,6 +568,7 @@ Be critical but constructive."""
         return litellm.completion(
             model=model,
             messages=messages,
+            drop_params=True,
             **extra_kwargs,
             **kwargs
         )
