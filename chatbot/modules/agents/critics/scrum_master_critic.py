@@ -841,6 +841,40 @@ class ScrumMasterCritic:
             if not r.get("first_step"):
                 r["first_step"] = "Implement this control and verify in the next Expert Review run."
             result.append(r)
+        # AP closure enforcement on fallback path too
+        if ground_truth:
+            crit_aps = [
+                ap for ap in ground_truth.get("expected_attack_paths", [])
+                if ap.get("criticality_tier") == "CRITICAL" and ap.get("id")
+            ]
+            for cap in crit_aps:
+                ap_id = cap["id"]
+                referenced = any(
+                    ap_id in ((it.get("action") or "") + (it.get("rationale") or ""))
+                    for it in result
+                )
+                if not referenced:
+                    path_str = " → ".join(cap.get("path", [])) or cap.get("entry", "")
+                    techs = cap.get("techniques", [])[:3]
+                    result.append({
+                        "action": (
+                            f"{ap_id}: Add targeted controls for the {path_str} attack path. "
+                            f"Key techniques: {', '.join(techs)}."
+                        ),
+                        "rationale": (
+                            f"CRITICAL path {ap_id} has no explicit plan item — "
+                            "this gap leaves the highest-severity threat unaddressed."
+                        ),
+                        "first_step": (
+                            f"Review attack path {ap_id} ({path_str}) and assign an engineer "
+                            "to implement the highest-priority missing control."
+                        ),
+                        "priority": "critical",
+                        "effort": "days",
+                        "risk_reduction_estimate": "high",
+                        "confidence_gain": 2.0,
+                        "is_antipattern": False,
+                    })
         return result
 
     def _build_redesign_recommendations(self, moe_result: "MoEResult") -> List[Dict]:
