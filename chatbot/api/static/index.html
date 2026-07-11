@@ -115,6 +115,7 @@
                     <div class="nav-group-items">
                         <button class="nav-tab" id="harness-nav-tab" data-tab="harness">🔧 Harness</button>
                         <button class="nav-tab" id="config-nav-tab" data-tab="config" style="display:none;">⚙️ Configuration</button>
+                        <button class="nav-tab" id="traces-nav-tab" data-tab="traces">🔭 Traces</button>
                     </div>
                 </div>
             </nav>
@@ -401,6 +402,13 @@
             <div id="harness-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:auto; background:var(--main-bg); padding:1.5rem;">
                 <div id="harness-content">
                     <p class="placeholder">Click "Run Self-Check" to verify harness components.</p>
+                </div>
+            </div>
+
+            <!-- Traces Tab — full main-pane takeover, always accessible -->
+            <div id="traces-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:hidden; background:var(--main-bg);">
+                <div id="traces-content" style="flex:1; overflow-y:auto; padding:1.5rem;">
+                    <p class="placeholder">Loading EventBroker status…</p>
                 </div>
             </div>
 

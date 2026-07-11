@@ -160,7 +160,7 @@ def score_ttp(gt, moe, mitre_mits, mit_names):
     crit_techs = {}
     for k in ["architect","tester","red_team","purple_team","blackhat"]:
         blob = json.dumps(ev.get(k, {}))
-        crit_techs[k] = set(re.findall(r"T\d{4}(?:\.\d{3})?", blob))
+        crit_techs[k] = set(re.findall(r"(?:AML\.T\d{4}(?:\.\d{3})?|T\d{4}(?:\.\d{3})?)", blob))
     all_t  = set(t for s in crit_techs.values() for t in s)
     cross_v = sum(1 for t in all_t if sum(1 for s in crit_techs.values() if t in s) >= 2)
     cross_pct = round(cross_v / len(all_t) * 100) if all_t else 0
@@ -178,6 +178,7 @@ def score_ttp(gt, moe, mitre_mits, mit_names):
     for c in ctrls:
         ctrl_name = (c.get("control") or "").lower()
         for tid in (c.get("mitre_techniques") or c.get("techniques") or []):
+            if tid.startswith("AML."): continue  # ATLAS techniques — no ATT&CK M-ID mapping
             pair = f"{tid}::{ctrl_name}"
             if pair in seen: continue
             seen.add(pair)

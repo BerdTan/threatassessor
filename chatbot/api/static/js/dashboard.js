@@ -410,16 +410,19 @@ class Dashboard {
         const isConfig     = tabName === 'config';
         const isHarness    = tabName === 'harness';
         const isWorkspace  = tabName === 'workspace';
+        const isTraces     = tabName === 'traces';
         const uploadContainer    = document.getElementById('upload-form-container');
         const tabContent         = document.getElementById('tab-content');
         const configWrapper      = document.getElementById('config-pane-wrapper');
         const harnessWrapper     = document.getElementById('harness-pane-wrapper');
         const workspaceWrapper   = document.getElementById('workspace-pane-wrapper');
+        const tracesWrapper      = document.getElementById('traces-pane-wrapper');
 
         // Hide all full-pane wrappers first, then show the right one
         if (configWrapper)    configWrapper.style.display    = 'none';
         if (harnessWrapper)   harnessWrapper.style.display   = 'none';
         if (workspaceWrapper) workspaceWrapper.style.display = 'none';
+        if (tracesWrapper)    tracesWrapper.style.display    = 'none';
 
         if (isConfig) {
             if (uploadContainer) uploadContainer.style.display = 'none';
@@ -433,6 +436,10 @@ class Dashboard {
             if (uploadContainer)  uploadContainer.style.display  = 'none';
             if (tabContent)       tabContent.style.display       = 'none';
             if (workspaceWrapper) { workspaceWrapper.style.display = 'flex'; workspaceWrapper.style.flexDirection = 'column'; }
+        } else if (isTraces) {
+            if (uploadContainer) uploadContainer.style.display = 'none';
+            if (tabContent)      tabContent.style.display      = 'none';
+            if (tracesWrapper)   { tracesWrapper.style.display = 'flex'; tracesWrapper.style.flexDirection = 'column'; }
         } else {
             if (this.analysisData) {
                 if (uploadContainer) uploadContainer.style.display = 'none';
@@ -461,6 +468,7 @@ class Dashboard {
             'benchmark': 'TATB Scorecard',
             'config': 'Configuration',
             'workspace': 'Workspace',
+            'traces': 'EventBroker Traces',
         };
         this.updateStatusMessage(`📂 Viewing ${tabNames[tabName] || tabName}`);
 
@@ -470,6 +478,8 @@ class Dashboard {
             this.loadHarnessTab();
         } else if (isWorkspace) {
             this.loadWorkspaceTab();
+        } else if (isTraces) {
+            this.loadTracesTab();
         } else if (this.analysisData) {
             this.loadTabData(tabName);
         }
@@ -7699,6 +7709,129 @@ class Dashboard {
         }
     }
 
+    async loadTracesTab() {
+        const container = document.getElementById('traces-content');
+        if (!container) return;
+        container.innerHTML = '<p class="placeholder">Checking EventBroker status…</p>';
+
+        let brokerCfg = {}, status = {};
+        try {
+            const [cfgResp, statusResp] = await Promise.all([
+                fetch('/api/v1/broker/config'),
+                fetch('/api/v1/broker/status'),
+            ]);
+            if (cfgResp.ok)    brokerCfg = await cfgResp.json();
+            if (statusResp.ok) status    = await statusResp.json();
+        } catch (e) {
+            container.innerHTML = `<p class="placeholder" style="color:var(--danger-color);">Failed to load broker status: ${this._escHtml(e.message)}</p>`;
+            return;
+        }
+
+        const enabled   = brokerCfg.enabled === true;
+        const verbosity = brokerCfg.verbosity || 'standard';
+        const sinks     = brokerCfg.sinks || {};
+
+        const statusBadge = (s) => {
+            if (!s || s === 'not_configured') return `<span style="padding:1px 7px; border-radius:3px; font-size:0.75rem; background:#1e293b; border:1px solid #334155; color:#94a3b8;">not configured</span>`;
+            if (s === 'ok')                   return `<span style="padding:1px 7px; border-radius:3px; font-size:0.75rem; background:#0d9f6e22; border:1px solid #0d9f6e55; color:#0d9f6e;">✓ ok</span>`;
+            return `<span style="padding:1px 7px; border-radius:3px; font-size:0.75rem; background:#ef444422; border:1px solid #ef444455; color:#ef4444;">✗ ${this._escHtml(s)}</span>`;
+        };
+
+        const sinkRow = (icon, name, key, extraNote) => {
+            const cfg = sinks[key] || {};
+            const en  = cfg.enabled === true;
+            return `<tr style="border-top:1px solid var(--border-color);">
+                <td style="padding:0.55rem 0.85rem; font-size:0.85rem;">${icon} ${name}</td>
+                <td style="padding:0.55rem 0.85rem;">${en ? '<span style="color:#0d9f6e; font-size:0.82rem;">enabled</span>' : '<span style="color:#94a3b8; font-size:0.82rem;">disabled</span>'}</td>
+                <td style="padding:0.55rem 0.85rem;">${statusBadge(status[key])}</td>
+                <td style="padding:0.55rem 0.85rem; font-size:0.78rem; color:var(--text-tertiary);">${extraNote}</td>
+            </tr>`;
+        };
+
+        const langfuseHost = (sinks.langfuse || {}).host || 'http://localhost:3000';
+        const langfuseEnabled = (sinks.langfuse || {}).enabled === true;
+        const langfuseStatusOk = status.langfuse === 'ok';
+
+        container.innerHTML = `
+            <div style="max-width:760px;">
+                <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem;">
+                    <span style="font-size:1.2rem; font-weight:700;">🔭 EventBroker Traces</span>
+                    <span style="padding:2px 10px; border-radius:12px; font-size:0.78rem; font-weight:600;
+                                 background:${enabled ? '#0d9f6e22' : '#1e293b'}; border:1px solid ${enabled ? '#0d9f6e55' : '#334155'};
+                                 color:${enabled ? '#0d9f6e' : '#94a3b8'};">
+                        ${enabled ? 'enabled' : 'disabled'}
+                    </span>
+                    ${enabled ? '' : `<span style="font-size:0.78rem; color:var(--text-tertiary);">Enable in ⚙️ Config → 🔭 EventBroker</span>`}
+                </div>
+
+                <!-- Sink status table -->
+                <div class="card" style="margin-bottom:1.25rem;">
+                    <div style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); font-weight:600; font-size:0.88rem;">Sink Status</div>
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>
+                            <tr style="background:var(--sidebar-bg);">
+                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Sink</th>
+                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Config</th>
+                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Connectivity</th>
+                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sinkRow('📋', 'SIEM',     'siem',     'logs/siem.jsonl')}
+                            ${sinkRow('🔭', 'Langfuse', 'langfuse', langfuseHost)}
+                            ${sinkRow('🌐', 'Webhook',  'webhook',  (sinks.webhook||{}).url || 'url not set')}
+                        </tbody>
+                    </table>
+                    <div style="padding:0.5rem 1rem; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end;">
+                        <button onclick="window.dashboard && window.dashboard.loadTracesTab()"
+                                style="padding:0.3rem 0.85rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-secondary); font-size:0.8rem; cursor:pointer;">
+                            ↺ Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Langfuse iframe / setup guide -->
+                <div class="card" style="margin-bottom:1.25rem;">
+                    <div style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); display:flex; align-items:center; gap:0.75rem;">
+                        <span style="font-weight:600; font-size:0.88rem;">🔭 Langfuse UI</span>
+                        ${langfuseEnabled && langfuseStatusOk
+                            ? `<a href="${langfuseHost}" target="_blank" style="font-size:0.78rem; color:#4da6ff;">Open in new tab ↗</a>`
+                            : ''}
+                    </div>
+                    ${langfuseEnabled && langfuseStatusOk
+                        ? `<iframe src="${langfuseHost}" style="width:100%; height:520px; border:none; background:#0f172a;"
+                                   onerror="this.style.display='none'; this.nextElementSibling.style.display='block'"></iframe>
+                           <div style="display:none; padding:1.5rem; text-align:center; color:var(--text-secondary);">
+                               Langfuse UI failed to load. <a href="${langfuseHost}" target="_blank" style="color:#4da6ff;">Open directly →</a>
+                           </div>`
+                        : `<div style="padding:1.5rem;">
+                               <div style="font-size:0.88rem; color:var(--text-secondary); margin-bottom:1rem;">
+                                   ${langfuseEnabled
+                                       ? '⚠️ Langfuse server unreachable at <code>' + this._escHtml(langfuseHost) + '</code>. Start it with:'
+                                       : 'Langfuse is a self-hosted tracing UI. To enable it:'}
+                               </div>
+                               <pre style="background:#0f172a; border:1px solid #334155; border-radius:6px; padding:0.85rem 1rem; font-size:0.8rem; color:#94a3b8; overflow-x:auto;">${
+                                   langfuseEnabled
+                                       ? 'cd langfuse && docker compose up -d'
+                                       : '# 1. Clone and start Langfuse\ngit clone --depth=1 https://github.com/langfuse/langfuse.git\ncd langfuse && docker compose up -d\n# UI at http://localhost:3000 → Settings → API Keys\n\n# 2. Add to .env\nLANGFUSE_PUBLIC_KEY=pk-lf-...\nLANGFUSE_SECRET_KEY=sk-lf-...\nLANGFUSE_BASE_URL=http://localhost:3000\n\n# 3. Enable in policies/agent_governance.yaml\n# event_broker.sinks.langfuse.enabled: true\n# Then enable EventBroker in ⚙️ Config → 🔭 EventBroker'
+                               }</pre>
+                           </div>`
+                    }
+                </div>
+
+                <!-- Verbosity info -->
+                <div class="card" style="margin-bottom:1.25rem;">
+                    <div style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); font-weight:600; font-size:0.88rem;">Verbosity: <code>${this._escHtml(verbosity)}</code></div>
+                    <div style="padding:0.75rem 1rem; font-size:0.82rem; color:var(--text-secondary);">
+                        <div style="margin-bottom:0.4rem;"><strong style="color:var(--text-color);">minimal</strong> — governance + AIVSS gate events only (lowest volume)</div>
+                        <div style="margin-bottom:0.4rem;"><strong style="color:var(--text-color);">standard</strong> — + stage start/end traces (recommended)</div>
+                        <div><strong style="color:var(--text-color);">debug</strong> — + per-critic traces with token/cost data</div>
+                        <div style="margin-top:0.75rem; color:var(--text-tertiary);">Change verbosity in ⚙️ Config → 🔭 EventBroker or directly in policies/agent_governance.yaml.</div>
+                    </div>
+                </div>
+            </div>`;
+    }
+
     async loadHarnessTab() {
         const container = document.getElementById('harness-content');
         if (!container) return;
@@ -14408,6 +14541,7 @@ class Dashboard {
             'llm_system': ['llm_system'],
             'patterns':   ['patterns'],
             'provider':   ['provider'],
+            'broker':     ['broker'],
         };
 
         const showQuick = filter === 'quick';
@@ -15397,6 +15531,7 @@ class Dashboard {
             {filter:'llm_system', label:'🤖 LLM & System'},
             {filter:'patterns',   label:'🧩 Patterns'},
             {filter:'provider',   label:'🔑 Provider &amp; Models'},
+            {filter:'broker',     label:'🔭 EventBroker'},
         ].map(c => `<button class="cfg-chip" data-filter="${c.filter}" style="${chipStyle}">${c.label}</button>`).join('');
         const filterRow = `<div id="cfg-filter-chips" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">${chips}</div>`;
 
@@ -15702,7 +15837,53 @@ class Dashboard {
             '<div class="card" data-cfg-cat="provider" style="margin-bottom:1rem;">'
         );
 
-        return filterRow + warningBanner + quickCard + providerHtmlWithCat + sectionCards + patternsCard;
+        // ── EventBroker card ──────────────────────────────────────────────────
+        const ebData = data.event_broker || {};
+        const ebEnabled = ebData.enabled === true;
+        const ebVerbosity = ebData.verbosity || 'standard';
+        const brokerLsKey = 'cfg_open_cfg-section-body-broker';
+        const brokerOpen = localStorage.getItem(brokerLsKey) !== 'false';
+        const brokerCard = `
+            <div class="card" data-cfg-cat="broker" style="margin-bottom:1rem;">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1.1rem; cursor:pointer; user-select:none;"
+                     onclick="(function(el){var b=document.getElementById('cfg-section-body-broker');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-chev').textContent=open?'▶':'▼';localStorage.setItem('${brokerLsKey}',String(!open));})(this)">
+                    <div>
+                        <span style="font-weight:700; font-size:0.95rem;">🔭 EventBroker — Pipeline Telemetry</span>
+                        <span style="margin-left:0.6rem; font-size:0.75rem; color:var(--text-tertiary);">Pub/sub sinks: SIEM · Langfuse · Webhook — configured in policies/agent_governance.yaml</span>
+                    </div>
+                    <span class="cfg-chev" style="font-size:0.7rem; color:var(--text-secondary);">${brokerOpen ? '▼' : '▶'}</span>
+                </div>
+                <div id="cfg-section-body-broker" style="display:${brokerOpen ? 'block' : 'none'}; border-top:1px solid var(--border-color); padding:0.875rem 1.1rem;">
+                    <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.75rem;">
+                        <label style="font-size:0.84rem; font-weight:600; color:var(--text-color);">Enable EventBroker</label>
+                        <select data-section="event_broker" data-field="enabled" data-vtype="select"
+                                style="padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer;">
+                            <option value="false" ${!ebEnabled ? 'selected' : ''}>Off (default — all sinks no-op)</option>
+                            <option value="true"  ${ebEnabled  ? 'selected' : ''}>On — emit events to configured sinks</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:1rem; margin-bottom:1rem;">
+                        <label style="font-size:0.84rem; font-weight:600; color:var(--text-color);">Verbosity</label>
+                        <select data-section="event_broker" data-field="verbosity" data-vtype="select"
+                                style="padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer;">
+                            <option value="minimal"  ${ebVerbosity==='minimal'  ? 'selected' : ''}>minimal — governance + AIVSS events only</option>
+                            <option value="standard" ${ebVerbosity==='standard' ? 'selected' : ''}>standard — + stage traces (recommended)</option>
+                            <option value="debug"    ${ebVerbosity==='debug'    ? 'selected' : ''}>debug — + critic-level traces</option>
+                        </select>
+                    </div>
+                    <div style="font-size:0.8rem; color:var(--text-secondary); background:var(--sidebar-bg); border:1px solid var(--border-color); border-radius:6px; padding:0.65rem 0.85rem; margin-bottom:0.75rem;">
+                        <strong>Sinks</strong> are configured in <code>policies/agent_governance.yaml → event_broker.sinks</code>.
+                        Enable/disable each sink (SIEM · Langfuse · Webhook) and assign event types there.
+                        Use the <strong>🔭 Traces</strong> tab to view live connectivity status and open the Langfuse UI.
+                    </div>
+                    <button onclick="window.dashboard && window.dashboard.switchTab('traces')"
+                            style="padding:0.4rem 1rem; border:1px solid #4da6ff; border-radius:6px; background:transparent; color:#4da6ff; font-size:0.83rem; cursor:pointer;">
+                        🔭 Open Traces tab →
+                    </button>
+                </div>
+            </div>`;
+
+        return filterRow + warningBanner + quickCard + providerHtmlWithCat + sectionCards + patternsCard + brokerCard;
     }
 
     async _togglePattern(patternId, enabled) {

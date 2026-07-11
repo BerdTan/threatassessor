@@ -136,6 +136,7 @@ def score_ttp(gt: dict, moe: Optional[dict], mitre_mits: dict, mit_names: dict) 
     for c in ctrls:
         ctrl_name = (c.get('control') or '').lower()
         for tid in (c.get('mitre_techniques') or c.get('techniques') or []):
+            if tid.startswith("AML."): continue  # ATLAS techniques — no ATT&CK M-ID mapping
             pair = f'{tid}::{ctrl_name}'
             if pair in seen: continue
             seen.add(pair)

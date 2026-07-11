@@ -125,7 +125,15 @@ def find_entry_points(nodes: Dict[str, Dict], edges: List[Dict] = None) -> List[
     medium_keywords = ["user", "workstation", "laptop", "endpoint", "desktop", "client", "mobile"]
 
     # Also check for web servers as potential entry (internal pivot)
-    pivot_keywords = ["web server", "webserver", "web app", "webapp", "api", "portal"]
+    # Note: plain "api" excluded — matches LLM API Gateway, API integrations (internal nodes)
+    pivot_keywords = ["web server", "webserver", "web app", "webapp", "web ui",
+                      "api gateway", "api server", "api endpoint", "portal"]
+
+    # Keywords that indicate a data/backend node that should NOT be an entry point
+    # even if the label contains a medium/pivot keyword
+    backend_exclusions = ["database", " db", "db ", "store", "storage", "llm", "gateway",
+                          "integration", "integrat", "audit", "session", "embedding",
+                          "vector", "document", "bucket", "queue", "cache", "log"]
 
     # Calculate graph structure if edges provided
     in_degree = {}
@@ -135,23 +143,26 @@ def find_entry_points(nodes: Dict[str, Dict], edges: List[Dict] = None) -> List[
     for node_id, node_data in nodes.items():
         label_lower = node_data.get("label", node_id).lower()
 
-        # High-confidence: External entry points
+        # Skip nodes that are clearly backend/data nodes
+        is_backend = any(kw in label_lower for kw in backend_exclusions)
+
+        # High-confidence: External entry points (not gated by backend exclusion)
         if any(kw in label_lower for kw in high_keywords):
             entry_points.append(node_id)
             logger.debug(f"Entry point (external): {node_id}")
 
-        # Medium-confidence: User/endpoint (lateral movement)
-        elif any(kw in label_lower for kw in medium_keywords):
+        # Medium-confidence: User/endpoint — only if not a backend data node
+        elif not is_backend and any(kw in label_lower for kw in medium_keywords):
             entry_points.append(node_id)
             logger.debug(f"Entry point (lateral): {node_id}")
 
-        # Medium-confidence: Web servers (public-facing, can be entry)
-        elif any(kw in label_lower for kw in pivot_keywords):
+        # Medium-confidence: Web servers (public-facing) — not backend
+        elif not is_backend and any(kw in label_lower for kw in pivot_keywords):
             entry_points.append(node_id)
             logger.debug(f"Entry point (pivot): {node_id}")
 
-        # Graph-based: Zero in-degree (external source)
-        elif edges and in_degree.get(node_id, 0) == 0:
+        # Graph-based: Zero in-degree (external source) — not backend
+        elif not is_backend and edges and in_degree.get(node_id, 0) == 0:
             entry_points.append(node_id)
             logger.debug(f"Entry point (graph-source): {node_id}")
 
@@ -174,14 +185,26 @@ def find_sensitive_targets(nodes: Dict[str, Dict], edges: List[Dict] = None) -> 
     high_priority = [
         "database", "db", "secret", "key", "credential",
         "admin", "root", "token", "pii", "payment",
-        "code execution", "code exec", "exec", "command"
+        "code execution", "code exec", "exec", "command",
+        # AI/agentic system high-value targets
+        "codeexecution", "code_execution", "sandbox",
+        "session store", "sessionstore",
+        "audit log", "auditlog",
+        "vector db", "vectordb",
+        "llm gateway", "llm api",
+        "user db", "userdb",
     ]
 
     # Medium-priority keywords (valuable assets)
     medium_priority = [
         "file server", "fileserver", "file", "storage", "s3", "bucket",
         "cache", "backup", "data", "document", "vector",
-        "api key", "config", "tool"
+        "api key", "config", "tool",
+        # AI/agentic system medium-value targets
+        "embedding", "document store", "documentstore",
+        "web search", "websearch",
+        "api integrat", "external api",
+        "prompt", "llm",
     ]
 
     # Calculate graph structure if edges provided
@@ -411,6 +434,7 @@ def rank_and_deduplicate_paths(
     # Deduplicate by pattern (same entry→target with similar hop count)
     unique_paths = []
     seen_patterns = set()
+    seen_targets = set()
 
     for ap in sorted_paths:
         # Pattern: entry + target + hop_count_bucket
@@ -419,10 +443,23 @@ def rank_and_deduplicate_paths(
 
         if pattern not in seen_patterns:
             seen_patterns.add(pattern)
+            seen_targets.add(ap["target"])
             unique_paths.append(ap)
 
         if len(unique_paths) >= top_n:
             break
+
+    # Diversity pass: add one representative path per uncovered target.
+    # Ensures deep leaf nodes (LLMGateway, OpenAI, SessionStore, etc.) are represented
+    # even when their criticality score is lower than the first top_n paths.
+    # Cap at top_n * 3 to stay reasonable while covering all unique targets.
+    max_total = top_n * 3
+    for ap in sorted_paths:
+        if len(unique_paths) >= max_total:
+            break
+        if ap["target"] not in seen_targets:
+            seen_targets.add(ap["target"])
+            unique_paths.append(ap)
 
     # Reassign sequential IDs so AP-1..N always match array positions 0..N-1
     for i, ap in enumerate(unique_paths, 1):
@@ -1189,8 +1226,14 @@ def generate_ground_truth(
     logger.info(f"Detected {len(entry_points)} entry points: {entry_points}")
     logger.info(f"Detected {len(targets)} targets: {targets}")
     _cfg_engine = get_settings().engine
+    # Sort targets: sink nodes (out-degree=0) first so BFS discovers deep leaf targets
+    # before the path cap is hit. Prevents hub nodes (e.g. AgentOrchestrator) from
+    # consuming all max_paths slots before deeper targets (LLMGateway, SessionStore) are reached.
+    if parsed["edges"]:
+        _, out_deg = calculate_node_degrees(parsed["edges"])
+        targets = sorted(targets, key=lambda t: (out_deg.get(t, 0), t))
     attack_paths_raw = find_attack_paths_bfs(parser, entry_points, targets,
-                                             max_paths=_cfg_engine.max_paths * 3 // 2)
+                                             max_paths=_cfg_engine.max_paths * 2)
     logger.info(f"Found {len(attack_paths_raw)} raw attack paths")
 
     # Rank and deduplicate paths (keep top-N most critical)

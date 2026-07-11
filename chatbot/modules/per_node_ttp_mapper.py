@@ -136,6 +136,54 @@ TRAVERSAL_TECHNIQUES = {
     "cd":          ["T1195", "T1059"],
     "jenkins":     ["T1195", "T1059"],
 
+    # AI / Agentic System nodes — MITRE ATT&CK + MITRE ATLAS (AML.T*) techniques
+    # ATLAS techniques are injected alongside ATT&CK so both frameworks inform the path.
+    # prompt: prompt injection (direct AML.T0051.000) → code exec + process injection
+    "prompt":      ["T1059", "T1055", "T1203", "T1565", "T1213",
+                    "AML.T0051", "AML.T0051.000"],
+    # orchestrat: hub node — full model access + inference API abuse + lateral movement
+    "orchestrat":  ["T1059", "T1055", "T1021", "T1552", "T1213", "T1087", "T1040",
+                    "AML.T0051", "AML.T0054", "AML.T0044", "AML.T0040", "AML.T0024"],
+    # tool registry: maps to tools — jailbreak to reach tools + model inference abuse
+    "tool registry": ["T1059", "T1548", "T1552", "T1528", "T1087",
+                      "AML.T0044", "AML.T0040"],
+    "tool reg":    ["T1059", "T1548", "T1552", "T1528", "T1087",
+                    "AML.T0044", "AML.T0040"],
+    # llm / LLM gateway: prompt injection + jailbreak + inference API abuse + resource abuse
+    "llm":         ["T1552", "T1528", "T1496", "T1071", "T1041", "T1573",
+                    "AML.T0051", "AML.T0051.000", "AML.T0051.001",
+                    "AML.T0054", "AML.T0048", "AML.T0040", "AML.T0024", "AML.T0025"],
+    # vector db / embedding: training data poisoning + indirect prompt injection + exfil
+    "vector":      ["T1565", "T1213", "T1041", "T1530",
+                    "AML.T0020", "AML.T0018", "AML.T0051.001", "AML.T0025"],
+    "embedding":   ["T1565", "T1213", "T1552", "T1041",
+                    "AML.T0020", "AML.T0051.001", "AML.T0025"],
+    # document store: indirect prompt injection via ingested docs + data poisoning + exfil
+    "document":    ["T1213", "T1530", "T1041", "T1565", "T1119",
+                    "AML.T0051.001", "AML.T0020", "AML.T0025"],
+    # web search tool: indirect prompt injection via search results + SSRF + session hijack
+    "web search":  ["T1090", "T1185", "T1071", "T1217",
+                    "AML.T0051.001"],
+    "websearch":   ["T1090", "T1185", "T1071", "T1217",
+                    "AML.T0051.001"],
+    # code execution sandbox: jailbreak to reach sandbox + sandbox escape + external harms
+    "code exec":   ["T1059", "T1548", "T1068", "T1203", "T1055",
+                    "AML.T0051.001", "AML.T0054", "AML.T0048"],
+    "codeexec":    ["T1059", "T1548", "T1068", "T1203", "T1055",
+                    "AML.T0051.001", "AML.T0054", "AML.T0048"],
+    "sandbox":     ["T1059", "T1548", "T1068", "T1055",
+                    "AML.T0054", "AML.T0048"],
+    # session store: session hijacking + credential access
+    "session":     ["T1185", "T1552", "T1056", "T1078"],
+    # audit log: defense evasion (clearing logs) + indicator removal
+    "audit":       ["T1562", "T1070", "T1489"],
+    "auditlog":    ["T1562", "T1070", "T1489"],
+    # api integrations / external APIs: inference API abuse + exfil + C2 + credential theft
+    "api integrat": ["T1090", "T1071", "T1528", "T1041", "T1573",
+                     "AML.T0040", "AML.T0025"],
+    "external api": ["T1090", "T1071", "T1528", "T1041",
+                     "AML.T0040", "AML.T0025"],
+
     # Data Pipeline / Streaming / Analytics
     # These nodes are data-in-motion (Kafka/Spark) or analytics endpoints (BI/ML)
     "kafka":       ["T1040", "T1565", "T1059", "T1213"],  # sniff stream + inject + query

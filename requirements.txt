@@ -26,4 +26,4 @@ google-adk==1.5.0
 neo4j==5.28.1
 
 # Observability — optional, uncomment to enable LangfuseSink in EventBroker
-# langfuse>=4.0.0
+langfuse>=3.0.0  # optional — LangfuseSink no-op if not installed

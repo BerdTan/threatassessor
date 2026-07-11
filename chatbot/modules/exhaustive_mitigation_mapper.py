@@ -152,6 +152,35 @@ DETECTION_ONLY_TECHNIQUES = {
 }
 
 
+# MITRE ATLAS technique → implementable control mapping.
+# ATT&CK MitreHelper has no data for AML.T* IDs, so we inject controls manually.
+# These are the canonical defences for each ATLAS technique across agentic AI architectures.
+ATLAS_TECHNIQUE_CONTROLS = {
+    "AML.T0051":     {"control": "prompt injection filter",       "dir_category": "prevention",
+                      "description": "LLM Prompt Injection — validate/sanitise all inputs before LLM invocation"},
+    "AML.T0051.000": {"control": "prompt injection filter",       "dir_category": "prevention",
+                      "description": "Direct Prompt Injection — enforce system prompt integrity; reject override attempts"},
+    "AML.T0051.001": {"control": "rag content validation",        "dir_category": "prevention",
+                      "description": "Indirect Prompt Injection — validate retrieved/ingested content before LLM context injection"},
+    "AML.T0054":     {"control": "llm output filtering",          "dir_category": "prevention",
+                      "description": "LLM Jailbreak — output guardrails and content policy enforcement"},
+    "AML.T0048":     {"control": "rate limiting",                 "dir_category": "isolate",
+                      "description": "External Harms — rate-limit LLM/API calls; monitor for resource abuse"},
+    "AML.T0020":     {"control": "training data integrity checks", "dir_category": "prevention",
+                      "description": "Poison Training Data — validate training/fine-tuning datasets; hash verification"},
+    "AML.T0018":     {"control": "model integrity monitoring",    "dir_category": "detect",
+                      "description": "Manipulate AI Model — monitor model weights/outputs for drift; signed model artefacts"},
+    "AML.T0025":     {"control": "dlp",                           "dir_category": "prevention",
+                      "description": "Exfiltration via Cyber Means — DLP on model outputs and API responses"},
+    "AML.T0024":     {"control": "api access control",            "dir_category": "prevention",
+                      "description": "Exfiltration via AI Inference API — restrict inference API access; log all queries"},
+    "AML.T0044":     {"control": "least privilege",               "dir_category": "prevention",
+                      "description": "Full AI Model Access — restrict model artefact access to authorised roles only"},
+    "AML.T0040":     {"control": "api access control",            "dir_category": "isolate",
+                      "description": "AI Model Inference API Access — enforce API key scoping; rate-limit inference endpoints"},
+}
+
+
 def get_all_mitigations_for_techniques(
     technique_ids: List[str],
     mitre: MitreHelper
@@ -803,6 +832,7 @@ def augment_with_exhaustive_mitigations(
     gap_mitigations = get_all_mitigations_for_techniques(list(uncovered_techniques), mitre)
 
     # Inject manual detection controls for techniques MITRE intentionally leaves unmapped
+    # Also inject ATLAS-specific controls for AML.T* techniques (not in ATT&CK database)
     manual_controls = []
     still_uncovered = set()
     for tid in list(uncovered_techniques):
@@ -823,6 +853,23 @@ def augment_with_exhaustive_mitigations(
                     "source": "manual_detection",
                 })
                 logger.info(f"✅ Manual detection control for {tid}: {ctrl_name}")
+        elif tid in ATLAS_TECHNIQUE_CONTROLS:
+            entry = ATLAS_TECHNIQUE_CONTROLS[tid]
+            ctrl_name = entry["control"]
+            already_present = ctrl_name in (controls_present + [c.get('control', '') for c in control_recommendations])
+            if not already_present:
+                manual_controls.append({
+                    "control": ctrl_name,
+                    "name": ctrl_name.upper(),
+                    "description": entry["description"],
+                    "techniques": [tid],
+                    "techniques_addressed": [tid],
+                    "dir_category": entry["dir_category"],
+                    "mitre_mitigations": [f"ATLAS-{tid}"],
+                    "priority": "high",
+                    "source": "atlas_manual",
+                })
+                logger.info(f"✅ ATLAS control for {tid}: {ctrl_name}")
         else:
             still_uncovered.add(tid)
 

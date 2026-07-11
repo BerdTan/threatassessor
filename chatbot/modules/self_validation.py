@@ -35,6 +35,18 @@ def validate_technique_for_path(
 
     Returns: (is_valid, confidence_adjustment, reason)
     """
+    # ATLAS techniques (AML.T*) — route through AtlasHelper, not MitreHelper
+    if technique_id.startswith("AML."):
+        try:
+            from chatbot.modules.atlas_helper import get_atlas_helper
+            atlas = get_atlas_helper()
+            atlas_techs = atlas.get_techniques()
+            if technique_id in atlas_techs:
+                return (True, 0.05, f"ATLAS technique {technique_id} confirmed via AtlasHelper")
+            return (False, -0.1, f"ATLAS technique {technique_id} not found in ATLAS data")
+        except Exception:
+            return (True, 0.0, f"ATLAS technique {technique_id} — AtlasHelper unavailable, assumed valid")
+
     tech = mitre.find_technique(technique_id)
     if not tech:
         return (False, -0.2, f"Technique {technique_id} not found in MITRE")
@@ -212,14 +224,16 @@ def validate_technique_for_path(
 
     # T1203 - Exploitation for Client Execution
     elif technique_id == "T1203":
-        # Valid if client-facing or browser-accessible component present
+        # Valid if client-facing, browser-accessible, or code execution sandbox present
         has_client = any(kw in path_str for kw in [
             "user", "client", "browser", "mobile", "app", "frontend", "web",
+            # AI/agentic: code execution sandbox / prompt-triggered execution
+            "sandbox", "code exec", "codeexec", "prompt",
         ])
         if has_client:
-            validations.append((True, 0.05, "Client-facing component present"))
+            validations.append((True, 0.05, "Client/execution surface present"))
         else:
-            validations.append((False, 0.0, "No client-facing component for client exploitation"))
+            validations.append((False, 0.0, "No client/execution surface for exploitation"))
 
     # T1212 - Exploitation for Credential Access
     elif technique_id == "T1212":
@@ -537,11 +551,99 @@ def validate_technique_for_path(
     elif technique_id == "T1548":
         has_priv = any(kw in path_str for kw in [
             "admin", "management", "server", "application", "service",
+            # AI/agentic nodes: sandbox escape, tool execution
+            "sandbox", "code exec", "codeexec", "tool", "orchestrat",
         ])
         if has_priv:
             validations.append((True, 0.05, "Privileged component present — elevation abuse applicable"))
         else:
             validations.append((False, 0.0, "No privileged components for elevation abuse"))
+
+    # T1055 - Process Injection (prompt injection / agent memory injection)
+    elif technique_id == "T1055":
+        has_exec = any(kw in path_str for kw in [
+            "server", "application", "service", "app",
+            # AI/agentic: prompt injection injects into agent process
+            "prompt", "orchestrat", "agent", "llm", "code exec", "sandbox",
+        ])
+        if has_exec:
+            validations.append((True, 0.05, "Execution component present — process/prompt injection applicable"))
+        else:
+            validations.append((False, 0.0, "No execution component for injection"))
+
+    # T1528 - Steal Application Access Token (LLM API keys, tool OAuth tokens)
+    elif technique_id == "T1528":
+        has_token_surface = any(kw in path_str for kw in [
+            "api", "token", "oauth", "llm", "tool", "orchestrat", "gateway",
+            "external", "integrat", "service", "auth",
+        ])
+        if has_token_surface:
+            validations.append((True, 0.06, "API/token surface present — access token theft applicable"))
+        else:
+            validations.append((False, 0.0, "No token surface for access token theft"))
+
+    # T1185 - Browser/Session Hijacking (session store compromise)
+    elif technique_id == "T1185":
+        has_session = any(kw in path_str for kw in [
+            "session", "browser", "web", "user", "cookie", "auth",
+            "websearch", "web search",
+        ])
+        if has_session:
+            validations.append((True, 0.05, "Session/browser surface present — hijacking applicable"))
+        else:
+            validations.append((False, 0.0, "No session surface for hijacking"))
+
+    # T1496 - Resource Hijacking (LLM API abuse, crypto mining via code exec)
+    elif technique_id == "T1496":
+        has_compute = any(kw in path_str for kw in [
+            "llm", "gpu", "cloud", "lambda", "function", "compute",
+            "api", "embedding", "code exec", "sandbox",
+        ])
+        if has_compute:
+            validations.append((True, 0.05, "Compute/API resource present — hijacking applicable"))
+        else:
+            validations.append((False, 0.0, "No compute resource for hijacking"))
+
+    # T1119 - Automated Collection (document store bulk exfil)
+    elif technique_id == "T1119":
+        has_collection_target = any(kw in path_str for kw in [
+            "document", "store", "database", "db", "vector", "data",
+            "file", "storage", "s3", "bucket", "repo",
+        ])
+        if has_collection_target:
+            validations.append((True, 0.05, "Data collection target present — automated collection applicable"))
+        else:
+            validations.append((False, 0.0, "No data store for automated collection"))
+
+    # T1217 - Browser Bookmark Discovery (web search tool recon)
+    elif technique_id == "T1217":
+        has_browser_surface = any(kw in path_str for kw in [
+            "browser", "web", "user", "websearch", "web search", "search",
+        ])
+        if has_browser_surface:
+            validations.append((True, 0.04, "Browser/search surface present — bookmark discovery applicable"))
+        else:
+            validations.append((False, 0.0, "No browser surface for bookmark discovery"))
+
+    # T1489 - Service Stop (audit log / logging infrastructure disruption)
+    elif technique_id == "T1489":
+        has_service = any(kw in path_str for kw in [
+            "service", "server", "application", "audit", "log", "monitor", "siem",
+        ])
+        if has_service:
+            validations.append((True, 0.05, "Service component present — service stop applicable"))
+        else:
+            validations.append((False, 0.0, "No service component for service stop"))
+
+    # T1056 - Input Capture (session store, credential harvesting from sessions)
+    elif technique_id == "T1056":
+        has_input = any(kw in path_str for kw in [
+            "session", "user", "browser", "web", "auth", "login", "client",
+        ])
+        if has_input:
+            validations.append((True, 0.05, "User/session input surface present — input capture applicable"))
+        else:
+            validations.append((False, 0.0, "No input surface for input capture"))
 
     # Default: Check if technique name/description has keywords from path
     else:

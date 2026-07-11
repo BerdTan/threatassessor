@@ -525,7 +525,7 @@ def generate_technical_report(ground_truth: Dict) -> str:
             confidence = rec.get("confidence", {})
             conf_level = confidence.get("level", "UNKNOWN")
             conf_score = confidence.get("score", 0.0)
-            enhanced_rationale = rec.get("enhanced_rationale", rec["rationale"])
+            enhanced_rationale = rec.get("enhanced_rationale") or rec.get("rationale", "")
             mitigations = rec.get("mitigations", [])
             techniques = rec.get("techniques", [])
             is_gap_control = not rec.get("attack_paths", [])

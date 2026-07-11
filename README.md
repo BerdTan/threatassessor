@@ -144,6 +144,7 @@ The full build story is on Medium — seven parts covering the pipeline, cloud t
 | 7 | [Threat Modeling Is the Art of Storytelling a Graph](https://medium.com/@breadtan/threat-modeling-is-the-art-of-storytelling-a-graph-719d0ef5a536) | Practitioner reflection — what good, bad, and ugly TM look like; what AI changes and what it doesn't |
 | 8 | [You Can't Improve What You Don't Measure: A Practical Rubric for Threat Model Quality](https://medium.com/@breadtan/you-cant-improve-what-you-don-t-measure-a-practical-rubric-for-threat-model-quality-354f6f5856a2) | TATB four-rubric scorecard — Threat-Relevant, TTP-Accurate, Risk-Defensible, Plan-Actionable; the deterministic feedback loop |
 | 9 | [The Flywheel Nobody Talks About: How a Benchmark Teaches Itself](https://medium.com/@breadtan/the-flywheel-nobody-talks-about-how-a-benchmark-teaches-itself-75e2dd955807) | Nova Pro independent labeller, labelled-corpus regression, recall 22% to 62% across 10 tuning rounds |
+| 10 | [When the Benchmark Finds Its Own Blind Spots](https://medium.com/@breadtan/when-the-benchmark-finds-its-own-blind-spots-0d6461a5406b) | 26-arch corpus gauntlet — engine gaps, T1083/T1018 mitigation holes, and what a truthful TTP-Accurate score really means |
 
 ---
 

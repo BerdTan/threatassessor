@@ -4,6 +4,123 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-07-11 (Session 14) — TATB Overall Score Improvements: Engine Gaps + TATB Rubric Fixes
+
+### 1. T1048 (Exfil over Alt Protocol) — last MED corpus gap (commit `87a702d`)
+
+**What was decided:**
+Add T1048 to any internet-facing traversal node with code-execution capability (`server`, `application`, `app`, `service`, `gateway`, `worker`, `broker`). Gate: `has_internet=True` — does not fire on air-gapped architectures. Added matching T1048 validator to `self_validation.py` using the same internet-facing keyword set as the mapper gate.
+
+**Reasoning:**
+Was the last MED gap in the 26-arch corpus — missing from 11/26 archs. Exfiltration over alt protocol is universally applicable to any compromised internet-facing service node. The internet gate prevents FPs on isolated architectures.
+
+**Alternatives rejected:**
+- Firing T1048 unconditionally: would create FPs on air-gapped/internal-only architectures where no outbound channel exists.
+
+---
+
+### 2. TATB ap_cov signal — per-AP mitigation alignment in Risk-Defensible (commit `c281a44`)
+
+**What was decided:**
+Added `ap_cov` (AP-aligned mitigation) as a new 15% sub-signal in the Risk-Defensible rubric in both `tatb-score.py` and `tatb-corpus.py`. Previous `tech_cov` checked technique coverage at architecture level — if T1557 appeared anywhere in `control_recommendations` it scored as covered regardless of which attack paths that control was assigned to. `ap_cov` cross-joins `(AP-index, technique)` pairs from `per_node_techniques` against `control_recommendations.attack_paths + techniques` — a technique is covered only if a control explicitly targets both that AP and that technique.
+
+Score formula: `tech_cov` 40%→30%, `ap_cov` 15% new, `hop_pct` 35%→30%, `hard_pct` 25% unchanged.
+
+**Reasoning:**
+Corpus `ap_cov` avg = 96% confirmed the pipeline already aligns controls to attack paths well. The signal adds precision without disrupting existing scores — corpus avg/min held at 80/70.
+
+**Alternatives rejected:**
+- Replacing `tech_cov` entirely with `ap_cov`: `tech_cov` still catches arch-wide technique holes; both signals together give fuller picture.
+
+---
+
+### 3. Absence-of-security anti-pattern detection in engine (commit `840045f`)
+
+**What was decided:**
+Added three arch-level helpers to `per_node_ttp_mapper.py` that detect missing security infrastructure and boost TTPs accordingly — these are techniques critics consistently caught but the engine missed because it only reads *present* nodes, not *absent* ones.
+
+Helpers:
+- `_arch_has_perimeter_nodes()` — firewall/WAF/gateway/IDS present?
+- `_arch_has_auth_nodes()` — auth/MFA/SSO/identity node present?
+- `_arch_has_direct_workstation_to_db()` — workstation reachable to DB ≤2 hops?
+
+Boosts (gated — only fire when internet-facing arch lacks the node):
+- `no_perimeter`: T1595 + T1590 (recon unrestricted at entry/traversal nodes)
+- `no_auth`: T1078 + T1110 (credential abuse trivially easy)
+- `ws_to_db` path: T1021 + T1570 (lateral movement first step)
+
+Also passes `node_names` from `ground_truth_generator.py` into the mapper so topology-aware detection has actual graph data.
+
+**Reasoning:**
+MoE critics were consistently finding these gaps (-8 to -22pp MoE lift) but the base engine emitted no signal. The absence detection closes the engine/critic gap without over-firing — all three helpers are gated on internet-facing + specific topology conditions.
+
+**Alternatives rejected:**
+- Emitting absence TTPs unconditionally: would create massive FPs on well-secured architectures that simply have perimeter controls under different names.
+- Relying on critics alone: negative MoE lift is signal but not actionable in the base TATB score; engine detection surfaces the gap in Threat-Relevant and TTP-Accurate rubrics.
+
+---
+
+### 4. T1083/T1018 detection-only technique gap — manual control injection (commit `0ff14aa`)
+
+**What was decided:**
+MITRE ATT&CK has zero preventive mitigations for discovery techniques T1083 (File/Dir Discovery) and T1018 (Remote System Discovery) by design — their official stance is "detect, don't prevent". This caused these techniques to stay uncovered in `exhaustive_mitigation_mapper` and emit FAILED in `self_validation`, dragging TTP-Accurate corpus-wide.
+
+Fix:
+- `exhaustive_mitigation_mapper.py`: added `DETECTION_ONLY_TECHNIQUES` dict mapping `T1083→file integrity monitoring`, `T1018→network monitoring`, `T1046→network monitoring`, `T1057→EDR`. Injected as manual gap-fill controls before the MITRE lookup using `MANUAL-*` mitigation IDs as markers.
+- `self_validation.py`: `validate_control_addresses_technique()` now accepts `MANUAL-*` controls as valid when `official_mit_ids` is empty (detection-only path). Widened T1083/T1018 keyword sets to cover blockchain/data-pipeline nodes.
+
+**Reasoning:**
+These are structurally unmitigatable via MITRE — the right response is detective controls (EDR, file integrity monitoring, network monitoring). Injecting them as `MANUAL-*` preserves audit traceability (identifiable in reports) while correctly marking the technique as addressed for scoring purposes.
+
+**Alternatives rejected:**
+- Excluding T1083/T1018 from coverage scoring entirely: they're real techniques that should appear in reports; hiding them would reduce report quality.
+- Using a placeholder MITRE M-ID: no legitimate M-ID exists — fabricating one would corrupt MITRE alignment scoring.
+
+---
+
+### 5. SM fallback path missing AP closure enforcement (commit `9347b3c`)
+
+**What was decided:**
+The `_build_action_plan` LLM path in `scrum_master_critic.py` had AP closure enforcement (appends a fallback item for each uncovered CRITICAL attack path) but the deterministic fallback path (used when the LLM call fails or returns invalid JSON) did not. This meant LLM failure produced action plans with no AP-ID references and `closure_pct=0%` in TATB Plan-Actionable.
+
+Fix: mirrored the same AP closure loop from the LLM path into the fallback path so CRITICAL attack paths are always referenced regardless of LLM call success.
+
+**Reasoning:**
+`closure_pct` was the dominant cause of Plan-Actionable scoring at 75 (vs 95 Excellent on most archs). The fallback path was a silent degradation — no error surfaced, just wrong output.
+
+**Alternatives rejected:**
+- Raising an exception on LLM failure and skipping SM entirely: would leave architectures without Plan-Actionable data, which is worse than a deterministic fallback.
+
+---
+
+## 2026-07-11 (Session 14) — TATB Signal Enhancement: Cross-Critic + MoE Lift Observed Across Corpus
+
+### What was decided
+
+After completing ER runs for all session-12/13 backlog architectures (including `01_minimal_vulnerable` which was missing SM), the TATB corpus pattern is clear:
+
+**TTP-Accurate is the structural weak signal** — corpus avg ~62%, driven by two sub-signals:
+- **Cross-critic agreement (30–50%)**: critics disagree on technique severity for architectures with overlapping paths sharing identical techniques. Expected for minimal/vulnerable archs; indicates real divergence in risk assessment, not a pipeline bug.
+- **MoE lift (negative, -8 to -22pp)**: confidence *drops* after MoE review, not rises. This is correct behaviour — critics are finding gaps the base engine missed. A negative MoE lift on a weak architecture is a signal of pipeline health, not a defect.
+
+**Decision: do not tune cross-critic or MoE lift thresholds to artificially inflate TTP-Accurate scores.** The signal is truthful. Architectures with no controls (01_minimal_vulnerable, 19_*) *should* score lower on TTP-Accurate.
+
+**Remaining genuine gap:** MITRE alignment mismatches (20 in 01_minimal_vulnerable) are worth addressing in the exhaustive_mitigation_mapper — these are technique-control pairs that exist in the architecture but lack an M-ID mapping, not scoring artefacts.
+
+### Results (corpus snapshot, 2026-07-11)
+
+| Architecture | Overall | TTP-Acc | Plan-Act | Notes |
+|---|---|---|---|---|
+| 01_minimal_vulnerable | 82 Solid | 62 Weak | 95 Excellent | SM now complete; negative MoE lift expected |
+| Corpus avg (26 archs) | ~80 | ~62 | varies | TTP-Acc structurally weak across corpus |
+
+### Alternatives rejected
+
+- **Lowering cross-critic weight in TATB formula**: would hide a real signal — divergent critics on a no-control arch is meaningful information.
+- **Filtering negative MoE lift from TATB**: MoE lift direction *is* the signal; suppressing it defeats the purpose of having MoE critics.
+
+---
+
 ## 2026-07-07 (Session 12) — TATB Engine Round 2: 8 MED gap techniques + data pipeline domain + 26-arch corpus
 
 ### What was decided
