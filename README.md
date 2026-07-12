@@ -129,9 +129,17 @@ Makefile          Developer entry point (make help for all targets)
 openapi.yaml      OpenAPI 3.0 spec
 ```
 
+## Benchmark methodology
+
+The scoring rubric TATB uses to evaluate every threat model is open and documented:
+
+**[docs/TATB_RUBRIC.md](docs/TATB_RUBRIC.md)** — four rubrics (Threat-Relevant, TTP-Accurate, Risk-Defensible, Plan-Actionable), signal weights, CONFIRMED/PLAUSIBLE/FAILED validation classes, and design principles. Anyone implementing a threat modelling tool could adopt these rubrics independently.
+
+---
+
 ## Read more
 
-The full build story is on Medium — seven parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, and what building all of it reveals about threat modelling itself:
+The full build story is on Medium — ten parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, and the quality flywheel that keeps the benchmark honest:
 
 | # | Title | What it covers |
 |---|-------|----------------|
