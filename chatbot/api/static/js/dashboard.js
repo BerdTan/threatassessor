@@ -9682,6 +9682,7 @@ class Dashboard {
             const isFallback = synthQuality === 'FALLBACK';
             const synthBorderColor = isFallback ? 'var(--warning-color)' : 'var(--border-color)';
             const runCriticMode = moe.critic_mode || 'sequential';
+            const _modeLabel = (m) => ({ sequential:'Sequential', partial_parallel:'Partial Parallel', parallel:'Parallel', auto:'Auto' }[m] || m);
             const isParallelResult = runCriticMode === 'parallel' || runCriticMode === 'partial_parallel';
 
             // Count how many critics actually ran (have an entry in expert_validations)
@@ -9777,12 +9778,12 @@ class Dashboard {
                     contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden; opacity:0.55;">'
                         + '<div style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center;">'
                         + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-tertiary); font-size: 1rem;">— Expert Disagreements (N/A)</h3>'
-                        + '<p style="font-size: 0.875rem; color: var(--text-tertiary); margin: 0;">Not applicable — <strong>' + runCriticMode + '</strong> mode critics ran independently and did not read each other\'s output. Cross-critic disagreement detection requires Sequential mode.</p></div>'
+                        + '<p style="font-size: 0.875rem; color: var(--text-tertiary); margin: 0;">Not applicable — <strong>' + _modeLabel(runCriticMode) + '</strong> mode: core critics ran without full cross-referencing. Disagreement detection is most reliable in Sequential mode where Red Team reads Tester\'s output.</p></div>'
                         + '</div>'
                         + '</div>';
                 } else {
-                    // Sequential / auto-resolved-sequential: genuine consensus
-                    const modeLabel = runCriticMode === 'auto' ? 'Auto (resolved to Sequential)' : 'Sequential';
+                    // Sequential / auto-resolved: genuine consensus
+                    const modeLabel = runCriticMode === 'auto' ? 'Auto (resolved to Sequential)' : _modeLabel(runCriticMode);
                     contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                         + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                         + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">✅ Expert Disagreements</h3>'
@@ -10722,17 +10723,16 @@ class Dashboard {
                     + '</div></div>'
                 : '';
 
-            const rerunRowHtml = '<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; padding:0.75rem 1rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px;">'
-                + '<span style="font-size:0.8125rem; color:var(--text-secondary); flex:1;">Ran with: <strong style="color:var(--text-color);">'
-                + runCriticMode.charAt(0).toUpperCase() + runCriticMode.slice(1)
-                + '</strong> mode</span>'
+            const rerunRowHtml = '<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; padding:0.75rem 1rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; flex-wrap:wrap;">'
+                + '<span style="font-size:0.8125rem; color:var(--text-secondary); flex:1; min-width:140px;">Last ER ran as: <strong style="color:var(--primary-color);">' + _modeLabel(runCriticMode) + '</strong></span>'
                 + '<label for="erp-rerun-mode-select" style="font-size:0.8125rem; font-weight:600; white-space:nowrap; color:var(--text-secondary);">Re-run as:</label>'
-                + '<select id="erp-rerun-mode-select" style="font-size:0.8125rem; padding:0.2rem 0.4rem; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg,var(--card-bg)); color:var(--text-color); cursor:pointer;">'
-                + '<option value="sequential"' + (runCriticMode === 'sequential' ? ' selected' : '') + '>Sequential</option>'
-                + '<option value="auto"' + (runCriticMode === 'auto' ? ' selected' : '') + '>Auto</option>'
-                + '<option value="parallel"' + (runCriticMode === 'parallel' || runCriticMode === 'partial_parallel' ? ' selected' : '') + '>Parallel</option>'
+                + '<select id="erp-rerun-mode-select" style="font-size:0.8125rem; padding:0.2rem 0.5rem; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-color); cursor:pointer;">'
+                + '<option value="partial_parallel"' + (runCriticMode === 'partial_parallel' ? ' selected' : '') + '>Partial Parallel (recommended)</option>'
+                + '<option value="sequential"' + (runCriticMode === 'sequential' ? ' selected' : '') + '>Sequential (max accuracy)</option>'
+                + '<option value="auto"' + (runCriticMode === 'auto' ? ' selected' : '') + '>Auto (complexity-adaptive)</option>'
+                + '<option value="parallel"' + (runCriticMode === 'parallel' ? ' selected' : '') + '>Parallel (fastest)</option>'
                 + '</select>'
-                + '<button onclick="(function(){var sel=document.getElementById(\'erp-rerun-mode-select\');var mode=sel?sel.value:\'sequential\';window.dashboard._rerunMoE(\'' + archName + '\',mode);})();"'
+                + '<button onclick="(function(){var sel=document.getElementById(\'erp-rerun-mode-select\');var mode=sel?sel.value:\'partial_parallel\';window.dashboard._rerunMoE(\'' + archName + '\',mode);})();"'
                 + ' style="font-size:0.8125rem; padding:0.25rem 0.875rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; white-space:nowrap;">▶ Re-run MoE</button>'
                 + '</div>';
 
