@@ -65,3 +65,4 @@ docs/blog/
 # Private decision log (personal reference, not for public repo)
 docs/DECISIONS.md
 chatbot/config/user_config.json
+.claude/codemap/
