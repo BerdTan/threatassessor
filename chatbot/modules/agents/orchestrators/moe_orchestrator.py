@@ -1585,17 +1585,18 @@ Produce a JSON object with EXACTLY this structure:
 }}
 ```
 
-OUTPUT TONE RULES — apply to every text field:
-- description (critical/high/review): ONE sentence. State the gap — name the node, technique, or score. Stop. No "this means...", no consequence chain.
+OUTPUT TONE RULES — strictly enforced on every text field:
+- description (critical/high/review): THE GAP ONLY. End after the gap statement. No list of affected controls, no "including X, Y, Z", no consequence chain.
+  RULE: Delete everything after any of these words appear: "including", "This indicates", "which means", "enabling", "attacker can".
   GOOD: "Defensibility score is 16/100 before and after deploying 18 controls."
-  BAD:  "Defensibility score remains static at 16/100 before and after deploying 18 controls including LOGGING, EDR... This indicates the risk calculation is decoupled from..."
-- evidence: ONE sentence — critic name + field. Never paste full gap text.
+  BAD:  "Defensibility score remains static at 16/100 before and after deploying 18 controls including LOGGING, EDR..."  ← stop before "including"
+- evidence: critic name + field only. No colon-expansion, no gap text after the field reference.
   GOOD: "architect control_appropriateness/HIGH + tester internal_consistency/HIGH"
-  BAD:  "Architect gap 'control_appropriateness/HIGH': defensibility 16→16 despite controls. Tester gap 'internal_consistency/HIGH': LOGGING (M1047), EDR..."
-- blindspots[].recommendation: ONE sentence — the single most important action. No numbered steps.
-  GOOD: "Conduct supply chain risk assessment for external APIs and third-party libraries."
-  BAD:  "Conduct supply chain risk assessment: (1) enumerate all external dependencies... (2) evaluate vendor security posture... (3) implement API key vaulting..."
-- improvement_tiers[].items: each item is ONE short phrase — control name + trace + path. Not a sentence.
+  BAD:  "architect control_appropriateness/HIGH + tester internal_consistency/HIGH: defensibility 16→16..."  ← no colon-expansion
+- blindspots[].recommendation: ONE action sentence. No numbered lists, no trailing options.
+  GOOD: "Conduct supply chain risk assessment for external APIs."
+  BAD:  "Conduct supply chain risk assessment: (1) enumerate... (2) evaluate..."  ← no numbered steps
+- improvement_tiers[].items: one short phrase per item. Not a sentence.
 - confidence_commentary: max 2 sentences total.
 - mode_transparency: max 2 sentences total.
 

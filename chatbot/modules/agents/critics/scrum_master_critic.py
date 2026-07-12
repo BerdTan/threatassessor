@@ -927,18 +927,26 @@ class ScrumMasterCritic:
         # Pull from MoE consensus critical/high recommendations — these are actionable NOW
         critical_recs = list(getattr(moe_result, "critical_recommendations", []))
         high_recs = list(getattr(moe_result, "high_recommendations", []))
+        # Skip words that are scores/metrics, not control names
+        _SKIP_WORDS = {"Defensibility", "Attacker", "Score", "Rating", "Static", "Zero",
+                       "Critical", "High", "Medium", "Low", "None", "This", "That", "These"}
         for r in (critical_recs + high_recs)[:3]:
-            action = r.get("action") or r.get("description") or r.get("recommendation") or str(r)
+            raw = r.get("action") or r.get("description") or r.get("recommendation") or str(r)
+            # Truncate to first sentence for the action field — don't dump full description
+            action = raw.split(".")[0].rstrip(",;") if "." in raw else raw[:100]
             evidence = r.get("evidence", "")
-            # Extract a control keyword for the first_step so it names something specific
+            # Strip evidence to just the source reference (before any colon-expansion)
+            evidence_short = evidence.split(":")[0].strip() if ":" in evidence else evidence[:60]
+            # Extract a meaningful control keyword — skip metric/score words
             _ctrl_kw = next(
-                (w for w in action.split() if len(w) > 4 and w[0].isupper()),
+                (w for w in action.split()
+                 if len(w) > 4 and w[0].isupper() and w not in _SKIP_WORDS),
                 "this control"
             )
             recs.append({
                 "priority": "high",
-                "action": f"[Immediate] {action}",
-                "rationale": f"Actionable now — does not require architectural redesign. {evidence}".strip(". ") + ".",
+                "action": action,
+                "rationale": f"Closes gap flagged by {evidence_short}. Reduces attacker capability without architectural change.",
                 "risk_reduction_estimate": "medium",
                 "effort": "days",
                 "tier": "immediate",

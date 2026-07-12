@@ -539,15 +539,16 @@ Context: {mode_context}
 }}
 ```
 
-**OUTPUT TONE RULES:**
-- gaps[].description: ONE sentence. State the fact. Name technique ID, node, AP. Stop there — no "which means", no consequence chain, no "attacker can then...".
+**OUTPUT TONE RULES — strictly enforced:**
+- gaps[].description: THE GAP STATEMENT ONLY. No second sentence. No consequence after it. End after naming the gap.
+  RULE: If your sentence contains "Attacker can", "this means", "which allows", "enabling", "without triggering" — delete everything from that point.
   GOOD: "T1018 on WebServer in AP-2 and AP-3 has zero mitigations."
-  BAD:  "T1018 on WebServer has zero mitigations. Attacker can enumerate internal topology, identify Database targets, and map lateral movement paths without triggering alerts."
-- gaps[].recommendation: ONE control or change. No option menus listing 3–4 tools.
-  GOOD: "Deploy network traffic analysis with internal reconnaissance signatures on WebServer."
-  BAD:  "Deploy NTA with internal recon signatures; implement micro-segmentation; add host-based EDR; configure SIEM correlation rules for internal scanning."
-- improvement_roadmap[].action: ONE sentence naming the control and node.
-- Write for a practitioner who executes one thing at a time."""
+  BAD:  "T1018 on WebServer in AP-2 and AP-3 has zero mitigations. Attacker can enumerate internal topology..."  ← second sentence forbidden
+- gaps[].recommendation: NAME ONE CONTROL only. One semicolon = automatic fail.
+  GOOD: "Deploy File Integrity Monitoring on WebServer and FileStorage."
+  BAD:  "Deploy FIM on WebServer; implement DLP with content inspection; configure EDR alerts..."  ← semicolons forbidden
+- improvement_roadmap[].action: ONE sentence naming the specific control and node.
+- Write for a practitioner who acts on one instruction at a time."""
 
     def _format_pt_story_context(self, attack_paths: list, user_stories: dict) -> str:
         """
