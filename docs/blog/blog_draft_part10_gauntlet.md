@@ -425,6 +425,8 @@ The loop is not finished. 69% recall means roughly one in three expected techniq
 
 That is what the flywheel is for. Not a destination. A practice.
 
+If you want to see exactly how TATB scores a threat model, the rubric definitions are open: [docs/TATB_RUBRIC.md](https://github.com/BerdTan/threatassessor/blob/master/docs/TATB_RUBRIC.md). The weights, the signals, the synonym tables used for MITRE alignment, and the design principles are all there. If you use threat modelling in your work and the rubric misses something important, I'd be curious to hear what.
+
 ---
 
 *The next post covers the critic panel: how five expert critics are structured, where sequential anchoring limits diversity, and what changes when you let them run independently.*
