@@ -147,28 +147,148 @@ _CONFUSABLE_MAP = str.maketrans({
 
 
 def _normalise(text: str) -> str:
-    """Normalise text to defeat unicode homoglyph substitution.
+    """Normalise text to defeat unicode homoglyph substitution and evasion techniques.
 
     Step 1: NFKD + ASCII encode — handles accented Latin letters (é → e).
-    Step 2: Apply Cyrillic confusable map — handles Cyrillic lookalikes
-            (і → i, р → p, о → o) that NFKD does not decompose.
+    Step 2: Cyrillic confusable map — handles Cyrillic lookalikes that NFKD doesn't decompose.
+    Step 3: Character-spacing collapse — "i g n o r e" / "i.g.n.o.r.e" → "ignore".
+    Step 4: Base64 decode — appends decoded content so encoded payloads are also scanned.
+    Step 5: Typoglycemia — scrambled variants ("ignroe", "byp@ss") → canonical form.
     """
-    # Apply confusable map before NFKD so Cyrillic chars aren't dropped by encode
+    import base64 as _b64
+
+    # Steps 1+2: homoglyph normalisation
     text = text.translate(_CONFUSABLE_MAP)
-    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+
+    # Step 3: collapse single-character-spaced / punctuation-spaced words.
+    # "i g n o r e" → "ignore", "i.g.n.o.r.e" → "ignore"
+    # Uses non-greedy match on the separator to avoid collapsing across word gaps.
+    # After collapse, also append the collapsed form as a separate token so that
+    # multi-word spaced sequences ("i g n o r e  a l l") produce both the
+    # concatenated form AND individual tokens for the patterns to match.
+    def _collapse_spaced(m: re.Match) -> str:
+        collapsed = re.sub(r"[.\-_]|\s", "", m.group(0))
+        # Keep ≥3 collapsed chars only; shorter = likely noise
+        return collapsed if len(collapsed) >= 3 else m.group(0)
+
+    text = re.sub(
+        r"(?<!\w)((?:[A-Za-z][.\-_ ]){2,}[A-Za-z])(?!\w)",
+        _collapse_spaced,
+        text,
+    )
+
+    # Step 4: attempt Base64 decode for long token-like strings; append decoded text
+    decoded_parts = []
+    for token in re.findall(r"[A-Za-z0-9+/]{20,}={0,2}", text):
+        try:
+            decoded = _b64.b64decode(token + "==").decode("utf-8", errors="ignore")
+            if decoded.isprintable() and len(decoded) > 4:
+                decoded_parts.append(decoded)
+        except Exception:
+            pass
+    if decoded_parts:
+        text = text + " " + " ".join(decoded_parts)
+
+    # Step 5: typoglycemia — map common scrambled attack keywords to canonical form
+    _TYPO_FIXES = [
+        (re.compile(r"\bign[ro]{2}e\b", re.IGNORECASE), "ignore"),
+        (re.compile(r"\bbyp[ae]ss\b", re.IGNORECASE), "bypass"),
+        (re.compile(r"\boverr?[iy]de\b", re.IGNORECASE), "override"),
+        (re.compile(r"\brev[ae]al\b", re.IGNORECASE), "reveal"),
+        (re.compile(r"\bsyst[ea]m\b", re.IGNORECASE), "system"),
+    ]
+    for pattern, replacement in _TYPO_FIXES:
+        text = pattern.sub(replacement, text)
+
+    return text
 
 
 # ---------------------------------------------------------------------------
 # Compiled regex patterns
 # ---------------------------------------------------------------------------
 
-# Exploitation — injection (applied to normalised text)
-_RE_INJECTION = re.compile(
-    r"ignore\s+(previous|all|above|prior)\s+(instructions?|prompts?|context)"
-    r"|jailbreak|<\s*script|prompt\s*injection|forget\s+(everything|your\s+instructions?)"
-    r"|you\s+are\s+now\s+an?\s+|roleplay\s+as\s+|pretend\s+(you\s+are|to\s+be)",
-    re.IGNORECASE,
-)
+# Exploitation — injection patterns (applied to normalised text).
+# Dict keyed by category name → (compiled_pattern, severity_if_any_match).
+# Inspired by OpenRouter guardrail category coverage + local TA threat model.
+_INJECTION_PATTERNS: dict = {
+    # Original TA patterns — preserved, split into named categories
+    "direct_override": (re.compile(
+        r"ignore\s+(?:previous|all|above|prior)(?:\s+\w+){0,3}\s+(?:instructions?|prompts?|context)"
+        r"|ignore\s+(?:previous|all|above|prior)\s+(?:instructions?|prompts?|context)"
+        r"|forget\s+(?:everything|your\s+instructions?)",
+        re.IGNORECASE), "HIGH"),
+
+    # New: system-level override phrases
+    "system_override": (re.compile(
+        r"new\s+system\s+prompt"
+        r"|override\s+system"
+        r"|disregard\s+(?:system|all)\s+(?:instructions?|prompts?)"
+        r"|system\s*:\s*you\s+are",
+        re.IGNORECASE), "HIGH"),
+
+    # New: developer / admin / maintenance mode unlocks
+    "developer_mode": (re.compile(
+        r"developer\s*mode"
+        r"|admin\s*mode"
+        r"|god\s*mode"
+        r"|maintenance\s*mode"
+        r"|DAN\s*mode"
+        r"|jailbreak\s*mode",
+        re.IGNORECASE), "HIGH"),
+
+    # New: DAN-style "do anything now" jailbreaks
+    "dan_jailbreak": (re.compile(
+        r"\bDAN\b"
+        r"|do\s+anything\s+now"
+        r"|no\s+restrictions\s+mode"
+        r"|jailbreak(?:ed)?",
+        re.IGNORECASE), "HIGH"),
+
+    # New: safety / content-filter bypass
+    "safety_bypass": (re.compile(
+        r"ignore\s+safety"
+        r"|bypass\s+safety"
+        r"|disable\s+safety"
+        r"|safety\s+off"
+        r"|no\s+content\s+filter"
+        r"|disable\s+(?:all\s+)?restrictions",
+        re.IGNORECASE), "HIGH"),
+
+    # New: prompt / instruction extraction
+    "prompt_extraction": (re.compile(
+        r"(?:print|reveal|show|repeat|output|display)\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions?)"
+        r"|what\s+are\s+your\s+instructions",
+        re.IGNORECASE), "HIGH"),
+
+    # Original: role / persona manipulation (preserved, now named)
+    "role_manipulation": (re.compile(
+        r"you\s+are\s+now\s+an?\s+"
+        r"|roleplay\s+as\s+"
+        r"|pretend\s+(?:you\s+are|to\s+be)"
+        r"|act\s+as\s+if\s+you\s+have\s+no",
+        re.IGNORECASE), "MEDIUM"),
+
+    # New: LLM control / special tokens embedded in MMD — always CRITICAL
+    # These are never valid Mermaid syntax; their presence is unambiguous.
+    "tag_injection": (re.compile(
+        r"</s>"
+        r"|<\|im_end\|>"
+        r"|<\|endoftext\|>"
+        r"|\[INST\]"
+        r"|<<SYS>>"
+        r"|<\|system\|>"
+        r"|<\s*script"
+        r"|</?\s*system\s*>",
+        re.IGNORECASE), "CRITICAL"),
+
+    # New: non-printable / zero-width control characters — always CRITICAL
+    "control_token": (re.compile(
+        r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"   # ASCII control chars (excl. \t\n\r)
+        r"|​|‌|‍|﻿"          # zero-width space/non-joiner/joiner/BOM
+        r"| | "                        # line/paragraph separators
+    ), "CRITICAL"),
+}
 
 # Exploitation — path traversal (raw + URL-encoded variants, case-insensitive hex)
 _RE_PATH_TRAVERSAL = re.compile(
@@ -257,6 +377,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         sig = GovernanceSignals(
             exploitation={
                 "injection_patterns": [],
+                "injection_categories": {},
                 "oversized_labels": 0,
                 "path_traversal": [],
                 "blocked": False,
@@ -295,9 +416,19 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         # unicode homoglyph substitution (e.g. Cyrillic 'о' swapped for 'o').
         normalised = _normalise(mmd_content)
 
-        # Injection patterns (on normalised text)
-        for match in _RE_INJECTION.finditer(normalised):
-            sig.exploitation["injection_patterns"].append(match.group(0)[:80])
+        # Injection patterns — categorised scan on normalised text
+        _matched_cats: dict = {}
+        for cat_name, (pattern, _cat_sev) in _INJECTION_PATTERNS.items():
+            for match in pattern.finditer(normalised):
+                _matched_cats.setdefault(cat_name, []).append(match.group(0)[:80])
+                sig.exploitation["injection_patterns"].append(
+                    f"[{cat_name}] {match.group(0)[:60]}"
+                )
+        # Per-category detail for SIEM / audit trail
+        sig.exploitation["injection_categories"] = {
+            k: {"matches": v, "severity": _INJECTION_PATTERNS[k][1]}
+            for k, v in _matched_cats.items()
+        }
 
         # Path traversal in node IDs / labels (on normalised text)
         for match in _RE_PATH_TRAVERSAL.finditer(normalised):
@@ -307,14 +438,22 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         for token in re.findall(r'"[^"]{' + str(_LABEL_MAX_CHARS) + r',}"|\[[^\]]{' + str(_LABEL_MAX_CHARS) + r',}\]', mmd_content):
             sig.exploitation["oversized_labels"] += 1
 
-        # Severity + blocked
+        # Severity — category-based escalation (highest category severity wins)
+        # Tag/control-token injection are CRITICAL on a single match — unambiguous attacks.
+        # System/DAN/Safety/Extraction categories are HIGH on first match.
         n_inj = len(sig.exploitation["injection_patterns"])
         n_trav = len(sig.exploitation["path_traversal"])
         n_over = sig.exploitation["oversized_labels"]
-        if n_trav > 0 or n_over > 0:
+        _has_critical_cat = any(
+            _INJECTION_PATTERNS[k][1] == "CRITICAL" for k in _matched_cats
+        )
+        _has_high_cat = any(
+            _INJECTION_PATTERNS[k][1] == "HIGH" for k in _matched_cats
+        )
+        if n_trav > 0 or n_over > 0 or _has_critical_cat:
             sig.exploitation["severity"] = "CRITICAL"
             sig.exploitation["blocked"] = True
-        elif n_inj >= 2:
+        elif _has_high_cat or n_inj >= 2:
             sig.exploitation["severity"] = "HIGH"
         elif n_inj == 1:
             sig.exploitation["severity"] = "MEDIUM"
