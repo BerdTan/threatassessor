@@ -666,19 +666,32 @@ without needing separate entry points. Per-path mitigations cannot stop this.)
   }},
   "reasoning": "<1-2 sentences: name the most dangerous chain, which node it pivots on, and the concrete consequence. State facts only — no evaluative adjectives>",
   "gaps": [
-    {{"severity": "<LOW/MEDIUM/HIGH/CRITICAL>", "description": "<specific cross-path chain gap, name the pivot node>"}}
+    {{
+      "severity": "<LOW/MEDIUM/HIGH/CRITICAL>",
+      "description": "<ONE sentence: name the pivot node, the APs that converge, and the technique. Stop there.>",
+      "recommendation": "<ONE sentence: the single control that breaks this chain at the pivot node.>"
+    }}
   ],
   "strengths": ["<what mitigations hold even across chains>"],
   "exploit_mitigation_roadmap": [
     {{
       "target_score": <int>,
-      "requirements": ["<control that breaks this chain, e.g. network segmentation at pivot node>"],
-      "attacker_impact": "<how this eliminates the chain or raises the bar>",
+      "requirements": ["<ONE control that breaks this specific chain — name the control and the node>"],
+      "attacker_impact": "<ONE sentence: what this eliminates for the attacker.>",
       "practical": "<YES/MAYBE/NO>"
     }}
   ]
 }}
-```"""
+```
+
+**OUTPUT TONE RULES:**
+- gaps[].description: ONE sentence. Name the pivot node, converging APs, and technique. No consequence chain after that.
+  GOOD: "WebServer pivot (AP-2/AP-3) allows T1059 command injection to reach Database and FileStorage in a single session."
+  BAD:  "WebServer pivot (AP-2/AP-3): T1059 command injection enables parallel Database exfiltration and FileStorage tampering; network segmentation present but no micro-segmentation between WebServer→Database and WebServer→FileStorage prevents lateral fan-out."
+- gaps[].recommendation: ONE control at ONE node. Not empty, not a list.
+  GOOD: "Add micro-segmentation between WebServer and Database with default-deny egress."
+- exploit_mitigation_roadmap[].requirements: name ONE control per entry, not a sentence.
+- Write for a practitioner who implements one thing at a time."""
 
 
 # CriticRegistry self-registration (elevated tier — requires policy allow)

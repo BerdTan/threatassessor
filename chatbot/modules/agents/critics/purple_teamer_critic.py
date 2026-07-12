@@ -523,21 +523,31 @@ Context: {mode_context}
     {{
       "lens": "<A/B/C>",
       "severity": "<LOW/MEDIUM/HIGH/CRITICAL>",
-      "description": "<specific gap — name technique ID, node, AP>",
-      "recommendation": "<what control or change closes this gap>"
+      "description": "<ONE sentence: the fact — name the technique ID, node, and AP. No follow-on explanation.>",
+      "recommendation": "<ONE sentence: the single most effective control or change. No option lists or multi-tool menus.>"
     }}
   ],
   "strengths": ["<what coverage or detection is already in place>"],
   "improvement_roadmap": [
     {{
       "priority": "<1/2/3>",
-      "action": "<specific action>",
+      "action": "<ONE sentence: what to add or change — name the specific control and node.>",
       "closes_lens": "<A/B/C>",
       "effort": "<low/medium/high>"
     }}
   ]
 }}
-```"""
+```
+
+**OUTPUT TONE RULES:**
+- gaps[].description: ONE sentence. State the fact. Name technique ID, node, AP. Stop there — no "which means", no consequence chain, no "attacker can then...".
+  GOOD: "T1018 on WebServer in AP-2 and AP-3 has zero mitigations."
+  BAD:  "T1018 on WebServer has zero mitigations. Attacker can enumerate internal topology, identify Database targets, and map lateral movement paths without triggering alerts."
+- gaps[].recommendation: ONE control or change. No option menus listing 3–4 tools.
+  GOOD: "Deploy network traffic analysis with internal reconnaissance signatures on WebServer."
+  BAD:  "Deploy NTA with internal recon signatures; implement micro-segmentation; add host-based EDR; configure SIEM correlation rules for internal scanning."
+- improvement_roadmap[].action: ONE sentence naming the control and node.
+- Write for a practitioner who executes one thing at a time."""
 
     def _format_pt_story_context(self, attack_paths: list, user_stories: dict) -> str:
         """
