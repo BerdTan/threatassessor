@@ -4576,20 +4576,26 @@ class Dashboard {
 
         const pivotBtn = document.getElementById('vg-pivot-btn');
         if (pivotBtn) {
-            let pivotActive = false;
+            // Start inactive — greyed out like deselected chips
+            pivotBtn.dataset.active = '0';
+            pivotBtn.style.opacity = '0.45';
+            pivotBtn.style.background = 'transparent';
+
             pivotBtn.addEventListener('click', () => {
-                pivotActive = !pivotActive;
-                if (pivotActive) {
-                    // Dim all non-pivot nodes; show all edges but dim non-pivot-touching ones
-                    pivotBtn.style.background = BH_COLOR + '33';
+                const isActive = pivotBtn.dataset.active === '1';
+                if (!isActive) {
+                    // Activate — match selected-chip style: colored bg tint + full opacity
+                    pivotBtn.dataset.active = '1';
+                    pivotBtn.style.background = BH_COLOR + '22';
                     pivotBtn.style.opacity = '1';
+                    // Dim all non-pivot nodes and non-pivot-adjacent edges
                     nodeEls.selectAll('circle,polygon').attr('opacity', n => sharedPivotSet.has(n.id) ? 1 : 0.12);
                     linkEls.style('opacity', d => {
                         const srcPivot = sharedPivotSet.has(d.source.id || d.source);
                         const tgtPivot = sharedPivotSet.has(d.target.id || d.target);
                         return (srcPivot || tgtPivot) ? 1 : 0.08;
                     });
-                    // Right pane: list pivot nodes with their AP membership
+                    // Right pane: pivot node summary
                     const rpc = document.getElementById('vg-right-pane-content');
                     if (rpc) {
                         const pivotNodes = [...sharedPivotSet];
@@ -4612,11 +4618,14 @@ class Dashboard {
                         if (rightPane) rightPane.classList.add('visible');
                     }
                 } else {
-                    // Restore normal state
+                    // Deactivate — grey out like unselected chips
+                    pivotBtn.dataset.active = '0';
                     pivotBtn.style.background = 'transparent';
-                    pivotBtn.style.opacity = '1';
+                    pivotBtn.style.opacity = '0.45';
+                    // Restore graph to current chip state
                     nodeEls.selectAll('circle,polygon').attr('opacity', 1);
                     linkEls.style('opacity', 1);
+                    applyToggles();
                     const activeNonBh = [...activeAps].filter(id => id !== 'BH');
                     if (activeNonBh.length === 0) showNoSelection();
                     else showActiveApsDetail(activeNonBh, null);
@@ -5211,7 +5220,8 @@ class Dashboard {
             return;
         }
 
-        const apHtml = sorted.map(ap => {
+        // Helper: render one AP item row
+        const _apRow = (ap) => {
             const tier = ap.criticality_tier || 'UNKNOWN';
             const color = tierColor[tier] || '#888';
             const pathStr = (ap.path || []).join(' → ') || ap.id;
@@ -5219,33 +5229,69 @@ class Dashboard {
             const adrId = ap.adr_id || (ap.adr_ids || [])[0] || '';
             const adr = (this._tmAdrs || []).find(a => a.adr_id === adrId);
             const riskBefore = adr ? adr.consequences.overall_risk_before : '?';
-            const riskAfter = adr ? adr.consequences.overall_risk_after : '?';
-            // Corroboration badge from StoryCaster
+            const riskAfter  = adr ? adr.consequences.overall_risk_after  : '?';
             const journey = (this._tmJourneyByAp || {})[ap.id];
             let corrBadge = '';
             if (journey) {
                 corrBadge = journey.no_user_story
                     ? `<span title="No normal user follows this path. Post-compromise pivot — detection needs network controls, not behavioural baselines." style="font-size:0.63rem; padding:0.1rem 0.3rem; border-radius:3px; background:#FF8C0018; color:#FF8C00; border:1px solid #FF8C0033; margin-left:0.25rem; cursor:help;">⚠ post-compromise</span>`
-                    : `<span title="A real ${journey.user_role||'user'} follows this same path in normal use. Threat is higher-confidence; detection can use behavioural baselines." style="font-size:0.63rem; padding:0.1rem 0.3rem; border-radius:3px; background:#32CD3218; color:#32CD32; border:1px solid #32CD3233; margin-left:0.25rem; cursor:help;">✓ ${this._esc(journey.user_role||'user')}</span>`;
+                    : `<span title="A real ${journey.user_role||'user'} follows this same path in normal use." style="font-size:0.63rem; padding:0.1rem 0.3rem; border-radius:3px; background:#32CD3218; color:#32CD32; border:1px solid #32CD3233; margin-left:0.25rem; cursor:help;">✓ ${this._esc(journey.user_role||'user')}</span>`;
             }
             return `<div class="tm-ap-item" data-apid="${this._esc(ap.id)}" onclick="window.dashboard._tmSelectAp('${this._esc(ap.id)}')"
-                style="padding:0.65rem 1rem 0.65rem 0.75rem; cursor:pointer; border-left:3px solid ${color}; border-bottom:1px solid var(--border-color); transition:background 0.15s;"
+                style="padding:0.6rem 1rem 0.6rem 0.75rem; cursor:pointer; border-left:3px solid ${color}; border-bottom:1px solid var(--border-color); transition:background 0.15s;"
                 onmouseover="this.style.background='var(--list-hover-bg)'" onmouseout="this.style.background=(this.classList.contains('selected')?'var(--list-active-bg)':'')">
                 <div style="font-weight:600; font-size:0.83rem; display:flex; justify-content:space-between; align-items:center; gap:0.3rem; flex-wrap:wrap;">
                     <span style="display:flex; align-items:center; gap:0;">${this._esc(ap.id)}${corrBadge}</span>
-                    <span style="font-size:0.68rem; padding:0.1rem 0.35rem; border-radius:3px; background:${color}22; color:${color}; border:1px solid ${color}44;">${tier}</span>
                 </div>
                 <div style="font-size:0.72rem; color:var(--text-tertiary); margin-top:0.2rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${this._esc(pathStr)}">${this._esc(pathStr)}</div>
                 ${rs.threat_actor ? `<div style="font-size:0.71rem; color:var(--text-secondary); margin-top:0.15rem;">${this._esc(rs.threat_actor)}</div>` : ''}
                 ${adrId ? `<div style="font-size:0.69rem; color:#1E90FF; margin-top:0.15rem;">${this._esc(adrId)} · ${riskBefore}&#8594;${riskAfter}</div>` : ''}
             </div>`;
-        }).join('');
+        };
 
-        // BH-discovered chains section (only shown when filter=ALL)
+        // Helper: collapsible section header
+        const _sectionHeader = (id, color, label, count, startOpen) => {
+            const chevId = `tm-chev-${id}`;
+            const bodyId = `tm-sec-${id}`;
+            const open = startOpen !== false;
+            return `<div onclick="(function(){var b=document.getElementById('${bodyId}');var c=document.getElementById('${chevId}');var isOpen=b.style.display!=='none';b.style.display=isOpen?'none':'block';c.textContent=isOpen?'›':'⌄';})()"
+                style="display:flex;align-items:center;justify-content:space-between;padding:0.3rem 0.85rem 0.3rem 0.75rem;background:${color}0f;border-bottom:1px solid ${color}33;cursor:pointer;user-select:none;position:sticky;top:0;z-index:1;">
+                <span style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:${color};">${label}</span>
+                <span style="display:flex;align-items:center;gap:0.4rem;">
+                    <span style="font-size:0.65rem;padding:0.05rem 0.4rem;border-radius:3px;background:${color}22;color:${color};">${count}</span>
+                    <span id="${chevId}" style="font-size:0.8rem;color:${color};font-weight:700;">${open ? '⌄' : '›'}</span>
+                </span>
+            </div>
+            <div id="${bodyId}" style="display:${open ? 'block' : 'none'};">`;
+        };
+
+        // Group APs by tier and render with collapsible sections
+        const TIER_ORDER = ['CRITICAL','HIGH','MEDIUM','LOW'];
+        let apHtml = '';
+        TIER_ORDER.forEach(tier => {
+            const group = sorted.filter(ap => (ap.criticality_tier || 'UNKNOWN') === tier);
+            if (!group.length) return;
+            const color = tierColor[tier] || '#888';
+            // CRITICAL + HIGH open by default; MEDIUM + LOW collapsed to save space
+            const startOpen = tier === 'CRITICAL' || tier === 'HIGH';
+            apHtml += _sectionHeader(`ap-${tier.toLowerCase()}`, color, tier, group.length, startOpen);
+            apHtml += group.map(_apRow).join('');
+            apHtml += '</div>';
+        });
+        // Any tier not in TIER_ORDER
+        const otherAps = sorted.filter(ap => !TIER_ORDER.includes(ap.criticality_tier || ''));
+        if (otherAps.length) {
+            apHtml += _sectionHeader('ap-other', '#888', 'OTHER', otherAps.length, true);
+            apHtml += otherAps.map(_apRow).join('');
+            apHtml += '</div>';
+        }
+
+        // BH-discovered chains section — collapsible, collapsed by default (secondary context)
         let bhSectionHtml = '';
         if (bhChains.length) {
-            const bhDivider = `<div style="padding:0.4rem 0.75rem; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#a855f7; background:#a855f711; border-bottom:1px solid #a855f733;">⚔️ BH-Discovered Chains</div>`;
-            const bhItems = bhChains.map((chain, idx) => {
+            const bhColor = '#a855f7';
+            bhSectionHtml += _sectionHeader('bh-chains', bhColor, '⚔ BH-Discovered Chains', bhChains.length, false);
+            bhSectionHtml += bhChains.map((chain, idx) => {
                 const chainId = `BH-${idx + 1}`;
                 const crit = chain.chain_criticality || 'UNKNOWN';
                 const critColor = crit === 'CRITICAL' ? '#DC143C' : crit === 'HIGH' ? '#FF8C00' : '#cc9900';
@@ -5253,18 +5299,18 @@ class Dashboard {
                 const targetStr = (chain.targets || []).join(', ') || '?';
                 const apIds = (chain.ap_ids || []).join(', ');
                 return `<div class="tm-ap-item" data-apid="${this._esc(chainId)}" onclick="window.dashboard._tmSelectAp('${this._esc(chainId)}')"
-                    style="padding:0.65rem 1rem 0.65rem 0.75rem; cursor:pointer; border-left:3px solid #a855f7; border-bottom:1px solid var(--border-color); transition:background 0.15s;"
+                    style="padding:0.6rem 1rem 0.6rem 0.75rem; cursor:pointer; border-left:3px solid ${bhColor}; border-bottom:1px solid var(--border-color); transition:background 0.15s;"
                     onmouseover="this.style.background='var(--list-hover-bg)'" onmouseout="this.style.background=(this.classList.contains('selected')?'var(--list-active-bg)':'')">
                     <div style="font-weight:600; font-size:0.83rem; display:flex; justify-content:space-between; align-items:center; gap:0.3rem;">
-                        <span style="color:#a855f7;">${this._esc(chainId)}</span>
+                        <span style="color:${bhColor};">${this._esc(chainId)}</span>
                         <span style="font-size:0.68rem; padding:0.1rem 0.35rem; border-radius:3px; background:${critColor}22; color:${critColor}; border:1px solid ${critColor}44;">${crit}${stealth}</span>
                     </div>
                     <div style="font-size:0.72rem; color:var(--text-tertiary); margin-top:0.2rem;">pivot: <code style="font-size:0.7rem;">${this._esc(chain.pivot || '?')}</code></div>
-                    <div style="font-size:0.69rem; color:#a855f766; margin-top:0.1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="targets: ${this._esc(targetStr)}">→ ${this._esc(targetStr)}</div>
+                    <div style="font-size:0.69rem; color:${bhColor}88; margin-top:0.1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="targets: ${this._esc(targetStr)}">→ ${this._esc(targetStr)}</div>
                     ${apIds ? `<div style="font-size:0.67rem; color:var(--text-tertiary); margin-top:0.1rem;">via ${this._esc(apIds)}</div>` : ''}
                 </div>`;
             }).join('');
-            bhSectionHtml = bhDivider + bhItems;
+            bhSectionHtml += '</div>';
         }
 
         container.innerHTML = apHtml + bhSectionHtml;
