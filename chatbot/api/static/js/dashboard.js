@@ -4156,6 +4156,9 @@ class Dashboard {
         }
         chipHtml += `<button id="vg-all-btn" style="padding:0.2rem 0.65rem;border-radius:12px;border:1px solid var(--border-color);background:var(--nav-hover-bg);color:var(--text-secondary);font-size:0.78rem;cursor:pointer;">ALL</button>`;
         chipHtml += `<button id="vg-reset-btn" style="padding:0.2rem 0.65rem;border-radius:12px;border:1px solid var(--border-color);background:var(--nav-hover-bg);color:var(--text-secondary);font-size:0.78rem;cursor:pointer;">RESET</button>`;
+        if (sharedPivotSet.size > 0) {
+            chipHtml += `<button id="vg-pivot-btn" title="Highlight only the pivot nodes that appear on multiple attack paths — chain-risk hotspots identified by Blackhat" style="padding:0.2rem 0.65rem;border-radius:12px;border:2px solid ${BH_COLOR};background:transparent;color:${BH_COLOR};font-size:0.78rem;font-weight:700;cursor:pointer;">⬥ Pivots only</button>`;
+        }
 
         // Build legend HTML
         let legendHtml = '<div style="display:flex;flex-wrap:wrap;gap:0.6rem;align-items:center;font-size:0.75rem;">';
@@ -4568,6 +4571,56 @@ class Dashboard {
                 });
                 applyToggles();
                 showNoSelection();
+            });
+        }
+
+        const pivotBtn = document.getElementById('vg-pivot-btn');
+        if (pivotBtn) {
+            let pivotActive = false;
+            pivotBtn.addEventListener('click', () => {
+                pivotActive = !pivotActive;
+                if (pivotActive) {
+                    // Dim all non-pivot nodes; show all edges but dim non-pivot-touching ones
+                    pivotBtn.style.background = BH_COLOR + '33';
+                    pivotBtn.style.opacity = '1';
+                    nodeEls.selectAll('circle,polygon').attr('opacity', n => sharedPivotSet.has(n.id) ? 1 : 0.12);
+                    linkEls.style('opacity', d => {
+                        const srcPivot = sharedPivotSet.has(d.source.id || d.source);
+                        const tgtPivot = sharedPivotSet.has(d.target.id || d.target);
+                        return (srcPivot || tgtPivot) ? 1 : 0.08;
+                    });
+                    // Right pane: list pivot nodes with their AP membership
+                    const rpc = document.getElementById('vg-right-pane-content');
+                    if (rpc) {
+                        const pivotNodes = [...sharedPivotSet];
+                        let html = `<div style="margin-bottom:0.85rem;"><div style="font-size:0.85rem;font-weight:700;color:${BH_COLOR};margin-bottom:0.35rem;">⬥ Pivot Nodes (${pivotNodes.length})</div>`;
+                        html += `<p style="font-size:0.78rem;color:var(--text-secondary);margin:0 0 0.75rem;">These nodes appear on multiple attack paths. Compromising one gives forked access to downstream targets — highest-priority hardening locations.</p>`;
+                        pivotNodes.forEach(nid => {
+                            const nd = nodeMap[nid];
+                            if (!nd) return;
+                            const chains = (blackhat && blackhat.pivot_diverge_chains || []).filter(ch => ch.pivot === nid);
+                            const targets = [...new Set(chains.flatMap(c => c.targets || c.diverge_targets || []))].join(', ') || '–';
+                            html += `<div style="margin-bottom:0.65rem;padding:0.6rem 0.85rem;background:${BH_COLOR}12;border-left:3px solid ${BH_COLOR};border-radius:4px;">`;
+                            html += `<div style="font-size:0.84rem;font-weight:700;color:var(--text-color);">${nid}</div>`;
+                            html += `<div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.2rem;">On paths: <strong>${nd.aps.join(', ')}</strong></div>`;
+                            if (targets !== '–') html += `<div style="font-size:0.75rem;color:var(--text-tertiary);margin-top:0.1rem;">Forked reach: ${targets}</div>`;
+                            html += '</div>';
+                        });
+                        html += '</div>';
+                        rpc.innerHTML = html;
+                        const rightPane = document.getElementById('vg-right-pane');
+                        if (rightPane) rightPane.classList.add('visible');
+                    }
+                } else {
+                    // Restore normal state
+                    pivotBtn.style.background = 'transparent';
+                    pivotBtn.style.opacity = '1';
+                    nodeEls.selectAll('circle,polygon').attr('opacity', 1);
+                    linkEls.style('opacity', 1);
+                    const activeNonBh = [...activeAps].filter(id => id !== 'BH');
+                    if (activeNonBh.length === 0) showNoSelection();
+                    else showActiveApsDetail(activeNonBh, null);
+                }
             });
         }
 
@@ -7737,14 +7790,29 @@ class Dashboard {
             return `<span style="padding:1px 7px; border-radius:3px; font-size:0.75rem; background:#ef444422; border:1px solid #ef444455; color:#ef4444;">✗ ${this._escHtml(s)}</span>`;
         };
 
+        // Purpose copy for each sink
+        const SINK_PURPOSE = {
+            siem:     'Appends every pipeline event as a JSON line to a local file — zero-dependency audit trail, readable with any text tool.',
+            langfuse: 'Sends traces to a self-hosted Langfuse server for visual timeline debugging, token-cost tracking, and LLM span inspection.',
+            webhook:  'POSTs event payloads to any HTTP endpoint — forward to Slack, PagerDuty, SIEM platforms, or custom integrations.',
+        };
+
         const sinkRow = (icon, name, key, extraNote) => {
             const cfg = sinks[key] || {};
             const en  = cfg.enabled === true;
+            // If broker itself is disabled, a sink marked "enabled" in config still receives no events
+            const effectivelyActive = enabled && en;
+            const configBadge = en
+                ? `<span style="color:${effectivelyActive ? '#0d9f6e' : '#cc9900'}; font-size:0.82rem;" title="${effectivelyActive ? 'Enabled and broker is on — events will flow' : 'Enabled in config but broker is disabled — no events will flow until broker is enabled'}">${effectivelyActive ? 'enabled' : 'enabled (broker off)'}</span>`
+                : `<span style="color:#94a3b8; font-size:0.82rem;">disabled</span>`;
             return `<tr style="border-top:1px solid var(--border-color);">
-                <td style="padding:0.55rem 0.85rem; font-size:0.85rem;">${icon} ${name}</td>
-                <td style="padding:0.55rem 0.85rem;">${en ? '<span style="color:#0d9f6e; font-size:0.82rem;">enabled</span>' : '<span style="color:#94a3b8; font-size:0.82rem;">disabled</span>'}</td>
-                <td style="padding:0.55rem 0.85rem;">${statusBadge(status[key])}</td>
-                <td style="padding:0.55rem 0.85rem; font-size:0.78rem; color:var(--text-tertiary);">${extraNote}</td>
+                <td style="padding:0.55rem 0.85rem; font-size:0.85rem; vertical-align:top;">
+                    <div style="font-weight:600;">${icon} ${name}</div>
+                    <div style="font-size:0.73rem; color:var(--text-tertiary); margin-top:0.2rem; max-width:180px; line-height:1.45;">${SINK_PURPOSE[key] || ''}</div>
+                </td>
+                <td style="padding:0.55rem 0.85rem; vertical-align:top;">${configBadge}</td>
+                <td style="padding:0.55rem 0.85rem; vertical-align:top;">${statusBadge(status[key])}</td>
+                <td style="padding:0.55rem 0.85rem; font-size:0.78rem; color:var(--text-tertiary); vertical-align:top;">${extraNote}</td>
             </tr>`;
         };
 
@@ -7766,14 +7834,26 @@ class Dashboard {
 
                 <!-- Sink status table -->
                 <div class="card" style="margin-bottom:1.25rem;">
-                    <div style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); font-weight:600; font-size:0.88rem;">Sink Status</div>
+                    <div style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+                        <span style="font-weight:600; font-size:0.88rem;">Sink Status</span>
+                        <!-- Status legend -->
+                        <span style="display:flex; align-items:center; gap:0.5rem; font-size:0.73rem; color:var(--text-tertiary);">
+                            <span>Connectivity:</span>
+                            <span style="padding:1px 7px; border-radius:3px; background:#0d9f6e22; border:1px solid #0d9f6e55; color:#0d9f6e;">✓ ok</span>
+                            <span style="padding:1px 7px; border-radius:3px; background:#1e293b; border:1px solid #334155; color:#94a3b8;">not configured</span>
+                            <span style="padding:1px 7px; border-radius:3px; background:#ef444422; border:1px solid #ef444455; color:#ef4444;">✗ error</span>
+                        </span>
+                    </div>
+                    ${!enabled ? `<div style="padding:0.5rem 1rem; background:#cc990018; border-bottom:1px solid #cc990033; font-size:0.78rem; color:#cc9900;">
+                        ⚠ EventBroker is <strong>disabled</strong> — sink config is shown below but no events are currently flowing to any sink, regardless of their individual enabled state. Enable the broker in ⚙️ Config → 🔭 EventBroker.
+                    </div>` : ''}
                     <table style="width:100%; border-collapse:collapse;">
                         <thead>
                             <tr style="background:var(--sidebar-bg);">
-                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Sink</th>
-                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Config</th>
-                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Connectivity</th>
-                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Notes</th>
+                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Sink &amp; Purpose</th>
+                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;" title="Whether this sink is enabled in config — only active if the broker is also enabled">Config</th>
+                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;" title="Live reachability check — 'not configured' means the sink is disabled or has no endpoint set">Connectivity</th>
+                                <th style="padding:0.45rem 0.85rem; text-align:left; font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Location / Endpoint</th>
                             </tr>
                         </thead>
                         <tbody>
