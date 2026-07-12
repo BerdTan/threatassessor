@@ -1524,29 +1524,29 @@ Produce a JSON object with EXACTLY this structure:
 {{
   "critical": [
     {{
-      "description": "plain English — what is wrong and why it matters operationally",
+      "description": "ONE sentence: state the specific gap — name the node, technique, or control. No consequence chain after the fact.",
       "category": "...",
       "severity": "CRITICAL|HIGH",
       "source": "which critics raised this (e.g. architect+purple_team)",
       "confidence_label": "KNOWN",
-      "evidence": "cite the specific gap/field that supports this"
+      "evidence": "ONE sentence citing the critic and field: e.g. 'architect control_appropriateness/HIGH + tester internal_consistency/HIGH'. Do not paste the full gap text."
     }}
   ],
   "high": [ /* same shape, confidence_label KNOWN or UNSURE */ ],
   "review": [ /* same shape, confidence_label UNSURE — single-critic findings */ ],
   "blindspots": [
     {{
-      "description": "gap that ALL critics structurally missed",
-      "why_missed": "reason (e.g. rubric scope, single-lens focus, mode tradeoff)",
-      "recommendation": "what the human should investigate"
+      "description": "ONE sentence: what gap was missed — name the category.",
+      "why_missed": "ONE sentence: which rubric limitation caused this.",
+      "recommendation": "ONE sentence: the single most important thing to investigate. No numbered steps."
     }}
   ],
   "contradictions": [
     {{
       "topic": "...",
-      "critic_a_view": "...",
-      "critic_b_view": "...",
-      "why_it_differs": "explain the lens difference — do not resolve",
+      "critic_a_view": "ONE sentence.",
+      "critic_b_view": "ONE sentence.",
+      "why_it_differs": "ONE sentence: the lens difference.",
       "resolution": "UNSURE — human review needed"
     }}
   ],
@@ -1584,6 +1584,20 @@ Produce a JSON object with EXACTLY this structure:
   "synthesis_quality": "FULL"
 }}
 ```
+
+OUTPUT TONE RULES — apply to every text field:
+- description (critical/high/review): ONE sentence. State the gap — name the node, technique, or score. Stop. No "this means...", no consequence chain.
+  GOOD: "Defensibility score is 16/100 before and after deploying 18 controls."
+  BAD:  "Defensibility score remains static at 16/100 before and after deploying 18 controls including LOGGING, EDR... This indicates the risk calculation is decoupled from..."
+- evidence: ONE sentence — critic name + field. Never paste full gap text.
+  GOOD: "architect control_appropriateness/HIGH + tester internal_consistency/HIGH"
+  BAD:  "Architect gap 'control_appropriateness/HIGH': defensibility 16→16 despite controls. Tester gap 'internal_consistency/HIGH': LOGGING (M1047), EDR..."
+- blindspots[].recommendation: ONE sentence — the single most important action. No numbered steps.
+  GOOD: "Conduct supply chain risk assessment for external APIs and third-party libraries."
+  BAD:  "Conduct supply chain risk assessment: (1) enumerate all external dependencies... (2) evaluate vendor security posture... (3) implement API key vaulting..."
+- improvement_tiers[].items: each item is ONE short phrase — control name + trace + path. Not a sentence.
+- confidence_commentary: max 2 sentences total.
+- mode_transparency: max 2 sentences total.
 
 RULES:
 - critical = findings ≥2 critics independently raised (mark KNOWN)
