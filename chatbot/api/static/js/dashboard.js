@@ -12769,26 +12769,39 @@ class Dashboard {
         const mitreAlignmentPct = mitrePairsChecked > 0
             ? Math.round((mitreAlignedPairs.size / mitrePairsChecked) * 100)
             : 50;  // no MITRE data available — neutral
-        // Cross-critic agreement — extract technique IDs from expert_validations (correct key path)
-        // moe.expert_validations.{architect,tester,red_team,...} — NOT moe.architect_critique (always null)
-        const critics = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat'];
-        const critTechs = {};
-        critics.forEach(k => {
-            const ev = (moe && moe.expert_validations && moe.expert_validations[k]) || {};
-            // Also check ground_truth fallback keys for backwards compat
-            const c = Object.keys(ev).length ? ev : ((gt && gt[k + '_critique']) || {});
-            const blob = JSON.stringify(c);
-            const ids = [...new Set(blob.match(/T\d{4}(?:\.\d{3})?/g) || [])];
-            critTechs[k] = new Set(ids);
-        });
-        const allTechs = new Set();
-        Object.values(critTechs).forEach(s => s.forEach(t => allTechs.add(t)));
-        let crossValidated = 0;
-        allTechs.forEach(t => {
-            const count = Object.values(critTechs).filter(s => s.has(t)).length;
-            if (count >= 2) crossValidated++;
-        });
-        const crossPct = allTechs.size ? Math.round((crossValidated / allTechs.size) * 100) : 0;
+        // Cross-critic agreement — use stored technique_support counts (Phase 4) when available.
+        // Falls back to runtime blob regex for reports generated before Phase 4.
+        const ts = moe && moe.technique_support;
+        let crossPct = 0;
+        let mandatoryTechs = [];
+        if (ts && Object.keys(ts).length > 0) {
+            const allTCount = Object.keys(ts).length;
+            const crossV = Object.values(ts).filter(d => (d.count || 0) >= 2).length;
+            crossPct = allTCount ? Math.round(crossV / allTCount * 100) : 0;
+            // Collect mandatory-flagged techniques for evidence pane badge
+            mandatoryTechs = Object.entries(ts)
+                .filter(([, d]) => d.mandatory)
+                .map(([tid, d]) => ({ tid, critics: d.critics || [] }));
+        } else {
+            // Fallback: blob regex scan (pre-Phase-4 reports)
+            const critics = ['architect', 'tester', 'red_team', 'purple_team', 'blackhat'];
+            const critTechs = {};
+            critics.forEach(k => {
+                const ev = (moe && moe.expert_validations && moe.expert_validations[k]) || {};
+                const c = Object.keys(ev).length ? ev : ((gt && gt[k + '_critique']) || {});
+                const blob = JSON.stringify(c);
+                const ids = [...new Set(blob.match(/T\d{4}(?:\.\d{3})?/g) || [])];
+                critTechs[k] = new Set(ids);
+            });
+            const allTechs = new Set();
+            Object.values(critTechs).forEach(s => s.forEach(t => allTechs.add(t)));
+            let crossValidated = 0;
+            allTechs.forEach(t => {
+                const count = Object.values(critTechs).filter(s => s.has(t)).length;
+                if (count >= 2) crossValidated++;
+            });
+            crossPct = allTechs.size ? Math.round((crossValidated / allTechs.size) * 100) : 0;
+        }
         const cb = (gt && gt.confidence_breakdown) || {};
         // MoE lift = how much the expert critics moved the final confidence from the base.
         // Correct source: moe.confidence.{base, final} (percentage scale 0-100) → convert to fraction.
@@ -13049,7 +13062,12 @@ class Dashboard {
                 score: ttpScore,
                 subs: { validationPassRate, justificationPct, crossPct, moeLiftScore, moeLift,
                         mitreAlignmentPct, tvConfirmed, tvPlausible, tvFailed },
-                evidence: { techValidation, critTechs, allTechsSize: allTechs.size, crossValidated,
+                evidence: { techValidation,
+                            critTechs: typeof critTechs !== 'undefined' ? critTechs : {},
+                            allTechsSize: typeof allTechs !== 'undefined' ? allTechs.size : (ts ? Object.keys(ts).length : 0),
+                            crossValidated: typeof crossValidated !== 'undefined' ? crossValidated : (ts ? Object.values(ts).filter(d=>(d.count||0)>=2).length : 0),
+                            techniqueSupport: ts || null,
+                            mandatoryTechs,
                             moeConf,
                             mitreAlignedCount: mitreAlignedPairs.size, mitrePairsChecked,
                             mitreUnalignedPairs, mitreNames, mitreMitigations },
@@ -13370,23 +13388,45 @@ class Dashboard {
 
         const ttpCrossEv = `
             <div style="font-size:0.8rem;line-height:1.6;">
-                ${_rpCite('07_moe_orchestrator.json → architect_critique / tester_critique / red_team_critique / purple_team_critique / blackhat_critique')}
-                <p style="margin-top:0;color:var(--text-secondary);">Techniques mentioned independently by two or more critics are more reliable — convergent findings have less chance of being hallucinated or misapplied.</p>
-                ${_rpHead('Techniques per critic (extracted from critic prose)')}
-                ${Object.entries(ttE.critTechs).filter(([,s]) => s.size > 0).map(([k,s]) =>
-                    `<div style="padding:0.2rem 0;font-size:0.79rem;"><span style="color:var(--primary-color);font-weight:600;margin-right:0.4rem;">${_esc(k.replace('_critique',''))}</span>${[...s].join(', ')}</div>`
-                ).join('') || '<div style="color:var(--text-tertiary);">No technique IDs extracted.</div>'}
-                ${_rpHead(`Cross-validated (≥2 critics): ${ttE.crossValidated} of ${ttE.allTechsSize}`)}
-                ${ttE.allTechsSize
+                ${_rpCite('07_moe_orchestrator.json → technique_support (Phase 4) or critic prose (fallback)')}
+                <p style="margin-top:0;color:var(--text-secondary);">Techniques flagged independently by two or more critics are higher-confidence. <strong>Mandatory</strong> techniques were flagged only by Red Team or Blackhat — independent signals suppressed by anchoring; do not filter these as UNSURE.</p>
+                ${ttE.techniqueSupport
                     ? (() => {
-                        const allT = new Set(Object.values(ttE.critTechs).flatMap(s => [...s]));
-                        return [...allT].map(t => {
-                            const count = Object.values(ttE.critTechs).filter(s => s.has(t)).length;
-                            const critics = Object.entries(ttE.critTechs).filter(([,s])=>s.has(t)).map(([k])=>k.replace('_critique','')).join(', ');
-                            return `<div style="padding:0.2rem 0;font-size:0.79rem;"><code style="color:var(--primary-color);">${_esc(t)}</code> <span style="color:${count>=2?'#16a34a':'var(--text-tertiary)'};">${count>=2?'✓':''} ${count} critic${count!==1?'s':''}</span> <span style="color:var(--text-tertiary);font-size:0.72rem;">(${_esc(critics)})</span></div>`;
-                        }).join('');
+                        const tsList = Object.entries(ttE.techniqueSupport).sort((a,b)=>b[1].count-a[1].count);
+                        const mandatory = tsList.filter(([,d])=>d.mandatory);
+                        return (mandatory.length ? `
+                            ${_rpHead(`⚠ Mandatory — single-critic (Red Team / Blackhat only): ${mandatory.length}`)}
+                            <div style="padding:0.3rem 0.5rem;background:#f9731614;border-radius:4px;margin-bottom:0.4rem;font-size:0.75rem;color:#f97316;">
+                                These techniques were flagged only by Red Team or Blackhat. They represent independent signals not visible to anchored critics. Treat as high-confidence gaps even though only one critic raised them.
+                            </div>
+                            ${mandatory.map(([tid,d])=>`<div style="padding:0.15rem 0;font-size:0.79rem;"><code style="color:#f97316;">${_esc(tid)}</code> <span style="font-size:0.7rem;padding:1px 5px;border-radius:3px;background:#f9731622;color:#f97316;border:1px solid #f9731644;">⚠ mandatory</span> <span style="color:var(--text-tertiary);font-size:0.72rem;">${_esc((d.critics||[]).join(', '))}</span></div>`).join('')}` : '') +
+                            `${_rpHead(`Cross-validated (≥2 critics): ${ttE.crossValidated} of ${ttE.allTechsSize}`)}
+                            ${tsList.map(([tid,d])=>{
+                                const cross = d.count >= 2;
+                                return `<div style="padding:0.15rem 0;font-size:0.79rem;"><code style="color:var(--primary-color);">${_esc(tid)}</code> <span style="color:${cross?'#16a34a':'var(--text-tertiary)'};">${cross?'✓':''} ${d.count} critic${d.count!==1?'s':''}</span> <span style="color:var(--text-tertiary);font-size:0.72rem;">(${_esc((d.critics||[]).join(', '))})</span>${d.mandatory?` <span style="font-size:0.68rem;padding:0 4px;border-radius:3px;background:#f9731622;color:#f97316;">mandatory</span>`:''}`;
+                            }).join('')}`;
                       })()
-                    : '<div style="color:var(--text-tertiary);">No technique data.</div>'}
+                    : (() => {
+                        // Fallback: blob-regex data
+                        const critTechsE = ttE.critTechs || {};
+                        return `${_rpHead('Techniques per critic (extracted from critic prose — fallback)')}
+                            ${Object.entries(critTechsE).filter(([,s]) => s.size > 0).map(([k,s]) =>
+                                `<div style="padding:0.2rem 0;font-size:0.79rem;"><span style="color:var(--primary-color);font-weight:600;margin-right:0.4rem;">${_esc(k.replace('_critique',''))}</span>${[...s].join(', ')}</div>`
+                            ).join('') || '<div style="color:var(--text-tertiary);">No technique IDs extracted.</div>'}
+                            ${_rpHead(`Cross-validated (≥2 critics): ${ttE.crossValidated} of ${ttE.allTechsSize}`)}
+                            ${ttE.allTechsSize
+                                ? (() => {
+                                    const allT = new Set(Object.values(critTechsE).flatMap(s => [...s]));
+                                    return [...allT].map(t => {
+                                        const count = Object.values(critTechsE).filter(s => s.has(t)).length;
+                                        const critics = Object.entries(critTechsE).filter(([,s])=>s.has(t)).map(([k])=>k.replace('_critique','')).join(', ');
+                                        return `<div style="padding:0.2rem 0;font-size:0.79rem;"><code style="color:var(--primary-color);">${_esc(t)}</code> <span style="color:${count>=2?'#16a34a':'var(--text-tertiary)'};">${count>=2?'✓':''} ${count} critic${count!==1?'s':''}</span> <span style="color:var(--text-tertiary);font-size:0.72rem;">(${_esc(critics)})</span></div>`;
+                                    }).join('');
+                                  })()
+                                : '<div style="color:var(--text-tertiary);">No technique data.</div>'}`;
+                      })()
+                }
+                <div style="margin-top:0.5rem;font-size:0.72rem;color:var(--text-tertiary);">${ttE.techniqueSupport ? 'Counts from stored technique_support (deduped per critic).' : 'Counts from runtime regex scan of critic prose (pre-Phase-4 report).'}</div>
             </div>`;
 
         const ttpMoeEv = `

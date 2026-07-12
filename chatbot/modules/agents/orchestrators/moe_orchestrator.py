@@ -168,6 +168,12 @@ class MoEResult:
     target_risk: int = 0
     risk_reduction: int = 0
 
+    # Per-technique support counts — computed deterministically post-synthesis (no extra LLM call).
+    # {T-ID: {count: N, critics: [name,...], mandatory: bool}}
+    # mandatory=True when only Red Team or Blackhat flagged the technique (independent signals
+    # most suppressed by anchoring bias — must not be filtered as UNSURE).
+    technique_support: Dict = None
+
     # Pipeline performance telemetry
     # pipeline_perf: {
     #   pipeline_wall_clock_s, total_llm_tokens, total_llm_cost_usd,
@@ -187,6 +193,8 @@ class MoEResult:
             self.contradictions = []
         if self.mode_tradeoffs is None:
             self.mode_tradeoffs = []
+        if self.technique_support is None:
+            self.technique_support = {}
         if self.pipeline_perf is None:
             self.pipeline_perf = {}
         if self.quick_wins is None:
@@ -247,6 +255,7 @@ class MoEResult:
             },
             "critic_mode": self.critic_mode,
             "mode_tradeoffs": self.mode_tradeoffs,
+            "technique_support": self.technique_support or {},
             "pipeline_perf": self.pipeline_perf or {},
         }
 
@@ -668,6 +677,14 @@ class MoEOrchestrator:
             risk_data
         )
 
+        # Compute per-technique support counts deterministically (no extra LLM call)
+        _bh_raw = blackhat_critique_score if _bh_enabled and blackhat_result is not None else None
+        technique_support = self._compute_technique_support(
+            architect_critique, tester_critique, red_team_critique,
+            purple_team_raw=purple_team_critique_score,
+            blackhat_raw=_bh_raw,
+        )
+
         # Build final result
         result = MoEResult(
             architecture_name=architecture_name,
@@ -691,6 +708,7 @@ class MoEOrchestrator:
             synthesis_quality=consensus.get("synthesis_quality", "UNKNOWN"),
             critic_mode=resolved_mode,
             mode_tradeoffs=mode_tradeoffs,
+            technique_support=technique_support,
             current_risk=risk_data["current"],
             target_risk=risk_data["target"],
             risk_reduction=risk_data["reduction"],
@@ -1334,6 +1352,60 @@ class MoEOrchestrator:
             "improvement_tiers": {},
             "synthesis_quality": "FALLBACK",
         }
+
+    def _compute_technique_support(
+        self,
+        architect_raw,
+        tester_raw,
+        red_team_raw,
+        purple_team_raw=None,
+        blackhat_raw=None,
+    ) -> Dict:
+        """
+        Compute per-technique support counts deterministically after synthesis.
+        No extra LLM call — regex-scans each critic's raw JSON blob.
+
+        Returns: {T-ID: {count: N, critics: [name,...], mandatory: bool}}
+        mandatory=True when only Red Team or Blackhat flagged the technique —
+        these are the independent signals most suppressed by anchoring bias.
+        """
+        import re as _re
+        import json as _json
+
+        _TECH_RE = _re.compile(r'\b(?:AML\.T\d{4}(?:\.\d{3})?|T\d{4}(?:\.\d{3})?)\b')
+
+        named_raws = {
+            "architect":   architect_raw,
+            "tester":      tester_raw,
+            "red_team":    red_team_raw,
+            "purple_team": purple_team_raw,
+            "blackhat":    blackhat_raw,
+        }
+
+        per_tech: Dict = {}
+        for cname, raw in named_raws.items():
+            if raw is None:
+                continue
+            try:
+                blob = _json.dumps(raw.to_dict() if hasattr(raw, "to_dict") else raw)
+            except Exception:
+                blob = str(raw)
+            ids = set(_TECH_RE.findall(blob))
+            # Filter out false-positives: T0044 is ATLAS (AML.T0044), bare T0044 is noise
+            ids = {t for t in ids if t.startswith("AML.") or (len(t) >= 5 and t[1:].isdigit() or "." in t)}
+            for tid in ids:
+                if tid not in per_tech:
+                    per_tech[tid] = {"count": 0, "critics": [], "mandatory": False}
+                per_tech[tid]["count"] += 1
+                per_tech[tid]["critics"].append(cname)
+
+        # Flag mandatory: Red-Team-only or Blackhat-only — independent signals not to filter
+        for tid, data in per_tech.items():
+            critics_set = set(data["critics"])
+            if critics_set <= {"red_team", "blackhat"}:
+                data["mandatory"] = True
+
+        return per_tech
 
     def _llm_synthesize(
         self,

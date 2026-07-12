@@ -164,16 +164,23 @@ def score_ttp(gt, moe, mitre_mits, mit_names):
     failed    = sum(1 for v in tv if v.get("valid") is False)
     val_pct   = round((confirmed * 1.0 + plausible * 0.5) / len(tv) * 100) if tv else 50
 
-    # Cross-critic
+    # Cross-critic — use stored technique_support counts when available (Phase 4).
+    # Falls back to runtime blob regex for reports pre-Phase 4.
     cross_pct = 0
-    ev = (moe or {}).get("expert_validations", {})
-    crit_techs = {}
-    for k in ["architect","tester","red_team","purple_team","blackhat"]:
-        blob = json.dumps(ev.get(k, {}))
-        crit_techs[k] = set(re.findall(r"(?:AML\.T\d{4}(?:\.\d{3})?|T\d{4}(?:\.\d{3})?)", blob))
-    all_t  = set(t for s in crit_techs.values() for t in s)
-    cross_v = sum(1 for t in all_t if sum(1 for s in crit_techs.values() if t in s) >= 2)
-    cross_pct = round(cross_v / len(all_t) * 100) if all_t else 0
+    ts = (moe or {}).get("technique_support")
+    if ts:
+        all_t_count = len(ts)
+        cross_v = sum(1 for d in ts.values() if d.get("count", 0) >= 2)
+        cross_pct = round(cross_v / all_t_count * 100) if all_t_count else 0
+    else:
+        ev = (moe or {}).get("expert_validations", {})
+        crit_techs = {}
+        for k in ["architect","tester","red_team","purple_team","blackhat"]:
+            blob = json.dumps(ev.get(k, {}))
+            crit_techs[k] = set(re.findall(r"(?:AML\.T\d{4}(?:\.\d{3})?|T\d{4}(?:\.\d{3})?)", blob))
+        all_t  = set(t for s in crit_techs.values() for t in s)
+        cross_v = sum(1 for t in all_t if sum(1 for s in crit_techs.values() if t in s) >= 2)
+        cross_pct = round(cross_v / len(all_t) * 100) if all_t else 0
 
     # MoE lift
     mc  = (moe or {}).get("confidence", {})
