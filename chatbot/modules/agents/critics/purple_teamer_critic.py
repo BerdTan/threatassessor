@@ -541,7 +541,7 @@ Context: {mode_context}
 
 **OUTPUT TONE RULES — strictly enforced:**
 - gaps[].description: THE GAP STATEMENT ONLY. No second sentence. No consequence after it. End after naming the gap.
-  RULE: If your sentence contains "Attacker can", "this means", "which allows", "enabling", "without triggering" — delete everything from that point.
+  RULE: If your text contains any of these — delete everything from that point: "Attacker can", "Adversary can", "this means", "which allows", "enabling", "without triggering", "— zero mitigations exist. Adversary".
   GOOD: "T1018 on WebServer in AP-2 and AP-3 has zero mitigations."
   BAD:  "T1018 on WebServer in AP-2 and AP-3 has zero mitigations. Attacker can enumerate internal topology..."  ← second sentence forbidden
 - gaps[].recommendation: NAME ONE CONTROL only. One semicolon = automatic fail.

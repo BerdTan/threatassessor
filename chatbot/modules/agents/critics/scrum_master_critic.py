@@ -999,7 +999,7 @@ class ScrumMasterCritic:
                 recs.append({
                     "priority": priority,
                     "action": f"[Structural] {decision_action}",
-                    "rationale": f"{'Structural blindspot' if source_type == 'blindspot' else 'Unresolvable cross-critic contradiction'} — cannot be addressed by adding controls to the current architecture. Original gap: {desc[:300]}",
+                    "rationale": f"{'Architecture redesign required' if source_type == 'blindspot' else 'Critics disagree — architecture may need redesign'}. Adding controls alone will not close this gap. Resolving it reduces structural risk exposure.",
                     "risk_reduction_estimate": "high",
                     "effort": "weeks",
                     "tier": "structural",

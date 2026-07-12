@@ -1587,7 +1587,7 @@ Produce a JSON object with EXACTLY this structure:
 
 OUTPUT TONE RULES — strictly enforced on every text field:
 - description (critical/high/review): THE GAP ONLY. End after the gap statement. No list of affected controls, no "including X, Y, Z", no consequence chain.
-  RULE: Delete everything after any of these words appear: "including", "This indicates", "which means", "enabling", "attacker can".
+  RULE: Delete everything after any of these words/phrases appear: "including", "but assessment", "This indicates", "which means", "enabling", "attacker can", "Adversary can".
   GOOD: "Defensibility score is 16/100 before and after deploying 18 controls."
   BAD:  "Defensibility score remains static at 16/100 before and after deploying 18 controls including LOGGING, EDR..."  ← stop before "including"
 - evidence: critic name + field only. No colon-expansion, no gap text after the field reference.
