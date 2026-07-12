@@ -24,6 +24,10 @@ The flywheel didn't tell me what to fix. It showed me the score. I had to figure
 
 That's the part I didn't expect when I started: the benchmark teaches you what it doesn't know. Every time you fix something, the next gap surfaces.
 
+The flywheel still needs to turn. A benchmark without a feedback loop is just a score. But the speed and smoothness of the turning depend on something I can't build alone: real-world feedback from people who've tried to apply this, disagreed with a finding, or spotted something the engine missed entirely.
+
+If you work in threat modelling or architecture review, I'd genuinely appreciate your take. What would make a tool like this actually useful to you?
+
 ---
 
 Full write-up in Part 10. Link in comments.
