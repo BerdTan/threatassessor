@@ -594,7 +594,34 @@ class ScrumMasterCritic:
         - Ranked by: confidence_gain × path_coverage × simplicity (not just priority label)
         """
         if redesign_signal:
-            return self._build_redesign_recommendations(moe_result)
+            recs = self._build_redesign_recommendations(moe_result)
+            # Apply AP closure enforcement on redesign path too
+            if ground_truth:
+                crit_aps = [
+                    ap for ap in ground_truth.get("expected_attack_paths", [])
+                    if ap.get("criticality_tier") == "CRITICAL" and ap.get("id")
+                ]
+                for cap in crit_aps:
+                    ap_id = cap["id"]
+                    referenced = any(
+                        ap_id in ((it.get("action") or "") + (it.get("rationale") or ""))
+                        for it in recs
+                    )
+                    if not referenced:
+                        path_str = " → ".join(cap.get("path", [])) or cap.get("entry", "")
+                        recs.append({
+                            "action": f"{ap_id}: Add targeted controls for the {path_str} attack path.",
+                            "rationale": f"CRITICAL path {ap_id} has no explicit plan item — highest-severity threat unaddressed.",
+                            "first_step": f"Review {ap_id} ({path_str}) and implement the highest-priority missing control.",
+                            "priority": "critical",
+                            "effort": "days",
+                            "risk_reduction_estimate": "high",
+                            "confidence_gain": 2.0,
+                            "is_antipattern": False,
+                        })
+                _PRIO_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+                recs.sort(key=lambda x: _PRIO_ORDER.get((x.get("priority") or "low").lower(), 3))
+            return recs
 
         # ── Source material ───────────────────────────────────────────────────
         critical_recs: List[Dict] = list(getattr(moe_result, "critical_recommendations", []))
