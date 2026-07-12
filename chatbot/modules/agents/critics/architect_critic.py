@@ -471,8 +471,8 @@ You MUST respond with valid JSON in this exact format:
     {{
       "category": "diagram_completeness",
       "severity": "HIGH",
-      "description": "after.mmd has {control_count} controls but {after_mmd_controls} NEW_* nodes",
-      "recommendation": "Reconcile diagram with control list",
+      "description": "<ONE sentence: the fact. Name the specific artifact, control, or path. No explanations or breakdowns.>",
+      "recommendation": "<ONE sentence: the action to take. No sub-steps.>",
       "affected_components": ["Artifact 7 (after.mmd)"]
     }}
   ],
@@ -483,16 +483,25 @@ You MUST respond with valid JSON in this exact format:
   "improvement_roadmap": [
     {{
       "priority": 1,
-      "action": "Fix after.mmd diagram completeness gap",
+      "action": "<ONE sentence: what to change.>",
       "category": "diagram_completeness",
       "points_gained": 2,
       "effort": "LOW",
-      "verification_method": "Count NEW_* nodes in after.mmd, must equal control_recommendations count ±2",
-      "expected_outcome": "Diagram reflects all recommended controls"
+      "verification_method": "<ONE concrete check — a grep, a count, or a single measurable outcome. No multi-step procedures. Example: `grep -c NEW_ after.mmd` should equal {control_count}>",
+      "expected_outcome": "<ONE sentence: the measurable result.>"
     }}
   ]
 }}
 ```
+
+**OUTPUT TONE RULES:**
+- gaps[].description: ONE sentence. State the fact. Name the artifact/control/path. No taxonomy breakdowns, no "likely counts", no nested explanations.
+- gaps[].recommendation: ONE actionable instruction. What to do. No sub-steps or option lists inside the field.
+- improvement_roadmap[].action: ONE sentence stating what to change.
+- improvement_roadmap[].verification_method: ONE concrete check — a command or a single measurable count. Not a procedure.
+  GOOD: "`grep -c NEW_ after.mmd` should equal {control_count}"
+  BAD: "Parse after.mmd, categorize nodes into (1) pre-existing... (2) NEW_*... (3) labels..."
+- Write for a practitioner who executes this, not a committee that debates it.
 
 **CRITICAL REQUIREMENTS:**
 1. Response MUST be valid JSON (use ```json code block)

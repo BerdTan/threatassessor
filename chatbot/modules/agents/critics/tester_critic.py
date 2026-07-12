@@ -704,6 +704,19 @@ Return JSON with:
 - strengths (what works well, acknowledge valid defense-in-depth strategy)
 - improvement_roadmap (how to fix invalid mappings while preserving defense-in-depth)
 
+OUTPUT TONE AND LENGTH RULES — READ CAREFULLY:
+- gaps[].description: ONE sentence. State the fact. Name the control/technique/ID. No explanations, no "because", no taxonomy breakdowns.
+  GOOD: "after.mmd has 67 nodes but only 18 are NEW_* controls — the rest are architectural nodes and subgraph labels."
+  BAD:  "Priority 5 roadmap item claims 67 controls in after.mmd vs 18 recommended, but this likely counts pre-existing architectural nodes (7 from before.mmd) plus 18 NEW_* controls plus visualization artifacts."
+- gaps[].recommendation: ONE actionable instruction. What to do, nothing else. No step-by-step breakdowns inside the field.
+  GOOD: "Run `grep -c 'NEW_' after.mmd` — result should match control count."
+  BAD:  "Clarify diagram node taxonomy: (1) Pre-existing architecture... (2) NEW_* controls... (3) Visualization nodes..."
+- improvement_roadmap[].action: ONE sentence stating what to change. No sub-steps.
+- improvement_roadmap[].verification_method: ONE concrete check — a command, a grep, or a single measurable outcome. No multi-step procedures.
+  GOOD: "`grep NEW_ after.mmd | wc -l` should equal 18"
+  BAD:  "parse after.mmd and categorize all nodes into three categories..."
+- Write for a practitioner who will execute this, not a committee that will debate it.
+
 BE SPECIFIC: Cite control names, technique IDs, mitigation IDs, use MITRE data.
 BE FAIR: Defense-in-depth is valid; flag only where mitigations claimed for wrong techniques.
 BE CONSTRUCTIVE: Provide actionable recommendations that preserve risk-averse approach.
@@ -728,8 +741,8 @@ Respond with ONLY valid JSON matching this schema:
     {{
       "severity": "<CRITICAL|HIGH|MEDIUM|LOW>",
       "category": "<validation|coverage|consistency|roadmap>",
-      "description": "<specific issue with control name, technique ID, mitigation ID>",
-      "recommendation": "<how to fix>"
+      "description": "<ONE sentence: the fact — name the control/technique/ID. No explanations.>",
+      "recommendation": "<ONE sentence: the action to take. No sub-steps or taxonomy breakdowns.>"
     }}
   ],
   "strengths": [
@@ -738,10 +751,10 @@ Respond with ONLY valid JSON matching this schema:
   "improvement_roadmap": [
     {{
       "priority": <1-10>,
-      "action": "<what to do>",
+      "action": "<ONE sentence: what to change.>",
       "category": "<validation|coverage|consistency>",
       "impact": "<expected improvement>",
-      "verification_method": "<how to verify fix>"
+      "verification_method": "<ONE concrete check: a grep command, a count, or a single measurable outcome. No multi-step procedures.>"
     }}
   ]
 }}
