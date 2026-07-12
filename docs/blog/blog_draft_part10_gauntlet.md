@@ -1,6 +1,6 @@
 # Part 10: When the Benchmark Finds Its Own Blind Spots
 
-*Part 9 ended with a promise: the next post would cover what happens when a benchmark starts catching its own measurement errors. This is that post — updated to include what we found when we pointed the same machine at an AI system diagram.*
+*Part 9 ended with a promise: the next post would cover what happens when a benchmark starts catching its own measurement errors. This is that post, updated to include what we found when we pointed the same machine at an AI system diagram.*
 
 ---
 
@@ -42,7 +42,7 @@ Last time we built a quality flywheel. Here is what it looks like when all three
   ╚═══════════════════════════════════════════════════════════════╝
 ```
 
-The loop works because each gear is genuinely independent. The moment any gear starts referencing another — the labeller trained on engine outputs, the scorer calibrated against historical engine performance — the wheel starts measuring its own confidence instead of its correctness. The score keeps rising. The system appears to improve. But it is only getting better at passing its own test.
+The loop works because each gear is genuinely independent. The moment any gear starts referencing another (the labeller trained on engine outputs, the scorer calibrated against historical engine performance), the wheel starts measuring its own confidence instead of its correctness. The score keeps rising. The system appears to improve. But it is only getting better at passing its own test.
 
 We ran it on 26 architectures instead of 15. Then, later, we pointed it at something it had never seen before: a pure AI/agentic system diagram. What the loop found, in order, was six ways a gear can slip.
 
@@ -85,7 +85,7 @@ Before fixing the engine, check whether the measuring is fair.
 
 **Which gear:** Gear 1 (Build)
 
-T1567 is exfiltration over web service — using Dropbox, GitHub, S3 as staging for stolen data. The engine had a rule: only flag this technique if the architecture uses cloud infrastructure.
+T1567 is exfiltration over web service, using Dropbox, GitHub, S3 as staging for stolen data. The engine had a rule: only flag this technique if the architecture uses cloud infrastructure.
 
 The labeller flagged it on six architectures with no cloud at all: a flat network, an internet-facing web server, a database.
 
@@ -240,7 +240,7 @@ The existing signal checked whether a mitigation control existed somewhere for e
   ╚═══════════════════════════════════════════════════════════════╝
 ```
 
-A 96% result on a new signal establishes the baseline you need to catch future regressions. Not wasted — necessary.
+A 96% result on a new signal establishes the baseline you need to catch future regressions. Not wasted. Necessary.
 
 ---
 
@@ -335,7 +335,7 @@ There was a second problem underneath the first. When we fixed the node coverage
   ╚═══════════════════════════════════════════════════════════════╝
 ```
 
-There was a third layer. The critics — Architect, Red Team, Blackhat — had been referencing ATLAS techniques in their reasoning for months:
+There was a third layer. The critics (Architect, Red Team, Blackhat) had been referencing ATLAS techniques in their reasoning for months:
 
 ```
   ╔═══════════════════════════════════════════════════════════════╗
@@ -384,7 +384,7 @@ Three separate gears, three simultaneous failures, one architecture. After fixin
   ╚═══════════════════════════════════════════════════════════════╝
 ```
 
-The engine had learned to read one language — traditional infrastructure. `server`, `database`, `network`, `firewall`. When the diagram said `Agent Orchestrator` and `Tool Registry`, it was like handing it a document in a different alphabet.
+The engine had learned to read one language: traditional infrastructure. `server`, `database`, `network`, `firewall`. When the diagram said `Agent Orchestrator` and `Tool Registry`, it was like handing it a document in a different alphabet.
 
 The flywheel did not ask us to fix this. It showed us the score and let us figure out why it was low. That is its job.
 
@@ -419,7 +419,7 @@ After all six corrections applied:
   ╚═══════════════════════════════════════════════════════════════╝
 ```
 
-More important than the numbers: after several rounds of the loop, the critics in the Expert Review step are spending less time on basic structural omissions. They are finding subtler mismatches — cross-path dependencies, detection blind spots, control placement. The interesting work is moving up the stack.
+More important than the numbers: after several rounds of the loop, the critics in the Expert Review step are spending less time on basic structural omissions. They are finding subtler mismatches instead: cross-path dependencies, detection blind spots, control placement. The interesting work is moving up the stack.
 
 The loop is not finished. 69% recall means roughly one in three expected techniques is still missing. The remaining gaps are architecture-conditional. The next round will surface them.
 

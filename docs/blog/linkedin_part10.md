@@ -2,9 +2,9 @@
 
 ---
 
-I've been building a side project — an AI-assisted threat modelling tool I work on in my own time.
+I've been building a side project: an AI-assisted threat modelling tool I work on in my own time.
 
-A few months back I added a quality flywheel: three gears that keep each other honest. Build produces a threat model. Label is an independent model that reads only the diagram and marks what should have been found. Score compares the two — gaps become the next repair list.
+A few months back I added a quality flywheel: three gears that keep each other honest. Build produces a threat model. Label is an independent model that reads only the diagram and marks what should have been found. Score compares the two. Gaps become the next repair list.
 
 I ran it across 26 architecture diagrams. Then pointed it at something new: an agentic AI system.
 
@@ -14,7 +14,7 @@ Not bad. But the interesting part was *why* it wasn't higher. Three gears were f
 
 **Gear 1:** The engine had no vocabulary for AI nodes. It knew `server`, `database`, `network`. It didn't know `Agent Orchestrator`, `Tool Registry`, `Prompt Manager`. 47% of nodes untouched by any attack path.
 
-**Gear 3:** After I fixed node coverage, hop coverage went *down* — from 52% to 31%. More paths found, more hops exposed, and the coverage checker didn't know that `human_oversight` spans detect + respond, or that `content_moderation` covers three zero-trust layers, not one.
+**Gear 3:** After I fixed node coverage, hop coverage went *down*. From 52% to 31%. More paths found, more hops exposed, and the coverage checker didn't know that `human_oversight` spans detect + respond, or that `content_moderation` covers three zero-trust layers, not one.
 
 **The critics:** The Blackhat critic had been referencing ATLAS techniques in its reasoning for months. The ground truth contained zero ATLAS entries. It was reasoning about a threat layer that didn't exist in the data it was reviewing.
 
@@ -26,7 +26,7 @@ That's the part I didn't expect when I started: the benchmark teaches you what i
 
 ---
 
-Full write-up in Part 10 — link in comments.
+Full write-up in Part 10. Link in comments.
 
 ---
 
