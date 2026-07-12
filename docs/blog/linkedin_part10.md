@@ -2,34 +2,32 @@
 
 ---
 
-We built a quality flywheel for AI-assisted threat modelling.
+I've been building a side project — an AI-assisted threat modelling tool I work on in my own time.
 
-Three gears: **Build** (engine produces a threat model), **Label** (independent model marks what should have been found), **Score** (compare the two, gaps become the repair list).
+A few months back I added a quality flywheel: three gears that keep each other honest. Build produces a threat model. Label is an independent model that reads only the diagram and marks what should have been found. Score compares the two — gaps become the next repair list.
 
-We ran it on 26 architecture diagrams. Then we pointed it at something it had never seen: an agentic AI system.
+I ran it across 26 architecture diagrams. Then pointed it at something new: an agentic AI system.
 
-**The score came back: 79/100 Solid.**
+**Score: 79/100 Solid.**
 
-Respectable. But when we looked at why it wasn't higher, we found three simultaneous failures — in three different gears.
+Not bad. But the interesting part was *why* it wasn't higher. Three gears were failing at once, in three different ways.
 
-**Gear 1 (Build):** The engine had no vocabulary for AI nodes. `server`, `database`, `network` — it knew those. `Agent Orchestrator`, `Tool Registry`, `Prompt Manager` — zero keyword matches. 47% of nodes untouched by any attack path.
+**Gear 1:** The engine had no vocabulary for AI nodes. It knew `server`, `database`, `network`. It didn't know `Agent Orchestrator`, `Tool Registry`, `Prompt Manager`. 47% of nodes untouched by any attack path.
 
-**Gear 3 (Score):** After fixing node coverage, hop coverage went *down*. From 52% to 31%. Because the coverage checker inferred zero-trust layers from control names — and it didn't know that `human_oversight` means detect + respond, or that `content_moderation` covers three layers, not one.
+**Gear 3:** After I fixed node coverage, hop coverage went *down* — from 52% to 31%. More paths found, more hops exposed, and the coverage checker didn't know that `human_oversight` spans detect + respond, or that `content_moderation` covers three zero-trust layers, not one.
 
-**The critics vs. the ground truth:** Our Blackhat critic had been reasoning about ATLAS techniques (AML.T0044, AML.T0051) for months. The ground truth contained zero ATLAS entries. The critics were reasoning about a threat layer that didn't exist in the data they were reviewing.
+**The critics:** The Blackhat critic had been referencing ATLAS techniques in its reasoning for months. The ground truth contained zero ATLAS entries. It was reasoning about a threat layer that didn't exist in the data it was reviewing.
 
-Three gears. Three fixes. One architecture.
+Three fixes later: node coverage 47% → 89%, validation failures 89 → 18, hop coverage 31% → 91%, overall score 79 → **85 Excellent**.
 
-After: node coverage 47% → 89%, validation failures 89 → 18, hop coverage 31% → 91%, overall 79 → **85 Excellent**.
+The flywheel didn't tell me what to fix. It showed me the score. I had to figure out why it was low.
 
-The flywheel didn't ask us to fix any of this. It showed us the score. We figured out why it was low. That's its job.
-
----
-
-The full write-up is in Part 10 of the series — link in comments.
-
-What I keep finding: the most useful thing a benchmark can do is *not* confirm what's working. It's surface what you forgot to look for.
+That's the part I didn't expect when I started: the benchmark teaches you what it doesn't know. Every time you fix something, the next gap surfaces.
 
 ---
 
-*#ThreatModelling #AISecurityEngineering #MITRE #ATLASFramework #BuildInPublic*
+Full write-up in Part 10 — link in comments.
+
+---
+
+*#ThreatModelling #CyberSecurity #MITRE #BuildInPublic #SideProject*
