@@ -1,6 +1,6 @@
 ---
 name: run-er
-description: Run Expert Review (MoE critics + ScrumMaster) on any architecture that has an existing analysis. Three modes — sequential (3 core critics), full_moe (5 critics + SM, generates Plan-Actionable data), or single-critic (re-run one critic by name). Streams live critic results with scores, gaps, and final confidence. ~60–120s for full_moe, ~30–60s for sequential.
+description: Run Expert Review (MoE critics + ScrumMaster) on any architecture that has an existing analysis. Four execution modes — partial_parallel (default/recommended), sequential (max cross-reference), parallel (fastest), auto (complexity-adaptive). Supports full_moe (5 critics + SM) or single-critic re-runs. Streams live critic results with scores, gaps, and final confidence. ~60–120s for full_moe.
 allowed-tools: Bash(python3:*) Bash(source:*)
 compatibility: Requires API server running (./scripts/api/api_start.sh) and an existing analysis (ground_truth.json) for the target architecture.
 ---
@@ -14,7 +14,7 @@ cancellation on Ctrl-C automatically.
 ## Run
 
 ```bash
-# 3 core critics — sequential (default)
+# 3 core critics — partial_parallel (default, recommended)
 cd "$(git rev-parse --show-toplevel)" && source .venv/bin/activate \
   && python3 .claude/skills/run-er/scripts/run-er.py 04_zero_trust
 
@@ -22,7 +22,11 @@ cd "$(git rev-parse --show-toplevel)" && source .venv/bin/activate \
 cd "$(git rev-parse --show-toplevel)" && source .venv/bin/activate \
   && python3 .claude/skills/run-er/scripts/run-er.py 04_zero_trust --full
 
-# Run critics in parallel (3 core critics, faster wall-clock)
+# Full MoE with sequential mode (max cross-reference — Red Team reads Tester)
+cd "$(git rev-parse --show-toplevel)" && source .venv/bin/activate \
+  && python3 .claude/skills/run-er/scripts/run-er.py 04_zero_trust --full --mode sequential
+
+# Run critics in parallel (all 3 core critics fully blind, fastest)
 cd "$(git rev-parse --show-toplevel)" && source .venv/bin/activate \
   && python3 .claude/skills/run-er/scripts/run-er.py 04_zero_trust --mode parallel
 
@@ -37,12 +41,21 @@ cd "$(git rev-parse --show-toplevel)" && source .venv/bin/activate \
 
 ## Modes
 
-| Mode | Critics | SM | Generates | Use when |
-|------|---------|-----|-----------|----------|
-| default (sequential) | Architect, Tester, Red Team | ✗ | `04–07_*.json` | Quick validation pass |
-| `--full` | + Purple Team, Blackhat | ✅ | `04–08_*.json` | Need Plan-Actionable TATB score |
-| `--mode parallel` | Architect, Tester, Red Team | ✗ | `04–07_*.json` | Faster, less deterministic |
-| `--critic <name>` | One critic only | depends | Updates that critic's file | Targeted re-run |
+| Mode | Critic ordering | SM | Use when |
+|------|-----------------|----|----------|
+| `partial_parallel` (default) | Architect ∥ Red Team (blind); Tester reads Architect after; Purple+BH sequential | optional | Standard full_moe runs — reduces Red Team anchoring bias |
+| `sequential` | Architect → Tester (reads Arch) → Red Team (reads Tester) → Purple → BH | optional | Deep review where Red Team catching Tester gaps matters |
+| `parallel` | All 3 core critics fully blind simultaneously | optional | Speed-only or independent-view comparison |
+| `auto` | Complexity score ≥60 → sequential; <60 → partial_parallel | optional | Let harness decide based on architecture size |
+
+`--full` adds Purple Team, Blackhat, and ScrumMaster (needed for Plan-Actionable TATB). Without `--full`, only Architect/Tester/Red Team run.
+
+## Decision guidance
+
+- Use **partial_parallel** (default) for most runs — Architect and Red Team run concurrently so Red Team is not anchored on Tester's framing at LLM time. Tester still reads Architect. Purple Team and Blackhat always have full prior context.
+- Use **sequential** when you want the Red Team to specifically build on gaps the Tester identified — more correlated output but higher anchoring risk.
+- Use **parallel** for speed comparisons or when you want three fully independent perspectives before synthesis.
+- Use **auto** when you're unsure — the harness picks based on architecture complexity (node × edge × path × technique count).
 
 ## What it shows (live)
 
@@ -78,13 +91,12 @@ cd "$(git rev-parse --show-toplevel)" && source .venv/bin/activate \
 | `No analysis found for '<arch>'` | Run analysis from dashboard or `python3 -m chatbot.main --gen-arch-truth` |
 | `Prerequisites missing: 07_moe_orchestrator.json` | Run `run-er <arch>` (without `--critic`) first |
 | `TM-API-KEY not found` | Add `API_KEY=<key>` to `.env` |
-| HTTP 400 / invalid critic_mode | Valid modes: `sequential`, `parallel`, `auto` |
+| HTTP 400 / invalid critic_mode | Valid modes: `sequential`, `partial_parallel`, `parallel`, `auto` |
 | Synthesis hangs at 97% | Bedrock latency — wait up to 60s; if stuck add `drop_params=True` to litellm call |
 
 ## Notes
 
-- **`--full` always uses sequential mode** — Purple Team and Blackhat need prior critic
-  results to do cross-validation; parallel mode skips the ordering dependency.
+- **`--full` uses the `--mode` flag** (default: `partial_parallel`) — Purple Team and Blackhat always run sequentially with full context regardless of mode; the mode only affects the 3 core critics (Architect/Tester/Red Team). Pass `--mode sequential` explicitly if you want Red Team to read Tester before running.
 - **ScrumMaster generates `08_scrum_master.json`** and unlocks the Plan-Actionable
   rubric in TATB. Without it, Plan shows N/A.
 - **Labels are preserved** — `demo_expert_llm.sh` stashes `expected_threats.json` before

@@ -426,7 +426,7 @@ class ThreatAssessorHarness:
         enable_ssp: bool = True,
         enable_moe: bool = False,
         enable_scrum_master: bool = False,
-        critic_mode: str = "sequential",
+        critic_mode: str = "partial_parallel",
         run_blackhat: Optional[bool] = None,
         **kwargs,
     ) -> PipelineContext:

@@ -138,8 +138,8 @@ class MoESettings(BaseModel):
         description="Max tokens for the synthesis LLM call. 5-critic full_moe runs regularly produce 30k+ char responses; 16000 is the safe default.")
     complexity_threshold: int = Field(default=60, ge=10, le=200,
         description="Complexity score above which 'auto' critic mode uses sequential (not parallel)")
-    critic_mode: Literal["sequential", "parallel", "auto"] = Field(default="sequential",
-        description="How critic agents are executed: sequential (cross-referenced), parallel (faster), or auto")
+    critic_mode: Literal["sequential", "partial_parallel", "parallel", "auto"] = Field(default="partial_parallel",
+        description="How critic agents are executed: partial_parallel (recommended — Architect+RedTeam concurrent, Tester reads Architect), sequential (fully cross-referenced), parallel (fully blind, fastest), or auto (complexity-adaptive)")
 
     # Architect critic — sensitivity preset (expands to pass/minor/major thresholds)
     architect_sensitivity: Literal["lenient", "balanced", "strict"] = Field(default="balanced",

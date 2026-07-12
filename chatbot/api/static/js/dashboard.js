@@ -2981,7 +2981,7 @@ class Dashboard {
         const finalConf = typeof moeData === 'number' ? moeData.toFixed(1)
             : (moeData.confidence?.final ?? 0).toFixed(1);
         const mode = typeof moeData === 'number' ? '' : (moeData.critic_mode || '');
-        const modeLabel = mode === 'sequential' ? 'seq' : mode === 'parallel' ? 'par' : mode === 'partial_parallel' ? 'auto' : mode;
+        const modeLabel = mode === 'sequential' ? 'seq' : mode === 'parallel' ? 'par' : mode === 'partial_parallel' ? 'partial' : mode;
         moeEl.textContent = '🧠 MoE ' + finalConf + '%' + (modeLabel ? ' · ' + modeLabel : '');
         moeEl.style.display = 'inline-flex';
     }
@@ -6750,9 +6750,10 @@ class Dashboard {
                     style="background:#1e1e2e; color:#e2e8f0; border:1px solid var(--border-color);
                            border-radius:6px; padding:0.3rem 0.6rem; font-size:0.8125rem; cursor:pointer;"
                     onchange="window.dashboard._erpShowModeHint(this.value)">
-                    <option value="sequential" selected style="background:#1e1e2e; color:#e2e8f0;">Sequential (Recommended)</option>
+                    <option value="partial_parallel" selected style="background:#1e1e2e; color:#e2e8f0;">Partial Parallel (Recommended)</option>
+                    <option value="sequential" style="background:#1e1e2e; color:#e2e8f0;">Sequential (Max Accuracy)</option>
                     <option value="auto" style="background:#1e1e2e; color:#e2e8f0;">Auto (Complexity-Adaptive)</option>
-                    <option value="parallel" style="background:#1e1e2e; color:#e2e8f0;">Parallel (Fast)</option>
+                    <option value="parallel" style="background:#1e1e2e; color:#e2e8f0;">Parallel (Fastest)</option>
                 </select>
                 <div id="erp-mode-hint" style="max-width:380px; margin-top:0.5rem; padding:0.5rem 0.75rem; border-radius:6px;
                      background:var(--nav-hover-bg); border:1px solid var(--border-color); font-size:0.75rem; color:var(--text-secondary); text-align:left;"></div>
@@ -9662,7 +9663,7 @@ class Dashboard {
                 }
 
                 container.innerHTML = this._erpProgressShell(archName, 'idle');
-                this._erpShowModeHint('sequential');
+                this._erpShowModeHint('partial_parallel');
                 return;
             }
 
@@ -11203,9 +11204,10 @@ class Dashboard {
         const el = document.getElementById('erp-mode-hint');
         if (!el) return;
         const hints = {
-            sequential: '<strong style="color:#e2e8f0;">Sequential</strong> — Architect → Tester → Red Team in order. Each critic reads the previous one\'s output, enabling cross-validated reasoning. <span style="color:var(--secondary-color);">Best choice for thorough assessments.</span> Tradeoff: ~90s total.',
-            auto:       '<strong style="color:#e2e8f0;">Auto</strong> — Chooses based on architecture complexity. Simple architectures (few nodes/paths) use partial parallel; complex ones fall back to sequential. Balances speed and rigour automatically.',
-            parallel:   '<strong style="color:#e2e8f0;">Parallel</strong> — All three critics run simultaneously (~30s faster). <span style="color:var(--warning-color);">Blindspot:</span> Tester cannot validate Architect\'s roadmap; Red Team cannot adjust for invalid MITRE mappings. Use when speed matters more than cross-referencing.',
+            partial_parallel: '<strong style="color:#e2e8f0;">Partial Parallel</strong> — Architect and Red Team run concurrently (Red Team is blind to Tester at LLM time). Tester reads Architect\'s output after. Purple Team and Blackhat always run sequentially with full context. <span style="color:var(--secondary-color);">Recommended for most runs</span> — reduces Red Team anchoring bias while preserving Tester cross-reference.',
+            sequential: '<strong style="color:#e2e8f0;">Sequential</strong> — Architect → Tester → Red Team in order. Red Team reads Tester\'s findings before running, enabling the most correlated cross-referencing. Use when you specifically want Red Team to build on Tester\'s gap analysis. Tradeoff: Red Team may anchor on Tester\'s framing.',
+            auto:       '<strong style="color:#e2e8f0;">Auto</strong> — Chooses based on architecture complexity score (nodes × edges × paths × techniques). Score ≥60 → sequential; <60 → partial_parallel. Use when unsure which mode fits the architecture size.',
+            parallel:   '<strong style="color:#e2e8f0;">Parallel</strong> — All three core critics run simultaneously, fully blind to each other. Fastest wall-clock time. <span style="color:var(--warning-color);">Tradeoff:</span> No cross-referencing between critics — use for speed comparisons or explicitly independent perspectives.',
         };
         el.innerHTML = hints[mode] || '';
     }
@@ -11215,7 +11217,7 @@ class Dashboard {
 
         // Accept forcedMode (from _rerunMoE), otherwise read the idle-state selector
         const modeEl = document.getElementById('erp-mode-select');
-        const criticMode = forcedMode || (modeEl ? modeEl.value : 'sequential');
+        const criticMode = forcedMode || (modeEl ? modeEl.value : 'partial_parallel');
 
         // Initialise persistent run state — survives tab switches
         // status: 'running' | 'paused'
@@ -12985,7 +12987,8 @@ class Dashboard {
         const adrControls = new Set();
         adrs.forEach(adr => (adr.hops || []).forEach(hop =>
             (hop.controls || []).forEach(ctrl => {
-                const n = (ctrl.name || '').toLowerCase().trim();
+                // ADR hop controls use "control" field (adr_generator.py), not "name"
+                const n = (ctrl.control || ctrl.name || '').toLowerCase().trim();
                 if (n) adrControls.add(n);
             })
         ));
@@ -12994,7 +12997,8 @@ class Dashboard {
             const highItems = smItems.filter(it => ['critical','high'].includes((it.priority||'').toLowerCase()));
             if (highItems.length > 0) {
                 const aligned = highItems.filter(it => {
-                    const text = ((it.first_step||'') + ' ' + (it.action||'')).toLowerCase();
+                    // Include rationale — control names sometimes land there
+                    const text = ((it.first_step||'') + ' ' + (it.action||'') + ' ' + (it.rationale||'')).toLowerCase();
                     return [...adrControls].some(c => text.includes(c));
                 }).length;
                 adrAlignPct = Math.round(aligned / highItems.length * 100);
@@ -15200,12 +15204,13 @@ class Dashboard {
               { section:'moe', field:'critic_mode', label:'Critic Execution Mode',
                 vtype:'select',
                 options:[
-                  {v:'sequential', label:'sequential — Cross-referenced, most accurate (recommended)', rec:true},
-                  {v:'parallel',   label:'parallel — Faster, critics run blind (less accurate)'},
-                  {v:'auto',       label:'auto — Decides per complexity score'},
+                  {v:'partial_parallel', label:'partial_parallel — Architect+RedTeam concurrent, Tester reads Architect (recommended)', rec:true},
+                  {v:'sequential',       label:'sequential — Full cross-reference, Red Team reads Tester (max accuracy)'},
+                  {v:'auto',             label:'auto — Complexity-adaptive (≥60 → sequential, <60 → partial_parallel)'},
+                  {v:'parallel',         label:'parallel — All core critics fully blind (fastest)'},
                 ],
-                desc:'How the enabled critics run. Sequential means each critic sees prior results for cross-referencing. Applies to all critics including Purple Team and Blackhat if enabled.',
-                effects: ef('Sequential = more accurate','Sequential = higher quality gaps','High','Parallel = faster') },
+                desc:'partial_parallel (recommended): Architect and Red Team run concurrently so Red Team is not anchored on Tester\'s framing; Tester reads Architect after; Purple Team and Blackhat always run sequentially with full context. sequential: Red Team reads Tester before running — higher anchoring risk but maximum cross-referencing. Use sequential for targeted deep reviews; partial_parallel for standard runs.',
+                effects: ef('partial_parallel = balanced independence','Less anchoring bias','Medium','Sequential = most correlated') },
 
               { section:'moe', field:'complexity_threshold', label:'Auto-Mode Complexity Cutoff',
                 vtype:'select',
@@ -15698,7 +15703,7 @@ class Dashboard {
             const oHtml = opts.map(o => `<option value="${o.v}" ${curVal===o.v?'selected':''}>${o.label}</option>`).join('');
             return `<select data-section="${section}" data-field="${field}" data-vtype="string" style="${qSelStyle}">${oHtml}</select>`;
         };
-        const critModeOpts = [{v:'sequential',label:'sequential (recommended)'},{v:'parallel',label:'parallel (faster)'},{v:'auto',label:'auto'}];
+        const critModeOpts = [{v:'partial_parallel',label:'partial_parallel (recommended)'},{v:'sequential',label:'sequential (max accuracy)'},{v:'auto',label:'auto'},{v:'parallel',label:'parallel (fastest)'}];
         const maxPathsOpts = [{v:'5',label:'5'},{v:'10',label:'10 (recommended)'},{v:'15',label:'15'},{v:'25',label:'25'}];
         const topNOpts     = [{v:'3',label:'3'},{v:'5',label:'5 (recommended)'},{v:'8',label:'8'},{v:'10',label:'10'}];
 

@@ -315,9 +315,11 @@ Examples:
                         choices=["architect", "tester", "red_team",
                                  "purple_team", "blackhat", "scrum_master"],
                         help="Run a single critic instead of the full pipeline")
-    parser.add_argument("--mode", metavar="MODE", default="sequential",
-                        choices=["sequential", "parallel", "auto"],
-                        help="Critic execution mode for full pipeline (default: sequential)")
+    parser.add_argument("--mode", metavar="MODE", default="partial_parallel",
+                        choices=["sequential", "partial_parallel", "parallel", "auto"],
+                        help="Critic execution mode (default: partial_parallel). "
+                             "sequential=full cross-reference; partial_parallel=Architect+RedTeam concurrent (recommended); "
+                             "parallel=all critics blind; auto=complexity-adaptive")
 
     args = parser.parse_args()
 
@@ -328,7 +330,7 @@ Examples:
     if args.critic:
         run_single_critic(args.arch, args.critic, api_key)
     else:
-        mode = "sequential" if args.full else args.mode
+        mode = args.mode  # --full uses the selected mode (default: partial_parallel)
         run_full_pipeline(args.arch, mode, api_key)
 
 

@@ -2068,7 +2068,7 @@ def run_moe_pipeline(
     report_dir: str,
     base_confidence: float = 99.5,
     progress_callback=None,
-    critic_mode: str = "sequential",
+    critic_mode: str = "partial_parallel",
     run_blackhat: Optional[bool] = None,
     blocked_agents: Optional[List[str]] = None,
     agent_models: Optional[Dict[str, str]] = None,

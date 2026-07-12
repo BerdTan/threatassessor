@@ -737,11 +737,34 @@ class ScrumMasterCritic:
                         + "\n"
                     )
 
+        # Build ADR-mandated controls context so SM can reference them by name
+        adr_context = ""
+        if ground_truth:
+            adrs = ground_truth.get("architecture_decision_records", [])
+            adr_ctrl_names = []
+            for adr in adrs:
+                for hop in (adr.get("hops") or []):
+                    for ctrl in (hop.get("controls") or []):
+                        n = (ctrl.get("control") or ctrl.get("name") or "").strip()
+                        if n and n not in adr_ctrl_names:
+                            adr_ctrl_names.append(n)
+            if adr_ctrl_names:
+                adr_context = (
+                    "\nADR-MANDATED CONTROLS (required by architecture decision records):\n"
+                    + "\n".join(f"  - {n}" for n in adr_ctrl_names[:20])
+                    + "\nREQUIREMENT: At least one high/critical action item's 'first_step' "
+                    "OR 'action' MUST explicitly name one of these controls by name.\n"
+                )
+
         prompt = (
             "You are a security architect applying a strategist mindset to an action plan.\n\n"
+            "AUDIENCE: This plan will be read by a CISO/CIO for deployment approval AND by engineers "
+            "for implementation. Write rationale in plain business language. Write first_step as a "
+            "specific engineering instruction an engineer can act on immediately.\n\n"
             f"Current validated confidence: {final_conf:.1f}%. Target: 90%.\n"
             f"Gap to close: {max(0, 90 - final_conf):.1f}%.\n\n"
             f"{ap_context}"
+            f"{adr_context}"
             "Principles:\n"
             "1. Simplicity is king — fewer controls with genuine path-blocking effect beat a long list.\n"
             "2. Design with less control yet more defensible — each item must directly block or "
@@ -750,15 +773,17 @@ class ScrumMasterCritic:
             "3. Avoid anti-patterns — policy reviews, awareness training, governance frameworks, "
             "and 'monitor and review' items rarely move the needle. Flag them if they must appear, "
             "but rank them last.\n"
-            "4. Confidence gain matters — items with higher conf_gain recover more confidence "
-            "per unit of effort. Prioritise ruthlessly.\n\n"
+            "4. Sequence by time-to-risk-reduction — an item that closes a CRITICAL path in 2 days "
+            "ranks above one that improves a HIGH path in 3 weeks, regardless of confidence gain alone. "
+            "State in rationale WHY this item reduces exposure sooner than the alternatives.\n\n"
             "Input (ranked by estimated confidence gain, with anti-pattern flag):\n"
             f"{recs_text}\n\n"
             "Return the top 5 as a JSON array. For each item:\n"
             "- Rewrite 'action' as a concrete, one-sentence engineering instruction "
             "(what to build/configure/add — not what to review or consider). "
             "If this item addresses a CRITICAL attack path, begin with its AP-ID: e.g. 'AP-1: Add WAF...'\n"
-            "- 'rationale': ONE sentence — why this specific control blocks the attack path\n"
+            "- 'rationale': TWO sentences — (1) what this control prevents in attacker terms, "
+            "(2) what business consequence is avoided (data breach, service outage, compliance gap, SLA breach)\n"
             "- 'confidence_gain': estimated % confidence recovery if implemented (from conf_gain input)\n"
             "- 'priority': critical | high | medium (based on conf_gain and path coverage)\n"
             "- 'effort': days | weeks | months\n"
@@ -766,7 +791,8 @@ class ScrumMasterCritic:
             "- 'is_antipattern': true | false\n"
             "- 'first_step': the single most concrete first action naming the specific tool, "
             "node, or configuration target (e.g. 'Install Falco on Database node', "
-            "'Configure Snyk in CI/CD pipeline with fail-on-critical policy')\n\n"
+            "'Configure Snyk in CI/CD pipeline with fail-on-critical policy', "
+            "'Enable MFA on the AgentOrchestrator API endpoint')\n\n"
             "JSON only, no explanation outside the array."
         )
 
@@ -875,6 +901,9 @@ class ScrumMasterCritic:
                         "confidence_gain": 2.0,
                         "is_antipattern": False,
                     })
+        # Sort by priority so CRITICAL items appear before HIGH for executive readers
+        _PRIO_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        result.sort(key=lambda x: _PRIO_ORDER.get((x.get("priority") or "low").lower(), 3))
         return result
 
     def _build_redesign_recommendations(self, moe_result: "MoEResult") -> List[Dict]:
@@ -896,6 +925,11 @@ class ScrumMasterCritic:
         for r in (critical_recs + high_recs)[:3]:
             action = r.get("action") or r.get("description") or r.get("recommendation") or str(r)
             evidence = r.get("evidence", "")
+            # Extract a control keyword for the first_step so it names something specific
+            _ctrl_kw = next(
+                (w for w in action.split() if len(w) > 4 and w[0].isupper()),
+                "this control"
+            )
             recs.append({
                 "priority": "high",
                 "action": f"[Immediate] {action}",
@@ -903,7 +937,7 @@ class ScrumMasterCritic:
                 "risk_reduction_estimate": "medium",
                 "effort": "days",
                 "tier": "immediate",
-                "first_step": f"Add this control to the relevant ADR and assign an owner. Verify in the next Expert Review run.",
+                "first_step": f"Apply {_ctrl_kw} at the relevant node: add to the architecture ADR, assign an owner, and verify in the next Expert Review run.",
             })
 
         # ── Tier B: Structural changes — translated into decisions, not descriptions ─
@@ -952,7 +986,7 @@ class ScrumMasterCritic:
                 recs.append({
                     "priority": priority,
                     "action": f"[Structural] {decision_action}",
-                    "rationale": f"{'Structural blindspot' if source_type == 'blindspot' else 'Unresolvable cross-critic contradiction'} — cannot be addressed by adding controls to the current architecture. Original gap: {desc[:120]}",
+                    "rationale": f"{'Structural blindspot' if source_type == 'blindspot' else 'Unresolvable cross-critic contradiction'} — cannot be addressed by adding controls to the current architecture. Original gap: {desc[:300]}",
                     "risk_reduction_estimate": "high",
                     "effort": "weeks",
                     "tier": "structural",
@@ -970,6 +1004,10 @@ class ScrumMasterCritic:
                 "tier": "structural",
                 "first_step": "Review .mmd for missing nodes. Add any external dependencies, databases, and inter-service connections not currently modelled.",
             })
+
+        # Sort by priority so CRITICAL items appear before HIGH for executive readers
+        _PRIO_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        recs.sort(key=lambda x: _PRIO_ORDER.get((x.get("priority") or "low").lower(), 3))
 
         return recs
 

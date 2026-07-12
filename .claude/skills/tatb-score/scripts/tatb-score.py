@@ -310,7 +310,7 @@ def score_plan(gt, sm):
         high_items = [it for it in items if (it.get("priority") or "").lower() in ("critical", "high")]
         if high_items:
             aligned = sum(1 for it in high_items
-                          if any(c in ((it.get("first_step") or "") + " " + (it.get("action") or "")).lower()
+                          if any(c in ((it.get("first_step") or "") + " " + (it.get("action") or "") + " " + (it.get("rationale") or "")).lower()
                                  for c in adr_controls))
             adr_align_pct = round(aligned / len(high_items) * 100)
         else:

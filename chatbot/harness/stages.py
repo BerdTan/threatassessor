@@ -146,7 +146,7 @@ class CriticStage(PipelineStage):
         ctx["moe_result"] = run_moe_pipeline(
             str(ctx["report_dir"]),
             base_confidence=ctx.get("confidence"),
-            critic_mode=ctx.get("critic_mode", "sequential"),
+            critic_mode=ctx.get("critic_mode", "partial_parallel"),
             run_blackhat=ctx.get("run_blackhat"),
             blocked_agents=ctx.get("blocked_agents", []),
             progress_callback=kw.get("progress_callback"),

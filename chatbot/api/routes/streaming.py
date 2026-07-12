@@ -812,10 +812,10 @@ async def expert_review_stream(
         )
 
     # Validate critic_mode
-    if critic_mode not in ("sequential", "parallel", "auto"):
+    if critic_mode not in ("sequential", "partial_parallel", "parallel", "auto"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="critic_mode must be one of: sequential, parallel, auto"
+            detail="critic_mode must be one of: sequential, partial_parallel, parallel, auto"
         )
 
     return StreamingResponse(
