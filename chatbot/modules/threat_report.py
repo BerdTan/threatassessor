@@ -422,30 +422,55 @@ def generate_technical_report(ground_truth: Dict) -> str:
         report += f"| **Hop Count** | {ap['hop_count']} |\n"
         report += f"| **Criticality** | {criticality:.2f} |\n\n"
 
-        # MITRE techniques with descriptions
+        # MITRE ATT&CK + ATLAS techniques with descriptions
         techniques = ap.get("techniques", [])
         if techniques:
-            report += "**MITRE ATT&CK Techniques:**\n\n"
-            for tech_id in techniques:
-                # Get technique details from MITRE
-                if mitre:
-                    tech = mitre.find_technique(tech_id)
-                    if tech:
-                        tech_name = tech.get('name', 'Unknown')
-                        tech_desc = tech.get('description', '')
-                        # Truncate description to first sentence for readability
-                        if tech_desc:
-                            first_sentence = tech_desc.split('.')[0] + '.'
-                            if len(first_sentence) > 120:
-                                first_sentence = first_sentence[:117] + '...'
-                            report += f"- **{tech_id}: {tech_name}**  \n"
-                            report += f"  {first_sentence}\n\n"
+            mitre_techs = [t for t in techniques if not t.startswith("AML.")]
+            atlas_techs = [t for t in techniques if t.startswith("AML.")]
+
+            if mitre_techs:
+                report += "**MITRE ATT&CK Techniques:**\n\n"
+                for tech_id in mitre_techs:
+                    if mitre:
+                        tech = mitre.find_technique(tech_id)
+                        if tech:
+                            tech_name = tech.get('name', 'Unknown')
+                            tech_desc = tech.get('description', '')
+                            if tech_desc:
+                                first_sentence = tech_desc.split('.')[0] + '.'
+                                if len(first_sentence) > 120:
+                                    first_sentence = first_sentence[:117] + '...'
+                                report += f"- **{tech_id}: {tech_name}**  \n"
+                                report += f"  {first_sentence}\n\n"
+                            else:
+                                report += f"- **{tech_id}: {tech_name}**\n\n"
                         else:
-                            report += f"- **{tech_id}: {tech_name}**\n\n"
+                            report += f"- {tech_id}\n\n"
                     else:
                         report += f"- {tech_id}\n\n"
-                else:
-                    report += f"- {tech_id}\n\n"
+
+            if atlas_techs:
+                report += "**MITRE ATLAS Techniques (AI/ML-specific):**\n\n"
+                try:
+                    from chatbot.modules.atlas_helper import get_atlas_helper
+                    atlas = get_atlas_helper()
+                except Exception:
+                    atlas = None
+                for tech_id in atlas_techs:
+                    tech = atlas.get_technique_by_id(tech_id) if atlas else None
+                    if tech:
+                        tech_name = tech.get('name', tech_id)
+                        tech_desc = tech.get('description', '')
+                        if tech_desc:
+                            first_sentence = tech_desc.split('.')[0] + '.'
+                            if len(first_sentence) > 150:
+                                first_sentence = first_sentence[:147] + '...'
+                            report += f"- **{tech_id}: {tech_name}** *(ATLAS)*  \n"
+                            report += f"  {first_sentence}\n\n"
+                        else:
+                            report += f"- **{tech_id}: {tech_name}** *(ATLAS)*\n\n"
+                    else:
+                        report += f"- **{tech_id}** *(ATLAS — AI/ML attack technique)*\n\n"
 
         # Rationale
         rationale = ap.get('rationale', 'N/A')
@@ -1830,6 +1855,29 @@ def generate_threat_model_report(ground_truth: Dict) -> str:
                 f"An attacker must already have a foothold before reaching this path. "
                 f"Detection must rely on network segmentation or explicit hop-level monitoring — "
                 f"not user behavioural baselines.\n"
+            )
+
+        # ATLAS AI-specific techniques — surface in narrative if present on this path
+        ap_techs = ap.get("techniques", [])
+        atlas_on_path = [t for t in ap_techs if t.startswith("AML.")]
+        if atlas_on_path:
+            try:
+                from chatbot.modules.atlas_helper import get_atlas_helper
+                _atlas = get_atlas_helper()
+            except Exception:
+                _atlas = None
+            atlas_names = []
+            for tid in atlas_on_path:
+                t = _atlas.get_technique_by_id(tid) if _atlas else None
+                atlas_names.append(f"{tid} ({t.get('name', tid)})" if t else tid)
+            lines.append(
+                f"**AI-specific threats (MITRE ATLAS):** This path also exposes AI/ML-layer "
+                f"attack vectors: {', '.join(atlas_names)}. "
+                f"These are distinct from traditional MITRE ATT&CK techniques — they target "
+                f"the model, prompt interface, or inference API directly. "
+                f"Standard network and endpoint controls do not address these vectors; "
+                f"AI-specific controls (prompt filtering, output guardrails, RAG content validation, "
+                f"API access scoping) are required.\n"
             )
 
         # Per-AP residual + ADR link

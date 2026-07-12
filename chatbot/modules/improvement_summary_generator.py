@@ -459,42 +459,69 @@ def _generate_key_finding(composite: int, arch: int, test: int, defense: int) ->
 
 
 def _generate_strengths(orch: Dict, controls_present: List[str]) -> str:
-    """Extract strengths from all agents."""
+    """Extract strengths from all agents — supports both MoE and legacy formats."""
     strengths = []
 
-    # From architect
-    arch_roadmap = orch.get("individual_scores", {}).get("architect", {}).get("roadmap", [])
-    if arch_roadmap:
-        strengths.append(f"- **Design:** {arch_roadmap[0].get('strength', 'Well-structured architecture') if arch_roadmap else 'N/A'}")
+    if "expert_validations" in orch:
+        # MoE format: pull top strength from each critic's strengths list
+        ev = orch.get("expert_validations", {})
+        for critic_key, critic_label in [
+            ("architect", "Design"), ("tester", "MITRE coverage"), ("red_team", "Exploit difficulty")
+        ]:
+            critic_data = ev.get(critic_key, {})
+            critic_strengths = critic_data.get("strengths", [])
+            if critic_strengths:
+                s = critic_strengths[0]
+                text = s.get("description", str(s)) if isinstance(s, dict) else str(s)
+                if len(text) > 120:
+                    text = text[:117] + "..."
+                strengths.append(f"- **{critic_label}:** {text}")
+    else:
+        # Legacy format
+        arch_roadmap = orch.get("individual_scores", {}).get("architect", {}).get("roadmap", [])
+        if arch_roadmap:
+            strengths.append(f"- **Design:** {arch_roadmap[0].get('strength', 'Well-structured architecture')}")
 
-    # From controls present
+        red_team = orch.get("individual_scores", {}).get("red_team", {})
+        if red_team.get("defense_score", 0) > 40:
+            strengths.append("- **Defense Depth:** Multiple layers of defense make exploitation difficult")
+
     if len(controls_present) > 5:
         strengths.append(f"- **Existing Controls:** {len(controls_present)} security controls already implemented")
-
-    # From red team
-    red_team = orch.get("individual_scores", {}).get("red_team", {})
-    if red_team.get("defense_score", 0) > 40:
-        strengths.append("- **Defense Depth:** Multiple layers of defense make exploitation difficult")
 
     return "\n".join(strengths) if strengths else "- Basic security posture established"
 
 
 def _generate_gaps(orch: Dict, roadmap: List[Dict]) -> str:
-    """Extract critical gaps from all agents."""
+    """Extract critical gaps from all agents — supports both MoE and legacy formats."""
     gaps = []
 
-    # Critical items from roadmap
-    critical_items = [item for item in roadmap if item.get("priority") == "CRITICAL"]
-
-    for item in critical_items[:5]:  # Top 5
-        source = item.get("source", "Unknown")
-        action = item.get("action", "N/A")
-
-        # Truncate long actions
-        if len(action) > 100:
-            action = action[:97] + "..."
-
-        gaps.append(f"- **{source}:** {action}")
+    # MoE format: consensus_recommendations.critical[] in expert_validations
+    if "expert_validations" in orch:
+        consensus = orch.get("consensus_recommendations", {})
+        critical_items = consensus.get("critical", [])
+        for item in critical_items[:5]:
+            source = item.get("source", item.get("critic", "Expert panel"))
+            action = item.get("description", item.get("action", "N/A"))
+            if len(action) > 150:
+                action = action[:147] + "..."
+            gaps.append(f"- **{source}:** {action}")
+        # Also surface blindspots as gaps
+        blindspots = consensus.get("blindspots", [])
+        for bs in blindspots[:2]:
+            desc = bs.get("description", str(bs)) if isinstance(bs, dict) else str(bs)
+            if len(desc) > 150:
+                desc = desc[:147] + "..."
+            gaps.append(f"- **Blindspot:** {desc}")
+    else:
+        # Legacy format: unified_roadmap with priority=CRITICAL
+        critical_items = [item for item in roadmap if item.get("priority") == "CRITICAL"]
+        for item in critical_items[:5]:
+            source = item.get("source", "Unknown")
+            action = item.get("action", "N/A")
+            if len(action) > 150:
+                action = action[:147] + "..."
+            gaps.append(f"- **{source}:** {action}")
 
     return "\n".join(gaps) if gaps else "- No critical gaps identified"
 
