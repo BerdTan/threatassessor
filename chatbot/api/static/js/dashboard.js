@@ -12548,40 +12548,19 @@ class Dashboard {
             }
         } catch (_) {}
 
-        // Labelled-corpus regression — fetch expected_threats.json for all archs that have one
+        // Labelled-corpus regression — check if current arch has labels; full corpus loads on demand
         let corpusRows = [];
+        let currentArchHasLabels = false;
         try {
-            const rResp = await fetch('/api/v1/reports', _nc).catch(() => null);
-            if (rResp && rResp.ok) {
-                const allArchs = ((await rResp.json()).architectures || []).map(a => a.name);
-                const checked = await Promise.all(allArchs.map(async a => {
-                    const lr = await fetch(`/api/v1/reports/${encodeURIComponent(a)}/files/expected_threats.json`, _nc).catch(() => null);
-                    if (!lr || !lr.ok) return null;
-                    const label = await lr.json().catch(() => null);
-                    if (!label || !Array.isArray(label.techniques)) return null;
-                    const gr = await fetch(`/api/v1/reports/${encodeURIComponent(a)}/files/ground_truth.json`, _nc).catch(() => null);
-                    if (!gr || !gr.ok) return null;
-                    const gt2 = await gr.json().catch(() => null);
-                    if (!gt2) return null;
-                    const expected = new Set(label.techniques);
-                    const detected = new Set((gt2.expected_attack_paths||[]).flatMap(ap => ap.techniques||[]));
-                    const tp = [...expected].filter(t => detected.has(t)).length;
-                    const fp = [...detected].filter(t => !expected.has(t)).length;
-                    const recall    = expected.size ? Math.round(tp/expected.size*100) : 100;
-                    const precision = (tp+fp) ? Math.round(tp/(tp+fp)*100) : 0;
-                    const f1        = (recall+precision) ? Math.round(2*recall*precision/(recall+precision)) : 0;
-                    return { arch: a, recall, precision, f1, tp, fp, fn: [...expected].filter(t=>!detected.has(t)).length,
-                             missed: [...expected].filter(t=>!detected.has(t)) };
-                }));
-                corpusRows = checked.filter(Boolean);
-            }
+            const lr = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/expected_threats.json`, _nc).catch(() => null);
+            currentArchHasLabels = !!(lr && lr.ok);
         } catch(_) {}
 
         let scores, html;
         try {
             scores = this._computeTatbScores({ gt, gov, moe, sm, mitreMitigations, mitreNames });
             this._lastTatbScores = { threat: scores.threat.score, ttp: scores.ttp.score, risk: scores.risk.score, plan: scores.plan.score, overall: scores.overall };
-            html = this._renderTatbScorecard(archName, scores, { gt, gov, moe, sm, perf, mitreMitigations, mitreNames }, prev, corpusRows);
+            html = this._renderTatbScorecard(archName, scores, { gt, gov, moe, sm, perf, mitreMitigations, mitreNames }, prev, corpusRows, currentArchHasLabels);
         } catch (e) {
             container.innerHTML = `<div style="padding:1.5rem; color:var(--error-color); font-size:0.85rem;">
                 <strong>TATB render error:</strong> ${this._esc(e.message)}<br>
@@ -13112,7 +13091,7 @@ class Dashboard {
     }
 
     // ── Rendering ───────────────────────────────────────────────────────────
-    _renderTatbScorecard(archName, scores, sources, prev, corpusRows = []) {
+    _renderTatbScorecard(archName, scores, sources, prev, corpusRows = [], currentArchHasLabels = false) {
         const { threat, ttp, risk, plan, overall, context } = scores;
         const { perf } = sources;
 
@@ -14072,11 +14051,87 @@ class Dashboard {
                     return `The plan is usable but has gaps. Click the tiles above for the specific issues — incomplete items, missing outcome estimates, or generic control descriptions that need refinement before handing to an engineering team.`;
                 })(),
                 planTiles, planEvidence)}
-            ${this._renderCorpusRegression(corpusRows)}
+            ${this._renderCorpusRegressionPanel(archName, corpusRows, currentArchHasLabels)}
             ${links}
         </div>`;
     }
 
+
+    _renderCorpusRegressionPanel(archName, rows, hasLabels) {
+        // If corpus rows already loaded (via Load button), render the full table
+        if (rows && rows.length) {
+            return this._renderCorpusRegression(rows);
+        }
+
+        // Otherwise render a compact status card with lazy-load trigger
+        const _esc = s => this._esc(String(s || ''));
+        const labelNote = hasLabels
+            ? `<span style="color:#16a34a; font-size:0.78rem;">✓ Labels found for <strong>${_esc(archName)}</strong></span>`
+            : `<span style="color:#94a3b8; font-size:0.78rem;">No labels for <strong>${_esc(archName)}</strong> — run <code>/tatb-corpus --label</code> to generate</span>`;
+
+        return `
+        <div style="margin-top:1rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:0.6rem 1rem; background:var(--nav-hover-bg); border-bottom:1px solid var(--border-color);">
+                <span style="font-size:0.85rem; font-weight:600;">📊 Labelled-Corpus Regression</span>
+                <div style="display:flex; align-items:center; gap:0.75rem;">
+                    ${labelNote}
+                    <button onclick="window.dashboard._loadCorpusRegression('${_esc(archName)}')"
+                        style="padding:0.25rem 0.75rem; font-size:0.78rem; font-weight:600; background:var(--primary-color); color:#fff; border:none; border-radius:5px; cursor:pointer;">
+                        ▶ Load regression
+                    </button>
+                </div>
+            </div>
+            <div id="corpus-regression-content" style="padding:0.75rem 1rem; font-size:0.78rem; color:var(--text-tertiary);">
+                Corpus regression loads on demand — fetches recall/precision for all labelled architectures. Click <strong>▶ Load regression</strong> to run.
+                ${!hasLabels ? '<br><br>To generate labels for this architecture: <code>source .venv/bin/activate && python3 .claude/skills/tatb-corpus/scripts/tatb-corpus.py --label</code>' : ''}
+            </div>
+        </div>`;
+    }
+
+    async _loadCorpusRegression(archName) {
+        const container = document.getElementById('corpus-regression-content');
+        if (!container) return;
+        container.innerHTML = '<span style="color:var(--text-tertiary); font-size:0.78rem;">⏳ Loading corpus regression…</span>';
+
+        const _nc = { cache: 'no-store' };
+        let corpusRows = [];
+        try {
+            const rResp = await fetch('/api/v1/reports', _nc).catch(() => null);
+            if (rResp && rResp.ok) {
+                const allArchs = ((await rResp.json()).architectures || []).map(a => a.name);
+                const checked = await Promise.all(allArchs.map(async a => {
+                    const lr = await fetch(`/api/v1/reports/${encodeURIComponent(a)}/files/expected_threats.json`, _nc).catch(() => null);
+                    if (!lr || !lr.ok) return null;
+                    const label = await lr.json().catch(() => null);
+                    if (!label || !Array.isArray(label.techniques)) return null;
+                    const gr = await fetch(`/api/v1/reports/${encodeURIComponent(a)}/files/ground_truth.json`, _nc).catch(() => null);
+                    if (!gr || !gr.ok) return null;
+                    const gt2 = await gr.json().catch(() => null);
+                    if (!gt2) return null;
+                    const expected = new Set(label.techniques);
+                    const detected = new Set((gt2.expected_attack_paths||[]).flatMap(ap => ap.techniques||[]));
+                    const tp = [...expected].filter(t => detected.has(t)).length;
+                    const fp = [...detected].filter(t => !expected.has(t)).length;
+                    const recall    = expected.size ? Math.round(tp/expected.size*100) : 100;
+                    const precision = (tp+fp) ? Math.round(tp/(tp+fp)*100) : 0;
+                    const f1        = (recall+precision) ? Math.round(2*recall*precision/(recall+precision)) : 0;
+                    return { arch: a, recall, precision, f1, tp, fp,
+                             fn: [...expected].filter(t=>!detected.has(t)).length,
+                             missed: [...expected].filter(t=>!detected.has(t)) };
+                }));
+                corpusRows = checked.filter(Boolean);
+            }
+        } catch(_) {}
+
+        if (!corpusRows.length) {
+            container.innerHTML = '<span style="color:var(--text-tertiary); font-size:0.78rem;">No labelled architectures found. Run <code>/tatb-corpus --label</code> to generate labels.</span>';
+            return;
+        }
+
+        // Replace the whole panel with the full regression table
+        const panel = container.closest('div[style*="border-radius:8px"]');
+        if (panel) panel.outerHTML = this._renderCorpusRegression(corpusRows);
+    }
 
     _renderCorpusRegression(rows) {
         if (!rows || !rows.length) return '';
