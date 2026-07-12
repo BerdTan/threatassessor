@@ -108,23 +108,33 @@ def score_threat(gt):
 
 
 CTRL_SYNONYMS = {
-    "mfa":                   ["multi-factor","authentication"],
-    "waf":                   ["filter network","web application firewall","application layer"],
-    "edr":                   ["endpoint detection","behavior prevention","endpoint"],
+    "mfa":                   ["multi-factor","authentication","account use policies"],
+    "waf":                   ["filter network","web application firewall","application layer","exploit protection","application isolation"],
+    "edr":                   ["endpoint detection","behavior prevention","endpoint","software configuration","audit"],
     "dlp":                   ["data loss prevention"],
     "backup":                ["data backup","recovery","backup"],
-    "least privilege":       ["privileged account","account management","restrict","limit access"],
-    "rate limiting":         ["filter network traffic","limit access to resource","restrict"],
+    "least privilege":       ["privileged account","account management","restrict","limit access","disable or remove"],
+    "rate limiting":         ["filter network traffic","limit access to resource","restrict","account use policies"],
     "input validation":      ["exploit protection","application isolation","update software"],
-    "vulnerability scanning":["update software","patch","vulnerability"],
+    "vulnerability scanning":["update software","patch","vulnerability","exploit protection","disable or remove"],
     "logging":               ["audit","monitoring","log"],
     "audit log":             ["audit","monitoring","log"],
-    "patching":              ["update software","patch"],
-    "user training":         ["user training","security awareness"],
-    "network segmentation":  ["network segmentation","segment"],
+    "patching":              ["update software","patch","exploit protection","disable or remove","software configuration"],
+    "user training":         ["user training","security awareness","out-of-band"],
+    "network segmentation":  ["network segmentation","segment","filter network"],
     "api gateway":           ["filter network","application layer","web application"],
     "behavioral analysis":   ["behavior prevention","restrict execution","audit"],
     "web content filtering": ["restrict web-based","filter network"],
+    "ids/ips":               ["intrusion prevention","network intrusion","filter network traffic"],
+    "ids":                   ["intrusion prevention","network intrusion"],
+    "ips":                   ["intrusion prevention","network intrusion"],
+    "encryption":            ["encrypt sensitive","ssl/tls","encrypt"],
+    "secrets management":    ["privileged account","credential","account management"],
+    "access control":        ["account management","privileged account","limit access","restrict"],
+    "authentication":        ["multi-factor","password policies","account use policies","user account management"],
+    "code signing":          ["execution prevention","operating system configuration","update software"],
+    "sandbox":               ["application isolation","application developer","exploit protection"],
+    "monitoring":            ["audit","software configuration","network intrusion prevention"],
 }
 
 
@@ -292,7 +302,8 @@ def score_plan(gt, sm):
     for adr in adrs:
         for hop in (adr.get("hops") or []):
             for ctrl in (hop.get("controls") or []):
-                name = (ctrl.get("name") or "").lower().strip()
+                # ADR hop controls use "control" field (not "name")
+                name = (ctrl.get("control") or ctrl.get("name") or "").lower().strip()
                 if name:
                     adr_controls.add(name)
     if adr_controls and items:

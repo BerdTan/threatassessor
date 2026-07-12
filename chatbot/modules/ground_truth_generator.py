@@ -1413,9 +1413,16 @@ def generate_ground_truth(
             "node_count": len(parsed["nodes"]),
             "edge_count": len(parsed["edges"]),
             "control_coverage": round(coverage, 2),
-            "parsed_nodes": parsed["nodes"],  # Phase 3B: For orphan node detection
-            "parsed_edges": parsed["edges"],  # Phase 3B: For graph validation
+            "parsed_nodes": parsed["nodes"],
+            "parsed_edges": parsed["edges"],
             "ssp_profile": ssp_profile if enable_ssp else None,
+            "run_ts": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+            "run_id": f"{architecture_name or 'run'}_{__import__('datetime').datetime.utcnow().strftime('%Y%m%dT%H%M%S')}",
+            "pattern_sources": (
+                ["RAPIDS"]
+                + (["AI/ML (ARC+ATLAS)"] if arch_type == "ai_system" else [])
+                + (["Cloud (CAVEAT)"] if arch_type == "cloud" else [])
+            ),
         }
     }
 
