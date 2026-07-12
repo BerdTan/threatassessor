@@ -4,6 +4,116 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-07-12 (Session 15) — Engine Fix Round: val_pct + hop_pct for AI/Agentic Architectures
+
+### 1. self_validation.py — AI-system node keyword widening (val_pct fix)
+
+**What was decided:**
+Thirteen technique validators in `self_validation.py` had keyword lists limited to traditional infra terms (`server`, `database`, `network`). Paths through AI-system nodes (`Agent Orchestrator`, `Tool Registry`, `Prompt Manager`, `LLM API Gateway`, `Embedding Service`) — whose labels contain none of those terms — were systematically FAILED by T1021, T1040, T1059, T1083, T1087, T1213, T1485, T1486, T1530, T1552, T1557, T1565. Added T1573 as a new explicit rule (was hitting the generic fallback and failing keyword overlap test).
+
+**AI-system keywords added across affected validators:**
+`orchestrat`, `agent`, `tool`, `registry`, `llm`, `prompt`, `gateway`, `embedding`, `vector`, `session`, `audit`, `code exec`, `sandbox`
+
+**Result:** 21_agentic_ai_system val_pct 80% → 96% (FAILED 89 → 18). Remaining 18 are legitimate structural mismatches (T1530 on paths with no cloud storage target, T1213 on Prompt Manager paths). Zero regression on `05_legacy_flat_network` (92%) or `04_zero_trust` (97%).
+
+**Alternatives rejected:**
+- Adding a blanket "AI path = valid" rule: would mask real technique mismatches on future architectures.
+- Widening to match any multi-hop path: the existing generic fallback already handles that with PLAUSIBLE weight — specific validators should require structural evidence.
+
+---
+
+### 2. rapids_driven_controls.py — AI-specific control multi-layer coverage (hop_pct fix)
+
+**What was decided:**
+`_MULTI_LAYER_CONTROLS` in `rapids_driven_controls.py` lacked entries for AI-specific controls that appear heavily on agentic architecture hops. `_zt_gap_note()` in `adr_generator.py` infers zero-trust layer coverage by matching control names against this dict — if a control isn't listed, it only contributes its primary `dir_category`, often leaving detect/isolate/respond uncovered.
+
+**Controls added / layers updated:**
+- `rate limiting`: added `respond` (circuit-breaker pattern = incident response)
+- `monitoring`: added `respond` (monitoring triggers incident response)
+- `api access control`: added as new entry with `prevention + isolate + respond` (revoke/quarantine)
+- `api_key_rotation`: `prevention + respond`
+- `prompt_filter` / `prompt injection`: `prevention + detect`
+- `llm output` / `output_filter`: `prevention + detect`
+- `content_moderation` / `content moderation`: `prevention + detect + respond` (content removal = respond)
+- `context_grounding`: `prevention + detect`
+- `capability_restrict*`: `prevention + isolate`
+- `human_oversight` / `human_in_loop`: `detect + respond` (human review = respond)
+- `web content filter*`: `prevention + detect + isolate`
+- `secrets_management`: duplicate key normalised
+- `authentication`, `access_control`, `access control`: `prevention + isolate`
+- `sandbox` / `sandboxing`: `prevention + isolate`
+
+**Result:** 21_agentic_ai_system hop_pct 31% → 91% (full_hops 21/68 → 62/68). Remaining 6 missing hops are `Tool Registry` (only `user training` placed there — genuine gap) and `Prompt Manager` (missing isolate+respond — genuine architectural gap).
+
+**Alternatives rejected:**
+- Extending `dir_category` assignment in `threat_report.py`: this only re-tags primary category, not multi-layer. Root cause is in `_MULTI_LAYER_CONTROLS` inference.
+- Adding fallback "all AI controls = full coverage": would suppress real gaps in future architectures.
+
+---
+
+## 2026-07-11 (Session 14) — AI/Agentic Engine Round: ATLAS Integration + Node Coverage + Diversity Pass (commit 52a7748)
+
+### 1. ATLAS (AML.T*) techniques injected into attack path mapper
+
+**What was decided:**
+MITRE ATLAS techniques (`AML.T*`) are now emitted by `per_node_ttp_mapper.py` alongside ATT&CK `T1xxx` techniques for AI-system node types. Previously ATLAS was only used for control *recommendations* via the ARC Framework — it never appeared in `per_node_techniques` on attack paths, so critics saw no ATLAS signal in the ground truth.
+
+Key techniques mapped per node type:
+- `prompt` / `llm` / `orchestrat`: AML.T0051 (prompt injection), AML.T0054 (jailbreak), AML.T0044 (full model access), AML.T0040 (inference API abuse), AML.T0024/0025 (exfil)
+- `vector` / `embedding` / `document`: AML.T0020 (data poisoning), AML.T0051.001 (indirect injection), AML.T0025 (exfil)
+- `code exec` / `sandbox`: AML.T0054, AML.T0048 (external harms)
+- `tool registry` / `api integrat`: AML.T0044, AML.T0040, AML.T0025
+
+**Validator routing:** `self_validation.py` routes `AML.*` IDs to `AtlasHelper` instead of `MitreHelper` — avoids false FAILED with -0.2 penalty. Zero ATLAS validation failures.
+
+**TATB alignment:** `tatb-score.py` and `tatb-corpus.py` exclude `AML.*` from the MITRE alignment denominator (no ATT&CK M-IDs exist for ATLAS techniques). Cross-critic regex extended to capture `AML.T*` mentions from critic outputs.
+
+**Reasoning:**
+Blackhat critic's gap analysis on 21_agentic_ai_system referenced AML.T0044 (`ToolRegistry pivot: model theft followed by CodeExecution`) — ATLAS was in critic reasoning but absent from ground truth. Injecting it closes the engine/critic gap for AI-system architectures.
+
+**Alternatives rejected:**
+- Keeping ATLAS only in ARC control recommendations: critics can't corroborate what the engine doesn't emit.
+- Using a generic `AML.*` flag at the architecture level: technique-level injection is what TATB cross-critic and val_pct actually measure.
+
+---
+
+### 2. AI/agentic node type coverage: target detection + entry point false positives + diversity pass
+
+**What was decided:**
+Three changes to `ground_truth_generator.py` to fix 47% node coverage on `21_agentic_ai_system`:
+
+1. **`find_sensitive_targets` extended** with AI-system keywords (`sandbox`, `session store`, `audit log`, `vector db`, `llm gateway`, `embedding`, `document store`, `web search`, `api integrat`, `prompt`, `llm`) so nodes like `SessionStore`, `AuditLog`, `LLMGateway` are recognised as BFS targets.
+
+2. **`find_entry_points` backend exclusion list** — nodes whose labels contain `database`, `store`, `llm`, `gateway`, `integrat`, `audit`, `session`, `embedding`, `vector`, `log` are excluded from entry classification even if they contain `user`/`api` substrings. Previously `UserDB` matched `"user"`, `LLMGateway` matched `"api"`, `APIIntegrations` matched `"api"` — all became false entry points generating invalid 2-hop paths.
+
+3. **Diversity pass in `rank_and_deduplicate_paths`** (up to `top_n × 3`) — after criticality-ranked top-N selection, adds one representative path per uncovered target. Ensures deep leaf nodes (OpenAI, SessionStore, AuditLog at depth 5) get at least one path even when lower criticality than hub-adjacent nodes. BFS raw cap raised from `max_paths × 1.5` to `max_paths × 2` to provide enough raw material.
+
+**Results:** 21_agentic_ai_system node coverage 47%→89% (17/19 nodes). 22_generic_name_with_ai_nodes: 100% node coverage.
+
+**Alternatives rejected:**
+- Raising `top_n` globally: would inflate report size for simple architectures.
+- Sorting targets by BFS depth (pre-computed): more expensive; sink-first sort by out-degree achieves similar ordering at zero cost.
+
+---
+
+### 3. ATLAS technique controls in exhaustive_mitigation_mapper
+
+**What was decided:**
+`ATLAS_TECHNIQUE_CONTROLS` dict added to `exhaustive_mitigation_mapper.py` — 11 AML.T* techniques mapped to implementable controls (`prompt injection filter`, `rag content validation`, `llm output filtering`, `api access control`, `dlp`, `training data integrity checks`, `model integrity monitoring`, `rate limiting`, `least privilege`). Injection logic mirrors the existing `DETECTION_ONLY_TECHNIQUES` pattern; controls use `ATLAS-{technique_id}` as mitigation IDs for auditability.
+
+**Reasoning:**
+Without this, `AML.*` techniques in `per_node_techniques` had no matched control in `control_recommendations`, dragging `tech_cov` and `ap_cov` down (Risk-Defensible went from 84→70 before this fix). The `ATLAS-*` mitigation ID marker preserves traceability — identifiable in reports as ATLAS-sourced, not MITRE ATT&CK.
+
+---
+
+### 4. Known remaining gap: ADR generator missing detect/isolate/respond for AI-system nodes
+
+**Observed but not yet fixed:** `hop_pct` dropped 52%→31% on 21_agentic_ai_system after this round. Root cause: `threat_report.py` ADR generator assigns `dir_category` using keyword rules tuned for traditional infra nodes (`server`, `db`, `network`) — AI-system nodes (`ToolRegistry`, `PromptManager`, `LLMGateway`) only receive `prevention` controls. With 68 hops (up from 23) the gap is now measurable.
+
+**Decision:** Do not fix in this commit — it is a `ReportStage` concern, not an engine concern. Tracked in `project_engine_improvements.md` as Item 1. Will be addressed in a dedicated ADR generator pass.
+
+---
+
 ## 2026-07-11 (Session 14) — TATB Overall Score Improvements: Engine Gaps + TATB Rubric Fixes
 
 ### 1. T1048 (Exfil over Alt Protocol) — last MED corpus gap (commit `87a702d`)
