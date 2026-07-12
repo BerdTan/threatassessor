@@ -12425,56 +12425,65 @@ class Dashboard {
     _tatbShowRubricDoc() {
         this.showRightPane('🧪 TATB Rubric — Methodology', `
         <div style="font-size:0.8rem; color:var(--text-secondary); line-height:1.65;">
-            <p style="margin-top:0; color:var(--text-color);">TATB scores every threat model against four rubrics. Each rubric is computed from files the analysis already produces — no extra runs needed.</p>
+            <p style="margin-top:0; color:var(--text-color);">TATB scores every threat model across four rubrics, computed entirely from files the analysis already produces — no extra runs needed.</p>
 
+            <!-- Threat-Relevant -->
             <div style="margin-bottom:0.9rem;">
-                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">🎯 Threat-Relevant</div>
-                <div>Do the threats match <em>this</em> architecture, or are they generic?</div>
-                <ul style="margin:0.3rem 0 0 1rem; padding:0; font-size:0.75rem;">
-                    <li><strong>Pattern diversity</strong> — how many independent analysis engines flagged threats</li>
-                    <li><strong>Node binding</strong> — each attack path traces back to a real diagram node</li>
-                    <li><strong>Generic fallback</strong> — detects copy-paste default threats (same opening techniques on every path)</li>
-                    <li><strong>AI/ML coverage</strong> — only shown for AI architectures; checks ATLAS techniques were applied</li>
+                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.2rem;">🎯 Threat-Relevant <span style="font-size:0.68rem;font-weight:400;color:var(--text-tertiary);">weight: 40% binding · 25% coverage · 35% variety</span></div>
+                <div style="margin-bottom:0.3rem;">Do the threats match <em>this</em> architecture, or are they generic boilerplate?</div>
+                <ul style="margin:0 0 0 1rem; padding:0; font-size:0.75rem;">
+                    <li><strong>Node binding</strong> — each attack path starts at a real diagram node (scored)</li>
+                    <li><strong>Node coverage</strong> — fraction of diagram nodes touched by at least one path (scored)</li>
+                    <li><strong>Technique variety</strong> — distinct MITRE techniques across all paths, capped at 12 (scored)</li>
+                    <li><strong>Generic-fallback penalty</strong> — if every path shares an identical technique set, −20pts</li>
+                    <li><strong>ATLAS-when-AI penalty</strong> — AI architectures missing ATLAS techniques, −15pts</li>
+                    <li><strong>Analysis engines</strong> — which engines ran (RAPIDS / AI+ATLAS / Cloud) — display only, not scored</li>
                 </ul>
             </div>
 
+            <!-- TTP-Accurate -->
             <div style="margin-bottom:0.9rem;">
-                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">🎭 TTP-Accurate</div>
-                <div>Are MITRE technique IDs correctly matched to attacker behaviours?</div>
-                <ul style="margin:0.3rem 0 0 1rem; padding:0; font-size:0.75rem;">
-                    <li><strong>Validation pass</strong> — TA's own checker found no obvious mismatches</li>
-                    <li><strong>Justification</strong> — each technique has a written reason it applies here</li>
-                    <li><strong>Cross-critic</strong> — multiple AI reviewers independently flagged the same techniques</li>
-                    <li><strong>MoE lift</strong> — how much expert review moved the confidence score</li>
+                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.2rem;">🎭 TTP-Accurate <span style="font-size:0.68rem;font-weight:400;color:var(--text-tertiary);">weight: 30% val · 30% MITRE · 25% cross-critic · 15% MoE</span></div>
+                <div style="margin-bottom:0.3rem;">Are MITRE technique IDs correctly applied, and do independent reviewers agree?</div>
+                <ul style="margin:0 0 0 1rem; padding:0; font-size:0.75rem;">
+                    <li><strong>Validation depth</strong> — CONFIRMED / PLAUSIBLE / FAILED breakdown from <code>self_validation.py</code>; CONFIRMED = structural evidence, PLAUSIBLE = keyword heuristic (half weight), FAILED = zero weight</li>
+                    <li><strong>MITRE alignment</strong> — for each (technique, control) pair, does the control match MITRE's recommended mitigations? Uses synonym expansion for common controls (ids/ips, mfa, patching, etc.)</li>
+                    <li><strong>Cross-critic</strong> — techniques independently flagged by ≥2 Expert Review critics</li>
+                    <li><strong>MoE lift</strong> — how much the Expert Review panel moved the confidence score; negative lift flags over-confident initial analysis</li>
                 </ul>
             </div>
 
+            <!-- Risk-Defensible -->
             <div style="margin-bottom:0.9rem;">
-                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">⚖️ Risk-Defensible</div>
-                <div>Can every risk number be traced back to its inputs?</div>
-                <ul style="margin:0.3rem 0 0 1rem; padding:0; font-size:0.75rem;">
-                    <li><strong>AIVSS completeness</strong> — all three data-flow directions (in/internal/out) scored</li>
-                    <li><strong>Residual sanity</strong> — no threat claims to be fully eliminated (NIST 10% floor)</li>
-                    <li><strong>Confidence trail</strong> — final score can be decomposed step-by-step</li>
-                    <li><strong>Governance markers</strong> — critic agreement and confidence swing are recorded</li>
+                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.2rem;">⚖️ Risk-Defensible <span style="font-size:0.68rem;font-weight:400;color:var(--text-tertiary);">weight: 40% tech-mit · 35% hop · 25% residual</span></div>
+                <div style="margin-bottom:0.3rem;">Are defences mapped to specific attack paths and hops — not just architecture-wide?</div>
+                <ul style="margin:0 0 0 1rem; padding:0; font-size:0.75rem;">
+                    <li><strong>Technique mitigation</strong> — fraction of attack-path techniques with a mapped control (scored)</li>
+                    <li><strong>AP-aligned mitigation</strong> — fraction of (AP, technique) pairs where a control explicitly covers that path and technique — stricter than arch-wide coverage (scored)</li>
+                    <li><strong>Hop layer coverage</strong> — each hop on each path should have Prevent + Detect + Isolate + Respond controls; hops missing any layer are flagged (scored)</li>
+                    <li><strong>Residual exposure</strong> — threats remaining at MONITOR/MITIGATE after controls applied (scored)</li>
+                    <li><strong>Analysis hygiene</strong> — AIVSS completeness, confidence trail, governance markers — pipeline provenance only, <em>not in the Risk-Defensible score</em></li>
                 </ul>
             </div>
 
+            <!-- Plan-Actionable -->
             <div style="margin-bottom:0.6rem;">
-                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.25rem;">✅ Plan-Actionable</div>
-                <div>Can an engineer act on the recommendations today?</div>
-                <ul style="margin:0.3rem 0 0 1rem; padding:0; font-size:0.75rem;">
-                    <li><strong>ADR completeness</strong> — each decision record has context, hops, and risk delta</li>
-                    <li><strong>Defence layers</strong> — Prevent / Detect / Isolate / Respond all addressed</li>
-                    <li><strong>Priority balance</strong> — items spread across urgency levels (not all CRITICAL)</li>
-                    <li><strong>Control specificity</strong> — <em>not yet scored</em>; future version checks controls name real artefacts</li>
+                <div style="font-weight:700; color:var(--text-color); margin-bottom:0.2rem;">✅ Plan-Actionable <span style="font-size:0.68rem;font-weight:400;color:var(--text-tertiary);">weight: 25% complete · 20% measurable · 15% sprint · 10% specific · 10% ADR · 20% closure</span></div>
+                <div style="margin-bottom:0.3rem;">Can an engineer act on the recommendations today, without guesswork?</div>
+                <ul style="margin:0 0 0 1rem; padding:0; font-size:0.75rem;">
+                    <li><strong>Item completeness</strong> — each SM action item has action, rationale, first_step, and effort</li>
+                    <li><strong>Measurable outcomes</strong> — items include confidence_gain or risk_reduction_estimate</li>
+                    <li><strong>Sprint spreadability</strong> — effort uses days/weeks; priority uses critical/high/medium/low</li>
+                    <li><strong>Control specificity</strong> — items name a specific tool, node, or technique</li>
+                    <li><strong>ADR alignment</strong> — high-priority items reference controls mandated by the ADR hop analysis</li>
+                    <li><strong>AP closure</strong> — every CRITICAL attack path has at least one explicit plan item</li>
                 </ul>
             </div>
 
             <div style="border-top:1px solid var(--border-color); padding-top:0.6rem; font-size:0.72rem; color:var(--text-tertiary);">
-                <strong>Overall score</strong>: simple average of the four rubrics (25% each).<br>
-                85–100 Excellent · 70–84 Solid · 50–69 Weak · &lt;50 Draft<br><br>
-                Full source: <code>docs/TATB_RUBRIC.md</code> in the repository.
+                <strong>Overall score</strong>: weighted average — Threat-Relevant 30% · TTP-Accurate 25% · Risk-Defensible 25% · Plan-Actionable 20%.<br>
+                Bands: 85–100 Excellent · 70–84 Solid · 50–69 Weak · &lt;50 Draft<br>
+                <div style="margin-top:0.4rem;">Requires: <code>ground_truth.json</code> (all rubrics) + <code>governance_signals.json</code> (Risk) + <code>07_moe_orchestrator.json</code> (TTP cross-critic) + <code>08_scrum_master.json</code> (Plan).</div>
             </div>
         </div>`);
     }
@@ -12598,7 +12607,9 @@ class Dashboard {
         const nAP = aps.length;
         const nCritical = aps.filter(a => a.criticality_tier === 'CRITICAL').length;
         const nHigh = aps.filter(a => a.criticality_tier === 'HIGH').length;
-        const hasAI = (gt && gt.pattern_sources && gt.pattern_sources.some(s => s.includes('AI') || s.includes('ATLAS'))) || false;
+        const hasAI = (gt && gt.pattern_sources && gt.pattern_sources.some(s => s.includes('AI') || s.includes('ATLAS')))
+            || (gt && gt.metadata && gt.metadata.architecture_type === 'ai_system')
+            || false;
         const parsedNodes = (gt && gt.metadata && gt.metadata.parsed_nodes) || {};
         const parsedNodeIds = Object.keys(parsedNodes);
         const patternSources = (gt && gt.pattern_sources) || [];
@@ -12707,25 +12718,36 @@ class Dashboard {
         const mitreUnalignedPairs = [];       // for evidence display
         const mitreAlignmentChecked = new Set();
         // Synonym map: TA control name fragments → MITRE mitigation name fragments they correspond to
+        // Keep in sync with CTRL_SYNONYMS in .claude/skills/tatb-score/scripts/tatb-score.py
         const _CTRL_SYNONYMS = {
-            'mfa':                  ['multi-factor','multifactor','authentication'],
-            'waf':                  ['filter network','web application firewall','application layer'],
-            'edr':                  ['endpoint detection','behavior prevention','restrict execution','endpoint'],
-            'dlp':                  ['data loss prevention','data exfiltration'],
-            'siem':                 ['security monitoring','audit','logging'],
-            'backup':               ['data backup','recovery','resilience','backup'],
-            'least privilege':      ['privileged account','account management','restrict','limit access','minimum'],
-            'rate limiting':        ['filter network traffic','limit access to resource','restrict'],
-            'input validation':     ['exploit protection','application isolation','update software','disable or remove'],
-            'vulnerability scanning':['update software','patch','configuration management','vulnerability'],
-            'logging':              ['audit','monitoring','log management','audit policies'],
-            'audit log':            ['audit','monitoring','log management'],
-            'patching':             ['update software','patch management'],
-            'user training':        ['user training','security awareness','train users'],
-            'network segmentation': ['network segmentation','network isolation','segment'],
-            'api gateway':          ['filter network','application layer','web application'],
-            'behavioral analysis':  ['behavior prevention','restrict execution','audit','behavioral'],
-            'web content filtering':['restrict web-based','filter network','web content'],
+            'mfa':                   ['multi-factor','multifactor','authentication','account use policies'],
+            'waf':                   ['filter network','web application firewall','application layer','exploit protection','application isolation'],
+            'edr':                   ['endpoint detection','behavior prevention','restrict execution','endpoint','software configuration','audit'],
+            'dlp':                   ['data loss prevention','data exfiltration'],
+            'siem':                  ['security monitoring','audit','logging'],
+            'backup':                ['data backup','recovery','resilience','backup'],
+            'least privilege':       ['privileged account','account management','restrict','limit access','minimum','disable or remove'],
+            'rate limiting':         ['filter network traffic','limit access to resource','restrict','account use policies'],
+            'input validation':      ['exploit protection','application isolation','update software','disable or remove'],
+            'vulnerability scanning':['update software','patch','configuration management','vulnerability','exploit protection','disable or remove'],
+            'logging':               ['audit','monitoring','log management','audit policies'],
+            'audit log':             ['audit','monitoring','log management'],
+            'patching':              ['update software','patch management','exploit protection','disable or remove','software configuration'],
+            'user training':         ['user training','security awareness','train users','out-of-band'],
+            'network segmentation':  ['network segmentation','network isolation','segment','filter network'],
+            'api gateway':           ['filter network','application layer','web application'],
+            'behavioral analysis':   ['behavior prevention','restrict execution','audit','behavioral'],
+            'web content filtering': ['restrict web-based','filter network','web content'],
+            'ids/ips':               ['intrusion prevention','network intrusion','filter network traffic'],
+            'ids':                   ['intrusion prevention','network intrusion'],
+            'ips':                   ['intrusion prevention','network intrusion'],
+            'encryption':            ['encrypt sensitive','ssl/tls','encrypt'],
+            'secrets management':    ['privileged account','credential','account management'],
+            'access control':        ['account management','privileged account','limit access','restrict'],
+            'authentication':        ['multi-factor','password policies','account use policies','user account management'],
+            'code signing':          ['execution prevention','operating system configuration','update software'],
+            'sandbox':               ['application isolation','application developer','exploit protection'],
+            'monitoring':            ['audit','software configuration','network intrusion prevention'],
         };
         const _ctrlMatchesMit = (ctrlName, mitName) => {
             const c = ctrlName.toLowerCase();
