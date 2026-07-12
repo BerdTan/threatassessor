@@ -1,0 +1,9 @@
+graph TD
+    WAF["WAF / Prompt Injection Filter"]
+    AppServer["Application Server"]
+    LLMGateway["LLM API Gateway"]
+    Database[("Database")]
+
+    WAF --> AppServer
+    AppServer --> LLMGateway
+    LLMGateway --> Database
