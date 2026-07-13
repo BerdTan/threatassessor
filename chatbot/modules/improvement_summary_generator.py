@@ -466,7 +466,7 @@ def _generate_strengths(orch: Dict, controls_present: List[str]) -> str:
         # MoE format: pull top strength from each critic's strengths list
         ev = orch.get("expert_validations", {})
         for critic_key, critic_label in [
-            ("architect", "Design"), ("tester", "MITRE coverage"), ("red_team", "Exploit difficulty")
+            ("architect", "Design"), ("tester", "MITRE accuracy"), ("red_team", "Control bypass depth")
         ]:
             critic_data = ev.get(critic_key, {})
             critic_strengths = critic_data.get("strengths", [])

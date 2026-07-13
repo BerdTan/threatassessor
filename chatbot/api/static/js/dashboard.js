@@ -1796,8 +1796,8 @@ class Dashboard {
 
         const CRITIC_DEFS = [
             { key: 'architect',   icon: '🏛️', label: 'Architecture Review',   desc: 'Structural gaps, unmodelled threats, ADR completeness' },
-            { key: 'tester',      icon: '🔬', label: 'Coverage Audit',         desc: 'MITRE mapping accuracy, control effectiveness, configuration validation' },
-            { key: 'red_team',    icon: '🎯', label: 'Exploit Analysis',        desc: 'Bypass paths, control evasion, attack feasibility under active exploitation' },
+            { key: 'tester',      icon: '🔬', label: 'Coverage Audit',         desc: 'Factual accuracy audit — MITRE M-ID→T-ID correctness, risk arithmetic consistency, reporting completeness' },
+            { key: 'red_team',    icon: '🎯', label: 'Exploit Analysis',        desc: 'Control bypass depth — per-deployed-control bypass method, required tools and skill level for each attack path' },
             { key: 'purple_team', icon: '🟣', label: 'Purple Team',             desc: 'Detection depth, coverage gaps, investigation value & ADR operability' },
             { key: 'blackhat',    icon: '⚔️', label: 'Blackhat Cross-Path',     desc: 'Cross-path chaining, pivot-diverge routes & chain exploits (supreme critic)' },
         ];
@@ -10204,8 +10204,8 @@ class Dashboard {
 
             const expertDefs = [
                 { key: 'architect',    icon: '🏛️', label: 'Architecture Review',     role: 'Structural gaps, unmodelled threats, ADR completeness' },
-                { key: 'tester',       icon: '🔬', label: 'Coverage Audit',           role: 'MITRE mapping accuracy, control effectiveness, configuration validation' },
-                { key: 'red_team',     icon: '🎯', label: 'Exploit Analysis',         role: 'Bypass paths, attack feasibility, control evasion under active exploitation' },
+                { key: 'tester',       icon: '🔬', label: 'Coverage Audit',           role: 'Factual accuracy audit — MITRE M-ID→T-ID correctness, risk arithmetic consistency, reporting completeness' },
+                { key: 'red_team',     icon: '🎯', label: 'Exploit Analysis',         role: 'Control bypass depth — per-deployed-control bypass method, required tools and skill level for each attack path' },
                 { key: 'purple_team',  icon: '🟣', label: 'Purple Team',              role: 'Detection depth, coverage gaps, investigation value & ADR operability', isOptional: true },
                 { key: 'blackhat',     icon: '⚔️', label: 'Blackhat Cross-Path',      role: 'Cross-path chaining, pivot-diverge routes & chain exploits (supreme critic)', isOptional: true },
                 { key: 'scrum_master', icon: '🧩', label: 'ScrumMaster',              role: 'Impediment synthesis, harmony check, targeted re-triggering, confidence trajectory', isOptional: true, isSynthMeta: true },
@@ -14472,8 +14472,8 @@ class Dashboard {
         const JSON_CATALOGUE = {
             'ground_truth.json':        { title: 'Ground Truth',         icon: '🏗️', desc: 'Full deterministic analysis output — threats, controls, attack paths, MITRE mappings', group: 'foundation' },
             '04_architect_critique.json': { title: 'Architecture Review', icon: '🏛️', desc: 'Expert assessment of structural gaps, unmodelled threats, and ADR completeness', group: 'expert' },
-            '05_tester_critique.json':  { title: 'Coverage Audit',   icon: '🔬', desc: 'MITRE technique mapping accuracy, control effectiveness, configuration validation', group: 'expert' },
-            '06_red_team_critique.json':{ title: 'Exploit Analysis', icon: '🎯', desc: 'Bypass paths, control evasion, and attack feasibility under active exploitation', group: 'expert' },
+            '05_tester_critique.json':  { title: 'Coverage Audit',   icon: '🔬', desc: 'Factual accuracy audit — MITRE M-ID→T-ID correctness, risk arithmetic, reporting completeness', group: 'expert' },
+            '06_red_team_critique.json':{ title: 'Exploit Analysis', icon: '🎯', desc: 'Control bypass depth — per-deployed-control bypass method, tools, and skill level per attack path', group: 'expert' },
             '06b_purple_team_critique.json': { title: 'Purple Team', icon: '🟣', desc: 'Detection depth, coverage gaps, investigation value, and ADR operability', group: 'expert' },
             '06c_blackhat_critique.json': { title: 'Blackhat Cross-Path', icon: '⚔️', desc: 'Cross-path chaining, pivot-diverge routes, and chain exploit feasibility (supreme critic)', group: 'expert' },
             '07_moe_orchestrator.json': { title: 'MoE Orchestrator',      icon: '🧠', desc: 'Mixture-of-Experts synthesis — consensus recommendations and confidence waterfall', group: 'expert' },
@@ -15283,7 +15283,7 @@ class Dashboard {
                   {v:'true',  label:'true — Enabled (recommended)', rec:true},
                   {v:'false', label:'false — Deterministic only (skip all critics)'},
                 ],
-                desc:'Master switch for the full MoE expert review chain. When disabled, only the deterministic engine runs — no LLM calls. The three core critics (Architect, Coverage Auditor, Exploit Analyst) always run when MoE is enabled and cannot be individually disabled. Purple Team and Blackhat can be toggled separately below.',
+                desc:'Master switch for the full MoE expert review chain. When disabled, only the deterministic engine runs — no LLM calls. The three core critics (Architect, Coverage Auditor, Exploit Analyst) always run when MoE is enabled and cannot be individually disabled. Purple Team and Blackhat can be toggled separately below. Coverage Auditor = MITRE accuracy audit. Exploit Analyst = per-control bypass depth.',
                 effects: ef('Enables full LLM-backed validation','Architect/Tester/Red Team always run; Purple Team/Blackhat optional','High','Requires LLM API key') },
 
               { section:'moe', field:'base_confidence', label:'Base Confidence (%)',

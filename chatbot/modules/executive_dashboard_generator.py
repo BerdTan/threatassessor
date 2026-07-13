@@ -159,8 +159,8 @@ Layer 1: Deterministic Analysis (99.5% confidence)
               ↓
 Layer 2: AI Validation (3 independent experts)
          ├─> Architect: Validated design quality ({confidence.get('adjustments', {}).get('architect', 0)*100:+.1f}% adjustment)
-         ├─> Tester: Validated MITRE mappings ({confidence.get('adjustments', {}).get('tester', 0)*100:+.1f}% adjustment)
-         └─> Red Team: Assessed exploit difficulty ({confidence.get('adjustments', {}).get('red_team', 0)*100:+.1f}% adjustment)
+         ├─> Tester: Audited MITRE M-ID→T-ID accuracy + reporting completeness ({confidence.get('adjustments', {}).get('tester', 0)*100:+.1f}% adjustment)
+         └─> Red Team: Assessed per-control bypass difficulty + required tooling ({confidence.get('adjustments', {}).get('red_team', 0)*100:+.1f}% adjustment)
               ↓
 Layer 3: This Dashboard (Final: {confidence.get('final', 0):.1f}% confidence)
          └─> Consensus recommendations based on expert agreement
@@ -187,8 +187,8 @@ Our analysis was validated by three independent AI security experts:
 | Expert | Role | Confidence Adjustment | Status |
 |--------|------|----------------------|--------|
 | **Architect** | Design Quality | {confidence.get('adjustments', {}).get('architect', 0)*100:+.1f}% | {_get_validation_status(expert_validations.get('architect', {}))} |
-| **Tester** | MITRE Validation | {confidence.get('adjustments', {}).get('tester', 0)*100:+.1f}% | {_get_validation_status(expert_validations.get('tester', {}))} |
-| **Red Team** | Exploit Difficulty | {confidence.get('adjustments', {}).get('red_team', 0)*100:+.1f}% | {_get_validation_status(expert_validations.get('red_team', {}))} |
+| **Tester** | MITRE Accuracy Audit | {confidence.get('adjustments', {}).get('tester', 0)*100:+.1f}% | {_get_validation_status(expert_validations.get('tester', {}))} |
+| **Red Team** | Control Bypass Depth | {confidence.get('adjustments', {}).get('red_team', 0)*100:+.1f}% | {_get_validation_status(expert_validations.get('red_team', {}))} |
 
 {_format_validation_summary(expert_validations)}
 
@@ -265,8 +265,8 @@ Choose your security investment level based on risk tolerance and budget:
 This dashboard consolidates findings from:
 - **Layer 1:** `ground_truth.json` — Deterministic analysis ({confidence.get('base', 0):.1f}% confidence)
 - **Layer 2A:** `04_architect_critique.json` — Design quality validation
-- **Layer 2B:** `05_tester_critique.json` — MITRE mapping validation
-- **Layer 2C:** `06_red_team_critique.json` — Exploit difficulty assessment
+- **Layer 2B:** `05_tester_critique.json` — MITRE M-ID→T-ID accuracy audit + reporting completeness
+- **Layer 2C:** `06_red_team_critique.json` — Per-control bypass difficulty + required tooling
 - **Layer 3:** `07_moe_orchestrator.json` — Consensus synthesis (technical data)
 
 **Result:** All validation data combined into this executive dashboard ({confidence.get('final', 0):.1f}% final confidence)
@@ -309,8 +309,8 @@ Your analysis: **{confidence.get('final', 0):.1f}%** — {confidence.get('interp
 
 **Validation reports:**
 - `04_architect_critique.json` — Design quality assessment
-- `05_tester_critique.json` — MITRE validation
-- `06_red_team_critique.json` — Exploit difficulty
+- `05_tester_critique.json` — MITRE accuracy audit
+- `06_red_team_critique.json` — Control bypass depth
 - `07_moe_orchestrator.json` — Consensus synthesis (technical)
 
 **Implementation guides:**

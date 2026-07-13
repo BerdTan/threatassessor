@@ -100,20 +100,27 @@ class RedTeamerCritic(CriticAgent):
 
     def _create_system_prompt(self) -> str:
         """System prompt defining Red Teamer role."""
-        return """You are a Red Team assessor evaluating exploit difficulty from an offensive security perspective.
+        return """You are a Red Team assessor evaluating control bypass difficulty from an offensive security perspective.
 
-Your role: Assess how hard it would be for a real attacker to breach this architecture.
+Your role: For each deployed control on each attack path, assess how hard it is to defeat that
+specific control using real attacker tooling. You reason at the control-technique level.
 
-Key principle: Think like an attacker
-- What tools are available? (Metasploit, Burp Suite, custom exploits)
-- What skill level is needed? (script kiddie, professional, APT)
-- Can deployed controls be bypassed?
+SCOPE BOUNDARY — what is yours and what is not:
+✅ YOURS: Given control X is deployed on this path — can it be bypassed? How? What tools/skill?
+✅ YOURS: Is a deployed WAF bypassable with encoding? Is MFA phishable or SIM-swappable?
+✅ YOURS: What is the residual exploit difficulty after accounting for bypass realism?
+❌ NOT YOURS: Restating that controls are absent — one sentence maximum; move on to bypass analysis.
+❌ NOT YOURS: Coverage gaps or technique-to-mitigation correctness — that is Tester and Purple Team.
+❌ NOT YOURS: Cross-path chaining through shared pivot nodes — that is Blackhat.
+
+When no controls are present on a path: note it in one sentence, score it CRITICAL (90+),
+then spend your analysis on any partial controls elsewhere and their bypass characteristics.
 
 IMPORTANT - INVERTED SCORING:
-- Low score (0-40) = Very hard to exploit = GOOD defense ✅
+- Low score (0-40) = Hard to exploit = GOOD defense ✅
 - High score (60-100) = Easy to exploit = BAD defense ❌
 
-Be realistic, not optimistic. If controls can be bypassed with public tools, score accordingly."""
+Be realistic, not optimistic. If a deployed control can be bypassed with public tools, score accordingly."""
 
     def _create_rubric(self) -> Dict:
         """
@@ -248,19 +255,25 @@ Score: 25/100 (LOW = Very hard to exploit = GOOD defense)
 
 ## Your Task
 
-Assess overall exploit difficulty based ONLY on deployed controls listed above.
-
-DO NOT assume controls that aren't deployed.
-DO NOT be overly optimistic about defense strength.
+For each deployed control on each attack path, reason through bypass difficulty at the
+control-technique level. Do not restate absent controls — focus on what is deployed and
+how hard it is to defeat.
 
 For each attack path:
-1. Identify deployed controls in path
-2. Assess bypass difficulty (EASY/MODERATE/HARD/VERY_HARD)
-3. Estimate required tools (public/custom)
-4. Estimate required skill (script_kiddie/professional/apt)
-5. Score difficulty (0-100, INVERTED)
+1. List deployed controls on that path (if none: score CRITICAL, move on)
+2. For each control: name the bypass technique, required tools, required skill level
+3. Assign bypass difficulty per control (EASY/MODERATE/HARD/VERY_HARD)
+4. Score the path difficulty (0-100, INVERTED — high = easy to exploit)
 
-Then calculate overall difficulty (average across paths).
+Then calculate overall difficulty (weighted average across paths by criticality).
+
+BYPASS REASONING GUIDE:
+- WAF present → bypassable via encoding/obfuscation? (check public evasion techniques)
+- MFA present → phishable via AiTM proxy (Evilginx)? SIM-swappable?
+- EDR present → bypassable via living-off-the-land (LOLBins)? Custom shellcode?
+- IDS/logging present → bypassable via low-and-slow, encrypted C2?
+- Encryption present → key management exposure? Side-channel?
+If a control has no known public bypass: rate VERY_HARD and note what capability is needed.
 
 ## Exploit Mitigation Roadmap
 
@@ -323,6 +336,16 @@ Provide your assessment in this JSON format:
       "key_controls": ["control1", "control2"],
       "bypass_difficulty": "<EASY/MODERATE/HARD/VERY_HARD>",
       "tools_needed": "<public/custom>",
+      "skill_required": "<script_kiddie/professional/apt>"
+    }}
+  ],
+  "control_bypass_analysis": [
+    {{
+      "control": "<control name>",
+      "technique": "<T-ID the control is mapped to>",
+      "bypass_method": "<ONE sentence: specific technique or tool to defeat this control>",
+      "bypass_difficulty": "<EASY/MODERATE/HARD/VERY_HARD>",
+      "tools": "<e.g. Evilginx, LOLBins, custom shellcode>",
       "skill_required": "<script_kiddie/professional/apt>"
     }}
   ],
@@ -564,13 +587,16 @@ Adjust your difficulty score accordingly (increase score = easier to exploit).
         # Build CritiqueScore with full data in breakdown
         breakdown = data.get("breakdown", {})
 
-        # Add roadmap and path assessments to breakdown (Red Team specific)
+        # Add roadmap, path assessments, and bypass analysis to breakdown (Red Team specific)
         if "exploit_mitigation_roadmap" in data:
             breakdown["exploit_mitigation_roadmap"] = data["exploit_mitigation_roadmap"]
             breakdown["recommended_target"] = data.get("recommended_target")
 
         if "path_assessments" in data:
             breakdown["path_assessments"] = data["path_assessments"]
+
+        if "control_bypass_analysis" in data:
+            breakdown["control_bypass_analysis"] = data["control_bypass_analysis"]
 
         score = CritiqueScore(
             role=self.role,
