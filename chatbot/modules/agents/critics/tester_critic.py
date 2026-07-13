@@ -442,7 +442,10 @@ def create_tester_prompt(
         if ssp_summary_lines else "  (No SSP data)"
     )
 
-    prompt = f"""You are validating a threat assessment with {artifacts.completeness['overall']['present']}/10 artifacts.
+    prompt = f"""RESPONSE FORMAT: You must reply with a single ```json code block. No prose before or after it. Your entire response is the JSON object described at the bottom of this prompt.
+
+{'='*70}
+You are validating a threat assessment with {artifacts.completeness['overall']['present']}/10 artifacts.
 
 {'='*70}
 TIER 1: CRITICAL ARTIFACTS

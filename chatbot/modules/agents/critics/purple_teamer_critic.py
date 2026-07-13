@@ -474,7 +474,9 @@ class PurpleTeamerCritic(CriticAgent):
                     f"{'; '.join(str(g.get('description',''))[:80] for g in crit.gaps[:2]) or 'no gaps'}\n"
                 )
 
-        return f"""# Purple Team Assessment — Coverage, Detection & TM Operability
+        return f"""RESPONSE FORMAT: You must reply with a single ```json code block. No prose before or after it. Your entire response is the JSON object described at the bottom of this prompt.
+
+# Purple Team Assessment — Coverage, Detection & TM Operability
 
 Context: {mode_context}
 

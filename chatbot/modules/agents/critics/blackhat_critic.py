@@ -614,7 +614,9 @@ class BlackhatCritic(CriticAgent):
                 f"Elevate any pivot chain that passes through these nodes to CRITICAL.\n"
             )
 
-        return f"""# Blackhat Cross-Path Chain Assessment
+        return f"""RESPONSE FORMAT: You must reply with a single ```json code block. No prose before or after it. Your entire response is the JSON object described at the bottom of this prompt.
+
+# Blackhat Cross-Path Chain Assessment
 
 INVERTED SCORING: high score = easy cross-path chain = BAD defence.
 Your job: identify whether attack paths can be COMBINED via shared nodes into more dangerous composite attacks.

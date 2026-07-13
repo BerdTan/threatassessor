@@ -146,47 +146,57 @@ class CriticAgent(BaseAgent):
         _tools_enabled = getattr(self, "_tools_enabled", False)
         tool_schemas = [t.to_litellm_schema() for t in self.tools] if (self.tools and _tools_enabled) else None
 
-        # 3. Call LLM without tools (MVP1 simplification)
+        # 3. Call LLM without tools (MVP1 simplification) — retry up to 2 times on parse failure
         _llm_tokens = 0
         _llm_cost   = 0.0
         _llm_latency = 0.0
         _llm_model  = self.model or ""
         _llm_calls  = 0
-        try:
-            # If model is None, LLMClient uses .env defaults (LLM_PROVIDER, BEDROCK_MODEL, etc.)
-            logger.info(f"{self.role}: Calling LLM (model={self.model}, tools disabled for MVP1)")
-            response = self.llm_client.generate(
-                prompt=prompt,
-                system_message=self.system_prompt,
-                model=self.model,  # None = use .env config
-                # tools=tool_schemas,  # Disabled for MVP1
-                temperature=0.3,  # Lower for consistent scoring
-                max_tokens=4000
+        _MAX_RETRIES = 2
+        critique_data = {}
+        for _attempt in range(_MAX_RETRIES + 1):
+            _retry_prefix = (
+                "IMPORTANT: Your previous response was not valid JSON. "
+                "You MUST respond with a single ```json code block containing the structured critique. "
+                "No prose, no explanation — only the JSON object.\n\n"
+                if _attempt > 0 else ""
             )
-            _llm_calls   += 1
-            _llm_tokens  += getattr(response, 'tokens_used', 0) or 0
-            _llm_cost    += getattr(response, 'cost_usd', 0.0) or 0.0
-            _llm_latency += getattr(response, 'latency_seconds', 0.0) or 0.0
-            _llm_model    = getattr(response, 'model', self.model or "") or _llm_model
-            logger.info(f"{self.role}: LLM call completed - Response type: {type(response)}")
-            logger.info(f"{self.role}: Response attributes: {dir(response)[:10]}...")  # First 10 to avoid spam
-        except Exception as e:
-            logger.error(f"{self.role}: LLM call failed: {e}")
-            raise
+            try:
+                logger.info(f"{self.role}: Calling LLM (attempt {_attempt+1}/{_MAX_RETRIES+1}, model={self.model})")
+                response = self.llm_client.generate(
+                    prompt=_retry_prefix + prompt,
+                    system_message=self.system_prompt,
+                    model=self.model,  # None = use .env config
+                    # tools=tool_schemas,  # Disabled for MVP1
+                    temperature=0.3,  # Lower for consistent scoring
+                    max_tokens=4000
+                )
+                _llm_calls   += 1
+                _llm_tokens  += getattr(response, 'tokens_used', 0) or 0
+                _llm_cost    += getattr(response, 'cost_usd', 0.0) or 0.0
+                _llm_latency += getattr(response, 'latency_seconds', 0.0) or 0.0
+                _llm_model    = getattr(response, 'model', self.model or "") or _llm_model
+            except Exception as e:
+                logger.error(f"{self.role}: LLM call failed (attempt {_attempt+1}): {e}")
+                if _attempt == _MAX_RETRIES:
+                    raise
+                continue
 
-        # 4. Handle tool calls (if any)
-        if hasattr(response, 'tool_calls') and response.tool_calls:
-            logger.info(f"{self.role}: Executing {len(response.tool_calls)} tool calls")
-            tool_results = self._execute_tools(response.tool_calls)
+            # Handle tool calls (if any)
+            if hasattr(response, 'tool_calls') and response.tool_calls:
+                logger.info(f"{self.role}: Executing {len(response.tool_calls)} tool calls")
+                self._execute_tools(response.tool_calls)
+                logger.warning(f"{self.role}: Tool execution not yet implemented in MVP1")
 
-            # Re-prompt with tool results
-            # (Simplified for MVP1 - full implementation in MVP2+)
-            logger.warning(f"{self.role}: Tool execution not yet implemented in MVP1")
+            # Parse and validate — retry if empty
+            logger.info(f"{self.role}: Parsing response (attempt {_attempt+1})...")
+            critique_data = self._parse_response(response)
+            logger.info(f"{self.role}: Parsed data keys: {list(critique_data.keys()) if critique_data else 'EMPTY'}")
 
-        # 5. Extract and validate output
-        logger.info(f"{self.role}: Parsing response...")
-        critique_data = self._parse_response(response)
-        logger.info(f"{self.role}: Parsed data keys: {list(critique_data.keys()) if critique_data else 'None'}")
+            if critique_data:
+                break
+            if _attempt < _MAX_RETRIES:
+                logger.warning(f"{self.role}: Empty parse on attempt {_attempt+1} — retrying with JSON reminder")
 
         # 6. Validate against rubric
         if not self._validate_output(critique_data):

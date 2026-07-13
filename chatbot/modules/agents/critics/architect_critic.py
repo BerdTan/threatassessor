@@ -378,8 +378,10 @@ class EnhancedArchitectCritic:
         control_gap = abs(after_mmd_controls - control_count)
         control_status = "✅ COMPLETE" if control_gap <= 2 else f"❌ GAP: {control_gap} controls missing"
 
-        prompt = f"""You are reviewing a threat assessment with 10 artifacts (5 critical + 5 important).
+        prompt = f"""RESPONSE FORMAT: You must reply with a single ```json code block. No prose before or after it. Your entire response is the JSON object described at the bottom of this prompt.
 
+{'='*70}
+You are reviewing a threat assessment with 10 artifacts (5 critical + 5 important).
 {'='*70}
 TIER 1: CRITICAL ARTIFACTS (80 points weight)
 {'='*70}

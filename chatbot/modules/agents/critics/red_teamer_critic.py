@@ -170,7 +170,9 @@ Be realistic, not optimistic. If controls can be bypassed with public tools, sco
         - {attack_paths}: Attack path details
         - {tester_gaps}: Optional gaps from Tester
         """
-        return """# Red Team Assessment - Exploit Difficulty Analysis
+        return """RESPONSE FORMAT: You must reply with a single ```json code block. No prose before or after it. Your entire response is the JSON object described at the bottom of this prompt.
+
+# Red Team Assessment - Exploit Difficulty Analysis
 
 IMPORTANT: This uses INVERTED scoring
 - Low score (0-40) = Hard to exploit = GOOD defense ✅
