@@ -169,8 +169,8 @@ Return valid JSON with this structure:
   },
   "gaps": [
     {
-      "category": "validation_checks",
-      "severity": "HIGH",
+      "category": "validation_checks | coverage_metrics | internal_consistency | roadmap_validation | detect_only_gap",
+      "severity": "HIGH | MEDIUM | LOW",
       "description": "Control X claims to mitigate T1234 but M1234 not in T1234's mitigations per MITRE ATT&CK",
       "affected_components": ["Control X"],
       "recommendation": "Remove T1234 from Control X mapping or correct to a valid M-ID"
