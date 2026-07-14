@@ -91,12 +91,14 @@ def _extract_signals(moe_result: "MoEResult", ground_truth: Dict, arch_name: str
     arch_type = _arch_type(ground_truth)
     signals: List[Dict] = []
 
+    # MoEResult stores ValidationResult objects (not CritiqueScore) under *_result attrs.
+    # Both have a .gaps List[Dict] field so the extraction logic is identical.
     critic_map = {
-        "architect":   getattr(moe_result, "architect_critique",   None),
-        "tester":      getattr(moe_result, "tester_critique",      None),
-        "red_team":    getattr(moe_result, "red_team_critique",     None),
-        "purple_team": getattr(moe_result, "purple_team_critique",  None),
-        "blackhat":    getattr(moe_result, "blackhat_critique",     None),
+        "architect":   getattr(moe_result, "architect_result",   None),
+        "tester":      getattr(moe_result, "tester_result",      None),
+        "red_team":    getattr(moe_result, "red_team_result",    None),
+        "purple_team": getattr(moe_result, "purple_team_result", None),
+        "blackhat":    getattr(moe_result, "blackhat_result",    None),
     }
 
     for critic_name, vr in critic_map.items():
