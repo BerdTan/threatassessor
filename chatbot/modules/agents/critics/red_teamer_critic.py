@@ -443,7 +443,7 @@ REMEMBER: Low score = hard to exploit = GOOD defense (we want this!)
             system_message=self.system_prompt,
             model=self.model,
             temperature=0.3,
-            max_tokens=3000
+            max_tokens=6000
         )
         _wall_elapsed = _t.time() - _wall_start
 

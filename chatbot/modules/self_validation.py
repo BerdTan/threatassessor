@@ -19,6 +19,16 @@ from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 
 logger = logging.getLogger(__name__)
 
+# Techniques MITRE intentionally leaves without preventive mitigations.
+# Sourced from exhaustive_mitigation_mapper.DETECTION_ONLY_TECHNIQUES — kept
+# here as a lightweight lookup so self_validation doesn't import the mapper.
+_MITRE_DETECT_ONLY_TECHNIQUES = frozenset({
+    "T1007", "T1010", "T1012", "T1016", "T1018", "T1033", "T1039",
+    "T1046", "T1049", "T1057", "T1069", "T1082", "T1083", "T1087",
+    "T1120", "T1124", "T1135", "T1201", "T1217", "T1420", "T1422",
+    "T1423", "T1424", "T1426", "T1496",
+})
+
 
 # ============================================================================
 # VALIDATION 1: MITRE TECHNIQUE RELEVANCE
@@ -846,7 +856,8 @@ def run_self_validation(
                 "technique": tech_id,
                 "valid": is_valid,
                 "adjustment": adjustment,
-                "reason": reason
+                "reason": reason,
+                "detect_only": tech_id.split(".")[0] in _MITRE_DETECT_ONLY_TECHNIQUES,
             })
 
             if not is_valid:

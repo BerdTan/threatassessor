@@ -29,7 +29,13 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from chatbot.modules.agents.orchestrators.moe_orchestrator import MoEResult
 
+from chatbot.modules.self_validation import _MITRE_DETECT_ONLY_TECHNIQUES
+
 logger = logging.getLogger(__name__)
+
+# Regex to find T-IDs in impediment description strings (e.g. "T1083", "T1018")
+import re as _re
+_TECH_ID_RE = _re.compile(r'\bT\d{4}(?:\.\d{3})?\b')
 
 
 # ---------------------------------------------------------------------------
@@ -395,13 +401,27 @@ class ScrumMasterCritic:
                 desc = gap.get("description", str(gap)) if isinstance(gap, dict) else str(gap)
                 severity = gap.get("severity", "medium") if isinstance(gap, dict) else "medium"
                 affected = gap.get("affected_items", []) if isinstance(gap, dict) else []
+
+                # Detect-only reclassification: if this is a Tester gap referencing a
+                # technique that MITRE intentionally leaves without preventive mitigations,
+                # lower severity to "low" and mark type "detect_only_gap" so it doesn't
+                # block harmony or inflate the action plan priority.
+                imp_type = "coverage_gap"
+                tech_ids = _TECH_ID_RE.findall(desc)
+                if (critic_name == "tester"
+                        and tech_ids
+                        and all(t.split(".")[0] in _MITRE_DETECT_ONLY_TECHNIQUES for t in tech_ids)
+                        and severity in ("medium", "high")):
+                    imp_type = "detect_only_gap"
+                    severity = "low"
+
                 impediments.append(ImpedimentItem(
-                    impediment_type="coverage_gap",
+                    impediment_type=imp_type,
                     source_critics=[critic_name],
                     description=desc,
                     severity=severity,
                     affected_attack_paths=affected if isinstance(affected, list) else [],
-                    resolvable=severity in ("medium", "low"),  # critical/high gaps may be structural
+                    resolvable=True,  # detect_only gaps are always resolvable with a monitoring control
                     target_critic=critic_name,
                 ))
 
@@ -473,11 +493,25 @@ class ScrumMasterCritic:
         existing_controls = ground_truth.get("controls_present", [])
         missing_controls = ground_truth.get("controls_missing", [])
 
+        # Identify detect-only items so SM can phrase them correctly
+        detect_only_indices = [
+            idx + 1 for idx, i in enumerate(resolvable)
+            if i.impediment_type == "detect_only_gap"
+        ]
+        detect_only_note = (
+            f"\nNOTE: Items {detect_only_indices} are DETECT-ONLY gaps — MITRE provides no "
+            "preventive mitigation for these techniques. Resolve by recommending a detection "
+            "control (e.g. file integrity monitoring, network monitoring, EDR) — NOT by "
+            "citing a missing M-ID.\n"
+            if detect_only_indices else ""
+        )
+
         prompt = (
             "You are a security architecture advisor helping a ScrumMaster resolve "
             "impediments identified across expert critic reviews.\n\n"
             f"Existing controls: {existing_controls[:10]}\n"
-            f"Missing controls (top 5): {missing_controls[:5]}\n\n"
+            f"Missing controls (top 5): {missing_controls[:5]}\n"
+            f"{detect_only_note}\n"
             "For each numbered impediment below, provide ONE concrete, actionable "
             "resolution proposal in one sentence. Focus on what should change in the "
             "architecture or threat model — not process improvements.\n\n"

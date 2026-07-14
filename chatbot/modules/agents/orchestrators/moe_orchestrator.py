@@ -802,6 +802,13 @@ class MoEOrchestrator:
         logger.info(f"MoE Pipeline: COMPLETE - {final_confidence:.1f}% confidence")
         logger.info(f"MoE Pipeline: Generated 16/16 files (ground_truth + 1 dashboard + 6 JSON + 4 MD + 4 MMD)")
 
+        # Record critic gap signals for the learning loop (best-effort — never blocks pipeline)
+        try:
+            from chatbot.harness.critic_learning import record_er_signals
+            record_er_signals(result, ground_truth, Path(report_dir).name)
+        except Exception as _le:
+            logger.debug(f"CriticLearning: signal recording skipped: {_le}")
+
         return result
 
     # =========================================================================

@@ -39,6 +39,7 @@ from typing import Dict, List, Optional
 from chatbot.modules.agent_framework import CriticAgent
 from chatbot.modules.artifact_extractor import ArtifactSet
 from chatbot.modules.mitre import MitreHelper, get_mitre_helper
+from chatbot.modules.self_validation import _MITRE_DETECT_ONLY_TECHNIQUES
 
 logger = logging.getLogger(__name__)
 
@@ -421,6 +422,20 @@ def create_tester_prompt(
     mitre = get_mitre_helper()
     mitre_reference = build_mitre_reference(all_techniques, mitre)
 
+    # Identify detect-only techniques present in this arch's attack paths
+    detect_only_here = sorted({
+        t.split(".")[0] for t in all_techniques
+        if t.split(".")[0] in _MITRE_DETECT_ONLY_TECHNIQUES
+    })
+    if detect_only_here:
+        detect_only_in_paths = (
+            ", ".join(detect_only_here)
+            + " — MITRE ATT&CK provides 0 preventive mitigations for these; "
+            "detection/monitoring controls are the correct response, not M-IDs."
+        )
+    else:
+        detect_only_in_paths = "(none in this architecture's attack paths)"
+
     # Extract key data
     controls = tier1["artifact_2_controls"]["controls"]
     attack_paths = tier1["artifact_1_attack_paths"]
@@ -592,6 +607,13 @@ WHAT NOT TO DO:
    - Does after.mmd have the correct node count matching recommended controls?
    - Do all attack-path techniques have at least one mapping entry reported?
    NOTE: Do NOT judge whether the number of controls is sufficient — that is Purple Team's job.
+
+   DETECT-ONLY TECHNIQUES (MITRE provides no preventive mitigation — monitor-class controls expected):
+   {detect_only_in_paths}
+   For any technique in the list above that appears unmapped: flag it as MEDIUM severity with
+   category "detect_only_gap" and recommend a detection control (file integrity monitoring,
+   network monitoring, EDR, or equivalent) — NOT as a MITRE mapping error.
+   Do NOT flag these as missing M-IDs — MITRE has none to offer.
 
 4. VALIDATE ARCHITECT ROADMAP (if provided):
    - Do roadmap items address real gaps?

@@ -430,6 +430,14 @@ class MoEOrchestrator:
         logger.info(f"MoE Pipeline: ✓ Layer 3 complete - saved to {orch_path}")
         logger.info(f"MoE Pipeline: COMPLETE - {final_confidence:.1f}% confidence")
 
+        # Record critic gap signals for the learning loop (best-effort — never blocks pipeline)
+        try:
+            from chatbot.harness.critic_learning import record_er_signals
+            arch_name = Path(report_dir).name
+            record_er_signals(result, ground_truth, arch_name)
+        except Exception as _le:
+            logger.debug(f"CriticLearning: signal recording skipped: {_le}")
+
         return result
 
     def _process_architect_validation(self, critique: CritiqueScore) -> ValidationResult:
