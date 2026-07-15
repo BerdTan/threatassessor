@@ -644,7 +644,8 @@ class ScrumMasterCritic:
         - Ranked by: confidence_gain × path_coverage × simplicity (not just priority label)
         """
         if redesign_signal:
-            recs = self._build_redesign_recommendations(moe_result)
+            adrs = ground_truth.get("architecture_decision_records", []) if ground_truth else []
+            recs = self._build_redesign_recommendations(moe_result, adrs)
             # Apply AP closure enforcement on redesign path too
             if ground_truth:
                 crit_aps = [
@@ -995,7 +996,7 @@ class ScrumMasterCritic:
         result.sort(key=lambda x: _PRIO_ORDER.get((x.get("priority") or "low").lower(), 3))
         return result
 
-    def _build_redesign_recommendations(self, moe_result: "MoEResult") -> List[Dict]:
+    def _build_redesign_recommendations(self, moe_result: "MoEResult", adrs: List[Dict] = None) -> List[Dict]:
         """Tiered action plan when redesign_signal=True.
 
         Tier A — Immediate: resolvable medium/low impediments (apply controls now,
@@ -1004,16 +1005,26 @@ class ScrumMasterCritic:
                              concrete architectural decisions with sequenced next steps.
 
         Each item includes: what to do, why it matters, first concrete step, effort.
+        adrs: architecture_decision_records from ground_truth, used to ground first_step
+              text in controls that the ADR already mandates for this architecture.
         """
+        if adrs is None:
+            adrs = []
+        # Flat set of all ADR-mandated control names across all paths — for Tier A lookup
+        _adr_ctrl_set = {
+            (c.get("control") or c.get("name") or "").strip().lower()
+            for adr in adrs
+            for hop in (adr.get("hops") or [])
+            for c in (hop.get("controls") or [])
+            if (c.get("control") or c.get("name") or "").strip()
+        }
+
         recs = []
 
         # ── Tier A: Immediate actions on resolvable impediments ──────────────
         # Pull from MoE consensus critical/high recommendations — these are actionable NOW
         critical_recs = list(getattr(moe_result, "critical_recommendations", []))
         high_recs = list(getattr(moe_result, "high_recommendations", []))
-        # Skip words that are scores/metrics, not control names
-        _SKIP_WORDS = {"Defensibility", "Attacker", "Score", "Rating", "Static", "Zero",
-                       "Critical", "High", "Medium", "Low", "None", "This", "That", "These"}
         for r in (critical_recs + high_recs)[:3]:
             raw = r.get("action") or r.get("description") or r.get("recommendation") or str(r)
             # Truncate to first sentence for the action field — don't dump full description
@@ -1021,12 +1032,13 @@ class ScrumMasterCritic:
             evidence = r.get("evidence", "")
             # Strip evidence to just the source reference (before any colon-expansion)
             evidence_short = evidence.split(":")[0].strip() if ":" in evidence else evidence[:60]
-            # Extract a meaningful control keyword — skip metric/score words
-            _ctrl_kw = next(
-                (w for w in action.split()
-                 if len(w) > 4 and w[0].isupper() and w not in _SKIP_WORDS),
-                "this control"
-            )
+            # Find ADR controls already mandated that are mentioned in the action text
+            action_lower = action.lower()
+            matched_adrs = [c for c in _adr_ctrl_set if c in action_lower]
+            if matched_adrs:
+                adr_note = f"ADR already mandates: {', '.join(sorted(matched_adrs)[:3])}."
+            else:
+                adr_note = "No existing ADR control matches — add one after confirming scope."
             recs.append({
                 "priority": "high",
                 "action": action,
@@ -1034,7 +1046,7 @@ class ScrumMasterCritic:
                 "risk_reduction_estimate": "medium",
                 "effort": "days",
                 "tier": "immediate",
-                "first_step": f"Apply {_ctrl_kw} at the relevant node: add to the architecture ADR, assign an owner, and verify in the next Expert Review run.",
+                "first_step": f"Implement at the relevant node. {adr_note} Assign an owner and verify in the next Expert Review run.",
             })
 
         # ── Tier B: Structural changes — translated into decisions, not descriptions ─
@@ -1042,17 +1054,36 @@ class ScrumMasterCritic:
         blindspots = getattr(moe_result, "blindspots", [])
         contradictions = getattr(moe_result, "contradictions", [])
 
-        # Concrete translation map for common blindspot themes
+        # Concrete translation map for common blindspot themes.
+        # adr_kws: controls this theme typically mandates — used to find matches in the arch ADR.
         _DECISION_MAP = {
-            "vendor":           ("Add a Vendor Risk Assessment node to the architecture. Define contract SLAs for security incident notification and minimum control requirements. Map to relevant attack paths.",  "Schedule vendor security review; add vendor_risk_assessment node to .mmd"),
-            "supply chain":     ("Introduce a Software Composition Analysis (SCA) gate in the CI/CD pipeline. Add dependency inventory node. Map supply chain attack paths explicitly.",                            "Add SCA tool to pipeline; identify top 5 third-party dependencies with no security SLA"),
-            "continuity":       ("Define RTO/RPO targets per attack path criticality tier. Add BCP/DR controls to ADRs for HIGH/CRITICAL paths. Model availability impact in the threat model.",                 "Map current attack paths to availability impact; add recovery_time_objective field to top 3 ADRs"),
-            "mobile":           ("Add mobile app security layer to architecture (certificate pinning, device attestation, jailbreak detection). Model client-side attack surface as a separate trust zone.",       "Add mobile_security_controls subgraph to .mmd; re-run analysis"),
-            "api gateway":      ("Reposition API Gateway as the single ingress point with authentication/authorization enforcement. Remove direct backend service exposure. Add east-west traffic inspection.",    "Redraw architecture so all external traffic routes through API Gateway; add WAF and auth enforcement controls"),
-            "detection":        ("Add dedicated detection layer: SIEM correlation rules, UEBA baselines, and anomaly thresholds per attack path type. Separate detection controls from preventive controls in ADRs.", "Define alert thresholds for top 3 attack paths; add detection_layer subgraph to .mmd"),
-            "insider":          ("Add privileged access management (PAM) and user behavior analytics (UEBA) as explicit architecture nodes. Model insider threat attack paths separately.",                         "Add PAM node; create dedicated insider_threat attack path in analysis"),
-            "compliance":       ("Map all L0 cardinal controls to architecture nodes. Create a compliance coverage matrix. Flag any nodes with zero L0 control coverage.",                                         "Run SSP gap analysis; add missing L0 controls to the action plan immediately"),
-            "segmentation":     ("Implement microsegmentation between services — add network zone boundaries to .mmd. Each service should only accept connections from known callers.",                            "Add microsegmentation subgraph; add firewall_rules and service_mesh nodes"),
+            "vendor":       ("Add a Vendor Risk Assessment node to the architecture. Define contract SLAs for security incident notification and minimum control requirements. Map to relevant attack paths.",
+                             "Schedule vendor security review; add vendor_risk_assessment node to .mmd",
+                             ["vulnerability scanning", "patching", "audit log"]),
+            "supply chain": ("Introduce a Software Composition Analysis (SCA) gate in the CI/CD pipeline. Add dependency inventory node. Map supply chain attack paths explicitly.",
+                             "Add SCA tool to pipeline; identify top 5 third-party dependencies with no security SLA",
+                             ["code signing", "vulnerability scanning", "patching"]),
+            "continuity":   ("Define RTO/RPO targets per attack path criticality tier. Add BCP/DR controls to ADRs for HIGH/CRITICAL paths. Model availability impact in the threat model.",
+                             "Map current attack paths to availability impact; add recovery_time_objective field to top 3 ADRs",
+                             ["backup", "logging", "rate limiting"]),
+            "mobile":       ("Add mobile app security layer to architecture (certificate pinning, device attestation, jailbreak detection). Model client-side attack surface as a separate trust zone.",
+                             "Add mobile_security_controls subgraph to .mmd; re-run analysis",
+                             ["mfa", "input validation", "api gateway"]),
+            "api gateway":  ("Reposition API Gateway as the single ingress point with authentication/authorization enforcement. Remove direct backend service exposure. Add east-west traffic inspection.",
+                             "Redraw architecture so all external traffic routes through API Gateway; add WAF and auth enforcement controls",
+                             ["api gateway", "waf", "mfa", "input validation"]),
+            "detection":    ("Add dedicated detection layer: SIEM correlation rules, UEBA baselines, and anomaly thresholds per attack path type. Separate detection controls from preventive controls in ADRs.",
+                             "Define alert thresholds for top 3 attack paths; add detection_layer subgraph to .mmd",
+                             ["ids/ips", "edr", "logging", "behavioral analysis"]),
+            "insider":      ("Add privileged access management (PAM) and user behavior analytics (UEBA) as explicit architecture nodes. Model insider threat attack paths separately.",
+                             "Add PAM node; create dedicated insider_threat attack path in analysis",
+                             ["least privilege", "behavioral analysis", "audit log"]),
+            "compliance":   ("Map all L0 cardinal controls to architecture nodes. Create a compliance coverage matrix. Flag any nodes with zero L0 control coverage.",
+                             "Run SSP gap analysis; add missing L0 controls to the action plan immediately",
+                             ["mfa", "dlp", "audit log", "least privilege"]),
+            "segmentation": ("Implement microsegmentation between services — add network zone boundaries to .mmd. Each service should only accept connections from known callers.",
+                             "Add microsegmentation subgraph; add firewall_rules and service_mesh nodes",
+                             ["network segmentation", "ids/ips", "least privilege"]),
         }
 
         for source_list, source_type in [(blindspots, "blindspot"), (contradictions, "contradiction")]:
@@ -1063,11 +1094,18 @@ class ScrumMasterCritic:
                 desc_lower = desc.lower()
 
                 # Find best matching decision template
-                decision_action, first_step = None, None
-                for keyword, (action, step) in _DECISION_MAP.items():
+                decision_action, first_step, theme_kws = None, None, []
+                for keyword, (action, step, kws) in _DECISION_MAP.items():
                     if keyword in desc_lower:
-                        decision_action, first_step = action, step
+                        decision_action, first_step, theme_kws = action, step, kws
                         break
+
+                # Append ADR-grounded controls to first_step when this arch's ADR has relevant ones
+                adr_matches = [k for k in theme_kws if k in _adr_ctrl_set]
+                if adr_matches and first_step:
+                    first_step = first_step + f" ADR mandates: {', '.join(adr_matches[:3])}."
+                elif not adr_matches and theme_kws and first_step:
+                    first_step = first_step + f" Add these ADR controls: {', '.join(theme_kws[:3])}."
 
                 if not decision_action:
                     # Generic structural decision template — still more useful than "redesign this"
@@ -1077,7 +1115,10 @@ class ScrumMasterCritic:
                         "Add the missing component as an explicit architecture node in the .mmd diagram, "
                         "assign a trust zone, and re-run analysis to generate attack paths and controls for it."
                     )
-                    first_step = f"Identify the missing component. Add it to the .mmd file. Re-run analysis."
+                    adr_sample = sorted(_adr_ctrl_set)[:3]
+                    adr_suffix = (f" ADR controls active in this arch: {', '.join(adr_sample)}."
+                                  if adr_sample else "")
+                    first_step = f"Identify the missing component. Add it to the .mmd file. Re-run analysis.{adr_suffix}"
 
                 priority = "critical" if source_type == "blindspot" else "high"
                 recs.append({
