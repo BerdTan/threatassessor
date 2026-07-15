@@ -877,6 +877,39 @@ def augment_with_exhaustive_mitigations(
         control_recommendations = control_recommendations + manual_controls
         uncovered_techniques = still_uncovered
 
+    # Inject controls from promoted engine hints (critic learning loop)
+    if uncovered_techniques:
+        try:
+            from chatbot.harness.critic_learning import load_engine_hints
+            arch_type_hint = None  # caller can pass via kwargs in the future
+            engine_hints = load_engine_hints(arch_type=arch_type_hint)
+            for hint in engine_hints:
+                if hint.get("gap_category") != "detect_only_gap":
+                    continue
+                ctrl_name = hint.get("recommended_control", "")
+                if not ctrl_name:
+                    continue
+                hint_techs = [t for t in hint.get("techniques", []) if t in uncovered_techniques]
+                if not hint_techs:
+                    continue
+                already = ctrl_name in (controls_present + [c.get("control", "") for c in control_recommendations])
+                if not already:
+                    control_recommendations.append({
+                        "control": ctrl_name,
+                        "name": ctrl_name.upper(),
+                        "description": hint.get("rule_description", "")[:200],
+                        "techniques": hint_techs,
+                        "techniques_addressed": hint_techs,
+                        "dir_category": "detect",
+                        "mitre_mitigations": [],
+                        "priority": "medium",
+                        "source": "engine_hint",
+                    })
+                    uncovered_techniques -= set(hint_techs)
+                    logger.info(f"✅ Engine hint control for {hint_techs}: {ctrl_name}")
+        except Exception as _e:
+            logger.debug(f"Engine hints load skipped: {_e}")
+
     if not uncovered_techniques:
         return control_recommendations
 

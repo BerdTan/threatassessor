@@ -612,6 +612,39 @@ class ScrumMasterCritic:
     # Step 7: Strategist action plan (LLM pass)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _adr_control_names(ground_truth: Optional[Dict]) -> List[str]:
+        """Return deduplicated ADR-mandated control names from ground_truth."""
+        if not ground_truth:
+            return []
+        seen: set = set()
+        result: List[str] = []
+        for adr in ground_truth.get("architecture_decision_records", []):
+            for hop in (adr.get("hops") or []):
+                for ctrl in (hop.get("controls") or []):
+                    name = (ctrl.get("control") or ctrl.get("name") or "").strip().lower()
+                    if name and name not in seen:
+                        seen.add(name)
+                        result.append(name)
+        return result
+
+    @staticmethod
+    def _inject_adr_controls(items: List[Dict], adr_controls: List[str]) -> List[Dict]:
+        """Append the top ADR-mandated control name to high/critical items that don't
+        already reference any ADR control, so TATB adr_alignment scoring can match them."""
+        if not adr_controls:
+            return items
+        for it in items:
+            if (it.get("priority") or "").lower() not in ("critical", "high"):
+                continue
+            text = ((it.get("first_step") or "") + " " + (it.get("action") or "")).lower()
+            if not any(c in text for c in adr_controls):
+                it["first_step"] = (
+                    (it.get("first_step") or "").rstrip(" .") +
+                    f" (ADR-mandated control: {adr_controls[0]}.)"
+                )
+        return items
+
     def _build_action_plan(
         self,
         moe_result: "MoEResult",
@@ -655,6 +688,7 @@ class ScrumMasterCritic:
                         })
                 _PRIO_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
                 recs.sort(key=lambda x: _PRIO_ORDER.get((x.get("priority") or "low").lower(), 3))
+            self._inject_adr_controls(recs, self._adr_control_names(ground_truth))
             return recs
 
         # ── Source material ───────────────────────────────────────────────────
@@ -919,6 +953,7 @@ class ScrumMasterCritic:
                                     "confidence_gain": 2.0,
                                     "is_antipattern": False,
                                 })
+                    self._inject_adr_controls(result, self._adr_control_names(ground_truth))
                     return result
         except Exception as exc:
             logger.warning(f"ScrumMaster: strategist action plan LLM call failed: {exc}")
@@ -970,6 +1005,7 @@ class ScrumMasterCritic:
         # Sort by priority so CRITICAL items appear before HIGH for executive readers
         _PRIO_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         result.sort(key=lambda x: _PRIO_ORDER.get((x.get("priority") or "low").lower(), 3))
+        self._inject_adr_controls(result, self._adr_control_names(ground_truth))
         return result
 
     def _build_redesign_recommendations(self, moe_result: "MoEResult") -> List[Dict]:

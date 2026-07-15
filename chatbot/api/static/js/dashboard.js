@@ -12421,7 +12421,115 @@ class Dashboard {
     async _tatbRefresh() {
         const archName = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
         if (!archName) return;
-        await this._tatbFetchAndRender(archName, true);
+        if (this._tatbCorpusMode) {
+            await this._tatbLoadCorpus();
+        } else {
+            await this._tatbFetchAndRender(archName, true);
+        }
+    }
+
+    async _tatbSetMode(mode) {
+        this._tatbCorpusMode = (mode === 'corpus');
+        if (this._tatbCorpusMode) {
+            await this._tatbLoadCorpus();
+        } else {
+            const archName = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+            if (archName) await this._tatbFetchAndRender(archName, false);
+        }
+    }
+
+    async _tatbLoadCorpus() {
+        const container = document.getElementById('benchmark-content');
+        if (!container) return;
+        container.innerHTML = '<p style="color:var(--text-tertiary); font-size:0.85rem;">Loading corpus TATB scores…</p>';
+        try {
+            const resp = await fetch('/api/v1/tatb-corpus', { cache: 'no-store' });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            container.innerHTML = this._renderTatbCorpus(data);
+        } catch (e) {
+            container.innerHTML = `<p style="color:var(--error-color); font-size:0.85rem;">Corpus load failed: ${this._esc(e.message)}</p>`;
+        }
+    }
+
+    _renderTatbCorpus(data) {
+        const archs = data.architectures || [];
+        const avg   = data.avg || {};
+        const _esc  = s => this._esc(String(s || ''));
+        const bandFor = (s) => {
+            if (s >= 85) return { label: 'Excellent', color: '#16a34a' };
+            if (s >= 70) return { label: 'Solid',     color: '#65a30d' };
+            if (s >= 50) return { label: 'Weak',      color: '#ca8a04' };
+            return            { label: 'Draft',       color: '#dc2626' };
+        };
+        const scoreCell = (v) => {
+            if (v == null) return '<td style="padding:0.3rem 0.6rem;text-align:center;color:var(--text-tertiary);font-size:0.75rem;">—</td>';
+            const b = bandFor(v);
+            return `<td style="padding:0.3rem 0.6rem;text-align:center;font-size:0.8rem;font-weight:700;color:${b.color};">${v}</td>`;
+        };
+        const avgBand = bandFor(avg.overall);
+        const toggleButtons = `
+            <div style="display:flex; border:1px solid var(--border-color); border-radius:5px; overflow:hidden; font-size:0.72rem; float:right;">
+                <button onclick="window.dashboard._tatbSetMode('arch')"
+                    style="padding:0.28rem 0.6rem; border:none; border-right:1px solid var(--border-color); background:var(--card-bg); color:var(--text-color); cursor:pointer; font-weight:600;">This Arch</button>
+                <button onclick="window.dashboard._tatbSetMode('corpus')"
+                    style="padding:0.28rem 0.6rem; border:none; background:var(--primary-color); color:#fff; cursor:pointer; font-weight:600;">Corpus</button>
+            </div>`;
+
+        const avgRow = `
+            <tr style="background:var(--nav-hover-bg); border-top:2px solid var(--border-color);">
+                <td style="padding:0.35rem 0.6rem; font-size:0.8rem; font-weight:700; color:var(--text-color);">Corpus avg (${avg.count || archs.length} archs)</td>
+                ${scoreCell(avg.overall)}${scoreCell(avg.threat)}${scoreCell(avg.ttp)}${scoreCell(avg.risk)}${scoreCell(avg.plan)}
+            </tr>`;
+
+        const archRows = archs.map(a => `
+            <tr style="border-bottom:1px solid var(--border-color)22;">
+                <td style="padding:0.3rem 0.6rem; font-size:0.78rem; color:var(--text-secondary); font-family:monospace;">${_esc(a.name)}</td>
+                ${scoreCell(a.overall)}${scoreCell(a.threat)}${scoreCell(a.ttp)}${scoreCell(a.risk)}${scoreCell(a.plan)}
+            </tr>`).join('');
+
+        return `
+        <div style="padding:0;">
+            <div style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; background:${avgBand.color}14; border:1px solid ${avgBand.color}44; border-radius:10px; margin-bottom:1rem;">
+                <div style="display:flex; align-items:baseline; gap:0.5rem;">
+                    <span style="font-size:2rem; font-weight:800; color:${avgBand.color}; line-height:1;">${avg.overall ?? '—'}</span>
+                    <span style="font-size:0.72rem; color:var(--text-tertiary);">/100 corpus avg</span>
+                    <span style="font-size:0.95rem; font-weight:700; color:${avgBand.color};">${avgBand.label}</span>
+                </div>
+                <div style="flex:1; font-size:0.75rem; color:var(--text-secondary);">Average across ${avg.count || archs.length} scored architectures</div>
+                ${toggleButtons}
+            </div>
+            <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+                ${['Threat','TTP','Risk','Plan'].map((lbl,i) => {
+                    const key = ['threat','ttp','risk','plan'][i];
+                    const v = avg[key]; const b = bandFor(v);
+                    return `<div style="flex:1;min-width:100px;background:var(--card-bg);border:1px solid var(--border-color);border-left:3px solid ${b.color};border-radius:6px;padding:0.5rem 0.7rem;">
+                        <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:0.1rem;">${lbl}</div>
+                        <div style="font-size:1.1rem;font-weight:800;color:${b.color};">${v ?? '—'}</div>
+                        <div style="font-size:0.65rem;color:var(--text-tertiary);">${b.label}</div>
+                    </div>`;
+                }).join('')}
+            </div>
+            <div style="border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+                    <thead>
+                        <tr style="background:var(--nav-hover-bg); border-bottom:1px solid var(--border-color);">
+                            <th style="padding:0.4rem 0.6rem; text-align:left; font-size:0.72rem; color:var(--text-tertiary); font-weight:600;">Architecture</th>
+                            <th style="padding:0.4rem 0.6rem; text-align:center; font-size:0.72rem; color:var(--text-tertiary); font-weight:600;">Overall</th>
+                            <th style="padding:0.4rem 0.6rem; text-align:center; font-size:0.72rem; color:var(--text-tertiary); font-weight:600;">🎯 Threat</th>
+                            <th style="padding:0.4rem 0.6rem; text-align:center; font-size:0.72rem; color:var(--text-tertiary); font-weight:600;">🎭 TTP</th>
+                            <th style="padding:0.4rem 0.6rem; text-align:center; font-size:0.72rem; color:var(--text-tertiary); font-weight:600;">⚖️ Risk</th>
+                            <th style="padding:0.4rem 0.6rem; text-align:center; font-size:0.72rem; color:var(--text-tertiary); font-weight:600;">✅ Plan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${avgRow}
+                        ${archRows}
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top:0.5rem; font-size:0.7rem; color:var(--text-tertiary); text-align:right;">Scores computed server-side from ground_truth + MoE + SM files · sorted by overall ↓</div>
+        </div>`;
     }
 
     _tatbShowRubricDoc() {
@@ -13973,6 +14081,14 @@ class Dashboard {
                 </div>
                 <div style="flex:1; font-size:0.75rem; color:var(--text-secondary);">${overallBand.hint}</div>
                 <div style="display:flex; align-items:center; gap:0.35rem;">
+                    <div style="display:flex; border:1px solid var(--border-color); border-radius:5px; overflow:hidden; font-size:0.72rem;">
+                        <button id="tatb-toggle-arch" onclick="window.dashboard._tatbSetMode('arch')"
+                            title="Show scores for this architecture"
+                            style="padding:0.28rem 0.6rem; border:none; border-right:1px solid var(--border-color); background:${!this._tatbCorpusMode ? 'var(--primary-color)' : 'var(--card-bg)'}; color:${!this._tatbCorpusMode ? '#fff' : 'var(--text-color)'}; cursor:pointer; font-weight:600;">This Arch</button>
+                        <button id="tatb-toggle-corpus" onclick="window.dashboard._tatbSetMode('corpus')"
+                            title="Show average scores across all architectures"
+                            style="padding:0.28rem 0.6rem; border:none; background:${this._tatbCorpusMode ? 'var(--primary-color)' : 'var(--card-bg)'}; color:${this._tatbCorpusMode ? '#fff' : 'var(--text-color)'}; cursor:pointer; font-weight:600;">Corpus</button>
+                    </div>
                     <button onclick="window.dashboard._tatbRefresh()"
                         title="Reload rubric-source files and recompute scores"
                         style="padding:0.3rem 0.7rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:var(--text-color); font-size:0.75rem; cursor:pointer; font-weight:600;">↻ Refresh</button>

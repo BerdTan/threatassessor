@@ -1680,3 +1680,104 @@ async def get_all_insights_trending():
 
     results.sort(key=lambda x: x["analysed_at"] or "", reverse=True)
     return {"architectures": results}
+
+
+@router.get("/tatb-corpus")
+async def get_tatb_corpus():
+    """
+    Return TATB rubric scores for all architectures plus corpus averages.
+
+    Response shape:
+      {
+        "architectures": [{ "name", "overall", "threat", "ttp", "risk", "plan" }, ...],
+        "avg":           { "overall", "threat", "ttp", "risk", "plan" }
+      }
+
+    Scoring is computed server-side using the same logic as /tatb-score CLI.
+    MITRE alignment requires API server to be running on localhost:8000 (self-call).
+    No auth required — read-only diagnostic data.
+    """
+    import sys as _sys
+    import urllib.request as _urllib_req
+
+    report_base = get_report_dir()
+    if not report_base.exists():
+        return {"architectures": [], "avg": {}}
+
+    # Import scoring functions from the skill script
+    import importlib.util as _ilu
+    _skill_path = Path(__file__).parent.parent.parent.parent / ".claude/skills/tatb-score/scripts/tatb-score.py"
+    if not _skill_path.exists():
+        raise HTTPException(status_code=500, detail="tatb-score skill not found")
+
+    _spec = _ilu.spec_from_file_location("tatb_score_skill", _skill_path)
+    _mod  = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+
+    arch_dirs = sorted(
+        [d for d in report_base.iterdir() if d.is_dir() and (d / "ground_truth.json").exists()],
+        key=lambda d: d.name,
+    )
+
+    # Fetch MITRE data once for all techniques across corpus
+    all_tech_ids: set = set()
+    gt_cache: dict = {}
+    for ad in arch_dirs:
+        try:
+            gt = json.loads((ad / "ground_truth.json").read_text())
+            gt_cache[ad.name] = gt
+            for ap in gt.get("expected_attack_paths", []):
+                all_tech_ids.update(ap.get("techniques", []))
+        except Exception:
+            pass
+
+    mitre_mits, mit_names = _mod.fetch_mitre(list(all_tech_ids))
+
+    arch_scores = []
+    for ad in arch_dirs:
+        gt = gt_cache.get(ad.name)
+        if not gt:
+            continue
+        try:
+            def _load(name, _ad=ad):
+                p = _ad / name
+                return json.loads(p.read_text()) if p.exists() else None
+
+            gov = _load("governance_signals.json")
+            moe = _load("07_moe_orchestrator.json")
+            sm  = _load("08_scrum_master.json")
+
+            t_s = _mod.score_threat(gt)
+            ttp = _mod.score_ttp(gt, moe, mitre_mits, mit_names)
+            r_s = _mod.score_risk(gt, gov)
+            p_s = _mod.score_plan(gt, sm)
+            valid = [s["score"] for s in [t_s, ttp, r_s, p_s]
+                     if isinstance(s, dict) and s.get("score") is not None]
+            overall = round(sum(valid) / len(valid)) if valid else None
+
+            arch_scores.append({
+                "name":    ad.name,
+                "overall": overall,
+                "threat":  t_s.get("score"),
+                "ttp":     ttp.get("score"),
+                "risk":    r_s.get("score"),
+                "plan":    p_s.get("score"),
+            })
+        except Exception:
+            pass
+
+    def _avg(key):
+        vals = [a[key] for a in arch_scores if a.get(key) is not None]
+        return round(sum(vals) / len(vals)) if vals else None
+
+    avg = {
+        "overall": _avg("overall"),
+        "threat":  _avg("threat"),
+        "ttp":     _avg("ttp"),
+        "risk":    _avg("risk"),
+        "plan":    _avg("plan"),
+        "count":   len(arch_scores),
+    }
+
+    arch_scores.sort(key=lambda a: a.get("overall") or 0, reverse=True)
+    return {"architectures": arch_scores, "avg": avg}
