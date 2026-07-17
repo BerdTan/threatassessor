@@ -496,7 +496,7 @@ REMEMBER: Low score = hard to exploit = GOOD defense (we want this!)
             no_baseline = ap_id in attacker_only_ids
             baseline_note = " [NO USER BASELINE — anomaly detection blind spot]" if no_baseline else " [corroborated user journey]"
             paths_text += f"\nPath #{i} ({ap_id}){baseline_note}: {' → '.join(path['path'])}\n"
-            paths_text += f"  Techniques: {', '.join(path.get('techniques', [])[:5])}\n"
+            paths_text += f"  Techniques: {', '.join(path.get('techniques', []))}\n"
             paths_text += f"  Hop count: {len(path['path']) - 1}\n"
 
         # Declared attack surface from high-risk user journeys

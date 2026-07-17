@@ -81,18 +81,27 @@ def score_ttp(gt: dict, moe: Optional[dict], mitre_mits: dict, mit_names: dict) 
                          or 'keyword' in (v.get('reason') or '').lower()))
     val_pct   = round((confirmed * 1.0 + plausible * 0.5) / len(tv) * 100) if tv else 50
 
-    # Cross-critic from MoE
+    # Cross-critic from MoE.
+    # Use technique_support counts when available (Phase 4+) — excludes mandatory=True
+    # (Blackhat/RedTeam-only chain findings never expected to appear in other critics).
+    # Falls back to blob regex for pre-Phase-4 reports.
     cross_pct = 0
-    ev = (moe or {}).get('expert_validations', {})
-    if ev:
-        crit_techs = {}
-        for k in ['architect', 'tester', 'red_team', 'purple_team', 'blackhat']:
-            blob = json.dumps(ev.get(k, {}))
-            ids  = list(set(re.findall(r'T\d{4}(?:\.\d{3})?', blob)))
-            crit_techs[k] = set(ids)
-        all_t = set(t for s in crit_techs.values() for t in s)
-        cross_v = sum(1 for t in all_t if sum(1 for s in crit_techs.values() if t in s) >= 2)
-        cross_pct = round(cross_v / len(all_t) * 100) if all_t else 0
+    ts = (moe or {}).get('technique_support')
+    if ts:
+        eligible = {t: d for t, d in ts.items() if not d.get('mandatory', False)}
+        cross_v  = sum(1 for d in eligible.values() if d.get('count', 0) >= 2)
+        cross_pct = round(cross_v / len(eligible) * 100) if eligible else 0
+    else:
+        ev = (moe or {}).get('expert_validations', {})
+        if ev:
+            crit_techs = {}
+            for k in ['architect', 'tester', 'red_team', 'purple_team', 'blackhat']:
+                blob = json.dumps(ev.get(k, {}))
+                ids  = list(set(re.findall(r'T\d{4}(?:\.\d{3})?', blob)))
+                crit_techs[k] = set(ids)
+            all_t = set(t for s in crit_techs.values() for t in s)
+            cross_v = sum(1 for t in all_t if sum(1 for s in crit_techs.values() if t in s) >= 2)
+            cross_pct = round(cross_v / len(all_t) * 100) if all_t else 0
 
     # MoE lift
     moe_conf   = (moe or {}).get('confidence', {})

@@ -166,12 +166,15 @@ def score_ttp(gt, moe, mitre_mits, mit_names):
 
     # Cross-critic — use stored technique_support counts when available (Phase 4).
     # Falls back to runtime blob regex for reports pre-Phase 4.
+    # Exclude mandatory=True techniques from denominator: these are Blackhat/RedTeam-only
+    # chain findings that are never expected to appear in other critics — counting them as
+    # disagreement deflates the signal. cross_pct measures shared-surface agreement only.
     cross_pct = 0
     ts = (moe or {}).get("technique_support")
     if ts:
-        all_t_count = len(ts)
-        cross_v = sum(1 for d in ts.values() if d.get("count", 0) >= 2)
-        cross_pct = round(cross_v / all_t_count * 100) if all_t_count else 0
+        eligible = {t: d for t, d in ts.items() if not d.get("mandatory", False)}
+        cross_v = sum(1 for d in eligible.values() if d.get("count", 0) >= 2)
+        cross_pct = round(cross_v / len(eligible) * 100) if eligible else 0
     else:
         ev = (moe or {}).get("expert_validations", {})
         crit_techs = {}

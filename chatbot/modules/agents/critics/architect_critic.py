@@ -528,7 +528,7 @@ You MUST respond with valid JSON in this exact format:
 
             lines.append(f"  Path #{idx+1}: {path_name}")
             lines.append(f"    Hops: {hop_count} | Criticality: {criticality}")
-            lines.append(f"    Techniques: {', '.join(techniques[:5])}{' ...' if len(techniques) > 5 else ''}")
+            lines.append(f"    Techniques: {', '.join(techniques)}")
 
         return "\n".join(lines)
 

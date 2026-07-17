@@ -319,7 +319,7 @@ def format_attack_paths_summary(attack_paths: Dict) -> str:
         criticality = path.get("criticality", "UNKNOWN")
 
         lines.append(f"  Path {idx}: {path_name} [{criticality}]")
-        lines.append(f"    Techniques ({len(techniques)}): {', '.join(techniques[:10])}")
+        lines.append(f"    Techniques ({len(techniques)}): {', '.join(techniques)}")
 
     if len(paths) > 5:
         lines.append(f"  ... +{len(paths) - 5} more paths")
