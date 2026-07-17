@@ -525,8 +525,11 @@ You MUST respond with valid JSON in this exact format:
             techniques = path.get("techniques", [])
             hop_count = path.get("hop_count", len(path.get("path", [])))
             criticality = path.get("criticality", "UNKNOWN")
+            node_path = path.get("path", [])
 
             lines.append(f"  Path #{idx+1}: {path_name}")
+            if node_path:
+                lines.append(f"    Nodes: {' → '.join(node_path)}")
             lines.append(f"    Hops: {hop_count} | Criticality: {criticality}")
             lines.append(f"    Techniques: {', '.join(techniques)}")
 

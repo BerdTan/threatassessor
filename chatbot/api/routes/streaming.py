@@ -541,6 +541,17 @@ async def expert_review_with_progress(
         def _progress_cb(stage: str, validation_result) -> None:
             result_queue.put_nowait((stage, validation_result))
 
+        # Clear stale saved critique files so every ER run re-calls each LLM
+        # critic fresh. These files are only useful for mid-run resume; loading
+        # a critique from a prior run (potentially months old, different schema)
+        # silently produces wrong scores without any error signal.
+        for _stale in ["04_architect_critique.json", "05_tester_critique.json",
+                        "06_red_team_critique.json", "06b_purple_team_critique.json",
+                        "06c_blackhat_critique.json"]:
+            _stale_path = report_dir / _stale
+            if _stale_path.exists():
+                _stale_path.unlink()
+
         def _run_pipeline() -> object:
             return run_moe_pipeline(
                 str(report_dir),
