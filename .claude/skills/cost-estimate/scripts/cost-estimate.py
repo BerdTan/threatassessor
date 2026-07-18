@@ -245,14 +245,84 @@ def self_eval():
     # Sort by frequency
     top_missing = sorted(candidate_freq.items(), key=lambda x: -x[1])
 
-    print(bold("  1. Controls appearing in corpus NOT in benchmark table"))
-    print(dim("     (freq = number of architectures where this control appears unmatched)"))
+    # Classify each unmatched item so we can give a concrete next step per root cause.
+    _SM_STRUCTURAL = re.compile(
+        r'^\[sm\].*\[structural\]|'
+        r'^define rto|^add bcp|^reposition api gateway|'
+        r'^introduce a software|^add a vendor|^add privileged|'
+        r'^implement microseg|^map all l0', re.I
+    )
+    _GENERIC_TIER = re.compile(
+        r'^all (quick win|recommended|maximum|controls from)', re.I
+    )
+    _REAL_CONTROL = re.compile(
+        r'^(network traffic|zero.trust micro|deception tech|application whitelist|'
+        r'immutable infra|intrusion detect|detection sla|alert aggreg|api gateway$|'
+        r'capability.based|zero.trust network|sca gate|supply chain)', re.I
+    )
+
+    sm_structural, generic_tier, real_missing = [], [], []
+    for ctrl, freq in top_missing[:30]:
+        if _SM_STRUCTURAL.search(ctrl):
+            sm_structural.append((ctrl, freq))
+        elif _GENERIC_TIER.search(ctrl):
+            generic_tier.append((ctrl, freq))
+        else:
+            real_missing.append((ctrl, freq))
+
+    print(bold("  1. Unmatched tier items — classified by root cause"))
     print()
-    if top_missing:
-        for ctrl, freq in top_missing[:20]:
+
+    # ── 1a: SM structural boilerplate ──
+    if sm_structural:
+        print(f"  {amber('1a')}  {bold('SM [Structural] boilerplate')}  ({len(sm_structural)} patterns, appear as full sentences not control names)")
+        print(dim("       These are ScrumMaster architectural recommendations injected into tier items."))
+        print(dim("       They are NOT deployable controls and should not contribute to cost aggregation."))
+        print()
+        for ctrl, freq in sm_structural[:5]:
             stars = amber("●" * min(freq, 5)) + dim("●" * max(0, 5 - freq))
-            print(f"     {stars}  {freq}×  {ctrl}")
-    else:
+            print(f"       {stars}  {freq}×  {ctrl[:80]}")
+        if len(sm_structural) > 5:
+            print(dim(f"       … and {len(sm_structural)-5} more"))
+        print()
+        print(f"       {bold('Next step in TA:')} Filter [SM] [Structural] items from tier aggregation in")
+        print(f"       {bold('chatbot/modules/control_cost_benchmark.py')} — add a pre-filter in")
+        print(f"       {bold('aggregate_tier()')} that skips items starting with '[SM] [Structural]'.")
+        print(f"       These belong in the SM action plan, not the cost rollup.")
+        print()
+
+    # ── 1b: Generic tier descriptions ──
+    if generic_tier:
+        print(f"  {amber('1b')}  {bold('Generic tier summaries')}  ({len(generic_tier)} patterns, e.g. \"all quick win controls\")")
+        print(dim("       These are legacy MoE summary strings, not individual controls."))
+        print()
+        for ctrl, freq in generic_tier[:3]:
+            stars = amber("●" * min(freq, 5)) + dim("●" * max(0, 5 - freq))
+            print(f"       {stars}  {freq}×  {ctrl[:80]}")
+        print()
+        print(f"       {bold('Next step in TA:')} These originate in older MoE synthesis runs. Run a fresh")
+        print(f"       Expert Review ({bold('/run-er')}) on affected archs to replace them with")
+        print(f"       specific control names. No benchmark change needed.")
+        print()
+
+    # ── 1c: Real missing controls ──
+    if real_missing:
+        print(f"  {amber('1c')}  {bold('Real controls missing from benchmark')}  ({len(real_missing)} candidates)")
+        print(dim("       These are specific, deployable controls that appear frequently but have no"))
+        print(dim("       benchmark entry. Adding them will improve corpus coverage."))
+        print()
+        for ctrl, freq in real_missing[:12]:
+            stars = amber("●" * min(freq, 5)) + dim("●" * max(0, 5 - freq))
+            print(f"       {stars}  {freq}×  {ctrl[:80]}")
+        print()
+        print(f"       {bold('Next step in TA:')}")
+        print(f"       1. Add entries to {bold('CONTROL_BENCHMARK')} in")
+        print(f"          {bold('chatbot/modules/control_cost_benchmark.py')} (see section 4 below)")
+        print(f"       2. Re-run {bold('/cost-estimate --self-eval')} to confirm coverage improved")
+        print(f"       3. Run {bold('/cost-estimate --all')} to see updated corpus coverage %")
+        print()
+
+    if not (sm_structural or generic_tier or real_missing):
         print(green("     ✓ All corpus controls matched"))
     print()
 
@@ -292,41 +362,70 @@ def self_eval():
         print(f"            {dim(note)}")
     print()
 
-    # Suggested additions based on missing corpus controls
-    if top_missing:
-        print(bold("  4. Suggested additions to CONTROL_BENCHMARK"))
-        print(dim("     Add these to chatbot/modules/control_cost_benchmark.py"))
+    # Suggested additions based on real missing controls only (skip SM boilerplate)
+    if real_missing:
+        print(bold("  4. Ready-to-paste benchmark additions"))
+        print(dim("     Copy into CONTROL_BENCHMARK in chatbot/modules/control_cost_benchmark.py"))
         print()
-        # Map common unmatched patterns to suggested benchmark entries
         _SUGGEST = {
-            "prompt sanitiz":     ("2–3 days", 3, 8,  "OWASP LLM Top 10 (2025) LLM01"),
-            "output filter":      ("2–3 days", 3, 8,  "OWASP LLM Top 10 (2025) LLM01"),
-            "capability":         ("3–5 days", 3, 8,  "CIS Controls v8 IG2 safeguard 6.7"),
-            "rbac":               ("2–3 days", 2, 5,  "NIST SP 800-53 Rev 5 AC-2/AC-6"),
-            "intrusion detection":("2–3 days", 2, 5,  "CIS Controls v8 IG2 safeguard 13.3"),
-            "detection sla":      ("1–2 weeks",5, 15, "SANS Incident Response Survey (2024)"),
-            "alert aggreg":       ("2–3 days", 2, 5,  "Gartner SIEM Guide (2024)"),
-            "supply chain":       ("1–2 weeks",5, 15, "NIST SP 800-161r1 (2022) C-SCRM"),
-            "zero-day":           ("1–2 weeks",5, 15, "CIS Controls v8 IG3"),
-            "deception":          ("1–2 weeks",5, 15, "Gartner Market Guide (2024)"),
+            "network traffic":    ("2–3 days", 2,  5,  "CIS Controls v8 IG2 safeguard 13.6 (network traffic analysis)"),
+            "nta":                ("2–3 days", 2,  5,  "CIS Controls v8 IG2 safeguard 13.6"),
+            "deception":          ("1–2 weeks",5, 15,  "Gartner Market Guide for Security Tools (2024) — deception tech"),
+            "honeypot":           ("1–2 weeks",5, 15,  "Gartner Market Guide for Security Tools (2024)"),
+            "honeytoken":         ("1–2 weeks",3, 10,  "Gartner Market Guide for Security Tools (2024)"),
+            "application whitelist":("3–5 days",3,  8, "CIS Controls v8 IG2 safeguard 2.7 (allowlisting)"),
+            "whitelisting":       ("3–5 days", 3,  8,  "CIS Controls v8 IG2 safeguard 2.7"),
+            "immutable":          ("1–2 weeks",5, 15,  "CIS Controls v8 IG3 — immutable infrastructure"),
+            "zero-trust network": ("2–4 weeks",20,50,  "NIST SP 800-207 (Zero Trust Architecture)"),
+            "zero-trust micro":   ("1–2 weeks",10,30,  "NIST SP 800-207 §3.3 (microsegmentation)"),
+            "intrusion detect":   ("2–3 days", 2,  5,  "CIS Controls v8 IG2 safeguard 13.3"),
+            "detection sla":      ("1–2 weeks",5, 15,  "SANS Incident Response Survey (2024)"),
+            "alert aggreg":       ("2–3 days", 2,  5,  "Gartner SIEM Market Guide (2024)"),
+            "capability":         ("3–5 days", 3,  8,  "CIS Controls v8 IG2 safeguard 6.7 (access control)"),
+            "rbac":               ("2–3 days", 2,  5,  "NIST SP 800-53 Rev 5 AC-2/AC-6"),
+            "supply chain":       ("1–2 weeks",5, 15,  "NIST SP 800-161r1 (2022) C-SCRM"),
         }
         shown = set()
-        for ctrl, freq in top_missing[:15]:
+        for ctrl, freq in real_missing[:12]:
             for pattern, (effort, low_k, high_k, source) in _SUGGEST.items():
                 if pattern in ctrl and pattern not in shown:
                     shown.add(pattern)
-                    print(f"     \"{ctrl}\"")
-                    print(f"       → ({effort!r}, {low_k}, {high_k})  # {source}")
+                    print(f"     {amber('+')}  \"{ctrl}\"")
+                    print(f"          ({effort!r}, {low_k}, {high_k})  # {source}")
                     print()
                     break
             else:
-                if freq >= 2:
-                    print(f"     \"{ctrl}\"  ({freq}× in corpus — no suggested range, manual review needed)")
-                    print()
+                print(f"     {dim('?')}  \"{ctrl[:70]}\"  ({freq}× — no template; check SANS/Gartner for current range)")
+                print()
 
+    # ── Action summary ────────────────────────────────────────────────────────
     print(dim("─" * 70))
-    print(dim("  Run with a specific arch to see per-tier breakdown:"))
-    print(dim("  python3 cost-estimate.py 21_agentic_ai_system"))
+    print(bold("  Action summary"))
+    print()
+    if sm_structural:
+        print(f"  {amber('A')}  Filter SM [Structural] items from aggregate_tier() in")
+        print(f"       chatbot/modules/control_cost_benchmark.py")
+        print(f"       → prevents sentence-length strings from deflating coverage %")
+        print()
+    if generic_tier:
+        print(f"  {amber('B')}  Re-run Expert Review on archs with 'all quick win controls' items")
+        print(f"       /run-er <arch>  — replaces generic summaries with specific control names")
+        print()
+    if real_missing:
+        print(f"  {amber('C')}  Add {len(real_missing)} real controls to CONTROL_BENCHMARK (section 4 above)")
+        print(f"       → then run /cost-estimate --all to verify corpus coverage improves")
+        print()
+    stale_refs = [n for n, _, _, stale, _ in refs if stale]
+    if stale_refs:
+        print(f"  {amber('D')}  Verify annual references are current edition:")
+        for ref in stale_refs:
+            print(f"       · {ref}")
+        print(f"       → update year and cost ranges in CONTROL_BENCHMARK if newer data available")
+        print()
+    if not (sm_structural or generic_tier or real_missing or stale_refs):
+        print(green("  ✓ Benchmark table is complete and references are current"))
+        print()
+    print(dim("  Re-run: /cost-estimate --self-eval  (after any benchmark changes)"))
     print()
 
 
