@@ -4,6 +4,26 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-07-18 (Session 23) — Per-control effort differentiation with tiered source citations
+
+### 1. Action plan effort/cost now per-control, not per-phase
+
+**What was decided:**
+`generate_action_plan()` in `threat_report.py` now resolves effort and cost per-control from a canonical 64-entry `_CONTROL_EFFORT` dict rather than using a single phase-level default for every row. Underscore normalisation at lookup time (`least_privilege` → `least privilege`) eliminates duplicate entries. A `_dedup_phases()` helper removes controls that appear in a higher-priority phase from all lower phases.
+
+**Citations added (three surfaces):**
+- `03_action_plan.md` footer blockquote: 5-bullet tier breakdown citing CIS Controls v8 IG1–IG3, NIST SP 800-53 Rev 5 (CM/AC/CA/RA/AT families), NIST SP 800-207, NIST AI RMF 1.0, Gartner Market Guide for Security Tools (2024), SANS Security Spending Survey (2024), OWASP LLM Top 10 (2025).
+- `08_improvement_summary.md`: programme-cost callout + Option 1/2/3 ROI lines reference CIS IG1, IG2, and IG3/NIST High baseline.
+- `dashboard.js` `readersContext` blurbs for Action Plan and Improvement Summary tabs surface the specific sources in the UI info panel.
+
+**Alternatives rejected:**
+- Phase-level defaults only: all controls in a phase showed identical effort/cost, undermining credibility.
+- Vague generic disclaimer ("SANS, Gartner, CIS Controls"): insufficient for a CISO audience; replaced with specific document+year references per tier.
+
+**Corpus impact:** 231 action plans + 96 improvement summaries regenerated across 26 architectures (commit 4d8ab67). All 327 files succeeded.
+
+---
+
 ## 2026-07-18 (Session 22) — T1133 over-assignment fix, app-node keyword ordering, validation rule completeness, node-label brittleness design intent
 
 ### 0. Design intent: mitigate keyword-matching brittleness with canonicalisation + embedding fallback

@@ -1018,6 +1018,25 @@ class ScrumMasterCritic:
             for c in (hop.get("controls") or [])
             if (c.get("control") or c.get("name") or "").strip()
         }
+        # Technique-ID → controls that address it, built from ADR hop technique lists.
+        # Used to ground Tier A items that name a T-ID but not a control name.
+        import re as _re
+        _tech_to_controls: dict = {}
+        for _adr in adrs:
+            for _hop in (_adr.get("hops") or []):
+                # ADR hops store techniques under "node_techniques" (list of T-ID strings)
+                _hop_techs = [
+                    (t if isinstance(t, str) else t.get("technique_id") or "").upper()
+                    for t in (_hop.get("node_techniques") or _hop.get("techniques") or [])
+                ]
+                _hop_ctrls = [
+                    (c.get("control") or c.get("name") or "").strip().lower()
+                    for c in (_hop.get("controls") or [])
+                    if (c.get("control") or c.get("name") or "").strip()
+                ]
+                for _tid in _hop_techs:
+                    if _tid:
+                        _tech_to_controls.setdefault(_tid, set()).update(_hop_ctrls)
 
         recs = []
 
@@ -1032,13 +1051,23 @@ class ScrumMasterCritic:
             evidence = r.get("evidence", "")
             # Strip evidence to just the source reference (before any colon-expansion)
             evidence_short = evidence.split(":")[0].strip() if ":" in evidence else evidence[:60]
-            # Find ADR controls already mandated that are mentioned in the action text
+            # Find ADR controls mentioned in the action text (direct name match)
             action_lower = action.lower()
             matched_adrs = [c for c in _adr_ctrl_set if c in action_lower]
+            if not matched_adrs:
+                # Fall back: extract any T-IDs from the action text and look up their controls
+                raw_full = r.get("action") or r.get("description") or r.get("recommendation") or ""
+                tids_in_action = _re.findall(r'\bT\d{4}(?:\.\d{3})?\b', raw_full.upper())
+                for _tid in tids_in_action:
+                    matched_adrs.extend(_tech_to_controls.get(_tid, []))
+                matched_adrs = sorted(set(matched_adrs))
             if matched_adrs:
-                adr_note = f"ADR already mandates: {', '.join(sorted(matched_adrs)[:3])}."
+                adr_note = f"ADR mandates: {', '.join(matched_adrs[:3])}. Apply the relevant control to this node."
             else:
-                adr_note = "No existing ADR control matches — add one after confirming scope."
+                # No T-IDs found either — surface the full ADR control set as guidance
+                sample = sorted(_adr_ctrl_set)[:3]
+                adr_note = (f"No technique-specific ADR match — review active ADR controls ({', '.join(sample)}) and confirm which applies."
+                            if sample else "No ADR controls active — define one for this technique after confirming scope.")
             recs.append({
                 "priority": "high",
                 "action": action,
