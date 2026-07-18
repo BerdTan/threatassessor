@@ -4,6 +4,26 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-07-18 (Session 23) — Per-control effort differentiation, SM ADR alignment T-ID fallback, investment tier cost attribution
+
+### 3. Investment tier "not estimated" fix + cost attribution UI
+
+**Problem:**
+For some architectures (21_agentic_ai_system, 22_generic_name_with_ai_nodes), the MoE synthesis LLM echoed prompt instruction text verbatim (`"use Red Team roadmap effort field verbatim"`) rather than substituting actual values. `_build_improvement_options` only read from the LLM `improvement_tiers` output with no fallback to the Red Team roadmap list, so all three tiers displayed "Effort: not estimated" in the UI.
+
+**Fix (commit f8efafb):**
+- Inject RT roadmap list into consensus dict as `_rt_roadmap` immediately after synthesis (positional index 0=quick_win, 1=recommended, 2=maximum).
+- `_resolve_effort_cost()` detects placeholder strings and falls back to the RT roadmap; tracks source as `red_team_roadmap` / `synthesis` / `not_available`.
+- `cost_source` field added to each improvement tier in MoE output.
+- For 04_zero_trust, 12_microservices, 23_bookservices: RT roadmap is genuinely empty — "not estimated" is the honest signal; those archs need a fresh ER run.
+
+**UI changes:**
+- Overview tier cards: "Source: Red Team roadmap" / "Source: MoE synthesis" shown below the cost figure.
+- ER Improvement Tiers panel: same per-tier attribution inline with the Cost field.
+- ER panel subtitle updated to reference per-tier attribution.
+
+---
+
 ## 2026-07-18 (Session 23) — Per-control effort differentiation, SM ADR alignment T-ID fallback
 
 ### 2. SM Tier A ADR alignment: T-ID fallback lookup
