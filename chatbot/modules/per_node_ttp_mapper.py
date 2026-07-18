@@ -310,6 +310,26 @@ def map_node_to_techniques(
             techniques.extend(["T1190", "T1133", "T1110"])  # + Brute Force always applicable
             logger.info(f"Entry {node_label}: T1190+T1133+T1110 assigned (applicability baseline)")
 
+        # Internal application / service pivot entry — attacker is already past initial
+        # access. T1133 (External Remote Services) is a network-boundary technique and
+        # does not apply to internal compute, serverless, or app-layer nodes.
+        # Must precede the "admin" / "user" branch to avoid "admin console" being
+        # misclassified as a human entry point.
+        elif any(kw in label_lower for kw in [
+            # Web / app tier
+            "web app", "webapp", "web server", "webserver", "web ui", "webui",
+            "app server", "appserver", "api server", "api gateway", "api endpoint",
+            "portal", "admin console", "admin portal",
+            # Serverless / FaaS
+            "lambda", "cloud function", "serverless", "function app", "azure function",
+            # Container / PaaS
+            "container app", "container service", "app service",
+            # Auth / identity
+            "auth server", "auth service", "identity provider", "idp", "oauth",
+        ]):
+            techniques.extend(["T1190", "T1059", "T1083", "T1210", "T1078", "T1110"])
+            logger.info(f"Entry {node_label}: Internal app/service pivot entry — T1133 excluded (not a network boundary)")
+
         # User/Client/Visitor entry — phishing + credential abuse + external remote access
         elif any(kw in label_lower for kw in ["user", "client", "employee", "admin",
                                                "visitor", "browser", "end user", "end-user"]):
@@ -333,18 +353,6 @@ def map_node_to_techniques(
         # Supply chain entry
         elif any(kw in label_lower for kw in ["supplier", "supply"]):
             techniques.extend(ENTRY_TECHNIQUES["supply_chain"]["default"])
-
-        # Web app / server pivot entry — already-compromised app used as lateral start.
-        # T1133 (External Remote Services) is NOT applicable here: this is not a
-        # network boundary service; the attacker is already past initial access.
-        # Assign post-exploitation techniques matching the traversal role instead.
-        elif any(kw in label_lower for kw in [
-            "web app", "webapp", "web server", "webserver", "web ui", "webui",
-            "app server", "appserver", "api server", "api gateway", "api endpoint",
-            "portal",
-        ]):
-            techniques.extend(["T1190", "T1059", "T1083", "T1210", "T1078", "T1110"])
-            logger.info(f"Entry {node_label}: Web-app pivot entry — T1133 excluded (not a network boundary)")
 
         # Generic external entry fallback (any unrecognised entry node — applicability baseline)
         if not techniques:

@@ -1,0 +1,65 @@
+flowchart TB
+    Citizens((Citizens / Browser))
+    MobileApp((Mobile App iOS/Android))
+    GovStaff((Government Staff))
+
+    subgraph Edge_Layer[Edge Layer]
+        WAF[Web Application Firewall]
+        CDN[CDN / Edge Cache]
+    end
+
+    subgraph Frontend_Layer[Frontend Layer]
+        Portal[eServices Web Portal]
+        AdminConsole[Admin Console]
+    end
+
+    subgraph API_Layer[API Layer]
+        APIGateway[API Gateway]
+        AuthServer[Auth Server OAuth2]
+    end
+
+    subgraph Serverless_Layer[Serverless Layer]
+        LambdaApp[Lambda App - Application Processor]
+        LambdaNotif[Lambda - Notification Service]
+        LambdaReport[Lambda - Report Generator]
+    end
+
+    subgraph Container_Layer[Container Layer]
+        ContainerApp[Container App - Case Manager]
+        AppServer[App Server - Workflow Engine]
+    end
+
+    subgraph Data_Layer[Data Layer]
+        CitizenDB[(Citizen Database)]
+        CaseDB[(Case Management DB)]
+        AuditLog[(Audit Log DynamoDB)]
+        DocStore[(Document Store S3)]
+    end
+
+    Citizens --> CDN
+    MobileApp --> CDN
+    GovStaff --> AdminConsole
+
+    CDN --> WAF
+    WAF --> Portal
+    WAF --> APIGateway
+
+    Portal --> APIGateway
+    AdminConsole --> APIGateway
+    APIGateway --> AuthServer
+    APIGateway --> LambdaApp
+    APIGateway --> ContainerApp
+
+    AuthServer --> CitizenDB
+
+    LambdaApp --> CitizenDB
+    LambdaApp --> CaseDB
+    LambdaApp --> LambdaNotif
+    LambdaNotif --> CitizenDB
+    LambdaReport --> CaseDB
+    LambdaReport --> DocStore
+
+    ContainerApp --> CaseDB
+    ContainerApp --> AppServer
+    AppServer --> LambdaReport
+    AppServer --> AuditLog
