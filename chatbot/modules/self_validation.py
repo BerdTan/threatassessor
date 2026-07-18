@@ -682,6 +682,17 @@ def validate_technique_for_path(
         else:
             validations.append((False, 0.0, "No network channel for encrypted C2"))
 
+    # T1578 - Modify Cloud Compute Infrastructure (alter firewall rules, VM config, etc.)
+    elif technique_id == "T1578":
+        has_cloud_infra = any(kw in path_str for kw in [
+            "firewall", "cloud", "azure", "aws", "gcp", "vm", "compute",
+            "gateway", "network", "security group", "nsg", "instance",
+        ])
+        if has_cloud_infra:
+            validations.append((True, 0.06, "Cloud/network infrastructure present — compute modification applicable"))
+        else:
+            validations.append((False, 0.0, "No cloud infrastructure components for compute modification"))
+
     # Default: Check if technique name/description has keywords from path
     else:
         path_keywords = set(path_str.split())
