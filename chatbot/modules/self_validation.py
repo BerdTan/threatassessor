@@ -100,10 +100,10 @@ def validate_technique_for_path(
     elif technique_id == "T1078":
         has_auth_component = any(kw in path_str for kw in [
             "auth", "login", "user", "identity", "sso", "mfa", "vpn", "remote",
-            "portal", "admin", "api", "gateway",
+            "portal", "admin", "api", "gateway", "firewall", "app", "service",
         ])
         has_credential_target = any(kw in target_label for kw in [
-            "database", "db", "user", "account", "credential", "server", "service",
+            "database", "db", "sql", "user", "account", "credential", "server", "service",
         ])
         if has_auth_component or has_credential_target:
             validations.append((True, 0.1, "Authentication/credential components present"))
@@ -114,7 +114,7 @@ def validate_technique_for_path(
     elif technique_id == "T1213":
         target_node_id = path_nodes[-1].lower() if path_nodes else ""
         DATA_KW = [
-            "database", "db", "storage", "data", "repository", "file", "cache", "log",
+            "database", "db", "sql", "storage", "data", "repository", "file", "cache", "log",
             "registry", "primary", "replica", "queue", "message", "record", "archive",
             "vector", "embedding", "document", "session", "audit",
         ]
@@ -203,7 +203,7 @@ def validate_technique_for_path(
 
     # T1486 - Data Encrypted for Impact (ransomware)
     elif technique_id == "T1486":
-        DATA_KW2 = ["db", "database", "storage", "file", "backup", "cache", "data",
+        DATA_KW2 = ["db", "database", "sql", "storage", "file", "backup", "cache", "data",
                     "primary", "replica", "queue", "server", "record",
                     "vector", "embedding", "document", "session", "audit", "tool", "registry"]
         has_data = any(kw in path_str for kw in DATA_KW2)
@@ -218,7 +218,7 @@ def validate_technique_for_path(
             "backup", "recovery", "restore", "snapshot", "replication", "replica",
         ])
         has_data = any(kw in path_str for kw in [
-            "db", "database", "storage", "data", "cache", "primary", "server",
+            "db", "database", "sql", "storage", "data", "cache", "primary", "server",
         ])
         if has_recovery or has_data:
             validations.append((True, 0.05, "Recovery/data components present — inhibition applicable"))
@@ -228,7 +228,7 @@ def validate_technique_for_path(
     # T1485 - Data Destruction
     elif technique_id == "T1485":
         has_data = any(kw in path_str for kw in [
-            "db", "database", "storage", "file", "cache", "data", "log",
+            "db", "database", "sql", "storage", "file", "cache", "data", "log",
             "primary", "replica", "queue", "record", "server",
             "vector", "embedding", "document", "session", "audit", "tool", "registry",
         ])
@@ -255,7 +255,7 @@ def validate_technique_for_path(
         # Broadened: API gateways and service endpoints are valid T1212 targets
         has_auth = any(kw in path_str for kw in [
             "auth", "login", "credential", "user", "identity", "sso", "mfa", "password",
-            "access control", "api", "gateway", "service", "endpoint",
+            "access control", "api", "gateway", "service", "endpoint", "app", "firewall",
         ])
         if has_auth:
             validations.append((True, 0.05, "Authentication/API component present for credential exploitation"))
@@ -328,11 +328,11 @@ def validate_technique_for_path(
     # T1083 - File and Directory Discovery
     elif technique_id == "T1083":
         has_system = any(kw in path_str for kw in [
-            "server", "application", "service", "host", "storage", "file", "system",
-            "backend", "api", "node", "cluster", "database", "db", "function",
+            "server", "application", "app", "service", "host", "storage", "file", "system",
+            "backend", "api", "node", "cluster", "database", "db", "sql", "function",
             "worker", "broker", "kafka", "spark", "consensus", "validator",
             "orchestrat", "agent", "tool", "registry", "prompt", "llm", "gateway",
-            "embedding", "vector", "audit", "session",
+            "embedding", "vector", "audit", "session", "firewall",
         ])
         if has_system:
             validations.append((True, 0.06, "System components present — file discovery applicable; mitigated via file integrity monitoring"))
@@ -366,7 +366,8 @@ def validate_technique_for_path(
     # T1210 - Exploitation of Remote Services
     elif technique_id == "T1210":
         has_remote_service = any(kw in path_str for kw in [
-            "server", "service", "application", "api", "backend", "internal", "host",
+            "server", "service", "application", "app", "api", "backend", "internal", "host",
+            "firewall", "sql", "database", "db",
         ])
         if has_remote_service:
             validations.append((True, 0.06, "Remote services present — exploitation applicable"))
@@ -401,10 +402,10 @@ def validate_technique_for_path(
     elif technique_id == "T1530":
         has_cloud_storage = any(kw in path_str for kw in [
             "cloud", "s3", "blob", "storage", "bucket", "gcs", "azure", "aws", "gcp",
-            "object", "data lake", "warehouse",
+            "object", "data lake", "warehouse", "sql",
         ])
         has_data_target = any(kw in path_str for kw in [
-            "database", "db", "data", "repository", "primary", "replica", "queue",
+            "database", "db", "sql", "data", "repository", "primary", "replica", "queue",
             "vector", "embedding", "document", "session", "audit",
         ])
         if has_cloud_storage:
@@ -431,7 +432,7 @@ def validate_technique_for_path(
     # T1565 - Data Manipulation
     elif technique_id == "T1565":
         has_data = any(kw in path_str for kw in [
-            "database", "db", "storage", "data", "file", "cache", "log", "record",
+            "database", "db", "sql", "storage", "data", "file", "cache", "log", "record",
             "primary", "replica", "queue", "server", "message",
             "vector", "embedding", "document", "session", "audit", "tool", "registry",
         ])
@@ -457,7 +458,7 @@ def validate_technique_for_path(
     elif technique_id == "T1087":
         has_identity = any(kw in path_str for kw in [
             "auth", "identity", "user", "account", "directory", "admin", "portal",
-            "ldap", "sso", "management", "server", "application",
+            "ldap", "sso", "management", "server", "application", "app", "firewall",
             "orchestrat", "agent", "llm", "gateway", "tool", "registry", "prompt",
         ])
         if has_identity:
@@ -564,7 +565,7 @@ def validate_technique_for_path(
     elif technique_id == "T1557":
         has_network_path = any(kw in path_str for kw in [
             "network", "router", "gateway", "proxy", "load balancer", "vpn",
-            "server", "api",
+            "server", "api", "firewall", "app", "internet",
             "orchestrat", "agent", "llm", "prompt", "tool", "registry", "embedding",
         ])
         if has_network_path:
@@ -692,7 +693,7 @@ def validate_technique_for_path(
             # keyword-heuristic match, not structural evidence — should carry half weight.
             validations.append((True, 0.05, f"[PLAUSIBLE] Generic match ({overlap} keywords overlap)"))
         else:
-            validations.append((False, 0.0, "[PLAUSIBLE] Generic technique, no specific validation"))
+            validations.append((False, 0.0, "Generic technique, no specific validation"))
 
     # Aggregate validations
     if not validations:
