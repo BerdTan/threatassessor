@@ -1,0 +1,81 @@
+---
+title: ThreatAssessor — Analysis Pipeline (data flow)
+updated: 2026-07-18
+note: "before.mmd → parse → ground_truth → MoE critics → 16 report files. Edit a report: find its generator here. Change a score: find the module that owns it."
+---
+flowchart TD
+    IN[/"📄 before.mmd"/]
+
+    %% ── Parse ──────────────────────────────────────────────
+    subgraph PARSE["Parse"]
+        PA["mermaid_parser.py<br/>(nodes, edges, labels)"]
+        PB["mmd_cleaner.py<br/>(normalise, orphan-check)"]
+    end
+
+    %% ── Ground Truth (deterministic) ──────────────────────
+    subgraph GT["ground_truth_generator.py  (deterministic, no LLM)"]
+        GT1["mitre.py<br/>(technique lookup + embeddings)"]
+        GT2["rapids_driven_controls.py<br/>+ threat_driven_controls.py<br/>(RAPIDS scores, control recs)"]
+        GT3["scoring.py<br/>(risk score, defensibility)"]
+        GT4["self_validation.py<br/>(MITRE M-ID↔T-ID check)"]
+        GT5["control_detection.py<br/>(detect existing controls in MMD)"]
+        GT6["completeness_validator.py<br/>(6-check validation)"]
+    end
+
+    %% ── Threat Report (markdown generation) ───────────────
+    subgraph RPTGEN["Report generators  (markdown + JSON)"]
+        RG1["threat_report.py<br/>→ 01 Exec Summary<br/>→ 02 Technical Report<br/>→ 03 Action Plan<br/>→ 09 Threat Model<br/>→ 10 ADR Report"]
+        RG2["executive_dashboard_generator.py<br/>→ 00 Executive Dashboard<br/>(reads 04/05/06 critic JSONs)"]
+        RG3["improvement_summary_generator.py<br/>→ 07 MoE Orchestrator JSON<br/>→ 08 Improvement Summary<br/>→ 08 SM JSON<br/>(calls aggregate_tier)"]
+        RG4["adr_generator.py<br/>(enriches 10_adr_report.md<br/>with per-path decisions)"]
+        RG5["narrative_enricher.py<br/>(adds attack narrative<br/>to exec summary)"]
+        RG6["mmd_improvement_generator.py<br/>bh_diagram_generator.py<br/>→ 08a/b/c .mmd diagrams<br/>→ BH attack diagram"]
+    end
+
+    %% ── Expert Review (LLM) ────────────────────────────────
+    subgraph MoE["moe_orchestrator.py  (MoE critics, LLM)"]
+        MO1["ArchitectCritic<br/>(04_architect_critique.json)"]
+        MO2["TesterCritic<br/>(05_tester_critique.json)"]
+        MO3["RedTeamCritic<br/>(06_red_team_critique.json)"]
+        MO4["PurpleTeamerCritic<br/>(06b_purple_team_critique.json)"]
+        MO5["BlackhatCritic<br/>(06c_blackhat_critique.json)"]
+        MO6["ScrumMasterCritic<br/>(08_scrum_master.json)"]
+        MO7["synthesis<br/>→ 07_moe_orchestrator.json<br/>(confidence + consensus +<br/>improvement_options)"]
+        MO1 & MO2 & MO3 --> MO7
+        MO4 & MO5 --> MO7
+        MO7 --> MO6
+    end
+
+    %% ── Supporting data ────────────────────────────────────
+    subgraph DATA["Static data  (chatbot/data/)"]
+        D1["enterprise-attack.json<br/>(44MB MITRE ATT&CK)"]
+        D2["technique_embeddings.json<br/>(45MB embedding cache)"]
+        D3["atlas/*.yaml<br/>(MITRE ATLAS)"]
+    end
+
+    %% ── Cost benchmark ─────────────────────────────────────
+    CB["control_cost_benchmark.py<br/>(effort + cost per control<br/>CIS/NIST/Gartner/SANS/OWASP)"]
+
+    %% ── Output files ───────────────────────────────────────
+    OUT[/"📁 report/arch_name/<br/>(16 files)"/]
+
+    %% ── Flow ───────────────────────────────────────────────
+    IN --> PARSE --> GT
+    DATA --> GT
+    GT -->|"ground_truth.json"| RPTGEN
+    GT -->|"ground_truth.json"| MoE
+    CB --> RG3
+    MoE -->|"critic JSONs + moe_orchestrator.json"| RG2
+    MoE -->|"moe_orchestrator.json"| RG3
+    RPTGEN --> OUT
+    MoE --> OUT
+
+    %% ── Styles ─────────────────────────────────────────────
+    classDef stage  fill:#1e293b,stroke:#475569,color:#e2e8f0
+    classDef data   fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    classDef output fill:#14532d,stroke:#16a34a,color:#dcfce7
+    classDef input  fill:#0c4a6e,stroke:#0ea5e9,color:#e0f2fe
+    class PARSE,GT,RPTGEN,MoE stage
+    class DATA,CB data
+    class OUT output
+    class IN input

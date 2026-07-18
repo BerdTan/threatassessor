@@ -1131,7 +1131,7 @@ class Dashboard {
         let moeUnsureText = '';
         let moeExpertValidationsOuter = {};
         try {
-            const moeResp = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
+            const moeResp = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`, {cache: 'no-store'});
             if (moeResp.ok) {
                 const moe = await moeResp.json();
                 moeExpertValidationsOuter = moe.expert_validations || {};
@@ -1343,7 +1343,10 @@ class Dashboard {
             const riskText = riskTextRaw.replace(/\s*\(.*\)/, '').trim();
             const border = t.recommended ? '2px solid var(--secondary-color)' : '1px solid var(--border-color)';
             const moeItems = (mT.items && Array.isArray(mT.items)) ? mT.items : [];
-            const srcLabel = { 'benchmark': 'Benchmark (CIS/NIST/Gartner)', 'red_team_roadmap': 'Red Team roadmap', 'synthesis': 'MoE synthesis', 'not_available': null };
+            const srcLabel = {
+                'benchmark': '<a href="https://www.cisecurity.org/controls/v8" target="_blank" style="color:inherit;text-decoration:underline;text-underline-offset:2px;" title="CIS Controls v8">CIS</a> / <a href="https://doi.org/10.6028/NIST.SP.800-53r5" target="_blank" style="color:inherit;text-decoration:underline;text-underline-offset:2px;" title="NIST SP 800-53 Rev 5">NIST</a> / Gartner 2025 / SANS 2025',
+                'red_team_roadmap': 'Red Team roadmap', 'synthesis': 'MoE synthesis', 'not_available': null
+            };
             const costSrc = hasMoe ? (srcLabel[mT.cost_source] || null) : null;
             const costAttr = costSrc ? `<div style="font-size:0.65rem; color:var(--text-tertiary); margin-top:0.1rem;">Source: ${costSrc}</div>` : '';
             return `
@@ -2529,7 +2532,7 @@ class Dashboard {
         let unsureText = '';
         const archName = this.analysisData?.architecture_name || this.currentArchName;
         try {
-            const moeResp = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
+            const moeResp = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`, {cache: 'no-store'});
             if (moeResp.ok) {
                 const moe = await moeResp.json();
                 const cr = moe.consensus_recommendations || {};
@@ -6373,13 +6376,13 @@ class Dashboard {
                 id: 'action', title: 'Action Plan', icon: '✅', audience: 'stakeholder', type: 'markdown',
                 desc: 'Prioritised recommendations with implementation steps',
                 personas: ['CISO', 'Security Engineer', 'IT Team'],
-                readersContext: 'Translates the threat analysis into a sequenced to-do list ranked by risk reduction and implementation effort. Effort and cost estimates are per-control benchmarks sourced from CIS Controls v8 IG1–IG3, NIST SP 800-53 Rev 5, Gartner Market Guide for Security Tools (2024), and SANS Security Spending Survey (2024). AI/ML controls cite NIST AI RMF 1.0 and OWASP LLM Top 10 (2025). CISOs use this to set quarterly security roadmaps; security engineers and IT teams use it to understand what to build or configure first.',
+                readersContext: 'Translates the threat analysis into a sequenced to-do list ranked by risk reduction and implementation effort. Effort and cost estimates are per-control benchmarks sourced from CIS Controls v8 IG1–IG3, NIST SP 800-53 Rev 5, Gartner Market Guide for Security Tools (2025), and SANS Security Spending Survey (2025). AI/ML controls cite NIST AI RMF 1.0 and OWASP LLM Top 10 (2025). CISOs use this to set quarterly security roadmaps; security engineers and IT teams use it to understand what to build or configure first.',
             },
             '08_improvement_summary.md': {
                 id: 'improvement', title: 'Improvement Summary', icon: '🗺️', audience: 'stakeholder', type: 'markdown',
                 desc: 'Roadmap across Quick Win, Recommended, and Maximum tiers',
                 personas: ['CISO', 'Security Engineer'],
-                readersContext: 'Three-tier roadmap showing risk reduction at each investment level. Programme cost ranges are benchmarked against SANS Security Spending Survey (2024), Gartner Market Guide for Security Tools (2024), and CIS Controls v8 IG1–IG3 implementation tiers. Quick Wins deliver the highest security gain per unit effort. Recommended balances security with usability. Maximum covers all residual risk. Decision-makers use this to match security spend to risk appetite.',
+                readersContext: 'Three-tier roadmap showing risk reduction at each investment level. Programme cost ranges are benchmarked against SANS Security Spending Survey (2025), Gartner Market Guide for Security Tools (2025), and CIS Controls v8 IG1–IG3 implementation tiers. Quick Wins deliver the highest security gain per unit effort. Recommended balances security with usability. Maximum covers all residual risk. Decision-makers use this to match security spend to risk appetite.',
             },
             'before.mmd': {
                 id: 'before', title: 'Current Architecture', icon: '⚠️', audience: 'stakeholder', type: 'mermaid', color: 'var(--danger-color)',
@@ -9084,6 +9087,31 @@ class Dashboard {
             if (r.ok) sm = await r.json();
         } catch (_) {}
 
+        // Fetch ADR file to pre-check which SM items are already applied.
+        // Matches both: (a) SM action text written by the "Add to ADR" button,
+        // and (b) technique-at-node entries written by /adr-patch skill.
+        let _adrText = '';
+        try {
+            const adrR = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/10_adr_report.md`, {cache: 'no-store'});
+            if (adrR.ok) _adrText = (await adrR.text()).toLowerCase();
+        } catch (_) {}
+        const _isInAdr = (action) => {
+            if (!action || !_adrText) return false;
+            // Check 1: action text itself (written by "Add to ADR" button or SM-ADR entries)
+            if (_adrText.includes(action.slice(0, 60).toLowerCase())) return true;
+            // Check 2: technique-at-node pattern written by /adr-patch
+            // Extract T-codes and node names from the action text
+            const tcodes = (action.match(/T\d{4}/g) || []);
+            const nodes  = ['WebUI','AgentOrchestrator','ToolRegistry','Users','UserDB','DatabaseTool',
+                            'VectorDB','EmbeddingService','CodeExecution','PromptManager','APIIntegrations']
+                           .filter(n => action.includes(n));
+            if (tcodes.length && nodes.length) {
+                // Check for "Txxxx at NodeName" pattern (written by _build_adr_block in adr-patch)
+                return tcodes.some(t => nodes.some(n => _adrText.includes((t + ' at ' + n).toLowerCase())));
+            }
+            return false;
+        };
+
         if (!sm) {
             container.innerHTML = `<div style="padding:2rem; text-align:center;">
                 <div style="font-size:2.5rem; margin-bottom:1rem;">🧩</div>
@@ -9195,13 +9223,18 @@ class Dashboard {
                     source_techniques: _srcTechs,
                     source_controls:   _srcControls,
                 }).replace(/'/g, "\\'");
+                const _alreadyInAdr = _isInAdr(p.action);
                 const addToAdrBtn = (!isAnti && (p.action||'').length > 0)
-                    ? `<button onclick="window.dashboard._smAddToAdr('${_smArchName}', '${_adrPayload.replace(/"/g,'&quot;')}')"
+                    ? (_alreadyInAdr
+                        ? `<span style="margin-left:0.35rem; padding:0.1rem 0.45rem; border-radius:4px; border:1px solid var(--secondary-color)44;
+                               background:var(--secondary-color)0a; color:var(--secondary-color); font-size:0.68rem; white-space:nowrap;"
+                               title="Already in 10_adr_report.md">✅ In ADR</span>`
+                        : `<button onclick="window.dashboard._smAddToAdr('${_smArchName}', '${_adrPayload.replace(/"/g,'&quot;')}')"
                         style="margin-left:0.35rem; padding:0.1rem 0.45rem; border-radius:4px; border:1px solid var(--border-color);
                                background:transparent; color:var(--text-tertiary); font-size:0.68rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;"
                         onmouseover="this.style.borderColor='#a855f7';this.style.color='#a855f7'"
                         onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'"
-                        title="Add this action to 10_adr_report.md as an open decision record (SM-ADR-XX)">📋 Add to ADR</button>`
+                        title="Add this action to 10_adr_report.md as an open decision record (SM-ADR-XX)">📋 Add to ADR</button>`)
                     : '';
                 return `<div style="padding:0.6rem 0.9rem; margin-bottom:0.5rem; background:var(--nav-hover-bg); border-left:3px solid ${isAnti?'var(--text-tertiary)':pc}; border-radius:6px;">
                     <div style="font-size:0.875rem; font-weight:600; color:${isAnti?'var(--text-tertiary)':'var(--text-color)'}; display:flex; flex-wrap:wrap; align-items:baseline; gap:0.2rem; margin-bottom:0.2rem;">${i+1}. ${this._esc(p.action||'')}${confBadge}${antiBadge}${addToAdrBtn}</div>
@@ -9286,14 +9319,18 @@ class Dashboard {
             ${imps.length ? _panel('🚧 Impediments Found', impHtml, false) : ''}
 
             ${planHtml ? (() => {
-                const addableCount = (sm.action_plan || []).filter(p => !p.is_antipattern && p.action).length;
+                const addableItems = (sm.action_plan || []).filter(p => !p.is_antipattern && p.action);
+                const pendingCount = addableItems.filter(p => !_isInAdr(p.action)).length;
+                const addableCount = addableItems.length;
                 const safeArch = _smArchName.replace(/\W/g, '_');
                 const batchBtnId = `sm-add-all-adr-btn-${safeArch}`;
-                const batchBtn = `<button id="${batchBtnId}"
+                const batchBtn = pendingCount > 0
+                    ? `<button id="${batchBtnId}"
                     onclick="window.dashboard._smAddAllToAdr('${_smArchName}','${batchBtnId}')"
                     style="padding:0.2rem 0.65rem; border:1px solid #a855f744; border-radius:5px; background:#a855f708; color:#a855f7; font-size:0.72rem; cursor:pointer; transition:all 0.15s; margin-left:0.5rem;"
-                    title="Append all ${addableCount} non-antipattern action item(s) to 10_adr_report.md">
-                    📋 Add All to ADR (${addableCount})</button>`;
+                    title="Append ${pendingCount} new action item(s) to 10_adr_report.md (${addableCount - pendingCount} already in ADR)">
+                    📋 Add All to ADR (${pendingCount} new)</button>`
+                    : `<span style="padding:0.2rem 0.65rem; border:1px solid var(--secondary-color)44; border-radius:5px; background:var(--secondary-color)08; color:var(--secondary-color); font-size:0.72rem; margin-left:0.5rem;" title="All ${addableCount} items already in 10_adr_report.md">✅ All ${addableCount} in ADR</span>`;
                 const footer = `<div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.35rem; font-size:0.75rem; color:var(--text-tertiary); margin-top:0.75rem;">
                     <span>→ This plan is also reflected in <strong>03_action_plan.md</strong> and <strong>10_adr_report.md</strong></span>${batchBtn}
                 </div>`;
@@ -9620,7 +9657,7 @@ class Dashboard {
         container.innerHTML = '<p class="placeholder">Loading expert review data...</p>';
 
         try {
-            const response = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`);
+            const response = await fetch(`/api/v1/reports/${archName}/files/07_moe_orchestrator.json`, {cache: 'no-store'});
             if (!response.ok) {
                 // 07_moe_orchestrator.json missing — could be never-run or crashed mid-synthesis.
                 // Check whether critic JSON files already exist (crash-at-synthesis state).
@@ -9811,6 +9848,28 @@ class Dashboard {
                 console.warn('loadExpertReviewTab: SM fetch failed:', smErr);
             }
 
+            // Fetch ADR text to pre-check which SM items are already applied
+            let _erAdrText = '';
+            try {
+                const _adrR = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/10_adr_report.md`, {cache: 'no-store'});
+                if (_adrR.ok) _erAdrText = (await _adrR.text()).toLowerCase();
+            } catch (_) {}
+            const _isInAdr = (action) => {
+                if (!action || !_erAdrText) return false;
+                if (_erAdrText.includes(action.slice(0, 60).toLowerCase())) return true;
+                // Check technique-at-node patterns written by /adr-patch
+                const tcodes = (action.match(/T\d{4}/g) || []);
+                const nodes  = ['WebUI','AgentOrchestrator','ToolRegistry','Users','UserDB','DatabaseTool',
+                                'VectorDB','EmbeddingService','CodeExecution','PromptManager','APIIntegrations']
+                               .filter(n => action.includes(n));
+                if (tcodes.length && nodes.length) {
+                    if (tcodes.some(t => nodes.some(n => _erAdrText.includes((t + ' at ' + n).toLowerCase())))) return true;
+                    // Also check: any adr-patch line referencing this node (control may be for a different tech)
+                    if (nodes.some(n => _erAdrText.includes('added via /adr-patch') && _erAdrText.includes((' at ' + n + ' across').toLowerCase()))) return true;
+                }
+                return false;
+            };
+
             // Build SM card inside its own try so an error there doesn't hide the whole tab
             let scrumMasterBuildErr = null;
 
@@ -9869,13 +9928,18 @@ class Dashboard {
                                 margin-left:0.35rem; white-space:nowrap;">⚠ anti-pattern</span>`
                             : '';
                         const _adrPay = JSON.stringify({ action: p.action||'', rationale: p.rationale||'', priority: p.priority||'high', first_step: p.first_step||'' }).replace(/"/g,'&quot;').replace(/'/g,"\\'");
+                        const _erItemInAdr = _isInAdr && _isInAdr(p.action);
                         const addAdrBtn = (!isAnti && (p.action||'').length)
-                            ? `<button onclick="window.dashboard._smAddToAdr('${archName}','${_adrPay}')"
+                            ? (_erItemInAdr
+                                ? `<span style="margin-left:0.35rem; padding:0.1rem 0.45rem; border-radius:4px; border:1px solid var(--secondary-color)44;
+                                   background:var(--secondary-color)0a; color:var(--secondary-color); font-size:0.68rem; white-space:nowrap;"
+                                   title="Already in 10_adr_report.md">✅ In ADR</span>`
+                                : `<button onclick="window.dashboard._smAddToAdr('${archName}','${_adrPay}')"
                                 style="margin-left:0.35rem; padding:0.1rem 0.45rem; border-radius:4px; border:1px solid var(--border-color);
                                        background:transparent; color:var(--text-tertiary); font-size:0.68rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;"
                                 onmouseover="this.style.borderColor='#a855f7';this.style.color='#a855f7'"
                                 onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'"
-                                title="Add this action to 10_adr_report.md as an open decision record (SM-ADR-XX)">📋 Add to ADR</button>`
+                                title="Add this action to 10_adr_report.md as an open decision record (SM-ADR-XX)">📋 Add to ADR</button>`)
                             : '';
                         return `<div style="padding:0.5rem 0.75rem; margin-bottom:0.5rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid ${isAnti ? 'var(--text-tertiary)' : pc};">`
                             + `<div style="font-size:0.8125rem; font-weight:600; color:${isAnti ? 'var(--text-tertiary)' : 'var(--text-color)'}; display:flex; flex-wrap:wrap; align-items:baseline; gap:0.2rem; margin-bottom:0.2rem;">`
@@ -10050,18 +10114,21 @@ class Dashboard {
 
                     + planHtml
                     + (() => {
-                        const addableCount2 = smPlan.filter(p => !p.is_antipattern && p.action).length;
+                        const addableItems2 = smPlan.filter(p => !p.is_antipattern && p.action);
+                        const pendingCount2 = addableItems2.filter(p => !_isInAdr(p.action)).length;
+                        const addableCount2 = addableItems2.length;
                         const safeArch2 = archName.replace(/\W/g, '_');
                         const batchBtnId2 = `sm-add-all-adr-btn-er-${safeArch2}`;
-                        return addableCount2 > 0
-                            ? `<div style="text-align:right; margin-top:0.5rem; padding:0 0.25rem;">
-                                <button id="${batchBtnId2}"
+                        if (addableCount2 === 0) return '';
+                        return `<div style="text-align:right; margin-top:0.5rem; padding:0 0.25rem;">`
+                            + (pendingCount2 > 0
+                                ? `<button id="${batchBtnId2}"
                                     onclick="window.dashboard._smAddAllToAdr('${archName}','${batchBtnId2}')"
                                     style="padding:0.2rem 0.65rem; border:1px solid #a855f744; border-radius:5px; background:#a855f708; color:#a855f7; font-size:0.72rem; cursor:pointer; transition:all 0.15s;"
-                                    title="Append all ${addableCount2} non-antipattern action item(s) to 10_adr_report.md">
-                                    📋 Add All to ADR (${addableCount2})</button>
-                              </div>`
-                            : '';
+                                    title="Append ${pendingCount2} new action item(s) to 10_adr_report.md (${addableCount2 - pendingCount2} already in ADR)">
+                                    📋 Add All to ADR (${pendingCount2} new)</button>`
+                                : `<span style="padding:0.2rem 0.65rem; border:1px solid var(--secondary-color)44; border-radius:5px; background:var(--secondary-color)08; color:var(--secondary-color); font-size:0.72rem;" title="All ${addableCount2} items already in 10_adr_report.md">✅ All ${addableCount2} in ADR</span>`)
+                            + '</div>';
                     })()
                     + bfHtml
                     + '</div></div>';
@@ -10248,7 +10315,7 @@ class Dashboard {
                         + '</div>'
                         + rationaleBlock
                         + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; font-size:0.8125rem; margin-bottom:0.5rem;">'
-                        + '<div><span style="color:var(--text-tertiary);">Cost:</span> ' + (t.cost || 'cost not estimated') + (t.cost_source && t.cost_source !== 'not_available' ? '<div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.1rem;">Source: ' + ({'benchmark':'Benchmark (CIS/NIST/Gartner)','red_team_roadmap':'Red Team roadmap','synthesis':'MoE synthesis'}[t.cost_source] || t.cost_source) + '</div>' : '') + '</div>'
+                        + '<div><span style="color:var(--text-tertiary);">Cost:</span> ' + (t.cost || 'cost not estimated') + (t.cost_source && t.cost_source !== 'not_available' ? '<div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.1rem;">Source: ' + ({'benchmark':'<a href="https://www.cisecurity.org/controls/v8" target="_blank" style="color:inherit;text-decoration:underline;text-underline-offset:2px;" title="CIS Controls v8">CIS</a> / <a href="https://doi.org/10.6028/NIST.SP.800-53r5" target="_blank" style="color:inherit;text-decoration:underline;text-underline-offset:2px;" title="NIST SP 800-53 Rev 5">NIST</a> / Gartner 2025 / SANS 2025','red_team_roadmap':'Red Team roadmap','synthesis':'MoE synthesis'}[t.cost_source] || t.cost_source) + '</div>' : '') + '</div>'
                         + '<div><span style="color:var(--text-tertiary);">Effort:</span> ' + (t.effort || 'not estimated') + '</div>'
                         + '<div><span style="color:var(--text-tertiary);">Attacker score ↓:</span> ' + (t.risk_reduction || '—').replace(/\s*\(.*\)/, '').trim() + ' <span style="font-size:0.7rem; color:var(--text-tertiary);">(lower = harder to exploit)</span></div>'
                         + '</div>'
@@ -10260,7 +10327,7 @@ class Dashboard {
                 tiersHtml = '<div class="er-panel er-synth-panel" data-synth-key="tiers" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">📊 Improvement Tiers' + (Object.values(improvTiers).some(t => t && t.sm_enhanced) ? ' <span style="font-size:0.7rem; color:#a855f7; font-weight:700;">🧩 SM-enhanced</span>' : '') + '</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Synthesised from all ' + criticCountLabel + ' findings' + (Object.values(improvTiers).some(t => t && t.sm_enhanced) ? ' + ScrumMaster priority actions' : '') + '. Cost and effort are benchmark estimates (CIS Controls v8 / NIST SP 800-53 / Gartner 2024) aggregated across the tier\'s controls — attribution shown per tier.</p></div>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Synthesised from all ' + criticCountLabel + ' findings' + (Object.values(improvTiers).some(t => t && t.sm_enhanced) ? ' + ScrumMaster priority actions' : '') + '. Cost and effort are benchmark estimates (<a href="https://www.cisecurity.org/controls/v8" target="_blank" style="color:var(--primary-color);text-decoration:none;" title="CIS Controls v8">CIS Controls v8</a> / <a href="https://doi.org/10.6028/NIST.SP.800-53r5" target="_blank" style="color:var(--primary-color);text-decoration:none;" title="NIST SP 800-53 Rev 5">NIST SP 800-53</a> / Gartner 2025 / SANS 2025) aggregated across the tier\'s controls — attribution shown per tier.</p></div>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
                     + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + tierCards + '</div>'
@@ -10480,6 +10547,33 @@ class Dashboard {
                     const worstB = Math.min(..._gapsByCat[b].map(g => _sevRank(g.severity)));
                     return worstA - worstB;
                 });
+                // For Purple Team and Blackhat, enforce the single-statement rule the LLM often violates.
+                // _gapDescription: keep only the first sentence (ends at first ". " after minimum length).
+                //   Also strip consequence tail phrases ("Attacker can...", "This allows...") if mid-sentence.
+                // _gapRecommendation: keep only the first sentence, strip "Example:" elaborations.
+                const _isPT_BH = e.key === 'purple_team' || e.key === 'blackhat';
+                const _firstSentence = (text) => {
+                    if (!text) return text;
+                    // Cut at consequence phrases first (mid-sentence violations)
+                    const trimmed = text.replace(
+                        /[\.\s]+(Attacker can|Adversary can|This means|Which allows|Enabling|Without triggering|Attacker then|This allows|This enables|This gives|This exposes|allowing an attacker|enabling an attacker|an attacker can|an adversary can)[^]*/i,
+                        '.'
+                    );
+                    // Then take the first sentence only (split on ". " with min 20 chars before it)
+                    const m = trimmed.match(/^(.{20,}?[.!?])(?:\s|$)/);
+                    const result = m ? m[1] : trimmed;
+                    return result.trim().replace(/\.+$/, '.');
+                };
+                const _gapDescription = (text) => _isPT_BH ? _firstSentence(text) : text;
+                const _gapRecommendation = (text) => {
+                    if (!_isPT_BH || !text) return text;
+                    // Strip "Example:" elaborations and everything after
+                    let s = text.replace(/\.\s*Example:.*/is, '.').replace(/\bExample:.*/is, '');
+                    // Strip "e.g." / "For example:" elaborations
+                    s = s.replace(/\.\s*(?:e\.g\.|For example:).*/is, '.');
+                    // Take only the first sentence — enforces the "one control" rule
+                    return _firstSentence(s);
+                };
                 const _erUid = 'er_' + e.key + '_' + Date.now();
                 let gapItems = '';
                 for (const cat of _catOrder) {
@@ -10504,9 +10598,11 @@ class Dashboard {
                                 + ' in your applicable SSP baseline.'
                                 + '</div>'
                             : '';
+                        const _gapDesc = _gapDescription(g.description || '');
+                        const _gapRec  = _gapRecommendation(g.recommendation || '');
                         catInner += '<div style="padding:0.6rem 0.75rem; background:var(--card-bg); border-radius:5px; margin-bottom:0.35rem; border-left:3px solid ' + borderCol + ';">'
-                            + '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.3rem;">' + _linkTechniques(g.description || '') + ' <span style="font-size:0.75rem; color:' + sevCol + '; font-weight:600;">[' + (g.severity || '') + ']</span></div>'
-                            + (g.recommendation ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-bottom:' + (isGov ? '0.25rem' : '0') + ';">→ ' + _linkTechniques(g.recommendation) + '</div>' : '')
+                            + '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.3rem;">' + _linkTechniques(_gapDesc) + ' <span style="font-size:0.75rem; color:' + sevCol + '; font-weight:600;">[' + (g.severity || '') + ']</span></div>'
+                            + (_gapRec ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-bottom:' + (isGov ? '0.25rem' : '0') + ';">→ ' + _linkTechniques(_gapRec) + '</div>' : '')
                             + sspFallback
                             + '</div>';
                     }
@@ -10603,19 +10699,63 @@ class Dashboard {
                 }
 
                 let reasoning = (v.reasoning || '').trim();
-                // Fallback for critics that leave reasoning blank: synthesise from strengths + worst breakdown gap
-                if (!reasoning && e.key === 'tester') {
-                    const strengths = v.strengths || [];
+                // Cap populated reasoning to 1 tight sentence for all critics
+                if (reasoning) {
+                    const m = reasoning.match(/^(.{20,}?[.!?])(?:\s|$)/);
+                    let sent = m ? m[1] : reasoning;
+                    // Hard cap at 120 chars — break at last comma/dash before the limit
+                    if (sent.length > 120) {
+                        const cut = sent.slice(0, 120);
+                        const lastBreak = Math.max(cut.lastIndexOf(', '), cut.lastIndexOf(' — '), cut.lastIndexOf(' - '));
+                        sent = (lastBreak > 60 ? cut.slice(0, lastBreak) : cut) + '…';
+                    }
+                    reasoning = sent;
+                }
+                // Synthesise verdict for any critic that returned an empty reasoning field.
+                // Pattern: "score — worst dimension: one-sentence finding. Top gap: one-sentence gap."
+                // Applies to all critics (not just tester) — breakdown.reasoning is rich enough.
+                if (!reasoning) {
                     const bkd = v.breakdown || {};
-                    const worstGapNote = Object.values(bkd)
-                        .filter(s => s && typeof s.score === 'number' && s.max && s.reasoning && s.score < s.max)
-                        .sort((a, b) => (a.score / a.max) - (b.score / b.max))
-                        .map(s => s.reasoning.split(/\.\s+/)[0].trim())
-                        .find(Boolean);
-                    const parts = [];
-                    if (strengths.length) parts.push(strengths[0] + '.');
-                    if (worstGapNote) parts.push('Main gap: ' + worstGapNote + '.');
-                    reasoning = parts.join(' ');
+                    const score = v.original_score || 0;
+                    const maxScore = 100;
+                    // Find worst-performing breakdown dimension (most points lost — highest absolute gap)
+                    const worstDim = Object.entries(bkd)
+                        .filter(([, s]) => s && typeof s.score === 'number' && s.max && s.reasoning && s.score < s.max)
+                        .sort(([, a], [, b]) => (b.max - b.score) - (a.max - a.score))
+                        [0];
+                    const worstDimLabel = {
+                        threat_completeness: 'threat coverage', control_appropriateness: 'control fit',
+                        defense_in_depth: 'defence depth', rapids_alignment: 'RAPIDS alignment',
+                        diagram_completeness: 'diagram completeness', report_quality: 'report quality',
+                        validation_checks: 'validation', coverage_metrics: 'coverage',
+                        internal_consistency: 'consistency', roadmap_validation: 'roadmap',
+                        technique_coverage: 'technique coverage', detection_chain: 'detection chain',
+                        adr_tm_coherence: 'ADR coherence',
+                        cross_path_chain_feasibility: 'chain feasibility', least_resistance_path: 'least-resistance',
+                        stealth_potential: 'stealth', mitigation_chain_coverage: 'mitigation coverage',
+                    };
+                    const _firstSent = (t) => {
+                        // Take text up to first ". " after ≥25 chars, or first 120 chars if no break
+                        const m = t.match(/^(.{25,}?[.!?])(?:\s|$)/);
+                        return (m ? m[1] : t.slice(0, 120)).trim().replace(/\.+$/, '');
+                    };
+                    const dimNote = worstDim ? (() => {
+                        const label = worstDimLabel[worstDim[0]] || worstDim[0].replace(/_/g,' ');
+                        const sent  = _firstSent(worstDim[1].reasoning);
+                        if (sent.toLowerCase().startsWith(label.toLowerCase())) return sent + '.';
+                        // Strip inner "Category: ..." prefix when the reasoning already names itself
+                        const ci = sent.indexOf(': ');
+                        if (ci > 0 && ci < 30) return sent.slice(ci + 2) + '.';
+                        return label + ': ' + sent + '.';
+                    })() : '';
+                    // Top CRITICAL/HIGH gap description — first sentence only
+                    const topGap = (gaps.find(g => ['CRITICAL','HIGH'].includes((g.severity||'').toUpperCase())) || gaps[0]);
+                    const gapNote = topGap
+                        ? (topGap.description || '').split(/\.\s+/)[0].trim().replace(/\.$/, '') + '.'
+                        : '';
+                    // Use dimNote if available (most specific), fall back to gapNote.
+                    // Never combine both — one tight sentence is the goal.
+                    reasoning = (dimNote || gapNote).trim();
                 }
                 const reasoningHtml = reasoning
                     ? '<div style="margin-bottom:0.85rem; padding:0.65rem 0.85rem; background:var(--nav-hover-bg); border-left:3px solid var(--primary-color); border-radius:6px;">'

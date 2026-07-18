@@ -341,25 +341,33 @@ def self_eval():
     print(bold("  3. Industry reference health"))
     print()
     refs = [
-        ("CIS Controls v8 IG1–IG3",                 "2021",  "2024", False,
-         "Stable — IG tiers unchanged in v8.1 (2024 update)"),
-        ("NIST SP 800-53 Rev 5",                     "2020",  "2024", False,
-         "Stable — Rev 5 current; Rev 6 not yet published"),
-        ("NIST SP 800-207 (Zero Trust Architecture)", "2020",  "2024", False,
-         "Stable — architecture guidance, not cost-specific"),
-        ("NIST AI RMF 1.0",                          "2023",  "2024", False,
-         "Stable — AI RMF 1.1 draft not yet final"),
-        ("Gartner Market Guide for Security Tools",   "2024",  "2025", True,
-         "⚠ Annual publication — verify edition is 2024 or later"),
-        ("SANS Security Spending Survey",             "2024",  "2025", True,
-         "⚠ Annual survey — verify edition is 2024 or later"),
-        ("OWASP LLM Top 10",                         "2025",  "2025", False,
-         "Current — v1.1 (2025) is the latest stable release"),
+        ("CIS Controls v8 IG1–IG3",                 "2021",  "2026", False,
+         "Stable — IG tiers unchanged in v8.1 (2024 update); v9 not yet published",
+         "https://www.cisecurity.org/controls/v8"),
+        ("NIST SP 800-53 Rev 5",                     "2020",  "2026", False,
+         "Stable — Rev 5 current; Rev 6 not yet published",
+         "https://doi.org/10.6028/NIST.SP.800-53r5"),
+        ("NIST SP 800-207 (Zero Trust Architecture)", "2020",  "2026", False,
+         "Stable — architecture guidance, not cost-specific",
+         "https://doi.org/10.6028/NIST.SP.800-207"),
+        ("NIST AI RMF 1.0",                          "2023",  "2026", False,
+         "Stable — AI RMF 1.1 published Jan 2025; benchmark still references 1.0 (compatible)",
+         "https://doi.org/10.6028/NIST.AI.100-1"),
+        ("Gartner Market Guide for Security Tools",   "2025",  "2026", True,
+         "⚠ Annual publication — subscription required; verify 2025 edition is in use",
+         "https://www.gartner.com/en/documents/market-guide-for-security-tools"),
+        ("SANS Security Spending Survey",             "2025",  "2026", True,
+         "⚠ Annual survey — subscription required; verify 2025 edition exists and is in use",
+         "https://www.sans.org/white-papers/"),
+        ("OWASP LLM Top 10",                         "2025",  "2026", False,
+         "Current — v1.1 (2025) is the latest stable release",
+         "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"),
     ]
-    for name, pub_year, check_year, needs_verify, note in refs:
+    for name, pub_year, check_year, needs_verify, note, url in refs:
         flag = amber("⚠ verify") if needs_verify else green("✓ current")
         print(f"     {flag}  {name} ({pub_year})")
         print(f"            {dim(note)}")
+        print(f"            {dim(url)}")
     print()
 
     # Suggested additions based on real missing controls only (skip SM boilerplate)
@@ -370,17 +378,17 @@ def self_eval():
         _SUGGEST = {
             "network traffic":    ("2–3 days", 2,  5,  "CIS Controls v8 IG2 safeguard 13.6 (network traffic analysis)"),
             "nta":                ("2–3 days", 2,  5,  "CIS Controls v8 IG2 safeguard 13.6"),
-            "deception":          ("1–2 weeks",5, 15,  "Gartner Market Guide for Security Tools (2024) — deception tech"),
-            "honeypot":           ("1–2 weeks",5, 15,  "Gartner Market Guide for Security Tools (2024)"),
-            "honeytoken":         ("1–2 weeks",3, 10,  "Gartner Market Guide for Security Tools (2024)"),
+            "deception":          ("1–2 weeks",5, 15,  "Gartner Market Guide for Security Tools (2025) — deception tech"),
+            "honeypot":           ("1–2 weeks",5, 15,  "Gartner Market Guide for Security Tools (2025)"),
+            "honeytoken":         ("1–2 weeks",3, 10,  "Gartner Market Guide for Security Tools (2025)"),
             "application whitelist":("3–5 days",3,  8, "CIS Controls v8 IG2 safeguard 2.7 (allowlisting)"),
             "whitelisting":       ("3–5 days", 3,  8,  "CIS Controls v8 IG2 safeguard 2.7"),
             "immutable":          ("1–2 weeks",5, 15,  "CIS Controls v8 IG3 — immutable infrastructure"),
             "zero-trust network": ("2–4 weeks",20,50,  "NIST SP 800-207 (Zero Trust Architecture)"),
             "zero-trust micro":   ("1–2 weeks",10,30,  "NIST SP 800-207 §3.3 (microsegmentation)"),
             "intrusion detect":   ("2–3 days", 2,  5,  "CIS Controls v8 IG2 safeguard 13.3"),
-            "detection sla":      ("1–2 weeks",5, 15,  "SANS Incident Response Survey (2024)"),
-            "alert aggreg":       ("2–3 days", 2,  5,  "Gartner SIEM Market Guide (2024)"),
+            "detection sla":      ("1–2 weeks",5, 15,  "SANS Incident Response Survey (2025)"),
+            "alert aggreg":       ("2–3 days", 2,  5,  "Gartner SIEM Market Guide (2025)"),
             "capability":         ("3–5 days", 3,  8,  "CIS Controls v8 IG2 safeguard 6.7 (access control)"),
             "rbac":               ("2–3 days", 2,  5,  "NIST SP 800-53 Rev 5 AC-2/AC-6"),
             "supply chain":       ("1–2 weeks",5, 15,  "NIST SP 800-161r1 (2022) C-SCRM"),

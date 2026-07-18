@@ -545,8 +545,8 @@ def _generate_improvement_paths(orch: Dict, roadmap: List[Dict], current_score: 
     max_effort = "6+ months"
     max_cost = "$300K-$600K"
 
-    return f"""> **Programme cost estimates** are indicative ranges based on: SANS Security Spending Survey (2024);
-> Gartner Market Guide for Security Tools (2024); CIS Controls v8 IG1–IG3 implementation tiers.
+    return f"""> **Programme cost estimates** are indicative ranges based on: SANS Security Spending Survey (2025);
+> Gartner Market Guide for Security Tools (2025); CIS Controls v8 IG1–IG3 implementation tiers.
 > Actual spend depends on team size, existing tooling, and environment complexity.
 
 ### Option 1: Quick Wins ({quick_effort}, {quick_cost})

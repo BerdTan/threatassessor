@@ -1,0 +1,82 @@
+---
+title: ThreatAssessor — Skills Map (22 skills, 6 clusters, workflow edges)
+updated: 2026-07-18
+note: "Solid edges = required sequence. Dashed = optional follow-on. Each node = skill name + one-line purpose."
+---
+graph TD
+    %% ── Data maintenance cluster ────────────────────────────
+    subgraph DATA["📡 Data Maintenance"]
+        UD["update-data<br/>Refresh MITRE ATT&CK, ATLAS,<br/>SSP catalog, ARC YAML"]
+        BEC["build-embeddings-cache<br/>Regen technique_embeddings.json<br/>(~274 API calls, ~3 min)"]
+        UD --> BEC
+    end
+
+    %% ── Analysis cluster ────────────────────────────────────
+    subgraph ANALYSIS["🔁 Analysis Pipeline"]
+        RC["rerun-corpus<br/>Audit + selectively re-run<br/>deterministic engine (26 archs)"]
+        BA["backfill-aivss<br/>Generate governance_signals.json<br/>+ AIVSS scores for existing reports"]
+        CE["cost-estimate<br/>Compute tier cost/effort<br/>from CONTROL_BENCHMARK table"]
+    end
+
+    %% ── ER workflow cluster ─────────────────────────────────
+    subgraph ER["🔬 Expert Review Workflow"]
+        direction TB
+        QT["quick-test<br/>Sanity check: deps · MITRE · API<br/>(~15s, run at session start)"]
+        RER["run-er<br/>Run MoE critics + ScrumMaster<br/>(partial_parallel default, ~60–120s)"]
+        SER["summarise-er<br/>1-page ER digest: waterfall +<br/>per-critic verdict + consensus (~1s)"]
+        RU["review-unsure<br/>Triage UNSURE findings:<br/>deterministic checks → LLM verdict"]
+        AP["adr-patch<br/>Write KNOWN/SM/gap signals<br/>as hop-level ADR entries"]
+        QT -.->|"before first run"| RER
+        RER --> SER
+        SER -.->|"has UNSURE items"| RU
+        RU -.->|"REAL findings"| AP
+    end
+
+    %% ── Quality cluster ─────────────────────────────────────
+    subgraph QUALITY["📐 Quality & Scoring"]
+        TS["tatb-score<br/>TATB 4-rubric scorecard<br/>for one architecture (~3s)"]
+        TC["tatb-corpus<br/>TATB visual corpus map<br/>for all architectures (~10–15s)"]
+        TL["tatb-loop<br/>Observe → fix → verify loop<br/>(human-gated code changes)"]
+        AS["aivss-score<br/>AIVSS v4 breakdown:<br/>inbound/internal/outbound"]
+        AG["aivss-gate<br/>Show gate config + model<br/>assignments + last SIEM events"]
+        TS -.->|"corpus view"| TC
+        TC -.->|"fix weak signals"| TL
+        AS -.->|"gate config"| AG
+    end
+
+    %% ── Report cluster ──────────────────────────────────────
+    subgraph REPORT["📄 Report Management"]
+        RR["regen-reports<br/>Regenerate MD + diagram files<br/>from existing JSON (no re-analysis)"]
+        RO["repo-organise<br/>Audit docs/tests/scripts/report<br/>(read-only, proposes moves)"]
+    end
+
+    %% ── Dev/health cluster ──────────────────────────────────
+    subgraph DEV["🛠 Dev / Health"]
+        CM["codemap<br/>Structural file index + symbol list<br/>(incremental, session-persistent)"]
+        CG["check-governance<br/>56 governance tests, ~9s<br/>no LLM/network"]
+        CEB["check-eventbroker<br/>48 EventBroker + Sink tests, ~9s<br/>no LLM/network"]
+        CD["check-deprecation<br/>Import + anti-pattern scan<br/>post-refactor safety check"]
+        DH["docs-health<br/>Audit CLAUDE.md + DECISIONS.md<br/>+ memory files for staleness"]
+    end
+
+    %% ── Cross-cluster workflow edges ────────────────────────
+    BEC -.->|"after MITRE update"| RC
+    RC -.->|"re-run ER"| RER
+    RER --> TS
+    AP -.->|"after ADR patch"| RR
+    RR -.->|"verify report"| TS
+    TL -.->|"engine fixes"| RC
+
+    %% ── Styles ─────────────────────────────────────────────
+    classDef data     fill:#1e3a5f,stroke:#3b82f6,color:#dbeafe
+    classDef analysis fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    classDef er       fill:#2d1b69,stroke:#7c3aed,color:#f3e8ff
+    classDef quality  fill:#14532d,stroke:#16a34a,color:#dcfce7
+    classDef report   fill:#1c1917,stroke:#78716c,color:#d6d3d1
+    classDef dev      fill:#292524,stroke:#57534e,color:#d6d3d1
+    class UD,BEC data
+    class RC,BA,CE analysis
+    class QT,RER,SER,RU,AP er
+    class TS,TC,TL,AS,AG quality
+    class RR,RO report
+    class CM,CG,CEB,CD,DH dev

@@ -916,9 +916,9 @@ def generate_action_plan(ground_truth: Dict) -> str:
     report += (
         "> **Effort & cost estimates** are indicative ranges derived from:\n"
         "> - *Config-only controls* — CIS Controls v8 IG1 implementation effort tiers; NIST SP 800-53 Rev 5 (CM/AC families)\n"
-        "> - *Tool deployment* — Gartner Market Guide for Security Tools (2024); SANS Security Spending Survey (2024)\n"
+        "> - *Tool deployment* — Gartner Market Guide for Security Tools (2025); SANS Security Spending Survey (2025)\n"
         "> - *Process / programme* — NIST SP 800-53 Rev 5 (CA/RA/AT families); CIS Controls v8 IG2 safeguards\n"
-        "> - *Architecture changes* — NIST SP 800-207 (Zero Trust Architecture); Gartner Security Architecture Guide (2024)\n"
+        "> - *Architecture changes* — NIST SP 800-207 (Zero Trust Architecture); Gartner Security Architecture Guide (2025)\n"
         "> - *AI / ML controls* — NIST AI RMF 1.0 (Govern/Map/Measure/Manage); OWASP LLM Top 10 (2025)\n"
         ">\n"
         "> Actual figures depend on team size, existing tooling, and environment complexity. Treat as planning inputs, not fixed commitments.\n\n"

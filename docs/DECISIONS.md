@@ -4,6 +4,108 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-07-18 (Session 21) — ER workflow skills, codebase graphs, benchmark citations, critic verdict, ADR UI state
+
+### 1. ER workflow skills: review-unsure, adr-patch, summarise-er
+
+**What was decided:**
+Three new skills to close the ER→action loop without manual copy-paste:
+
+- `/review-unsure` — two-stage triage: deterministic checks first (file counts, control presence, validation status), LLM verdict (REAL/DISMISS + ADR_PATCH) only for what can't be resolved mechanically. `--severity MEDIUM` skips LOW informational items. `--dry-run` shows count before spending LLM tokens.
+- `/adr-patch` — collects "add to ADR" signals from four sources (SM action_plan immediate, KNOWN consensus findings, expert gaps CRITICAL/HIGH, resolved UNSURE items), deduplicates by (technique, node), writes hop-level control entries into `10_adr_report.md` inside the correct `#### \`NodeName\`` section. Idempotent: re-running writes 0 insertions. `--source sm/known/gaps/resolved` limits to one signal source.
+- `/summarise-er` — one-page ER digest: confidence waterfall, per-critic verdict + top 2 findings, cross-expert consensus top 5, UNSURE queue status. No LLM — purely deterministic from `07_moe_orchestrator.json`. Runs in ~1s.
+
+**Reasoning:**
+The manual workflow was: read ER tab → copy UNSURE text into Claude → decide → manually find the right ADR section → paste. Three friction points, each requiring context switching. The skills replace all three: run them in sequence after any ER run. The two-stage triage in `review-unsure` keeps LLM calls minimal — corpus average is ~3 items that need LLM per architecture, not 5–8.
+
+**Alternatives rejected:**
+- Single skill doing all three steps: too broad a scope per invocation, harder to re-run selectively (e.g. re-patch ADR after adding a control without re-triaging UNSURE).
+- LLM-first for all UNSURE items: ~60% of UNSURE items are deterministically dismissible (validation=environmental, human_layer=control exists, detection_operability=LOW advisory). Paying LLM for those is waste.
+
+### 2. Benchmark citations: `_SOURCES` dict + 2025 updates
+
+**What was decided:**
+`control_cost_benchmark.py` now has a `_SOURCES` dict with canonical URLs for all 7 benchmark sources. `aggregate_tier()` returns `sources` alongside `citation`. Gartner/SANS updated to 2025 citations across all 6 touch points (benchmark.py, improvement_summary_generator.py, threat_report.py, dashboard.js ×3, skill SKILL.md). The `/cost-estimate --self-eval` health table now prints the URL under each entry and notes Gartner/SANS as "subscription required — verify edition exists."
+
+**Reasoning:**
+Gartner/SANS are paywalled — their 2025 editions can't be independently verified, but they're cited by name as industry standards any CISO recognises. Storing canonical URLs (even for paywalled sources) makes the attribution auditable. The NIST/CIS/OWASP URLs are free and confirmed valid.
+
+**Alternatives rejected:**
+- Removing Gartner/SANS entirely: they're the standard references for tool deployment cost ranges; removing them weakens the benchmark's credibility even if the 2025 edition can't be verified.
+- Hardcoding year-agnostic references ("latest edition"): breaks the citation trail — auditors need a specific edition year.
+
+### 3. Critic verdict synthesis: universal fallback from breakdown.reasoning
+
+**What was decided:**
+All 5 critics now always show a "Critic verdict" block in the ER tab and `/summarise-er` output. The synthesis order: (1) `reasoning` field if non-empty, capped at 120 chars with natural break; (2) breakdown dimension with most points lost — extract first sentence, strip redundant category prefix; (3) top CRITICAL/HIGH gap description first sentence. Hard 120-char cap with break at last comma/dash prevents long compound sentences.
+
+**Reasoning:**
+`reasoning` is sparsely populated — only ~30% of ER runs have it for architect/tester/red_team (LLM often returns empty string despite the prompt). Blackhat has it most reliably but its sentences run 180+ chars. The breakdown.reasoning fields are rich and always populated; extracting the worst-dimension note gives a consistent 1-sentence verdict equivalent to what a human would write for a status summary.
+
+**Alternatives rejected:**
+- Showing "no verdict" when reasoning is empty: creates inconsistency — some critics look detailed, others bare.
+- 2-sentence cap instead of 1: PT/BH sentences are long enough that 2 sentences is still overwhelming. 1 sentence + the gap list is the right density.
+
+### 4. UI: ADR state persistence + moe JSON cache-busting
+
+**What was decided:**
+The SM tab and ER tab now fetch `10_adr_report.md` (with `cache: no-store`) at load time. Each SM item checks `_isInAdr(action)` before rendering: if matched, shows "✅ In ADR" badge instead of "📋 Add to ADR" button. The check uses two strategies: (a) action text match (first 60 chars), and (b) technique-at-node pattern (`T1083 at WebUI across`) written by `/adr-patch`. "Add All to ADR" batch button now shows count of *pending* items only. Similarly, `07_moe_orchestrator.json` fetches in the Overview and ER tab now use `cache: no-store` so backfilled cost/effort data shows immediately after an ER run.
+
+**Reasoning:**
+The "📋 Add to ADR" button had no state persistence — it only changed to ✅ in the current browser session via DOM mutation. On reload it reappeared even when the ADR patch was already applied days ago. The dual-pattern check is needed because `/adr-patch` writes "T1083 at WebUI across AP-1" not the full SM action text.
+
+**Alternatives rejected:**
+- Server-side ADR state tracking (new JSON field per SM item): requires a write endpoint and schema change. The file text check is simpler and correct — the ADR is the source of truth.
+- Checking only action text: misses items patched by `/adr-patch` which writes a different format.
+
+### 5. Codebase graph plan: master + 4 domain MMDs
+
+**What was decided:**
+Extend codemap with a two-level graph hierarchy stored in `.claude/graphs/`:
+- `master.mmd` (~15–20 nodes) — the six domains (pipeline, harness, dashboard, skills, reports, tests) and their primary connections. Readable at a glance.
+- `pipeline.mmd` — data flow: MMD upload → ground_truth_generator → moe_orchestrator → report files (00–10_*) → dashboard tabs.
+- `harness.mmd` — CriticRegistry → stages → EventBroker → sinks (SIEM, Langfuse, Webhook).
+- `dashboard-tabs.mmd` — tab → JS function → API endpoint → Python module.
+- `skills.mmd` — 22 skills in 6 clusters with skill→skill workflow edges (e.g. run-er → review-unsure → adr-patch).
+- Tests and report files as embedded tables in master (not graphs — 1:1 mapping is clearer as a table).
+
+**Reasoning:**
+Full call-graph (graphify-style) would be 80–100 nodes at this codebase size — a reference poster, not a navigation tool. Five focused MMDs at 10–20 nodes each answer the specific navigation questions agents actually have: "which file to open", "what does this call", "what has side effects". The skills graph is warranted because 22 skills with workflow dependencies are genuinely hard to navigate from MEMORY.md alone.
+
+**Alternatives rejected:**
+- graphify (public tool): codebase is large enough that it would produce dense output needing further filtering; maintaining it as an external dependency adds friction.
+- Per-dashboard-tab MMDs: 14 tabs × 1 MMD = too many files, most with 3–4 nodes. Consolidating into one dashboard-tabs.mmd at the right abstraction level covers the same ground.
+- Fully automated MMD generation: the value is in the curated relationships (e.g. which skills feed which), not mechanical import tracing. Automation would miss semantic groupings.
+
+**Status:** planned, not yet built.
+
+---
+
+## 2026-07-18 (Session 21, continued) — codebase graphs shipped + validator
+
+### 6. Codebase graphs: execution + validator location
+
+**What was decided:**
+Five MMD graphs built and validated, stored in `.claude/graphs/`:
+- `master.mmd` — system map (flowchart TD, 6 domains + test table + report table)
+- `pipeline.mmd` — data flow from before.mmd through all generators to 16 output files (flowchart TD)
+- `harness.mmd` — stage sequence + governance + EventBroker + sinks + test coverage (flowchart TD)
+- `dashboard-tabs.mmd` — 13 tabs × JS function + API route + Python module (graph LR)
+- `skills.mmd` — 22 skills in 6 clusters with workflow sequence edges (graph TD)
+
+Three graphs needed `flowchart` mode (master, pipeline, harness) because they edge between subgraph IDs — `graph` mode does not support this and silently produces `Cannot read properties of null (reading 'firstChild')`. Dashboard-tabs and skills only edge between node IDs, so `graph` mode works.
+
+A validator was built at `.claude/skills/codemap/scripts/validate_graphs.py` and placed inside the codemap skill (not as a loose file in `.claude/graphs/`) because graph maintenance is part of the codemap workflow. It checks six failure modes: YAML multi-line frontmatter, `graph` mode with inter-subgraph edges, `<br/>` in edge labels, literal `\n` in node labels, duplicate node IDs, reserved keyword node IDs. Exit 0 = clean.
+
+**Reasoning:**
+The three rendering failures found during authoring (YAML bad indentation × 2, `firstChild` null × 1) are all systematic errors that recur whenever graphs are edited — a one-time validator catches them before they reach the renderer. Placing it in codemap scripts makes it discoverable alongside `build_codemap.py` and ensures the "after editing a graph" instruction in SKILL.md points to a file that logically belongs there.
+
+**Alternatives rejected:**
+- Leaving validator in `.claude/graphs/`: a loose script with no skill context; easy to miss when editing graphs.
+- Pre-commit hook: adds setup friction for a dev tool; the validator is cheap enough to run manually as part of the graph-edit workflow.
+- Auto-fix instead of lint: the fixes require judgment (which subgraph IDs to keep, how to reword edge labels) — report only, let the human fix.
+
+---
 ## 2026-07-18 (Session 23) — Benchmark-derived investment tier costs, control_cost_benchmark module, weak_controls FP fix
 
 ### 4. Investment tier cost model: benchmark aggregation replaces LLM estimates

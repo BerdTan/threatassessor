@@ -1,0 +1,82 @@
+---
+title: ThreatAssessor — Dashboard Tabs (JS function → API endpoint → Python module)
+updated: 2026-07-18
+note: "dashboard.js 16k LOC — tab → JS function → API route → Python module. Find the right function before opening the file."
+---
+graph LR
+    %% ── API routers ─────────────────────────────────────────
+    subgraph ROUTES["API routes (chatbot/api/routes/)"]
+        AR1["reports.py<br/>/api/v1/reports/*<br/>add-to-adr · rescore-aivss<br/>download · summary"]
+        AR2["streaming.py<br/>/api/v1/analyze-stream<br/>/api/v1/expert-review<br/>/api/v1/run-critic"]
+        AR3["broker.py<br/>/api/v1/broker/config<br/>/api/v1/broker/status"]
+        AR4["workspaces.py<br/>/api/v1/workspaces/*"]
+        AR5["config.py<br/>/api/v1/config<br/>llm-check · reset"]
+        AR6["ta_wiz.py<br/>/api/v1/ask"]
+    end
+
+    %% ── Tabs ────────────────────────────────────────────────
+    subgraph TABS["Dashboard tabs (dashboard.js)"]
+        direction TB
+
+        T1["Overview<br/>renderOverviewDashboard()<br/>→ ground_truth.json<br/>→ 07_moe_orchestrator.json<br/>→ 06_red_team_critique.json"]
+
+        T2["Threat Model<br/>loadThreatModelTab()<br/>→ ground_truth.json<br/>→ 08_scrum_master.json"]
+
+        T3["Controls<br/>loadControlsTab()<br/>→ ground_truth.json<br/>→ 07_moe_orchestrator.json<br/>→ 06_red_team_critique.json"]
+
+        T4["MITRE<br/>loadMitreTab()<br/>→ /api/v1/techniques<br/>→ /api/v1/technique-mitigations<br/>→ /api/v1/mitigations"]
+
+        T5["Expert Review<br/>loadExpertReviewTab()<br/>→ 07_moe_orchestrator.json<br/>→ 08_scrum_master.json<br/>→ 10_adr_report.md (ADR state)"]
+
+        T6["ScrumMaster<br/>loadScrumMasterTab()<br/>→ 08_scrum_master.json<br/>→ 10_adr_report.md (ADR state)"]
+
+        T7["Hardening (Visualise)<br/>loadHarnessTab()<br/>→ /api/v1/analyze-stream<br/>→ /api/v1/expert-review<br/>→ before/after .mmd files"]
+
+        T8["Reports<br/>loadReportsTab()<br/>→ /api/v1/reports<br/>→ /api/v1/techniques"]
+
+        T9["Insights<br/>loadInsightsTab()<br/>→ /api/v1/reports<br/>→ governance_signals.json<br/>→ ground_truth.json"]
+
+        T10["Workspace<br/>loadWorkspaceTab()<br/>→ /api/v1/workspaces<br/>→ /api/v1/reports"]
+
+        T11["Traces<br/>loadTracesTab()<br/>→ /api/v1/broker/config<br/>→ /api/v1/broker/status"]
+
+        T12["Benchmark<br/>loadBenchmarkTab()<br/>→ /api/v1/tatb-corpus"]
+
+        T13["Config<br/>loadConfigTab()<br/>→ /api/v1/config<br/>→ settings.yaml"]
+    end
+
+    %% ── Python modules serving each route ───────────────────
+    subgraph PYTHON["Python modules"]
+        P1["ground_truth_generator.py<br/>scoring.py · mitre.py"]
+        P2["moe_orchestrator.py<br/>+ critic JSONs"]
+        P3["ScrumMasterCritic<br/>improvement_summary_generator.py"]
+        P4["harness/controller.py<br/>→ stages → pipeline"]
+        P5["governance.py<br/>harness_aivss.py"]
+        P6["mitre.py<br/>(technique library)"]
+        P7["event_broker.py<br/>sinks.py"]
+    end
+
+    %% ── Tab → Route connections ─────────────────────────────
+    T1 & T2 & T3 --> AR1
+    T1 & T3 --> P1
+    T1 & T5 --> P2
+    T5 & T6 --> AR1
+    T6 -->|"SM data"| P3
+    T7 --> AR2
+    AR2 --> P4
+    T8 & T9 & T10 --> AR1
+    T9 --> P5
+    T11 --> AR3
+    AR3 --> P7
+    T10 --> AR4
+    T13 --> AR5
+    T4 --> P6
+    T12 --> AR1
+
+    %% ── Styles ─────────────────────────────────────────────
+    classDef tab    fill:#1e293b,stroke:#475569,color:#e2e8f0,font-size:11px
+    classDef route  fill:#0c4a6e,stroke:#0ea5e9,color:#e0f2fe,font-size:11px
+    classDef python fill:#14532d,stroke:#16a34a,color:#dcfce7,font-size:11px
+    class T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11,T12,T13 tab
+    class AR1,AR2,AR3,AR4,AR5,AR6 route
+    class P1,P2,P3,P4,P5,P6,P7 python

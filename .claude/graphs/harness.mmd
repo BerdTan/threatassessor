@@ -1,0 +1,92 @@
+---
+title: ThreatAssessor — Harness (pipeline controller + governance + observability)
+updated: 2026-07-18
+note: "Harness wraps the pipeline. New stage: subclass BaseStage in stages.py. New sink: subclass BaseSink in sinks.py. Governance blocks critics; EventBroker fires after each stage."
+---
+flowchart TD
+    %% ── Entry point ────────────────────────────────────────
+    API["/api/v1/analyze-stream<br/>/api/v1/expert-review<br/>(streaming.py)"]
+
+    %% ── Controller ─────────────────────────────────────────
+    subgraph CTRL["controller.py"]
+        C1["ThreatAssessorHarness<br/>(run, scenario config)"]
+        C2["PipelineContext<br/>(arch name, artifacts, settings)"]
+        C3["ScenarioConfig<br/>(full_moe | api_only | sm_only)"]
+    end
+
+    %% ── Stages (run in order) ───────────────────────────────
+    subgraph STAGES["stages.py  (run in sequence)"]
+        direction TB
+        S1["1. AnalysisStage<br/>→ ThreatAnalysisService<br/>→ ground_truth.json"]
+        S2["2. ReportStage<br/>→ threat_report.py<br/>→ 01/02/03/09/10 files"]
+        S3["3. CriticStage<br/>→ moe_orchestrator.py<br/>→ 04/05/06 critic JSONs"]
+        S4["4. ScrumMasterStage<br/>→ ScrumMasterCritic<br/>→ improvement_summary_generator<br/>→ 07/08 files"]
+        S5["5. QualityStage<br/>→ governance.py (guardrail check)<br/>→ harness_aivss.py (AIVSS score)"]
+        S6["6. AIVSSStage<br/>→ harness_aivss.py<br/>→ governance_signals.json"]
+        S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    end
+
+    %% ── Registry (critic gating) ────────────────────────────
+    subgraph REG["registry.py"]
+        R1["CriticRegistry<br/>(enabled/disabled per critic)"]
+        R2["CriticDescriptor<br/>(name, cls, governance_tier,<br/>model_key, enabled)"]
+        R3["HarnessModelGuardian<br/>(model override per critic)"]
+        R1 --> R2
+        R1 --> R3
+    end
+
+    %% ── Governance (guardrail) ──────────────────────────────
+    subgraph GOV["governance.py  (9 injection categories + 3 evasion layers)"]
+        G1["GovernanceSignals<br/>(inbound / internal / outbound)"]
+        G2["InhouseGovernanceAdapter<br/>(pattern matching)"]
+        G3["AGTGovernanceAdapter<br/>(external policy)"]
+        G4["AIVSS v4 scorer<br/>harness_aivss.py<br/>→ governance_signals.json"]
+        G1 --> G2 & G3
+        G2 & G3 --> G4
+    end
+
+    %% ── EventBroker (observability) ─────────────────────────
+    subgraph EB["event_broker.py"]
+        E1["HarnessEvent<br/>(stage_start, stage_end,<br/>critic_result, governance_flag,<br/>error, pipeline_complete)"]
+        E2["EventBrokerCritic<br/>(fan-out to subscribers)"]
+        E1 --> E2
+    end
+
+    %% ── Sinks (event consumers) ─────────────────────────────
+    subgraph SINKS["sinks.py"]
+        SK1["SiemSink<br/>→ logs/siem.jsonl<br/>(schema translation)"]
+        SK2["LangfuseSink<br/>→ Langfuse traces<br/>(7 event type mappings)"]
+        SK3["WebhookSink<br/>→ POST to URL<br/>(all events)"]
+    end
+
+    %% ── Flow ────────────────────────────────────────────────
+    API --> CTRL
+    CTRL --> STAGES
+    REG -->|"gates which critics run"| S3
+    GOV -->|"blocks on policy violation"| S5
+    STAGES -->|"emits events"| EB
+    EB --> SINKS
+
+    %% ── Tests ───────────────────────────────────────────────
+    subgraph TESTS["Tests"]
+        direction LR
+        TG["test_harness_governance.py<br/>58 tests → governance.py"]
+        TE["test_harness_event_broker.py<br/>48 tests → event_broker + sinks"]
+        TA["test_harness_aivss.py<br/>39 tests → harness_aivss"]
+    end
+
+    GOV -.->|"covered by"| TG
+    EB -.->|"covered by"| TE
+    S6 -.->|"covered by"| TA
+
+    %% ── Styles ─────────────────────────────────────────────
+    classDef stage fill:#1e293b,stroke:#475569,color:#e2e8f0
+    classDef gov   fill:#3b0764,stroke:#7c3aed,color:#f3e8ff
+    classDef event fill:#0c4a6e,stroke:#0ea5e9,color:#e0f2fe
+    classDef sink  fill:#14532d,stroke:#16a34a,color:#dcfce7
+    classDef test  fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    class CTRL,STAGES,REG stage
+    class GOV gov
+    class EB event
+    class SINKS sink
+    class TESTS test

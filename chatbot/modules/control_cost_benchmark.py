@@ -6,11 +6,11 @@ Used by threat_report.py (action plan table) and moe_orchestrator.py
 
 Sources cited per tier:
   Config-only    — CIS Controls v8 IG1; NIST SP 800-53 Rev 5 (CM/AC families)
-  Tool deploy    — Gartner Market Guide for Security Tools (2024);
-                   SANS Security Spending Survey (2024)
+  Tool deploy    — Gartner Market Guide for Security Tools (2025);
+                   SANS Security Spending Survey (2025)
   Process/prog   — NIST SP 800-53 Rev 5 (CA/RA/AT families); CIS Controls v8 IG2
   Architecture   — NIST SP 800-207 (Zero Trust); CIS Controls v8 IG3;
-                   Gartner Security Architecture Guide (2024)
+                   Gartner Security Architecture Guide (2025)
   AI/ML          — NIST AI RMF 1.0; OWASP LLM Top 10 (2025)
 """
 
@@ -106,9 +106,21 @@ CONTROL_BENCHMARK: Dict[str, Tuple[str, int, int]] = {
 
 _CITATION = (
     "Benchmark estimate — CIS Controls v8 IG1–IG3 / NIST SP 800-53 Rev 5 / "
-    "Gartner Market Guide for Security Tools (2024) / SANS Security Spending Survey (2024) / "
+    "Gartner Market Guide for Security Tools (2025) / SANS Security Spending Survey (2025) / "
     "NIST AI RMF 1.0 / OWASP LLM Top 10 (2025)"
 )
+
+# Canonical public URLs for each benchmark source.
+# Gartner and SANS require subscriptions — URLs point to public landing pages.
+_SOURCES = {
+    "CIS Controls v8":       "https://www.cisecurity.org/controls/v8",
+    "NIST SP 800-53 Rev 5":  "https://doi.org/10.6028/NIST.SP.800-53r5",
+    "NIST SP 800-207":       "https://doi.org/10.6028/NIST.SP.800-207",
+    "NIST AI RMF 1.0":       "https://doi.org/10.6028/NIST.AI.100-1",
+    "OWASP LLM Top 10 2025": "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/",
+    "Gartner Market Guide":  "https://www.gartner.com/en/documents/market-guide-for-security-tools",
+    "SANS Security Survey":  "https://www.sans.org/white-papers/",
+}
 
 
 def lookup(control_name: str) -> Optional[Tuple[str, int, int]]:
@@ -178,6 +190,7 @@ def aggregate_tier(item_strings: List[str]) -> Dict:
         "cost":        _cost_str(total_low, total_high),
         "cost_source": "benchmark",
         "citation":    _CITATION,
+        "sources":     _SOURCES,
         "matched_controls": matched,
         "unmatched_count":  unmatched,
     }

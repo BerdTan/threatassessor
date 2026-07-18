@@ -5,6 +5,22 @@ description: Build and maintain a lightweight structural index (file tree + one-
 
 # Codemap
 
+## Context graphs (read these first for ThreatAssessor)
+
+Five curated MMD relationship graphs live in `.claude/graphs/`. Read the relevant one before building the file index — they answer domain-level navigation questions the flat index can't:
+
+| Graph | Answers |
+|---|---|
+| `.claude/graphs/master.mmd` | How do the 6 domains connect? Where does X fit overall? |
+| `.claude/graphs/pipeline.mmd` | Which module produces report file X? What calls what in the analysis pipeline? |
+| `.claude/graphs/harness.mmd` | What runs in what order? What has side-effects? What's tested where? |
+| `.claude/graphs/dashboard-tabs.mmd` | Which JS function + API route + Python module powers tab X? |
+| `.claude/graphs/skills.mmd` | Which skill for this task? What's the recommended workflow sequence? |
+
+Read `.claude/graphs/README.md` for the update policy (which graph to update when you change what).
+
+**After editing any graph:** always run `python3 .claude/skills/codemap/scripts/validate_graphs.py` — it catches the six failure modes that cause rendering errors (YAML multi-line values, `graph` mode inter-subgraph edges, `<br/>` in edge labels, literal `\n`, duplicate IDs, reserved keywords).
+
 ## The problem this solves
 
 Without a map, orienting in a codebase means running broad searches over and over: `grep -r` across the whole tree, `find . -name`, opening files just to check if they're relevant. Each of those costs tokens, and the cost repeats every time — you re-discover the same structure on every task because nothing persists between searches.

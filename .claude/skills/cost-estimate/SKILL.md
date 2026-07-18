@@ -11,7 +11,7 @@ Reads investment tier items from `07_moe_orchestrator.json`, matches each contro
 - **Effort** — critical-path control (longest calendar task sets the bottleneck)
 - **Cost** — sum of per-control benchmark ranges across matched controls
 - **Coverage** — % of tier items matched to the benchmark (unmatched items flagged for addition)
-- **Attribution** — CIS Controls v8 IG1–IG3 / NIST SP 800-53 Rev 5 / Gartner Market Guide (2024) / SANS Spending Survey (2024) / NIST AI RMF 1.0 / OWASP LLM Top 10 (2025)
+- **Attribution** — CIS Controls v8 IG1–IG3 / NIST SP 800-53 Rev 5 / Gartner Market Guide (2025) / SANS Spending Survey (2025) / NIST AI RMF 1.0 / OWASP LLM Top 10 (2025)
 
 ## Run
 
@@ -76,7 +76,7 @@ Architecture                       ⚡ Quick Wins              ⭐ Recommended  
 
 3. Industry reference health
    ✓ current   CIS Controls v8 IG1–IG3 (2021)
-   ⚠ verify    Gartner Market Guide for Security Tools (2024) — Annual publication …
+   ⚠ verify    Gartner Market Guide for Security Tools (2025) — Annual publication …
    …
 
 4. Suggested additions to CONTROL_BENCHMARK
