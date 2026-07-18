@@ -4,6 +4,24 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-07-18 (Session 23) — Per-control effort differentiation, SM ADR alignment T-ID fallback
+
+### 2. SM Tier A ADR alignment: T-ID fallback lookup
+
+**Problem:**
+Tier A action items from `_tier_a_tiered_action_plan` that name a MITRE T-ID (e.g. "T1190 exploitation fan-out") rather than a control name verbatim had no way to match the `_adr_ctrl_set`. They fell through to dead-end boilerplate: "No existing ADR control matches — add one after confirming scope." TATB `adr_align_pct` was capped at 70%.
+
+**Fix (commit f8af73c):**
+Built `_tech_to_controls` dict from ADR hop `node_techniques` → controls at the start of the method. When direct control-name match returns empty, extract T-IDs from the raw recommendation text via regex and look up their controls. T1083 legitimately has no ADR hop coverage — that MISS is the correct honest signal; the fallback now surfaces the active ADR control set as guidance rather than a dead-end message.
+
+**Expected result:** ADR alignment 70% → ~90% on 19_blockchain_node after the next ER re-run.
+
+**Alternatives rejected:**
+- Fuzzy/substring matching on control names: too broad, would produce false positives on partial words.
+- Injecting controls directly into existing SM JSON: those files are LLM output — only the generator code is the authoritative source.
+
+---
+
 ## 2026-07-18 (Session 23) — Per-control effort differentiation with tiered source citations
 
 ### 1. Action plan effort/cost now per-control, not per-phase
