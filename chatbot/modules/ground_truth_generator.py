@@ -531,7 +531,10 @@ def map_path_to_techniques(
     entry_label = nodes[path[0]].get("label", "").lower()
 
     # User/Insider/Employee entries → Phishing + Valid Accounts (NOT T1190)
-    if any(kw in entry_label for kw in ["user", "admin", "employee", "client", "mobile"]):
+    if any(kw in entry_label for kw in [
+        "user", "admin", "employee", "client", "mobile",
+        "citizen", "staff", "gov", "tenant", "customer", "browser",
+    ]):
         techniques.append("T1566")  # Phishing
         techniques.append("T1078")  # Valid Accounts
 

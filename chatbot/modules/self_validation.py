@@ -101,6 +101,7 @@ def validate_technique_for_path(
         has_auth_component = any(kw in path_str for kw in [
             "auth", "login", "user", "identity", "sso", "mfa", "vpn", "remote",
             "portal", "admin", "api", "gateway", "firewall", "app", "service",
+            "citizen", "staff", "gov", "tenant", "customer", "mobile", "cdn", "edge",
         ])
         has_credential_target = any(kw in target_label for kw in [
             "database", "db", "sql", "user", "account", "credential", "server", "service",
@@ -147,7 +148,10 @@ def validate_technique_for_path(
 
     # T1566 - Phishing
     elif technique_id == "T1566":
-        has_user_entry = any(kw in entry_label for kw in ["user", "employee", "client", "mobile"])
+        has_user_entry = any(kw in entry_label for kw in [
+            "user", "employee", "client", "mobile",
+            "citizen", "browser", "staff", "gov", "tenant", "customer", "person",
+        ])
 
         if has_user_entry:
             validations.append((True, 0.08, "User entry point for phishing vector"))
@@ -267,6 +271,7 @@ def validate_technique_for_path(
         has_network_path = any(kw in path_str for kw in [
             "internet", "external", "api", "gateway", "web", "server", "service",
             "application", "backend", "cloud", "function", "lambda",
+            "cdn", "edge", "proxy", "load balancer",
         ])
         if has_network_path:
             validations.append((True, 0.06, "Network-accessible component present — C2 over app layer applicable"))
@@ -345,6 +350,7 @@ def validate_technique_for_path(
             "auth", "login", "user", "identity", "sso", "mfa", "password", "account",
             "internet", "external", "api", "gateway", "vpn", "portal", "remote",
             "partner", "web", "service", "source", "cluster", "node", "data",
+            "citizen", "staff", "gov", "tenant", "customer", "mobile", "cdn", "edge",
         ])
         if has_auth_surface:
             validations.append((True, 0.07, "Authentication/access surface present — brute force applicable"))
@@ -392,6 +398,7 @@ def validate_technique_for_path(
             "server", "application", "service", "api", "web", "backend",
             "gateway", "internet", "external", "app", "portal", "proxy",
             "cluster", "node", "kafka", "spark", "warehouse", "lake", "bi",
+            "cdn", "edge", "load balancer", "lambda", "function",
         ])
         if has_endpoint:
             validations.append((True, 0.06, "Application endpoint present — endpoint DoS applicable"))
@@ -414,6 +421,40 @@ def validate_technique_for_path(
             validations.append((True, 0.04, "Data target present — cloud storage access plausible"))
         else:
             validations.append((False, 0.0, "No cloud storage components detected"))
+
+    # T1556 - Modify Authentication Process
+    elif technique_id == "T1556":
+        has_auth = any(kw in path_str for kw in [
+            "auth", "login", "sso", "identity", "idp", "oauth", "mfa", "ldap", "ad",
+            "credential", "password", "token", "session", "iam",
+        ])
+        if has_auth:
+            validations.append((True, 0.07, "Authentication component present — auth process modification applicable"))
+        else:
+            validations.append((False, 0.0, "No authentication component for auth process modification"))
+
+    # T1610 - Deploy Container
+    elif technique_id == "T1610":
+        has_container = any(kw in path_str for kw in [
+            "container", "pod", "kubernetes", "docker", "k8s", "ecs", "fargate",
+            "cluster", "namespace", "orchestrat", "serverless", "lambda", "function",
+        ])
+        if has_container:
+            validations.append((True, 0.07, "Container/orchestration component present — container deployment applicable"))
+        else:
+            validations.append((False, 0.0, "No container environment detected"))
+
+    # T1195 - Supply Chain Compromise
+    elif technique_id == "T1195":
+        has_supply_chain = any(kw in path_str for kw in [
+            "pipeline", "ci", "cd", "cicd", "build", "deploy", "supply", "vendor",
+            "package", "dependency", "registry", "repo", "github", "artifact",
+            "third", "partner", "integration",
+        ])
+        if has_supply_chain:
+            validations.append((True, 0.07, "CI/CD or supply chain component present — supply chain compromise applicable"))
+        else:
+            validations.append((False, 0.0, "No supply chain / CI-CD component detected"))
 
     # T1562 - Impair Defenses
     elif technique_id == "T1562":

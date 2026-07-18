@@ -331,8 +331,11 @@ def map_node_to_techniques(
             logger.info(f"Entry {node_label}: Internal app/service pivot entry — T1133 excluded (not a network boundary)")
 
         # User/Client/Visitor entry — phishing + credential abuse + external remote access
-        elif any(kw in label_lower for kw in ["user", "client", "employee", "admin",
-                                               "visitor", "browser", "end user", "end-user"]):
+        elif any(kw in label_lower for kw in [
+            "user", "client", "employee", "admin", "visitor", "browser",
+            "end user", "end-user", "citizen", "staff", "gov", "tenant",
+            "customer", "person", "operator",
+        ]):
             if "mfa" in controls_lower:
                 techniques.extend(ENTRY_TECHNIQUES["user"]["with_mfa"])
             else:
@@ -392,10 +395,20 @@ def map_node_to_techniques(
                 techniques.extend(techs)
                 logger.debug(f"Target {node_label}: Matched '{target_type}' → {techs}")
 
-        # Generic fallback for unrecognized targets
+        # Generic fallback for unrecognized targets — split by node role
         if not techniques:
-            techniques.extend(["T1213", "T1530", "T1041"])
-            logger.warning(f"Target {node_label}: No specific match, using generic fallback")
+            is_network_node = any(kw in label_lower for kw in [
+                "cdn", "edge", "cache", "proxy", "load balancer", "firewall",
+                "router", "switch", "gateway", "waf", "dns", "ingress",
+            ])
+            if is_network_node:
+                # Network edge targets: availability + config manipulation — NOT data theft
+                techniques.extend(["T1562", "T1071", "T1090"])
+                logger.warning(f"Target {node_label}: Network edge fallback (T1562/T1071/T1090)")
+            else:
+                # Unknown data-bearing targets: default data access + exfil
+                techniques.extend(["T1213", "T1530", "T1041"])
+                logger.warning(f"Target {node_label}: Data target fallback (T1213/T1530/T1041)")
 
         # T1567 (Exfil Over Web Service) — applicable when arch has internet access or cloud nodes
         # Attackers use Dropbox/GitHub/S3 as exfil channels regardless of whether the arch uses cloud
