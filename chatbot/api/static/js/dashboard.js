@@ -10114,10 +10114,73 @@ class Dashboard {
                     // Split: SM-sourced items start with "[SM] "; originals are the rest
                     const origItems = allItems.filter(i => !String(i).startsWith('[SM] '));
                     const smItems   = allItems.filter(i =>  String(i).startsWith('[SM] '));
+                    // Parse and render each original tier item in a structured 3-line layout:
+                    //   Line 1: control name (bold)  +  "at <node>" (muted)
+                    //   Line 2: evidence badges (critic + severity, colour-coded)
+                    //   Line 3: protects / covers paths (dim, compact)
+                    const _sevColor = s => ({
+                        critical: 'var(--danger-color)', high: 'var(--danger-color)',
+                        medium: 'var(--warning-color)', low: 'var(--text-tertiary)'
+                    }[s.toLowerCase()] || 'var(--text-tertiary)');
+                    const _criticLabel = s => ({
+                        red_team: 'Red Team', blackhat: 'Blackhat',
+                        purple_team: 'Purple Team', architect: 'Architect',
+                        tester: 'Tester'
+                    }[s.toLowerCase()] || s);
+                    const _parseTierItem = function(raw) {
+                        // Split on " — " to get [control+node, traces, protects]
+                        const parts = raw.split(' — ');
+                        // Part 0: "Control name at Node"
+                        const nameNode = parts[0] || '';
+                        const atIdx = nameNode.indexOf(' at ');
+                        const ctrlName = atIdx > -1 ? nameNode.slice(0, atIdx).trim() : nameNode.trim();
+                        const nodePart = atIdx > -1 ? nameNode.slice(atIdx + 4).trim() : '';
+                        // Parts 1+: "traces to: …" and "protects: …" / "covers …"
+                        let tracesStr = '', protectsStr = '';
+                        for (let p = 1; p < parts.length; p++) {
+                            const seg = parts[p].trim();
+                            if (/^traces to:/i.test(seg))   tracesStr   = seg.replace(/^traces to:\s*/i, '');
+                            else if (/^protects:/i.test(seg)) protectsStr = seg.replace(/^protects:\s*/i, '');
+                            else if (/^covers/i.test(seg))    protectsStr = seg;
+                        }
+                        // Build evidence badges: parse "critic field/SEVERITY + critic2/SEV2"
+                        const badgeHtml = tracesStr
+                            ? tracesStr.split(/\s*\+\s*/).map(function(tok) {
+                                const m = tok.match(/^([a-z_]+)\s+(?:[a-z_\/]+\/)?(CRITICAL|HIGH|MEDIUM|LOW)/i);
+                                const critic = m ? _criticLabel(m[1]) : tok.split('/')[0].trim();
+                                const sev    = m ? m[2] : (tok.match(/(CRITICAL|HIGH|MEDIUM|LOW)/i)||['',''])[1];
+                                const bc = sev ? _sevColor(sev) : 'var(--text-tertiary)';
+                                return '<span style="display:inline-block; font-size:0.65rem; font-weight:700; padding:1px 5px; border-radius:3px;'
+                                     + 'border:1px solid ' + bc + '44; color:' + bc + '; background:' + bc + '10; white-space:nowrap; margin-right:3px;">'
+                                     + critic + (sev ? ' ' + sev : '') + '</span>';
+                            }).join('')
+                            : '';
+                        // Compact protects: collapse long AP lists
+                        const _compactProtects = function(s) {
+                            const apList = s.match(/AP-\d+/g) || [];
+                            if (apList.length > 5) {
+                                return 'AP-' + apList[0].split('-')[1] + '–AP-' + apList[apList.length-1].split('-')[1]
+                                     + ' (' + apList.length + ' paths)';
+                            }
+                            return s.replace(/\bAP-(\d+),\s*AP-(\d+),\s*AP-(\d+),\s*AP-(\d+),\s*AP-(\d+)\b/g,
+                                'AP-$1–AP-$5').trim();
+                        };
+                        return { ctrlName, nodePart, badgeHtml, protectsStr: _compactProtects(protectsStr) };
+                    };
                     const origList = origItems.length > 0
-                        ? '<ul style="margin:0.5rem 0 0; padding-left:1.25rem; font-size:0.8125rem; color:var(--text-color);">'
-                          + origItems.map(function(i) { return '<li>' + i + '</li>'; }).join('')
-                          + '</ul>'
+                        ? '<div style="margin-top:0.5rem; display:flex; flex-direction:column; gap:0.45rem;">'
+                          + origItems.map(function(i) {
+                              const p = _parseTierItem(String(i));
+                              return '<div style="padding:0.45rem 0.65rem; background:var(--nav-hover-bg); border-radius:6px; border-left:2px solid var(--border-color);">'
+                                   + '<div style="font-size:0.8125rem; font-weight:600; color:var(--text-color); margin-bottom:0.15rem;">'
+                                   + p.ctrlName
+                                   + (p.nodePart ? '<span style="font-size:0.72rem; font-weight:400; color:var(--text-tertiary); margin-left:0.4rem;">at ' + p.nodePart + '</span>' : '')
+                                   + '</div>'
+                                   + (p.badgeHtml ? '<div style="margin-bottom:0.15rem;">' + p.badgeHtml + '</div>' : '')
+                                   + (p.protectsStr ? '<div style="font-size:0.72rem; color:var(--text-tertiary);">↳ ' + p.protectsStr + '</div>' : '')
+                                   + '</div>';
+                          }).join('')
+                          + '</div>'
                         : '';
                     const smList = smItems.length > 0
                         ? '<div style="margin-top:0.5rem; padding:0.4rem 0.75rem; background:#a855f710; border:1px solid #a855f733; border-radius:6px;">'
