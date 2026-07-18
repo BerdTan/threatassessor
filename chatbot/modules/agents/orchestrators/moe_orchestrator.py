@@ -668,6 +668,11 @@ class MoEOrchestrator:
         if self.progress_callback:
             self.progress_callback("synthesis:build", None)
 
+        # Inject RT roadmap list into consensus so _build_improvement_options can use
+        # it as a positional fallback when the LLM left effort/cost as placeholders.
+        if red_team_critique and hasattr(red_team_critique, 'breakdown'):
+            consensus["_rt_roadmap"] = red_team_critique.breakdown.get("exploit_mitigation_roadmap", [])
+
         # Extract risk transformation from ground truth
         risk_data = self._extract_risk_transformation(ground_truth)
 
@@ -1994,46 +1999,81 @@ Reply with only the JSON array, no other text.
     def _build_improvement_options(self, consensus: Dict, risk_data: Dict) -> Dict:
         """
         Read improvement tier data from the LLM synthesis output (consensus).
-        Falls back to count-based summaries without invented cost figures if
-        synthesis did not produce tier data.
+        Falls back to the Red Team roadmap list (positional: 0=quick_win, 1=recommended,
+        2=maximum) when the LLM returned a placeholder or omitted effort/cost fields.
         """
         tiers = consensus.get("improvement_tiers", {})
 
-        def _tier(key: str, name: str, focus: str) -> Dict:
+        # Red Team roadmap is a list of 3 dicts ordered quick_win/recommended/maximum.
+        # Used as a fallback when the synthesis LLM didn't substitute effort/cost values.
+        rt_roadmap: list = consensus.get("_rt_roadmap", [])
+
+        _PLACEHOLDER = {"not estimated", "cost not estimated",
+                        "use red team roadmap effort field verbatim",
+                        "use red team roadmap cost field verbatim"}
+
+        def _resolve_effort_cost(llm_effort: str, llm_cost: str, rt_idx: int):
+            """Return (effort, cost, source) preferring LLM value; fall back to RT roadmap."""
+            rt = rt_roadmap[rt_idx] if rt_idx < len(rt_roadmap) else {}
+            effort = (llm_effort or "").strip()
+            cost   = (llm_cost   or "").strip()
+            used_rt = False
+            if not effort or effort.lower() in _PLACEHOLDER:
+                effort = rt.get("effort", "not estimated")
+                used_rt = True
+            if not cost or cost.lower() in _PLACEHOLDER:
+                cost = rt.get("cost", "cost not estimated")
+                used_rt = True
+            if effort in ("not estimated",) and cost in ("cost not estimated",):
+                source = "not_available"
+            elif used_rt:
+                source = "red_team_roadmap"
+            else:
+                source = "synthesis"
+            return effort, cost, source
+
+        def _tier(key: str, name: str, focus: str, rt_idx: int) -> Dict:
             t = tiers.get(key, {})
             if t:
+                effort, cost, source = _resolve_effort_cost(
+                    t.get("effort", ""), t.get("cost", ""), rt_idx
+                )
                 return {
                     "name": name,
                     "items": t.get("items", []),
-                    "effort": t.get("effort", "not estimated"),
-                    "cost": t.get("cost", "cost not estimated"),
+                    "effort": effort,
+                    "cost": cost,
+                    "cost_source": source,
                     "risk_reduction": t.get("risk_reduction", ""),
                     "residual": t.get("residual", ""),
                     "practical_verdict": t.get("practical_verdict", ""),
                     "rationale": t.get("rationale", ""),
                 }
-            # Fallback — never invent costs
+            # Full fallback — LLM produced no tier data at all
+            rt = rt_roadmap[rt_idx] if rt_idx < len(rt_roadmap) else {}
             counts = {
                 "quick_win":   len(consensus.get("critical", [])),
                 "recommended": len(consensus.get("critical", [])) + len(consensus.get("high", [])),
                 "maximum":     len(consensus.get("critical", [])) + len(consensus.get("high", [])) + len(consensus.get("review", [])),
             }
+            has_rt = bool(rt.get("effort") and rt.get("cost"))
             return {
                 "name": name,
                 "items": [],
-                "effort": "not estimated",
-                "cost": "cost not estimated",
+                "effort": rt.get("effort", "not estimated"),
+                "cost": rt.get("cost", "cost not estimated"),
+                "cost_source": "red_team_roadmap" if has_rt else "not_available",
                 "risk_reduction": f"{risk_data['current']} → {risk_data['target']}",
                 "residual": "Residual risk remains — controls reduce exposure but do not eliminate it.",
-                "practical_verdict": "not assessed",
+                "practical_verdict": rt.get("practical", "not assessed"),
                 "item_count": counts.get(key, 0),
                 "focus": focus,
             }
 
         return {
-            "quick_wins":  _tier("quick_win",   "Quick Wins",         "Critical gaps — highest ROI, lowest friction"),
-            "recommended": _tier("recommended",  "Recommended Target", "Critical + High — balanced security/usability/cost"),
-            "maximum":     _tier("maximum",      "Maximum Security",   "Full coverage including diminishing-return items"),
+            "quick_wins":  _tier("quick_win",   "Quick Wins",         "Critical gaps — highest ROI, lowest friction",          0),
+            "recommended": _tier("recommended",  "Recommended Target", "Critical + High — balanced security/usability/cost",    1),
+            "maximum":     _tier("maximum",      "Maximum Security",   "Full coverage including diminishing-return items",      2),
         }
 
     def _save_validation(self, critique: CritiqueScore, output_path: Path):
