@@ -4,7 +4,37 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
-## 2026-07-18 (Session 22) — T1133 over-assignment fix, app-node keyword ordering, validation rule completeness
+## 2026-07-18 (Session 22) — T1133 over-assignment fix, app-node keyword ordering, validation rule completeness, node-label brittleness design intent
+
+### 0. Design intent: mitigate keyword-matching brittleness with canonicalisation + embedding fallback
+
+**Problem observed:**
+Every new architecture with non-standard node labels (e.g. "citizen", "govstaff", "container app", "lambda app") requires reactive keyword additions scattered across three files (`self_validation.py`, `per_node_ttp_mapper.py`, `ground_truth_generator.py`). The flywheel catches the misses but only after a run has already produced wrong results. Keyword matching is a vocabulary problem — any label outside the trained vocabulary silently falls to a generic fallback and may get wrong techniques assigned.
+
+**Decision: two-tier mitigation, not yet implemented**
+
+**Tier 1 (next implementation priority): label canonicalisation table**
+A single config mapping label synonyms to semantic node types, applied before any keyword rule fires:
+- `"citizen" → "user"`, `"govstaff" → "employee"`, `"workload" → "server"`, `"container app" → "app server"`, etc.
+- Centralises vocabulary in one place; eliminates multi-file keyword scatter.
+- Still fully deterministic and debuggable.
+- Flywheel's role shifts from "patch keyword list" to "flag missing canonical entry" — cleaner feedback loop.
+
+**Tier 2 (longer-term): embedding-based fallback**
+When a node label produces 0 technique matches from keyword rules, embed the label and find nearest technique cluster by cosine similarity using the existing `technique_embeddings.json` infrastructure.
+- Gated: only activates on zero-match nodes — keyword rules remain authoritative.
+- Trade-offs: ~30–50 additional API calls per architecture, non-deterministic across model updates, harder to explain ("why did T1078 fire here?").
+- Not implemented until canonicalisation is in place and its coverage measured.
+
+**Alternatives rejected for now:**
+- Embedding-first (replace keywords entirely): loses determinism and auditability; makes TATB scoring unstable across runs.
+- Fuzzy/proximity string matching (Levenshtein, trigram): handles typos but not semantic gaps ("citizen" vs "user" has zero string overlap).
+- Intent classification via LLM at analysis time: too slow, adds LLM dependency to the deterministic engine path.
+
+**Flywheel's correct role:**
+The critic learning loop (`critic_signals.jsonl` → `engine_hints.json`) remains the right feedback signal — it identifies which node labels produced gaps in which architectures. Once canonicalisation is in place, promoted hints should update the canonical table first, keyword lists second.
+
+---
 
 ### 1. T1133 exclusion for internal app/service entry nodes
 
