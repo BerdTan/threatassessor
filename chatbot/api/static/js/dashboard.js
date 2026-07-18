@@ -6368,13 +6368,13 @@ class Dashboard {
                 id: 'action', title: 'Action Plan', icon: '✅', audience: 'stakeholder', type: 'markdown',
                 desc: 'Prioritised recommendations with implementation steps',
                 personas: ['CISO', 'Security Engineer', 'IT Team'],
-                readersContext: 'Translates the threat analysis into a sequenced to-do list ranked by risk reduction and implementation effort. CISOs use it to set quarterly security roadmaps; security engineers and IT teams use it to understand what to build or configure first.',
+                readersContext: 'Translates the threat analysis into a sequenced to-do list ranked by risk reduction and implementation effort. Effort and cost estimates are per-control benchmarks sourced from CIS Controls v8 IG1–IG3, NIST SP 800-53 Rev 5, Gartner Market Guide for Security Tools (2024), and SANS Security Spending Survey (2024). AI/ML controls cite NIST AI RMF 1.0 and OWASP LLM Top 10 (2025). CISOs use this to set quarterly security roadmaps; security engineers and IT teams use it to understand what to build or configure first.',
             },
             '08_improvement_summary.md': {
                 id: 'improvement', title: 'Improvement Summary', icon: '🗺️', audience: 'stakeholder', type: 'markdown',
                 desc: 'Roadmap across Quick Win, Recommended, and Maximum tiers',
                 personas: ['CISO', 'Security Engineer'],
-                readersContext: 'Three-tier roadmap showing risk reduction at each investment level. Quick Wins deliver the highest security gain per unit effort. Recommended balances security with usability. Maximum covers all residual risk. Decision-makers use this to match security spend to risk appetite.',
+                readersContext: 'Three-tier roadmap showing risk reduction at each investment level. Programme cost ranges are benchmarked against SANS Security Spending Survey (2024), Gartner Market Guide for Security Tools (2024), and CIS Controls v8 IG1–IG3 implementation tiers. Quick Wins deliver the highest security gain per unit effort. Recommended balances security with usability. Maximum covers all residual risk. Decision-makers use this to match security spend to risk appetite.',
             },
             'before.mmd': {
                 id: 'before', title: 'Current Architecture', icon: '⚠️', audience: 'stakeholder', type: 'mermaid', color: 'var(--danger-color)',

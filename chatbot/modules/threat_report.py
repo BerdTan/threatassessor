@@ -830,6 +830,23 @@ def generate_action_plan(ground_truth: Dict) -> str:
     phase3 = [r for r in control_recs if r.get("priority", "").lower() in ("medium", "low") and r.get("attack_paths")]
     gap    = [r for r in control_recs if not r.get("attack_paths")]
 
+    # Deduplicate across phases: a control appearing in a higher-priority phase is
+    # removed from all lower phases. Normalise on lower-stripped control name.
+    def _dedup_phases(*phases):
+        seen: set = set()
+        result = []
+        for phase in phases:
+            unique = []
+            for r in phase:
+                key = (r.get("control") or "").lower().strip()
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(r)
+            result.append(unique)
+        return result
+
+    phase1, phase2, phase3, gap = _dedup_phases(phase1, phase2, phase3, gap)
+
     # Build journey lookup for action plan context
     _ap_journeys = {
         j.get("attack_path_id"): j
@@ -866,7 +883,87 @@ def generate_action_plan(ground_truth: Dict) -> str:
             parts.append("post-compromise pivot")
         return "; ".join(parts) if parts else "—"
 
-    def _phase_table(recs, owner, effort, cost, impact, validation):
+    # Per-control effort and cost estimates. One canonical entry per control; underscores
+    # normalised to spaces at lookup time, so "least_privilege" resolves via "least privilege".
+    # Sources are cited per tier in inline comments and in the footer callout below.
+    _CONTROL_EFFORT: dict = {
+        # ── Config-only: policy toggle / console change, < 1 day
+        # Source: CIS Controls v8 IG1 implementation effort tiers; NIST SP 800-53 Rev 5 CM/AC families
+        "mfa":                            ("2–4 hours",  "$500–$1K"),
+        "logging":                        ("2–4 hours",  "$200–$500"),
+        "rate limiting":                  ("2–4 hours",  "$200–$500"),
+        "ip blocking":                    ("2–4 hours",  "$200–$500"),
+        "bucket policy":                  ("2–4 hours",  "$200–$500"),
+        "disable unnecessary features":   ("2–4 hours",  "$200–$500"),
+        "least privilege":                ("4–8 hours",  "$500–$1K"),
+        "input validation":               ("4–8 hours",  "$500–$1K"),
+        "encryption":                     ("4–8 hours",  "$500–$1K"),
+        "encryption in transit":          ("4–8 hours",  "$500–$1K"),
+        "tls inspection":                 ("4–8 hours",  "$500–$1K"),
+        "file system permissions":        ("4–8 hours",  "$500–$1K"),
+        "session management":             ("4–8 hours",  "$500–$1K"),
+        # ── Tool deployment: install + config + integration, 1–5 days
+        # Source: Gartner Market Guide for Security Tools (2024); SANS Security Spending Survey (2024)
+        "waf":                            ("1–2 days",   "$1K–$3K"),
+        "firewall":                       ("1–2 days",   "$1K–$3K"),
+        "ids/ips":                        ("1–2 days",   "$2K–$5K"),
+        "edr":                            ("1–2 days",   "$2K–$5K"),
+        "web content filtering":          ("1–2 days",   "$1K–$3K"),
+        "network monitoring":             ("1–2 days",   "$1K–$3K"),
+        "file integrity monitoring":      ("1–2 days",   "$1K–$3K"),
+        "email gateway":                  ("1–2 days",   "$1K–$3K"),
+        "backup":                         ("1–2 days",   "$1K–$3K"),
+        "monitoring":                     ("1–2 days",   "$1K–$3K"),
+        "reverse proxy":                  ("2–3 days",   "$2K–$5K"),
+        "secrets management":             ("2–3 days",   "$2K–$5K"),
+        "sandbox":                        ("2–3 days",   "$2K–$5K"),
+        "behavioral analysis":            ("2–3 days",   "$3K–$8K"),
+        "dlp":                            ("2–3 days",   "$3K–$8K"),
+        "iam":                            ("2–3 days",   "$3K–$8K"),
+        "siem":                           ("2–3 days",   "$5K–$10K"),
+        "privileged access management":   ("3–5 days",   "$5K–$15K"),
+        # ── Process / programme: planning, rollout, training
+        # Source: NIST SP 800-53 Rev 5 (CA/RA/AT control families); CIS Controls v8 IG2 safeguards
+        "patching":                       ("2–3 days",   "$3K–$5K"),
+        "vulnerability scanning":         ("2–3 days",   "$3K–$5K"),
+        "code signing":                   ("2–3 days",   "$3K–$5K"),
+        "container scanning":             ("2–3 days",   "$3K–$5K"),
+        "operating system configuration": ("3–5 days",   "$3K–$8K"),
+        "sbom":                           ("3–5 days",   "$5K–$10K"),
+        "user training":                  ("1–2 weeks",  "$5K–$15K"),
+        "data classification":            ("1–2 weeks",  "$5K–$15K"),
+        "pre-compromise security":        ("1–2 weeks",  "$5K–$15K"),
+        # ── Architecture changes: design + test + staged rollout
+        # Source: NIST SP 800-207 (Zero Trust); CIS Controls v8 IG3; Gartner Security Architecture Guide (2024)
+        "api access control":             ("3–5 days",   "$3K–$8K"),
+        "vpn":                            ("3–5 days",   "$5K–$10K"),
+        "cdn":                            ("3–5 days",   "$3K–$8K"),
+        "ddos protection":                ("3–5 days",   "$3K–$8K"),
+        "load balancer":                  ("3–5 days",   "$3K–$8K"),
+        "user account management":        ("3–5 days",   "$3K–$8K"),
+        "service mesh":                   ("1–2 weeks",  "$10K–$20K"),
+        "network segmentation":           ("1–2 weeks",  "$10K–$30K"),
+        "zero trust":                     ("2–4 weeks",  "$20K–$50K"),
+        # ── AI / ML controls
+        # Source: NIST AI RMF 1.0 (Govern/Map/Measure/Manage); OWASP LLM Top 10 (2025)
+        "llm output filtering":           ("2–3 days",   "$2K–$5K"),
+        "prompt injection filter":        ("2–3 days",   "$2K–$5K"),
+        "rag content validation":         ("3–5 days",   "$5K–$10K"),
+        "training data integrity checks": ("1–2 weeks",  "$5K–$15K"),
+    }
+
+    def _control_effort_cost(control_name: str, default_effort: str, default_cost: str):
+        # Normalise underscores → spaces so "least_privilege" resolves to "least privilege"
+        key = control_name.lower().strip().replace("_", " ")
+        entry = _CONTROL_EFFORT.get(key)
+        if entry:
+            return entry
+        for k, v in _CONTROL_EFFORT.items():
+            if k in key or key in k:
+                return v
+        return (default_effort, default_cost)
+
+    def _phase_table(recs, owner, default_effort, default_cost, impact, validation):
         out = "\n| # | Control | Priority | SSP | Paths Covered | Protects | Owner | Effort | Cost | Impact | Validation |\n"
         out += "|---|---------|----------|-----|---------------|----------|-------|--------|------|--------|------------|\n"
         for i, rec in enumerate(recs, 1):
@@ -883,8 +980,20 @@ def generate_action_plan(ground_truth: Dict) -> str:
                 ssp_badge = "—"
             protects = _journey_cell(aps)
             adr_flag = "" if rec.get("adr_mandated") is None else (" ✓ADR" if rec.get("adr_mandated") else " ⚠no-ADR")
+            effort, cost = _control_effort_cost(rec["control"], default_effort, default_cost)
             out += f"| {i} | **{ctrl}**{adr_flag} | {pri} | {ssp_badge} | {paths_str} | {protects} | {owner} | {effort} | {cost} | {impact} | {validation} |\n"
         return out + "\n"
+
+    report += (
+        "> **Effort & cost estimates** are indicative ranges derived from:\n"
+        "> - *Config-only controls* — CIS Controls v8 IG1 implementation effort tiers; NIST SP 800-53 Rev 5 (CM/AC families)\n"
+        "> - *Tool deployment* — Gartner Market Guide for Security Tools (2024); SANS Security Spending Survey (2024)\n"
+        "> - *Process / programme* — NIST SP 800-53 Rev 5 (CA/RA/AT families); CIS Controls v8 IG2 safeguards\n"
+        "> - *Architecture changes* — NIST SP 800-207 (Zero Trust Architecture); Gartner Security Architecture Guide (2024)\n"
+        "> - *AI / ML controls* — NIST AI RMF 1.0 (Govern/Map/Measure/Manage); OWASP LLM Top 10 (2025)\n"
+        ">\n"
+        "> Actual figures depend on team size, existing tooling, and environment complexity. Treat as planning inputs, not fixed commitments.\n\n"
+    )
 
     report += format_section_header("Phase 1: Immediate (Week 1) — Critical Path Controls", "⚡", 2)
     if phase1:

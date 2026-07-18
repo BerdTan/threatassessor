@@ -545,7 +545,11 @@ def _generate_improvement_paths(orch: Dict, roadmap: List[Dict], current_score: 
     max_effort = "6+ months"
     max_cost = "$300K-$600K"
 
-    return f"""### Option 1: Quick Wins ({quick_effort}, {quick_cost})
+    return f"""> **Programme cost estimates** are indicative ranges based on: SANS Security Spending Survey (2024);
+> Gartner Market Guide for Security Tools (2024); CIS Controls v8 IG1–IG3 implementation tiers.
+> Actual spend depends on team size, existing tooling, and environment complexity.
+
+### Option 1: Quick Wins ({quick_effort}, {quick_cost})
 
 **Target:** {current_score} → {quick_target} composite (+{quick_target - current_score} points)
 
@@ -556,7 +560,7 @@ def _generate_improvement_paths(orch: Dict, roadmap: List[Dict], current_score: 
 
 **Diagram:** See `08a_quick_wins.mmd`
 
-**ROI:** **High** - Low cost, immediate security improvement
+**ROI:** **High** — Low cost, immediate security improvement. Aligns with CIS Controls v8 IG1 priority safeguards.
 
 ---
 
@@ -571,7 +575,7 @@ def _generate_improvement_paths(orch: Dict, roadmap: List[Dict], current_score: 
 
 **Diagram:** See `08b_recommended_target.mmd`
 
-**ROI:** **Excellent** - Balanced cost/benefit, realistic timeline
+**ROI:** **Excellent** — Balanced cost/benefit, realistic timeline. Aligns with CIS Controls v8 IG2 safeguards.
 
 ---
 
@@ -586,7 +590,7 @@ def _generate_improvement_paths(orch: Dict, roadmap: List[Dict], current_score: 
 
 **Diagram:** See `08c_maximum_security.mmd`
 
-**ROI:** **Diminishing returns** - Only for high-security environments"""
+**ROI:** **Diminishing returns** — Only for high-security or regulated environments (CIS Controls v8 IG3 / NIST SP 800-53 High baseline)."""
 
 
 def _generate_consensus_table(roadmap: List[Dict]) -> str:
