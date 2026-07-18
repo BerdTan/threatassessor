@@ -1343,7 +1343,7 @@ class Dashboard {
             const riskText = riskTextRaw.replace(/\s*\(.*\)/, '').trim();
             const border = t.recommended ? '2px solid var(--secondary-color)' : '1px solid var(--border-color)';
             const moeItems = (mT.items && Array.isArray(mT.items)) ? mT.items : [];
-            const srcLabel = { 'red_team_roadmap': 'Red Team roadmap', 'synthesis': 'MoE synthesis', 'not_available': null };
+            const srcLabel = { 'benchmark': 'Benchmark (CIS/NIST/Gartner)', 'red_team_roadmap': 'Red Team roadmap', 'synthesis': 'MoE synthesis', 'not_available': null };
             const costSrc = hasMoe ? (srcLabel[mT.cost_source] || null) : null;
             const costAttr = costSrc ? `<div style="font-size:0.65rem; color:var(--text-tertiary); margin-top:0.1rem;">Source: ${costSrc}</div>` : '';
             return `
@@ -10185,7 +10185,7 @@ class Dashboard {
                         + '</div>'
                         + rationaleBlock
                         + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; font-size:0.8125rem; margin-bottom:0.5rem;">'
-                        + '<div><span style="color:var(--text-tertiary);">Cost:</span> ' + (t.cost || 'cost not estimated') + (t.cost_source && t.cost_source !== 'not_available' ? '<div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.1rem;">Source: ' + (t.cost_source === 'red_team_roadmap' ? 'Red Team roadmap' : 'MoE synthesis') + '</div>' : '') + '</div>'
+                        + '<div><span style="color:var(--text-tertiary);">Cost:</span> ' + (t.cost || 'cost not estimated') + (t.cost_source && t.cost_source !== 'not_available' ? '<div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.1rem;">Source: ' + ({'benchmark':'Benchmark (CIS/NIST/Gartner)','red_team_roadmap':'Red Team roadmap','synthesis':'MoE synthesis'}[t.cost_source] || t.cost_source) + '</div>' : '') + '</div>'
                         + '<div><span style="color:var(--text-tertiary);">Effort:</span> ' + (t.effort || 'not estimated') + '</div>'
                         + '<div><span style="color:var(--text-tertiary);">Attacker score ↓:</span> ' + (t.risk_reduction || '—').replace(/\s*\(.*\)/, '').trim() + ' <span style="font-size:0.7rem; color:var(--text-tertiary);">(lower = harder to exploit)</span></div>'
                         + '</div>'
@@ -10197,7 +10197,7 @@ class Dashboard {
                 tiersHtml = '<div class="er-panel er-synth-panel" data-synth-key="tiers" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">📊 Improvement Tiers' + (Object.values(improvTiers).some(t => t && t.sm_enhanced) ? ' <span style="font-size:0.7rem; color:#a855f7; font-weight:700;">🧩 SM-enhanced</span>' : '') + '</h3>'
-                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Synthesised from all ' + criticCountLabel + ' findings' + (Object.values(improvTiers).some(t => t && t.sm_enhanced) ? ' + ScrumMaster priority actions' : '') + '. Cost and effort sourced from Red Team exploit roadmap where available, MoE synthesis otherwise — attribution shown per tier.</p></div>'
+                    + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Synthesised from all ' + criticCountLabel + ' findings' + (Object.values(improvTiers).some(t => t && t.sm_enhanced) ? ' + ScrumMaster priority actions' : '') + '. Cost and effort are benchmark estimates (CIS Controls v8 / NIST SP 800-53 / Gartner 2024) aggregated across the tier\'s controls — attribution shown per tier.</p></div>'
                     + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;">∨</span>'
                     + '</div>'
                     + '<div class="er-panel-body" style="padding: 0 1.25rem 1.25rem;">' + tierCards + '</div>'

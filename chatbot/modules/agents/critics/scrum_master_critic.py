@@ -1195,10 +1195,15 @@ class ScrumMasterCritic:
         rapids_hints: Dict[str, float] = {}
         gt_gaps: List[str] = []
 
-        # Weak controls: generic names that provide no actionable guidance
+        # Weak controls: single-word generic verbs with no object — not actionable.
+        # Match whole-word only to avoid flagging specific controls like
+        # "file integrity monitoring" or "network monitoring".
+        import re as _re_wk
         generic_keywords = ["review", "monitor", "consider", "ensure", "implement security"]
         for ctrl in ground_truth.get("controls_missing", []):
-            if any(kw in ctrl.lower() for kw in generic_keywords):
+            ctrl_lower = ctrl.lower().strip()
+            if any(_re_wk.search(r'\b' + kw + r'\b', ctrl_lower) and len(ctrl_lower.split()) <= 2
+                   for kw in generic_keywords):
                 weak_controls.append(ctrl)
 
         # Pattern gaps: unresolved_rec impediments that have no matching RAPIDS category

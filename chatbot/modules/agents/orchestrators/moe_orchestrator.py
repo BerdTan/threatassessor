@@ -668,11 +668,6 @@ class MoEOrchestrator:
         if self.progress_callback:
             self.progress_callback("synthesis:build", None)
 
-        # Inject RT roadmap list into consensus so _build_improvement_options can use
-        # it as a positional fallback when the LLM left effort/cost as placeholders.
-        if red_team_critique and hasattr(red_team_critique, 'breakdown'):
-            consensus["_rt_roadmap"] = red_team_critique.breakdown.get("exploit_mitigation_roadmap", [])
-
         # Extract risk transformation from ground truth
         risk_data = self._extract_risk_transformation(ground_truth)
 
@@ -1998,82 +1993,38 @@ Reply with only the JSON array, no other text.
 
     def _build_improvement_options(self, consensus: Dict, risk_data: Dict) -> Dict:
         """
-        Read improvement tier data from the LLM synthesis output (consensus).
-        Falls back to the Red Team roadmap list (positional: 0=quick_win, 1=recommended,
-        2=maximum) when the LLM returned a placeholder or omitted effort/cost fields.
+        Compute investment tier effort and cost from benchmark data, not LLM estimates.
+        Effort = critical-path (highest-rank) control in the tier.
+        Cost   = sum of per-control benchmark ranges across the tier.
+        Source = "benchmark" when the table covers ≥1 control; "not_available" otherwise.
         """
+        from chatbot.modules.control_cost_benchmark import aggregate_tier as _agg_tier
         tiers = consensus.get("improvement_tiers", {})
 
-        # Red Team roadmap is a list of 3 dicts ordered quick_win/recommended/maximum.
-        # Used as a fallback when the synthesis LLM didn't substitute effort/cost values.
-        rt_roadmap: list = consensus.get("_rt_roadmap", [])
-
-        _PLACEHOLDER = {"not estimated", "cost not estimated",
-                        "use red team roadmap effort field verbatim",
-                        "use red team roadmap cost field verbatim"}
-
-        def _resolve_effort_cost(llm_effort: str, llm_cost: str, rt_idx: int):
-            """Return (effort, cost, source) preferring LLM value; fall back to RT roadmap."""
-            rt = rt_roadmap[rt_idx] if rt_idx < len(rt_roadmap) else {}
-            effort = (llm_effort or "").strip()
-            cost   = (llm_cost   or "").strip()
-            used_rt = False
-            if not effort or effort.lower() in _PLACEHOLDER:
-                effort = rt.get("effort", "not estimated")
-                used_rt = True
-            if not cost or cost.lower() in _PLACEHOLDER:
-                cost = rt.get("cost", "cost not estimated")
-                used_rt = True
-            if effort in ("not estimated",) and cost in ("cost not estimated",):
-                source = "not_available"
-            elif used_rt:
-                source = "red_team_roadmap"
-            else:
-                source = "synthesis"
-            return effort, cost, source
-
-        def _tier(key: str, name: str, focus: str, rt_idx: int) -> Dict:
+        def _tier(key: str, name: str, focus: str) -> Dict:
             t = tiers.get(key, {})
-            if t:
-                effort, cost, source = _resolve_effort_cost(
-                    t.get("effort", ""), t.get("cost", ""), rt_idx
-                )
-                return {
-                    "name": name,
-                    "items": t.get("items", []),
-                    "effort": effort,
-                    "cost": cost,
-                    "cost_source": source,
-                    "risk_reduction": t.get("risk_reduction", ""),
-                    "residual": t.get("residual", ""),
-                    "practical_verdict": t.get("practical_verdict", ""),
-                    "rationale": t.get("rationale", ""),
-                }
-            # Full fallback — LLM produced no tier data at all
-            rt = rt_roadmap[rt_idx] if rt_idx < len(rt_roadmap) else {}
-            counts = {
-                "quick_win":   len(consensus.get("critical", [])),
-                "recommended": len(consensus.get("critical", [])) + len(consensus.get("high", [])),
-                "maximum":     len(consensus.get("critical", [])) + len(consensus.get("high", [])) + len(consensus.get("review", [])),
-            }
-            has_rt = bool(rt.get("effort") and rt.get("cost"))
+            items = t.get("items", []) if t else []
+            agg = _agg_tier(items)
             return {
                 "name": name,
-                "items": [],
-                "effort": rt.get("effort", "not estimated"),
-                "cost": rt.get("cost", "cost not estimated"),
-                "cost_source": "red_team_roadmap" if has_rt else "not_available",
-                "risk_reduction": f"{risk_data['current']} → {risk_data['target']}",
-                "residual": "Residual risk remains — controls reduce exposure but do not eliminate it.",
-                "practical_verdict": rt.get("practical", "not assessed"),
-                "item_count": counts.get(key, 0),
+                "items": items,
+                "effort": agg["effort"],
+                "cost":   agg["cost"],
+                "cost_source": agg["cost_source"],
+                "citation": agg.get("citation", ""),
+                "matched_controls": agg.get("matched_controls", []),
+                "unmatched_count":  agg.get("unmatched_count", 0),
+                "risk_reduction": t.get("risk_reduction", "") if t else f"{risk_data['current']} → {risk_data['target']}",
+                "residual": t.get("residual", "Residual risk remains — controls reduce exposure but do not eliminate it.") if t else "Residual risk remains — controls reduce exposure but do not eliminate it.",
+                "practical_verdict": t.get("practical_verdict", "") if t else "",
+                "rationale": t.get("rationale", "") if t else "",
                 "focus": focus,
             }
 
         return {
-            "quick_wins":  _tier("quick_win",   "Quick Wins",         "Critical gaps — highest ROI, lowest friction",          0),
-            "recommended": _tier("recommended",  "Recommended Target", "Critical + High — balanced security/usability/cost",    1),
-            "maximum":     _tier("maximum",      "Maximum Security",   "Full coverage including diminishing-return items",      2),
+            "quick_wins":  _tier("quick_win",   "Quick Wins",         "Critical gaps — highest ROI, lowest friction"),
+            "recommended": _tier("recommended",  "Recommended Target", "Critical + High — balanced security/usability/cost"),
+            "maximum":     _tier("maximum",      "Maximum Security",   "Full coverage including diminishing-return items"),
         }
 
     def _save_validation(self, critique: CritiqueScore, output_path: Path):
