@@ -4,6 +4,31 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## 2026-07-18 (Session 23) — Benchmark-derived investment tier costs, control_cost_benchmark module, weak_controls FP fix
+
+### 4. Investment tier cost model: benchmark aggregation replaces LLM estimates
+
+**Problem:**
+Investment tier cards (Overview + ER panel) showed LLM-generated freeform cost estimates (e.g. "4-6 weeks / $75K-$150K") from the Red Team critic. These are unverifiable and lose credibility with a CISO audience. The correct model: costs should be per-control benchmark estimates aggregated across the tier's controls — the same sourcing as the action plan table.
+
+**Fix (commit da2be6c):**
+- New shared module `chatbot/modules/control_cost_benchmark.py`: canonical `CONTROL_BENCHMARK` dict (72 entries), `lookup()`, `_cost_str()`, `aggregate_tier()`.
+- `aggregate_tier(item_strings)` — parses control names from tier item text, sums cost low/high ranges, returns effort = critical-path (highest-rank single control sets the calendar bottleneck).
+- `cost_source = "benchmark"`, `citation` = full source attribution string.
+- `threat_report.py` imports from the shared module (duplicate table removed).
+- `moe_orchestrator._build_improvement_options` now calls `aggregate_tier`; RT roadmap fallback chain removed (was wrong model entirely).
+- Example: 21_agentic_ai_system Quick Wins — Before: `4-6 weeks / $75K-$150K` (LLM). After: `1-2 weeks / $15K-$35K` (MFA + WAF + service_mesh + FIM + RASP benchmarks).
+
+**UI:** `"Source: Benchmark (CIS/NIST/Gartner)"` shown below cost figure in both Overview tier cards and ER Improvement Tiers panel.
+
+### 5. weak_controls false positive: substring match on "monitor"
+
+**Problem:** `"file integrity monitoring"` was flagged as a weak/generic control in SM baseline_feedback because `"monitor"` appeared as a substring. This produced a misleading "Weak control (too generic): file integrity monitoring" engine tip.
+
+**Fix:** Tightened to whole-word match (`\bmonitor\b`) AND control name ≤ 2 words. Specific compound controls (file integrity monitoring, network monitoring, behavioral analysis) no longer flagged.
+
+---
+
 ## 2026-07-18 (Session 23) — Per-control effort differentiation, SM ADR alignment T-ID fallback, investment tier cost attribution
 
 ### 3. Investment tier "not estimated" fix + cost attribution UI
