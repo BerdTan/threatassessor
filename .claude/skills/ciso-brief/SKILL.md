@@ -1,8 +1,8 @@
 ---
 name: ciso-brief
-description: CISO-ready one-page security brief with visual risk gauges, multi-critic-corroborated top findings (sorted by critic breadth), investment tier table with risk-reduction bars, and a short LLM-generated narrative. Runs on one architecture or the full corpus. Use when briefing stakeholders or preparing a board-level risk summary.
+description: CISO-ready one-page security brief. Pipeline — PLAN (data inventory) → BUILD (metrics + LLM narrative) → LOOK (trend delta vs previous snapshot) → RELEASE (print brief + write snapshot JSON + dated MD). Multi-critic-corroborated findings sorted by critic breadth. Investment tier bars. Snapshot stored at ciso_brief_latest.json; each run produces a dated MD archive. Runs on one architecture or the full corpus.
 allowed-tools: Bash(python3:*) Bash(source:*)
-compatibility: Requires ground_truth.json for the target architecture. For full brief (confidence, investment tiers, LLM narrative), also needs 07_moe_orchestrator.json and 08_scrum_master.json — run /run-er --full first.
+compatibility: Requires ground_truth.json. For full brief (confidence, tiers, LLM narrative), also needs 07_moe_orchestrator.json and 08_scrum_master.json — run /run-er --full first.
 ---
 
 # ciso-brief — CISO Security Brief
