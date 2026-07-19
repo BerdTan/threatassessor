@@ -181,26 +181,52 @@ def _top_findings(moe: dict, n: int = 5) -> list[dict]:
     sev_rank = {"CRITICAL": 2, "HIGH": 1}
 
     # Build description-prefix → recommendation lookup from critic gaps.
-    # Use 30-char prefix — KNOWN descriptions aggregate across nodes and diverge
-    # from single-node gap descriptions after ~30 chars.
+    # Multi-depth keys (8/10/15/20 chars) because KNOWN multi-node descriptions
+    # diverge from single-node gap descriptions at ~10–20 chars.
+    io = moe.get("improvement_options", {})
     gap_recs: dict[str, str] = {}
     for v in ev.values():
         for g in (v.get("gaps") or []):
             desc = (g.get("description") or "")
             rec  = (g.get("recommendation") or "").strip()
             if desc and rec:
-                k = desc[:30].lower().strip()
-                if k not in gap_recs:
-                    gap_recs[k] = rec
+                for n in (20, 15, 10, 8):
+                    k = desc[:n].lower().strip()
+                    if k and k not in gap_recs:
+                        gap_recs[k] = rec
+
+    # Also index tier item control names for gaps with empty recommendations
+    for tier in io.values():
+        for item in (tier.get("items") or []):
+            it = str(item)
+            if it.startswith("[SM]"):
+                continue
+            dash = it.find("—")  # em-dash U+2014
+            ctrl = (it[:dash].strip() if dash > -1 else it[:60].strip())
+            at = ctrl.lower().find(" at ")
+            if at > -1:
+                ctrl = ctrl[:at].strip()
+            ck = ctrl[:20].lower().strip()
+            if ck and ck not in gap_recs:
+                gap_recs[ck] = f"Deploy {ctrl}."
 
     def _find_rec(desc: str, cr_rec: str) -> str:
         if cr_rec:
             return cr_rec
-        k30 = desc[:30].lower().strip()
-        if k30 in gap_recs:
-            return gap_recs[k30]
-        k20 = desc[:20].lower().strip()
-        return next((v for k, v in gap_recs.items() if k[:20] == k20), "")
+        for n in (20, 15, 10, 8):
+            k = desc[:n].lower().strip()
+            if k in gap_recs:
+                return gap_recs[k]
+        # Regex fallback: "No X (ControlName) deployed" → "Deploy ControlName"
+        m1 = re.search(r"\bNo\s+\w+\s+(?:controls?\s+)?\(([^)]+)\)\s+deploy", desc, re.I)
+        if m1:
+            return f"Deploy {m1.group(1).strip()} — no controls currently in place."
+        m2 = re.search(r"No\s+([\w\s/]+?)\s+(?:deployed|present|found|exists)", desc, re.I)
+        if m2:
+            ctrl = m2.group(1).strip()
+            if len(ctrl) < 40:
+                return f"Deploy {ctrl}."
+        return ""
 
     candidates = []
     for sev_key in ("critical", "high"):
@@ -258,24 +284,46 @@ def _generate_narrative(arch: str, data: dict, delta: dict) -> tuple[str, str]:
                     f"risk score {'+' if risk_d>=0 else ''}{risk_d:+d}."
                 )
 
-        prompt = f"""You are a security advisor writing a CISO brief for {arch}.{trend_ctx}
+        # The LLM's specific role here: cross-critic synthesis narrator.
+        # All the data (findings, scores, tiers) is already displayed visually.
+        # The LLM adds what the data alone cannot: a single coherent business risk
+        # sentence that bridges all five critics' perspectives into one board-ready
+        # statement, and a prioritised first action that reflects that synthesis.
+        # This is NOT the StoryCaster (which narrates individual attack paths).
+        # It is NOT the SM (which recommends sprint actions per control gap).
+        # It is the voice that says: given everything five independent reviewers found,
+        # here is the one thing that matters most and here is what you do Monday morning.
 
-Architecture facts:
-- Attack risk score: {risk}/100 (higher = more exposed)
-- Defensibility: {defence}/100
-- Expert review confidence: {conf:.1f}% ({_interp_plain(conf)})
-- Attack paths: {n_paths}
-- Redesign required: {redesign}
-- Top confirmed findings: {top_desc}
-- Quick Win: {qw.get('cost','?')} / {qw.get('effort','?')} → {qw.get('risk_reduction','?')}
-- Recommended: {rec.get('cost','?')} / {rec.get('effort','?')} → {rec.get('risk_reduction','?')}
-- Critical actions: {'; '.join(crit_actions)}
+        multi_critic_findings = "; ".join(
+            f['description'][:80]
+            for f in top[:3]
+            if f.get("critic_count", 1) > 1
+        )
+        single_critic_note = f"{sum(1 for f in top if f.get('critic_count',1)==1)} single-critic findings also present" if any(f.get('critic_count',1)==1 for f in top) else ""
 
-Write exactly two sentences separated by a newline:
-1. VERDICT: Current posture and single biggest structural risk. Board language, no jargon. Concrete consequence if unaddressed.
-2. ACTION: Single most important first step — what, where, expected outcome. No semicolons.
+        prompt = f"""You are the cross-critic synthesis narrator for a security brief on {arch}.{trend_ctx}
 
-No headers or bullets."""
+Your specific job: five independent security reviewers (Architect, Tester, Red Team, Purple Team, Blackhat) \
+have each assessed this architecture. You have seen their combined findings. Write two sentences that \
+synthesise ACROSS all their perspectives — not a summary of one critic, but the single coherent risk \
+picture that emerges when all five are read together.
+
+Assessment data:
+- Expert review confidence: {conf:.1f}% ({_interp_plain(conf)}) — how much agreement exists across critics
+- Attack risk score: {risk}/100, Defensibility: {defence}/100
+- {n_paths} attack paths identified
+- Multi-critic confirmed findings (highest confidence): {multi_critic_findings or 'none'}
+- {single_critic_note}
+- Redesign signal: {redesign} — {'architecture changes required, controls alone insufficient' if redesign else 'controls can close the gaps'}
+- Fastest fix: {qw.get('cost','?')} / {qw.get('effort','?')} → reduces risk by ~{qw.get('risk_reduction','?')}
+- Recommended investment: {rec.get('cost','?')} / {rec.get('effort','?')}
+- Most critical SM actions: {'; '.join(crit_actions)}
+
+Write exactly two sentences on separate lines:
+VERDICT: What the combined assessment means for the business. One concrete consequence if the top gap is not addressed. Board language — assume the reader has no security background.
+ACTION: The single most impactful first step. Name the specific control and where to deploy it. State the expected outcome in plain terms. No semicolons.
+
+Output only the two sentences, no labels, no bullets."""
 
         resp  = client.generate(prompt, max_tokens=200, temperature=0.2)
         lines = [re.sub(r"^(VERDICT|ACTION)\s*:\s*", "", l.strip(), flags=re.I)

@@ -1946,17 +1946,27 @@ async def generate_ciso_brief(
                 for a in sm.get("action_plan", [])
                 if a.get("priority") == "critical" and not a.get("is_antipattern")
             ][:2]
+            # Cross-critic synthesis narrator: five critics have independently assessed
+            # this architecture. The LLM's job is to synthesise ACROSS their perspectives
+            # into one coherent business risk statement and one prioritised first action.
+            # Not a summary of one critic. Not a list. One statement that emerges when
+            # Architect + Tester + Red Team + Purple Team + Blackhat are read together.
+            multi_desc = "; ".join(
+                f["description"][:80] for f in top_findings[:3]
+                if f.get("critic_count", 1) > 1
+            )
             prompt = (
-                f"You are a security advisor writing a CISO brief for {architecture_name}.\n\n"
-                f"Facts: risk={risk}/100, defensibility={defence}/100, confidence={conf:.1f}%, "
-                f"paths={n_paths}, redesign={redesign}\n"
-                f"Top findings: {top_desc}\n"
-                f"Quick Win: {qw.get('cost','?')} / {qw.get('effort','?')} → {qw.get('risk_reduction','?')}\n"
-                f"Recommended: {rec.get('cost','?')} / {rec.get('effort','?')} → {rec.get('risk_reduction','?')}\n"
+                f"You are the cross-critic synthesis narrator for a security brief on {architecture_name}.\n"
+                f"Five independent reviewers assessed this architecture. Synthesise their combined view.\n\n"
+                f"confidence={conf:.1f}%, risk={risk}/100, defensibility={defence}/100, "
+                f"paths={n_paths}, redesign={'yes' if redesign else 'no'}\n"
+                f"Multi-critic confirmed findings: {multi_desc or top_desc}\n"
+                f"Fastest fix: {qw.get('cost','?')} / {qw.get('effort','?')} — {qw.get('risk_reduction','?')}\n"
                 f"Critical actions: {'; '.join(crit_actions)}\n\n"
-                "Write exactly two sentences separated by a newline:\n"
-                "1. Current posture + biggest structural risk + concrete consequence. Board language.\n"
-                "2. Single most important first step — what, where, expected outcome. No semicolons."
+                "Write exactly two sentences on separate lines:\n"
+                "VERDICT: What the combined assessment means for the business. One concrete consequence if unaddressed. Board language, no jargon.\n"
+                "ACTION: The single most impactful first step. Name the control and where. Expected outcome. No semicolons.\n"
+                "Output only the two sentences, no labels."
             )
             resp = client.generate(prompt, max_tokens=200, temperature=0.2)
             lines = [_re.sub(r"^(VERDICT|ACTION)\s*:\s*", "", l.strip(), flags=_re.I)
