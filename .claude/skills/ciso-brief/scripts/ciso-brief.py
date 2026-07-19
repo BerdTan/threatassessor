@@ -173,18 +173,46 @@ def print_plan(arch: str, plan: dict) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _top_findings(moe: dict, n: int = 5) -> list[dict]:
-    """KNOWN findings only, sorted multi-critic first then severity."""
+    """KNOWN findings only, sorted multi-critic first then severity.
+    Falls back to expert_validations gaps for recommendations (consensus_recommendations
+    items do not carry a recommendation field)."""
     cr = moe.get("consensus_recommendations", {})
+    ev = moe.get("expert_validations", {})
     sev_rank = {"CRITICAL": 2, "HIGH": 1}
+
+    # Build description-prefix → recommendation lookup from critic gaps.
+    # Use 30-char prefix — KNOWN descriptions aggregate across nodes and diverge
+    # from single-node gap descriptions after ~30 chars.
+    gap_recs: dict[str, str] = {}
+    for v in ev.values():
+        for g in (v.get("gaps") or []):
+            desc = (g.get("description") or "")
+            rec  = (g.get("recommendation") or "").strip()
+            if desc and rec:
+                k = desc[:30].lower().strip()
+                if k not in gap_recs:
+                    gap_recs[k] = rec
+
+    def _find_rec(desc: str, cr_rec: str) -> str:
+        if cr_rec:
+            return cr_rec
+        k30 = desc[:30].lower().strip()
+        if k30 in gap_recs:
+            return gap_recs[k30]
+        k20 = desc[:20].lower().strip()
+        return next((v for k, v in gap_recs.items() if k[:20] == k20), "")
+
     candidates = []
     for sev_key in ("critical", "high"):
         for r in cr.get(sev_key, []):
             if r.get("confidence_label") != "KNOWN":
                 continue
             source = r.get("source", "")
+            desc   = r.get("description", "")
+            rec    = _find_rec(desc, r.get("recommendation", ""))
             candidates.append({
-                "description":     r.get("description", ""),
-                "recommendation":  r.get("recommendation", ""),
+                "description":     desc,
+                "recommendation":  rec,
                 "severity":        r.get("severity", sev_key.upper()),
                 "source":          source,
                 "critic_count":    _critic_count(source),
@@ -606,13 +634,15 @@ def stage_release(report_dir: Path, brief: dict, delta: dict,
         "unsure_count":  brief["unsure_count"],
         "redesign":      brief["redesign"],
         "top_findings":  [
-            {"description": f["description"][:120], "source": f["source"],
-             "severity": f["severity"], "critic_count": f["critic_count"]}
+            {"description": f["description"][:200], "source": f["source"],
+             "severity": f["severity"], "critic_count": f["critic_count"],
+             "recommendation": f.get("recommendation", "")[:300]}
             for f in brief["top_findings"]
         ],
         "tiers": {
             k: {"cost": v.get("cost"), "effort": v.get("effort"),
-                "risk_reduction": v.get("risk_reduction"), "practical_verdict": v.get("practical_verdict")}
+                "risk_reduction": v.get("risk_reduction"), "practical_verdict": v.get("practical_verdict"),
+                "rationale": v.get("rationale", ""), "items": v.get("items", [])}
             for k, v in brief["tiers"].items() if v
         },
     }

@@ -1848,15 +1848,75 @@ async def generate_ciso_brief(
     def _critic_count(source: str) -> int:
         return len(source.split("+"))
 
+    # Build description→recommendation lookup from expert_validations gaps.
+    # consensus_recommendations items have no recommendation field.
+    # Index by 30-char prefix — multi-node KNOWN descriptions diverge from
+    # single-node gap descriptions after ~30 chars so 60 was too long.
+    ev = moe.get("expert_validations", {})
+    _gap_recs: dict[str, str] = {}
+    for _v in ev.values():
+        for _g in (_v.get("gaps") or []):
+            _desc = (_g.get("description") or "")
+            _rec  = (_g.get("recommendation") or "").strip()
+            if _desc and _rec:
+                # 20-char prefix: KNOWN multi-node descriptions diverge from single-node
+                # gap descriptions at ~20 chars ("WebUI pivot allows T119" vs "WebUI pivot (AP-1/")
+                for _n in (20, 15, 10, 8):
+                    _k = _desc[:_n].lower().strip()
+                    if _k and _k not in _gap_recs:
+                        _gap_recs[_k] = _rec
+
+    # Also index tier item control names — some gaps have empty recommendations
+    # but the improvement_options tier items carry the control as "MFA enforcement at..."
+    import re as _re2
+    for _tier in io.values():
+        for _item in (_tier.get("items") or []):
+            _it = str(_item)
+            if _it.startswith("[SM]"):
+                continue
+            _dash = _it.find(" — ")  # em-dash separator
+            if _dash < 0:
+                _dash = _it.find(" - ")
+            _ctrl = _it[:_dash].strip() if _dash > -1 else _it[:60].strip()
+            # Strip "at Node" suffix from control name
+            _at = _ctrl.lower().find(" at ")
+            if _at > -1:
+                _ctrl = _ctrl[:_at].strip()
+            # Index by first 20 chars of the control name as a supplemental lookup
+            _ck = _ctrl[:20].lower().strip()
+            if _ck and _ck not in _gap_recs:
+                _gap_recs[_ck] = f"Deploy {_ctrl}."
+
+    def _find_rec(desc: str, cr_rec: str) -> str:
+        if cr_rec:
+            return cr_rec
+        for _n in (20, 15, 10, 8):
+            k = desc[:_n].lower().strip()
+            if k in _gap_recs:
+                return _gap_recs[k]
+        # Last resort: extract control name from description patterns like
+        # "No X (ControlName) deployed" or "X on Node has no ControlName"
+        _m1 = _re2.search(r"\bNo\s+\w+\s+(?:controls?\s+)?\(([^)]+)\)\s+deploy", desc, _re2.I)
+        if _m1:
+            return f"Deploy {_m1.group(1).strip()} — no controls currently in place."
+        _m2 = _re2.search(r"No\s+([\w\s/]+?)\s+(?:deployed|present|found|exists)", desc, _re2.I)
+        if _m2:
+            ctrl = _m2.group(1).strip()
+            if len(ctrl) < 40:
+                return f"Deploy {ctrl}."
+        return ""
+
     candidates = []
     for sev_key in ("critical", "high"):
         for r in cr.get(sev_key, []):
             if r.get("confidence_label") != "KNOWN":
                 continue
             source = r.get("source", "")
+            desc   = r.get("description", "")
+            rec    = _find_rec(desc, r.get("recommendation", ""))
             candidates.append({
-                "description":    r.get("description", ""),
-                "recommendation": r.get("recommendation", ""),
+                "description":    desc,
+                "recommendation": rec,
                 "severity":       r.get("severity", sev_key.upper()),
                 "source":         source,
                 "critic_count":   _critic_count(source),
@@ -1941,15 +2001,20 @@ async def generate_ciso_brief(
         "unsure_count":   unsure_count,
         "redesign":       redesign,
         "top_findings":   [
-            {"description": f["description"][:120], "source": f["source"],
+            {"description": f["description"][:200], "source": f["source"],
              "severity": f["severity"], "critic_count": f["critic_count"],
-             "recommendation": f["recommendation"][:100]}
+             "recommendation": f["recommendation"][:300]}
             for f in top_findings
         ],
         "tiers": {
-            k: {"cost": v.get("cost"), "effort": v.get("effort"),
-                "risk_reduction": v.get("risk_reduction"),
-                "practical_verdict": v.get("practical_verdict")}
+            k: {
+                "cost":              v.get("cost"),
+                "effort":            v.get("effort"),
+                "risk_reduction":    v.get("risk_reduction"),
+                "practical_verdict": v.get("practical_verdict"),
+                "rationale":         v.get("rationale", ""),
+                "items":             v.get("items", []),
+            }
             for k, v in {
                 "quick_wins":  io.get("quick_wins",  {}),
                 "recommended": io.get("recommended", {}),
