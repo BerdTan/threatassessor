@@ -6334,96 +6334,108 @@ class Dashboard {
 
     _wireCisoPanel(archName, snap) {
         if (!snap) return;
-        const safeKey  = archName.replace(/\W/g, '_');
-        const panelId  = 'ciso-detail-panel-' + safeKey;
-        const panel    = document.getElementById(panelId);
-        if (!panel) return;
+        const safeKey = archName.replace(/\W/g, '_');
+        const panel   = document.getElementById('ciso-detail-panel-' + safeKey);
+        const wrapper = document.getElementById('ciso-split-' + safeKey);
+        if (!panel || !wrapper) return;
 
-        const CRIT_LABELS = {architect:'Architect',tester:'Tester',red_team:'Red Team',purple_team:'Purple Team',blackhat:'Blackhat'};
+        const CRIT_LABELS = {architect:'Architect',tester:'Tester',red_team:'Red Team',
+                             purple_team:'Purple Team',blackhat:'Blackhat'};
 
-        const showDetail = (html) => { panel.innerHTML = html; };
+        // Open panel: switch wrapper to 60/40 split, fill panel, show close btn
+        const openPanel = (html) => {
+            panel.innerHTML = `<button onclick="window._cisoPanelClose('${safeKey}')"
+                style="position:absolute;top:0.5rem;right:0.5rem;background:transparent;border:none;
+                       color:var(--text-tertiary);font-size:1rem;cursor:pointer;padding:0.2rem 0.4rem;
+                       border-radius:4px;line-height:1;" title="Close">✕</button>
+                <div style="padding:0.85rem 1rem 1rem;">${html}</div>`;
+            wrapper.style.gridTemplateColumns = '3fr 2fr';
+            panel.style.display = 'block';
+        };
 
+        window._cisoPanelClose = (key) => {
+            const p = document.getElementById('ciso-detail-panel-' + key);
+            const w = document.getElementById('ciso-split-' + key);
+            if (p) p.style.display = 'none';
+            if (w) w.style.gridTemplateColumns = '1fr';
+            // Clear highlights
+            document.querySelectorAll(`[data-ciso-finding="${key}"],[data-ciso-tier="${key}"]`)
+                .forEach(e => { e.style.background = ''; });
+        };
+
+        // Finding detail: recommendation is the primary value-add.
+        // Description is already visible in the list — skip it. Show: action + critic context.
         const findingDetail = (f) => {
             const sev = (f.severity || '').toUpperCase();
             const sevColor = sev === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)';
             const parts = f.source.split('+').map(s => CRIT_LABELS[s.trim()] || s.trim());
             const srcColor = parts.length > 1 ? 'var(--secondary-color)' : 'var(--text-secondary)';
             const rec = f.recommendation || '';
-            return `<div style="padding:1rem;">
-                <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.75rem;">FINDING DETAIL</div>
-                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap;">
-                    <span style="font-size:0.78rem;font-weight:700;color:${sevColor};">${sev}</span>
-                    <span style="font-size:0.75rem;color:${srcColor};font-weight:600;">[${parts.join(' + ')}]</span>
+            if (!rec) return null; // nothing new to show — don't open panel
+            return `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
+                        letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.6rem;">
+                        WHAT TO DO</div>
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.65rem;flex-wrap:wrap;">
+                    <span style="font-size:0.72rem;font-weight:700;color:${sevColor};">${sev}</span>
+                    <span style="font-size:0.7rem;color:${srcColor};font-weight:600;">[${parts.join(' + ')}]</span>
                 </div>
-                <div style="font-size:0.8375rem;color:var(--text-color);line-height:1.6;margin-bottom:1rem;">${f.description || ''}</div>
-                ${rec ? `<div style="padding:0.6rem 0.75rem;background:var(--primary-color)0a;border-left:3px solid var(--primary-color);border-radius:4px;">
-                    <div style="font-size:0.68rem;font-weight:700;color:var(--primary-color);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Recommended action</div>
-                    <div style="font-size:0.8125rem;color:var(--text-color);">${rec}</div>
-                </div>` : ''}
-            </div>`;
+                <div style="padding:0.65rem 0.75rem;background:var(--primary-color)0a;
+                            border-left:3px solid var(--primary-color);border-radius:4px;">
+                    <div style="font-size:0.8125rem;color:var(--text-color);line-height:1.55;">${rec}</div>
+                </div>`;
         };
 
+        // Tier detail: controls list is genuinely new — not shown in summary row.
         const tierDetail = (key, tier) => {
             const label = {quick_wins:'⚡ Quick Win', recommended:'⭐ Recommended', maximum:'🔒 Maximum'}[key] || key;
-            const rr = tier.risk_reduction || '';
-            const nums = rr.match(/[\d.]+/g) || [];
-            let riskLine = rr;
-            try {
-                const before = parseFloat(nums[0]), after = parseFloat(nums[1]);
-                const pct = Math.round((before - after) / before * 100);
-                riskLine = `Risk score: ${Math.round(before)} → ${Math.round(after)} (−${pct}% reduction)`;
-            } catch(_) {}
-            const verdict = (tier.practical_verdict || '');
-            const items   = (tier.items || []).filter(i => !String(i).startsWith('[SM]')).slice(0, 6);
-            const smItems = (tier.items || []).filter(i => String(i).startsWith('[SM]')).slice(0, 3);
-            const itemsHtml = items.map(it => {
-                const dash = String(it).indexOf(' — ');
-                const name = dash > -1 ? it.slice(0, dash) : it;
-                return `<div style="font-size:0.78rem;color:var(--text-secondary);padding:0.2rem 0;border-bottom:1px solid var(--border-color)22;">• ${name}</div>`;
-            }).join('');
-            const smHtml = smItems.map(it => {
-                const raw = String(it).replace(/^\[SM\]\s*/, '').replace(/^\[.*?\]\s*/, '');
+            const rationale = (tier.rationale || '');
+            const items   = (tier.items || []).filter(i => !String(i).startsWith('[SM]')).slice(0, 8);
+            const smItems = (tier.items || []).filter(i =>  String(i).startsWith('[SM]')).slice(0, 4);
+            const itemRow = (it, color='var(--text-secondary)', prefix='•') => {
+                const raw  = String(it).replace(/^\[SM\]\s*/,'').replace(/^\[.*?\]\s*/,'');
                 const dash = raw.indexOf(' — ');
                 const name = dash > -1 ? raw.slice(0, dash) : raw;
-                return `<div style="font-size:0.78rem;color:#a855f7;padding:0.2rem 0;border-bottom:1px solid #a855f722;">🧩 ${name}</div>`;
-            }).join('');
-            return `<div style="padding:1rem;">
-                <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.75rem;">INVESTMENT DETAIL</div>
-                <div style="font-size:1rem;font-weight:700;color:var(--text-color);margin-bottom:0.5rem;">${label}</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.8125rem;margin-bottom:0.75rem;">
-                    <div><span style="color:var(--text-tertiary);">Cost</span><br><strong>${tier.cost || '—'}</strong></div>
-                    <div><span style="color:var(--text-tertiary);">Effort</span><br><strong>${tier.effort || '—'}</strong></div>
-                    <div style="grid-column:span 2;"><span style="color:var(--text-tertiary);">After controls</span><br><strong>${riskLine}</strong></div>
-                </div>
-                ${verdict ? `<div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem;padding:0.4rem 0.6rem;background:var(--nav-hover-bg);border-radius:4px;">${verdict}</div>` : ''}
-                ${items.length ? `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:0.35rem;">Controls in this tier</div>${itemsHtml}` : ''}
-                ${smItems.length ? `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;color:#a855f7;margin-top:0.5rem;margin-bottom:0.35rem;">ScrumMaster additions</div>${smHtml}` : ''}
-            </div>`;
+                return `<div style="font-size:0.78rem;color:${color};padding:0.25rem 0;
+                            border-bottom:1px solid var(--border-color)22;">${prefix} ${name}</div>`;
+            };
+            return `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
+                        letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.6rem;">
+                        WHAT'S INCLUDED — ${label}</div>
+                ${rationale ? `<div style="font-size:0.78rem;color:var(--text-secondary);
+                    margin-bottom:0.75rem;font-style:italic;line-height:1.5;">${rationale}</div>` : ''}
+                ${items.length ? items.map(i => itemRow(i)).join('') : ''}
+                ${smItems.length ? `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
+                    color:#a855f7;margin-top:0.6rem;margin-bottom:0.25rem;">+ ScrumMaster priorities</div>`
+                    + smItems.map(i => itemRow(i,'#a855f7','🧩')).join('') : ''}`;
         };
 
-        // Wire finding rows
+        // Wire finding rows — only open if there's something new to show
         document.querySelectorAll(`[data-ciso-finding="${safeKey}"]`).forEach(el => {
             el.addEventListener('click', () => {
                 const idx = parseInt(el.dataset.findingIdx);
-                const f = (snap.top_findings || [])[idx];
-                if (f) showDetail(findingDetail(f));
-                // Highlight selected
-                document.querySelectorAll(`[data-ciso-finding="${safeKey}"]`).forEach(e => {
-                    e.style.background = e === el ? 'var(--nav-hover-bg)' : 'var(--card-bg)';
-                });
+                const f   = (snap.top_findings || [])[idx];
+                if (!f) return;
+                const html = findingDetail(f);
+                if (!html) return; // no recommendation — nothing new, don't open
+                openPanel(html);
+                document.querySelectorAll(`[data-ciso-finding="${safeKey}"]`).forEach(e =>
+                    e.style.background = e === el ? 'var(--nav-hover-bg)' : 'var(--card-bg)');
+                document.querySelectorAll(`[data-ciso-tier="${safeKey}"]`).forEach(e =>
+                    e.style.background = '');
             });
         });
 
-        // Wire tier rows
+        // Wire tier rows — always has new content (controls list)
         document.querySelectorAll(`[data-ciso-tier="${safeKey}"]`).forEach(el => {
             el.addEventListener('click', () => {
-                const key = el.dataset.tierKey;
+                const key  = el.dataset.tierKey;
                 const tier = (snap.tiers || {})[key];
                 if (!tier) return;
-                showDetail(tierDetail(key, tier));
-                document.querySelectorAll(`[data-ciso-tier="${safeKey}"]`).forEach(e => {
-                    e.style.background = e === el ? 'var(--nav-hover-bg)' : '';
-                });
+                openPanel(tierDetail(key, tier));
+                document.querySelectorAll(`[data-ciso-tier="${safeKey}"]`).forEach(e =>
+                    e.style.background = e === el ? 'var(--nav-hover-bg)' : '');
+                document.querySelectorAll(`[data-ciso-finding="${safeKey}"]`).forEach(e =>
+                    e.style.background = 'var(--card-bg)');
             });
         });
     }
@@ -6552,7 +6564,7 @@ class Dashboard {
                 <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.15rem;flex-wrap:wrap;">
                     <span style="font-size:0.72rem;font-weight:700;color:${sevColor};">${sev}</span>
                     <span style="font-size:0.7rem;color:${srcColor};font-weight:600;">[${parts.join(' + ')}]</span>
-                    <span style="font-size:0.65rem;color:var(--text-tertiary);margin-left:auto;">details →</span>
+                    <span style="font-size:0.65rem;color:var(--text-tertiary);margin-left:auto;">›</span>
                 </div>
                 <div style="font-size:0.8125rem;color:var(--text-secondary);">${descShort}</div>
             </div>`;
@@ -6586,7 +6598,7 @@ class Dashboard {
                 <td style="padding:0.4rem 0.6rem;color:var(--text-secondary);">${t.cost || '—'}</td>
                 <td style="padding:0.4rem 0.6rem;color:var(--text-secondary);">${t.effort || '—'}</td>
                 <td style="padding:0.4rem 0.6rem;">${barHtml}</td>
-                <td style="padding:0.4rem 0.6rem;font-size:0.72rem;font-weight:700;color:${vColor};">${verdict} <span style="font-size:0.65rem;color:var(--text-tertiary);">details →</span></td>
+                <td style="padding:0.4rem 0.6rem;font-size:0.72rem;font-weight:700;color:${vColor};">${verdict}</td>
             </tr>`;
         }).join('');
 
@@ -6628,19 +6640,21 @@ class Dashboard {
             </div>
             ${trendHtml}
             ${gaugesHtml}
-            <!-- Two-column: findings list (left) + detail panel (right) -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;align-items:start;">
+            <!-- Findings + slide-in detail panel. Panel hidden by default; click opens it. -->
+            <div id="ciso-split-${safeKey}"
+                style="display:grid;grid-template-columns:1fr;gap:1rem;margin-bottom:1rem;align-items:start;transition:grid-template-columns 0.2s;">
                 <div>
                     <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">
                         TOP FINDINGS — KNOWN CONFIRMED
-                        <span style="font-weight:400;margin-left:0.4rem;">(click for details →)</span>
+                        <span style="font-weight:400;color:var(--text-tertiary);margin-left:0.4rem;">(click a finding or tier for details)</span>
                     </div>
                     ${findingsHtml || '<p style="color:var(--text-tertiary);font-size:0.8125rem;">No confirmed findings — run Expert Review.</p>'}
                 </div>
-                <div id="ciso-detail-panel-${safeKey}" style="padding:1rem;background:var(--nav-hover-bg);border-radius:8px;border:1px solid var(--border-color);min-height:120px;">
-                    <div style="color:var(--text-tertiary);font-size:0.8125rem;padding:0.5rem 0;">
-                        ← Click a finding to see full description and recommended action
-                    </div>
+                <!-- Detail panel: hidden until a row is clicked -->
+                <div id="ciso-detail-panel-${safeKey}"
+                    style="display:none;position:relative;background:var(--nav-hover-bg);
+                           border-radius:8px;border:1px solid var(--border-color);
+                           min-height:120px;overflow:hidden;">
                 </div>
             </div>
             <div style="margin-bottom:1rem;">
