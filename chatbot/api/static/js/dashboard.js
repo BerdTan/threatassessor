@@ -6331,30 +6331,50 @@ class Dashboard {
     }
 
     _renderCisoView(archName, snap) {
-        const apiKey = localStorage.getItem('tm_api_key') || '';
-        const genBtn = (withLlm, label) =>
-            `<button onclick="window.dashboard._generateCisoBrief('${archName}', ${withLlm})"
+        // ── Generate/Regen button helpers ──────────────────────────────────────
+        // One primary action button. Secondary link for the AI variant with a tooltip
+        // explaining the difference so the CISO isn't puzzled by two identical-looking buttons.
+        const genBtnPrimary = (withLlm) => withLlm
+            ? `<button onclick="window.dashboard._generateCisoBrief('${archName}', true)"
                 style="padding:0.35rem 0.9rem;border-radius:6px;border:1px solid var(--primary-color);
                        background:var(--primary-color)11;color:var(--primary-color);font-size:0.8rem;
-                       font-weight:600;cursor:pointer;white-space:nowrap;">${label}</button>`;
+                       font-weight:600;cursor:pointer;white-space:nowrap;">✨ Generate with AI narrative</button>`
+            : `<button onclick="window.dashboard._generateCisoBrief('${archName}', false)"
+                style="padding:0.35rem 0.9rem;border-radius:6px;border:1px solid var(--primary-color);
+                       background:var(--primary-color)11;color:var(--primary-color);font-size:0.8rem;
+                       font-weight:600;cursor:pointer;white-space:nowrap;">⚡ Generate brief</button>`;
+        const genBtnAltLink = (withLlm, label) =>
+            `<button onclick="window.dashboard._generateCisoBrief('${archName}', ${withLlm})"
+                title="${withLlm
+                    ? 'Adds a 2-sentence AI-written assessment and first-action recommendation (~5–10s extra)'
+                    : 'Instant — metrics and findings only, no AI narrative'}"
+                style="padding:0.2rem 0.55rem;border-radius:5px;border:1px solid var(--border-color);
+                       background:transparent;color:var(--text-tertiary);font-size:0.72rem;cursor:pointer;
+                       white-space:nowrap;" onmouseover="this.style.color='var(--primary-color)';this.style.borderColor='var(--primary-color)'"
+                onmouseout="this.style.color='var(--text-tertiary)';this.style.borderColor='var(--border-color)'">${label}</button>`;
 
         if (!snap) {
             return `<div style="padding:2rem;text-align:center;">
                 <div style="font-size:2.5rem;margin-bottom:1rem;">🏛</div>
                 <h3 style="color:var(--text-color);margin-bottom:0.5rem;">No CISO Brief Generated</h3>
-                <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1.5rem;max-width:420px;margin-left:auto;margin-right:auto;">
+                <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:0.5rem;max-width:420px;margin-left:auto;margin-right:auto;">
                     Generate a board-ready one-page brief with risk gauges, top confirmed findings, and investment options.
                 </p>
+                <p style="color:var(--text-tertiary);font-size:0.78rem;margin-bottom:1.5rem;">
+                    <strong>Fast</strong> — instant metrics from existing analysis.<br>
+                    <strong>With AI</strong> — adds a 2-sentence plain-English assessment and first-action recommendation.
+                </p>
                 <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
-                    ${genBtn(false, '⚡ Generate (fast)')}
-                    ${genBtn(true,  '✨ Generate with AI narrative')}
+                    ${genBtnPrimary(false)}
+                    ${genBtnPrimary(true)}
                 </div>
             </div>`;
         }
 
-        // Colour helpers
+        // Colour helpers — round to 1 decimal for display, never raw float
+        const confDisp   = Math.round(snap.confidence * 10) / 10;
         const riskColor  = snap.risk  >= 70 ? 'var(--danger-color)' : snap.risk  >= 40 ? 'var(--warning-color)' : 'var(--secondary-color)';
-        const confColor  = snap.confidence >= 85 ? 'var(--secondary-color)' : snap.confidence >= 70 ? 'var(--warning-color)' : 'var(--danger-color)';
+        const confColor  = confDisp >= 85 ? 'var(--secondary-color)' : confDisp >= 70 ? 'var(--warning-color)' : 'var(--danger-color)';
         const defColor   = snap.defensibility >= 70 ? 'var(--secondary-color)' : snap.defensibility >= 40 ? 'var(--warning-color)' : 'var(--danger-color)';
 
         const interpLabel = pct => pct >= 90 ? 'STRONG' : pct >= 80 ? 'GOOD' : pct >= 70 ? 'ADEQUATE' : pct >= 60 ? 'NEEDS REVIEW' : 'ACTION REQUIRED';
@@ -6396,13 +6416,13 @@ class Dashboard {
         // Risk gauges
         const gaugesHtml = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem;">
             ${[
-                ['Confidence',    snap.confidence,   false, confColor, interpLabel(snap.confidence)],
+                ['Confidence',    confDisp,          false, confColor, interpLabel(confDisp)],
                 ['Attack Risk',   snap.risk,         true,  riskColor, snap.risk >= 70 ? 'HIGH EXPOSURE' : snap.risk >= 40 ? 'MEDIUM' : 'MANAGED'],
                 ['Defensibility', snap.defensibility,false, defColor,  snap.defensibility >= 70 ? 'STRONG' : snap.defensibility >= 40 ? 'PARTIAL' : 'WEAK'],
             ].map(([label, val, inv, col, status]) =>
                 `<div style="padding:0.75rem;background:var(--nav-hover-bg);border-radius:8px;border:1px solid var(--border-color);">
                     <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.25rem;">${label}</div>
-                    <div style="font-size:1.5rem;font-weight:700;color:${col};margin-bottom:0.25rem;">${val}${label==='Confidence'?'%':'/100'}</div>
+                    <div style="font-size:1.5rem;font-weight:700;color:${col};margin-bottom:0.25rem;">${label==='Confidence' ? confDisp+'%' : val+'/100'}</div>
                     ${bar(val, 100, 100, inv)}
                     <div style="font-size:0.72rem;color:${col};margin-top:0.3rem;font-weight:600;">${status}</div>
                 </div>`
@@ -6419,7 +6439,8 @@ class Dashboard {
             const sev = (f.severity || '').toUpperCase();
             const sevColor = sev === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)';
             const parts = f.source.split('+').map(s => CRIT_LABELS[s.trim()] || s.trim());
-            const srcColor = parts.length > 1 ? 'var(--secondary-color)' : 'var(--text-tertiary)';
+            // Multi-critic: green (corroborated). Single-critic: normal text — still readable, just not highlighted.
+            const srcColor = parts.length > 1 ? 'var(--secondary-color)' : 'var(--text-secondary)';
             const srcLabel = parts.join(' + ');
             const desc = f.description || '';
             const dm = desc.match(/^(.{20,}?[.!?])(?:\s|$)/);
@@ -6485,14 +6506,83 @@ class Dashboard {
             </div>` : '';
 
         const genDate = snap.date ? `<span style="color:var(--text-tertiary);font-size:0.72rem;">Generated ${snap.date}</span>` : '';
+        // Single primary regen button + a small secondary link for the other mode
+        const hasAi = !!(snap.verdict || snap.action);
         const regenBtns = `<div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
             ${genDate}
             <div style="flex:1;"></div>
-            ${genBtn(false, '↻ Regenerate')}
-            ${genBtn(true,  '✨ Regenerate with AI')}
+            ${genBtnAltLink(!hasAi, hasAi ? '↻ Fast refresh' : '✨ Add AI narrative')}
+            ${genBtnPrimary(hasAi)}
         </div>`;
 
-        return `<div style="max-width:900px;">
+        // Build detail panel items — one per finding for click-through
+        const detailItems = (snap.top_findings || []).map((f, i) => {
+            const sev = (f.severity || '').toUpperCase();
+            const sevColor = sev === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)';
+            const parts = f.source.split('+').map(s => CRIT_LABELS[s.trim()] || s.trim());
+            const srcColor = parts.length > 1 ? 'var(--secondary-color)' : 'var(--text-secondary)';
+            const full = f.description || '';
+            const rec  = f.recommendation || '';
+            return { i, sev, sevColor, parts, srcColor, full, rec };
+        });
+        // Encode detail data for onclick
+        const detailDataJson = JSON.stringify(detailItems.map(d => ({
+            i: d.i, sev: d.sev, sevColor: d.sevColor,
+            critics: d.parts.join(' + '), srcColor: d.srcColor,
+            full: d.full, rec: d.rec
+        }))).replace(/"/g, '&quot;');
+
+        const cisoViewId = 'ciso-detail-panel-' + archName.replace(/\W/g,'_');
+
+        // Rebuild findingsHtml with click handlers
+        const findingsHtmlClickable = detailItems.map(d => {
+            const dm = d.full.match(/^(.{20,}?[.!?])(?:\s|$)/);
+            const descShort = dm ? dm[1] : d.full.slice(0, 110);
+            return `<div onclick="window._cisoSelectFinding('${cisoViewId}', ${d.i})"
+                style="padding:0.6rem 0.75rem;background:var(--card-bg);border-radius:6px;
+                       border-left:3px solid ${d.sevColor};margin-bottom:0.4rem;cursor:pointer;
+                       transition:background 0.15s;"
+                onmouseover="this.style.background='var(--nav-hover-bg)'"
+                onmouseout="this.style.background='var(--card-bg)'">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.15rem;flex-wrap:wrap;">
+                    <span style="font-size:0.72rem;font-weight:700;color:${d.sevColor};">${d.sev}</span>
+                    <span style="font-size:0.7rem;color:${d.srcColor};font-weight:600;">[${d.parts.join(' + ')}]</span>
+                    <span style="font-size:0.65rem;color:var(--text-tertiary);margin-left:auto;">→ details</span>
+                </div>
+                <div style="font-size:0.8125rem;color:var(--text-secondary);">${descShort}</div>
+            </div>`;
+        }).join('') || '<p style="color:var(--text-tertiary);font-size:0.8125rem;">No confirmed findings — run Expert Review.</p>';
+
+        return `
+        <script>
+        window._cisoFindingData_${archName.replace(/\W/g,'_')} = ${JSON.stringify(detailItems.map(d => ({
+            i: d.i, sev: d.sev, sevColor: d.sevColor,
+            critics: d.parts.join(' + '), srcColor: d.srcColor,
+            full: d.full, rec: d.rec
+        })))};
+        window._cisoSelectFinding = function(panelId, idx) {
+            const panel = document.getElementById(panelId);
+            if (!panel) return;
+            const key = panelId.replace('ciso-detail-panel-','');
+            const data = window['_cisoFindingData_' + key];
+            if (!data) return;
+            const f = data[idx];
+            if (!f) return;
+            panel.innerHTML = '<div style="padding:1rem;">'
+                + '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.75rem;">FINDING DETAIL</div>'
+                + '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap;">'
+                + '<span style="font-size:0.78rem;font-weight:700;color:'+f.sevColor+';">'+f.sev+'</span>'
+                + '<span style="font-size:0.75rem;color:'+f.srcColor+';font-weight:600;">['+f.critics+']</span>'
+                + '</div>'
+                + '<div style="font-size:0.8375rem;color:var(--text-color);line-height:1.6;margin-bottom:1rem;">'+f.full+'</div>'
+                + (f.rec ? '<div style="padding:0.6rem 0.75rem;background:var(--primary-color)0a;border-left:3px solid var(--primary-color);border-radius:4px;">'
+                    + '<div style="font-size:0.68rem;font-weight:700;color:var(--primary-color);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Recommended action</div>'
+                    + '<div style="font-size:0.8125rem;color:var(--text-color);">'+f.rec+'</div>'
+                    + '</div>' : '')
+                + '</div>';
+        };
+        </script>
+        <div style="max-width:1100px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
                 <div>
                     <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-tertiary);margin-bottom:0.15rem;">CISO BRIEF</div>
@@ -6502,12 +6592,20 @@ class Dashboard {
             </div>
             ${trendHtml}
             ${gaugesHtml}
-            <div style="margin-bottom:1rem;">
-                <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">
-                    TOP FINDINGS — KNOWN CONFIRMED
-                    <span style="font-weight:400;color:var(--text-tertiary);margin-left:0.5rem;">(multi-critic first)</span>
+            <!-- Two-column: findings list (left) + detail panel (right) -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;align-items:start;">
+                <div>
+                    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">
+                        TOP FINDINGS — KNOWN CONFIRMED
+                        <span style="font-weight:400;margin-left:0.4rem;">(click for details →)</span>
+                    </div>
+                    ${findingsHtmlClickable}
                 </div>
-                ${findingsHtml || '<p style="color:var(--text-tertiary);font-size:0.8125rem;">No confirmed findings — run Expert Review.</p>'}
+                <div id="${cisoViewId}" style="padding:1rem;background:var(--nav-hover-bg);border-radius:8px;border:1px solid var(--border-color);min-height:120px;">
+                    <div style="color:var(--text-tertiary);font-size:0.8125rem;padding:0.5rem 0;">
+                        ← Click a finding to see full description and recommended action
+                    </div>
+                </div>
             </div>
             <div style="margin-bottom:1rem;">
                 <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">INVESTMENT OPTIONS</div>
