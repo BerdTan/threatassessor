@@ -6308,6 +6308,7 @@ class Dashboard {
         } catch (_) {}
 
         container.innerHTML = this._renderCisoView(archName, snap);
+        this._wireCisoPanel(archName, snap);
     }
 
     async _generateCisoBrief(archName, withLlm) {
@@ -6325,9 +6326,106 @@ class Dashboard {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const d = await r.json();
             container.innerHTML = this._renderCisoView(archName, d.snapshot);
+            this._wireCisoPanel(archName, d.snapshot);
         } catch (e) {
             container.innerHTML = `<div style="padding:1.5rem;color:var(--danger-color);">⚠ Failed: ${e.message}</div>`;
         }
+    }
+
+    _wireCisoPanel(archName, snap) {
+        if (!snap) return;
+        const safeKey  = archName.replace(/\W/g, '_');
+        const panelId  = 'ciso-detail-panel-' + safeKey;
+        const panel    = document.getElementById(panelId);
+        if (!panel) return;
+
+        const CRIT_LABELS = {architect:'Architect',tester:'Tester',red_team:'Red Team',purple_team:'Purple Team',blackhat:'Blackhat'};
+
+        const showDetail = (html) => { panel.innerHTML = html; };
+
+        const findingDetail = (f) => {
+            const sev = (f.severity || '').toUpperCase();
+            const sevColor = sev === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)';
+            const parts = f.source.split('+').map(s => CRIT_LABELS[s.trim()] || s.trim());
+            const srcColor = parts.length > 1 ? 'var(--secondary-color)' : 'var(--text-secondary)';
+            const rec = f.recommendation || '';
+            return `<div style="padding:1rem;">
+                <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.75rem;">FINDING DETAIL</div>
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap;">
+                    <span style="font-size:0.78rem;font-weight:700;color:${sevColor};">${sev}</span>
+                    <span style="font-size:0.75rem;color:${srcColor};font-weight:600;">[${parts.join(' + ')}]</span>
+                </div>
+                <div style="font-size:0.8375rem;color:var(--text-color);line-height:1.6;margin-bottom:1rem;">${f.description || ''}</div>
+                ${rec ? `<div style="padding:0.6rem 0.75rem;background:var(--primary-color)0a;border-left:3px solid var(--primary-color);border-radius:4px;">
+                    <div style="font-size:0.68rem;font-weight:700;color:var(--primary-color);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Recommended action</div>
+                    <div style="font-size:0.8125rem;color:var(--text-color);">${rec}</div>
+                </div>` : ''}
+            </div>`;
+        };
+
+        const tierDetail = (key, tier) => {
+            const label = {quick_wins:'⚡ Quick Win', recommended:'⭐ Recommended', maximum:'🔒 Maximum'}[key] || key;
+            const rr = tier.risk_reduction || '';
+            const nums = rr.match(/[\d.]+/g) || [];
+            let riskLine = rr;
+            try {
+                const before = parseFloat(nums[0]), after = parseFloat(nums[1]);
+                const pct = Math.round((before - after) / before * 100);
+                riskLine = `Risk score: ${Math.round(before)} → ${Math.round(after)} (−${pct}% reduction)`;
+            } catch(_) {}
+            const verdict = (tier.practical_verdict || '');
+            const items   = (tier.items || []).filter(i => !String(i).startsWith('[SM]')).slice(0, 6);
+            const smItems = (tier.items || []).filter(i => String(i).startsWith('[SM]')).slice(0, 3);
+            const itemsHtml = items.map(it => {
+                const dash = String(it).indexOf(' — ');
+                const name = dash > -1 ? it.slice(0, dash) : it;
+                return `<div style="font-size:0.78rem;color:var(--text-secondary);padding:0.2rem 0;border-bottom:1px solid var(--border-color)22;">• ${name}</div>`;
+            }).join('');
+            const smHtml = smItems.map(it => {
+                const raw = String(it).replace(/^\[SM\]\s*/, '').replace(/^\[.*?\]\s*/, '');
+                const dash = raw.indexOf(' — ');
+                const name = dash > -1 ? raw.slice(0, dash) : raw;
+                return `<div style="font-size:0.78rem;color:#a855f7;padding:0.2rem 0;border-bottom:1px solid #a855f722;">🧩 ${name}</div>`;
+            }).join('');
+            return `<div style="padding:1rem;">
+                <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.75rem;">INVESTMENT DETAIL</div>
+                <div style="font-size:1rem;font-weight:700;color:var(--text-color);margin-bottom:0.5rem;">${label}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.8125rem;margin-bottom:0.75rem;">
+                    <div><span style="color:var(--text-tertiary);">Cost</span><br><strong>${tier.cost || '—'}</strong></div>
+                    <div><span style="color:var(--text-tertiary);">Effort</span><br><strong>${tier.effort || '—'}</strong></div>
+                    <div style="grid-column:span 2;"><span style="color:var(--text-tertiary);">After controls</span><br><strong>${riskLine}</strong></div>
+                </div>
+                ${verdict ? `<div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem;padding:0.4rem 0.6rem;background:var(--nav-hover-bg);border-radius:4px;">${verdict}</div>` : ''}
+                ${items.length ? `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:0.35rem;">Controls in this tier</div>${itemsHtml}` : ''}
+                ${smItems.length ? `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;color:#a855f7;margin-top:0.5rem;margin-bottom:0.35rem;">ScrumMaster additions</div>${smHtml}` : ''}
+            </div>`;
+        };
+
+        // Wire finding rows
+        document.querySelectorAll(`[data-ciso-finding="${safeKey}"]`).forEach(el => {
+            el.addEventListener('click', () => {
+                const idx = parseInt(el.dataset.findingIdx);
+                const f = (snap.top_findings || [])[idx];
+                if (f) showDetail(findingDetail(f));
+                // Highlight selected
+                document.querySelectorAll(`[data-ciso-finding="${safeKey}"]`).forEach(e => {
+                    e.style.background = e === el ? 'var(--nav-hover-bg)' : 'var(--card-bg)';
+                });
+            });
+        });
+
+        // Wire tier rows
+        document.querySelectorAll(`[data-ciso-tier="${safeKey}"]`).forEach(el => {
+            el.addEventListener('click', () => {
+                const key = el.dataset.tierKey;
+                const tier = (snap.tiers || {})[key];
+                if (!tier) return;
+                showDetail(tierDetail(key, tier));
+                document.querySelectorAll(`[data-ciso-tier="${safeKey}"]`).forEach(e => {
+                    e.style.background = e === el ? 'var(--nav-hover-bg)' : '';
+                });
+            });
+        });
     }
 
     _renderCisoView(archName, snap) {
@@ -6370,6 +6468,9 @@ class Dashboard {
                 </div>
             </div>`;
         }
+
+        // safeKey used for data-* attrs and panel ID throughout this render
+        const safeKey = archName.replace(/\W/g, '_');
 
         // Colour helpers — round to 1 decimal for display, never raw float
         const confDisp   = Math.round(snap.confidence * 10) / 10;
@@ -6433,32 +6534,31 @@ class Dashboard {
         </div>
         ${snap.redesign ? `<div style="margin-bottom:1rem;padding:0.5rem 0.75rem;background:var(--danger-color)10;border-left:3px solid var(--danger-color);border-radius:4px;font-size:0.8125rem;color:var(--danger-color);font-weight:600;">⚠ REDESIGN SIGNAL — architecture changes required</div>` : ''}`;
 
-        // Top findings
+        // Top findings — data-* attrs for click wiring (no inline onclick, no injected <script>)
         const CRIT_LABELS = {architect:'Architect',tester:'Tester',red_team:'Red Team',purple_team:'Purple Team',blackhat:'Blackhat'};
         const findingsHtml = (snap.top_findings || []).map((f, i) => {
             const sev = (f.severity || '').toUpperCase();
             const sevColor = sev === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)';
             const parts = f.source.split('+').map(s => CRIT_LABELS[s.trim()] || s.trim());
-            // Multi-critic: green (corroborated). Single-critic: normal text — still readable, just not highlighted.
             const srcColor = parts.length > 1 ? 'var(--secondary-color)' : 'var(--text-secondary)';
-            const srcLabel = parts.join(' + ');
             const desc = f.description || '';
             const dm = desc.match(/^(.{20,}?[.!?])(?:\s|$)/);
-            const descShort = dm ? dm[1] : desc.slice(0,110);
-            const rec = f.recommendation || '';
-            const rm = rec.match(/^(.{20,}?[.!?])(?:\s|$)/);
-            const recShort = rm ? rm[1] : rec.slice(0,90);
-            return `<div style="padding:0.6rem 0.75rem;background:var(--card-bg);border-radius:6px;border-left:3px solid ${sevColor};margin-bottom:0.4rem;">
-                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.2rem;flex-wrap:wrap;">
+            const descShort = dm ? dm[1] : desc.slice(0, 110);
+            return `<div data-ciso-finding="${safeKey}" data-finding-idx="${i}"
+                style="padding:0.6rem 0.75rem;background:var(--card-bg);border-radius:6px;
+                       border-left:3px solid ${sevColor};margin-bottom:0.4rem;cursor:pointer;transition:background 0.12s;"
+                onmouseover="this.style.background='var(--nav-hover-bg)'"
+                onmouseout="if(this.style.background!=='var(--nav-hover-bg)' || this.dataset.selected!=='1')this.style.background='var(--card-bg)'">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.15rem;flex-wrap:wrap;">
                     <span style="font-size:0.72rem;font-weight:700;color:${sevColor};">${sev}</span>
-                    <span style="font-size:0.7rem;color:${srcColor};font-weight:600;">[${srcLabel}]</span>
+                    <span style="font-size:0.7rem;color:${srcColor};font-weight:600;">[${parts.join(' + ')}]</span>
+                    <span style="font-size:0.65rem;color:var(--text-tertiary);margin-left:auto;">details →</span>
                 </div>
                 <div style="font-size:0.8125rem;color:var(--text-secondary);">${descShort}</div>
-                ${recShort ? `<div style="font-size:0.78rem;color:var(--primary-color);margin-top:0.2rem;">→ ${recShort}</div>` : ''}
             </div>`;
         }).join('');
 
-        // Investment tiers
+        // Investment tiers — data-* attrs for click wiring
         const tierRows = Object.entries(snap.tiers || {}).map(([key, t]) => {
             if (!t || !t.cost) return '';
             const label = {quick_wins:'⚡ Quick Win', recommended:'⭐ Recommended', maximum:'🔒 Maximum'}[key] || key;
@@ -6476,14 +6576,17 @@ class Dashboard {
                     <span style="font-size:0.72rem;color:var(--secondary-color);font-weight:600;">−${pct}%</span>
                 </div>`;
             } catch(_) {}
-            const verdict = (t.practical_verdict || '').split('—')[0].trim().slice(0,8);
+            const verdict = (t.practical_verdict || '').split('—')[0].trim().slice(0, 8);
             const vColor = verdict.startsWith('YES') ? 'var(--secondary-color)' : 'var(--warning-color)';
-            return `<tr>
+            return `<tr data-ciso-tier="${safeKey}" data-tier-key="${key}"
+                style="cursor:pointer;transition:background 0.12s;"
+                onmouseover="this.style.background='var(--nav-hover-bg)'"
+                onmouseout="this.style.background=''">
                 <td style="padding:0.4rem 0.6rem;font-weight:600;white-space:nowrap;">${label}</td>
                 <td style="padding:0.4rem 0.6rem;color:var(--text-secondary);">${t.cost || '—'}</td>
                 <td style="padding:0.4rem 0.6rem;color:var(--text-secondary);">${t.effort || '—'}</td>
                 <td style="padding:0.4rem 0.6rem;">${barHtml}</td>
-                <td style="padding:0.4rem 0.6rem;font-size:0.72rem;font-weight:700;color:${vColor};">${verdict}</td>
+                <td style="padding:0.4rem 0.6rem;font-size:0.72rem;font-weight:700;color:${vColor};">${verdict} <span style="font-size:0.65rem;color:var(--text-tertiary);">details →</span></td>
             </tr>`;
         }).join('');
 
@@ -6515,74 +6618,7 @@ class Dashboard {
             ${genBtnPrimary(hasAi)}
         </div>`;
 
-        // Build detail panel items — one per finding for click-through
-        const detailItems = (snap.top_findings || []).map((f, i) => {
-            const sev = (f.severity || '').toUpperCase();
-            const sevColor = sev === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)';
-            const parts = f.source.split('+').map(s => CRIT_LABELS[s.trim()] || s.trim());
-            const srcColor = parts.length > 1 ? 'var(--secondary-color)' : 'var(--text-secondary)';
-            const full = f.description || '';
-            const rec  = f.recommendation || '';
-            return { i, sev, sevColor, parts, srcColor, full, rec };
-        });
-        // Encode detail data for onclick
-        const detailDataJson = JSON.stringify(detailItems.map(d => ({
-            i: d.i, sev: d.sev, sevColor: d.sevColor,
-            critics: d.parts.join(' + '), srcColor: d.srcColor,
-            full: d.full, rec: d.rec
-        }))).replace(/"/g, '&quot;');
-
-        const cisoViewId = 'ciso-detail-panel-' + archName.replace(/\W/g,'_');
-
-        // Rebuild findingsHtml with click handlers
-        const findingsHtmlClickable = detailItems.map(d => {
-            const dm = d.full.match(/^(.{20,}?[.!?])(?:\s|$)/);
-            const descShort = dm ? dm[1] : d.full.slice(0, 110);
-            return `<div onclick="window._cisoSelectFinding('${cisoViewId}', ${d.i})"
-                style="padding:0.6rem 0.75rem;background:var(--card-bg);border-radius:6px;
-                       border-left:3px solid ${d.sevColor};margin-bottom:0.4rem;cursor:pointer;
-                       transition:background 0.15s;"
-                onmouseover="this.style.background='var(--nav-hover-bg)'"
-                onmouseout="this.style.background='var(--card-bg)'">
-                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.15rem;flex-wrap:wrap;">
-                    <span style="font-size:0.72rem;font-weight:700;color:${d.sevColor};">${d.sev}</span>
-                    <span style="font-size:0.7rem;color:${d.srcColor};font-weight:600;">[${d.parts.join(' + ')}]</span>
-                    <span style="font-size:0.65rem;color:var(--text-tertiary);margin-left:auto;">→ details</span>
-                </div>
-                <div style="font-size:0.8125rem;color:var(--text-secondary);">${descShort}</div>
-            </div>`;
-        }).join('') || '<p style="color:var(--text-tertiary);font-size:0.8125rem;">No confirmed findings — run Expert Review.</p>';
-
-        return `
-        <script>
-        window._cisoFindingData_${archName.replace(/\W/g,'_')} = ${JSON.stringify(detailItems.map(d => ({
-            i: d.i, sev: d.sev, sevColor: d.sevColor,
-            critics: d.parts.join(' + '), srcColor: d.srcColor,
-            full: d.full, rec: d.rec
-        })))};
-        window._cisoSelectFinding = function(panelId, idx) {
-            const panel = document.getElementById(panelId);
-            if (!panel) return;
-            const key = panelId.replace('ciso-detail-panel-','');
-            const data = window['_cisoFindingData_' + key];
-            if (!data) return;
-            const f = data[idx];
-            if (!f) return;
-            panel.innerHTML = '<div style="padding:1rem;">'
-                + '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.75rem;">FINDING DETAIL</div>'
-                + '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap;">'
-                + '<span style="font-size:0.78rem;font-weight:700;color:'+f.sevColor+';">'+f.sev+'</span>'
-                + '<span style="font-size:0.75rem;color:'+f.srcColor+';font-weight:600;">['+f.critics+']</span>'
-                + '</div>'
-                + '<div style="font-size:0.8375rem;color:var(--text-color);line-height:1.6;margin-bottom:1rem;">'+f.full+'</div>'
-                + (f.rec ? '<div style="padding:0.6rem 0.75rem;background:var(--primary-color)0a;border-left:3px solid var(--primary-color);border-radius:4px;">'
-                    + '<div style="font-size:0.68rem;font-weight:700;color:var(--primary-color);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Recommended action</div>'
-                    + '<div style="font-size:0.8125rem;color:var(--text-color);">'+f.rec+'</div>'
-                    + '</div>' : '')
-                + '</div>';
-        };
-        </script>
-        <div style="max-width:1100px;">
+        return `<div style="max-width:1100px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
                 <div>
                     <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-tertiary);margin-bottom:0.15rem;">CISO BRIEF</div>
@@ -6599,9 +6635,9 @@ class Dashboard {
                         TOP FINDINGS — KNOWN CONFIRMED
                         <span style="font-weight:400;margin-left:0.4rem;">(click for details →)</span>
                     </div>
-                    ${findingsHtmlClickable}
+                    ${findingsHtml || '<p style="color:var(--text-tertiary);font-size:0.8125rem;">No confirmed findings — run Expert Review.</p>'}
                 </div>
-                <div id="${cisoViewId}" style="padding:1rem;background:var(--nav-hover-bg);border-radius:8px;border:1px solid var(--border-color);min-height:120px;">
+                <div id="ciso-detail-panel-${safeKey}" style="padding:1rem;background:var(--nav-hover-bg);border-radius:8px;border:1px solid var(--border-color);min-height:120px;">
                     <div style="color:var(--text-tertiary);font-size:0.8125rem;padding:0.5rem 0;">
                         ← Click a finding to see full description and recommended action
                     </div>
