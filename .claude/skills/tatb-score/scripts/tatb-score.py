@@ -191,24 +191,32 @@ def score_ttp(gt, moe, mitre_mits, mit_names):
             if mc.get("final") is not None and mc.get("base") is not None else 0)
     moe_score = max(0, min(100, 50 + lift * 500))
 
-    # MITRE alignment
+    # MITRE alignment — primary: M-ID set intersection (control already has M-IDs from engine);
+    # fallback: name/synonym matching when M-IDs absent (older reports or unmapped controls).
     ctrls  = gt.get("control_recommendations", [])
     aligned, checked, seen = 0, 0, set()
     mismatches = []
     for c in ctrls:
         ctrl_name = (c.get("control") or "").lower()
+        ctrl_mids  = set(c.get("mitigations") or [])
         for tid in (c.get("mitre_techniques") or c.get("techniques") or []):
             if tid.startswith("AML."): continue  # ATLAS techniques — no ATT&CK M-ID mapping
             pair = f"{tid}::{ctrl_name}"
             if pair in seen: continue
             seen.add(pair)
-            mids = mitre_mits.get(tid, [])
-            if not mids: continue
+            mitre_mids_for_t = set(mitre_mits.get(tid, []))
+            if not mitre_mids_for_t: continue
             checked += 1
-            names = [mit_names.get(mid, "") for mid in mids]
-            ok = any(_ctrl_matches(ctrl_name, n) for n in names if n)
-            if ok: aligned += 1
-            else:  mismatches.append({"technique": tid, "control": c.get("control"),
+            # Primary: does this control's assigned M-IDs intersect with MITRE's M-IDs for the technique?
+            if ctrl_mids & mitre_mids_for_t:
+                aligned += 1
+            else:
+                # Fallback: name/synonym matching (catches controls with empty mitigations field)
+                names = [mit_names.get(mid, "") for mid in mitre_mids_for_t]
+                if ctrl_mids or any(_ctrl_matches(ctrl_name, n) for n in names if n):
+                    aligned += 1
+                else:
+                    mismatches.append({"technique": tid, "control": c.get("control"),
                                        "mitre_suggests": ", ".join(n for n in names[:3] if n)})
     mitre_pct = round(aligned / checked * 100) if checked else 50
 

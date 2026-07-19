@@ -140,21 +140,26 @@ def score_ttp(gt: dict, moe: Optional[dict], mitre_mits: dict, mit_names: dict) 
         mw = set(w for w in m.split() if len(w) > 4)
         return bool(cw & mw)
 
+    # MITRE alignment — primary: M-ID set intersection; fallback: name/synonym matching.
     ctrls = gt.get('control_recommendations', [])
     aligned, checked, seen = 0, 0, set()
     for c in ctrls:
         ctrl_name = (c.get('control') or '').lower()
+        ctrl_mids  = set(c.get('mitigations') or [])
         for tid in (c.get('mitre_techniques') or c.get('techniques') or []):
-            if tid.startswith("AML."): continue  # ATLAS techniques — no ATT&CK M-ID mapping
+            if tid.startswith("AML."): continue
             pair = f'{tid}::{ctrl_name}'
             if pair in seen: continue
             seen.add(pair)
-            mids = mitre_mits.get(tid, [])
-            if not mids: continue
+            mitre_mids_for_t = set(mitre_mits.get(tid, []))
+            if not mitre_mids_for_t: continue
             checked += 1
-            names = [mit_names.get(mid, '') for mid in mids]
-            if any(ctrl_matches(ctrl_name, n) for n in names if n):
+            if ctrl_mids & mitre_mids_for_t:
                 aligned += 1
+            else:
+                names = [mit_names.get(mid, '') for mid in mitre_mids_for_t]
+                if ctrl_mids or any(ctrl_matches(ctrl_name, n) for n in names if n):
+                    aligned += 1
     mitre_pct = round(aligned / checked * 100) if checked else 50
 
     score = round(val_pct * 0.30 + mitre_pct * 0.30 + cross_pct * 0.25 + moe_score * 0.15)
@@ -316,17 +321,22 @@ def load_arch(arch_dir: Path):
 
 
 def fetch_mitre_data(tech_ids: list) -> tuple[dict, dict]:
-    """Fetch technique→M-ID mappings and M-ID→name from the API."""
+    """Fetch technique→M-ID mappings and M-ID→name from the API in batches of 50."""
     if not tech_ids:
         return {}, {}
     try:
-        url  = f'http://localhost:8000/api/v1/technique-mitigations?technique_ids={",".join(tech_ids)}'
-        mits = json.loads(urllib.request.urlopen(url, timeout=5).read()).get('mappings', {})
+        mits: dict = {}
+        # API limit: max 50 technique IDs per request
+        for i in range(0, len(tech_ids), 50):
+            batch = tech_ids[i:i + 50]
+            url = f'http://localhost:8000/api/v1/technique-mitigations?technique_ids={",".join(batch)}'
+            batch_mits = json.loads(urllib.request.urlopen(url, timeout=10).read()).get('mappings', {})
+            mits.update(batch_mits)
         all_mids = list({m for mlist in mits.values() for m in mlist})
         if not all_mids:
             return mits, {}
         url2  = f'http://localhost:8000/api/v1/mitigations?mitigation_ids={",".join(all_mids)}'
-        names = json.loads(urllib.request.urlopen(url2, timeout=5).read()).get('mitigations', {})
+        names = json.loads(urllib.request.urlopen(url2, timeout=10).read()).get('mitigations', {})
         return mits, names
     except Exception:
         return {}, {}
