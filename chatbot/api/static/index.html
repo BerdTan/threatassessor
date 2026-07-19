@@ -270,12 +270,31 @@
 
                 <!-- Reports Tab -->
                 <div class="tab-pane" data-tab="reports">
-                    <h2>Generated Reports</h2>
-                    <div class="split-view">
-                        <div class="split-left">
-                            <div id="reports-list" class="list-container">
-                                <p class="placeholder">Reports loading...</p>
+                    <!-- Subtab nav -->
+                    <div id="reports-subtab-nav" style="display:flex; gap:0.35rem; padding:0.75rem 1.25rem 0; border-bottom:1px solid var(--border-color); background:var(--nav-hover-bg);">
+                        <button class="reports-subtab active" data-reports-subtab="reports-list-pane"
+                            style="padding:0.3rem 0.85rem; border-radius:6px 6px 0 0; border:1px solid transparent; border-bottom:none; font-size:0.8125rem; font-weight:600; cursor:pointer; background:var(--card-bg); color:var(--primary-color);">
+                            📄 Reports
+                        </button>
+                        <button class="reports-subtab" data-reports-subtab="ciso-view-pane"
+                            style="padding:0.3rem 0.85rem; border-radius:6px 6px 0 0; border:1px solid transparent; border-bottom:none; font-size:0.8125rem; font-weight:600; cursor:pointer; background:transparent; color:var(--text-tertiary);">
+                            🏛 CISO View
+                        </button>
+                    </div>
+                    <!-- Reports subtab -->
+                    <div id="reports-list-pane" class="reports-subtab-content" style="display:block;">
+                        <div class="split-view">
+                            <div class="split-left">
+                                <div id="reports-list" class="list-container">
+                                    <p class="placeholder">Reports loading...</p>
+                                </div>
                             </div>
+                        </div>
+                    </div>
+                    <!-- CISO View subtab -->
+                    <div id="ciso-view-pane" class="reports-subtab-content" style="display:none; padding:1.25rem;">
+                        <div id="ciso-view-content">
+                            <p class="placeholder">Loading CISO brief...</p>
                         </div>
                     </div>
                 </div>

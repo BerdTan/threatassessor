@@ -1781,3 +1781,255 @@ async def get_tatb_corpus():
 
     arch_scores.sort(key=lambda a: a.get("overall") or 0, reverse=True)
     return {"architectures": arch_scores, "avg": avg}
+
+
+@router.post("/reports/{architecture_name}/generate-ciso-brief")
+async def generate_ciso_brief(
+    architecture_name: str,
+    llm: bool = Query(False, description="Include LLM narrative (slower)"),
+    _: str = Depends(verify_api_key),
+):
+    """Generate or regenerate the CISO brief for an architecture.
+
+    Runs the ciso-brief BUILD + LOOK + RELEASE pipeline:
+    - Reads ground_truth.json, 07_moe_orchestrator.json, 08_scrum_master.json
+    - Computes metrics, selects KNOWN findings (multi-critic first)
+    - Optionally generates LLM narrative (llm=true query param)
+    - Loads previous snapshot for trend delta
+    - Writes ciso_brief_latest.json + ciso_brief_<date>.md
+
+    Returns the snapshot JSON so the UI can render immediately.
+    """
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+
+    report_dir = resolve_arch_dir(architecture_name)
+    if not report_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Architecture '{architecture_name}' not found")
+
+    gt_path  = report_dir / "ground_truth.json"
+    moe_path = report_dir / "07_moe_orchestrator.json"
+    sm_path  = report_dir / "08_scrum_master.json"
+
+    if not gt_path.exists():
+        raise HTTPException(status_code=404, detail="ground_truth.json not found — run analysis first")
+
+    def _load(p: Path) -> dict:
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return {}
+
+    gt  = _load(gt_path)
+    moe = _load(moe_path)
+    sm  = _load(sm_path)
+
+    import re as _re
+    import datetime as _dt
+
+    # ── Build metrics ────────────────────────────────────────────────────────
+    risk    = gt.get("expected_risk_score", 0)
+    defence = gt.get("expected_defensibility", 0)
+    n_paths = len(gt.get("expected_attack_paths", []))
+    n_tech  = len({t for ap in gt.get("expected_attack_paths", [])
+                   for t in ap.get("techniques", [])})
+
+    conf_data = moe.get("confidence") or {}
+    conf      = conf_data.get("final") or 0
+
+    io   = moe.get("improvement_options", {})
+    cr   = moe.get("consensus_recommendations", {})
+    sev_rank = {"CRITICAL": 2, "HIGH": 1}
+
+    # KNOWN findings, multi-critic first
+    def _critic_count(source: str) -> int:
+        return len(source.split("+"))
+
+    candidates = []
+    for sev_key in ("critical", "high"):
+        for r in cr.get(sev_key, []):
+            if r.get("confidence_label") != "KNOWN":
+                continue
+            source = r.get("source", "")
+            candidates.append({
+                "description":    r.get("description", ""),
+                "recommendation": r.get("recommendation", ""),
+                "severity":       r.get("severity", sev_key.upper()),
+                "source":         source,
+                "critic_count":   _critic_count(source),
+                "sev_rank":       sev_rank.get(r.get("severity", "").upper(), 0),
+            })
+    candidates.sort(key=lambda x: (-x["critic_count"], -x["sev_rank"]))
+    top_findings = candidates[:5]
+
+    known_crit   = [r for r in cr.get("critical", []) if r.get("confidence_label") == "KNOWN"]
+    known_high   = [r for r in cr.get("critical", []) + cr.get("high", [])
+                    if r.get("confidence_label") == "KNOWN"]
+    unsure_count = len(cr.get("review", []))
+    redesign     = sm.get("redesign_signal", False)
+
+    # ── LLM narrative (optional) ─────────────────────────────────────────────
+    verdict_txt = ""
+    action_txt  = ""
+    if llm and moe:
+        try:
+            from agentic.llm_client import LLMClient
+            client = LLMClient()
+            top_desc = "; ".join(f["description"][:80] for f in top_findings[:2])
+            qw  = io.get("quick_wins",  {})
+            rec = io.get("recommended", {})
+            crit_actions = [
+                a.get("action", "")[:80]
+                for a in sm.get("action_plan", [])
+                if a.get("priority") == "critical" and not a.get("is_antipattern")
+            ][:2]
+            prompt = (
+                f"You are a security advisor writing a CISO brief for {architecture_name}.\n\n"
+                f"Facts: risk={risk}/100, defensibility={defence}/100, confidence={conf:.1f}%, "
+                f"paths={n_paths}, redesign={redesign}\n"
+                f"Top findings: {top_desc}\n"
+                f"Quick Win: {qw.get('cost','?')} / {qw.get('effort','?')} → {qw.get('risk_reduction','?')}\n"
+                f"Recommended: {rec.get('cost','?')} / {rec.get('effort','?')} → {rec.get('risk_reduction','?')}\n"
+                f"Critical actions: {'; '.join(crit_actions)}\n\n"
+                "Write exactly two sentences separated by a newline:\n"
+                "1. Current posture + biggest structural risk + concrete consequence. Board language.\n"
+                "2. Single most important first step — what, where, expected outcome. No semicolons."
+            )
+            resp = client.generate(prompt, max_tokens=200, temperature=0.2)
+            lines = [_re.sub(r"^(VERDICT|ACTION)\s*:\s*", "", l.strip(), flags=_re.I)
+                     for l in (resp.content or "").strip().splitlines() if l.strip()]
+            verdict_txt = lines[0] if lines else ""
+            action_txt  = lines[1] if len(lines) > 1 else ""
+        except Exception as e:
+            verdict_txt = f"[LLM error: {e}]"
+
+    # ── Trend delta ──────────────────────────────────────────────────────────
+    snap_path = report_dir / "ciso_brief_latest.json"
+    delta: dict = {}
+    if snap_path.exists():
+        try:
+            prev = json.loads(snap_path.read_text(encoding="utf-8"))
+            delta = {
+                "prev_date":        prev.get("date", "?"),
+                "confidence_delta": round(conf - prev.get("confidence", conf), 1),
+                "risk_delta":       risk - prev.get("risk", risk),
+                "known_crit_delta": len(known_crit) - prev.get("known_critical", len(known_crit)),
+                "unsure_delta":     unsure_count - prev.get("unsure_count", unsure_count),
+            }
+            prev_descs = {f["description"][:60] for f in prev.get("top_findings", [])}
+            curr_descs = {f["description"][:60] for f in top_findings}
+            delta["closed_findings"] = list(prev_descs - curr_descs)
+            delta["new_findings"]    = list(curr_descs - prev_descs)
+        except Exception:
+            pass
+
+    # ── Write snapshot ───────────────────────────────────────────────────────
+    today = _dt.date.today().isoformat()
+    snap = {
+        "arch":           architecture_name,
+        "date":           today,
+        "confidence":     conf,
+        "risk":           risk,
+        "defensibility":  defence,
+        "n_paths":        n_paths,
+        "n_tech":         n_tech,
+        "known_critical": len(known_crit),
+        "known_high":     len(known_high),
+        "unsure_count":   unsure_count,
+        "redesign":       redesign,
+        "top_findings":   [
+            {"description": f["description"][:120], "source": f["source"],
+             "severity": f["severity"], "critic_count": f["critic_count"],
+             "recommendation": f["recommendation"][:100]}
+            for f in top_findings
+        ],
+        "tiers": {
+            k: {"cost": v.get("cost"), "effort": v.get("effort"),
+                "risk_reduction": v.get("risk_reduction"),
+                "practical_verdict": v.get("practical_verdict")}
+            for k, v in {
+                "quick_wins":  io.get("quick_wins",  {}),
+                "recommended": io.get("recommended", {}),
+                "maximum":     io.get("maximum",     {}),
+            }.items() if v
+        },
+        "verdict": verdict_txt,
+        "action":  action_txt,
+        "delta":   delta,
+    }
+
+    snap_path.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+
+    # ── Write dated MD ───────────────────────────────────────────────────────
+    def _interp(pct):
+        if pct >= 90: return "STRONG"
+        if pct >= 80: return "GOOD"
+        if pct >= 70: return "ADEQUATE"
+        if pct >= 60: return "NEEDS REVIEW"
+        return "ACTION REQUIRED"
+
+    md_lines = [
+        f"# CISO Brief — {architecture_name}",
+        f"**Date:** {today}   **Confidence:** {conf:.1f}% ({_interp(conf)})"
+        + ("   ⚠ REDESIGN SIGNAL" if redesign else ""),
+        "",
+        "## Risk at a Glance",
+        "",
+        "| Metric | Value | Status |",
+        "|--------|-------|--------|",
+        f"| Confidence | {conf:.1f}% | {_interp(conf)} |",
+        f"| Attack risk | {risk}/100 | {'HIGH EXPOSURE' if risk >= 70 else 'MEDIUM' if risk >= 40 else 'MANAGED'} |",
+        f"| Defensibility | {defence}/100 | {'STRONG' if defence >= 70 else 'PARTIAL' if defence >= 40 else 'WEAK'} |",
+        f"| Attack paths | {n_paths} | {len(known_crit)} critical confirmed |",
+        "",
+    ]
+    if delta:
+        md_lines += [
+            f"## Trend vs {delta.get('prev_date','?')}",
+            "",
+            "| Metric | Change |",
+            "|--------|--------|",
+            f"| Confidence | {'+' if delta.get('confidence_delta',0)>=0 else ''}{delta.get('confidence_delta',0):.1f}pp |",
+            f"| Risk score | {delta.get('risk_delta',0):+d} |",
+            f"| Critical findings | {delta.get('known_crit_delta',0):+d} |",
+            "",
+        ]
+    md_lines += ["## Top Findings (KNOWN confirmed only)", ""]
+    for i, f in enumerate(top_findings, 1):
+        critics = " + ".join(f["source"].replace("_"," ").title().split("+"))
+        desc_m = _re.match(r"^(.{20,}?[.!?])(?:\s|$)", f["description"])
+        desc_s = desc_m.group(1) if desc_m else f["description"][:120]
+        md_lines += [f"### {i}. {f['severity']} — [{critics}]", desc_s, ""]
+    md_lines += ["## Investment Options", "",
+                 "| Tier | Cost | Effort | Risk after |",
+                 "|------|------|--------|------------|"]
+    for key, label in (("quick_wins","Quick Win"),("recommended","Recommended"),("maximum","Maximum")):
+        t = snap["tiers"].get(key, {})
+        if t:
+            rr = t.get("risk_reduction","—")
+            nums = _re.findall(r"[\d.]+", rr)
+            try:
+                rr_s = f"{int(float(nums[0]))} → {int(float(nums[1]))} (−{round((float(nums[0])-float(nums[1]))/float(nums[0])*100)}%)"
+            except Exception:
+                rr_s = rr[:40]
+            md_lines.append(f"| {label} | {t.get('cost','—')} | {t.get('effort','—')} | {rr_s} |")
+    md_lines.append("")
+    if verdict_txt:
+        md_lines += ["## Assessment", "", verdict_txt, ""]
+    if action_txt:
+        md_lines += ["## Recommended First Action", "", action_txt, ""]
+    md_lines += ["---", f"*Generated by /ciso-brief · {today}*"]
+
+    md_path = report_dir / f"ciso_brief_{today}.md"
+    md_path.write_text("\n".join(md_lines) + "\n", encoding="utf-8")
+
+    return {
+        "status": "ok",
+        "architecture": architecture_name,
+        "date": today,
+        "snapshot": snap,
+        "md_file": f"ciso_brief_{today}.md",
+    }

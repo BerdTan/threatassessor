@@ -6272,6 +6272,252 @@ class Dashboard {
                 </div>
             `;
         }
+
+        // Wire Reports subtab nav (Reports list ↔ CISO View)
+        document.querySelectorAll('.reports-subtab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const target = btn.dataset.reportsSubtab;
+                document.querySelectorAll('.reports-subtab').forEach(b => {
+                    const active = b.dataset.reportsSubtab === target;
+                    b.style.background    = active ? 'var(--card-bg)' : 'transparent';
+                    b.style.color         = active ? 'var(--primary-color)' : 'var(--text-tertiary)';
+                    b.style.borderColor   = active ? 'var(--border-color)' : 'transparent';
+                });
+                document.querySelectorAll('.reports-subtab-content').forEach(pane => {
+                    pane.style.display = pane.id === target ? 'block' : 'none';
+                });
+                if (target === 'ciso-view-pane') this._loadCisoView();
+            });
+        });
+    }
+
+    async _loadCisoView() {
+        const container = document.getElementById('ciso-view-content');
+        if (!container) return;
+        const archName = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+        if (!archName) {
+            container.innerHTML = '<p class="placeholder">No architecture loaded.</p>';
+            return;
+        }
+
+        // Try loading existing snapshot
+        let snap = null;
+        try {
+            const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/ciso_brief_latest.json`, {cache: 'no-store'});
+            if (r.ok) snap = await r.json();
+        } catch (_) {}
+
+        container.innerHTML = this._renderCisoView(archName, snap);
+    }
+
+    async _generateCisoBrief(archName, withLlm) {
+        const container = document.getElementById('ciso-view-content');
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        container.innerHTML = `<div style="padding:2rem;text-align:center;color:var(--text-secondary);">
+            <div style="font-size:2rem;margin-bottom:0.75rem;">⏳</div>
+            <div>Generating CISO brief${withLlm ? ' (with AI narrative)' : ''}…</div>
+            <div style="font-size:0.78rem;color:var(--text-tertiary);margin-top:0.35rem;">Analysing ${archName}</div>
+        </div>`;
+        try {
+            const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/generate-ciso-brief?llm=${withLlm}`, {
+                method: 'POST', headers: {'TM-API-KEY': apiKey},
+            });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const d = await r.json();
+            container.innerHTML = this._renderCisoView(archName, d.snapshot);
+        } catch (e) {
+            container.innerHTML = `<div style="padding:1.5rem;color:var(--danger-color);">⚠ Failed: ${e.message}</div>`;
+        }
+    }
+
+    _renderCisoView(archName, snap) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const genBtn = (withLlm, label) =>
+            `<button onclick="window.dashboard._generateCisoBrief('${archName}', ${withLlm})"
+                style="padding:0.35rem 0.9rem;border-radius:6px;border:1px solid var(--primary-color);
+                       background:var(--primary-color)11;color:var(--primary-color);font-size:0.8rem;
+                       font-weight:600;cursor:pointer;white-space:nowrap;">${label}</button>`;
+
+        if (!snap) {
+            return `<div style="padding:2rem;text-align:center;">
+                <div style="font-size:2.5rem;margin-bottom:1rem;">🏛</div>
+                <h3 style="color:var(--text-color);margin-bottom:0.5rem;">No CISO Brief Generated</h3>
+                <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1.5rem;max-width:420px;margin-left:auto;margin-right:auto;">
+                    Generate a board-ready one-page brief with risk gauges, top confirmed findings, and investment options.
+                </p>
+                <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
+                    ${genBtn(false, '⚡ Generate (fast)')}
+                    ${genBtn(true,  '✨ Generate with AI narrative')}
+                </div>
+            </div>`;
+        }
+
+        // Colour helpers
+        const riskColor  = snap.risk  >= 70 ? 'var(--danger-color)' : snap.risk  >= 40 ? 'var(--warning-color)' : 'var(--secondary-color)';
+        const confColor  = snap.confidence >= 85 ? 'var(--secondary-color)' : snap.confidence >= 70 ? 'var(--warning-color)' : 'var(--danger-color)';
+        const defColor   = snap.defensibility >= 70 ? 'var(--secondary-color)' : snap.defensibility >= 40 ? 'var(--warning-color)' : 'var(--danger-color)';
+
+        const interpLabel = pct => pct >= 90 ? 'STRONG' : pct >= 80 ? 'GOOD' : pct >= 70 ? 'ADEQUATE' : pct >= 60 ? 'NEEDS REVIEW' : 'ACTION REQUIRED';
+        const bar = (val, maxVal=100, width=120, invert=false) => {
+            const filled = Math.round(width * val / maxVal);
+            const good   = invert ? 'var(--danger-color)' : 'var(--secondary-color)';
+            const bad    = invert ? 'var(--secondary-color)' : 'var(--danger-color)';
+            const color  = invert ? (val >= 70 ? bad : val >= 40 ? 'var(--warning-color)' : good)
+                                  : (val >= 70 ? good : val >= 40 ? 'var(--warning-color)' : bad);
+            return `<div style="display:inline-block;width:${width}px;height:8px;border-radius:4px;background:var(--border-color);vertical-align:middle;">
+                <div style="width:${filled}px;height:8px;border-radius:4px;background:${color};"></div></div>`;
+        };
+
+        // Trend section
+        let trendHtml = '';
+        const delta = snap.delta || {};
+        if (delta.prev_date) {
+            const dSign = (v, invert=false) => {
+                if (v === 0) return `<span style="color:var(--text-tertiary);">±0</span>`;
+                const improving = invert ? v < 0 : v > 0;
+                const col = improving ? 'var(--secondary-color)' : 'var(--danger-color)';
+                return `<span style="color:${col};">${v > 0 ? '+' : ''}${v}</span>`;
+            };
+            const closed = (delta.closed_findings || []).length;
+            const newF   = (delta.new_findings    || []).length;
+            trendHtml = `<div style="margin-bottom:1rem;padding:0.75rem 1rem;background:var(--nav-hover-bg);border-radius:8px;border:1px solid var(--border-color);">
+                <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">
+                    TREND vs ${delta.prev_date}</div>
+                <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:0.8125rem;">
+                    <span>Confidence ${dSign(delta.confidence_delta)}pp</span>
+                    <span>Risk ${dSign(delta.risk_delta, true)}</span>
+                    <span>Critical findings ${dSign(delta.known_crit_delta, true)}</span>
+                    ${closed ? `<span style="color:var(--secondary-color);">✓ ${closed} closed</span>` : ''}
+                    ${newF   ? `<span style="color:var(--warning-color);">+ ${newF} new</span>` : ''}
+                </div>
+            </div>`;
+        }
+
+        // Risk gauges
+        const gaugesHtml = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem;">
+            ${[
+                ['Confidence',    snap.confidence,   false, confColor, interpLabel(snap.confidence)],
+                ['Attack Risk',   snap.risk,         true,  riskColor, snap.risk >= 70 ? 'HIGH EXPOSURE' : snap.risk >= 40 ? 'MEDIUM' : 'MANAGED'],
+                ['Defensibility', snap.defensibility,false, defColor,  snap.defensibility >= 70 ? 'STRONG' : snap.defensibility >= 40 ? 'PARTIAL' : 'WEAK'],
+            ].map(([label, val, inv, col, status]) =>
+                `<div style="padding:0.75rem;background:var(--nav-hover-bg);border-radius:8px;border:1px solid var(--border-color);">
+                    <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.25rem;">${label}</div>
+                    <div style="font-size:1.5rem;font-weight:700;color:${col};margin-bottom:0.25rem;">${val}${label==='Confidence'?'%':'/100'}</div>
+                    ${bar(val, 100, 100, inv)}
+                    <div style="font-size:0.72rem;color:${col};margin-top:0.3rem;font-weight:600;">${status}</div>
+                </div>`
+            ).join('')}
+        </div>
+        <div style="font-size:0.8125rem;color:var(--text-secondary);margin-bottom:${snap.redesign?'0.5':'1'}rem;">
+            ${snap.n_paths} attack paths · ${snap.known_critical} critical confirmed · ${snap.n_tech} techniques
+        </div>
+        ${snap.redesign ? `<div style="margin-bottom:1rem;padding:0.5rem 0.75rem;background:var(--danger-color)10;border-left:3px solid var(--danger-color);border-radius:4px;font-size:0.8125rem;color:var(--danger-color);font-weight:600;">⚠ REDESIGN SIGNAL — architecture changes required</div>` : ''}`;
+
+        // Top findings
+        const CRIT_LABELS = {architect:'Architect',tester:'Tester',red_team:'Red Team',purple_team:'Purple Team',blackhat:'Blackhat'};
+        const findingsHtml = (snap.top_findings || []).map((f, i) => {
+            const sev = (f.severity || '').toUpperCase();
+            const sevColor = sev === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)';
+            const parts = f.source.split('+').map(s => CRIT_LABELS[s.trim()] || s.trim());
+            const srcColor = parts.length > 1 ? 'var(--secondary-color)' : 'var(--text-tertiary)';
+            const srcLabel = parts.join(' + ');
+            const desc = f.description || '';
+            const dm = desc.match(/^(.{20,}?[.!?])(?:\s|$)/);
+            const descShort = dm ? dm[1] : desc.slice(0,110);
+            const rec = f.recommendation || '';
+            const rm = rec.match(/^(.{20,}?[.!?])(?:\s|$)/);
+            const recShort = rm ? rm[1] : rec.slice(0,90);
+            return `<div style="padding:0.6rem 0.75rem;background:var(--card-bg);border-radius:6px;border-left:3px solid ${sevColor};margin-bottom:0.4rem;">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.2rem;flex-wrap:wrap;">
+                    <span style="font-size:0.72rem;font-weight:700;color:${sevColor};">${sev}</span>
+                    <span style="font-size:0.7rem;color:${srcColor};font-weight:600;">[${srcLabel}]</span>
+                </div>
+                <div style="font-size:0.8125rem;color:var(--text-secondary);">${descShort}</div>
+                ${recShort ? `<div style="font-size:0.78rem;color:var(--primary-color);margin-top:0.2rem;">→ ${recShort}</div>` : ''}
+            </div>`;
+        }).join('');
+
+        // Investment tiers
+        const tierRows = Object.entries(snap.tiers || {}).map(([key, t]) => {
+            if (!t || !t.cost) return '';
+            const label = {quick_wins:'⚡ Quick Win', recommended:'⭐ Recommended', maximum:'🔒 Maximum'}[key] || key;
+            const rr = t.risk_reduction || '';
+            const nums = rr.match(/[\d.]+/g) || [];
+            let barHtml = '';
+            try {
+                const before = parseFloat(nums[0]), after = parseFloat(nums[1]);
+                const pct = Math.round((before - after) / before * 100);
+                const afterW = Math.round(80 * after / before);
+                barHtml = `<div style="display:inline-flex;align-items:center;gap:0.4rem;vertical-align:middle;">
+                    <div style="display:inline-block;width:80px;height:6px;border-radius:3px;background:var(--border-color);">
+                        <div style="width:${afterW}px;height:6px;border-radius:3px;background:var(--danger-color);"></div>
+                    </div>
+                    <span style="font-size:0.72rem;color:var(--secondary-color);font-weight:600;">−${pct}%</span>
+                </div>`;
+            } catch(_) {}
+            const verdict = (t.practical_verdict || '').split('—')[0].trim().slice(0,8);
+            const vColor = verdict.startsWith('YES') ? 'var(--secondary-color)' : 'var(--warning-color)';
+            return `<tr>
+                <td style="padding:0.4rem 0.6rem;font-weight:600;white-space:nowrap;">${label}</td>
+                <td style="padding:0.4rem 0.6rem;color:var(--text-secondary);">${t.cost || '—'}</td>
+                <td style="padding:0.4rem 0.6rem;color:var(--text-secondary);">${t.effort || '—'}</td>
+                <td style="padding:0.4rem 0.6rem;">${barHtml}</td>
+                <td style="padding:0.4rem 0.6rem;font-size:0.72rem;font-weight:700;color:${vColor};">${verdict}</td>
+            </tr>`;
+        }).join('');
+
+        const tiersHtml = tierRows ? `<table style="width:100%;border-collapse:collapse;font-size:0.8125rem;">
+            <thead><tr style="border-bottom:1px solid var(--border-color);">
+                <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Tier</th>
+                <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Cost</th>
+                <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Effort</th>
+                <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Risk reduction</th>
+                <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Verdict</th>
+            </tr></thead>
+            <tbody>${tierRows}</tbody>
+        </table>` : '<p style="color:var(--text-tertiary);font-size:0.8125rem;">Run Expert Review to unlock investment tiers.</p>';
+
+        // Narrative
+        const narrativeHtml = (snap.verdict || snap.action) ? `
+            <div style="margin-bottom:0.5rem;">
+                ${snap.verdict ? `<div style="font-size:0.8375rem;color:var(--text-color);margin-bottom:0.5rem;">${snap.verdict}</div>` : ''}
+                ${snap.action  ? `<div style="font-size:0.8375rem;color:var(--primary-color);font-weight:500;">→ ${snap.action}</div>` : ''}
+            </div>` : '';
+
+        const genDate = snap.date ? `<span style="color:var(--text-tertiary);font-size:0.72rem;">Generated ${snap.date}</span>` : '';
+        const regenBtns = `<div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+            ${genDate}
+            <div style="flex:1;"></div>
+            ${genBtn(false, '↻ Regenerate')}
+            ${genBtn(true,  '✨ Regenerate with AI')}
+        </div>`;
+
+        return `<div style="max-width:900px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+                <div>
+                    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-tertiary);margin-bottom:0.15rem;">CISO BRIEF</div>
+                    <div style="font-size:1.125rem;font-weight:700;color:var(--text-color);">${archName}</div>
+                </div>
+                ${regenBtns}
+            </div>
+            ${trendHtml}
+            ${gaugesHtml}
+            <div style="margin-bottom:1rem;">
+                <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">
+                    TOP FINDINGS — KNOWN CONFIRMED
+                    <span style="font-weight:400;color:var(--text-tertiary);margin-left:0.5rem;">(multi-critic first)</span>
+                </div>
+                ${findingsHtml || '<p style="color:var(--text-tertiary);font-size:0.8125rem;">No confirmed findings — run Expert Review.</p>'}
+            </div>
+            <div style="margin-bottom:1rem;">
+                <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">INVESTMENT OPTIONS</div>
+                ${tiersHtml}
+            </div>
+            ${narrativeHtml ? `<div style="padding:0.75rem 1rem;background:var(--primary-color)0a;border-left:3px solid var(--primary-color);border-radius:6px;margin-bottom:1rem;">
+                <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--primary-color);margin-bottom:0.4rem;">ASSESSMENT</div>
+                ${narrativeHtml}
+            </div>` : ''}
+        </div>`;
     }
 
     async fetchTechniqueNames(techniqueIds) {
