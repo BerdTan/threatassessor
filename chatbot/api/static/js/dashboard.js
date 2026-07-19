@@ -6335,107 +6335,88 @@ class Dashboard {
     _wireCisoPanel(archName, snap) {
         if (!snap) return;
         const safeKey = archName.replace(/\W/g, '_');
-        const panel   = document.getElementById('ciso-detail-panel-' + safeKey);
-        const wrapper = document.getElementById('ciso-split-' + safeKey);
-        if (!panel || !wrapper) return;
-
         const CRIT_LABELS = {architect:'Architect',tester:'Tester',red_team:'Red Team',
                              purple_team:'Purple Team',blackhat:'Blackhat'};
 
-        // Open panel: switch wrapper to 60/40 split, fill panel, show close btn
-        const openPanel = (html) => {
-            panel.innerHTML = `<button onclick="window._cisoPanelClose('${safeKey}')"
-                style="position:absolute;top:0.5rem;right:0.5rem;background:transparent;border:none;
-                       color:var(--text-tertiary);font-size:1rem;cursor:pointer;padding:0.2rem 0.4rem;
-                       border-radius:4px;line-height:1;" title="Close">✕</button>
-                <div style="padding:0.85rem 1rem 1rem;">${html}</div>`;
-            wrapper.style.gridTemplateColumns = '3fr 2fr';
-            panel.style.display = 'block';
-        };
-
-        window._cisoPanelClose = (key) => {
-            const p = document.getElementById('ciso-detail-panel-' + key);
-            const w = document.getElementById('ciso-split-' + key);
-            if (p) p.style.display = 'none';
-            if (w) w.style.gridTemplateColumns = '1fr';
-            // Clear highlights
-            document.querySelectorAll(`[data-ciso-finding="${key}"],[data-ciso-tier="${key}"]`)
-                .forEach(e => { e.style.background = ''; });
-        };
-
-        // Finding detail: recommendation is the primary value-add.
-        // Description is already visible in the list — skip it. Show: action + critic context.
-        const findingDetail = (f) => {
-            const sev = (f.severity || '').toUpperCase();
+        // Finding detail: lead with the recommendation (new info); skip repeating the description.
+        const findingContent = (f) => {
+            const sev      = (f.severity || '').toUpperCase();
             const sevColor = sev === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)';
-            const parts = f.source.split('+').map(s => CRIT_LABELS[s.trim()] || s.trim());
+            const parts    = f.source.split('+').map(s => CRIT_LABELS[s.trim()] || s.trim());
             const srcColor = parts.length > 1 ? 'var(--secondary-color)' : 'var(--text-secondary)';
-            const rec = f.recommendation || '';
-            if (!rec) return null; // nothing new to show — don't open panel
-            return `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
-                        letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.6rem;">
-                        WHAT TO DO</div>
-                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.65rem;flex-wrap:wrap;">
-                    <span style="font-size:0.72rem;font-weight:700;color:${sevColor};">${sev}</span>
-                    <span style="font-size:0.7rem;color:${srcColor};font-weight:600;">[${parts.join(' + ')}]</span>
+            const rec      = (f.recommendation || '').trim();
+            if (!rec) return null; // nothing new to add — don't open
+
+            return `<div style="margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                    <span style="font-size:0.78rem;font-weight:700;color:${sevColor};">${sev}</span>
+                    <span style="font-size:0.75rem;color:${srcColor};font-weight:600;">[${parts.join(' + ')}]</span>
                 </div>
-                <div style="padding:0.65rem 0.75rem;background:var(--primary-color)0a;
+                <div style="font-size:0.8125rem;color:var(--text-secondary);line-height:1.55;margin-bottom:1rem;">${f.description || ''}</div>
+                <div style="padding:0.65rem 0.875rem;background:var(--primary-color)0a;
                             border-left:3px solid var(--primary-color);border-radius:4px;">
-                    <div style="font-size:0.8125rem;color:var(--text-color);line-height:1.55;">${rec}</div>
+                    <div style="font-size:0.68rem;font-weight:700;color:var(--primary-color);
+                                text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;">What to do</div>
+                    <div style="font-size:0.8375rem;color:var(--text-color);line-height:1.55;">${rec}</div>
                 </div>`;
         };
 
-        // Tier detail: controls list is genuinely new — not shown in summary row.
-        const tierDetail = (key, tier) => {
-            const label = {quick_wins:'⚡ Quick Win', recommended:'⭐ Recommended', maximum:'🔒 Maximum'}[key] || key;
-            const rationale = (tier.rationale || '');
-            const items   = (tier.items || []).filter(i => !String(i).startsWith('[SM]')).slice(0, 8);
-            const smItems = (tier.items || []).filter(i =>  String(i).startsWith('[SM]')).slice(0, 4);
-            const itemRow = (it, color='var(--text-secondary)', prefix='•') => {
+        // Tier detail: show rationale + controls list — genuinely new vs the summary row.
+        const tierContent = (tierKey, tier) => {
+            const label    = {quick_wins:'⚡ Quick Win', recommended:'⭐ Recommended', maximum:'🔒 Maximum'}[tierKey] || tierKey;
+            const rationale = (tier.rationale || '').trim();
+            const rr       = tier.risk_reduction || '';
+            const nums     = rr.match(/[\d.]+/g) || [];
+            let riskLine   = '';
+            try {
+                const before = parseFloat(nums[0]), after = parseFloat(nums[1]);
+                const pct    = Math.round((before - after) / before * 100);
+                riskLine = `Attack score ${Math.round(before)} → ${Math.round(after)}  (−${pct}% reduction)`;
+            } catch(_) {}
+
+            const items   = (tier.items || []).filter(i => !String(i).startsWith('[SM]')).slice(0, 10);
+            const smItems = (tier.items || []).filter(i =>  String(i).startsWith('[SM]')).slice(0, 5);
+
+            const itemRow = (it, color, prefix) => {
                 const raw  = String(it).replace(/^\[SM\]\s*/,'').replace(/^\[.*?\]\s*/,'');
                 const dash = raw.indexOf(' — ');
-                const name = dash > -1 ? raw.slice(0, dash) : raw;
-                return `<div style="font-size:0.78rem;color:${color};padding:0.25rem 0;
+                const name = (dash > -1 ? raw.slice(0, dash) : raw).trim();
+                return `<div style="font-size:0.8rem;color:${color};padding:0.3rem 0;
                             border-bottom:1px solid var(--border-color)22;">${prefix} ${name}</div>`;
             };
-            return `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
-                        letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.6rem;">
-                        WHAT'S INCLUDED — ${label}</div>
-                ${rationale ? `<div style="font-size:0.78rem;color:var(--text-secondary);
-                    margin-bottom:0.75rem;font-style:italic;line-height:1.5;">${rationale}</div>` : ''}
-                ${items.length ? items.map(i => itemRow(i)).join('') : ''}
-                ${smItems.length ? `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
-                    color:#a855f7;margin-top:0.6rem;margin-bottom:0.25rem;">+ ScrumMaster priorities</div>`
-                    + smItems.map(i => itemRow(i,'#a855f7','🧩')).join('') : ''}`;
+
+            return `<div style="font-size:0.75rem;font-weight:600;color:var(--text-color);margin-bottom:0.35rem;">${label}</div>
+                ${riskLine ? `<div style="font-size:0.78rem;color:var(--secondary-color);font-weight:600;margin-bottom:0.75rem;">${riskLine}</div>` : ''}
+                ${rationale ? `<div style="font-size:0.8rem;color:var(--text-secondary);line-height:1.55;margin-bottom:0.875rem;font-style:italic;">${rationale}</div>` : ''}
+                ${items.length ? `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.35rem;">Controls included</div>`
+                    + items.map(i => itemRow(i, 'var(--text-secondary)', '•')).join('') : ''}
+                ${smItems.length ? `<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#a855f7;margin-top:0.75rem;margin-bottom:0.35rem;">ScrumMaster additions</div>`
+                    + smItems.map(i => itemRow(i, '#a855f7', '🧩')).join('') : ''}`;
         };
 
-        // Wire finding rows — only open if there's something new to show
+        // Wire finding rows — use global showRightPane (same as threat model / controls tabs)
         document.querySelectorAll(`[data-ciso-finding="${safeKey}"]`).forEach(el => {
             el.addEventListener('click', () => {
-                const idx = parseInt(el.dataset.findingIdx);
-                const f   = (snap.top_findings || [])[idx];
+                const idx  = parseInt(el.dataset.findingIdx);
+                const f    = (snap.top_findings || [])[idx];
                 if (!f) return;
-                const html = findingDetail(f);
-                if (!html) return; // no recommendation — nothing new, don't open
-                openPanel(html);
+                const html = findingContent(f);
+                if (!html) return;
+                this.showRightPane(`${(f.severity||'').toUpperCase()} Finding`, html);
                 document.querySelectorAll(`[data-ciso-finding="${safeKey}"]`).forEach(e =>
                     e.style.background = e === el ? 'var(--nav-hover-bg)' : 'var(--card-bg)');
-                document.querySelectorAll(`[data-ciso-tier="${safeKey}"]`).forEach(e =>
-                    e.style.background = '');
             });
         });
 
         // Wire tier rows — always has new content (controls list)
         document.querySelectorAll(`[data-ciso-tier="${safeKey}"]`).forEach(el => {
             el.addEventListener('click', () => {
-                const key  = el.dataset.tierKey;
-                const tier = (snap.tiers || {})[key];
+                const tierKey = el.dataset.tierKey;
+                const tier    = (snap.tiers || {})[tierKey];
                 if (!tier) return;
-                openPanel(tierDetail(key, tier));
+                const label   = {quick_wins:'⚡ Quick Win', recommended:'⭐ Recommended', maximum:'🔒 Maximum'}[tierKey] || tierKey;
+                this.showRightPane(label, tierContent(tierKey, tier));
                 document.querySelectorAll(`[data-ciso-tier="${safeKey}"]`).forEach(e =>
                     e.style.background = e === el ? 'var(--nav-hover-bg)' : '');
-                document.querySelectorAll(`[data-ciso-finding="${safeKey}"]`).forEach(e =>
-                    e.style.background = 'var(--card-bg)');
             });
         });
     }
@@ -6640,22 +6621,12 @@ class Dashboard {
             </div>
             ${trendHtml}
             ${gaugesHtml}
-            <!-- Findings + slide-in detail panel. Panel hidden by default; click opens it. -->
-            <div id="ciso-split-${safeKey}"
-                style="display:grid;grid-template-columns:1fr;gap:1rem;margin-bottom:1rem;align-items:start;transition:grid-template-columns 0.2s;">
-                <div>
-                    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">
-                        TOP FINDINGS — KNOWN CONFIRMED
-                        <span style="font-weight:400;color:var(--text-tertiary);margin-left:0.4rem;">(click a finding or tier for details)</span>
-                    </div>
-                    ${findingsHtml || '<p style="color:var(--text-tertiary);font-size:0.8125rem;">No confirmed findings — run Expert Review.</p>'}
+            <div style="margin-bottom:1rem;">
+                <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">
+                    TOP FINDINGS — KNOWN CONFIRMED
+                    <span style="font-weight:400;color:var(--text-tertiary);margin-left:0.4rem;">(click for detail →)</span>
                 </div>
-                <!-- Detail panel: hidden until a row is clicked -->
-                <div id="ciso-detail-panel-${safeKey}"
-                    style="display:none;position:relative;background:var(--nav-hover-bg);
-                           border-radius:8px;border:1px solid var(--border-color);
-                           min-height:120px;overflow:hidden;">
-                </div>
+                ${findingsHtml || '<p style="color:var(--text-tertiary);font-size:0.8125rem;">No confirmed findings — run Expert Review.</p>'}
             </div>
             <div style="margin-bottom:1rem;">
                 <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">INVESTMENT OPTIONS</div>
