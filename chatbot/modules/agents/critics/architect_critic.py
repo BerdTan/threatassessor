@@ -416,12 +416,11 @@ ARTIFACT 6: ORIGINAL ARCHITECTURE (before.mmd)
 ARTIFACT 7: IMPROVED ARCHITECTURE (after.mmd) **CRITICAL VALIDATION**
 {self._format_diagram(tier2.get("artifact_7_after_mmd"), "After")}
 
-**CRITICAL CHECK - after.mmd Completeness:**
+**DIAGRAM SYNC CHECK - after.mmd (internal QA only — do NOT include in gaps[]):**
 - Expected controls: {control_count}
 - Controls in after.mmd: {after_mmd_controls} NEW_* nodes
 - Status: {control_status}
-
-{'→ ' if control_gap > 2 else ''}{'FLAG THIS AS HIGH SEVERITY GAP if mismatch > 2' if control_gap > 2 else ''}
+- Note: Any mismatch here is a diagram generation issue, not a security finding. Reflect it only in diagram_completeness score, never as a gaps[] entry.
 
 ARTIFACT 8: TECHNICAL REPORT
 {self._format_report(tier2.get("artifact_8_technical_report"), "Technical", max_lines=30)}

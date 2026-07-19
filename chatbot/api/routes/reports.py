@@ -1830,6 +1830,17 @@ async def generate_ciso_brief(
     import re as _re
     import datetime as _dt
 
+    _HK_PAT = _re.compile(
+        r"after\.mmd|NEW_\*|control.node|diagram.*sync|diagram.*gap|"
+        r"missing.*control.node|control.node.*missing|"
+        r"artifact.7|mmd.*contain|contain.*mmd|"
+        r"\d+\s*NEW_\s*control|controls? visuali[sz]",
+        _re.I,
+    )
+
+    def _is_housekeeping(desc: str) -> bool:
+        return bool(_HK_PAT.search(desc))
+
     # ── Build metrics ────────────────────────────────────────────────────────
     risk    = gt.get("expected_risk_score", 0)
     defence = gt.get("expected_defensibility", 0)
@@ -1911,8 +1922,10 @@ async def generate_ciso_brief(
         for r in cr.get(sev_key, []):
             if r.get("confidence_label") != "KNOWN":
                 continue
+            desc = r.get("description", "")
+            if _is_housekeeping(desc):
+                continue
             source = r.get("source", "")
-            desc   = r.get("description", "")
             rec    = _find_rec(desc, r.get("recommendation", ""))
             candidates.append({
                 "description":    desc,
@@ -1930,6 +1943,35 @@ async def generate_ciso_brief(
                     if r.get("confidence_label") == "KNOWN"]
     unsure_count = len(cr.get("review", []))
     redesign     = sm.get("redesign_signal", False)
+
+    # Build AP lookup for finding enrichment: id → {path, criticality, techniques}
+    _ap_map = {
+        ap["id"]: {
+            "path":        " → ".join(ap.get("path", [])[:6]),
+            "criticality": ap.get("criticality_tier", ""),
+            "techniques":  ap.get("techniques", [])[:8],
+        }
+        for ap in gt.get("expected_attack_paths", [])
+    }
+
+    # Enrich findings with AP context extracted from description
+    def _enrich_finding(f: dict) -> dict:
+        desc = f.get("description", "")
+        ap_ids = list(dict.fromkeys(re.findall(r"\bAP-\d+\b", desc)))[:4]
+        t_codes = list(dict.fromkeys(re.findall(r"\bT\d{4}(?:\.\d{3})?\b", desc)))[:4]
+        # Fallback: if no AP IDs in description, find APs that share the T-codes
+        if not ap_ids and t_codes:
+            ap_ids = [
+                ap_id for ap_id, ap_data in _ap_map.items()
+                if any(t in ap_data["techniques"] for t in t_codes)
+            ][:4]
+        ap_context = [
+            {"id": ap_id, **_ap_map[ap_id]}
+            for ap_id in ap_ids if ap_id in _ap_map
+        ]
+        return {**f, "ap_context": ap_context, "t_codes": t_codes}
+
+    top_findings = [_enrich_finding(f) for f in top_findings]
 
     # ── LLM narrative (optional) ─────────────────────────────────────────────
     verdict_txt = ""
@@ -2011,9 +2053,13 @@ async def generate_ciso_brief(
         "unsure_count":   unsure_count,
         "redesign":       redesign,
         "top_findings":   [
-            {"description": f["description"][:200], "source": f["source"],
-             "severity": f["severity"], "critic_count": f["critic_count"],
-             "recommendation": f["recommendation"][:300]}
+            {"description":    f["description"][:200],
+             "source":         f["source"],
+             "severity":       f["severity"],
+             "critic_count":   f["critic_count"],
+             "recommendation": f.get("recommendation", "")[:300],
+             "ap_context":     f.get("ap_context", []),
+             "t_codes":        f.get("t_codes", [])}
             for f in top_findings
         ],
         "tiers": {
@@ -2031,6 +2077,9 @@ async def generate_ciso_brief(
                 "maximum":     io.get("maximum",     {}),
             }.items() if v
         },
+        "ciso_advisor_verdict": verdict_txt,
+        "ciso_advisor_action":  action_txt,
+        # Keep legacy keys for backward compat with existing snapshots
         "verdict": verdict_txt,
         "action":  action_txt,
         "delta":   delta,

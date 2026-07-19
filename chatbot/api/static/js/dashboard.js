@@ -6345,19 +6345,45 @@ class Dashboard {
             const parts    = f.source.split('+').map(s => CRIT_LABELS[s.trim()] || s.trim());
             const srcColor = parts.length > 1 ? 'var(--secondary-color)' : 'var(--text-secondary)';
             const rec      = (f.recommendation || '').trim();
-            if (!rec) return null; // nothing new to add — don't open
+            const apCtx    = f.ap_context || [];
+            const tCodes   = f.t_codes || [];
+            // Only open if there's something new: recommendation or AP context
+            if (!rec && !apCtx.length) return null;
 
-            return `<div style="margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+            // AP threat model context — compact path + criticality chips
+            const apHtml = apCtx.length
+                ? `<div style="margin-bottom:0.875rem;">
+                    <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
+                                color:var(--text-tertiary);margin-bottom:0.4rem;">Affected attack paths</div>
+                    ${apCtx.map(ap => {
+                        const critColor = ap.criticality === 'CRITICAL' ? 'var(--danger-color)' : 'var(--warning-color)';
+                        return `<div style="font-size:0.78rem;padding:0.25rem 0;border-bottom:1px solid var(--border-color)22;">
+                            <span style="font-size:0.7rem;font-weight:700;color:${critColor};margin-right:0.4rem;">${ap.id}</span>
+                            <span style="color:var(--text-secondary);">${ap.path}</span>
+                        </div>`;
+                    }).join('')}
+                   </div>`
+                : '';
+
+            // T-code badges
+            const tHtml = tCodes.length
+                ? `<div style="display:flex;gap:0.35rem;flex-wrap:wrap;margin-bottom:0.875rem;">
+                    ${tCodes.map(t => `<code style="font-size:0.72rem;font-weight:700;color:var(--primary-color);
+                        background:var(--primary-color)14;padding:1px 6px;border-radius:3px;">${t}</code>`).join('')}
+                   </div>`
+                : '';
+
+            return `<div style="margin-bottom:0.6rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
                     <span style="font-size:0.78rem;font-weight:700;color:${sevColor};">${sev}</span>
                     <span style="font-size:0.75rem;color:${srcColor};font-weight:600;">[${parts.join(' + ')}]</span>
                 </div>
-                <div style="font-size:0.8125rem;color:var(--text-secondary);line-height:1.55;margin-bottom:1rem;">${f.description || ''}</div>
-                <div style="padding:0.65rem 0.875rem;background:var(--primary-color)0a;
+                ${tHtml}${apHtml}
+                ${rec ? `<div style="padding:0.65rem 0.875rem;background:var(--primary-color)0a;
                             border-left:3px solid var(--primary-color);border-radius:4px;">
                     <div style="font-size:0.68rem;font-weight:700;color:var(--primary-color);
                                 text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;">What to do</div>
                     <div style="font-size:0.8375rem;color:var(--text-color);line-height:1.55;">${rec}</div>
-                </div>`;
+                </div>` : ''}`;
         };
 
         // Tier detail: show rationale + controls list — genuinely new vs the summary row.
@@ -6552,6 +6578,11 @@ class Dashboard {
         }).join('');
 
         // Investment tiers — data-* attrs for click wiring
+        const VERDICT_META = {
+            YES:   { label: 'Deploy',   color: 'var(--secondary-color)', bg: 'var(--secondary-color)18', title: 'Controls are practical and proportionate — deploy now' },
+            MAYBE: { label: 'Consider', color: 'var(--warning-color)',   bg: 'var(--warning-color)18',   title: 'High overhead or user friction — evaluate trade-offs before committing' },
+            NO:    { label: 'Defer',    color: 'var(--danger-color)',    bg: 'var(--danger-color)18',    title: 'Cost or complexity outweighs the risk reduction at this stage' },
+        };
         const tierRows = Object.entries(snap.tiers || {}).map(([key, t]) => {
             if (!t || !t.cost) return '';
             const label = {quick_wins:'⚡ Quick Win', recommended:'⭐ Recommended', maximum:'🔒 Maximum'}[key] || key;
@@ -6569,8 +6600,13 @@ class Dashboard {
                     <span style="font-size:0.72rem;color:var(--secondary-color);font-weight:600;">−${pct}%</span>
                 </div>`;
             } catch(_) {}
-            const verdict = (t.practical_verdict || '').split('—')[0].trim().slice(0, 8);
-            const vColor = verdict.startsWith('YES') ? 'var(--secondary-color)' : 'var(--warning-color)';
+            const rawVerdict = (t.practical_verdict || '').split('—')[0].trim().toUpperCase();
+            const vKey = rawVerdict.startsWith('YES') ? 'YES' : rawVerdict.startsWith('NO') ? 'NO' : rawVerdict.startsWith('MAYBE') ? 'MAYBE' : null;
+            const vm = vKey ? VERDICT_META[vKey] : null;
+            const verdictCell = vm
+                ? `<span title="${vm.title}" style="font-size:0.72rem;font-weight:700;color:${vm.color};
+                       background:${vm.bg};padding:1px 7px;border-radius:3px;cursor:default;">${vm.label}</span>`
+                : `<span style="font-size:0.72rem;color:var(--text-tertiary);">—</span>`;
             return `<tr data-ciso-tier="${safeKey}" data-tier-key="${key}"
                 style="cursor:pointer;transition:background 0.12s;"
                 onmouseover="this.style.background='var(--nav-hover-bg)'"
@@ -6579,31 +6615,52 @@ class Dashboard {
                 <td style="padding:0.4rem 0.6rem;color:var(--text-secondary);">${t.cost || '—'}</td>
                 <td style="padding:0.4rem 0.6rem;color:var(--text-secondary);">${t.effort || '—'}</td>
                 <td style="padding:0.4rem 0.6rem;">${barHtml}</td>
-                <td style="padding:0.4rem 0.6rem;font-size:0.72rem;font-weight:700;color:${vColor};">${verdict}</td>
+                <td style="padding:0.4rem 0.6rem;">${verdictCell}</td>
             </tr>`;
         }).join('');
 
-        const tiersHtml = tierRows ? `<table style="width:100%;border-collapse:collapse;font-size:0.8125rem;">
-            <thead><tr style="border-bottom:1px solid var(--border-color);">
-                <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Tier</th>
-                <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Cost</th>
-                <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Effort</th>
-                <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Risk reduction</th>
-                <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Verdict</th>
-            </tr></thead>
-            <tbody>${tierRows}</tbody>
-        </table>` : '<p style="color:var(--text-tertiary);font-size:0.8125rem;">Run Expert Review to unlock investment tiers.</p>';
+        const tiersHtml = tierRows ? `
+            <table style="width:100%;border-collapse:collapse;font-size:0.8125rem;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--border-color);">
+                        <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Tier</th>
+                        <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Cost</th>
+                        <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Effort</th>
+                        <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Risk reduction</th>
+                        <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Practicality</th>
+                    </tr>
+                </thead>
+                <tbody>${tierRows}</tbody>
+            </table>
+            <div style="display:flex;gap:0.75rem;margin-top:0.5rem;flex-wrap:wrap;">
+                ${Object.entries(VERDICT_META).map(([k, m]) =>
+                    `<span style="font-size:0.68rem;display:flex;align-items:center;gap:0.3rem;color:var(--text-tertiary);">
+                        <span style="font-size:0.7rem;font-weight:700;color:${m.color};
+                              background:${m.bg};padding:1px 6px;border-radius:3px;">${m.label}</span>
+                        ${k === 'YES' ? 'practical, deploy' : k === 'MAYBE' ? 'evaluate trade-offs' : 'defer'}
+                    </span>`
+                ).join('')}
+            </div>` : '<p style="color:var(--text-tertiary);font-size:0.8125rem;">Run Expert Review to unlock investment tiers.</p>';
 
-        // Narrative
-        const narrativeHtml = (snap.verdict || snap.action) ? `
-            <div style="margin-bottom:0.5rem;">
-                ${snap.verdict ? `<div style="font-size:0.8375rem;color:var(--text-color);margin-bottom:0.5rem;">${snap.verdict}</div>` : ''}
-                ${snap.action  ? `<div style="font-size:0.8375rem;color:var(--primary-color);font-weight:500;">→ ${snap.action}</div>` : ''}
-            </div>` : '';
+        // CISO Advisor narrative — read new keys with fallback to legacy keys
+        const advisorVerdict = snap.ciso_advisor_verdict || snap.verdict || '';
+        const advisorAction  = snap.ciso_advisor_action  || snap.action  || '';
+        const narrativeHtml = (advisorVerdict || advisorAction) ? `
+            <div style="font-size:0.65rem;color:var(--text-tertiary);margin-bottom:0.6rem;">cross-critic synthesis · 5 reviewers</div>
+            ${advisorVerdict ? `
+            <div style="margin-bottom:0.75rem;">
+                <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin-bottom:0.3rem;">RISK SUMMARY</div>
+                <div style="font-size:0.8375rem;color:var(--text-color);line-height:1.6;">${advisorVerdict}</div>
+            </div>` : ''}
+            ${advisorAction ? `
+            <div style="padding:0.5rem 0.75rem;background:var(--primary-color)14;border-radius:4px;">
+                <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--primary-color);margin-bottom:0.25rem;">NEXT STEP</div>
+                <div style="font-size:0.8375rem;color:var(--text-color);font-weight:500;line-height:1.5;">${advisorAction}</div>
+            </div>` : ''}` : '';
 
         const genDate = snap.date ? `<span style="color:var(--text-tertiary);font-size:0.72rem;">Generated ${snap.date}</span>` : '';
         // Single primary regen button + a small secondary link for the other mode
-        const hasAi = !!(snap.verdict || snap.action);
+        const hasAi = !!(advisorVerdict || advisorAction);
         const regenBtns = `<div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
             ${genDate}
             <div style="flex:1;"></div>
@@ -6611,7 +6668,25 @@ class Dashboard {
             ${genBtnPrimary(hasAi)}
         </div>`;
 
+        const _cisoSection = (label, body, openByDefault = true) => `
+            <details${openByDefault ? ' open' : ''} style="margin-bottom:0.75rem;border:1px solid var(--border-color);border-radius:6px;overflow:hidden;">
+                <summary style="display:flex;align-items:center;gap:0.5rem;padding:0.55rem 0.875rem;
+                                cursor:pointer;user-select:none;list-style:none;background:var(--card-bg);
+                                font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
+                                color:var(--text-tertiary);">
+                    <span class="ciso-chevron" style="font-size:0.65rem;transition:transform 0.18s;">▶</span>
+                    ${label}
+                </summary>
+                <div style="padding:0.875rem 1rem;border-top:1px solid var(--border-color);">
+                    ${body}
+                </div>
+            </details>`;
+
         return `<div style="max-width:1100px;">
+            <style>
+                details[open] > summary .ciso-chevron { transform: rotate(90deg); }
+                details > summary::-webkit-details-marker { display:none; }
+            </style>
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
                 <div>
                     <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-tertiary);margin-bottom:0.15rem;">CISO BRIEF</div>
@@ -6621,21 +6696,12 @@ class Dashboard {
             </div>
             ${trendHtml}
             ${gaugesHtml}
-            <div style="margin-bottom:1rem;">
-                <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">
-                    TOP FINDINGS — KNOWN CONFIRMED
-                    <span style="font-weight:400;color:var(--text-tertiary);margin-left:0.4rem;">(click for detail →)</span>
-                </div>
+            ${narrativeHtml ? _cisoSection('CISO ADVISOR', narrativeHtml, true) : ''}
+            ${_cisoSection('TOP FINDINGS — KNOWN CONFIRMED', `
+                <div style="font-size:0.72rem;color:var(--text-tertiary);margin-bottom:0.6rem;">(click a finding for detail →)</div>
                 ${findingsHtml || '<p style="color:var(--text-tertiary);font-size:0.8125rem;">No confirmed findings — run Expert Review.</p>'}
-            </div>
-            <div style="margin-bottom:1rem;">
-                <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">INVESTMENT OPTIONS</div>
-                ${tiersHtml}
-            </div>
-            ${narrativeHtml ? `<div style="padding:0.75rem 1rem;background:var(--primary-color)0a;border-left:3px solid var(--primary-color);border-radius:6px;margin-bottom:1rem;">
-                <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--primary-color);margin-bottom:0.4rem;">ASSESSMENT</div>
-                ${narrativeHtml}
-            </div>` : ''}
+            `, true)}
+            ${_cisoSection('INVESTMENT OPTIONS', tiersHtml, true)}
         </div>`;
     }
 

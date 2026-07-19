@@ -172,10 +172,22 @@ def print_plan(arch: str, plan: dict) -> None:
 # Compute all metrics, select findings, optionally call LLM for narrative.
 # ══════════════════════════════════════════════════════════════════════════════
 
+_HOUSEKEEPING_PATTERNS = re.compile(
+    r"after\.mmd|NEW_\*|control.node|diagram.*sync|diagram.*gap|"
+    r"missing.*control.node|control.node.*missing|"
+    r"artifact.7|mmd.*contain|contain.*mmd|"
+    r"\d+\s*NEW_\s*control|controls? visuali[sz]",
+    re.I,
+)
+
+def _is_housekeeping(desc: str) -> bool:
+    """Return True if the finding is an internal diagram/QA signal, not a security risk."""
+    return bool(_HOUSEKEEPING_PATTERNS.search(desc))
+
+
 def _top_findings(moe: dict, n: int = 5) -> list[dict]:
-    """KNOWN findings only, sorted multi-critic first then severity.
-    Falls back to expert_validations gaps for recommendations (consensus_recommendations
-    items do not carry a recommendation field)."""
+    """KNOWN security findings only — diagram/QA housekeeping entries are excluded.
+    Sorted multi-critic first then severity."""
     cr = moe.get("consensus_recommendations", {})
     ev = moe.get("expert_validations", {})
     sev_rank = {"CRITICAL": 2, "HIGH": 1}
@@ -233,8 +245,10 @@ def _top_findings(moe: dict, n: int = 5) -> list[dict]:
         for r in cr.get(sev_key, []):
             if r.get("confidence_label") != "KNOWN":
                 continue
+            desc = r.get("description", "")
+            if _is_housekeeping(desc):
+                continue
             source = r.get("source", "")
-            desc   = r.get("description", "")
             rec    = _find_rec(desc, r.get("recommendation", ""))
             candidates.append({
                 "description":     desc,
@@ -355,6 +369,31 @@ def stage_build(arch: str, data: dict, delta: dict, use_llm: bool) -> dict:
     unsure_count = len(cr.get("review", []))
     top_findings = _top_findings(moe, n=5)
 
+    # Enrich findings with AP context from ground_truth
+    ap_map = {
+        ap["id"]: {
+            "path":        " → ".join(ap.get("path", [])[:6]),
+            "criticality": ap.get("criticality_tier", ""),
+            "techniques":  ap.get("techniques", [])[:8],
+        }
+        for ap in gt.get("expected_attack_paths", [])
+    }
+
+    def _enrich(f: dict) -> dict:
+        desc     = f.get("description", "")
+        ap_ids   = list(dict.fromkeys(re.findall(r"\bAP-\d+\b", desc)))[:4]
+        t_codes  = list(dict.fromkeys(re.findall(r"\bT\d{4}(?:\.\d{3})?\b", desc)))[:4]
+        if not ap_ids and t_codes:
+            ap_ids = [
+                ap_id for ap_id, ap_data in ap_map.items()
+                if any(t in ap_data["techniques"] for t in t_codes)
+            ][:4]
+        return {**f,
+                "ap_context": [{"id": i, **ap_map[i]} for i in ap_ids if i in ap_map],
+                "t_codes":    t_codes}
+
+    top_findings = [_enrich(f) for f in top_findings]
+
     redesign = sm.get("redesign_signal", False)
 
     verdict_txt, action_txt = "", ""
@@ -362,21 +401,24 @@ def stage_build(arch: str, data: dict, delta: dict, use_llm: bool) -> dict:
         verdict_txt, action_txt = _generate_narrative(arch, data, delta)
 
     return {
-        "arch":          arch,
-        "date":          datetime.date.today().isoformat(),
-        "risk":          risk,
-        "defensibility": defence,
-        "confidence":    conf,
-        "n_paths":       n_paths,
-        "n_tech":        n_tech,
-        "known_critical": len(known_crit),
-        "known_high":    len(known_high),
-        "unsure_count":  unsure_count,
-        "redesign":      redesign,
-        "top_findings":  top_findings,
-        "tiers":         {k: io.get(k, {}) for k in ("quick_wins", "recommended", "maximum")},
-        "verdict":       verdict_txt,
-        "action":        action_txt,
+        "arch":                arch,
+        "date":                datetime.date.today().isoformat(),
+        "risk":                risk,
+        "defensibility":       defence,
+        "confidence":          conf,
+        "n_paths":             n_paths,
+        "n_tech":              n_tech,
+        "known_critical":      len(known_crit),
+        "known_high":          len(known_high),
+        "unsure_count":        unsure_count,
+        "redesign":            redesign,
+        "top_findings":        top_findings,
+        "tiers":               {k: io.get(k, {}) for k in ("quick_wins", "recommended", "maximum")},
+        "ciso_advisor_verdict": verdict_txt,
+        "ciso_advisor_action":  action_txt,
+        # Legacy keys for backward compat
+        "verdict":             verdict_txt,
+        "action":              action_txt,
     }
 
 
@@ -682,9 +724,13 @@ def stage_release(report_dir: Path, brief: dict, delta: dict,
         "unsure_count":  brief["unsure_count"],
         "redesign":      brief["redesign"],
         "top_findings":  [
-            {"description": f["description"][:200], "source": f["source"],
-             "severity": f["severity"], "critic_count": f["critic_count"],
-             "recommendation": f.get("recommendation", "")[:300]}
+            {"description":    f["description"][:200],
+             "source":         f["source"],
+             "severity":       f["severity"],
+             "critic_count":   f["critic_count"],
+             "recommendation": f.get("recommendation", "")[:300],
+             "ap_context":     f.get("ap_context", []),
+             "t_codes":        f.get("t_codes", [])}
             for f in brief["top_findings"]
         ],
         "tiers": {
@@ -693,6 +739,8 @@ def stage_release(report_dir: Path, brief: dict, delta: dict,
                 "rationale": v.get("rationale", ""), "items": v.get("items", [])}
             for k, v in brief["tiers"].items() if v
         },
+        "ciso_advisor_verdict": brief.get("ciso_advisor_verdict", ""),
+        "ciso_advisor_action":  brief.get("ciso_advisor_action",  ""),
     }
     snap_path = report_dir / "ciso_brief_latest.json"
     snap_path.write_text(json.dumps(snap, indent=2))
