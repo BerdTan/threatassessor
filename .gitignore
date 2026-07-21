@@ -60,8 +60,9 @@ test_results_*.json
 scripts/personal/
 baseline_refactoring/
 
-# Blog drafts (publish externally, not in repo)
+# Blog drafts and blog generator skill (publish externally, not in repo)
 docs/blog/
+.claude/skills/gen-blog/
 
 # Private decision log (personal reference, not for public repo)
 docs/DECISIONS.md
