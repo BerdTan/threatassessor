@@ -244,40 +244,137 @@ body {
 }
 
 /* Upload Container */
+/* ── Upload form — Dense Technical direction ─────────────────────────────
+   Two-column asymmetric split: 62% form / 38% context column.
+   Sharp corners, typographic drop zone, no glow, no centered layout.
+   ──────────────────────────────────────────────────────────────────────── */
 .upload-container {
-    max-width: 600px;
-    margin: 4rem auto;
-    text-align: center;
+    max-width: 860px;
+    margin: 3rem auto;
+    text-align: left;
+    display: grid;
+    grid-template-columns: 1fr 0.62fr;
+    gap: 0 3rem;
+    align-items: start;
 }
 
+/* The <h2> and <form> are children — span the left column only */
 .upload-container h2 {
-    margin-bottom: 2rem;
+    grid-column: 1;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-tertiary);
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.upload-form {
+    grid-column: 1;
+}
+
+/* Right-column context block — injected by JS, sits in grid column 2 */
+.upload-context-col {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    border-left: 1px solid var(--border-color);
+    padding-left: 2rem;
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    line-height: 1.65;
+}
+
+.upload-context-col h3 {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    margin: 0 0 0.75rem;
+}
+
+.upload-context-col .ctx-item {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.upload-context-col .ctx-item:last-child {
+    border-bottom: none;
+}
+
+.upload-context-col .ctx-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--primary-color);
+    margin-bottom: 0.3rem;
 }
 
 .file-drop-zone {
-    border: 2px dashed var(--border-color);
-    border-radius: 12px;
-    padding: 3rem 2rem;
-    margin-bottom: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 2px;
+    padding: 2.5rem 2rem;
+    margin-bottom: 1.25rem;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
 }
 
 .file-drop-zone:hover {
     border-color: var(--primary-color);
     background: var(--drop-zone-hover-bg);
-    box-shadow: var(--glow-primary);
 }
 
 .file-drop-zone p {
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
     color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+/* File-name display — typographic, large, when a file is selected */
+.file-drop-zone .drop-filename {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin: 0;
+    word-break: break-all;
+    display: block;
+}
+
+.file-drop-zone .drop-hint {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    margin-top: 0.5rem;
+    display: block;
+    letter-spacing: 0.04em;
 }
 
 #file-input {
     display: block;
     margin: 0 auto;
+}
+
+/* Responsive: collapse to single column below 640px */
+@media (max-width: 640px) {
+    .upload-container {
+        grid-template-columns: 1fr;
+        margin: 2rem 1rem;
+    }
+    .upload-context-col {
+        grid-column: 1;
+        grid-row: auto;
+        border-left: none;
+        border-top: 1px solid var(--border-color);
+        padding-left: 0;
+        padding-top: 1.5rem;
+        margin-top: 1.5rem;
+    }
 }
 
 .checkbox-label {
@@ -463,52 +560,46 @@ body {
 
 /* Buttons */
 .btn-primary {
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    background: var(--primary-color);
     color: var(--button-text-color);
     border: none;
     padding: 0.625rem 1.25rem;
-    border-radius: 8px;
+    border-radius: 2px;
     cursor: pointer;
     font-size: 0.875rem;
     font-weight: 700;
-    transition: all 0.2s;
-    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3);
+    transition: background 0.15s, opacity 0.1s;
 }
 
 .btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0, 212, 255, 0.5);
+    background: var(--primary-hover);
 }
 
 .btn-primary:active {
-    transform: scale(0.96) translateY(1px);
-    box-shadow: 0 1px 4px rgba(0, 212, 255, 0.3);
-    opacity: 0.85;
-    transition: all 0.08s;
+    opacity: 0.8;
+    transition: opacity 0.08s;
 }
 
 .btn-secondary {
     background: transparent;
-    color: var(--text-color);
+    color: var(--text-secondary);
     border: 1px solid var(--border-color);
     padding: 0.625rem 1.25rem;
-    border-radius: 8px;
+    border-radius: 2px;
     cursor: pointer;
     font-size: 0.875rem;
     font-weight: 600;
-    transition: all 0.2s;
+    transition: border-color 0.15s, color 0.15s;
 }
 
 .btn-secondary:hover {
-    background: var(--nav-hover-bg);
     border-color: var(--primary-color);
     color: var(--primary-color);
 }
 
 .btn-secondary:active {
-    transform: scale(0.96);
     opacity: 0.75;
-    transition: all 0.08s;
+    transition: opacity 0.08s;
 }
 
 .btn-large {

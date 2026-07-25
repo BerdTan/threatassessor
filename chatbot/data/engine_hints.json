@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-07-15T13:19:00.209455",
+  "promote_threshold": 3,
+  "total_signals": 97,
+  "hints": [
+    {
+      "hint_type": "missing_detection_control",
+      "arch_types": [
+        "generic"
+      ],
+      "techniques": [
+        "T1083"
+      ],
+      "gap_category": "detect_only_gap",
+      "recommended_control": "file integrity monitoring",
+      "rule_description": "Recurring detect_only_gap for techniques ['T1083'] across ['generic'] architectures. Sample: T1083 (File and Directory Discovery) appears in all 5 attack paths but has no MITRE mitigations available. This techniqu",
+      "occurrences": 28,
+      "distinct_archs": 3,
+      "promoted_at": "2026-07-15T13:19:00.209333",
+      "status": "pending_review"
+    }
+  ]
+}

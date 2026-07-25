@@ -66,3 +66,10 @@ This repository is a modular, extensible chatbot and agentic system for threat a
 
 - `README.md` for project structure, setup, and TODOs.
 - `agentic/adk-basic.py` for ADK and agentic workflow examples.
+
+<!-- mermaid-ai-skills:start -->
+## Mermaid Diagrams
+
+When the user asks to create, edit, or visualize a diagram, follow the
+instructions in `.github/instructions/mermaid.instructions.md`.
+<!-- mermaid-ai-skills:end -->

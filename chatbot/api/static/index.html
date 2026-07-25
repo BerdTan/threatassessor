@@ -125,20 +125,20 @@
         <main class="main-pane">
             <!-- Upload Form (initial state) -->
             <div id="upload-form-container" class="upload-container">
-                <h2>Upload Architecture Diagram</h2>
+                <h2>Architecture Analysis</h2>
                 <form id="upload-form" class="upload-form">
                     <div class="file-drop-zone" id="drop-zone">
-                        <p id="drop-zone-label">Drag &amp; drop .mmd file here or click to browse</p>
+                        <p id="drop-zone-label">Drop .mmd file here or click to browse</p>
                         <input type="file" id="file-input" accept=".mmd" required>
                     </div>
 
                     <!-- SSP Profile selector -->
                     <div style="margin-top:1rem;">
-                        <label for="ssp-profile-select" style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem; color:var(--text-color);">
-                            System Security Plan (SSP)
-                            <span style="font-size:0.75rem; font-weight:400; color:var(--text-tertiary); margin-left:0.4rem;">(Singapore Government ICT&amp;SS baseline)</span>
+                        <label for="ssp-profile-select" style="display:block; font-size:0.6875rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.5rem; color:var(--text-tertiary);">
+                            SSP Profile
+                            <span style="font-size:0.6875rem; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text-tertiary); margin-left:0.4rem;">— Singapore Government ICT&amp;SS baseline</span>
                         </label>
-                        <select id="ssp-profile-select" style="width:100%; padding:0.5rem 0.75rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; cursor:pointer;">
+                        <select id="ssp-profile-select" style="width:100%; padding:0.5rem 0.75rem; border:1px solid var(--border-color); border-radius:2px; font-size:0.875rem; cursor:pointer; background:var(--card-bg); color:var(--text-color);">
                             <optgroup label="Cloud Systems">
                                 <option value="low_risk_cloud" selected>Low Risk — Cloud</option>
                                 <option value="medium_risk_cloud">Medium Risk — Cloud</option>
@@ -149,23 +149,44 @@
                             </optgroup>
                             <optgroup label="Specialist">
                                 <option value="generative_ai">Generative AI</option>
-                                <option value="digital_services_others">Digital Services (under 1M visits/yr)</option>
+                                <option value="digital_services_others">Digital Services (&lt;1M visits/yr)</option>
                                 <option value="digital_services_high_impact">Digital Services (1M+ visits/yr)</option>
                                 <option value="sandbox">Sandbox / Pilot</option>
                             </optgroup>
                         </select>
-                        <p style="font-size:0.75rem; color:var(--text-tertiary); margin:0.35rem 0 0;">
-                            Sets the policy baseline for your system. Cloud and on-premises are separate classifications — a low-risk cloud system and a low-risk on-premises system have different control requirements.
+                        <p style="font-size:0.75rem; color:var(--text-tertiary); margin:0.35rem 0 0; line-height:1.5;">
+                            Cloud and on-premises are separate classifications — control requirements differ even at the same risk tier.
                         </p>
                     </div>
 
                     <!-- Action buttons row: Clear · Upload · Analyse -->
-                    <div style="display:flex; gap:0.75rem; margin-top:1rem; align-items:center;">
-                        <button type="button" id="clear-file-btn" class="btn-secondary" title="Clear selected file" style="flex:0 0 auto;">✕ Clear</button>
-                        <button type="button" id="pick-file-btn" class="btn-secondary" style="flex:1;">📂 Upload File</button>
-                        <button type="submit" id="analyse-btn" class="btn-primary btn-large" style="flex:1;">🔍 Analyse</button>
+                    <div style="display:flex; gap:0.5rem; margin-top:1.25rem; align-items:center;">
+                        <button type="button" id="clear-file-btn" class="btn-secondary" title="Clear selected file" style="flex:0 0 auto;">Clear</button>
+                        <button type="button" id="pick-file-btn" class="btn-secondary" style="flex:1;">Browse</button>
+                        <button type="submit" id="analyse-btn" class="btn-primary btn-large" style="flex:1;">Analyse</button>
                     </div>
                 </form>
+
+                <!-- Right context column -->
+                <div class="upload-context-col">
+                    <h3>What this does</h3>
+                    <div class="ctx-item">
+                        <div class="ctx-label">Input</div>
+                        A Mermaid flowchart (.mmd) of your system — nodes are services, edges are data flows.
+                    </div>
+                    <div class="ctx-item">
+                        <div class="ctx-label">Analysis</div>
+                        Deterministic MITRE ATT&amp;CK mapping across all attack paths. No LLM required for the base analysis.
+                    </div>
+                    <div class="ctx-item">
+                        <div class="ctx-label">Output</div>
+                        Risk score, attack paths, control gaps, investment tiers, and an optional Expert Review from 5 AI critics.
+                    </div>
+                    <div class="ctx-item">
+                        <div class="ctx-label">Time</div>
+                        ~30 sec deterministic · ~2 min with Expert Review
+                    </div>
+                </div>
             </div>
 
             <!-- Tab Content (hidden until analysis starts) -->
