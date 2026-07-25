@@ -19,8 +19,14 @@ from chatbot.modules.mitre import MitreHelper, get_mitre_helper
 
 logger = logging.getLogger(__name__)
 
-# Default cache location
-DEFAULT_CACHE_PATH = "chatbot/data/technique_embeddings.json"
+# Default cache location — .npz is the canonical output; .json accepted as legacy input
+DEFAULT_CACHE_PATH = "chatbot/data/technique_embeddings.npz"
+_LEGACY_JSON_PATH  = "chatbot/data/technique_embeddings.json"
+
+
+def _npz_path(filepath: str) -> str:
+    """Return the .npz path regardless of whether caller passed .json or .npz."""
+    return filepath.replace(".json", ".npz") if filepath.endswith(".json") else filepath
 
 
 def build_technique_text(technique: dict) -> str:
@@ -132,56 +138,77 @@ def build_technique_embeddings(
 
 def save_embeddings_json(cache: Dict[str, dict], filepath: str = DEFAULT_CACHE_PATH):
     """
-    Save embedding cache to JSON file.
+    Save embedding cache as float16 compressed numpy archive (.npz).
+
+    Accepts a .json or .npz filepath; always writes .npz.
+    Metadata (external_id, name, text) saved to a companion _meta.json sidecar (~200 KB).
 
     Args:
         cache: Embedding cache dict from build_technique_embeddings()
-        filepath: Path to save JSON file (default: chatbot/data/technique_embeddings.json)
-
-    Note:
-        - Creates parent directories if needed
-        - File size: ~13MB for 823 techniques
+        filepath: Destination path (.npz preferred; .json redirected to .npz automatically)
     """
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    import numpy as np
 
-    with open(filepath, 'w') as f:
-        json.dump(cache, f, indent=2)
+    npz_out = _npz_path(filepath)
+    os.makedirs(os.path.dirname(os.path.abspath(npz_out)), exist_ok=True)
 
-    file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
-    logger.info(f"Embedding cache saved to {filepath} ({file_size_mb:.1f} MB)")
-    print(f"✅ Cache saved to {filepath} ({file_size_mb:.1f} MB)")
+    keys  = list(cache.keys())
+    vecs  = np.array([cache[k]["embedding"] for k in keys], dtype=np.float16)
+    metas = {k: {kk: vv for kk, vv in cache[k].items() if kk != "embedding"} for k in keys}
+
+    np.savez_compressed(npz_out, keys=np.array(keys), embeddings=vecs)
+
+    meta_path = npz_out.replace(".npz", "_meta.json")
+    with open(meta_path, "w") as f:
+        json.dump(metas, f, separators=(",", ":"))
+
+    size_mb = os.path.getsize(npz_out) / (1024 * 1024)
+    meta_kb = os.path.getsize(meta_path) / 1024
+    logger.info(f"Embedding cache saved: {npz_out} ({size_mb:.1f} MB) + meta ({meta_kb:.0f} KB)")
+    print(f"✅ Cache saved: {npz_out} ({size_mb:.1f} MB) + {os.path.basename(meta_path)} ({meta_kb:.0f} KB)")
 
 
 def load_embeddings_json(filepath: str = DEFAULT_CACHE_PATH) -> Dict[str, dict]:
     """
-    Load embedding cache from JSON file.
+    Load embedding cache. Prefers .npz; falls back to legacy .json.
 
     Args:
-        filepath: Path to JSON file (default: chatbot/data/technique_embeddings.json)
+        filepath: Path to .npz or .json cache file
 
     Returns:
-        Embedding cache dict
+        Embedding cache dict mapping technique_id → {external_id, name, text, embedding, dimension}
 
     Raises:
-        FileNotFoundError: If cache file doesn't exist
-        ValueError: If cache file is invalid
+        FileNotFoundError: If neither .npz nor .json cache exists
     """
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(
-            f"Embedding cache not found at {filepath}. "
-            f"Run build_technique_embeddings() first or use /build-embeddings-cache skill."
-        )
+    import numpy as np
 
-    with open(filepath, 'r') as f:
-        cache = json.load(f)
+    npz_path  = _npz_path(filepath)
+    json_path = filepath if filepath.endswith(".json") else _LEGACY_JSON_PATH
 
-    technique_count = len(cache)
-    file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
+    if os.path.exists(npz_path):
+        d     = np.load(npz_path, allow_pickle=False)
+        keys  = d["keys"].tolist()
+        vecs  = d["embeddings"].astype(np.float32)
+        meta_path = npz_path.replace(".npz", "_meta.json")
+        metas = json.load(open(meta_path)) if os.path.exists(meta_path) else {}
+        cache = {k: {**metas.get(k, {}), "embedding": vecs[i].tolist(), "dimension": vecs.shape[1]}
+                 for i, k in enumerate(keys)}
+        size_mb = os.path.getsize(npz_path) / (1024 * 1024)
+        logger.info(f"Loaded {len(cache)} technique embeddings from {npz_path} ({size_mb:.1f} MB)")
+        return cache
 
-    logger.info(f"Loaded {technique_count} technique embeddings from {filepath} ({file_size_mb:.1f} MB)")
+    if os.path.exists(json_path):
+        with open(json_path) as f:
+            cache = json.load(f)
+        size_mb = os.path.getsize(json_path) / (1024 * 1024)
+        logger.info(f"Loaded {len(cache)} technique embeddings from legacy JSON {json_path} ({size_mb:.1f} MB)")
+        return cache
 
-    return cache
+    raise FileNotFoundError(
+        f"Embedding cache not found at {npz_path} (or legacy {json_path}). "
+        f"Run /build-embeddings-cache to generate it."
+    )
 
 
 def semantic_search(

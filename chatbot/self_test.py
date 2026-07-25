@@ -81,27 +81,30 @@ class SelfTest:
     def test_data_files(self) -> bool:
         """Test 1: Check required data files exist."""
         mitre_path = Path("chatbot/data/enterprise-attack.json")
-        embeddings_path = Path("chatbot/data/technique_embeddings.json")
+        embeddings_path = Path("chatbot/data/technique_embeddings.npz")
+        embeddings_legacy = Path("chatbot/data/technique_embeddings.json")
 
         if not mitre_path.exists():
             print(f"\n   Missing: {mitre_path}")
             return False
 
-        if not embeddings_path.exists():
+        if not embeddings_path.exists() and not embeddings_legacy.exists():
             print(f"\n   Missing: {embeddings_path}")
             print(f"   Run: python3 -c 'from chatbot.modules.mitre_embeddings import build_technique_embeddings, save_embeddings_json; from chatbot.modules.mitre import MitreHelper; mitre = MitreHelper(use_local=True); cache = build_technique_embeddings(mitre); save_embeddings_json(cache)'")
             return False
 
         # Check file sizes
         mitre_size = mitre_path.stat().st_size / (1024 * 1024)  # MB
-        embed_size = embeddings_path.stat().st_size / (1024 * 1024)  # MB
+        emb_file   = embeddings_path if embeddings_path.exists() else embeddings_legacy
+        embed_size = emb_file.stat().st_size / (1024 * 1024)    # MB
 
-        if mitre_size < 10:  # Should be ~44MB
-            print(f"\n   MITRE file too small: {mitre_size:.1f}MB (expected ~44MB)")
+        if mitre_size < 10:  # Should be ~35-44MB depending on whether slimmed
+            print(f"\n   MITRE file too small: {mitre_size:.1f}MB (expected ≥10MB)")
             return False
 
-        if embed_size < 10:  # Should be ~45MB
-            print(f"\n   Embeddings file too small: {embed_size:.1f}MB (expected ~45MB)")
+        # npz ~3 MB; legacy json ~45 MB — both acceptable
+        if embed_size < 1:
+            print(f"\n   Embeddings file too small: {embed_size:.1f}MB (expected ≥1MB)")
             return False
 
         return True
@@ -119,7 +122,7 @@ class SelfTest:
 
     def test_embeddings_loading(self) -> bool:
         """Test 3: Load embedding cache."""
-        cache_path = "chatbot/data/technique_embeddings.json"
+        cache_path = "chatbot/data/technique_embeddings.npz"
         self.embeddings = load_embeddings_json(cache_path)
 
         if len(self.embeddings) < 700:

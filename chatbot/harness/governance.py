@@ -624,7 +624,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         stale = []
         data_files = [
             "chatbot/data/enterprise-attack.json",
-            "chatbot/data/technique_embeddings.json",
+            "chatbot/data/technique_embeddings.npz",
         ]
         cutoff = time.time() - _STALE_DATA_DAYS * 86400
         for path_str in data_files:
