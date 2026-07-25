@@ -118,6 +118,7 @@ def validate_technique_for_path(
             "database", "db", "sql", "storage", "data", "repository", "file", "cache", "log",
             "registry", "primary", "replica", "queue", "message", "record", "archive",
             "vector", "embedding", "document", "session", "audit",
+            "orchestrat", "agent", "llm", "prompt", "gateway", "tool",
         ]
         has_data_target = (
             any(kw in target_label for kw in DATA_KW)
@@ -209,7 +210,8 @@ def validate_technique_for_path(
     elif technique_id == "T1486":
         DATA_KW2 = ["db", "database", "sql", "storage", "file", "backup", "cache", "data",
                     "primary", "replica", "queue", "server", "record",
-                    "vector", "embedding", "document", "session", "audit", "tool", "registry"]
+                    "vector", "embedding", "document", "session", "audit", "tool", "registry",
+                    "agent", "orchestrat", "llm", "prompt", "gateway", "sandbox", "code exec"]
         has_data = any(kw in path_str for kw in DATA_KW2)
         if has_data:
             validations.append((True, 0.05, "Data storage present — ransomware applicable"))
@@ -235,6 +237,7 @@ def validate_technique_for_path(
             "db", "database", "sql", "storage", "file", "cache", "data", "log",
             "primary", "replica", "queue", "record", "server",
             "vector", "embedding", "document", "session", "audit", "tool", "registry",
+            "agent", "orchestrat", "llm", "prompt", "gateway", "sandbox", "code exec",
         ])
         if has_data:
             validations.append((True, 0.05, "Data components present — destruction applicable"))
@@ -298,6 +301,7 @@ def validate_technique_for_path(
             "proxy", "internet", "server", "application", "app", "service", "node",
             "cluster", "kafka", "spark", "stream", "pipeline", "ingestion", "worker",
             "orchestrat", "agent", "tool", "registry", "llm", "prompt", "embedding",
+            "vector", "audit", "session",
         ])
         if has_network:
             validations.append((True, 0.06, "Network/service component present — sniffing applicable"))
@@ -414,6 +418,7 @@ def validate_technique_for_path(
         has_data_target = any(kw in path_str for kw in [
             "database", "db", "sql", "data", "repository", "primary", "replica", "queue",
             "vector", "embedding", "document", "session", "audit",
+            "agent", "orchestrat", "llm", "prompt", "gateway", "tool", "registry",
         ])
         if has_cloud_storage:
             validations.append((True, 0.08, "Cloud storage component confirmed"))
@@ -476,6 +481,7 @@ def validate_technique_for_path(
             "database", "db", "sql", "storage", "data", "file", "cache", "log", "record",
             "primary", "replica", "queue", "server", "message",
             "vector", "embedding", "document", "session", "audit", "tool", "registry",
+            "agent", "orchestrat", "llm", "prompt", "gateway", "sandbox", "code exec",
         ])
         if has_data:
             validations.append((True, 0.06, "Data components present — manipulation applicable"))
@@ -549,7 +555,7 @@ def validate_technique_for_path(
             "database", "cache", "storage", "secret", "key", "credential",
             "cluster", "kafka", "spark", "node", "pipeline", "warehouse", "lake",
             "orchestrat", "agent", "tool", "registry", "llm", "gateway", "code exec",
-            "sandbox", "prompt", "session",
+            "sandbox", "prompt", "session", "audit", "embedding", "vector",
         ])
         if has_cred_surface:
             validations.append((True, 0.07, "Application/data components present — credential exposure applicable"))
