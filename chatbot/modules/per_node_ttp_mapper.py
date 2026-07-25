@@ -19,6 +19,8 @@ Node Role Taxonomy:
 from typing import Dict, List, Optional, Tuple
 import logging
 
+from chatbot.modules.node_label_canonicaliser import canonicalise
+
 logger = logging.getLogger(__name__)
 
 
@@ -295,10 +297,10 @@ def map_node_to_techniques(
         List of MITRE technique IDs applicable to this specific node
     """
     techniques = []
-    label_lower = node_label.lower()
+    label_lower = canonicalise(node_label)
     controls_lower = [c.lower() for c in controls_present]
 
-    logger.debug(f"Mapping node '{node_label}' (position={position})")
+    logger.debug(f"Mapping node '{node_label}' (position={position}, canonical='{label_lower}')")
 
     # ========================================================================
     # ENTRY POINT NODE
