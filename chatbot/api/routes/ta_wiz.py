@@ -229,6 +229,18 @@ def _sanitise_question(question: str) -> tuple[str, bool]:
     return cleaned, False
 
 
+def _graph_fallback(workspace_name: str, question: str) -> Optional[str]:
+    """Try to answer from the structural graph without an LLM. Returns None on miss."""
+    try:
+        from chatbot.api.routes.graph_search import _get_or_build
+        g = _get_or_build(workspace_name)
+        if g is None:
+            return None
+        return g.query(question)
+    except Exception:
+        return None
+
+
 def _call_llm(question: str, context: str, history_text: str, model: Optional[str]) -> str:
     """Blocking LLM call — run via run_in_executor."""
     from agentic.llm_client import LLMClient
@@ -318,6 +330,17 @@ async def _ta_wiz_stream(
             lambda: _call_llm(payload.question, context, history_text, model),
         )
     except Exception as e:
+        # LLM unavailable — attempt structural graph fallback before giving up
+        graph_answer = _graph_fallback(payload.workspace_name, payload.question)
+        if graph_answer:
+            yield await SSEStream.send_progress("done", 95, "Answer ready (graph fallback)")
+            yield await SSEStream.send_complete({
+                "answer":       graph_answer + "\n\n*— answered from local knowledge graph (LLM unavailable)*",
+                "model":        "graph-rag",
+                "sources_used": sources_used,
+                "tokens_est":   0,
+            })
+            return
         yield await SSEStream.send_error("LLM call failed", str(e))
         return
 

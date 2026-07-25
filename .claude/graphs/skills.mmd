@@ -1,5 +1,5 @@
 ---
-title: ThreatAssessor — Skills Map (22 skills, 6 clusters, workflow edges)
+title: ThreatAssessor — Skills Map (23 skills, 6 clusters, workflow edges)
 updated: 2026-07-18
 note: "Solid edges = required sequence. Dashed = optional follow-on. Each node = skill name + one-line purpose."
 ---
@@ -53,6 +53,7 @@ graph TD
     %% ── Dev/health cluster ──────────────────────────────────
     subgraph DEV["🛠 Dev / Health"]
         CM["codemap<br/>Structural file index + symbol list<br/>(incremental, session-persistent)"]
+        MMD["mmd<br/>Generate, validate, parse .mmd diagrams<br/>validate_arch.py + parse_mmd.py"]
         CG["check-governance<br/>56 governance tests, ~9s<br/>no LLM/network"]
         CEB["check-eventbroker<br/>48 EventBroker + Sink tests, ~9s<br/>no LLM/network"]
         CD["check-deprecation<br/>Import + anti-pattern scan<br/>post-refactor safety check"]
@@ -79,4 +80,4 @@ graph TD
     class QT,RER,SER,RU,AP er
     class TS,TC,TL,AS,AG quality
     class RR,RO report
-    class CM,CG,CEB,CD,DH dev
+    class CM,MMD,CG,CEB,CD,DH dev

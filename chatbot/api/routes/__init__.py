@@ -9,5 +9,6 @@ from chatbot.api.routes.reports import router as reports_router
 from chatbot.api.routes.config import router as config_router
 from chatbot.api.routes.workspaces import router as workspaces_router
 from chatbot.api.routes.ta_wiz import router as ta_wiz_router
+from chatbot.api.routes.graph_search import router as graph_search_router
 
-__all__ = ["streaming_router", "reports_router", "config_router", "workspaces_router", "ta_wiz_router"]
+__all__ = ["streaming_router", "reports_router", "config_router", "workspaces_router", "ta_wiz_router", "graph_search_router"]

@@ -542,7 +542,7 @@ class Dashboard {
             clearFileBtn.addEventListener('click', () => {
                 fileInput.value = '';
                 const label = document.getElementById('drop-zone-label');
-                if (label) label.textContent = 'Drag & drop .mmd file here or click to browse';
+                if (label) label.innerHTML = 'Drop .mmd file here or click to browse';
             });
         }
 
@@ -556,7 +556,8 @@ class Dashboard {
         fileInput.addEventListener('change', () => {
             const label = document.getElementById('drop-zone-label');
             if (label && fileInput.files.length) {
-                label.textContent = `📄 ${fileInput.files[0].name}`;
+                const name = fileInput.files[0].name;
+                label.innerHTML = `<span class="drop-filename">${this._escHtml(name)}</span><span class="drop-hint">Ready to analyse · click Browse to change</span>`;
             }
         });
 
@@ -590,7 +591,10 @@ class Dashboard {
                 dt.items.add(files[0]);
                 fileInput.files = dt.files;
                 const label = document.getElementById('drop-zone-label');
-                if (label) label.textContent = `📄 ${files[0].name}`;
+                if (label) {
+                    const name = files[0].name;
+                    label.innerHTML = `<span class="drop-filename">${this._escHtml(name)}</span><span class="drop-hint">Ready to analyse · click Browse to change</span>`;
+                }
             }
         });
     }
@@ -818,7 +822,7 @@ class Dashboard {
         const fileInput = document.getElementById('file-input');
         if (fileInput) fileInput.value = '';
         const dropZoneLabel = document.getElementById('drop-zone-label');
-        if (dropZoneLabel) dropZoneLabel.textContent = 'Drag & drop .mmd file here or click to browse';
+        if (dropZoneLabel) dropZoneLabel.innerHTML = 'Drop .mmd file here or click to browse';
 
         // Reset analysis status bar
         const statusBar = document.getElementById('analysis-status-bar');
@@ -6453,13 +6457,13 @@ class Dashboard {
         // explaining the difference so the CISO isn't puzzled by two identical-looking buttons.
         const genBtnPrimary = (withLlm) => withLlm
             ? `<button onclick="window.dashboard._generateCisoBrief('${archName}', true)"
-                style="padding:0.35rem 0.9rem;border-radius:6px;border:1px solid var(--primary-color);
+                style="padding:0.35rem 0.9rem;border-radius:2px;border:1px solid var(--primary-color);
                        background:var(--primary-color)11;color:var(--primary-color);font-size:0.8rem;
-                       font-weight:600;cursor:pointer;white-space:nowrap;">✨ Generate with AI narrative</button>`
+                       font-weight:600;cursor:pointer;white-space:nowrap;">Generate with AI</button>`
             : `<button onclick="window.dashboard._generateCisoBrief('${archName}', false)"
-                style="padding:0.35rem 0.9rem;border-radius:6px;border:1px solid var(--primary-color);
+                style="padding:0.35rem 0.9rem;border-radius:2px;border:1px solid var(--primary-color);
                        background:var(--primary-color)11;color:var(--primary-color);font-size:0.8rem;
-                       font-weight:600;cursor:pointer;white-space:nowrap;">⚡ Generate brief</button>`;
+                       font-weight:600;cursor:pointer;white-space:nowrap;">Generate brief</button>`;
         const genBtnAltLink = (withLlm, label) =>
             `<button onclick="window.dashboard._generateCisoBrief('${archName}', ${withLlm})"
                 title="${withLlm
@@ -6471,17 +6475,23 @@ class Dashboard {
                 onmouseout="this.style.color='var(--text-tertiary)';this.style.borderColor='var(--border-color)'">${label}</button>`;
 
         if (!snap) {
-            return `<div style="padding:2rem;text-align:center;">
-                <div style="font-size:2.5rem;margin-bottom:1rem;">🏛</div>
-                <h3 style="color:var(--text-color);margin-bottom:0.5rem;">No CISO Brief Generated</h3>
-                <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:0.5rem;max-width:420px;margin-left:auto;margin-right:auto;">
-                    Generate a board-ready one-page brief with risk gauges, top confirmed findings, and investment options.
+            return `<div style="padding:3rem 2rem;max-width:480px;">
+                <div style="font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-tertiary);margin-bottom:1.5rem;padding-bottom:0.5rem;border-bottom:1px solid var(--border-color);">CISO Brief</div>
+                <div style="font-size:1.5rem;font-weight:700;color:var(--text-color);margin-bottom:0.75rem;letter-spacing:-0.02em;">No brief generated yet</div>
+                <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1rem;line-height:1.6;">
+                    Board-ready one-pager — risk scores, confirmed findings, investment options. Generated from the existing analysis, no re-run required.
                 </p>
-                <p style="color:var(--text-tertiary);font-size:0.78rem;margin-bottom:1.5rem;">
-                    <strong>Fast</strong> — instant metrics from existing analysis.<br>
-                    <strong>With AI</strong> — adds a 2-sentence plain-English assessment and first-action recommendation.
-                </p>
-                <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1.5rem;font-size:0.78rem;color:var(--text-tertiary);">
+                    <div style="padding:0.6rem 0.75rem;border:1px solid var(--border-color);">
+                        <div style="font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.25rem;">Fast</div>
+                        Instant metrics from existing analysis
+                    </div>
+                    <div style="padding:0.6rem 0.75rem;border:1px solid var(--border-color);">
+                        <div style="font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--primary-color);margin-bottom:0.25rem;">With AI</div>
+                        Adds 2-sentence risk summary and first-action recommendation
+                    </div>
+                </div>
+                <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
                     ${genBtnPrimary(false)}
                     ${genBtnPrimary(true)}
                 </div>
@@ -6534,24 +6544,24 @@ class Dashboard {
         }
 
         // Risk gauges
-        const gaugesHtml = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem;">
+        const gaugesHtml = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-bottom:1rem;border:1px solid var(--border-color);">
             ${[
                 ['Confidence',    confDisp,          false, confColor, interpLabel(confDisp)],
                 ['Attack Risk',   snap.risk,         true,  riskColor, snap.risk >= 70 ? 'HIGH EXPOSURE' : snap.risk >= 40 ? 'MEDIUM' : 'MANAGED'],
                 ['Defensibility', snap.defensibility,false, defColor,  snap.defensibility >= 70 ? 'STRONG' : snap.defensibility >= 40 ? 'PARTIAL' : 'WEAK'],
             ].map(([label, val, inv, col, status]) =>
-                `<div style="padding:0.75rem;background:var(--nav-hover-bg);border-radius:8px;border:1px solid var(--border-color);">
-                    <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.25rem;">${label}</div>
-                    <div style="font-size:1.5rem;font-weight:700;color:${col};margin-bottom:0.25rem;">${label==='Confidence' ? confDisp+'%' : val+'/100'}</div>
+                `<div style="padding:1rem 0.875rem;background:var(--nav-hover-bg);border-right:1px solid var(--border-color);">
+                    <div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-tertiary);margin-bottom:0.5rem;">${label}</div>
+                    <div style="font-size:3rem;font-weight:700;color:${col};margin-bottom:0.5rem;letter-spacing:-0.03em;line-height:1;">${label==='Confidence' ? confDisp+'%' : val}</div>
                     ${bar(val, 100, 100, inv)}
-                    <div style="font-size:0.72rem;color:${col};margin-top:0.3rem;font-weight:600;">${status}</div>
+                    <div style="font-size:0.6875rem;color:${col};margin-top:0.4rem;font-weight:700;letter-spacing:0.04em;">${status}</div>
                 </div>`
             ).join('')}
         </div>
-        <div style="font-size:0.8125rem;color:var(--text-secondary);margin-bottom:${snap.redesign?'0.5':'1'}rem;">
-            ${snap.n_paths} attack paths · ${snap.known_critical} critical confirmed · ${snap.n_tech} techniques
+        <div style="font-size:0.78rem;color:var(--text-tertiary);margin-bottom:${snap.redesign?'0.5':'1'}rem;letter-spacing:0.02em;">
+            ${snap.n_paths} attack paths &nbsp;·&nbsp; ${snap.known_critical} critical confirmed &nbsp;·&nbsp; ${snap.n_tech} techniques
         </div>
-        ${snap.redesign ? `<div style="margin-bottom:1rem;padding:0.5rem 0.75rem;background:var(--danger-color)10;border-left:3px solid var(--danger-color);border-radius:4px;font-size:0.8125rem;color:var(--danger-color);font-weight:600;">⚠ REDESIGN SIGNAL — architecture changes required</div>` : ''}`;
+        ${snap.redesign ? `<div style="margin-bottom:1rem;padding:0.5rem 0.875rem;background:var(--danger-color)10;border-left:2px solid var(--danger-color);font-size:0.78rem;color:var(--danger-color);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">REDESIGN SIGNAL — architecture changes required before controls are effective</div>` : ''}`;
 
         // Top findings — data-* attrs for click wiring (no inline onclick, no injected <script>)
         const CRIT_LABELS = {architect:'Architect',tester:'Tester',red_team:'Red Team',purple_team:'Purple Team',blackhat:'Blackhat'};
@@ -6585,7 +6595,7 @@ class Dashboard {
         };
         const tierRows = Object.entries(snap.tiers || {}).map(([key, t]) => {
             if (!t || !t.cost) return '';
-            const label = {quick_wins:'⚡ Quick Win', recommended:'⭐ Recommended', maximum:'🔒 Maximum'}[key] || key;
+            const label = {quick_wins:'Quick Win', recommended:'Recommended', maximum:'Maximum'}[key] || key;
             const rr = t.risk_reduction || '';
             const nums = rr.match(/[\d.]+/g) || [];
             let barHtml = '';
@@ -6664,17 +6674,17 @@ class Dashboard {
         const regenBtns = `<div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
             ${genDate}
             <div style="flex:1;"></div>
-            ${genBtnAltLink(!hasAi, hasAi ? '↻ Fast refresh' : '✨ Add AI narrative')}
+            ${genBtnAltLink(!hasAi, hasAi ? '↻ Fast refresh' : '+ Add AI narrative')}
             ${genBtnPrimary(hasAi)}
         </div>`;
 
         const _cisoSection = (label, body, openByDefault = true) => `
-            <details${openByDefault ? ' open' : ''} style="margin-bottom:0.75rem;border:1px solid var(--border-color);border-radius:6px;overflow:hidden;">
-                <summary style="display:flex;align-items:center;gap:0.5rem;padding:0.55rem 0.875rem;
-                                cursor:pointer;user-select:none;list-style:none;background:var(--card-bg);
-                                font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
+            <details${openByDefault ? ' open' : ''} style="margin-bottom:0.5rem;border:1px solid var(--border-color);overflow:hidden;">
+                <summary style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.875rem;
+                                cursor:pointer;user-select:none;list-style:none;background:var(--nav-hover-bg);
+                                font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;
                                 color:var(--text-tertiary);">
-                    <span class="ciso-chevron" style="font-size:0.65rem;transition:transform 0.18s;">▶</span>
+                    <span class="ciso-chevron" style="font-size:0.6rem;transition:transform 0.18s;">▶</span>
                     ${label}
                 </summary>
                 <div style="padding:0.875rem 1rem;border-top:1px solid var(--border-color);">
@@ -7446,13 +7456,51 @@ class Dashboard {
                 "
                 onmouseenter="this.style.borderColor='var(--primary-color)';this.style.color='var(--primary-color)'"
                 onmouseleave="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'">⟩</div>
-            <!-- Right panel: chat -->
-            <div id="workspace-chat-panel" style="flex:1; min-width:240px; overflow:hidden; padding-left:1rem; display:flex; flex-direction:column;">
-                <div style="display:flex; flex:1; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:0.875rem; text-align:center; padding:2rem;">
-                    <div>
-                        <div style="font-size:2rem; margin-bottom:0.5rem;">💬</div>
-                        <div>Select a workspace and click <strong>Open Chat</strong> to start a conversation with TA-Wiz</div>
+            <!-- Right panel: tab strip + content -->
+            <div id="workspace-right-panel" style="flex:1; min-width:240px; overflow:hidden; padding-left:1rem; display:flex; flex-direction:column;">
+                <!-- Tab strip -->
+                <div style="flex-shrink:0; display:flex; gap:0; border-bottom:1px solid var(--border-color); margin-bottom:0.75rem;">
+                    <button id="ws-tab-chat" onclick="window.dashboard._wsRightTab('chat')"
+                        style="padding:0.35rem 1rem; font-size:0.8rem; border:none; border-bottom:2px solid var(--primary-color); background:transparent; color:var(--primary-color); font-weight:700; cursor:pointer; transition:all 0.15s;">
+                        💬 TA-Wiz</button>
+                    <button id="ws-tab-graph" onclick="window.dashboard._wsRightTab('graph')"
+                        style="padding:0.35rem 1rem; font-size:0.8rem; border:none; border-bottom:2px solid transparent; background:transparent; color:var(--text-tertiary); cursor:pointer; transition:all 0.15s;">
+                        🔍 Graph Search</button>
+                </div>
+                <!-- Chat pane -->
+                <div id="workspace-chat-panel" style="flex:1; overflow:hidden; display:flex; flex-direction:column;">
+                    <div style="display:flex; flex:1; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:0.875rem; text-align:center; padding:2rem;">
+                        <div>
+                            <div style="font-size:2rem; margin-bottom:0.5rem;">💬</div>
+                            <div>Select a workspace and click <strong>Open Chat</strong> to start a conversation with TA-Wiz</div>
+                        </div>
                     </div>
+                </div>
+                <!-- Graph search pane -->
+                <div id="workspace-graph-panel" style="flex:1; overflow-y:auto; display:none; flex-direction:column; gap:0.75rem;">
+                    <div style="flex-shrink:0;">
+                        <div style="font-size:0.8rem; color:var(--text-tertiary); margin-bottom:0.5rem;">
+                            Ask structural questions — answered instantly from the report graph, no LLM needed.
+                        </div>
+                        <div style="display:flex; gap:0.5rem; margin-bottom:0.5rem;">
+                            <select id="ws-graph-workspace-select"
+                                style="flex:0 0 auto; padding:0.35rem 0.5rem; font-size:0.78rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:var(--text-color); cursor:pointer;">
+                                <option value="">— select workspace —</option>
+                            </select>
+                            <input id="ws-graph-input" type="text"
+                                placeholder="e.g. T1078  ·  critical paths in 24_eservices  ·  missing controls for 03_aws_3tier"
+                                style="flex:1; padding:0.35rem 0.6rem; font-size:0.78rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:var(--text-color);"
+                                onkeydown="if(event.key==='Enter'){window.dashboard._wsGraphSearch();}"/>
+                            <button onclick="window.dashboard._wsGraphSearch()"
+                                style="flex-shrink:0; padding:0.35rem 0.85rem; font-size:0.78rem; border:1px solid var(--primary-color); border-radius:5px; background:var(--primary-color)12; color:var(--primary-color); cursor:pointer; font-weight:600; white-space:nowrap;">
+                                Search</button>
+                        </div>
+                        <!-- Quick-fire query chips -->
+                        <div style="display:flex; flex-wrap:wrap; gap:0.3rem; margin-bottom:0.5rem;" id="ws-graph-chips">
+                            <span style="font-size:0.7rem; color:var(--text-tertiary); align-self:center;">Try:</span>
+                        </div>
+                    </div>
+                    <div id="ws-graph-results" style="flex:1; font-size:0.8125rem; line-height:1.6;"></div>
                 </div>
             </div>
         </div>`;
@@ -8247,6 +8295,126 @@ class Dashboard {
             if (answerSlot) answerSlot.innerHTML = `<span style="color:var(--error-color);font-size:0.8rem;">❌ ${this._escHtml(e.message)}</span>`;
         }
     }
+
+    // ── Workspace right-panel tab switcher ───────────────────────────────────
+
+    _wsRightTab(tab) {
+        const chatPane  = document.getElementById('workspace-chat-panel');
+        const graphPane = document.getElementById('workspace-graph-panel');
+        const btnChat   = document.getElementById('ws-tab-chat');
+        const btnGraph  = document.getElementById('ws-tab-graph');
+        if (!chatPane || !graphPane) return;
+
+        const showChat = tab === 'chat';
+        chatPane.style.display  = showChat ? 'flex'  : 'none';
+        graphPane.style.display = showChat ? 'none'  : 'flex';
+
+        if (btnChat)  {
+            btnChat.style.borderBottomColor = showChat ? 'var(--primary-color)' : 'transparent';
+            btnChat.style.color             = showChat ? 'var(--primary-color)' : 'var(--text-tertiary)';
+            btnChat.style.fontWeight        = showChat ? '700' : '400';
+        }
+        if (btnGraph) {
+            btnGraph.style.borderBottomColor = showChat ? 'transparent' : 'var(--primary-color)';
+            btnGraph.style.color             = showChat ? 'var(--text-tertiary)' : 'var(--primary-color)';
+            btnGraph.style.fontWeight        = showChat ? '400' : '700';
+        }
+
+        if (!showChat) this._wsGraphInit();
+    }
+
+    _wsGraphMissingBanner(missing, workspaceName) {
+        if (!missing || !missing.length) return '';
+        const archList = missing.map(a => `<strong>${this._escHtml(a)}</strong>`).join(', ');
+        const safeWs = this._escHtml(workspaceName);
+        return `<div style="margin-bottom:0.6rem;padding:0.45rem 0.75rem;border-left:2px solid var(--warning-color);background:var(--warning-color)0d;font-size:0.75rem;line-height:1.5;">
+            <span style="font-weight:700;color:var(--warning-color);">Not analysed — excluded from search:</span>
+            ${archList}
+            <span style="color:var(--text-tertiary);margin-left:0.4rem;">—
+                run an analysis or
+                <button onclick="window.dashboard._editWorkspace('${safeWs}')"
+                    style="background:none;border:none;padding:0;color:var(--warning-color);cursor:pointer;font-size:0.75rem;text-decoration:underline;">remove from workspace</button>
+            </span>
+        </div>`;
+    }
+
+    _wsGraphInit() {
+        // Populate workspace selector from cache
+        const sel = document.getElementById('ws-graph-workspace-select');
+        if (!sel) return;
+        const current = sel.value;
+        const workspaces = this._workspacesCache || [];
+        sel.innerHTML = '<option value="">— select workspace —</option>'
+            + workspaces.map(ws =>
+                `<option value="${this._escHtml(ws.name)}" ${ws.name === current ? 'selected' : ''}>${this._escHtml(ws.name)}</option>`
+            ).join('');
+        // Populate quick-fire chips
+        const chips = document.getElementById('ws-graph-chips');
+        if (chips) {
+            const examples = [
+                'workspace overview',
+                'critical paths',
+                'missing controls',
+                'hub nodes',
+                'T1078',
+                'T1190',
+                'SPOFs',
+            ];
+            chips.innerHTML = '<span style="font-size:0.7rem;color:var(--text-tertiary);align-self:center;">Try:</span>'
+                + examples.map(e =>
+                    `<button onclick="document.getElementById('ws-graph-input').value='${e}';window.dashboard._wsGraphSearch();"
+                        style="font-size:0.72rem;padding:2px 9px;border:1px solid var(--border-color);border-radius:12px;background:var(--nav-hover-bg);color:var(--text-secondary);cursor:pointer;transition:all 0.12s;"
+                        onmouseover="this.style.borderColor='var(--primary-color)';this.style.color='var(--primary-color)'"
+                        onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-secondary)'">${e}</button>`
+                ).join('');
+        }
+    }
+
+    async _wsGraphSearch() {
+        const sel = document.getElementById('ws-graph-workspace-select');
+        const inp = document.getElementById('ws-graph-input');
+        const out = document.getElementById('ws-graph-results');
+        if (!sel || !inp || !out) return;
+
+        const workspace = sel.value;
+        const q = (inp.value || '').trim();
+        if (!workspace) {
+            out.innerHTML = '<span style="color:var(--text-tertiary);font-size:0.8rem;">Select a workspace first.</span>';
+            return;
+        }
+        if (!q) return;
+
+        out.innerHTML = '<span style="color:var(--text-tertiary);font-size:0.8rem;">Searching graph…</span>';
+
+        try {
+            const resp = await fetch(`/api/v1/graph/query?workspace=${encodeURIComponent(workspace)}&q=${encodeURIComponent(q)}`);
+            const data = await resp.json();
+
+            const missingBanner = this._wsGraphMissingBanner(data.missing_archs || [], workspace);
+            const searched = (data.archs || []).filter(a => !(data.missing_archs || []).includes(a));
+
+            if (data.from_graph && data.answer) {
+                out.innerHTML = missingBanner + `
+                    <div style="margin-bottom:0.5rem;font-size:0.72rem;color:var(--text-tertiary);">
+                        Graph answer — <strong>${searched.length}</strong> arch(es) searched
+                        <button onclick="document.getElementById('ws-graph-results').innerHTML=''"
+                            style="margin-left:0.5rem;padding:0 5px;border:1px solid var(--border-color);border-radius:3px;background:transparent;color:var(--text-tertiary);font-size:0.68rem;cursor:pointer;">✕</button>
+                    </div>
+                    <div style="background:var(--card-bg);border:1px solid var(--border-color);padding:0.75rem 1rem;line-height:1.7;">
+                        ${this._taWizRenderMd(data.answer)}
+                    </div>`;
+            } else {
+                out.innerHTML = missingBanner + `<div style="color:var(--text-tertiary);font-size:0.8rem;padding:0.5rem 0;">
+                    No structural match — try opening TA-Wiz chat for a reasoned answer.
+                    ${data.error ? '<br><small>' + this._escHtml(data.error) + '</small>' : ''}
+                </div>`;
+            }
+        } catch (e) {
+            out.innerHTML = `<span style="color:var(--error-color);font-size:0.8rem;">Error: ${this._escHtml(e.message)}</span>`;
+        }
+    }
+
+    // ── Traces Tab ────────────────────────────────────────────────────────────
 
     async loadTracesTab() {
         const container = document.getElementById('traces-content');

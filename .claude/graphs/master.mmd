@@ -32,6 +32,7 @@ flowchart TD
         A2["/api/v1/expert-review<br/>(SSE MoE + SM)"]
         A3["/api/v1/reports/*<br/>(serve + add-to-adr)"]
         A4["/api/v1/workspaces<br/>tatb-corpus · broker · config"]
+        A5["/api/v1/graph/query<br/>GraphRAG structural search"]
     end
 
     subgraph DASHBOARD["📊 Dashboard  (dashboard.js 16k LOC)"]
@@ -39,14 +40,15 @@ flowchart TD
         D1["Overview · Threat Model<br/>Controls · MITRE"]
         D2["Expert Review · ScrumMaster<br/>Hardening"]
         D3["Reports · Insights · Workspace<br/>Traces · Benchmark · Config"]
+        D4["Workspace: TA-Wiz chat<br/>+ Graph Search panel"]
     end
 
-    subgraph SKILLS["🛠 Skills  (22 skills, 6 clusters)"]
+    subgraph SKILLS["🛠 Skills  (23 skills, 6 clusters)"]
         direction LR
         S1["Analysis<br/>rerun-corpus<br/>backfill-aivss<br/>update-data"]
         S2["ER Workflow<br/>run-er → review-unsure<br/>→ adr-patch · summarise-er"]
         S3["Quality<br/>tatb-score/loop/corpus<br/>aivss-score/gate"]
-        S4["Dev/Health<br/>quick-test · codemap<br/>check-* · docs-health"]
+        S4["Dev/Health<br/>quick-test · codemap · mmd<br/>check-* · docs-health"]
     end
 
     subgraph REPORTS["📁 Report Files (per architecture)"]
