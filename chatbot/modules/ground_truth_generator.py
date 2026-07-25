@@ -399,6 +399,16 @@ def calculate_path_criticality(
         entry_score     * _w.weight_entry
     )
 
+    # Hub-node boost: +0.05 if any traversal node has out_degree ≥ 3.
+    # A compromised fan-out hub (AgentOrchestrator, ToolRegistry, API Gateway with
+    # many downstream services) raises blast radius even on otherwise low-criticality paths.
+    if all_edges:
+        _, out_degree = calculate_node_degrees(all_edges)
+        for node_id in path[1:-1]:
+            if out_degree.get(node_id, 0) >= 3:
+                criticality = min(1.0, criticality + 0.05)
+                break
+
     return round(criticality, 3)
 
 

@@ -632,8 +632,16 @@ def map_path_to_per_node_techniques(
     no_perimeter     = has_internet and not has_perimeter
     no_auth          = has_internet and not has_auth
 
+    # Pre-compute out-degree for hub-node detection
+    out_degree: Dict[str, int] = {}
+    for edge in (edges or []):
+        src = edge.get("source")
+        if src:
+            out_degree[src] = out_degree.get(src, 0) + 1
+
     for idx, node_id in enumerate(path):
         node_label = nodes[node_id].get("label", node_id)
+        label_lower = node_label.lower()
 
         # Determine position
         if idx == 0:
@@ -681,6 +689,26 @@ def map_path_to_per_node_techniques(
                 if t not in techniques:
                     techniques.append(t)
                     logger.info(f"  [ws-to-db] {node_label}: added {t}")
+
+        # ── Hub-node pivot boost ──────────────────────────────────────────────
+        # Traversal nodes with out_degree ≥ 3 are fan-out hubs (AgentOrchestrator,
+        # ToolRegistry, etc.) — an attacker who compromises one can reach many targets.
+        # Only fire on nodes an attacker can execute on; skip passive routing infra.
+        # "gateway" alone = network boundary; "api gateway" = app server (keep)
+        _hub_infra_kws = [
+            "load balancer", "loadbalancer", "router", "switch", "firewall",
+            "cdn", "reverse proxy", "nat", "controller", "actuator", "sensor",
+            "iot", "device",
+        ]
+        _is_infra = (
+            any(kw in label_lower for kw in _hub_infra_kws)
+            or ("gateway" in label_lower and "api" not in label_lower)
+        )
+        if position == "traversal" and out_degree.get(node_id, 0) >= 3 and not _is_infra:
+            for t in ["T1570", "T1021"]:
+                if t not in techniques:
+                    techniques.append(t)
+                    logger.info(f"  [hub-pivot] {node_label} (out={out_degree[node_id]}): added {t}")
 
         per_node_techniques[node_id] = techniques
 
