@@ -1,8 +1,10 @@
 """
-graph_rag.py — Structural knowledge graph over ThreatAssessor report artefacts.
+graph_index.py — Structural knowledge graph index over ThreatAssessor report artefacts.
 
 Builds a lightweight in-memory graph from ground_truth.json + critic JSONs
-across a workspace. No vector DB, no embeddings — pure Python dicts + sets.
+across a workspace. No vector DB, no embeddings, no LLM extraction — pure
+Python dicts + sets over already-structured JSON. Relationships are explicit
+in the data; this module indexes them, not discovers them.
 
 Graph entities:
   - Architecture   (arch name)
@@ -25,7 +27,7 @@ Graph edges (stored as typed adjacency sets):
   Architecture   -HAS->            Control       (present)
 
 Usage:
-    from chatbot.modules.graph_rag import ThreatGraph
+    from chatbot.modules.graph_index import ThreatGraph
     g = ThreatGraph.build(workspace_arch_names, report_dir)
     result = g.query("which architectures have T1078?")
     result = g.query("critical paths in 24_eservices_serverless")

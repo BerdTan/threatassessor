@@ -1,10 +1,10 @@
 """
-graph_search.py — GraphRAG query API for TA-Wiz workspace search panel.
+graph_search.py — Graph index query API for TA-Wiz workspace search panel.
 
 GET  /api/v1/graph/query?workspace=<name>&q=<question>
 POST /api/v1/graph/refresh?workspace=<name>
 
-The graph is built lazily on first query and cached in memory.
+The graph index is built lazily on first query and cached in memory.
 Refresh invalidates the cache for a workspace.
 """
 
@@ -15,9 +15,9 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
-from chatbot.modules.graph_rag import ThreatGraph
+from chatbot.modules.graph_index import ThreatGraph
 
-router = APIRouter(prefix="/api/v1/graph", tags=["graph-rag"])
+router = APIRouter(prefix="/api/v1/graph", tags=["graph-index"])
 
 # In-memory cache: workspace_name -> ThreatGraph
 _GRAPH_CACHE: dict[str, ThreatGraph] = {}
