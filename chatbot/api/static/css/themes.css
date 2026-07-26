@@ -1,148 +1,157 @@
-/* ThreatAssessor Theme Styles - Redesigned for Professional Look */
+/* ThreatAssessor Theme — Dense Technical direction
+   Token decisions:
+   - Type: IBM Plex Sans 400/600 (UI), IBM Plex Mono for data/numbers
+   - Accent: #4DA6FF (one only — used ≤3× per viewport in chrome)
+   - Severity colours untouched (data encoding, not decoration)
+   - Elevation: border + background step only — no shadow, no glow, no gradient
+   - Radius: 2px everywhere, 0 on tables
+*/
 
-/* Dark Theme (Default) - True Black Background, Softer Colors */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;700&display=swap');
+
+body {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+code, pre, .mono, [data-mono],
+.badge, .stage, .status-message {
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ── Dark theme ─────────────────────────────────────────────────────────── */
 body.dark-theme {
+    /* Single accent */
     --primary-color: #4da6ff;
-    --primary-hover: #3d8ed9;
-    --secondary-color: #5fd49c;
-    --accent-color: #b366ff;
-    --warning-color: #ffb84d;
-    --danger-color: #ff6b8a;
+    --primary-hover: #6cb8ff;
 
-    /* Button text color (black for dark theme bright buttons) */
+    /* Severity — data encoding only, never used in chrome */
+    --severity-critical: #dc143c;
+    --severity-high:     #ff8c00;
+    --severity-medium:   #cc9900;
+    --severity-low:      #32cd32;
+
+    /* Keep secondary/warning for existing JS that references them */
+    --secondary-color:   #4da6ff;
+    --warning-color:     #cc9900;
+    --danger-color:      #dc143c;
+
     --button-text-color: #000000;
 
-    /* High contrast text colors */
-    --text-color: #e8e8e8;
-    --text-secondary: #a0a0a0;
-    --text-tertiary: #707070;
+    --text-color:        #d4d8dc;
+    --text-secondary:    #8a9099;
+    --text-tertiary:     #565c63;
 
-    /* True black backgrounds with subtle gradients */
-    --bg-color: #000000;
-    --header-bg: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-    --sidebar-bg: #0a0a0a;
-    --main-bg: #000000;
-    --footer-bg: #0a0a0a;
-    --card-bg: linear-gradient(135deg, #1a1a28 0%, #16202e 100%);
-    --border-color: #4da6ff33;
+    /* Background steps — elevation by step, not shadow */
+    --bg-color:          #0d1117;
+    --header-bg:         #111318;
+    --sidebar-bg:        #111318;
+    --main-bg:           #0d1117;
+    --footer-bg:         #111318;
+    --card-bg:           #181c24;
+    --border-color:      #2a2f38;
 
-    /* Interactive states */
-    --nav-hover-bg: #1a1a2e;
-    --nav-active-bg: #16213e;
-    --nav-active-color: #00d4ff;
-    --drop-zone-hover-bg: rgba(0, 212, 255, 0.1);
-    --list-hover-bg: rgba(0, 212, 255, 0.08);
-    --list-active-bg: rgba(0, 212, 255, 0.15);
-    --icon-hover-bg: rgba(0, 212, 255, 0.2);
+    --nav-hover-bg:      #1a1f28;
+    --nav-active-bg:     #1a1f28;
+    --nav-active-color:  #4da6ff;
+    --drop-zone-hover-bg: rgba(77, 166, 255, 0.06);
+    --list-hover-bg:      rgba(77, 166, 255, 0.05);
+    --list-active-bg:     rgba(77, 166, 255, 0.10);
+    --icon-hover-bg:      rgba(77, 166, 255, 0.10);
 
-    /* Badges */
-    --badge-disabled-bg: #2a2a2a;
-    --badge-disabled-color: #808080;
-    --progress-bg: #1a1a1a;
-    --code-bg: #0a0a0a;
+    --badge-disabled-bg:    #1e2330;
+    --badge-disabled-color: #565c63;
+    --progress-bg:          #1a1f28;
+    --code-bg:              #111318;
 
-    /* Glow effects - softer */
-    --glow-primary: 0 0 15px rgba(77, 166, 255, 0.3);
-    --glow-secondary: 0 0 15px rgba(95, 212, 156, 0.3);
+    /* No glow — border only */
+    --glow-primary:   none;
+    --glow-secondary: none;
 }
 
-/* Light Theme - High Contrast */
+/* ── Light theme ────────────────────────────────────────────────────────── */
 body.light-theme {
-    --primary-color: #0066cc;
-    --primary-hover: #0052a3;
-    --secondary-color: #00aa55;
-    --accent-color: #cc00cc;
-    --warning-color: #ff8800;
-    --danger-color: #cc0033;
+    --primary-color: #0055b3;
+    --primary-hover: #0044a0;
 
-    /* Button text color (override for light theme) */
+    --severity-critical: #c0001e;
+    --severity-high:     #c85800;
+    --severity-medium:   #8a6200;
+    --severity-low:      #1a7a1a;
+
+    --secondary-color:   #0055b3;
+    --warning-color:     #8a6200;
+    --danger-color:      #c0001e;
+
     --button-text-color: #ffffff;
 
-    /* High contrast text colors */
-    --text-color: #000000;
-    --text-secondary: #4a4a4a;
-    --text-tertiary: #6a6a6a;
+    --text-color:        #0d1117;
+    --text-secondary:    #4a5260;
+    --text-tertiary:     #6a7280;
 
-    /* Clean white backgrounds */
-    --bg-color: #ffffff;
-    --header-bg: linear-gradient(135deg, #f0f4f8 0%, #ffffff 100%);
-    --sidebar-bg: #f5f7fa;
-    --main-bg: #ffffff;
-    --footer-bg: #f5f7fa;
-    --card-bg: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    --border-color: #d0d7de;
+    --bg-color:          #f4f6f8;
+    --header-bg:         #ffffff;
+    --sidebar-bg:        #f0f2f5;
+    --main-bg:           #f4f6f8;
+    --footer-bg:         #f0f2f5;
+    --card-bg:           #ffffff;
+    --border-color:      #dde1e7;
 
-    /* Interactive states */
-    --nav-hover-bg: #e8edf2;
-    --nav-active-bg: #d8e7f5;
-    --nav-active-color: #0066cc;
-    --drop-zone-hover-bg: rgba(0, 102, 204, 0.05);
-    --list-hover-bg: rgba(0, 102, 204, 0.05);
-    --list-active-bg: rgba(0, 102, 204, 0.1);
-    --icon-hover-bg: rgba(0, 102, 204, 0.1);
+    --nav-hover-bg:      #e6eaf0;
+    --nav-active-bg:     #dce6f5;
+    --nav-active-color:  #0055b3;
+    --drop-zone-hover-bg: rgba(0, 85, 179, 0.04);
+    --list-hover-bg:      rgba(0, 85, 179, 0.04);
+    --list-active-bg:     rgba(0, 85, 179, 0.08);
+    --icon-hover-bg:      rgba(0, 85, 179, 0.08);
 
-    /* Badges */
-    --badge-disabled-bg: #e8edf2;
-    --badge-disabled-color: #6a6a6a;
-    --progress-bg: #e8edf2;
-    --code-bg: #f5f7fa;
+    --badge-disabled-bg:    #e6eaf0;
+    --badge-disabled-color: #6a7280;
+    --progress-bg:          #dde1e7;
+    --code-bg:              #f0f2f5;
 
-    /* Subtle shadows */
-    --glow-primary: 0 2px 8px rgba(0, 102, 204, 0.2);
-    --glow-secondary: 0 2px 8px rgba(0, 170, 85, 0.2);
+    --glow-primary:   none;
+    --glow-secondary: none;
 }
 
-/* Theme-specific adjustments */
+/* ── Cards — border + bg step, no shadow/glow ───────────────────────────── */
 body.dark-theme .card {
-    box-shadow: 0 4px 16px rgba(0, 212, 255, 0.1), 0 0 2px rgba(0, 212, 255, 0.3);
-    border: 1px solid rgba(0, 212, 255, 0.2);
+    border: 1px solid var(--border-color);
+    box-shadow: none;
 }
 
 body.light-theme .card {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-color);
+    box-shadow: none;
 }
 
 body.dark-theme .pattern-card {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    box-shadow: 0 4px 16px rgba(0, 212, 255, 0.1);
+    background: var(--card-bg);
+    box-shadow: none;
 }
 
 body.light-theme .pattern-card {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    background: var(--card-bg);
+    box-shadow: none;
 }
 
-/* Futuristic accents for dark theme - softer */
+/* ── Header + sidebar borders — 1px rule, no glow ───────────────────────── */
 body.dark-theme .header {
-    border-bottom: 2px solid rgba(77, 166, 255, 0.2);
-    box-shadow: 0 4px 12px rgba(77, 166, 255, 0.08);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: none;
 }
 
 body.dark-theme .sidebar {
-    border-right: 2px solid rgba(77, 166, 255, 0.15);
+    border-right: 1px solid var(--border-color);
 }
 
 body.dark-theme .nav-tab.active {
-    border-left: 3px solid #4da6ff;
-    box-shadow: inset 0 0 15px rgba(77, 166, 255, 0.15);
+    border-left: 3px solid var(--primary-color);
+    box-shadow: none;
 }
 
-body.dark-theme .progress-fill {
-    background: linear-gradient(90deg, #4da6ff, #5fd49c);
-    box-shadow: 0 0 15px rgba(77, 166, 255, 0.3);
-}
-
+/* ── Progress fill — flat accent, no gradient ────────────────────────────── */
+body.dark-theme .progress-fill,
 body.light-theme .progress-fill {
-    background: linear-gradient(90deg, #0066cc, #00aa55);
-}
-
-/* Animated glow for active elements - softer */
-@keyframes glow-pulse {
-    0%, 100% { box-shadow: 0 0 8px rgba(77, 166, 255, 0.2); }
-    50% { box-shadow: 0 0 15px rgba(77, 166, 255, 0.4); }
-}
-
-body.dark-theme .stage.active {
-    animation: glow-pulse 2s ease-in-out infinite;
+    background: var(--primary-color);
+    box-shadow: none;
 }

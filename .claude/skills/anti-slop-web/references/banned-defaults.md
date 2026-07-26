@@ -79,6 +79,25 @@ Pair a characterful display face with a quieter body face. Two families is usual
 
 **Reach for instead:** one orchestrated moment — a page-load sequence, one scroll-driven transformation, one hover behaviour that reveals real information. Scattered effects read as generated; a single deliberate moment reads as designed. Respect `prefers-reduced-motion`.
 
+## Invented facts
+
+Everything else in this file pushes toward specificity — a real number, the true sentence, the signature element the page is remembered by. **That pressure has a failure mode: when you don't have the real number, specificity turns into invention.** It is the most damaging thing this skill can cause, because the result passes every check, looks like the best work on the page, and is a lie about someone's business.
+
+**Never invent, at any size or prominence:**
+
+- Measurements, benchmarks, tolerances, test results, sample data.
+- Comparative claims about competitors or alternative products — *especially* quantified ones. "Off-the-shelf wheels run ±22%" is a factual assertion about other companies' goods. Inventing it is not a design decision.
+- Testimonials, quotes, or named customers. Never attach a name and a photo to words nobody said.
+- Counts and social proof: users, downloads, teams, years, "trusted by N".
+- Certifications, standards, compliance claims, awards, press mentions.
+- Prices, terms, lead times, guarantees, or anything a customer could hold them to.
+
+**If the design needs data you weren't given**, in order of preference: ask for it; design something that doesn't need it; or use *visibly* placeholder values — obviously round, clearly labelled inline where the claim is made, not in a caption underneath. A disclaimer in 9px grey under a chart does not qualify a headline number set in 40px.
+
+**The test:** if the page went live tomorrow, would every number on it survive a customer asking "where did you get that?" If you cannot name the source, it does not go on the page.
+
+This outranks the design. A page that is one element weaker but entirely true is the correct trade every time — and say so in your report, so the user can supply the real figures and get the element back.
+
 ## Copy
 
 **Banned phrasing:** "Empower your…", "Seamlessly…", "Take your X to the next level", "Built for the modern…", "Supercharge", "The future of X, today", "Effortlessly", any headline of the form *Verb your Noun with Adjective Noun*.

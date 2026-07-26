@@ -9246,6 +9246,22 @@ class Dashboard {
         };
     }
 
+    // ── Re-fetch ground_truth.json after ER and merge into analysisData ──────────
+    // Called by both ER complete handlers so pivot nodes and blackhat_critique
+    // are available to Visualise without requiring a manual page reload.
+    async _refreshGroundTruth(archName) {
+        if (!archName) return;
+        try {
+            const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/files/ground_truth.json`, { cache: 'no-store' });
+            if (!r.ok) return;
+            const gt = await r.json();
+            if (this.analysisData) {
+                this.analysisData.analysis = gt;
+                this.attackPaths = gt.expected_attack_paths || this.attackPaths;
+            }
+        } catch (_) {}
+    }
+
     // ── Append a SM action item to 10_adr_report.md ──────────────────────────────
     async _rescoreAivss(archName, btnEl) {
         const apiKey = localStorage.getItem('tm_api_key') || '';
@@ -9492,6 +9508,7 @@ class Dashboard {
                                     ? ` · confidence now ${parseFloat(data.final_confidence).toFixed(1)}%` : '';
                                 _setToastDone(`${criticLabel} complete${confTxt}`);
                                 allBtns.forEach(b => { b.disabled = false; b.textContent = '↻'; b.style.opacity = ''; });
+                                this._refreshGroundTruth(archName);
                                 setTimeout(() => {
                                     this.loadExpertReviewTab();
                                     if (criticKey === 'scrum_master') {
@@ -12268,10 +12285,11 @@ class Dashboard {
                                 this._erpState = null;
                                 // Update header MoE pill with final confidence from the complete event
                                 if (data && data.moe_result) this._updateMoePill(data.moe_result);
+                                const an = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
+                                this._refreshGroundTruth(an);
                                 setTimeout(() => {
                                     this.loadExpertReviewTab();
                                     // Fetch moe json to update pill if not in complete payload
-                                    const an = this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture);
                                     if (an) fetch(`/api/v1/reports/${encodeURIComponent(an)}/files/07_moe_orchestrator.json`)
                                         .then(r => r.ok ? r.json() : null).then(m => { if (m) this._updateMoePill(m); }).catch(() => {});
                                     // Reveal ScrumMaster tab if 08_scrum_master.json exists
