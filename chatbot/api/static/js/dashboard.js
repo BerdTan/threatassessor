@@ -6263,7 +6263,7 @@ class Dashboard {
                             <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem;">
                                 Reports are generated during analysis. Run a full analysis to generate downloadable reports.
                             </p>
-                            <p style="color: var(--text-tertiary); font-size: 0.8125rem; padding: 1rem; background: var(--nav-hover-bg); border-radius: 8px;">
+                            <p style="color: var(--text-tertiary); font-size: 0.8125rem; padding: 1rem; background: var(--nav-hover-bg); border-radius:2px;">
                                 CLI: <code style="color: var(--primary-color);">python3 -m chatbot.main --gen-arch-truth your_architecture.mmd</code>
                             </p>
                         </div>
@@ -6539,7 +6539,7 @@ class Dashboard {
             };
             const closed = (delta.closed_findings || []).length;
             const newF   = (delta.new_findings    || []).length;
-            trendHtml = `<div style="margin-bottom:1rem;padding:0.75rem 1rem;background:var(--nav-hover-bg);border-radius:8px;border:1px solid var(--border-color);">
+            trendHtml = `<div style="margin-bottom:1rem;padding:0.75rem 1rem;background:var(--nav-hover-bg);border-radius:2px;border:1px solid var(--border-color);">
                 <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:0.5rem;">
                     TREND vs ${delta.prev_date}</div>
                 <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:0.8125rem;">
@@ -6583,7 +6583,7 @@ class Dashboard {
             const dm = desc.match(/^(.{20,}?[.!?])(?:\s|$)/);
             const descShort = dm ? dm[1] : desc.slice(0, 110);
             return `<div data-ciso-finding="${safeKey}" data-finding-idx="${i}"
-                style="padding:0.6rem 0.75rem;background:var(--card-bg);border-radius:6px;
+                style="padding:0.6rem 0.75rem;background:var(--card-bg);border-radius:2px;
                        border-left:3px solid ${sevColor};margin-bottom:0.4rem;cursor:pointer;transition:background 0.12s;"
                 onmouseover="this.style.background='var(--nav-hover-bg)'"
                 onmouseout="if(this.style.background!=='var(--nav-hover-bg)' || this.dataset.selected!=='1')this.style.background='var(--card-bg)'">
@@ -6950,9 +6950,9 @@ class Dashboard {
                 <a href="/api/v1/reports/${archName}/download?pack=stakeholder" download="${archName}_stakeholder.zip"
                    class="btn-primary" style="padding:0.5rem 1rem;font-size:0.8125rem;font-weight:600;text-decoration:none;">⬇ Stakeholder Pack</a>
                 <a href="/api/v1/reports/${archName}/download?pack=reports" download="${archName}_reports.zip"
-                   style="padding:0.5rem 1rem;font-size:0.8125rem;font-weight:600;background:transparent;color:var(--text-color);border:1.5px solid var(--border-color);border-radius:6px;text-decoration:none;">⬇ All Reports</a>
+                   style="padding:0.5rem 1rem;font-size:0.8125rem;font-weight:600;background:transparent;color:var(--text-color);border:1.5px solid var(--border-color);border-radius:2px;text-decoration:none;">⬇ All Reports</a>
                 <a href="/api/v1/reports/${archName}/briefing" download="${archName}_briefing.md"
-                   style="padding:0.5rem 1rem;font-size:0.8125rem;font-weight:600;background:transparent;color:#a855f7;border:1.5px solid #a855f744;border-radius:6px;text-decoration:none;" title="Single-file Markdown briefing for offline sharing — no dashboard needed">📄 Export Briefing</a>
+                   style="padding:0.5rem 1rem;font-size:0.8125rem;font-weight:600;background:transparent;color:#a855f7;border:1.5px solid #a855f744;border-radius:2px;text-decoration:none;" title="Single-file Markdown briefing for offline sharing — no dashboard needed">📄 Export Briefing</a>
                 <span style="font-size:0.72rem;color:var(--text-tertiary);margin-left:auto;">Click a card to preview · ⬇ to download · JSON → Raw Data tab</span>
             </div>
 
@@ -7018,7 +7018,7 @@ class Dashboard {
                 padding: 0.875rem 1rem;
                 background: var(--card-bg);
                 border: 1.5px solid var(--border-color);
-                border-radius: 8px;
+                border-radius:2px;
                 cursor: pointer;
                 transition: border-color 0.2s, background 0.2s;
             ">
@@ -7080,7 +7080,7 @@ class Dashboard {
                         <button id="rp-diagram-fit-width" class="btn-icon" title="Fit to Width">↔️</button>
                         <button id="rp-diagram-fit-height" class="btn-icon" title="Fit to Height">↕️</button>
                     </div>
-                    <div id="rp-diagram-container" style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 70vh; border: 2px solid ${borderColor}; border-radius: 8px;">
+                    <div id="rp-diagram-container" style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 70vh; border: 2px solid ${borderColor}; border-radius:2px;">
                         <div class="mermaid" id="rp-diagram">${content}</div>
                     </div>
                 `;
@@ -7088,7 +7088,7 @@ class Dashboard {
                 const data = await response.json();
                 const jsonStr = JSON.stringify(data, null, 2);
                 htmlContent = `
-                    <div style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 70vh; border-radius: 8px;">
+                    <div style="padding: 1rem; background: var(--code-bg); overflow: auto; max-height: 70vh; border-radius:2px;">
                         <pre style="margin: 0; font-size: 0.8125rem;"><code class="language-json">${this.escapeHtml(jsonStr)}</code></pre>
                     </div>
                 `;
@@ -7170,18 +7170,18 @@ class Dashboard {
         if (erpState === 'running') {
             return `<div id="erp-btn-row" style="display:inline-flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; flex-wrap:wrap; justify-content:center;">
                 <button id="run-expert-review-btn" disabled
-                    style="background:var(--primary-color); color:#fff; border:none; border-radius:8px;
+                    style="background:var(--primary-color); color:#fff; border:none; border-radius:2px;
                            padding:0.75rem 1.75rem; font-size:0.9375rem; font-weight:600; cursor:default; opacity:0.6;">
                     Running…
                 </button>
                 <button id="pause-expert-review-btn" onclick="window.dashboard._pauseExpertReview()"
                     style="background:transparent; color:var(--warning-color); border:1px solid var(--warning-color);
-                           border-radius:6px; padding:0.35rem 0.9rem; font-size:0.8125rem; font-weight:600; cursor:pointer;">
+                           border-radius:2px; padding:0.35rem 0.9rem; font-size:0.8125rem; font-weight:600; cursor:pointer;">
                     ⏸ Pause
                 </button>
                 <button id="cancel-expert-review-btn" onclick="window.dashboard._cancelExpertReview()"
                     style="background:transparent; color:var(--danger-color); border:1px solid var(--danger-color);
-                           border-radius:6px; padding:0.35rem 0.9rem; font-size:0.8125rem; font-weight:600; cursor:pointer;">
+                           border-radius:2px; padding:0.35rem 0.9rem; font-size:0.8125rem; font-weight:600; cursor:pointer;">
                     ✕ Cancel
                 </button>
             </div>`;
@@ -7189,13 +7189,13 @@ class Dashboard {
         if (erpState === 'paused') {
             return `<div id="erp-btn-row" style="display:inline-flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; flex-wrap:wrap; justify-content:center;">
                 <button id="run-expert-review-btn" onclick="window.dashboard._resumeExpertReview()"
-                    style="background:var(--primary-color); color:#fff; border:none; border-radius:8px;
+                    style="background:var(--primary-color); color:#fff; border:none; border-radius:2px;
                            padding:0.75rem 1.75rem; font-size:0.9375rem; font-weight:600; cursor:pointer;">
                     ▶ Resume
                 </button>
                 <button id="cancel-expert-review-btn" onclick="window.dashboard._cancelExpertReview()"
                     style="background:transparent; color:var(--danger-color); border:1px solid var(--danger-color);
-                           border-radius:6px; padding:0.35rem 0.9rem; font-size:0.8125rem; font-weight:600; cursor:pointer;">
+                           border-radius:2px; padding:0.35rem 0.9rem; font-size:0.8125rem; font-weight:600; cursor:pointer;">
                     ✕ Cancel
                 </button>
             </div>`;
@@ -7206,19 +7206,19 @@ class Dashboard {
                 <label for="erp-mode-select" style="font-weight:600; white-space:nowrap;">Critic Mode:</label>
                 <select id="erp-mode-select"
                     style="background:#1e1e2e; color:#e2e8f0; border:1px solid var(--border-color);
-                           border-radius:6px; padding:0.3rem 0.6rem; font-size:0.8125rem; cursor:pointer;"
+                           border-radius:2px; padding:0.3rem 0.6rem; font-size:0.8125rem; cursor:pointer;"
                     onchange="window.dashboard._erpShowModeHint(this.value)">
                     <option value="partial_parallel" selected style="background:#1e1e2e; color:#e2e8f0;">Partial Parallel (Recommended)</option>
                     <option value="sequential" style="background:#1e1e2e; color:#e2e8f0;">Sequential (Max Accuracy)</option>
                     <option value="auto" style="background:#1e1e2e; color:#e2e8f0;">Auto (Complexity-Adaptive)</option>
                     <option value="parallel" style="background:#1e1e2e; color:#e2e8f0;">Parallel (Fastest)</option>
                 </select>
-                <div id="erp-mode-hint" style="max-width:380px; margin-top:0.5rem; padding:0.5rem 0.75rem; border-radius:6px;
+                <div id="erp-mode-hint" style="max-width:380px; margin-top:0.5rem; padding:0.5rem 0.75rem; border-radius:2px;
                      background:var(--nav-hover-bg); border:1px solid var(--border-color); font-size:0.75rem; color:var(--text-secondary); text-align:left;"></div>
             </div>
             <div style="display:inline-flex; align-items:center; gap:0.6rem; flex-wrap:wrap; justify-content:center;">
                 <button id="run-expert-review-btn" onclick="window.dashboard.runExpertReview('${archName}')"
-                    style="background:var(--primary-color); color:#fff; border:none; border-radius:8px;
+                    style="background:var(--primary-color); color:#fff; border:none; border-radius:2px;
                            padding:0.75rem 1.75rem; font-size:0.9375rem; font-weight:600; cursor:pointer;">
                     Run Expert Review (~90 s)
                 </button>
@@ -7540,7 +7540,7 @@ class Dashboard {
                 .join(' ')
             : '';
 
-        return `<div style="border:1px solid var(--border-color); border-radius:10px; padding:1rem; background:var(--card-bg); margin-bottom:0.75rem;">
+        return `<div style="border:1px solid var(--border-color); border-radius:2px; padding:1rem; background:var(--card-bg); margin-bottom:0.75rem;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.4rem;">
                 <div>
                     <span style="font-weight:700; font-size:0.9375rem;">${ws.name}</span>
@@ -7691,7 +7691,7 @@ class Dashboard {
                 data-pg="${pg}"
                 data-listid="${listId}"
                 onclick="window.dashboard._wsSetArchPageSize('${listId}',+this.dataset.pg,this)"
-                style="padding:1px 7px; border:1px solid var(--border-color); border-radius:10px; font-size:0.68rem; cursor:pointer;
+                style="padding:1px 7px; border:1px solid var(--border-color); border-radius:2px; font-size:0.68rem; cursor:pointer;
                     background:${isFirst ? 'var(--primary-color)' : 'transparent'};
                     color:${isFirst ? '#fff' : 'var(--text-secondary)'};
                     font-weight:${isFirst ? '700' : '400'};">${label}</button>`;
@@ -7711,7 +7711,7 @@ class Dashboard {
             </span>
         </div>
         <div id="${listId}" data-cbsel="${cbSel}"
-            style="display:flex; flex-direction:column; border:1px solid var(--border-color); border-radius:6px; padding:0.25rem 0.4rem; background:var(--card-bg); margin-bottom:0.6rem;">
+            style="display:flex; flex-direction:column; border:1px solid var(--border-color); border-radius:2px; padding:0.25rem 0.4rem; background:var(--card-bg); margin-bottom:0.6rem;">
             ${rows || '<span style="color:var(--text-tertiary); font-size:0.78rem; padding:0.25rem 0.2rem;">No architectures available — run an analysis first.</span>'}
         </div>`;
     }
@@ -7720,12 +7720,12 @@ class Dashboard {
         const domainPicker = this._renderDomainPicker('ws-domain-input', []);
         const archList = this._renderArchList(availableArchs, 'ws-arch-list', 'ws-arch', null, 10);
 
-        return `<div id="ws-create-form" style="border:1px dashed var(--border-color); border-radius:10px; padding:1rem; background:var(--nav-hover-bg);">
+        return `<div id="ws-create-form" style="border:1px dashed var(--border-color); border-radius:2px; padding:1rem; background:var(--nav-hover-bg);">
             <div style="font-size:0.875rem; font-weight:700; margin-bottom:0.75rem; color:var(--text-color);">+ Create Workspace</div>
             <input id="ws-name-input" type="text" placeholder="Name (letters, digits, _ -)" maxlength="80"
-                style="width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-color); font-size:0.8rem; margin-bottom:0.5rem;">
+                style="width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color); font-size:0.8rem; margin-bottom:0.5rem;">
             <input id="ws-desc-input" type="text" placeholder="Description (optional)" maxlength="300"
-                style="width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-color); font-size:0.8rem; margin-bottom:0.5rem;">
+                style="width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color); font-size:0.8rem; margin-bottom:0.5rem;">
             <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.3rem;">
                 <span style="font-size:0.78rem; color:var(--text-secondary); font-weight:600;">Domain</span>
                 <span title="Tag this workspace with one or more industry domains. Domains let you filter and compare workspaces across sectors (e.g. all Financial workspaces). They also let TA-Wiz apply domain-specific compliance context — e.g. MAS TRM for Financial, IM8 for Government. Select as many as apply; leave blank for internal/experimental workspaces."
@@ -7737,7 +7737,7 @@ class Dashboard {
             ${archList}
             <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
                 <button onclick="window.dashboard._submitCreateWorkspace()"
-                    style="padding:0.3rem 0.9rem; border:none; border-radius:6px; background:var(--primary-color); color:#fff; font-size:0.8rem; cursor:pointer; font-weight:600;">Create</button>
+                    style="padding:0.3rem 0.9rem; border:none; border-radius:2px; background:var(--primary-color); color:#fff; font-size:0.8rem; cursor:pointer; font-weight:600;">Create</button>
             </div>
             <div id="ws-create-msg" style="font-size:0.75rem; margin-top:0.4rem;"></div>
         </div>`;
@@ -7806,7 +7806,7 @@ class Dashboard {
         overlay.innerHTML = `<div style="background:var(--card-bg);border-radius:12px;padding:1.5rem;width:460px;max-width:92vw;max-height:88vh;overflow-y:auto;border:1px solid var(--border-color);">
             <div style="font-size:1rem;font-weight:700;margin-bottom:1rem;">✏️ Edit: ${name}</div>
             <input id="edit-ws-desc" type="text" value="${ws.description||''}" placeholder="Description" maxlength="300"
-                style="width:100%;box-sizing:border-box;padding:0.4rem 0.6rem;border:1px solid var(--border-color);border-radius:6px;background:var(--main-bg);color:var(--text-color);font-size:0.8rem;margin-bottom:0.5rem;">
+                style="width:100%;box-sizing:border-box;padding:0.4rem 0.6rem;border:1px solid var(--border-color);border-radius:2px;background:var(--main-bg);color:var(--text-color);font-size:0.8rem;margin-bottom:0.5rem;">
             <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem;">
                 <span style="font-size:0.78rem;font-weight:600;color:var(--text-secondary);">Domain</span>
                 <span title="Tag this workspace with one or more industry domains. Domains let you filter and compare workspaces across sectors. TA-Wiz uses these to apply domain-specific compliance context — e.g. MAS TRM for Financial, IM8 for Government."
@@ -7818,9 +7818,9 @@ class Dashboard {
             ${archList}
             <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
                 <button onclick="this.closest('div[style*=fixed]').remove()"
-                    style="padding:0.3rem 0.75rem;border:1px solid var(--border-color);border-radius:6px;background:transparent;color:var(--text-color);font-size:0.8rem;cursor:pointer;">Cancel</button>
+                    style="padding:0.3rem 0.75rem;border:1px solid var(--border-color);border-radius:2px;background:transparent;color:var(--text-color);font-size:0.8rem;cursor:pointer;">Cancel</button>
                 <button id="edit-ws-save"
-                    style="padding:0.3rem 0.9rem;border:none;border-radius:6px;background:var(--primary-color);color:#fff;font-size:0.8rem;cursor:pointer;font-weight:600;">Save</button>
+                    style="padding:0.3rem 0.9rem;border:none;border-radius:2px;background:var(--primary-color);color:#fff;font-size:0.8rem;cursor:pointer;font-weight:600;">Save</button>
             </div>
             <div id="edit-ws-msg" style="font-size:0.75rem;margin-top:0.4rem;"></div>
         </div>`;
@@ -7906,10 +7906,10 @@ class Dashboard {
             <div style="flex-shrink:0; display:flex; gap:0.5rem; margin-bottom:0.6rem; padding-bottom:0.6rem; border-bottom:1px solid var(--border-color);">
                 <textarea id="tawiz-input-${workspaceName.replace(/\W/g,'_')}"
                     placeholder="Ask about this workspace… (Enter to send, Shift+Enter for newline)"
-                    style="flex:1; padding:0.5rem 0.65rem; border:1px solid var(--border-color); border-radius:6px; resize:none; min-height:48px; max-height:110px; font-size:0.8125rem; background:var(--card-bg); color:var(--text-color); line-height:1.4;"
+                    style="flex:1; padding:0.5rem 0.65rem; border:1px solid var(--border-color); border-radius:2px; resize:none; min-height:48px; max-height:110px; font-size:0.8125rem; background:var(--card-bg); color:var(--text-color); line-height:1.4;"
                     onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();window.dashboard._taWizSend('${workspaceName}');}"></textarea>
                 <button onclick="window.dashboard._taWizSend('${workspaceName}')"
-                    style="align-self:flex-start; padding:0.5rem 1rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:0.8125rem; white-space:nowrap; margin-top:0;">Send →</button>
+                    style="align-self:flex-start; padding:0.5rem 1rem; background:var(--primary-color); color:#fff; border:none; border-radius:2px; cursor:pointer; font-weight:600; font-size:0.8125rem; white-space:nowrap; margin-top:0;">Send →</button>
             </div>
             <!-- Turns (newest on top, scroll down for older) -->
             <div id="tawiz-messages-${workspaceName.replace(/\W/g,'_')}" style="flex:1; overflow-y:auto; padding:0.1rem 0; display:flex; flex-direction:column; gap:0;"></div>
@@ -8147,7 +8147,7 @@ class Dashboard {
 
         // 1. Fenced code blocks
         let out = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
-            `<pre style="background:var(--nav-hover-bg);border:1px solid var(--border-color);border-radius:6px;padding:0.6rem 0.75rem;overflow-x:auto;font-size:0.78rem;margin:0.5rem 0;"><code>${esc(code.trim())}</code></pre>`);
+            `<pre style="background:var(--nav-hover-bg);border:1px solid var(--border-color);border-radius:2px;padding:0.6rem 0.75rem;overflow-x:auto;font-size:0.78rem;margin:0.5rem 0;"><code>${esc(code.trim())}</code></pre>`);
 
         // 2. Tables — parse | ... | rows
         out = out.replace(/((?:\|.+\|\n?)+)/g, (block) => {
@@ -8284,7 +8284,7 @@ class Dashboard {
                                 sourcesSlot.innerHTML = '<span style="font-size:0.68rem;color:var(--text-tertiary);">Sources:</span>'
                                     + data.sources_used.map(a =>
                                         `<span onclick="window.dashboard._loadArchFromReports('${a}')"
-                                            style="font-size:0.68rem;padding:1px 7px;border-radius:10px;border:1px solid var(--border-color);background:var(--nav-hover-bg);color:var(--text-secondary);cursor:pointer;"
+                                            style="font-size:0.68rem;padding:1px 7px;border-radius:2px;border:1px solid var(--border-color);background:var(--nav-hover-bg);color:var(--text-secondary);cursor:pointer;"
                                             onmouseover="this.style.color='var(--primary-color)';this.style.borderColor='var(--primary-color)'"
                                             onmouseout="this.style.color='var(--text-secondary)';this.style.borderColor='var(--border-color)'">${a}</span>`
                                     ).join('');
@@ -8448,7 +8448,7 @@ class Dashboard {
         const sinks     = brokerCfg.sinks || {};
 
         const statusBadge = (s) => {
-            if (!s || s === 'not_configured') return `<span style="padding:1px 7px; border-radius:3px; font-size:0.75rem; background:#1e293b; border:1px solid #334155; color:#94a3b8;">not configured</span>`;
+            if (!s || s === 'not_configured') return `<span style="padding:1px 7px; border-radius:3px; font-size:0.75rem; background:var(--card-bg); border:1px solid #334155; color:var(--text-tertiary);">not configured</span>`;
             if (s === 'ok')                   return `<span style="padding:1px 7px; border-radius:3px; font-size:0.75rem; background:#0d9f6e22; border:1px solid #0d9f6e55; color:#0d9f6e;">✓ ok</span>`;
             return `<span style="padding:1px 7px; border-radius:3px; font-size:0.75rem; background:#ef444422; border:1px solid #ef444455; color:#ef4444;">✗ ${this._escHtml(s)}</span>`;
         };
@@ -8503,7 +8503,7 @@ class Dashboard {
                         <span style="display:flex; align-items:center; gap:0.5rem; font-size:0.73rem; color:var(--text-tertiary);">
                             <span>Connectivity:</span>
                             <span style="padding:1px 7px; border-radius:3px; background:#0d9f6e22; border:1px solid #0d9f6e55; color:#0d9f6e;">✓ ok</span>
-                            <span style="padding:1px 7px; border-radius:3px; background:#1e293b; border:1px solid #334155; color:#94a3b8;">not configured</span>
+                            <span style="padding:1px 7px; border-radius:3px; background:var(--card-bg); border:1px solid #334155; color:var(--text-tertiary);">not configured</span>
                             <span style="padding:1px 7px; border-radius:3px; background:#ef444422; border:1px solid #ef444455; color:#ef4444;">✗ error</span>
                         </span>
                     </div>
@@ -8527,7 +8527,7 @@ class Dashboard {
                     </table>
                     <div style="padding:0.5rem 1rem; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end;">
                         <button onclick="window.dashboard && window.dashboard.loadTracesTab()"
-                                style="padding:0.3rem 0.85rem; border:1px solid var(--border-color); border-radius:6px; background:var(--card-bg); color:var(--text-secondary); font-size:0.8rem; cursor:pointer;">
+                                style="padding:0.3rem 0.85rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-secondary); font-size:0.8rem; cursor:pointer;">
                             ↺ Refresh
                         </button>
                     </div>
@@ -8553,7 +8553,7 @@ class Dashboard {
                                        ? '⚠️ Langfuse server unreachable at <code>' + this._escHtml(langfuseHost) + '</code>. Start it with:'
                                        : 'Langfuse is a self-hosted tracing UI. To enable it:'}
                                </div>
-                               <pre style="background:#0f172a; border:1px solid #334155; border-radius:6px; padding:0.85rem 1rem; font-size:0.8rem; color:#94a3b8; overflow-x:auto;">${
+                               <pre style="background:#0f172a; border:1px solid #334155; border-radius:2px; padding:0.85rem 1rem; font-size:0.8rem; color:var(--text-tertiary); overflow-x:auto;">${
                                    langfuseEnabled
                                        ? 'cd langfuse && docker compose up -d'
                                        : '# 1. Clone and start Langfuse\ngit clone --depth=1 https://github.com/langfuse/langfuse.git\ncd langfuse && docker compose up -d\n# UI at http://localhost:3000 → Settings → API Keys\n\n# 2. Add to .env\nLANGFUSE_PUBLIC_KEY=pk-lf-...\nLANGFUSE_SECRET_KEY=sk-lf-...\nLANGFUSE_BASE_URL=http://localhost:3000\n\n# 3. Enable in policies/agent_governance.yaml\n# event_broker.sinks.langfuse.enabled: true\n# Then enable EventBroker in ⚙️ Config → 🔭 EventBroker'
@@ -8583,7 +8583,7 @@ class Dashboard {
 
         // Scenario cards (static, expanded detail)
         const _sc = (id, badge, badgeCol, stages, summary, whenToUse, example, triggers, troubleshoot) => `
-            <div style="padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid ${badgeCol}44;">
+            <div style="padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:2px; border:1px solid ${badgeCol}44;">
                 <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.4rem; flex-wrap:wrap;">
                     <span style="font-size:0.875rem; font-weight:700; color:var(--primary-color); font-family:monospace;">${id}</span>
                     <span style="font-size:0.7rem; font-weight:700; padding:1px 7px; border-radius:5px;
@@ -8649,7 +8649,7 @@ class Dashboard {
             <div style="display:flex; flex-direction:column; gap:0.75rem;">
 
                 <!-- SyncExecutor -->
-                <div style="padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--secondary-color)44;">
+                <div style="padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:2px; border:1px solid var(--secondary-color)44;">
                     <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.5rem; flex-wrap:wrap;">
                         <span style="font-size:0.9rem; font-weight:700; color:var(--text-color);">SyncExecutor</span>
                         <span style="font-size:0.7rem; font-weight:700; padding:1px 7px; border-radius:5px;
@@ -8679,7 +8679,7 @@ class Dashboard {
                 </div>
 
                 <!-- AgentExecutor -->
-                <div style="padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--warning-color)44;">
+                <div style="padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:2px; border:1px solid var(--warning-color)44;">
                     <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.5rem; flex-wrap:wrap;">
                         <span style="font-size:0.9rem; font-weight:700; color:var(--text-color);">AgentExecutor</span>
                         <span style="font-size:0.7rem; font-weight:700; padding:1px 7px; border-radius:5px;
@@ -8739,7 +8739,7 @@ class Dashboard {
             const lsKey = 'harness_open_' + id;
             const open  = localStorage.getItem(lsKey) !== null ? localStorage.getItem(lsKey) === 'true' : defaultOpen;
             const chev  = open ? '∨' : '›';
-            return `<div class="er-panel" style="background:var(--card-bg); border-radius:10px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">
+            return `<div class="er-panel" style="background:var(--card-bg); border-radius:2px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">
                 <div class="er-panel-header"
                     onclick="(function(h){
                         var b=h.closest('.er-panel').querySelector('.er-panel-body');
@@ -8769,7 +8769,7 @@ class Dashboard {
                 <div style="display:flex; align-items:center; gap:0.5rem;">
                     <span id="hc-overall" style="font-size:0.8rem; color:var(--text-tertiary);">Not run yet</span>
                     <button id="hc-run-btn" onclick="window.dashboard._harnessRunAllChecks()"
-                        style="padding:0.35rem 1rem; border-radius:6px; border:none;
+                        style="padding:0.35rem 1rem; border-radius:2px; border:none;
                                background:var(--primary-color); color:#fff; font-size:0.82rem; font-weight:600; cursor:pointer;">
                         ▶ Run Self-Check
                     </button>
@@ -9049,7 +9049,7 @@ class Dashboard {
                     </div>
                 </div>`;
             })()} ${!harnessPerf ? `
-                <div style="margin-top:1.25rem; padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px dashed var(--border-color); text-align:center;">
+                <div style="margin-top:1.25rem; padding:0.875rem 1rem; background:var(--nav-hover-bg); border-radius:2px; border:1px dashed var(--border-color); text-align:center;">
                     <div style="font-size:0.78rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.3rem;">Harness Stage Timeline</div>
                     <div style="font-size:0.78rem; color:var(--text-tertiary);">
                         No stage timing data yet for this architecture.<br>
@@ -9280,7 +9280,7 @@ class Dashboard {
         const gateSection = document.getElementById('insights-gate-section');
         const overlay = document.createElement('div');
         overlay.id = 'rescore-overlay';
-        overlay.style.cssText = 'position:absolute; inset:0; background:var(--card-bg,#fff); opacity:0.92; border-radius:8px; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.75rem; padding:1.5rem;';
+        overlay.style.cssText = 'position:absolute; inset:0; background:var(--card-bg,#fff); opacity:0.92; border-radius:2px; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.75rem; padding:1.5rem;';
 
         const STEPS = [
             { id:'gov',   label:'Governance checks',       icon:'🛡️' },
@@ -9294,7 +9294,7 @@ class Dashboard {
             <div style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:center;">
                 ${STEPS.map(s => `
                     <div id="rescore-card-${s.id}" style="display:flex; flex-direction:column; align-items:center; gap:0.25rem; padding:0.5rem 0.75rem; min-width:100px;
-                         border-radius:8px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.4; transition:all 0.25s;">
+                         border-radius:2px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.4; transition:all 0.25s;">
                         <div style="font-size:1.1rem;">${s.icon}</div>
                         <div style="font-size:0.72rem; font-weight:600; color:var(--text-secondary); text-align:center; white-space:nowrap;">${s.label}</div>
                         <div id="rescore-card-${s.id}-status" style="font-size:0.65rem; color:var(--text-tertiary);">Waiting</div>
@@ -9459,7 +9459,7 @@ class Dashboard {
                 'position:fixed; bottom:1.25rem; right:1.25rem; z-index:9999;',
                 'padding:0.6rem 1rem; min-width:280px; max-width:420px;',
                 'background:var(--primary-color); color:#fff; font-size:0.82rem; font-weight:600;',
-                'border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.35);',
+                'border-radius:2px; box-shadow:0 4px 16px rgba(0,0,0,0.35);',
                 'display:flex; align-items:center; gap:0.6rem;',
                 'transition:opacity 0.3s, transform 0.3s;',
                 'transform:translateY(0); opacity:1;',
@@ -9683,12 +9683,12 @@ class Dashboard {
                     <div style="display:flex; gap:0.75rem; justify-content:center; flex-wrap:wrap;">
                         <button onclick="window.dashboard.switchTab('expert-review')"
                             style="padding:0.5rem 1.25rem; background:var(--primary-color); color:#fff;
-                                   border:none; border-radius:6px; cursor:pointer; font-size:0.875rem; font-weight:600;">
+                                   border:none; border-radius:2px; cursor:pointer; font-size:0.875rem; font-weight:600;">
                             Go to Expert Review →
                         </button>
                         <button onclick="window.dashboard._loadArchFromReports('${parent}').then(()=>window.dashboard.switchTab('scrum-master'))"
                             style="padding:0.5rem 1.25rem; background:transparent; color:var(--primary-color);
-                                   border:1px solid var(--primary-color)44; border-radius:6px; cursor:pointer; font-size:0.875rem;">
+                                   border:1px solid var(--primary-color)44; border-radius:2px; cursor:pointer; font-size:0.875rem;">
                             ← View base arch SM
                         </button>
                     </div>
@@ -9745,7 +9745,7 @@ class Dashboard {
                     ScrumMaster synthesis has not run for this architecture yet.
                     Enable it in <strong>Configuration → ScrumMaster</strong>, then run Expert Review.
                 </p>
-                <button onclick="window.dashboard.switchTab('config')" style="padding:0.5rem 1.25rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:0.875rem;">Open Configuration</button>
+                <button onclick="window.dashboard.switchTab('config')" style="padding:0.5rem 1.25rem; background:var(--primary-color); color:#fff; border:none; border-radius:2px; cursor:pointer; font-size:0.875rem;">Open Configuration</button>
             </div>`;
             return;
         }
@@ -9756,10 +9756,10 @@ class Dashboard {
 
         const prioCol  = {critical:'var(--danger-color)', high:'var(--danger-color)', medium:'var(--warning-color)', low:'var(--text-tertiary)'};
         const harmonyChip = sm.redesign_signal
-            ? '<span style="background:#ff4d4d22; border:1px solid var(--danger-color); color:var(--danger-color); border-radius:8px; padding:3px 10px; font-size:0.75rem; font-weight:700;">🔴 Redesign needed</span>'
+            ? '<span style="background:#ff4d4d22; border:1px solid var(--danger-color); color:var(--danger-color); border-radius:2px; padding:3px 10px; font-size:0.75rem; font-weight:700;">🔴 Redesign needed</span>'
             : parseFloat(sm.final_confidence) >= 90
-            ? '<span style="background:#00c07722; border:1px solid var(--secondary-color); color:var(--secondary-color); border-radius:8px; padding:3px 10px; font-size:0.75rem; font-weight:700;">✅ Harmony reached</span>'
-            : '<span style="background:#ffaa0022; border:1px solid var(--warning-color); color:var(--warning-color); border-radius:8px; padding:3px 10px; font-size:0.75rem; font-weight:700;">◑ Near-harmony</span>';
+            ? '<span style="background:#00c07722; border:1px solid var(--secondary-color); color:var(--secondary-color); border-radius:2px; padding:3px 10px; font-size:0.75rem; font-weight:700;">✅ Harmony reached</span>'
+            : '<span style="background:#ffaa0022; border:1px solid var(--warning-color); color:var(--warning-color); border-radius:2px; padding:3px 10px; font-size:0.75rem; font-weight:700;">◑ Near-harmony</span>';
 
         // Confidence trajectory
         const traj = sm.confidence_trajectory || [sm.initial_confidence];
@@ -9783,12 +9783,12 @@ class Dashboard {
             const wasTriggered = retriggered.has(cd.key);
             const borderCol = wasTriggered ? '#a855f7' : 'var(--border-color)';
             const badge = wasTriggered
-                ? '<span style="font-size:0.68rem; font-weight:700; color:#a855f7; background:#a855f718; border:1px solid #a855f744; border-radius:8px; padding:1px 7px; margin-left:0.4rem;">🧩 Re-triggered</span>'
+                ? '<span style="font-size:0.68rem; font-weight:700; color:#a855f7; background:#a855f718; border:1px solid #a855f744; border-radius:2px; padding:1px 7px; margin-left:0.4rem;">🧩 Re-triggered</span>'
                 : '<span style="font-size:0.68rem; color:var(--text-tertiary); margin-left:0.4rem;">Not re-triggered</span>';
             const desc = wasTriggered
                 ? 'This critic received ScrumMaster proposals and produced an updated critique. Its findings in the Expert Review tab reflect the re-triggered result.'
                 : 'This critic\'s original findings were not changed by ScrumMaster. Its findings in Expert Review are the original assessment.';
-            criticCards += `<div style="flex:1; min-width:170px; padding:0.75rem 1rem; border-radius:8px; border:1px solid ${borderCol}; background:var(--card-bg);">
+            criticCards += `<div style="flex:1; min-width:170px; padding:0.75rem 1rem; border-radius:2px; border:1px solid ${borderCol}; background:var(--card-bg);">
                 <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.4rem;">
                     <span style="font-size:1rem;">${cd.icon}</span>
                     <span style="font-size:0.825rem; font-weight:700; color:var(--text-color);">${cd.label}</span>
@@ -9811,7 +9811,7 @@ class Dashboard {
             const typeLabels = {contradiction:'Contradictions', coverage_gap:'Coverage gaps', unresolved_rec:'Unresolved recommendations', blindspot:'Blindspots'};
             impHtml = '<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.75rem;">'
                 + Object.entries(byType).map(([t,n]) =>
-                    `<div style="padding:0.3rem 0.75rem; border-radius:6px; background:var(--nav-hover-bg); border:1px solid var(--border-color); font-size:0.78rem; color:var(--text-secondary);"><strong style="color:var(--text-color);">${n}</strong> ${typeLabels[t]||t}</div>`
+                    `<div style="padding:0.3rem 0.75rem; border-radius:2px; background:var(--nav-hover-bg); border:1px solid var(--border-color); font-size:0.78rem; color:var(--text-secondary);"><strong style="color:var(--text-color);">${n}</strong> ${typeLabels[t]||t}</div>`
                 ).join('')
                 + '</div>'
                 + `<div style="font-size:0.8125rem; color:var(--text-secondary);">${imps.length} total · ${unresolvable.length} structurally unresolvable${critical_high.length ? ' (' + critical_high.length + ' critical/high)' : ''} · ${resolved.length} resolved</div>`;
@@ -9861,7 +9861,7 @@ class Dashboard {
                         onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'"
                         title="Add this action to 10_adr_report.md as an open decision record (SM-ADR-XX)">📋 Add to ADR</button>`)
                     : '';
-                return `<div style="padding:0.6rem 0.9rem; margin-bottom:0.5rem; background:var(--nav-hover-bg); border-left:3px solid ${isAnti?'var(--text-tertiary)':pc}; border-radius:6px;">
+                return `<div style="padding:0.6rem 0.9rem; margin-bottom:0.5rem; background:var(--nav-hover-bg); border-left:3px solid ${isAnti?'var(--text-tertiary)':pc}; border-radius:2px;">
                     <div style="font-size:0.875rem; font-weight:600; color:${isAnti?'var(--text-tertiary)':'var(--text-color)'}; display:flex; flex-wrap:wrap; align-items:baseline; gap:0.2rem; margin-bottom:0.2rem;">${i+1}. ${this._esc(p.action||'')}${confBadge}${antiBadge}${addToAdrBtn}</div>
                     ${p.rationale ? `<div style="font-size:0.78rem; color:var(--text-secondary); margin-top:0.25rem; padding-top:0.2rem; border-top:1px solid var(--border-color)22;">${window._smFormatRationale(p.rationale)}</div>` : ''}
                     ${p.first_step ? `<div style="font-size:0.78rem; color:var(--primary-color); margin-top:0.25rem; padding:0.25rem 0.5rem; background:var(--primary-color)0a; border-radius:4px; border-left:2px solid var(--primary-color)44;"><strong style="font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em;">First step:</strong> ${this._esc(p.first_step)}</div>` : ''}
@@ -9872,7 +9872,7 @@ class Dashboard {
                 if (!items.length) return '';
                 const totalGain = items.reduce((s, p) => s + (p.confidence_gain||0), 0);
                 const gainNote = totalGain > 0 ? ` · up to +${totalGain.toFixed(1)}% confidence` : '';
-                return `<div class="er-panel" style="border:1px solid ${col}44; border-radius:8px; margin-bottom:0.5rem; overflow:hidden;">`
+                return `<div class="er-panel" style="border:1px solid ${col}44; border-radius:2px; margin-bottom:0.5rem; overflow:hidden;">`
                     + `<div class="er-panel-header" onclick="(function(h){var b=h.closest('.er-panel').querySelector('.er-panel-body');var c=h.querySelector('.er-chevron');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.textContent=open?'›':'∨';})(this)" style="padding:0.5rem 0.875rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:${col}0a;">`
                     + `<span style="font-size:0.78rem; font-weight:700; color:${col};">${label}</span><span style="font-size:0.7rem; color:var(--text-tertiary); margin-left:0.35rem;">${items.length} item${items.length!==1?'s':''}${gainNote}</span>`
                     + `<span class="er-chevron" style="font-size:1rem; color:var(--text-tertiary);">${open?'∨':'›'}</span></div>`
@@ -9909,7 +9909,7 @@ class Dashboard {
                 }),
             ];
             if (bfItems.length) {
-                bfHtml = `<div style="margin-top:1rem; padding:0.75rem 1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--border-color);">
+                bfHtml = `<div style="margin-top:1rem; padding:0.75rem 1rem; background:var(--nav-hover-bg); border-radius:2px; border:1px solid var(--border-color);">
                     <div style="font-size:0.78rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">📋 Engine Improvement Notes <span style="font-weight:400; color:var(--text-tertiary);">(for next analysis pass)</span></div>
                     ${bfItems.map(s => `<div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.2rem;">${this._esc(s)}</div>`).join('')}
                 </div>`;
@@ -9918,7 +9918,7 @@ class Dashboard {
 
         const _panel = (title, bodyHtml, startOpen) => {
             const uid = 'sm-panel-' + Math.random().toString(36).slice(2,7);
-            return `<div class="er-panel" style="background:var(--card-bg); border-radius:10px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">
+            return `<div class="er-panel" style="background:var(--card-bg); border-radius:2px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">
                 <div class="er-panel-header" onclick="(function(h){var b=document.getElementById('${uid}');var c=h.querySelector('.er-chevron');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.textContent=open?'›':'∨';})(this)" style="padding:1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:var(--nav-hover-bg);">
                     <div style="font-size:0.9rem; font-weight:700; color:var(--text-color);">${title}</div>
                     <span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary);">${startOpen?'∨':'›'}</span>
@@ -10022,47 +10022,47 @@ class Dashboard {
                 <p style="color: var(--text-secondary); max-width: 440px; margin: 0 auto 1.5rem;">${subtitle}</p>
                 ${this._erpButtonRowHtml(archName, erpState)}
                 <div id="expert-review-progress" style="display:${progressDisplay}; max-width: 520px; margin: 0 auto; text-align: left;">
-                    <div style="background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); padding: 1rem;">
+                    <div style="background: var(--card-bg); border-radius:2px; border: 1px solid var(--border-color); padding: 1rem;">
                         ${progressBarHtml}
                         <div id="erp-message" style="font-size:0.8125rem; color:var(--text-tertiary); margin-top:0.5rem; min-height:1.2em;"></div>
                         <!-- Progressive agent status cards -->
                         <div style="display:flex; gap:0.5rem; margin-top:0.875rem; flex-wrap:wrap;">
-                            <div id="erp-card-architect" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                            <div id="erp-card-architect" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:2px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
                                 <div style="font-size:0.875rem;">🏛️</div>
                                 <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Architect</div>
                                 <div id="erp-card-architect-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
                                 <div id="erp-card-architect-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
                             </div>
-                            <div id="erp-card-tester" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                            <div id="erp-card-tester" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:2px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
                                 <div style="font-size:0.875rem;">🔬</div>
                                 <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Tester</div>
                                 <div id="erp-card-tester-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
                                 <div id="erp-card-tester-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
                             </div>
-                            <div id="erp-card-red_team" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                            <div id="erp-card-red_team" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:2px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
                                 <div style="font-size:0.875rem;">🎯</div>
                                 <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Red Team</div>
                                 <div id="erp-card-red_team-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
                                 <div id="erp-card-red_team-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
                             </div>
-                            <div id="erp-card-purple_team" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                            <div id="erp-card-purple_team" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:2px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
                                 <div style="font-size:0.875rem;">🟣</div>
                                 <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Purple Team</div>
                                 <div id="erp-card-purple_team-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
                                 <div id="erp-card-purple_team-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
                             </div>
-                            <div id="erp-card-blackhat" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                            <div id="erp-card-blackhat" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:2px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
                                 <div style="font-size:0.875rem;">⚔️</div>
                                 <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Blackhat</div>
                                 <div id="erp-card-blackhat-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
                                 <div id="erp-card-blackhat-preview" style="display:none; margin-top:0.35rem; font-size:0.65rem; color:var(--text-tertiary); line-height:1.4;"></div>
                             </div>
-                            <div id="erp-card-synthesis" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                            <div id="erp-card-synthesis" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:2px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
                                 <div style="font-size:0.875rem;">⚙️</div>
                                 <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">Synthesis</div>
                                 <div id="erp-card-synthesis-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
                             </div>
-                            <div id="erp-card-scrum_master" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
+                            <div id="erp-card-scrum_master" style="flex:1; min-width:130px; padding:0.5rem 0.75rem; border-radius:2px; border:1px solid var(--border-color); background:var(--nav-hover-bg); opacity:0.45; transition:opacity 0.3s, border-color 0.3s;">
                                 <div style="font-size:0.875rem;">🧩</div>
                                 <div style="font-size:0.75rem; font-weight:600; color:var(--text-color); margin-top:0.2rem;">ScrumMaster</div>
                                 <div id="erp-card-scrum_master-status" style="font-size:0.7rem; color:var(--text-tertiary);">Waiting</div>
@@ -10251,7 +10251,7 @@ class Dashboard {
                     </p>
                     <button onclick="window.dashboard._upgradeSmToMoe('${smArch}')"
                         style="padding:0.6rem 1.5rem; background:var(--primary-color); color:#fff;
-                               border:none; border-radius:8px; cursor:pointer; font-size:0.875rem;
+                               border:none; border-radius:2px; cursor:pointer; font-size:0.875rem;
                                font-weight:600;">
                         ▶ Run Expert Review on sm${smN}
                     </button>
@@ -10381,15 +10381,15 @@ class Dashboard {
                 let cards = '';
                 for (const b of blindspots) {
                     const cls = _bsClassify(b);
-                    const pillHtml = '<span style="font-size:0.68rem; font-weight:700; color:' + cls.pillColor + '; background:' + cls.pillColor + '18; border:1px solid ' + cls.pillColor + '44; border-radius:8px; padding:1px 7px; margin-left:0.5rem; white-space:nowrap;">' + cls.pill + '</span>';
-                    cards += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid ' + (cls.actionable ? 'var(--warning-color)' : 'var(--primary-color)') + ';">'
+                    const pillHtml = '<span style="font-size:0.68rem; font-weight:700; color:' + cls.pillColor + '; background:' + cls.pillColor + '18; border:1px solid ' + cls.pillColor + '44; border-radius:2px; padding:1px 7px; margin-left:0.5rem; white-space:nowrap;">' + cls.pill + '</span>';
+                    cards += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius:2px; margin-bottom: 0.5rem; border-left: 3px solid ' + (cls.actionable ? 'var(--warning-color)' : 'var(--primary-color)') + ';">'
                         + '<div style="font-size: 0.875rem; font-weight:600; color: var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (b.description || '') + pillHtml + '</div>'
                         + (b.why_missed ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.25rem;">Why missed: ' + b.why_missed + '</div>' : '')
                         + (b.recommendation ? '<div style="font-size:0.8125rem; color:var(--secondary-color); margin-top:0.25rem;">→ ' + b.recommendation + '</div>' : '')
                         + (cls.action ? '<div style="font-size:0.75rem; color:var(--warning-color); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">Action: ' + cls.action + '</div>' : '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">No immediate action required — document for awareness and revisit when scope changes.</div>')
                         + '</div>';
                 }
-                blindspotsHtml = '<div class="er-panel er-synth-panel" data-synth-key="blindspots" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                blindspotsHtml = '<div class="er-panel er-synth-panel" data-synth-key="blindspots" style="background: var(--card-bg); border-radius:2px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">🔍 Blindspots</h3>'
                     + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Gaps all ' + criticCountLabel + ' structurally could not see. <strong style="color:var(--warning-color);">⚠ Act</strong> = actionable now. <strong style="color:var(--text-tertiary);">📋 Note</strong> = awareness only.</p></div>'
@@ -10416,13 +10416,13 @@ class Dashboard {
                     const c = contradictions[ci];
                     const causeKey = c.disagreement_root_cause || '';
                     const causeTag = causeKey
-                        ? '<span style="font-size:0.7rem; font-weight:700; color:var(--primary-color); background:var(--primary-color)18; border:1px solid var(--primary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">' + (rootCauseLabel[causeKey] || causeKey) + '</span>'
+                        ? '<span style="font-size:0.7rem; font-weight:700; color:var(--primary-color); background:var(--primary-color)18; border:1px solid var(--primary-color)44; border-radius:2px; padding:1px 6px; margin-left:0.4rem;">' + (rootCauseLabel[causeKey] || causeKey) + '</span>'
                         : '';
                     const hasDetail = !!(c.root_cause_explanation || c.human_action);
-                    cards += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid var(--warning-color);">'
+                    cards += '<div style="padding: 0.75rem; background: var(--nav-hover-bg); border-radius:2px; margin-bottom: 0.5rem; border-left: 3px solid var(--warning-color);">'
                         + '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem; margin-bottom:0.4rem;">'
                         + '<div style="font-size: 0.875rem; font-weight:600; color: var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (c.topic || '') + causeTag + '</div>'
-                        + (hasDetail ? '<button onclick="window.dashboard._showContradictionDetail(' + ci + ')" style="flex-shrink:0; font-size:0.75rem; color:var(--primary-color); background:transparent; border:1px solid var(--primary-color)44; border-radius:6px; padding:2px 8px; cursor:pointer; white-space:nowrap;">View analysis →</button>' : '')
+                        + (hasDetail ? '<button onclick="window.dashboard._showContradictionDetail(' + ci + ')" style="flex-shrink:0; font-size:0.75rem; color:var(--primary-color); background:transparent; border:1px solid var(--primary-color)44; border-radius:2px; padding:2px 8px; cursor:pointer; white-space:nowrap;">View analysis →</button>' : '')
                         + '</div>'
                         + '<div style="font-size:0.8125rem; color:var(--text-secondary);">🏛️ Architect/Tester: ' + (c.architect_view || '') + '</div>'
                         + '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-top:0.2rem;">🎯 Red Team: ' + (c.tester_or_redteam_view || '') + '</div>'
@@ -10431,7 +10431,7 @@ class Dashboard {
                         + '<div style="font-size:0.8125rem; color:var(--warning-color); margin-top:0.35rem; font-style:italic;">' + (c.resolution || 'UNSURE — human review needed') + '</div>'
                         + '</div>';
                 }
-                contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius:2px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">⚠️ Expert Disagreements</h3>'
                     + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Where critics contradict each other. Click <em>View analysis →</em> for root cause.</p></div>'
@@ -10442,7 +10442,7 @@ class Dashboard {
             } else {
                 if (isParallelResult) {
                     // Parallel mode: contradiction detection is structurally N/A — grey out the panel
-                    contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden; opacity:0.55;">'
+                    contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius:2px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden; opacity:0.55;">'
                         + '<div style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center;">'
                         + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-tertiary); font-size: 1rem;">— Expert Disagreements (N/A)</h3>'
                         + '<p style="font-size: 0.875rem; color: var(--text-tertiary); margin: 0;">Not applicable — <strong>' + _modeLabel(runCriticMode) + '</strong> mode: core critics ran without full cross-referencing. Disagreement detection is most reliable in Sequential mode where Red Team reads Tester\'s output.</p></div>'
@@ -10451,14 +10451,14 @@ class Dashboard {
                 } else {
                     // Sequential / auto-resolved: genuine consensus
                     const modeLabel = runCriticMode === 'auto' ? 'Auto (resolved to Sequential)' : _modeLabel(runCriticMode);
-                    contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                    contradictionsHtml = '<div class="er-panel er-synth-panel" data-synth-key="contradictions" style="background: var(--card-bg); border-radius:2px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                         + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                         + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">✅ Expert Disagreements</h3>'
                         + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">No contradictions found.</p></div>'
                         + '<span class="er-chevron" style="font-size:1.25rem; color:var(--text-tertiary); min-width:1rem; text-align:center;"> ⌄</span>'
                         + '</div>'
                         + '<div class="er-panel-body" style="padding: 0.75rem 1.25rem 1rem;">'
-                        + '<div style="padding:0.65rem 1rem; background:var(--secondary-color)14; border:1px solid var(--secondary-color)44; border-radius:8px; font-size:0.875rem; color:var(--secondary-color);">All ' + criticCountLabel + ' (' + criticNamesLabel + ') read each other\'s output and found no conflicting positions — this is genuine consensus.</div>'
+                        + '<div style="padding:0.65rem 1rem; background:var(--secondary-color)14; border:1px solid var(--secondary-color)44; border-radius:2px; font-size:0.875rem; color:var(--secondary-color);">All ' + criticCountLabel + ' (' + criticNamesLabel + ') read each other\'s output and found no conflicting positions — this is genuine consensus.</div>'
                         + '<div style="margin-top:0.5rem; font-size:0.8125rem; color:var(--text-tertiary);">Mode used: <strong>' + modeLabel + '</strong>. Critics did cross-reference each other, so this absence reflects actual agreement.</div>'
                         + '</div></div>';
                 }
@@ -10517,10 +10517,10 @@ class Dashboard {
 
                 // Harmony state chip
                 const harmonyChip = smRedes
-                    ? '<span style="background:#ff4d4d22; border:1px solid var(--danger-color); color:var(--danger-color); border-radius:8px; padding:2px 9px; font-size:0.68rem; font-weight:700;">🔴 Redesign needed</span>'
+                    ? '<span style="background:#ff4d4d22; border:1px solid var(--danger-color); color:var(--danger-color); border-radius:2px; padding:2px 9px; font-size:0.68rem; font-weight:700;">🔴 Redesign needed</span>'
                     : parseFloat(smConfF) >= 90
-                    ? '<span style="background:#00c07722; border:1px solid var(--secondary-color); color:var(--secondary-color); border-radius:8px; padding:2px 9px; font-size:0.68rem; font-weight:700;">✅ Harmony reached</span>'
-                    : '<span style="background:#ffaa0022; border:1px solid var(--warning-color); color:var(--warning-color); border-radius:8px; padding:2px 9px; font-size:0.68rem; font-weight:700;">◑ Near-harmony</span>';
+                    ? '<span style="background:#00c07722; border:1px solid var(--secondary-color); color:var(--secondary-color); border-radius:2px; padding:2px 9px; font-size:0.68rem; font-weight:700;">✅ Harmony reached</span>'
+                    : '<span style="background:#ffaa0022; border:1px solid var(--warning-color); color:var(--warning-color); border-radius:2px; padding:2px 9px; font-size:0.68rem; font-weight:700;">◑ Near-harmony</span>';
 
                 // Confidence trajectory sparkline (dots + percentages)
                 const trajHtml = smTraj.map((v, i) => {
@@ -10566,7 +10566,7 @@ class Dashboard {
                                 onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-tertiary)'"
                                 title="Add this action to 10_adr_report.md as an open decision record (SM-ADR-XX)">📋 Add to ADR</button>`)
                             : '';
-                        return `<div style="padding:0.5rem 0.75rem; margin-bottom:0.5rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid ${isAnti ? 'var(--text-tertiary)' : pc};">`
+                        return `<div style="padding:0.5rem 0.75rem; margin-bottom:0.5rem; background:var(--nav-hover-bg); border-radius:2px; border-left:3px solid ${isAnti ? 'var(--text-tertiary)' : pc};">`
                             + `<div style="font-size:0.8125rem; font-weight:600; color:${isAnti ? 'var(--text-tertiary)' : 'var(--text-color)'}; display:flex; flex-wrap:wrap; align-items:baseline; gap:0.2rem; margin-bottom:0.2rem;">`
                             + `${i+1}. ${p.action||''}${confBadge}${antiBadge}${addAdrBtn}</div>`
                             + (p.rationale ? `<div style="font-size:0.78rem; color:var(--text-secondary); margin-top:0.25rem; padding-top:0.2rem; border-top:1px solid var(--border-color)22;">${window._smFormatRationale(p.rationale)}</div>` : '')
@@ -10581,7 +10581,7 @@ class Dashboard {
                         const chev = startOpen ? '∨' : '›';
                         const totalGain = items.reduce((s, p) => s + (p.confidence_gain || 0), 0);
                         const gainNote = totalGain > 0 ? ` — up to +${totalGain.toFixed(1)}% confidence` : '';
-                        return `<div class="er-panel" style="border:1px solid ${headerColor}44; border-radius:8px; margin-bottom:0.5rem; overflow:hidden;">`
+                        return `<div class="er-panel" style="border:1px solid ${headerColor}44; border-radius:2px; margin-bottom:0.5rem; overflow:hidden;">`
                             + `<div class="er-panel-header" onclick="(function(h){var b=h.closest('.er-panel').querySelector('.er-panel-body');var c=h.querySelector('.er-chevron');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.textContent=open?'›':'∨';})(this)" style="padding:0.5rem 0.875rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:${headerColor}0a;">`
                             + `<div><span style="font-size:0.78rem; font-weight:700; color:${headerColor};">${headerLabel}</span>`
                             + `<span style="font-size:0.7rem; color:var(--text-tertiary); margin-left:0.4rem;">${items.length} item${items.length!==1?'s':''}${gainNote}</span></div>`
@@ -10668,7 +10668,7 @@ class Dashboard {
                             const lines = text.split(' — ').map(l => l.trim()).filter(Boolean);
                             const firstLine = lines[0] || text;
                             const restLines = lines.slice(1);
-                            return `<div style="margin-bottom:0.6rem; padding:0.5rem 0.75rem; border-radius:6px; background:var(--nav-hover-bg); border-left:3px solid ${col}44;">`
+                            return `<div style="margin-bottom:0.6rem; padding:0.5rem 0.75rem; border-radius:2px; background:var(--nav-hover-bg); border-left:3px solid ${col}44;">`
                               + `<div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.25rem;">`
                               + `<span style="font-size:0.9rem; flex-shrink:0;">${icon}</span>`
                               + `<span style="font-size:0.72rem; font-weight:700; color:${col};">${label}</span>`
@@ -10679,7 +10679,7 @@ class Dashboard {
                               + `</div>`;
                           }).join('')
                         : '<div style="font-size:0.78rem; color:var(--text-tertiary); font-style:italic;">No specific engine improvements identified — baseline analysis quality looks appropriate for this architecture.</div>';
-                    bfHtml = '<div class="er-panel" style="border:1px solid var(--border-color); border-radius:8px; margin-top:0.75rem; overflow:hidden;">'
+                    bfHtml = '<div class="er-panel" style="border:1px solid var(--border-color); border-radius:2px; margin-top:0.75rem; overflow:hidden;">'
                         + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\'∨\';})(this)" style="padding:0.6rem 0.9rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:var(--nav-hover-bg);">'
                         + `<span style="font-size:0.75rem; font-weight:600; color:var(--text-secondary);">📋 Engine Improvement Hints${bfItems.length > 0 ? ' <span style="font-size:0.68rem; color:var(--warning-color);">(' + bfItems.length + ' hint' + (bfItems.length!==1?'s':'') + ')</span>' : ''}</span>`
                         + '<span class="er-chevron" style="font-size:1rem; color:var(--text-tertiary);">›</span>'
@@ -10690,7 +10690,7 @@ class Dashboard {
                         + '</div></div>';
                 }
 
-                scrumMasterHtml = '<div class="er-panel er-synth-panel" data-synth-key="scrum_master" style="background:var(--card-bg); border-radius:10px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">'
+                scrumMasterHtml = '<div class="er-panel er-synth-panel" data-synth-key="scrum_master" style="background:var(--card-bg); border-radius:2px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\'∨\';})(this)" style="padding:1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div>'
                     + '<h3 style="margin:0 0 0.25rem; color:var(--text-color); font-size:1rem;">🧩 ScrumMaster — Harmony Synthesis</h3>'
@@ -10709,7 +10709,7 @@ class Dashboard {
                     // Legend — vertical list, one entry per line
                     + '<details style="margin-bottom:0.75rem;">'
                     + '<summary style="cursor:pointer; font-size:0.72rem; font-weight:700; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.05em; user-select:none; list-style:none; display:flex; align-items:center; gap:0.3rem;">📖 Legend <span style="font-size:0.65rem; font-weight:400;">(click to expand)</span></summary>'
-                    + '<div style="margin-top:0.4rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px; display:flex; flex-direction:column; gap:0.3rem; font-size:0.75rem;">'
+                    + '<div style="margin-top:0.4rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:2px; display:flex; flex-direction:column; gap:0.3rem; font-size:0.75rem;">'
                     + '<div><span style="color:var(--secondary-color); font-weight:700;">⚡ Immediate</span> — Apply controls to the existing architecture right now. No diagram changes needed. Reduces risk while structural work is planned.</div>'
                     + '<div><span style="color:var(--danger-color); font-weight:700;">🏗 Structural</span> — Requires adding or repositioning a component in the .mmd architecture diagram, then re-running analysis. Cannot be addressed with controls alone.</div>'
                     + '<div><span style="color:#a855f7; font-weight:700;">🧩 0 iterations</span> — SM detected a redesign signal immediately. Re-triggering critics would not help because the gaps are structural, not a matter of misconfigured controls.</div>'
@@ -10731,7 +10731,7 @@ class Dashboard {
                     + (smNote ? `<div style="font-size:0.8125rem; color:var(--text-secondary); border-top:1px solid var(--border-color); padding-top:0.6rem; margin-top:0.25rem;">${smNote}</div>` : '')
 
                     // Owner discussion callout (only when structural items exist)
-                    + (smRedes ? '<div style="margin-top:0.65rem; padding:0.5rem 0.75rem; background:var(--warning-color)0a; border:1px solid var(--warning-color)44; border-radius:6px; font-size:0.78rem; color:var(--text-secondary);">'
+                    + (smRedes ? '<div style="margin-top:0.65rem; padding:0.5rem 0.75rem; background:var(--warning-color)0a; border:1px solid var(--warning-color)44; border-radius:2px; font-size:0.78rem; color:var(--text-secondary);">'
                         + '<strong style="color:var(--warning-color);">⚠ Owner discussion needed:</strong> Structural changes may alter how legitimate users traverse the system. '
                         + 'Review the <a href="#" onclick="window.dashboard.switchTab(\'expert-review\'); window._erFilterCritic(\'all\'); return false;" style="color:var(--primary-color); text-decoration:none;">User Journey section</a> '
                         + 'before committing to architecture changes — some redesigns will affect user flows and require sign-off from product and business owners.'
@@ -10760,11 +10760,11 @@ class Dashboard {
 
             } else if (!smResult) {
                 // SM has not run — show a run button (no full Expert Review needed)
-                scrumMasterHtml = '<div class="er-synth-panel" data-synth-key="scrum_master" style="padding:0.875rem 1.25rem; background:var(--nav-hover-bg); border-radius:8px; margin-bottom:1rem; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">'
+                scrumMasterHtml = '<div class="er-synth-panel" data-synth-key="scrum_master" style="padding:0.875rem 1.25rem; background:var(--nav-hover-bg); border-radius:2px; margin-bottom:1rem; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">'
                     + '<div><div style="font-size:0.875rem; font-weight:700; color:var(--text-tertiary);">🧩 ScrumMaster — Not run</div>'
                     + '<div style="font-size:0.78rem; color:var(--text-tertiary);">Enable in Config → MoE / Experts, then run independently or with the next Expert Review.</div></div>'
                     + '<button onclick="window.dashboard._runSingleCritic(\'' + archName + '\',\'scrum_master\')"'
-                    + ' style="padding:0.35rem 0.9rem; border-radius:6px; border:1px solid #a855f7; background:#a855f711;'
+                    + ' style="padding:0.35rem 0.9rem; border-radius:2px; border:1px solid #a855f7; background:#a855f711;'
                     + ' color:#a855f7; font-size:0.8rem; font-weight:600; cursor:pointer; transition:all 0.15s; white-space:nowrap;"'
                     + ' onmousedown="this.style.transform=\'scale(0.95)\';this.style.opacity=\'0.7\'"'
                     + ' onmouseup="this.style.transform=\'\';this.style.opacity=\'\'"'
@@ -10772,19 +10772,19 @@ class Dashboard {
                     + '</div>';
             } else if (expertValidations['scrum_master']) {
                 // SM ran but no separate JSON — show placeholder
-                scrumMasterHtml = '<div style="padding:0.75rem 1.25rem; background:var(--nav-hover-bg); border-radius:8px; margin-bottom:1rem; border:1px dashed var(--border-color);"><span style="font-size:0.8125rem; color:var(--text-tertiary);">🧩 ScrumMaster ran — detailed results not saved. Re-run expert review to capture full output.</span></div>';
+                scrumMasterHtml = '<div style="padding:0.75rem 1.25rem; background:var(--nav-hover-bg); border-radius:2px; margin-bottom:1rem; border:1px dashed var(--border-color);"><span style="font-size:0.8125rem; color:var(--text-tertiary);">🧩 ScrumMaster ran — detailed results not saved. Re-run expert review to capture full output.</span></div>';
             }
             // (if neither, scrumMasterHtml stays '' — section C just won't show SM)
             } catch (smBuildErr) {
                 scrumMasterBuildErr = smBuildErr;
                 console.error('loadExpertReviewTab: SM card build failed:', smBuildErr);
-                scrumMasterHtml = '<div style="padding:0.75rem 1.25rem; background:var(--danger-color)0a; border-radius:8px; margin-bottom:1rem; border:1px dashed var(--danger-color)44;"><span style="font-size:0.8125rem; color:var(--danger-color);">🧩 ScrumMaster result exists but could not be rendered: ' + String(smBuildErr).slice(0,200) + '. Check browser console.</span></div>';
+                scrumMasterHtml = '<div style="padding:0.75rem 1.25rem; background:var(--danger-color)0a; border-radius:2px; margin-bottom:1rem; border:1px dashed var(--danger-color)44;"><span style="font-size:0.8125rem; color:var(--danger-color);">🧩 ScrumMaster result exists but could not be rendered: ' + String(smBuildErr).slice(0,200) + '. Check browser console.</span></div>';
             }
 
             // Build synthesis footer outside template literal
             let synthFooterHtml = '';
             if (synthComment || isFallback) {
-                synthFooterHtml = '<div style="background: var(--card-bg); border-radius: 10px; padding: 1rem 1.25rem; border: 1px solid ' + synthBorderColor + ';">'
+                synthFooterHtml = '<div style="background: var(--card-bg); border-radius:2px; padding: 1rem 1.25rem; border: 1px solid ' + synthBorderColor + ';">'
                     + (synthComment ? '<span style="font-size:0.8125rem; color:var(--text-secondary); font-style:italic;">' + synthComment + '</span>' : '')
                     + (isFallback ? '<div style="font-size:0.8125rem; color:var(--warning-color); margin-top:0.25rem;">⚠ Synthesis used fallback — LLM was unavailable. Consensus is a gap union, not a reasoned cross-validation.</div>' : '')
                     + '</div>';
@@ -10863,7 +10863,7 @@ class Dashboard {
                         ? '<div style="margin-top:0.5rem; display:flex; flex-direction:column; gap:0.45rem;">'
                           + origItems.map(function(i) {
                               const p = _parseTierItem(String(i));
-                              return '<div style="padding:0.45rem 0.65rem; background:var(--nav-hover-bg); border-radius:6px; border-left:2px solid var(--border-color);">'
+                              return '<div style="padding:0.45rem 0.65rem; background:var(--nav-hover-bg); border-radius:2px; border-left:2px solid var(--border-color);">'
                                    + '<div style="font-size:0.8125rem; font-weight:600; color:var(--text-color); margin-bottom:0.15rem;">'
                                    + p.ctrlName
                                    + (p.nodePart ? '<span style="font-size:0.72rem; font-weight:400; color:var(--text-tertiary); margin-left:0.4rem;">at ' + p.nodePart + '</span>' : '')
@@ -10875,7 +10875,7 @@ class Dashboard {
                           + '</div>'
                         : '';
                     const smList = smItems.length > 0
-                        ? '<div style="margin-top:0.5rem; padding:0.4rem 0.75rem; background:#a855f710; border:1px solid #a855f733; border-radius:6px;">'
+                        ? '<div style="margin-top:0.5rem; padding:0.4rem 0.75rem; background:#a855f710; border:1px solid #a855f733; border-radius:2px;">'
                           + '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.3rem;">'
                           + '<span style="font-size:0.7rem; font-weight:700; color:#a855f7;">🧩 ScrumMaster</span>'
                           + '<a href="#" onclick="window._erFilterSynth(\'scrum_master\');return false;" style="font-size:0.68rem; color:#a855f7; text-decoration:none; opacity:0.7;">details →</a>'
@@ -10931,9 +10931,9 @@ class Dashboard {
                         ? '<div style="font-size:0.8125rem; color:var(--text-secondary); margin-bottom:0.5rem; font-style:italic;">' + t.rationale + '</div>'
                         : '';
                     const smEnhancedBadge = t.sm_enhanced
-                        ? '<span style="font-size:0.68rem; font-weight:700; color:#a855f7; background:#a855f718; border:1px solid #a855f744; border-radius:8px; padding:1px 6px; margin-left:0.5rem; white-space:nowrap;">🧩 SM-enhanced</span>'
+                        ? '<span style="font-size:0.68rem; font-weight:700; color:#a855f7; background:#a855f718; border:1px solid #a855f744; border-radius:2px; padding:1px 6px; margin-left:0.5rem; white-space:nowrap;">🧩 SM-enhanced</span>'
                         : '';
-                    tierCards += '<div style="border: 1px solid ' + (t.sm_enhanced ? '#a855f733' : 'var(--border-color)') + '; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">'
+                    tierCards += '<div style="border: 1px solid ' + (t.sm_enhanced ? '#a855f733' : 'var(--border-color)') + '; border-radius:2px; padding: 1rem; margin-bottom: 0.75rem;">'
                         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.25rem;">'
                         + '<span style="font-weight:700; color:' + color + ';">' + label + smEnhancedBadge + '</span>'
                         + '<span style="font-size:0.8125rem; color:var(--text-secondary);">' + (t.practical_verdict ? 'Practical: ' + t.practical_verdict : '') + '</span>'
@@ -10949,7 +10949,7 @@ class Dashboard {
                         + this._renderSspTierUpgradeDelta(items, label)
                         + '</div>';
                 }
-                tiersHtml = '<div class="er-panel er-synth-panel" data-synth-key="tiers" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                tiersHtml = '<div class="er-panel er-synth-panel" data-synth-key="tiers" style="background: var(--card-bg); border-radius:2px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">📊 Improvement Tiers' + (Object.values(improvTiers).some(t => t && t.sm_enhanced) ? ' <span style="font-size:0.7rem; color:#a855f7; font-weight:700;">🧩 SM-enhanced</span>' : '') + '</h3>'
                     + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">Synthesised from all ' + criticCountLabel + ' findings' + (Object.values(improvTiers).some(t => t && t.sm_enhanced) ? ' + ScrumMaster priority actions' : '') + '. Cost and effort are benchmark estimates (<a href="https://www.cisecurity.org/controls/v8" target="_blank" style="color:var(--primary-color);text-decoration:none;" title="CIS Controls v8">CIS Controls v8</a> / <a href="https://doi.org/10.6028/NIST.SP.800-53r5" target="_blank" style="color:var(--primary-color);text-decoration:none;" title="NIST SP 800-53 Rev 5">NIST SP 800-53</a> / Gartner 2025 / SANS 2025) aggregated across the tier\'s controls — attribution shown per tier.</p></div>'
@@ -10993,7 +10993,7 @@ class Dashboard {
                 'MINOR':    'var(--primary-color)',  // blue = slight concern, investigate
                 'LOW':      'var(--text-tertiary)',
             };
-            const severityLegend = '<div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.75rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px;">'
+            const severityLegend = '<div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.75rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:2px;">'
                 + '<span style="font-size:0.7rem; color:var(--text-tertiary); margin-right:0.25rem; align-self:center;">Severity:</span>'
                 + '<span style="font-size:0.7rem; color:var(--danger-color);">● CRITICAL — exploitable, act now</span>'
                 + '<span style="font-size:0.7rem; color:var(--danger-color); margin-left:0.5rem;">● HIGH — significant risk</span>'
@@ -11063,7 +11063,7 @@ class Dashboard {
                         + '<span style="font-size:0.73rem;color:var(--text-secondary);">' + name + '</span>'
                         + '</span>';
                 }).join('');
-                return '<div style="margin-top:0.5rem;margin-bottom:0.75rem;padding:0.45rem 0.65rem;background:var(--nav-hover-bg);border-radius:6px;border-left:2px solid var(--primary-color)44;">'
+                return '<div style="margin-top:0.5rem;margin-bottom:0.75rem;padding:0.45rem 0.65rem;background:var(--nav-hover-bg);border-radius:2px;border-left:2px solid var(--primary-color)44;">'
                     + '<div style="font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin-bottom:0.3rem;">MITRE techniques referenced</div>'
                     + '<div style="display:flex;flex-wrap:wrap;gap:0.4rem 1rem;">' + rows + '</div>'
                     + '</div>';
@@ -11092,7 +11092,7 @@ class Dashboard {
                             ? 'Enable in Config → MoE → Purple Team Critic (Layer 2D) or run independently below.'
                             : 'Enable in Config or run independently below.';
                         const runBtnId = 'run-critic-btn-' + e.key;
-                        expertPanelCards += '<div class="er-panel er-critic-panel" data-critic-key="' + e.key + '" id="erp-notrun-' + e.key + '" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow:hidden;">'
+                        expertPanelCards += '<div class="er-panel er-critic-panel" data-critic-key="' + e.key + '" id="erp-notrun-' + e.key + '" style="background: var(--card-bg); border-radius:2px; border: 1px solid var(--border-color); overflow:hidden;">'
                             + '<div style="padding: 0.875rem 1.25rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">'
                             + '<div style="display:flex; align-items:center; gap:0.75rem;">'
                             + '<span style="font-size:1.5rem; opacity:0.5;">' + e.icon + '</span>'
@@ -11100,7 +11100,7 @@ class Dashboard {
                             + '<div style="font-size:0.78rem; color:var(--text-tertiary);">' + configNote + '</div></div>'
                             + '</div>'
                             + '<button id="' + runBtnId + '" onclick="window.dashboard._runSingleCritic(\'' + archName + '\',\'' + e.key + '\')"'
-                            + ' style="padding:0.35rem 0.9rem; border-radius:6px; border:1px solid var(--primary-color); background:var(--primary-color)11;'
+                            + ' style="padding:0.35rem 0.9rem; border-radius:2px; border:1px solid var(--primary-color); background:var(--primary-color)11;'
                             + ' color:var(--primary-color); font-size:0.8rem; font-weight:600; cursor:pointer; transition:all 0.15s; white-space:nowrap;"'
                             + ' onmousedown="this.style.transform=\'scale(0.95)\';this.style.opacity=\'0.7\'"'
                             + ' onmouseup="this.style.transform=\'\';this.style.opacity=\'\'"'
@@ -11233,7 +11233,7 @@ class Dashboard {
                     }
                     gapItems += '<div style="margin-bottom:0.4rem;">'
                         + '<div onclick="(function(h){var b=document.getElementById(\'' + catId + '\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';h.querySelector(\'.er-cat-chev\').textContent=open?\'›\':\' ⌄\';})(this)" '
-                        + 'style="display:flex; justify-content:space-between; align-items:center; padding:0.45rem 0.65rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid ' + worstSevCol + '; cursor:pointer; user-select:none;">'
+                        + 'style="display:flex; justify-content:space-between; align-items:center; padding:0.45rem 0.65rem; background:var(--nav-hover-bg); border-radius:2px; border-left:3px solid ' + worstSevCol + '; cursor:pointer; user-select:none;">'
                         + '<span style="font-size:0.8125rem; font-weight:600; color:var(--text-color);">' + catLabel + '</span>'
                         + '<span style="display:flex; align-items:center; gap:0.6rem;">'
                         + '<span style="font-size:0.72rem; color:var(--text-tertiary);">' + catGaps.length + ' finding' + (catGaps.length !== 1 ? 's' : '') + '</span>'
@@ -11258,10 +11258,10 @@ class Dashboard {
                     const stealthColor = stealth >= 60 ? 'var(--danger-color)' : stealth >= 35 ? 'var(--warning-color)' : 'var(--secondary-color)';
                     const sharedNodeList = Object.keys(shared).join(', ') || 'none';
                     let bhInner = '<div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.65rem;">'
-                        + '<span style="padding:2px 8px; border-radius:8px; font-size:0.76rem; background:' + stealthColor + '18; border:1px solid ' + stealthColor + '44; color:' + stealthColor + '; font-weight:600;">Stealth: ' + stealth + '/100</span>'
-                        + '<span style="padding:2px 8px; border-radius:8px; font-size:0.76rem; background:var(--nav-hover-bg); color:var(--text-secondary); border:1px solid var(--border-color);">' + chains.length + ' chain finding' + (chains.length !== 1 ? 's' : '') + '</span>'
-                        + '<span style="padding:2px 8px; border-radius:8px; font-size:0.76rem; background:var(--nav-hover-bg); color:var(--text-secondary); border:1px solid var(--border-color);">' + Object.keys(shared).length + ' shared node' + (Object.keys(shared).length !== 1 ? 's' : '') + ': ' + sharedNodeList + '</span>'
-                        + (unique.length ? '<span style="padding:2px 8px; border-radius:8px; font-size:0.76rem; background:var(--warning-color)18; border:1px solid var(--warning-color)44; color:var(--warning-color);">' + unique.length + ' unique vs Red Team</span>' : '')
+                        + '<span style="padding:2px 8px; border-radius:2px; font-size:0.76rem; background:' + stealthColor + '18; border:1px solid ' + stealthColor + '44; color:' + stealthColor + '; font-weight:600;">Stealth: ' + stealth + '/100</span>'
+                        + '<span style="padding:2px 8px; border-radius:2px; font-size:0.76rem; background:var(--nav-hover-bg); color:var(--text-secondary); border:1px solid var(--border-color);">' + chains.length + ' chain finding' + (chains.length !== 1 ? 's' : '') + '</span>'
+                        + '<span style="padding:2px 8px; border-radius:2px; font-size:0.76rem; background:var(--nav-hover-bg); color:var(--text-secondary); border:1px solid var(--border-color);">' + Object.keys(shared).length + ' shared node' + (Object.keys(shared).length !== 1 ? 's' : '') + ': ' + sharedNodeList + '</span>'
+                        + (unique.length ? '<span style="padding:2px 8px; border-radius:2px; font-size:0.76rem; background:var(--warning-color)18; border:1px solid var(--warning-color)44; color:var(--warning-color);">' + unique.length + ' unique vs Red Team</span>' : '')
                         + '</div>';
                     if (chains.length) {
                         bhInner += '<div style="font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.35rem;">Chain findings:</div>';
@@ -11284,7 +11284,7 @@ class Dashboard {
                     bhInner += '<div style="margin-top:0.65rem; padding-top:0.5rem; border-top:1px solid var(--border-color); font-size:0.76rem; color:var(--text-tertiary);">'
                         + '💡 <strong style="color:var(--text-secondary);">Tip:</strong> Switch to the <strong style="color:#ff8c00;">Visualise</strong> tab and enable BH-N attack paths to see cross-path chains on the interactive graph.'
                         + '</div>';
-                    breakdownBars = '<div style="margin-bottom:0.75rem; padding:0.65rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px;">' + bhInner + '</div>';
+                    breakdownBars = '<div style="margin-bottom:0.75rem; padding:0.65rem 0.75rem; background:var(--nav-hover-bg); border-radius:2px;">' + bhInner + '</div>';
                 }
                 if (e.key === 'tester' && v.breakdown && Object.keys(v.breakdown).length > 0) {
                     const subLabels = {
@@ -11301,7 +11301,7 @@ class Dashboard {
                         const pct = Math.round((subData.score / subData.max) * 100);
                         const chipColor = pct < 50 ? 'var(--danger-color)' : pct < 75 ? 'var(--warning-color)' : 'var(--secondary-color)';
                         chips += '<span title="' + (subLabels[subKey] || subKey) + ': ' + subData.score + '/' + subData.max + '" '
-                            + 'style="display:inline-flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:2px 8px; border-radius:10px; background:' + chipColor + '18; border:1px solid ' + chipColor + '44; color:' + chipColor + '; font-weight:600; white-space:nowrap;">'
+                            + 'style="display:inline-flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:2px 8px; border-radius:2px; background:' + chipColor + '18; border:1px solid ' + chipColor + '44; color:' + chipColor + '; font-weight:600; white-space:nowrap;">'
                             + (subLabels[subKey] || subKey) + ' <span style="color:var(--text-color);">' + subData.score + '/' + subData.max + '</span>'
                             + '</span>';
                         // Only show reasoning for dims that lost points
@@ -11316,7 +11316,7 @@ class Dashboard {
                             }
                         }
                     }
-                    breakdownBars = '<div style="margin-bottom:0.75rem; padding:0.65rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px;">'
+                    breakdownBars = '<div style="margin-bottom:0.75rem; padding:0.65rem 0.75rem; background:var(--nav-hover-bg); border-radius:2px;">'
                         + '<div style="display:flex; align-items:center; gap:0.35rem; flex-wrap:wrap; margin-bottom:' + (gapNotes ? '0.5rem' : '0') + ';">'
                         + chips + '</div>'
                         + (gapNotes ? '<div style="border-top:1px solid var(--border-color); padding-top:0.4rem;">' + gapNotes + '</div>' : '')
@@ -11383,7 +11383,7 @@ class Dashboard {
                     reasoning = (dimNote || gapNote).trim();
                 }
                 const reasoningHtml = reasoning
-                    ? '<div style="margin-bottom:0.85rem; padding:0.65rem 0.85rem; background:var(--nav-hover-bg); border-left:3px solid var(--primary-color); border-radius:6px;">'
+                    ? '<div style="margin-bottom:0.85rem; padding:0.65rem 0.85rem; background:var(--nav-hover-bg); border-left:3px solid var(--primary-color); border-radius:2px;">'
                         + '<div style="font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--primary-color); margin-bottom:0.3rem;">Critic verdict</div>'
                         + '<p style="margin:0; font-size:0.8375rem; color:var(--text-color); line-height:1.55;">' + _linkTechniques(reasoning) + '</p>'
                         + '</div>'
@@ -11411,7 +11411,7 @@ class Dashboard {
                         + '</div>';
 
                 // Header subtitle: always shows what this critic looks out for (role); verdict is in the body
-                expertPanelCards += '<div class="er-panel er-critic-panel" data-critic-key="' + e.key + '" id="er-panel-' + e.key + '" style="background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden;">'
+                expertPanelCards += '<div class="er-panel er-critic-panel" data-critic-key="' + e.key + '" id="er-panel-' + e.key + '" style="background: var(--card-bg); border-radius:2px; border: 1px solid var(--border-color); overflow: hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select:none;">'
                     + '<div style="display: flex; align-items: center; gap: 0.75rem;">'
                     + '<span style="font-size: 1.5rem;">' + e.icon + '</span>'
@@ -11440,7 +11440,7 @@ class Dashboard {
             // Collapse-all/expand-all toggle
             const expertPanels = '<div style="display:flex; justify-content:flex-end; margin-bottom:0.5rem;">'
                 + '<button id="er-collapse-all-btn" onclick="(function(btn){var panels=document.querySelectorAll(\'.er-panel-body\');var chevrons=document.querySelectorAll(\'.er-chevron\');var allOpen=[].every.call(panels,function(p){return p.style.display!==\'none\';});panels.forEach(function(p,i){p.style.display=allOpen?\'none\':\'block\';chevrons[i].textContent=allOpen?\'›\':\' ⌄\';});btn.textContent=allOpen?\'Expand all\':\'Collapse all\';})(this)" '
-                + 'style="font-size:0.8125rem; color:var(--text-tertiary); background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:0.25rem 0.75rem; cursor:pointer;">Collapse all</button>'
+                + 'style="font-size:0.8125rem; color:var(--text-tertiary); background:transparent; border:1px solid var(--border-color); border-radius:2px; padding:0.25rem 0.75rem; cursor:pointer;">Collapse all</button>'
                 + '</div>'
                 + '<div style="display: flex; flex-direction: column; gap: 1rem;">' + expertPanelCards + '</div>';
 
@@ -11460,7 +11460,7 @@ class Dashboard {
                 for (const r of items) { itemsHtml += renderItem(r); }
                 return '<div style="margin-bottom:0.5rem;">'
                     + '<div onclick="(function(h){var b=document.getElementById(\'' + gid + '\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';h.querySelector(\'.cef-chev\').textContent=open?\'›\':\' ⌄\';})(this)" '
-                    + 'style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.65rem; background:' + color + '12; border-radius:6px; border-left:3px solid ' + color + '; cursor:pointer; user-select:none; margin-bottom:0.15rem;">'
+                    + 'style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.65rem; background:' + color + '12; border-radius:2px; border-left:3px solid ' + color + '; cursor:pointer; user-select:none; margin-bottom:0.15rem;">'
                     + '<span style="font-size:0.8125rem; font-weight:700; color:' + color + '; text-transform:uppercase; letter-spacing:0.04em;">' + label + '</span>'
                     + '<span style="display:flex; align-items:center; gap:0.5rem;">'
                     + '<span style="font-size:0.72rem; color:' + color + ';">' + items.length + ' finding' + (items.length !== 1 ? 's' : '') + '</span>'
@@ -11474,10 +11474,10 @@ class Dashboard {
             // Build consensus section — per-item KNOWN/UNSURE badge, not per-group header
             let consensusHtml = '';
             if (consensusCritical.length + consensusHigh.length + consensusReview.length > 0) {
-                const _knownBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>';
-                const _unsureBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
-                const _unsureReviewBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--text-tertiary); background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
-                const _smRefinedBadge = '<span style="font-size:0.68rem; font-weight:700; color:#a855f7; background:#a855f718; border:1px solid #a855f744; border-radius:8px; padding:1px 6px; margin-left:0.4rem; white-space:nowrap;">🧩 SM-REFINED</span>';
+                const _knownBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--secondary-color); background:var(--secondary-color)18; border:1px solid var(--secondary-color)44; border-radius:2px; padding:1px 6px; margin-left:0.4rem;">KNOWN</span>';
+                const _unsureBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--warning-color); background:var(--warning-color)18; border:1px solid var(--warning-color)44; border-radius:2px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
+                const _unsureReviewBadge = '<span style="font-size:0.7rem; font-weight:700; color:var(--text-tertiary); background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:2px; padding:1px 6px; margin-left:0.4rem;">UNSURE</span>';
+                const _smRefinedBadge = '<span style="font-size:0.68rem; font-weight:700; color:#a855f7; background:#a855f718; border:1px solid #a855f744; border-radius:2px; padding:1px 6px; margin-left:0.4rem; white-space:nowrap;">🧩 SM-REFINED</span>';
                 // Set of critic keys whose findings were improved by ScrumMaster
                 const smRetriggered = new Set((smResult && smResult.critics_retriggered) ? smResult.critics_retriggered : []);
                 const _smBadgeFor = r => {
@@ -11488,7 +11488,7 @@ class Dashboard {
                 const renderCritical = r => {
                     const badge = isKnown(r) ? _knownBadge : _unsureBadge;
                     const smBadge = _smBadgeFor(r);
-                    return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px; margin-bottom:0.4rem; border-left:3px solid var(--danger-color);">'
+                    return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:2px; margin-bottom:0.4rem; border-left:3px solid var(--danger-color);">'
                         + '<div style="font-size:0.875rem; color:var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + smBadge + '</div>'
                         + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
                         + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
@@ -11497,7 +11497,7 @@ class Dashboard {
                 const renderHigh = r => {
                     const badge = isKnown(r) ? _knownBadge : _unsureBadge;
                     const smBadge = _smBadgeFor(r);
-                    return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px; margin-bottom:0.4rem; border-left:3px solid var(--warning-color);">'
+                    return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:2px; margin-bottom:0.4rem; border-left:3px solid var(--warning-color);">'
                         + '<div style="font-size:0.875rem; color:var(--text-color); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + smBadge + '</div>'
                         + (r.evidence ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.25rem;">Evidence: ' + r.evidence + '</div>' : '')
                         + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary);">Source: ' + r.source + '</div>' : '')
@@ -11521,7 +11521,7 @@ class Dashboard {
                     } else {
                         actionHint = 'Review this finding: if it describes a real gap in your architecture, add a control to the relevant ADR. If it does not apply, document as accepted risk.';
                     }
-                    return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:6px; margin-bottom:0.4rem; border-left:3px solid var(--border-color);">'
+                    return '<div style="padding:0.75rem; background:var(--nav-hover-bg); border-radius:2px; margin-bottom:0.4rem; border-left:3px solid var(--border-color);">'
                         + '<div style="font-size:0.875rem; color:var(--text-secondary); display:flex; align-items:baseline; flex-wrap:wrap; gap:0.2rem;">' + (r.description || r.recommendation || '') + badge + smBadge + '</div>'
                         + (r.source ? '<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:0.2rem;">Raised by: ' + r.source + '</div>' : '')
                         + '<div style="font-size:0.75rem; color:var(--primary-color); margin-top:0.3rem; padding-top:0.3rem; border-top:1px solid var(--border-color);">→ ' + actionHint + '</div>'
@@ -11534,9 +11534,9 @@ class Dashboard {
                     + _cefGroup(_cefUid + '_rev', 'For Review', 'var(--text-tertiary)', consensusReview, renderReview);
 
                 const smBanner = smRetriggered.size > 0
-                    ? '<div style="background:#a855f710; border:1px solid #a855f744; border-radius:6px; padding:0.5rem 0.875rem; margin-bottom:0.75rem; font-size:0.78rem; color:#a855f7;">🧩 <strong>ScrumMaster-refined:</strong> Items from <strong>' + [...smRetriggered].join(', ') + '</strong> were re-evaluated after targeted re-triggering. Look for the <strong>SM-REFINED</strong> badge.</div>'
+                    ? '<div style="background:#a855f710; border:1px solid #a855f744; border-radius:2px; padding:0.5rem 0.875rem; margin-bottom:0.75rem; font-size:0.78rem; color:#a855f7;">🧩 <strong>ScrumMaster-refined:</strong> Items from <strong>' + [...smRetriggered].join(', ') + '</strong> were re-evaluated after targeted re-triggering. Look for the <strong>SM-REFINED</strong> badge.</div>'
                     : '';
-                consensusHtml = '<div class="er-panel er-synth-panel" data-synth-key="consensus" style="background: var(--card-bg); border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
+                consensusHtml = '<div class="er-panel er-synth-panel" data-synth-key="consensus" style="background: var(--card-bg); border-radius:2px; margin-bottom: 1rem; border: 1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-panel-header" onclick="(function(h){var b=h.closest(\'.er-panel\').querySelector(\'.er-panel-body\');var c=h.querySelector(\'.er-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\' ⌄\';})(this)" style="padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">'
                     + '<div><h3 style="margin: 0 0 0.15rem; color: var(--text-color); font-size: 1rem;">Cross-Expert Findings' + (smRetriggered.size > 0 ? ' <span style="font-size:0.7rem; color:#a855f7; font-weight:700;">🧩 SM-enhanced</span>' : '') + '</h3>'
                     + '<p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;"><strong style="color:var(--secondary-color);">KNOWN</strong> = confirmed by ≥2 critics — act on these. <strong style="color:var(--warning-color);">UNSURE</strong> = single critic raised it. <strong style="color:#a855f7;">SM-REFINED</strong> = re-evaluated by ScrumMaster.</p></div>'
@@ -11547,7 +11547,7 @@ class Dashboard {
             }
 
             const parallelWarningBanner = isParallelResult
-                ? '<div style="background:var(--warning-color)12; border:1px solid var(--warning-color)55; border-radius:8px; padding:0.75rem 1rem; margin-bottom:1rem; display:flex; gap:0.625rem; align-items:flex-start;">'
+                ? '<div style="background:var(--warning-color)12; border:1px solid var(--warning-color)55; border-radius:2px; padding:0.75rem 1rem; margin-bottom:1rem; display:flex; gap:0.625rem; align-items:flex-start;">'
                     + '<span style="font-size:1rem; flex-shrink:0;">⚠</span>'
                     + '<div style="font-size:0.8125rem; color:var(--text-color);">'
                     + '<strong>Parallel mode tradeoffs:</strong> Critics ran independently — Tester did not validate Architect\'s roadmap, Red Team did not adjust for MITRE mapping errors. '
@@ -11556,17 +11556,17 @@ class Dashboard {
                     + '</div></div>'
                 : '';
 
-            const rerunRowHtml = '<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; padding:0.75rem 1rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; flex-wrap:wrap;">'
+            const rerunRowHtml = '<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; padding:0.75rem 1rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:2px; flex-wrap:wrap;">'
                 + '<span style="font-size:0.8125rem; color:var(--text-secondary); flex:1; min-width:140px;">Last ER ran as: <strong style="color:var(--primary-color);">' + _modeLabel(runCriticMode) + '</strong></span>'
                 + '<label for="erp-rerun-mode-select" style="font-size:0.8125rem; font-weight:600; white-space:nowrap; color:var(--text-secondary);">Re-run as:</label>'
-                + '<select id="erp-rerun-mode-select" style="font-size:0.8125rem; padding:0.2rem 0.5rem; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-color); cursor:pointer;">'
+                + '<select id="erp-rerun-mode-select" style="font-size:0.8125rem; padding:0.2rem 0.5rem; border-radius:2px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-color); cursor:pointer;">'
                 + '<option value="partial_parallel"' + (runCriticMode === 'partial_parallel' ? ' selected' : '') + '>Partial Parallel (recommended)</option>'
                 + '<option value="sequential"' + (runCriticMode === 'sequential' ? ' selected' : '') + '>Sequential (max accuracy)</option>'
                 + '<option value="auto"' + (runCriticMode === 'auto' ? ' selected' : '') + '>Auto (complexity-adaptive)</option>'
                 + '<option value="parallel"' + (runCriticMode === 'parallel' ? ' selected' : '') + '>Parallel (fastest)</option>'
                 + '</select>'
                 + '<button onclick="(function(){var sel=document.getElementById(\'erp-rerun-mode-select\');var mode=sel?sel.value:\'partial_parallel\';window.dashboard._rerunMoE(\'' + archName + '\',mode);})();"'
-                + ' style="font-size:0.8125rem; padding:0.25rem 0.875rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; white-space:nowrap;">▶ Re-run MoE</button>'
+                + ' style="font-size:0.8125rem; padding:0.25rem 0.875rem; background:var(--primary-color); color:#fff; border:none; border-radius:2px; cursor:pointer; font-weight:600; white-space:nowrap;">▶ Re-run MoE</button>'
                 + '</div>';
 
             // Build UJ influence explainer
@@ -11606,7 +11606,7 @@ class Dashboard {
 
                 // Two-line block per critic: "so what" + "look out for", plain language
                 const _cb = (icon, label, soWhat, lookFor) =>
-                    `<div style="margin-bottom:0.55rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px;">
+                    `<div style="margin-bottom:0.55rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:2px;">
                         <div style="font-size:0.78rem; font-weight:700; color:var(--text-color); margin-bottom:0.3rem;">${icon} ${label}</div>
                         <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.15rem;">${soWhat}</div>
                         <div style="font-size:0.72rem; color:var(--text-tertiary);"><span style="font-weight:600;">Look out for:</span> ${lookFor}</div>
@@ -11662,7 +11662,7 @@ class Dashboard {
                             : `Standard stealth scoring — if stealth scores seem low, check whether any path nodes are shared across APs.`),
                 ].join('');
 
-                return `<div class="er-panel" style="background:var(--card-bg); border-radius:10px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">
+                return `<div class="er-panel" style="background:var(--card-bg); border-radius:2px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">
                     <div class="er-panel-header" onclick="(function(h){var b=h.closest('.er-panel').querySelector('.er-panel-body');var c=h.querySelector('.er-chevron');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.textContent=open?'›':'∨';})(this)" style="padding:1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;">
                         <div>
                             <h3 style="margin:0 0 0.15rem; color:var(--text-color); font-size:1rem;">🗺️ How User Journeys shaped this analysis</h3>
@@ -11681,7 +11681,7 @@ class Dashboard {
             const _section = (id, icon, title, subtitle, bodyHtml, startOpen) => {
                 const disp = startOpen ? 'block' : 'none';
                 const chev = startOpen ? '∨' : '›';
-                return '<div class="er-top-section" style="background:var(--card-bg); border-radius:10px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">'
+                return '<div class="er-top-section" style="background:var(--card-bg); border-radius:2px; margin-bottom:1rem; border:1px solid var(--border-color); overflow:hidden;">'
                     + '<div class="er-top-section-header" onclick="(function(h){var b=document.getElementById(\'ers-body-' + id + '\');var c=h.querySelector(\'.er-top-chevron\');var open=b.style.display!==\'none\';b.style.display=open?\'none\':\'block\';c.textContent=open?\'›\':\'∨\';})(this)" style="padding:1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; background:var(--nav-hover-bg);">'
                     + '<div><div style="font-size:0.7rem; font-weight:700; letter-spacing:0.08em; color:var(--text-tertiary); text-transform:uppercase; margin-bottom:0.15rem;">' + icon + ' ' + title + '</div>'
                     + '<div style="font-size:0.8rem; color:var(--text-secondary);">' + subtitle + '</div></div>'
@@ -11694,15 +11694,15 @@ class Dashboard {
             // ── Critic filter pills ──────────────────────────────────────────────
             // Build one pill per critic that actually ran; clicking shows only that critic's panel.
             const _criticPillDefs = expertDefs.filter(e => !e.isSynthMeta && (expertValidations[e.key] || e.isOptional));
-            const criticFilterPills = '<div id="er-critic-filters" style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.75rem; padding:0.6rem 0.875rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--border-color); align-items:center;">'
+            const criticFilterPills = '<div id="er-critic-filters" style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.75rem; padding:0.6rem 0.875rem; background:var(--nav-hover-bg); border-radius:2px; border:1px solid var(--border-color); align-items:center;">'
                 + '<span style="font-size:0.72rem; font-weight:700; color:var(--text-tertiary); margin-right:0.2rem; text-transform:uppercase; letter-spacing:0.06em;">Filter critics:</span>'
-                + '<button onclick="window._erFilterCritic(\'all\')" data-erfilter="all" style="padding:0.2rem 0.7rem; border-radius:6px; border:1px solid var(--primary-color); background:var(--primary-color)22; color:var(--primary-color); font-size:0.75rem; font-weight:700; cursor:pointer;">All</button>'
+                + '<button onclick="window._erFilterCritic(\'all\')" data-erfilter="all" style="padding:0.2rem 0.7rem; border-radius:2px; border:1px solid var(--primary-color); background:var(--primary-color)22; color:var(--primary-color); font-size:0.75rem; font-weight:700; cursor:pointer;">All</button>'
                 + _criticPillDefs.map(e => {
                     const ran = !!expertValidations[e.key];
                     const col = ran ? 'var(--text-secondary)' : 'var(--text-tertiary)';
                     const bg  = ran ? 'var(--card-bg)' : 'transparent';
                     return '<button onclick="window._erFilterCritic(\'' + e.key + '\')" data-erfilter="' + e.key + '"'
-                        + ' style="padding:0.2rem 0.7rem; border-radius:6px; border:1px solid var(--border-color); background:' + bg + '; color:' + col + '; font-size:0.75rem; cursor:pointer;' + (ran ? '' : ' opacity:0.5;') + '">'
+                        + ' style="padding:0.2rem 0.7rem; border-radius:2px; border:1px solid var(--border-color); background:' + bg + '; color:' + col + '; font-size:0.75rem; cursor:pointer;' + (ran ? '' : ' opacity:0.5;') + '">'
                         + e.icon + ' ' + e.label
                         + (ran ? '' : ' <span style="font-size:0.65rem;">(not run)</span>')
                         + '</button>';
@@ -11749,7 +11749,7 @@ class Dashboard {
             // ── Section B: Critic Thematic Assessment ───────────────────────────
             const criticCountForSub = ranCriticKeys.filter(k => k !== 'scrum_master').length;
             const secB_body = '<div style="margin-bottom: 1.25rem;">'
-                + '<div style="background: var(--card-bg); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
+                + '<div style="background: var(--card-bg); border-radius:2px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">'
                 + '<h3 style="margin: 0 0 0.75rem; color: var(--text-color); font-size: 0.9rem;">Confidence Progression</h3>'
                 + '<div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">'
                 + '<div style="text-align: center; min-width: 70px;">'
@@ -11782,12 +11782,12 @@ class Dashboard {
             ].filter(p => p.show);
 
             const synthFilterPills = _synthPillDefs.length > 1
-                ? '<div id="er-synth-filters" style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.75rem; padding:0.6rem 0.875rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--border-color); align-items:center;">'
+                ? '<div id="er-synth-filters" style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.75rem; padding:0.6rem 0.875rem; background:var(--nav-hover-bg); border-radius:2px; border:1px solid var(--border-color); align-items:center;">'
                   + '<span style="font-size:0.72rem; font-weight:700; color:var(--text-tertiary); margin-right:0.2rem; text-transform:uppercase; letter-spacing:0.06em;">Filter:</span>'
-                  + '<button onclick="window._erFilterSynth(\'all\')" data-ersfilter="all" style="padding:0.2rem 0.7rem; border-radius:6px; border:1px solid var(--primary-color); background:var(--primary-color)22; color:var(--primary-color); font-size:0.75rem; font-weight:700; cursor:pointer;">All</button>'
+                  + '<button onclick="window._erFilterSynth(\'all\')" data-ersfilter="all" style="padding:0.2rem 0.7rem; border-radius:2px; border:1px solid var(--primary-color); background:var(--primary-color)22; color:var(--primary-color); font-size:0.75rem; font-weight:700; cursor:pointer;">All</button>'
                   + _synthPillDefs.map(p =>
                       '<button onclick="window._erFilterSynth(\'' + p.key + '\')" data-ersfilter="' + p.key + '"'
-                      + ' style="padding:0.2rem 0.7rem; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-secondary); font-size:0.75rem; cursor:pointer;">'
+                      + ' style="padding:0.2rem 0.7rem; border-radius:2px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-secondary); font-size:0.75rem; cursor:pointer;">'
                       + p.icon + ' ' + p.label + '</button>'
                   ).join('')
                   + '</div>'
@@ -11852,11 +11852,11 @@ class Dashboard {
         const content = ''
             + '<div style="margin-bottom:1.25rem;">'
             + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.35rem;">Architect / Tester view</div>'
-            + '<div style="font-size:0.875rem; color:var(--text-color); padding:0.6rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid var(--primary-color);">🏛️ ' + (c.architect_view || '') + '</div>'
+            + '<div style="font-size:0.875rem; color:var(--text-color); padding:0.6rem 0.75rem; background:var(--nav-hover-bg); border-radius:2px; border-left:3px solid var(--primary-color);">🏛️ ' + (c.architect_view || '') + '</div>'
             + '</div>'
             + '<div style="margin-bottom:1.25rem;">'
             + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.35rem;">Red Team view</div>'
-            + '<div style="font-size:0.875rem; color:var(--text-color); padding:0.6rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid var(--warning-color);">🎯 ' + (c.tester_or_redteam_view || '') + '</div>'
+            + '<div style="font-size:0.875rem; color:var(--text-color); padding:0.6rem 0.75rem; background:var(--nav-hover-bg); border-radius:2px; border-left:3px solid var(--warning-color);">🎯 ' + (c.tester_or_redteam_view || '') + '</div>'
             + '</div>'
             + (causeKey ? '<div style="margin-bottom:1.25rem;">'
                 + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.35rem;">Root cause</div>'
@@ -11866,7 +11866,7 @@ class Dashboard {
                 + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:0.35rem;">Why they disagree</div>'
                 + '<div style="font-size:0.875rem; color:var(--text-color); line-height:1.6;">' + c.root_cause_explanation + '</div>'
                 + '</div>' : '')
-            + (c.pt_bh_corroboration && c.pt_bh_corroboration !== 'none' ? '<div style="margin-bottom:1.25rem; padding:0.6rem 0.75rem; background:#a855f711; border:1px solid #a855f733; border-radius:8px;">'
+            + (c.pt_bh_corroboration && c.pt_bh_corroboration !== 'none' ? '<div style="margin-bottom:1.25rem; padding:0.6rem 0.75rem; background:#a855f711; border:1px solid #a855f733; border-radius:2px;">'
                 + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:#a855f7; margin-bottom:0.25rem;">Purple Team / Blackhat corroboration</div>'
                 + '<div style="font-size:0.875rem; color:var(--text-color);">' + c.pt_bh_corroboration + '</div>'
                 + '</div>' : '')
@@ -11891,16 +11891,16 @@ class Dashboard {
                 const engineNote = relevantChecks.length
                     ? `Deterministic validation flagged: <b>${relevantChecks.join(', ')}</b>. This disagreement may reflect a gap the engine detected but could not resolve — check <code>ground_truth.json → validation_report.checks</code> for detail.`
                     : `No matching deterministic flag found. This may be a genuine LLM-vs-LLM disagreement where the engine has insufficient structural data. Consider adding architectural detail (node labels, edge labels) to help the engine distinguish.`;
-                return '<div style="margin-bottom:1.25rem; padding:0.6rem 0.75rem; background:var(--warning-color)10; border:1px solid var(--warning-color)44; border-radius:8px;">'
+                return '<div style="margin-bottom:1.25rem; padding:0.6rem 0.75rem; background:var(--warning-color)10; border:1px solid var(--warning-color)44; border-radius:2px;">'
                     + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--warning-color); margin-bottom:0.25rem;">⚙ Deterministic engine signal</div>'
                     + '<div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.5;">' + engineNote + '</div>'
                     + '</div>';
             })()
-            + (c.human_action ? '<div style="margin-bottom:1.25rem; padding:0.75rem; background:var(--secondary-color)12; border:1px solid var(--secondary-color)44; border-radius:8px;">'
+            + (c.human_action ? '<div style="margin-bottom:1.25rem; padding:0.75rem; background:var(--secondary-color)12; border:1px solid var(--secondary-color)44; border-radius:2px;">'
                 + '<div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--secondary-color); margin-bottom:0.35rem;">Recommended human action</div>'
                 + '<div style="font-size:0.875rem; color:var(--text-color);">→ ' + c.human_action + '</div>'
                 + '</div>' : '')
-            + '<div style="padding:0.5rem 0.75rem; background:var(--warning-color)12; border-radius:6px;">'
+            + '<div style="padding:0.5rem 0.75rem; background:var(--warning-color)12; border-radius:2px;">'
             + '<div style="font-size:0.8125rem; color:var(--warning-color); font-style:italic;">' + (c.resolution || 'UNSURE — human review needed') + '</div>'
             + '</div>';
 
@@ -11931,12 +11931,12 @@ class Dashboard {
 
         // Visualise tab shortcut
         if (bhAps.length > 0) {
-            html += `<div style="margin-bottom:1rem; padding:0.65rem 0.9rem; background:${BH_COLOR}18; border-left:4px solid ${BH_COLOR}; border-radius:6px;">`;
+            html += `<div style="margin-bottom:1rem; padding:0.65rem 0.9rem; background:${BH_COLOR}18; border-left:4px solid ${BH_COLOR}; border-radius:2px;">`;
             html += `<div style="font-weight:700; color:${BH_COLOR}; font-size:0.82rem; margin-bottom:0.35rem;">⚔️ BH-discovered paths found</div>`;
             html += `<p style="margin:0 0 0.5rem; font-size:0.8rem; color:var(--text-secondary);">Switch to the <strong>Visualise</strong> tab and select the following chips to explore BH chains on the graph:</p>`;
             html += `<div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.35rem;">`;
             bhAps.forEach(id => {
-                html += `<span style="padding:2px 10px; border-radius:10px; border:2px solid ${BH_COLOR}; background:${BH_COLOR}22; color:${BH_COLOR}; font-size:0.78rem; font-weight:700;">${id}</span>`;
+                html += `<span style="padding:2px 10px; border-radius:2px; border:2px solid ${BH_COLOR}; background:${BH_COLOR}22; color:${BH_COLOR}; font-size:0.78rem; font-weight:700;">${id}</span>`;
             });
             html += `</div>`;
             html += `<div style="font-size:0.75rem; color:var(--text-tertiary);">Each BH chip shows the pivot-and-diverge route as edges in the graph. Pivot nodes appear as diamonds — clicking one shows mitigations across all APs it spans.</div>`;
@@ -11949,7 +11949,7 @@ class Dashboard {
             pivots.forEach(node => {
                 const nodeData = bh.shared_nodes[node] || {};
                 const apList   = Array.isArray(nodeData) ? nodeData : (nodeData.aps || []);
-                html += `<div style="margin-bottom:0.45rem; padding:0.5rem 0.7rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid ${BH_COLOR};">`;
+                html += `<div style="margin-bottom:0.45rem; padding:0.5rem 0.7rem; background:var(--nav-hover-bg); border-radius:2px; border-left:3px solid ${BH_COLOR};">`;
                 html += `<span style="font-weight:600; font-size:0.82rem; color:var(--text-color);">${node}</span>`;
                 if (apList.length) html += ` <span style="font-size:0.72rem; color:var(--text-tertiary);">spans: ${apList.join(', ')}</span>`;
                 html += `</div>`;
@@ -11960,7 +11960,7 @@ class Dashboard {
         if (chains.length > 0) {
             html += `<h4 style="margin:0.75rem 0 0.45rem; font-size:0.85rem; color:var(--text-color);">Cross-path chains (${chains.length})</h4>`;
             chains.slice(0, 6).forEach(ch => {
-                html += `<div style="margin-bottom:0.4rem; padding:0.5rem 0.7rem; background:var(--nav-hover-bg); border-radius:6px; border-left:3px solid var(--warning-color); font-size:0.8rem; color:var(--text-secondary);">`
+                html += `<div style="margin-bottom:0.4rem; padding:0.5rem 0.7rem; background:var(--nav-hover-bg); border-radius:2px; border-left:3px solid var(--warning-color); font-size:0.8rem; color:var(--text-secondary);">`
                     + (ch.chain || ch.description || JSON.stringify(ch)) + `</div>`;
             });
         }
@@ -12019,13 +12019,13 @@ class Dashboard {
                 + '<p style="margin:0; font-size:0.8125rem; color:var(--text-color); line-height:1.5;">' + liveReasoning + '</p>'
                 + '</div>'
             : '';
-        return '<div style="background:var(--card-bg); border:1px solid ' + statusColor + '44; border-left:3px solid ' + statusColor + '; border-radius:8px; padding:0.875rem 1rem; margin-bottom:0.75rem;">'
+        return '<div style="background:var(--card-bg); border:1px solid ' + statusColor + '44; border-left:3px solid ' + statusColor + '; border-radius:2px; padding:0.875rem 1rem; margin-bottom:0.75rem;">'
             + '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.25rem; flex-wrap:wrap; gap:0.25rem;">'
             + '<div style="font-weight:700; color:var(--text-color); font-size:0.9375rem;">' + (labels[data.critic] || data.critic) + ' <span style="font-weight:400; font-size:0.8125rem; color:var(--text-tertiary);">' + (roles[data.critic] || '') + '</span></div>'
             + '<div style="display:flex; align-items:center; gap:0.75rem; flex-shrink:0;">'
             + '<span style="font-size:0.8125rem; color:var(--text-secondary);">' + data.score + '/100</span>'
             + '<span style="font-size:0.8125rem; font-weight:600; color:' + adjColor + ';">' + adjLabel + '</span>'
-            + '<span style="font-size:0.8rem; font-weight:700; color:' + statusColor + '; background:' + statusColor + '18; border:1px solid ' + statusColor + '44; border-radius:6px; padding:1px 7px;">' + statusText + '</span>'
+            + '<span style="font-size:0.8rem; font-weight:700; color:' + statusColor + '; background:' + statusColor + '18; border:1px solid ' + statusColor + '44; border-radius:2px; padding:1px 7px;">' + statusText + '</span>'
             + '</div></div>'
             + liveReasoningHtml
             + (gapRows ? '<div style="margin-bottom:0.4rem;">' + gapRows + moreGaps + '</div>' : '')
@@ -12371,7 +12371,7 @@ class Dashboard {
         // ── Section A: Pipeline Gate View (Ingress / Internal / Egress) ────────
         const _rescoreAivssBtn = (archName) => `<button
             onclick="window.dashboard._rescoreAivss('${archName}', this)"
-            style="font-size:0.78rem; padding:0.25rem 0.75rem; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600; margin-left:0.5rem;"
+            style="font-size:0.78rem; padding:0.25rem 0.75rem; background:var(--primary-color); color:#fff; border:none; border-radius:2px; cursor:pointer; font-weight:600; margin-left:0.5rem;"
             title="Re-run AIVSS scoring using saved governance signals and available MoE/SM results — no full re-analysis needed">⚡ Re-score AIVSS</button>`;
         let sectionA = `<div style="font-size:0.78rem; color:var(--text-tertiary);">No governance data for this run. Rerun analysis to populate.${_rescoreAivssBtn(archName)}</div>`;
         if (gov) {
@@ -12386,9 +12386,9 @@ class Dashboard {
                         const f = aivss[k] || {};
                         if (f.composite == null && !f.severity) return '';
                         const fc = f.severity==='CRITICAL'?'#dc2626':f.severity==='HIGH'?'#f97316':f.severity==='MEDIUM'?'#ca8a04':'#16a34a';
-                        return `<div style="padding:0.35rem 0.875rem; background:${fc}12; color:${fc}; border:1px solid ${fc}44; border-radius:6px; font-size:0.78rem; font-weight:700;">${flowLabels[k]} ${_score(f.composite)} ${f.severity||''}</div>`;
+                        return `<div style="padding:0.35rem 0.875rem; background:${fc}12; color:${fc}; border:1px solid ${fc}44; border-radius:2px; font-size:0.78rem; font-weight:700;">${flowLabels[k]} ${_score(f.composite)} ${f.severity||''}</div>`;
                     }).filter(Boolean).join('')}
-                    ${overall.composite != null ? `<div style="padding:0.35rem 0.875rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem; font-weight:700; color:var(--text-color);">Overall ${_score(overall.composite)} ${overall.severity||''}</div>` : ''}
+                    ${overall.composite != null ? `<div style="padding:0.35rem 0.875rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:2px; font-size:0.78rem; font-weight:700; color:var(--text-color);">Overall ${_score(overall.composite)} ${overall.severity||''}</div>` : ''}
                     ${_rescoreAivssBtn(archName)}
                 </div>` : `<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem; font-size:0.78rem; color:var(--text-tertiary);">No AIVSS data yet.${_rescoreAivssBtn(archName)}</div>`;
 
@@ -12483,7 +12483,7 @@ class Dashboard {
 
                 // Clean state — just a brief confirmation, no clutter
                 if (isClean) {
-                    return `<div style="flex:1; min-width:240px; background:var(--nav-hover-bg); border:1px solid #16a34a33; border-radius:8px; padding:0.875rem;">
+                    return `<div style="flex:1; min-width:240px; background:var(--nav-hover-bg); border:1px solid #16a34a33; border-radius:2px; padding:0.875rem;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.2rem;">
                             <div style="font-size:0.88rem; font-weight:700; color:var(--text-color);">${gate.icon} ${gate.label}</div>
                             ${statusChip}
@@ -12523,7 +12523,7 @@ class Dashboard {
                     </div>`;
                 }).join('');
 
-                return `<div style="flex:1; min-width:260px; background:var(--nav-hover-bg); border:1px solid ${bc}55; border-radius:8px; padding:0.875rem;">
+                return `<div style="flex:1; min-width:260px; background:var(--nav-hover-bg); border:1px solid ${bc}55; border-radius:2px; padding:0.875rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.2rem;">
                         <div style="font-size:0.88rem; font-weight:700; color:var(--text-color);">${gate.icon} ${gate.label}</div>
                         ${statusChip}
@@ -12661,7 +12661,7 @@ class Dashboard {
         const selector = `<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; flex-wrap:wrap;">
             <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary); white-space:nowrap;">Architecture:</label>
             <select onchange="window.dashboard._insightsTrendArch=this.value; window.dashboard.loadInsightsTab();"
-                style="font-size:0.8rem; padding:0.25rem 0.5rem; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-color); cursor:pointer; min-width:220px; color-scheme:light dark;">
+                style="font-size:0.8rem; padding:0.25rem 0.5rem; border-radius:2px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-color); cursor:pointer; min-width:220px; color-scheme:light dark;">
                 ${selectOpts}
             </select>
         </div>`;
@@ -12707,7 +12707,7 @@ class Dashboard {
             return 'I'; // Identify/baseline by default
         };
         const _ipdrLabel = {I:'Identify',P:'Prevent',D:'Detect',R:'Respond'};
-        const _ipdrColor = {I:'#6366f1',P:'#16a34a',D:'#0ea5e9',R:'#f97316'};
+        const _ipdrColor = {I:'var(--ipdr-identity)',P:'var(--ipdr-protection)',D:'var(--ipdr-detection)',R:'var(--ipdr-response)'};
         const _ipdrDesc  = {
             I:'Foundational baseline — asset inventory, risk classification, policy. Controls here build situational awareness.',
             P:'Stop the threat before it lands — authentication, input validation, encryption, network controls.',
@@ -12753,11 +12753,11 @@ class Dashboard {
                 warnCount ? `<span style="color:#f97316; font-size:0.7rem; font-weight:700;">${warnCount} most runs</span>` : '',
             ].filter(Boolean).join(' · ');
 
-            return `<div style="flex:1; min-width:200px; background:var(--card-bg); border:1px solid ${bc}44; border-radius:8px; overflow:hidden;">
+            return `<div style="flex:1; min-width:200px; background:var(--card-bg); border:1px solid ${bc}44; border-radius:2px; overflow:hidden;">
                 <div style="padding:0.6rem 0.875rem 0.5rem; background:${bc}12; border-bottom:1px solid ${bc}33;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-size:0.82rem; font-weight:800; color:${bc};">${bucket} — ${_ipdrLabel[bucket]}</span>
-                        <span style="font-size:0.68rem; background:${bc}20; color:${bc}; padding:1px 7px; border-radius:10px; font-weight:700;">${sorted.length} gap${sorted.length>1?'s':''}</span>
+                        <span style="font-size:0.68rem; background:${bc}20; color:${bc}; padding:1px 7px; border-radius:2px; font-weight:700;">${sorted.length} gap${sorted.length>1?'s':''}</span>
                     </div>
                     <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">${_ipdrDesc[bucket]}</div>
                     ${summary ? `<div style="margin-top:0.25rem;">${summary}</div>` : ''}
@@ -12851,7 +12851,7 @@ class Dashboard {
             }).join('');
 
             // Gate line colors
-            const gateColors = ['#6366f1','#0ea5e9','#f97316']; // ingress=indigo, internal=cyan, egress=amber
+            const gateColors = ['var(--gate-ingress)','var(--gate-internal)','var(--gate-egress)']; // ingress/internal/egress
 
             const linesSvg = gateSeries.map(({gate, points}, gi) => {
                 const validPoints = points.map((v,i) => ({v,i})).filter(p => p.v >= 0);
@@ -12915,7 +12915,7 @@ class Dashboard {
         }
 
         return selector + runTable +
-            `<div style="padding:0.875rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px;">${gapsHtml}${govDrift}</div>`;
+            `<div style="padding:0.875rem; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:2px;">${gapsHtml}${govDrift}</div>`;
     }
 
     // ── View B: Multi-Architecture Comparison ────────────────────────────────
@@ -12947,9 +12947,9 @@ class Dashboard {
             const icon = domainIcons[a.domain] || '📐';
             const top3Missing = (a.controls_missing||[]).slice(0,3);
             const top3Techs = (a.techniques||[]).slice(0,3);
-            return `<div style="flex:1; min-width:200px; background:var(--card-bg); border:1px solid ${bc}44; border-radius:10px; padding:0.875rem; position:relative; cursor:pointer;"
+            return `<div style="flex:1; min-width:200px; background:var(--card-bg); border:1px solid ${bc}44; border-radius:2px; padding:0.875rem; position:relative; cursor:pointer;"
                 onclick="window.dashboard._insightsTrendArch='${_esc(a.base_name)}'; window.dashboard._switchTrendView('single');" title="Click to view single-arch trend">
-                ${i===0 ? `<div style="position:absolute; top:-9px; right:0.75rem; background:${bc}; color:#fff; font-size:0.62rem; font-weight:700; padding:1px 7px; border-radius:8px;">#1 HIGHEST RISK</div>` : ''}
+                ${i===0 ? `<div style="position:absolute; top:-9px; right:0.75rem; background:${bc}; color:#fff; font-size:0.62rem; font-weight:700; padding:1px 7px; border-radius:2px;">#1 HIGHEST RISK</div>` : ''}
                 <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.5rem;">
                     <span style="font-size:1rem;">${icon}</span>
                     <div style="min-width:0;">
@@ -12973,13 +12973,13 @@ class Dashboard {
                 </div>
                 ${top3Missing.length ? `<div style="margin-bottom:0.35rem;">
                     <div style="font-size:0.67rem; color:var(--text-tertiary); margin-bottom:0.2rem;">Top missing controls:</div>
-                    <div style="display:flex; flex-wrap:wrap; gap:0.2rem;">${top3Missing.map(c=>`<span style="font-size:0.67rem; padding:1px 5px; background:var(--warning-color)12; border:1px solid var(--warning-color)44; border-radius:8px; color:var(--text-secondary);">${_esc(c)}</span>`).join('')}</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:0.2rem;">${top3Missing.map(c=>`<span style="font-size:0.67rem; padding:1px 5px; background:var(--warning-color)12; border:1px solid var(--warning-color)44; border-radius:2px; color:var(--text-secondary);">${_esc(c)}</span>`).join('')}</div>
                 </div>` : ''}
                 ${top3Techs.length ? `<div>
                     <div style="font-size:0.67rem; color:var(--text-tertiary); margin-bottom:0.2rem;">Top techniques:</div>
                     <div style="display:flex; flex-wrap:wrap; gap:0.2rem;">${top3Techs.map(t=>{
                         const name=(this.techniqueNamesCache&&this.techniqueNamesCache[t])||'';
-                        return `<span style="font-size:0.67rem; padding:1px 5px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; font-family:monospace; color:var(--primary-color);" title="${_esc(name)}">${_esc(t)}</span>`;
+                        return `<span style="font-size:0.67rem; padding:1px 5px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:2px; font-family:monospace; color:var(--primary-color);" title="${_esc(name)}">${_esc(t)}</span>`;
                     }).join('')}</div>
                 </div>` : ''}
             </div>`;
@@ -13072,7 +13072,7 @@ class Dashboard {
                         onmouseenter="this.querySelector('.gap-arch-pop').style.display='block'"
                         onmouseleave="this.querySelector('.gap-arch-pop').style.display='none'">
                         ${bases.size} arch${bases.size>1?'s':''}
-                        <div class="gap-arch-pop" style="display:none; position:absolute; right:0; bottom:calc(100% + 4px); background:#1e293b; border:1px solid #4da6ff44; border-radius:6px; padding:0.5rem 0.65rem; min-width:180px; max-width:280px; box-shadow:0 4px 16px #00000066; z-index:999; color:#e8e8e8;">
+                        <div class="gap-arch-pop" style="display:none; position:absolute; right:0; bottom:calc(100% + 4px); background:var(--card-bg); border:1px solid #4da6ff44; border-radius:2px; padding:0.5rem 0.65rem; min-width:180px; max-width:280px; z-index:999; color:#e8e8e8;">
                             <div style="font-size:0.68rem; font-weight:700; color:#4da6ff; margin-bottom:0.3rem;">${_esc(c)} — missing in ${bases.size} arch${bases.size>1?'s':''}:</div>
                             ${archItems}
                         </div>
@@ -13111,7 +13111,7 @@ class Dashboard {
                         onmouseenter="this.querySelector('.tech-arch-pop').style.display='block'"
                         onmouseleave="this.querySelector('.tech-arch-pop').style.display='none'">
                         ${n}/${allArchs.length}
-                        <div class="tech-arch-pop" style="display:none; position:absolute; right:0; bottom:calc(100% + 4px); background:#1e293b; border:1px solid #4da6ff44; border-radius:6px; padding:0.5rem 0.65rem; min-width:180px; max-width:280px; box-shadow:0 4px 16px #00000066; z-index:999; color:#e8e8e8;">
+                        <div class="tech-arch-pop" style="display:none; position:absolute; right:0; bottom:calc(100% + 4px); background:var(--card-bg); border:1px solid #4da6ff44; border-radius:2px; padding:0.5rem 0.65rem; min-width:180px; max-width:280px; z-index:999; color:#e8e8e8;">
                             <div style="font-size:0.68rem; font-weight:700; color:#4da6ff; margin-bottom:0.3rem;">${_esc(t)} — in ${n} arch${n>1?'s':''}:</div>
                             ${archItems}
                         </div>
@@ -13121,12 +13121,12 @@ class Dashboard {
             : `<div style="font-size:0.78rem; color:var(--text-tertiary);">No technique data available.</div>`;
 
         const panels = `<div style="display:flex; gap:0.875rem; flex-wrap:wrap; margin-bottom:1.25rem;">
-            <div style="flex:1; min-width:240px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:0.875rem;">
+            <div style="flex:1; min-width:240px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:2px; padding:0.875rem;">
                 <div style="font-size:0.8rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">⚠ Systemic Control Gaps</div>
                 <div style="font-size:0.7rem; color:var(--text-tertiary); margin-bottom:0.5rem;">Missing across ≥2 architectures — pattern-level weakness. Bar = proportion affected.</div>
                 ${gapsHtml}
             </div>
-            <div style="flex:1; min-width:240px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:0.875rem;">
+            <div style="flex:1; min-width:240px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:2px; padding:0.875rem;">
                 <div style="font-size:0.8rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">🎯 Most Frequent Techniques</div>
                 <div style="font-size:0.7rem; color:var(--text-tertiary); margin-bottom:0.5rem;">MITRE ATT&CK IDs recurring across architectures — bar = relative frequency. Technique name shown inline.</div>
                 ${techsHtml}
@@ -13184,8 +13184,8 @@ class Dashboard {
             const border = isWorst ? '2px solid #f97316' : '1px solid var(--border-color)';
             const techIcons = {'Cloud':'☁️','On-Premises':'🏢','Hybrid Cloud':'🔀','IoT/OT/CPS':'🔌','Agentic/AI':'🤖','Digital Services':'🌐','General':'⬜'};
             const icon = techIcons[d.domain] || '📐';
-            return `<div style="flex:1; min-width:260px; background:var(--card-bg); border:${border}; border-radius:10px; padding:1rem; position:relative;">
-                ${isWorst ? `<div style="position:absolute; top:-9px; right:0.75rem; background:#f97316; color:#000; font-size:0.65rem; font-weight:700; padding:1px 7px; border-radius:8px;">HIGHEST RISK</div>` : ''}
+            return `<div style="flex:1; min-width:260px; background:var(--card-bg); border:${border}; border-radius:2px; padding:1rem; position:relative;">
+                ${isWorst ? `<div style="position:absolute; top:-9px; right:0.75rem; background:#f97316; color:#000; font-size:0.65rem; font-weight:700; padding:1px 7px; border-radius:2px;">HIGHEST RISK</div>` : ''}
                 <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;">
                     <span style="font-size:1.2rem;">${icon}</span>
                     <div style="flex:1; min-width:0;">
@@ -13194,7 +13194,7 @@ class Dashboard {
                             onclick="(function(el){var list=el.nextElementSibling;var open=list.style.display!=='none';list.style.display=open?'none':'block';el.textContent=(open?'▸ ':'▾ ')+'${d.archs.length} architecture${d.archs.length>1?'s':''}';})(this)">
                             ▸ ${d.archs.length} architecture${d.archs.length>1?'s':''}
                         </div>
-                        <div style="display:none; margin-top:0.35rem; padding:0.35rem 0.5rem; background:var(--main-bg); border:1px solid var(--border-color); border-radius:6px;">
+                        <div style="display:none; margin-top:0.35rem; padding:0.35rem 0.5rem; background:var(--main-bg); border:1px solid var(--border-color); border-radius:2px;">
                             ${d.archs.map(a => `<div style="font-size:0.7rem; color:var(--text-secondary); padding:0.1rem 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${_esc(a.name)}">${_esc(a.name)}</div>`).join('')}
                         </div>
                     </div>
@@ -13216,13 +13216,13 @@ class Dashboard {
                 ${d.top3Missing.length ? `<div style="margin-bottom:0.5rem;">
                     <div style="font-size:0.7rem; font-weight:600; color:var(--text-tertiary); margin-bottom:0.3rem;">Top missing controls:</div>
                     <div style="display:flex; flex-wrap:wrap; gap:0.3rem;">${d.top3Missing.map(([c,n]) =>
-                        `<span style="font-size:0.7rem; padding:1px 6px; background:var(--warning-color)12; border:1px solid var(--warning-color)44; border-radius:10px; color:var(--text-secondary);">${_esc(c)}</span>`).join('')}</div>
+                        `<span style="font-size:0.7rem; padding:1px 6px; background:var(--warning-color)12; border:1px solid var(--warning-color)44; border-radius:2px; color:var(--text-secondary);">${_esc(c)}</span>`).join('')}</div>
                 </div>` : ''}
                 ${d.top3Tech.length ? `<div>
                     <div style="font-size:0.7rem; font-weight:600; color:var(--text-tertiary); margin-bottom:0.3rem;">Top techniques:</div>
                     <div style="display:flex; flex-wrap:wrap; gap:0.3rem;">${d.top3Tech.map(([t,n]) => {
                         const name = (this.techniqueNamesCache && this.techniqueNamesCache[t]) || '';
-                        return `<span style="font-size:0.7rem; padding:1px 6px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:10px; font-family:monospace; color:var(--primary-color);" title="${_esc(name)||t}">${_esc(t)}</span>`;
+                        return `<span style="font-size:0.7rem; padding:1px 6px; background:var(--nav-hover-bg); border:1px solid var(--border-color); border-radius:2px; font-family:monospace; color:var(--primary-color);" title="${_esc(name)||t}">${_esc(t)}</span>`;
                     }).join('')}</div>
                 </div>` : ''}
             </div>`;
@@ -13324,7 +13324,7 @@ class Dashboard {
 
         return `
         <div style="padding:0;">
-            <div style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; background:${avgBand.color}14; border:1px solid ${avgBand.color}44; border-radius:10px; margin-bottom:1rem;">
+            <div style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; background:${avgBand.color}14; border:1px solid ${avgBand.color}44; border-radius:2px; margin-bottom:1rem;">
                 <div style="display:flex; align-items:baseline; gap:0.5rem;">
                     <span style="font-size:2rem; font-weight:800; color:${avgBand.color}; line-height:1;">${avg.overall ?? '—'}</span>
                     <span style="font-size:0.72rem; color:var(--text-tertiary);">/100 corpus avg</span>
@@ -13337,14 +13337,14 @@ class Dashboard {
                 ${['Threat','TTP','Risk','Plan'].map((lbl,i) => {
                     const key = ['threat','ttp','risk','plan'][i];
                     const v = avg[key]; const b = bandFor(v);
-                    return `<div style="flex:1;min-width:100px;background:var(--card-bg);border:1px solid var(--border-color);border-left:3px solid ${b.color};border-radius:6px;padding:0.5rem 0.7rem;">
+                    return `<div style="flex:1;min-width:100px;background:var(--card-bg);border:1px solid var(--border-color);border-left:3px solid ${b.color};border-radius:2px;padding:0.5rem 0.7rem;">
                         <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:0.1rem;">${lbl}</div>
                         <div style="font-size:1.1rem;font-weight:800;color:${b.color};">${v ?? '—'}</div>
                         <div style="font-size:0.65rem;color:var(--text-tertiary);">${b.label}</div>
                     </div>`;
                 }).join('')}
             </div>
-            <div style="border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+            <div style="border:1px solid var(--border-color); border-radius:2px; overflow:hidden;">
                 <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
                     <thead>
                         <tr style="background:var(--nav-hover-bg); border-bottom:1px solid var(--border-color);">
@@ -14071,7 +14071,7 @@ class Dashboard {
             if (d === 0) return '';
             const c = d > 0 ? '#16a34a' : '#dc2626';
             const sign = d > 0 ? '+' : '';
-            return `<span class="tatb-delta" style="margin-left:0.35rem; padding:1px 6px; border-radius:8px; background:${c}22; color:${c}; border:1px solid ${c}66; font-size:0.65rem; font-weight:700; animation:tatb-fade 5s ease-out forwards;">${sign}${d}</span>`;
+            return `<span class="tatb-delta" style="margin-left:0.35rem; padding:1px 6px; border-radius:2px; background:${c}22; color:${c}; border:1px solid ${c}66; font-size:0.65rem; font-weight:700; animation:tatb-fade 5s ease-out forwards;">${sign}${d}</span>`;
         };
         // Inject delta-fade animation once
         if (!document.getElementById('tatb-anim-style')) {
@@ -14103,7 +14103,7 @@ class Dashboard {
             }
             const clickable = !!evidenceHtml;
             return `
-            <div ${onclickAttr} style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-left:3px solid ${color}; border-radius:6px; padding:0.55rem 0.75rem; ${clickable ? 'cursor:pointer;' : ''} transition:box-shadow 0.15s;"
+            <div ${onclickAttr} style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-left:3px solid ${color}; border-radius:2px; padding:0.55rem 0.75rem; ${clickable ? 'cursor:pointer;' : ''} transition:box-shadow 0.15s;"
                 ${tooltip ? `title="${tooltip.replace(/"/g,"'")}"` : ''}
                 ${clickable ? 'onmouseover="this.style.boxShadow=\'0 0 0 2px var(--primary-color)44\'" onmouseout="this.style.boxShadow=\'\'"' : ''}>
                 <div style="display:flex; justify-content:space-between; align-items:flex-start;">
@@ -14119,7 +14119,7 @@ class Dashboard {
         const _rubric = (id, icon, title, score, deltaHtml, question, soWhat, tiles, evidenceHtml) => {
             const band = bandFor(score);
             return `
-            <details id="tatb-sec-${id}" open style="margin-bottom:1rem; border:1px solid var(--border-color); border-radius:10px; overflow:hidden;">
+            <details id="tatb-sec-${id}" open style="margin-bottom:1rem; border:1px solid var(--border-color); border-radius:2px; overflow:hidden;">
                 <summary style="display:flex; align-items:center; gap:0.6rem; padding:0.65rem 1rem; background:var(--nav-hover-bg); cursor:pointer; user-select:none; list-style:none;">
                     <span style="font-size:1rem;">${icon}</span>
                     <span style="font-weight:700; font-size:0.9rem; color:var(--text-color); flex:1;">${title}</span>
@@ -14150,7 +14150,7 @@ class Dashboard {
         const _rpHead = (txt) => `<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-tertiary);margin:0.75rem 0 0.3rem;border-top:1px solid var(--border-color);padding-top:0.5rem;">${txt}</div>`;
         // Citation chip — shown at top of each evidence pane to tell user which file the data came from
         const _rpCite = (...files) => `<div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.65rem;">
-            ${files.map(f => `<span style="font-size:0.68rem;padding:1px 7px;border-radius:8px;background:var(--primary-color)14;color:var(--primary-color);border:1px solid var(--primary-color)44;font-family:monospace;">📄 ${f}</span>`).join('')}
+            ${files.map(f => `<span style="font-size:0.68rem;padding:1px 7px;border-radius:2px;background:var(--primary-color)14;color:var(--primary-color);border:1px solid var(--primary-color)44;font-family:monospace;">📄 ${f}</span>`).join('')}
         </div>`;
 
         const pn = (sources.gt && sources.gt.metadata && sources.gt.metadata.parsed_nodes) || {};
@@ -14263,7 +14263,7 @@ class Dashboard {
             ] : []),
         ].join('');
         const threatEvidence = `
-            <details style="margin-top:0.5rem; border:1px solid var(--border-color); border-radius:6px;">
+            <details style="margin-top:0.5rem; border:1px solid var(--border-color); border-radius:2px;">
                 <summary style="padding:0.4rem 0.7rem; cursor:pointer; font-size:0.75rem; color:var(--text-secondary); user-select:none;">▸ Evidence: attack path grounding</summary>
                 <div style="padding:0.5rem 0.8rem; max-height:220px; overflow-y:auto;">
                     ${(() => {
@@ -14483,7 +14483,7 @@ class Dashboard {
             .map(([k, s]) => `<div style="font-size:0.72rem; padding:0.15rem 0;"><code style="color:var(--primary-color);">${k.replace('_critique','')}</code>: ${[...s].join(', ')} <span style="color:var(--text-tertiary);">(${s.size})</span></div>`)
             .join('');
         const ttpEvidence = `
-            <details style="margin-top:0.5rem; border:1px solid var(--border-color); border-radius:6px;">
+            <details style="margin-top:0.5rem; border:1px solid var(--border-color); border-radius:2px;">
                 <summary style="padding:0.4rem 0.7rem; cursor:pointer; font-size:0.75rem; color:var(--text-secondary); user-select:none;">▸ Evidence: per-critic technique coverage</summary>
                 <div style="padding:0.5rem 0.8rem; max-height:220px; overflow-y:auto;">
                     ${ttpCritList || '<div style="font-size:0.72rem; color:var(--text-tertiary);">No technique IDs extracted from critic prose.</div>'}
@@ -14801,7 +14801,7 @@ class Dashboard {
 
         const noSmData = pE.smItems.length === 0;
         const planTiles = noSmData ? [
-            `<div style="flex:1; padding:1rem; background:var(--nav-hover-bg); border-radius:8px; border:1px dashed var(--border-color); font-size:0.8rem; color:var(--text-tertiary);">
+            `<div style="flex:1; padding:1rem; background:var(--nav-hover-bg); border-radius:2px; border:1px dashed var(--border-color); font-size:0.8rem; color:var(--text-tertiary);">
                 No ScrumMaster data — run <code>full_moe</code> scenario to generate an actionable plan with effort estimates, confidence gains, and first-step guidance.
             </div>`
         ] : [
@@ -14822,7 +14822,7 @@ class Dashboard {
                     `${pE.specificCount} of ${pE.totalScoredItems} items name a specific tool, node, or technique`,
                     'Specific items name what to implement. Generic items ("add monitoring") leave engineers guessing.',
                     '✅ Control specificity — evidence', planSpecEv)
-                : `<div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-left:3px dashed var(--text-tertiary); border-radius:6px; padding:0.55rem 0.75rem; opacity:0.55;">
+                : `<div style="flex:1; min-width:140px; background:var(--card-bg); border:1px solid var(--border-color); border-left:3px dashed var(--text-tertiary); border-radius:2px; padding:0.55rem 0.75rem; opacity:0.55;">
                     <div style="font-size:0.65rem; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:0.15rem;">Control specificity</div>
                     <div style="font-size:0.85rem; font-weight:600; color:var(--text-tertiary);">No SM data</div>
                     <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">Run ScrumMaster stage (full_moe)</div>
@@ -14841,7 +14841,7 @@ class Dashboard {
                         `${p.adrAlignPct}% of high-priority items reference ADR-mandated controls`,
                         'Plan items that ignore ADR-mandated controls may conflict with architecture decisions already made.',
                         '✅ ADR alignment — evidence', adrAlignEv)
-                    : `<div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-left:3px dashed var(--text-tertiary); border-radius:6px; padding:0.55rem 0.75rem; opacity:0.55;">
+                    : `<div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid var(--border-color); border-left:3px dashed var(--text-tertiary); border-radius:2px; padding:0.55rem 0.75rem; opacity:0.55;">
                         <div style="font-size:0.65rem; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:0.15rem;">ADR alignment</div>
                         <div style="font-size:0.85rem; font-weight:600; color:var(--text-tertiary);">50%</div>
                         <div style="font-size:0.68rem; color:var(--text-tertiary); margin-top:0.2rem;">No ADR data — neutral</div>
@@ -14868,7 +14868,7 @@ class Dashboard {
                         `${pE.criticalApsAddressed} of ${pE.criticalApsTotal} CRITICAL paths have an explicit plan item`,
                         'An unaddressed CRITICAL path means the analysis found a threat but the plan ignores it.',
                         '✅ AP plan closure — evidence', apClosureEv)
-                    : `<div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid #16a34a66; border-left:3px solid #16a34a; border-radius:6px; padding:0.55rem 0.75rem;">
+                    : `<div style="flex:1; min-width:130px; background:var(--card-bg); border:1px solid #16a34a66; border-left:3px solid #16a34a; border-radius:2px; padding:0.55rem 0.75rem;">
                         <div style="font-size:0.65rem; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:0.15rem;">AP plan closure</div>
                         <div style="font-size:1.15rem; font-weight:800; color:#16a34a;">N/A</div>
                         <div style="font-size:0.68rem; color:var(--text-secondary); margin-top:0.2rem;">No CRITICAL paths — full marks</div>
@@ -14876,7 +14876,7 @@ class Dashboard {
             })(),
         ].join('');
         const planEvidence = pE.adrs.length ? `
-            <details style="margin-top:0.5rem; border:1px solid var(--border-color); border-radius:6px;">
+            <details style="margin-top:0.5rem; border:1px solid var(--border-color); border-radius:2px;">
                 <summary style="padding:0.4rem 0.7rem; cursor:pointer; font-size:0.75rem; color:var(--text-secondary); user-select:none;">▸ ADR reference (structural completeness scored in Risk-Defensible)</summary>
                 <div style="padding:0.5rem 0.8rem; max-height:220px; overflow-y:auto;">
                     ${pE.adrs.map((a, i) => {
@@ -14905,7 +14905,7 @@ class Dashboard {
 
         // ── Executive header ──────────────────────────────────────────────────
         const overallHeader = `
-        <div style="margin-bottom:1rem; background:var(--card-bg); border:1px solid ${overallBand.color}44; border-radius:10px; overflow:hidden;">
+        <div style="margin-bottom:1rem; background:var(--card-bg); border:1px solid ${overallBand.color}44; border-radius:2px; overflow:hidden;">
             <div style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; background:${overallBand.color}14; border-bottom:1px solid ${overallBand.color}33;">
                 <div style="display:flex; align-items:baseline; gap:0.5rem;">
                     <span style="font-size:2rem; font-weight:800; color:${overallBand.color}; line-height:1;">${overall}</span>
@@ -14939,7 +14939,7 @@ class Dashboard {
 
         // ── Philosophy strip ──────────────────────────────────────────────────
         const philosophy = `
-        <details style="margin-bottom:1rem; border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+        <details style="margin-bottom:1rem; border:1px solid var(--border-color); border-radius:2px; overflow:hidden;">
             <summary style="padding:0.55rem 0.85rem; background:var(--nav-hover-bg); cursor:pointer; font-size:0.78rem; font-weight:600; color:var(--text-secondary); list-style:none; user-select:none;">
                 ℹ What is TATB and why does it exist?
             </summary>
@@ -14959,7 +14959,7 @@ class Dashboard {
 
         // ── Cross-links ───────────────────────────────────────────────────────
         const links = `
-        <div style="margin-top:1rem; padding:0.6rem 0.9rem; background:var(--nav-hover-bg); border-radius:8px; border:1px solid var(--border-color);">
+        <div style="margin-top:1rem; padding:0.6rem 0.9rem; background:var(--nav-hover-bg); border-radius:2px; border:1px solid var(--border-color);">
             <div style="font-size:0.7rem; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.35rem;">Where else to look</div>
             <div style="display:flex; flex-wrap:wrap; gap:0.5rem; font-size:0.75rem;">
                 <a onclick="window.dashboard.switchTab('insights'); return false;" href="#" style="padding:0.25rem 0.6rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:var(--text-color); text-decoration:none;">📊 Insights → outcome trends, gate drift, systemic gaps</a>
@@ -15060,7 +15060,7 @@ class Dashboard {
             : `<span style="color:#94a3b8; font-size:0.78rem;">No labels for <strong>${_esc(archName)}</strong> — run <code>/tatb-corpus --label</code> to generate</span>`;
 
         return `
-        <div style="margin-top:1rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+        <div style="margin-top:1rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:2px; overflow:hidden;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:0.6rem 1rem; background:var(--nav-hover-bg); border-bottom:1px solid var(--border-color);">
                 <span style="font-size:0.85rem; font-weight:600;">📊 Labelled-Corpus Regression</span>
                 <div style="display:flex; align-items:center; gap:0.75rem;">
@@ -15119,7 +15119,7 @@ class Dashboard {
         }
 
         // Replace the whole panel with the full regression table
-        const panel = container.closest('div[style*="border-radius:8px"]');
+        const panel = container.closest('div[style*="border-radius:2px"]');
         if (panel) panel.outerHTML = this._renderCorpusRegression(corpusRows);
     }
 
@@ -15281,9 +15281,9 @@ class Dashboard {
                     <div style="font-size:1.2rem;font-weight:800;color:var(--text-color);">${nArchs}</div>
                 </div>
             </div>
-            ${avgRecall < 80 ? `<div style="padding:0.5rem 0.75rem;background:#ca8a0418;border:1px solid #ca8a0444;border-radius:6px;font-size:0.75rem;color:#ca8a04;margin-bottom:0.75rem;">
+            ${avgRecall < 80 ? `<div style="padding:0.5rem 0.75rem;background:#ca8a0418;border:1px solid #ca8a0444;border-radius:2px;font-size:0.75rem;color:#ca8a04;margin-bottom:0.75rem;">
                 ⚠ Recall ${avgRecall}% is below the 80% target. Apply HIGH-priority fixes in <code>per_node_ttp_mapper.py</code> then re-run regression to verify lift.
-            </div>` : `<div style="padding:0.5rem 0.75rem;background:#16a34a18;border:1px solid #16a34a44;border-radius:6px;font-size:0.75rem;color:#16a34a;margin-bottom:0.75rem;">
+            </div>` : `<div style="padding:0.5rem 0.75rem;background:#16a34a18;border:1px solid #16a34a44;border-radius:2px;font-size:0.75rem;color:#16a34a;margin-bottom:0.75rem;">
                 ✓ Recall ${avgRecall}% meets target. Focus on precision to reduce false positives.
             </div>`}`;
 
@@ -15358,7 +15358,7 @@ class Dashboard {
                 <td style="padding:0.3rem 0.5rem;font-size:0.7rem;color:var(--text-tertiary);">${(r.missed||[]).length?(r.missed.slice(0,5).join(', ')+((r.missed.length>5)?` +${r.missed.length-5}`:'')):'—'}</td>
             </tr>`).join('');
         const detailHtml = `
-            <details style="margin-top:0.5rem;border:1px solid var(--border-color);border-radius:6px;">
+            <details style="margin-top:0.5rem;border:1px solid var(--border-color);border-radius:2px;">
                 <summary style="padding:0.4rem 0.7rem;cursor:pointer;font-size:0.75rem;color:var(--text-secondary);user-select:none;">▸ Per-architecture detail (${rows.length} archs)</summary>
                 <div style="overflow-x:auto;">
                     <table style="width:100%;border-collapse:collapse;min-width:480px;">
@@ -15382,7 +15382,7 @@ class Dashboard {
             </details>`;
 
         return `
-        <details style="margin-top:1rem;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;">
+        <details style="margin-top:1rem;border:1px solid var(--border-color);border-radius:2px;overflow:hidden;">
             <summary style="padding:0.6rem 1rem;background:var(--nav-hover-bg);cursor:pointer;font-size:0.82rem;font-weight:600;color:var(--text-secondary);list-style:none;user-select:none;display:flex;align-items:center;gap:0.5rem;">
                 📐 Labelled-Corpus Regression
                 <span style="font-size:0.7rem;font-weight:400;color:var(--text-tertiary);">${nArchs} labelled · Recall ${avgRecall}% · Precision ${avgPrecision}%</span>
@@ -15473,7 +15473,7 @@ class Dashboard {
             `<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;">
                 <span style="font-size:1.125rem;">${icon}</span>
                 <h4 style="margin:0; color:var(--text-color); font-size:0.9375rem;">${label}</h4>
-                ${badge ? `<span style="font-size:0.75rem; color:${badgeColor || 'var(--text-tertiary)'}; padding:0.125rem 0.5rem; background:${badgeColor ? badgeColor + '18' : 'var(--nav-hover-bg)'}; border-radius:10px; ${badgeColor ? 'border:1px solid ' + badgeColor + '44;' : ''}">${badge}</span>` : ''}
+                ${badge ? `<span style="font-size:0.75rem; color:${badgeColor || 'var(--text-tertiary)'}; padding:0.125rem 0.5rem; background:${badgeColor ? badgeColor + '18' : 'var(--nav-hover-bg)'}; border-radius:2px; ${badgeColor ? 'border:1px solid ' + badgeColor + '44;' : ''}">${badge}</span>` : ''}
             </div>`;
 
         listContainer.innerHTML = `
@@ -15594,7 +15594,7 @@ class Dashboard {
             if (!area) return;
             area.innerHTML = `
                 <div style="margin-bottom:0.5rem; font-size:0.8125rem; color:var(--text-secondary);">${(jsonStr.length / 1024).toFixed(1)} KB${isLarge ? ' — large file, rendering…' : ''}</div>
-                <div id="streaming-container" style="padding:1rem; background:var(--code-bg); border-radius:8px; border:1px solid var(--border-color); overflow-x:auto; max-height:70vh; overflow-y:auto;"></div>
+                <div id="streaming-container" style="padding:1rem; background:var(--code-bg); border-radius:2px; border:1px solid var(--border-color); overflow-x:auto; max-height:70vh; overflow-y:auto;"></div>
             `;
             const renderer = new StreamingRenderer('streaming-container');
             if (isLarge) {
@@ -15628,7 +15628,7 @@ class Dashboard {
             <div id="streaming-container" style="
                 padding: 1rem;
                 background: var(--code-bg);
-                border-radius: 8px;
+                border-radius:2px;
                 border: 1px solid var(--border-color);
                 overflow-x: auto;
                 max-height: 70vh;
@@ -15915,8 +15915,8 @@ class Dashboard {
             `<div style="margin-top:0.45rem; display:flex; flex-wrap:wrap; gap:0.3rem; font-size:0.7rem;">` +
             `<span style="padding:1px 6px; border-radius:3px; background:#4da6ff14; border:1px solid #4da6ff33; color:#4da6ff;">⬡ Accuracy: ${acc}</span>` +
             `<span style="padding:1px 6px; border-radius:3px; background:#0d9f6e14; border:1px solid #0d9f6e33; color:#0d9f6e;">◈ Relevance: ${rel}</span>` +
-            `<span style="padding:1px 6px; border-radius:3px; background:#f59e0b14; border:1px solid #f59e0b33; color:#f59e0b;">⚡ Sensitivity: ${sen}</span>` +
-            `<span style="padding:1px 6px; border-radius:3px; background:#94a3b814; border:1px solid #94a3b833; color:#94a3b8;">⏱ Perf: ${perf}</span>` +
+            `<span style="padding:1px 6px; border-radius:3px; background:#f59e0b14; border:1px solid #f59e0b33; color:var(--warning-color);">⚡ Sensitivity: ${sen}</span>` +
+            `<span style="padding:1px 6px; border-radius:3px; background:#94a3b814; border:1px solid #94a3b833; color:var(--text-tertiary);">⏱ Perf: ${perf}</span>` +
             `</div>`;
 
         // ── Field definitions ─────────────────────────────────────────────────
@@ -16557,10 +16557,10 @@ class Dashboard {
 
         // ── Warning banner ────────────────────────────────────────────────────
         const warningBanner = `
-            <div style="display:flex; gap:0.9rem; align-items:flex-start; padding:1rem 1.25rem; background:#f59e0b14; border:1px solid #f59e0b44; border-radius:10px; margin-bottom:1.25rem;">
+            <div style="display:flex; gap:0.9rem; align-items:flex-start; padding:1rem 1.25rem; background:#f59e0b14; border:1px solid #f59e0b44; border-radius:2px; margin-bottom:1.25rem;">
                 <span style="font-size:1.4rem; flex-shrink:0; line-height:1.2;">⚠️</span>
                 <div style="font-size:0.84rem; color:var(--text-color); line-height:1.65;">
-                    <strong style="color:#f59e0b;">Use defaults unless you have a specific reason to change them.</strong><br>
+                    <strong style="color:var(--warning-color);">Use defaults unless you have a specific reason to change them.</strong><br>
                     These settings affect how threats are scored, how confidence is calculated, and how the expert panel decides what to flag.
                     Wrong values can cause the engine to under-report risks, inflate confidence, or produce inconsistent results.<br>
                     <span style="color:var(--text-secondary); font-size:0.8rem;">
@@ -16586,7 +16586,7 @@ class Dashboard {
         const _subToggle = (id, title, subtitle, bodyHtml, defaultOpen) => {
             const lsKey = 'cfg_open_' + id;
             const open  = localStorage.getItem(lsKey) !== null ? localStorage.getItem(lsKey) === 'true' : defaultOpen;
-            return `<div style="border:1px solid var(--border-color); border-radius:8px; overflow:hidden; margin-bottom:0.75rem;">
+            return `<div style="border:1px solid var(--border-color); border-radius:2px; overflow:hidden; margin-bottom:0.75rem;">
                 <div style="display:flex; align-items:center; justify-content:space-between; padding:0.6rem 0.875rem; cursor:pointer; user-select:none; background:var(--nav-hover-bg);"
                      onclick="(function(el){var b=document.getElementById('${id}');var open=b.style.display!=='none';b.style.display=open?'none':'block';el.querySelector('.cfg-sub-chev').textContent=open?'▶':'▼';localStorage.setItem('${lsKey}',String(!open));})(this)">
                     <div>
@@ -16619,11 +16619,11 @@ class Dashboard {
                 <tr style="border-bottom:1px solid var(--border-color);">
                     <td style="padding:0.4rem 0; color:var(--text-secondary); vertical-align:top;">
                         AWS Bedrock API Key
-                        <div style="font-size:0.7rem; color:#64748b; margin-top:0.15rem;">${notes.AWS_BEDROCK_API_KEY || ''}</div>
+                        <div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.15rem;">${notes.AWS_BEDROCK_API_KEY || ''}</div>
                     </td>
                     <td>
                         ${flagHtml(creds.AWS_BEDROCK_API_KEY)}
-                        ${creds.AWS_BEDROCK_API_KEY === 'set' ? `<div style="font-size:0.7rem; color:#64748b; margin-top:0.15rem;">${notes.LLM_FALLBACK_PROVIDERS || ''}</div>` : ''}
+                        ${creds.AWS_BEDROCK_API_KEY === 'set' ? `<div style="font-size:0.7rem; color:var(--text-tertiary); margin-top:0.15rem;">${notes.LLM_FALLBACK_PROVIDERS || ''}</div>` : ''}
                     </td>
                 </tr>
                 <tr style="border-bottom:1px solid var(--border-color);">
@@ -16643,7 +16643,7 @@ class Dashboard {
         // ── Sub-section B: Per-agent model routing (editable) ─────────────────
         const agentSwarm = data.agent_models || {};
         const envDefault = pc.provider_chain ? `env default (${pc.provider_chain.split('→')[0].trim()})` : 'env default';
-        const inp = `width:100%; padding:0.35rem 0.55rem; border:1px solid var(--border-color); border-radius:5px; background:#1e293b; color:#e2e8f0; font-size:0.8rem; box-sizing:border-box;`;
+        const inp = `width:100%; padding:0.35rem 0.55rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:#e2e8f0; font-size:0.8rem; box-sizing:border-box;`;
         const agentDefs = [
             { key:'architect',        icon:'🏛️', label:'Architect',       layer:'2A', desc:'Validates threat model design quality and structural completeness.' },
             { key:'tester',           icon:'🧪', label:'Tester',           layer:'2B', desc:'Validates MITRE technique mappings and internal consistency.' },
@@ -16656,7 +16656,7 @@ class Dashboard {
             { key:'threat_analyst',   icon:'🔍', label:'Threat Analyst',   layer:'TA', desc:'Deterministic RAPIDS engine — source of truth for all critics.' },
         ];
         const agentRoutingBody = `
-            <div style="font-size:0.77rem; color:var(--text-tertiary); margin-bottom:0.875rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:6px; border:1px solid var(--border-color);">
+            <div style="font-size:0.77rem; color:var(--text-tertiary); margin-bottom:0.875rem; padding:0.5rem 0.75rem; background:var(--nav-hover-bg); border-radius:2px; border:1px solid var(--border-color);">
                 Leave <strong>Primary model</strong> blank to use the global default from <code>.env</code>.
                 The <strong>Fallback chain</strong> is tried in order when the primary fails — any fallback event is flagged as a pipeline warning in the run output.
                 Model strings must match the provider prefix: <code>bedrock/…</code>, <code>openrouter/…</code>, etc.
@@ -16667,8 +16667,8 @@ class Dashboard {
                 const modelVal    = cfg.model || '';
                 const fallbackVal = Array.isArray(cfg.fallbacks) ? cfg.fallbacks.join(', ') : (cfg.fallbacks || '');
                 const badge = modelVal
-                    ? `<span style="font-size:0.62rem; padding:1px 6px; background:#0d9f6e18; color:#0d9f6e; border:1px solid #0d9f6e44; border-radius:8px;">custom</span>`
-                    : `<span style="font-size:0.62rem; padding:1px 6px; background:var(--card-bg); color:var(--text-tertiary); border:1px solid var(--border-color); border-radius:8px;">${envDefault}</span>`;
+                    ? `<span style="font-size:0.62rem; padding:1px 6px; background:#0d9f6e18; color:#0d9f6e; border:1px solid #0d9f6e44; border-radius:2px;">custom</span>`
+                    : `<span style="font-size:0.62rem; padding:1px 6px; background:var(--card-bg); color:var(--text-tertiary); border:1px solid var(--border-color); border-radius:2px;">${envDefault}</span>`;
                 return `<div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:7px; overflow:hidden;">
                     <div style="display:flex; align-items:center; gap:0.5rem; padding:0.45rem 0.75rem; background:var(--nav-hover-bg); border-bottom:1px solid var(--border-color);">
                         <span style="font-size:0.85rem;">${a.icon}</span>
@@ -16735,7 +16735,7 @@ class Dashboard {
 
         // ── Quick Setup card (only shown when filter='quick') ─────────────────
         const qSec = data.moe || {}, qEng = data.engine || {}, qSys = data.system || {}, qSC = data.story_caster || {};
-        const qSelStyle = `padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer; width:100%; box-sizing:border-box; color-scheme:dark;`;
+        const qSelStyle = `padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:#e2e8f0; font-size:0.84rem; cursor:pointer; width:100%; box-sizing:border-box; color-scheme:dark;`;
         const qRow = (label, hint, inputHtml) => `
             <div style="padding:0.65rem 1.1rem; border-bottom:1px solid var(--border-color);">
                 <div style="display:flex; align-items:baseline; justify-content:space-between; gap:1.25rem; flex-wrap:wrap;">
@@ -16889,7 +16889,7 @@ class Dashboard {
                 }
             };
 
-            const inpStyle = `width:100%; padding:0.38rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer; box-sizing:border-box; color-scheme:dark;`;
+            const inpStyle = `width:100%; padding:0.38rem 0.6rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:#e2e8f0; font-size:0.84rem; cursor:pointer; box-sizing:border-box; color-scheme:dark;`;
 
             const mkPatRow = (f, sectionData) => {
                 const currentVal = sectionData[f.field] !== undefined ? String(sectionData[f.field]) : '';
@@ -16915,10 +16915,10 @@ class Dashboard {
                 const isActive = p.status === 'active';
                 const badgeHtml = isActive
                     ? `<span style="padding:1px 6px; border-radius:3px; font-size:0.68rem; font-weight:700; background:#0d9f6e18; border:1px solid #0d9f6e44; color:#0d9f6e;">✓ Active</span>`
-                    : `<span style="padding:1px 6px; border-radius:3px; font-size:0.68rem; font-weight:700; background:#64748b14; border:1px solid #64748b33; color:#64748b;">Coming soon</span>`;
+                    : `<span style="padding:1px 6px; border-radius:3px; font-size:0.68rem; font-weight:700; background:#64748b14; border:1px solid #64748b33; color:var(--text-tertiary);">Coming soon</span>`;
                 const statusDot = isActive
                     ? `<span style="display:inline-flex; align-items:center; gap:0.3rem; font-size:0.73rem; color:#0d9f6e;"><span style="width:7px;height:7px;border-radius:50%;background:#0d9f6e;flex-shrink:0;"></span>Auto-detected</span>`
-                    : `<span style="display:inline-flex; align-items:center; gap:0.3rem; font-size:0.73rem; color:#64748b;"><span style="width:7px;height:7px;border-radius:50%;background:#334155;border:1px solid #64748b;flex-shrink:0;"></span>Not yet available</span>`;
+                    : `<span style="display:inline-flex; align-items:center; gap:0.3rem; font-size:0.73rem; color:var(--text-tertiary);"><span style="width:7px;height:7px;border-radius:50%;background:#334155;border:1px solid #64748b;flex-shrink:0;"></span>Not yet available</span>`;
 
                 const patCfg = patternConfigs[pid];
                 let settingsHtml = '';
@@ -16950,8 +16950,8 @@ class Dashboard {
                                 ${statusDot}
                             </div>
                             <div style="color:var(--text-secondary); font-size:0.78rem; margin-top:0.25rem; line-height:1.5;">${p.description}</div>
-                            ${p.arch_types && p.arch_types.length ? `<div style="margin-top:0.3rem; display:flex; flex-wrap:wrap; gap:0.25rem;">${p.arch_types.map(t => `<span style="padding:1px 5px; border-radius:3px; font-size:0.68rem; background:#1e293b; border:1px solid #334155; color:#94a3b8;">${t}</span>`).join('')}</div>` : ''}
-                            ${p.requires && p.requires.length ? `<div style="font-size:0.71rem; color:#64748b; margin-top:0.2rem;">Requires: ${p.requires.join(' · ')}</div>` : ''}
+                            ${p.arch_types && p.arch_types.length ? `<div style="margin-top:0.3rem; display:flex; flex-wrap:wrap; gap:0.25rem;">${p.arch_types.map(t => `<span style="padding:1px 5px; border-radius:3px; font-size:0.68rem; background:var(--card-bg); border:1px solid #334155; color:var(--text-tertiary);">${t}</span>`).join('')}</div>` : ''}
+                            ${p.requires && p.requires.length ? `<div style="font-size:0.71rem; color:var(--text-tertiary); margin-top:0.2rem;">Requires: ${p.requires.join(' · ')}</div>` : ''}
                         </div>
                     </div>
                     ${settingsHtml}
@@ -17055,7 +17055,7 @@ class Dashboard {
                     <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.75rem;">
                         <label style="font-size:0.84rem; font-weight:600; color:var(--text-color);">Enable EventBroker</label>
                         <select data-section="event_broker" data-field="enabled" data-vtype="select"
-                                style="padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer;">
+                                style="padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:#e2e8f0; font-size:0.84rem; cursor:pointer;">
                             <option value="false" ${!ebEnabled ? 'selected' : ''}>Off (default — all sinks no-op)</option>
                             <option value="true"  ${ebEnabled  ? 'selected' : ''}>On — emit events to configured sinks</option>
                         </select>
@@ -17063,19 +17063,19 @@ class Dashboard {
                     <div style="display:flex; align-items:center; gap:1rem; margin-bottom:1rem;">
                         <label style="font-size:0.84rem; font-weight:600; color:var(--text-color);">Verbosity</label>
                         <select data-section="event_broker" data-field="verbosity" data-vtype="select"
-                                style="padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer;">
+                                style="padding:0.35rem 0.6rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:#e2e8f0; font-size:0.84rem; cursor:pointer;">
                             <option value="minimal"  ${ebVerbosity==='minimal'  ? 'selected' : ''}>minimal — governance + AIVSS events only</option>
                             <option value="standard" ${ebVerbosity==='standard' ? 'selected' : ''}>standard — + stage traces (recommended)</option>
                             <option value="debug"    ${ebVerbosity==='debug'    ? 'selected' : ''}>debug — + critic-level traces</option>
                         </select>
                     </div>
-                    <div style="font-size:0.8rem; color:var(--text-secondary); background:var(--sidebar-bg); border:1px solid var(--border-color); border-radius:6px; padding:0.65rem 0.85rem; margin-bottom:0.75rem;">
+                    <div style="font-size:0.8rem; color:var(--text-secondary); background:var(--sidebar-bg); border:1px solid var(--border-color); border-radius:2px; padding:0.65rem 0.85rem; margin-bottom:0.75rem;">
                         <strong>Sinks</strong> are configured in <code>policies/agent_governance.yaml → event_broker.sinks</code>.
                         Enable/disable each sink (SIEM · Langfuse · Webhook) and assign event types there.
                         Use the <strong>🔭 Traces</strong> tab to view live connectivity status and open the Langfuse UI.
                     </div>
                     <button onclick="window.dashboard && window.dashboard.switchTab('traces')"
-                            style="padding:0.4rem 1rem; border:1px solid #4da6ff; border-radius:6px; background:transparent; color:#4da6ff; font-size:0.83rem; cursor:pointer;">
+                            style="padding:0.4rem 1rem; border:1px solid #4da6ff; border-radius:2px; background:transparent; color:#4da6ff; font-size:0.83rem; cursor:pointer;">
                         🔭 Open Traces tab →
                     </button>
                 </div>
@@ -17115,7 +17115,7 @@ class Dashboard {
     _renderConfigSection(sectionDef, data) {
         const cs = `color:var(--text-secondary); font-size:0.78rem;`;
         const sectionId = 'cfg-section-body-' + sectionDef.title.replace(/\W+/g,'').toLowerCase();
-        const inpStyle = `width:100%; padding:0.38rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; background:#1e293b; color:#e2e8f0; font-size:0.84rem; cursor:pointer; box-sizing:border-box; color-scheme:dark;`;
+        const inpStyle = `width:100%; padding:0.38rem 0.6rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:#e2e8f0; font-size:0.84rem; cursor:pointer; box-sizing:border-box; color-scheme:dark;`;
 
         // Custom renderer — bypasses the flat field table entirely
         if (sectionDef.renderFn) {
@@ -17179,7 +17179,7 @@ class Dashboard {
                 // int / float — show a free input with recommended cap warning
                 const overRec = f.recMax !== undefined && parseFloat(currentVal) > f.recMax;
                 const recBadge = overRec
-                    ? `<div style="margin-top:0.25rem; font-size:0.7rem; color:#f59e0b;">⚠ Exceeds recommended max (${f.recMax})</div>`
+                    ? `<div style="margin-top:0.25rem; font-size:0.7rem; color:var(--warning-color);">⚠ Exceeds recommended max (${f.recMax})</div>`
                     : '';
                 inputHtml = `<input type="number" data-section="${f.section}" data-field="${f.field}" data-vtype="${f.vtype}"
                     value="${currentVal}" min="${f.min}" max="${f.max}" step="${f.step}"

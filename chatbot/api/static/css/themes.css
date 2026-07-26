@@ -30,6 +30,19 @@ body.dark-theme {
     --severity-medium:   #cc9900;
     --severity-low:      #32cd32;
 
+    /* IPDR categorical encoding (Identity/Protection/Detection/Response + gate flows) */
+    --ipdr-identity:   #7c6fff;
+    --ipdr-protection: #32cd32;
+    --ipdr-detection:  #38b2d8;
+    --ipdr-response:   #ff8c00;
+    --gate-ingress:    #7c6fff;
+    --gate-internal:   #38b2d8;
+    --gate-egress:     #ff8c00;
+
+    /* Framework badge colours (ATLAS/ARC = purple family; anti-pattern = muted violet) */
+    --atlas-arc:       #8b7cf8;
+    --anti-pattern:    #9a87e8;
+
     /* Keep secondary/warning for existing JS that references them */
     --secondary-color:   #4da6ff;
     --warning-color:     #cc9900;
@@ -77,6 +90,17 @@ body.light-theme {
     --severity-high:     #c85800;
     --severity-medium:   #8a6200;
     --severity-low:      #1a7a1a;
+
+    --ipdr-identity:   #5a52d5;
+    --ipdr-protection: #1a7a1a;
+    --ipdr-detection:  #0077a8;
+    --ipdr-response:   #c85800;
+    --gate-ingress:    #5a52d5;
+    --gate-internal:   #0077a8;
+    --gate-egress:     #c85800;
+
+    --atlas-arc:       #6b58d6;
+    --anti-pattern:    #7a65c4;
 
     --secondary-color:   #0055b3;
     --warning-color:     #8a6200;
