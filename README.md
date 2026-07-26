@@ -155,6 +155,7 @@ The full build story is on Medium — eleven parts covering the pipeline, cloud 
 | 10 | [When the Benchmark Finds Its Own Blind Spots](https://medium.com/@breadtan/when-the-benchmark-finds-its-own-blind-spots-0d6461a5406b) | 26-arch corpus gauntlet — engine gaps, T1083/T1018 mitigation holes, and what a truthful TTP-Accurate score really means |
 | 11 | [The Honest Harness: Learning, Unlearning, Relearning](https://medium.com/@breadtan/the-honest-harness-learning-unlearning-relearning-ffeec3e0166f) | Skill machine, UNSURE triage, AIVSS governing the critics, EventBroker audit trail, and the staged autonomy arc |
 | 12 | [The Graph That Ate Its Own Architecture](https://medium.com/@breadtan/the-graph-that-ate-its-own-architecture-0186760253fe) | Replacing RAG with a 50ms deterministic graph; why frequency isn't criticality; canonicalisation as a query-time-only transform |
+| 13 | [The Instrumentation We Forgot to Talk About](https://medium.com/@breadtan/the-instrumentation-we-forgot-to-talk-about-cd44c4a7a893) | EventBroker + 48 unit tests; the test suite as specification; sink isolation; why the instrumentation TA recommends for others is the same instrumentation TA runs on itself |
 
 ---
 
