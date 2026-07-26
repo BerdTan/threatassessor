@@ -4855,7 +4855,16 @@ class Dashboard {
                 html += `<div style="display:flex;align-items:center;gap:0.4rem;"><span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span><span style="font-size:0.82rem;font-weight:700;color:${color};">${ap.id}</span><span style="font-size:0.68rem;color:var(--text-tertiary);">${posLabel}</span><span style="font-size:0.68rem;padding:1px 4px;border-radius:3px;background:${critCol}22;color:${critCol};font-weight:700;">${ap.criticality_tier||''}</span>`;
                 if (controls.length) html += `<span style="font-size:0.65rem;padding:0 4px;background:${color}22;color:${color};border-radius:3px;">${controls.length}</span>`;
                 html += `</div><span class="vg-chev" style="font-size:0.78rem;color:var(--text-tertiary);">${isFocus?'⌄':'›'}</span></div>`;
-                html += `<div id="${secId}" style="display:${isFocus?'block':'none'};padding:0.6rem 0.7rem;">${_renderControlList(controls, ap.id, isBroad)}</div>`;
+                const nodeTechniques = ((ap.per_node_techniques || {})[nodeName] || []);
+                let techHtml = '';
+                if (nodeTechniques.length) {
+                    techHtml = `<div style="margin-bottom:0.55rem;display:flex;flex-wrap:wrap;gap:0.3rem;">`;
+                    nodeTechniques.forEach(tid => {
+                        techHtml += `<span style="padding:0.1rem 0.45rem;background:var(--nav-active-bg);border:1px solid var(--border-color);border-radius:2px;font-size:0.68rem;font-family:'IBM Plex Mono',monospace;color:var(--primary-color);">${tid}</span>`;
+                    });
+                    techHtml += `</div>`;
+                }
+                html += `<div id="${secId}" style="display:${isFocus?'block':'none'};padding:0.6rem 0.7rem;">${techHtml}${_renderControlList(controls, ap.id, isBroad)}</div>`;
                 html += `</div>`;
             });
 
