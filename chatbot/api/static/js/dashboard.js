@@ -3206,8 +3206,10 @@ class Dashboard {
                         });
 
                         smRow.dataset.smRow = n;
+                        smRow.dataset.smDeltaPending = '1';
+                        smRow.dataset.smArch = a.name;
+                        smRow.dataset.smN    = n;
                         chain.appendChild(smRow);
-                        this._loadSmChainDelta(a.name, n);
                     });
                     // Wrap arch row + chain together so both land in the list
                     const wrapper = document.createElement('div');
@@ -3221,33 +3223,80 @@ class Dashboard {
 
             list.innerHTML = '';
 
-            // Recent section header
+            const INITIAL_SHOW = 5;
+
+            // Helper: flush deferred SM delta fetches for visible items
+            const flushSmDeltas = (container) => {
+                container.querySelectorAll('[data-sm-delta-pending="1"]').forEach(row => {
+                    row.removeAttribute('data-sm-delta-pending');
+                    this._loadSmChainDelta(row.dataset.smArch, +row.dataset.smN);
+                });
+            };
+
+            // Recent section — show first INITIAL_SHOW immediately, rest behind "Load more"
             if (recent.length) {
                 const hdr = document.createElement('div');
-                hdr.style.cssText = 'padding:0.3rem 0.9rem 0.2rem; font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b;';
+                hdr.style.cssText = 'padding:0.3rem 0.9rem 0.2rem; font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-tertiary);';
                 hdr.textContent = 'Recent';
                 list.appendChild(hdr);
-                recent.forEach(a => list.appendChild(makeItem(a, false)));
+
+                const visible = recent.slice(0, INITIAL_SHOW);
+                const hidden  = recent.slice(INITIAL_SHOW);
+
+                visible.forEach(a => {
+                    const item = makeItem(a, false);
+                    list.appendChild(item);
+                    flushSmDeltas(item.nodeType ? item : list.lastElementChild);
+                });
+
+                if (hidden.length) {
+                    const moreBtn = document.createElement('button');
+                    moreBtn.style.cssText = 'width:100%; padding:0.4rem 0.9rem; background:transparent; border:none; border-top:1px solid var(--border-color); font-size:0.75rem; color:var(--text-tertiary); cursor:pointer; text-align:left; transition:color 0.15s;';
+                    moreBtn.textContent = `Show ${hidden.length} more recent`;
+                    moreBtn.onmouseover = () => moreBtn.style.color = 'var(--primary-color)';
+                    moreBtn.onmouseout  = () => moreBtn.style.color = 'var(--text-tertiary)';
+                    moreBtn.addEventListener('click', () => {
+                        moreBtn.remove();
+                        hidden.forEach(a => {
+                            const item = makeItem(a, true);
+                            list.insertBefore(item, olderSep || null);
+                            flushSmDeltas(typeof item.nodeType !== 'undefined' ? item : list.lastElementChild);
+                        });
+                        this._initArchPanelScroll();
+                    });
+                    list.appendChild(moreBtn);
+                }
             }
 
-            // Older section — collapsible, items revealed on scroll
+            // Older section — truly lazy: items built only on expand
+            let olderSep = null;
             if (older.length) {
-                const sep = document.createElement('div');
-                sep.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.45rem 0.9rem; cursor:pointer; border-top:1px solid #4da6ff22; margin-top:0.25rem; font-size:0.72rem; font-weight:700; color:#64748b; user-select:none;';
-                sep.innerHTML = '<span id="older-chevron" style="font-size:0.6rem;">▶</span> Past analysis';
+                olderSep = document.createElement('div');
+                olderSep.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.45rem 0.9rem; cursor:pointer; border-top:1px solid var(--border-color); margin-top:0.25rem; font-size:0.72rem; font-weight:700; color:var(--text-tertiary); user-select:none;';
+                olderSep.innerHTML = '<span id="older-chevron" style="font-size:0.6rem;">▶</span> Older';
 
                 const olderGroup = document.createElement('div');
                 olderGroup.style.display = 'none';
-                older.forEach(a => olderGroup.appendChild(makeItem(a, true)));
+                let olderBuilt = false;
 
-                sep.addEventListener('click', () => {
+                olderSep.addEventListener('click', () => {
                     const open = olderGroup.style.display !== 'none';
                     olderGroup.style.display = open ? 'none' : 'block';
-                    sep.querySelector('#older-chevron').textContent = open ? '▶' : '▼';
-                    if (!open) this._initArchPanelScroll();
+                    olderSep.querySelector('#older-chevron').textContent = open ? '▶' : '▼';
+                    if (!open) {
+                        if (!olderBuilt) {
+                            olderBuilt = true;
+                            older.forEach(a => {
+                                const item = makeItem(a, true);
+                                olderGroup.appendChild(item);
+                                flushSmDeltas(item);
+                            });
+                        }
+                        this._initArchPanelScroll();
+                    }
                 });
 
-                list.appendChild(sep);
+                list.appendChild(olderSep);
                 list.appendChild(olderGroup);
             }
 
