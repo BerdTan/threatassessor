@@ -17537,19 +17537,8 @@ class Dashboard {
         const contentH = maxY - minY + PAD * 2;
         const vbX = minX - PAD, vbY = minY - PAD;
 
-        // Arrowhead markers per rule colour
-        // refX=8 → tip of the 'M0,-4L8,0L0,4' path; the line's x2/y2 is already
-        // pulled back to the node boundary, so refX=8 places the tip exactly there.
-        const defs = svg.append('defs');
-        const markerColors = [...new Set(edges.map(e => e.color))];
-        markerColors.forEach(c => {
-            defs.append('marker')
-                .attr('id', 'kg3-arr-' + c.replace('#',''))
-                .attr('viewBox','0 -4 8 8').attr('refX', 8).attr('refY', 0)
-                .attr('markerWidth', 7).attr('markerHeight', 7).attr('orient','auto')
-              .append('path').attr('d','M0,-4L8,0L0,4').attr('fill', c);
-        });
-
+        // Arrowheads drawn as inline polygons (no defs markers needed —
+        // markers break with CSS transform on parent g in Chrome).
         const g = svg.append('g');
 
         // Zoom + pan: D3 zoom owns all scaling — no viewBox, no compound multiply.
@@ -17562,12 +17551,28 @@ class Dashboard {
 
         // Edges (behind nodes)
         // Compute line endpoint offsets to node boundary
+        // Edge geometry helpers
         const _edgePts = (s, t) => {
             const dx = t.x - s.x, dy = t.y - s.y;
-            const d  = Math.sqrt(dx*dx + dy*dy) || 1;
-            const ux = dx/d, uy = dy/d;
+            const len = Math.sqrt(dx*dx + dy*dy) || 1;
+            const ux = dx/len, uy = dy/len;
             return { x1: s.x + ux*(NODE_R+2), y1: s.y + uy*(NODE_R+2),
-                     x2: t.x - ux*(NODE_R+9), y2: t.y - uy*(NODE_R+9) };
+                     x2: t.x - ux*(NODE_R+2), y2: t.y - uy*(NODE_R+2),
+                     ux, uy };
+        };
+        // Arrowhead as inline polygon — immune to Chrome's url(#id) + CSS transform bug
+        const _arrowPoly = (p, color) => {
+            const AH = 9, AW = 5; // arrowhead length, half-width
+            const tip = { x: p.x2, y: p.y2 };
+            const base = { x: tip.x - p.ux*AH, y: tip.y - p.uy*AH };
+            const lx = -p.uy, ly = p.ux; // perpendicular
+            return g.append('polygon')
+                .attr('points', [
+                    `${tip.x},${tip.y}`,
+                    `${base.x + lx*AW},${base.y + ly*AW}`,
+                    `${base.x - lx*AW},${base.y - ly*AW}`,
+                ].join(' '))
+                .attr('fill', color).attr('opacity', 0.7);
         };
 
         // Store edge elements per ruleId for filter toggling
@@ -17576,13 +17581,15 @@ class Dashboard {
             const s = nodeById[e.from], t = nodeById[e.to];
             if (!s || !t) return;
             const p = _edgePts(s, t);
+            // Line stops short of arrowhead base
+            const AH = 9;
             const el = g.append('line')
-                .attr('x1', p.x1).attr('y1', p.y1).attr('x2', p.x2).attr('y2', p.y2)
-                .attr('stroke', e.color).attr('stroke-width', 2)
-                .attr('stroke-opacity', 0.6)
-                .attr('marker-end', `url(#kg3-arr-${e.color.replace('#','')})`);
+                .attr('x1', p.x1).attr('y1', p.y1)
+                .attr('x2', p.x2 - p.ux*AH).attr('y2', p.y2 - p.uy*AH)
+                .attr('stroke', e.color).attr('stroke-width', 2).attr('stroke-opacity', 0.6);
+            const arrow = _arrowPoly(p, e.color);
             if (!edgeEls[e.ruleId]) edgeEls[e.ruleId] = [];
-            edgeEls[e.ruleId].push({ el, sev: e.sev });
+            edgeEls[e.ruleId].push({ el, arrow, sev: e.sev, edgeData: e });
         });
 
         // Node groups — draggable
@@ -17600,13 +17607,23 @@ class Dashboard {
                     .on('drag', (ev) => {
                         n.x = ev.x; n.y = ev.y;
                         ng.attr('transform', `translate(${n.x},${n.y})`);
+                        const AH = 9;
                         edges.forEach(e => {
                             const s2 = nodeById[e.from], t2 = nodeById[e.to];
                             if (!s2 || !t2) return;
                             const p2 = _edgePts(s2, t2);
-                            (edgeEls[e.ruleId]||[]).forEach(({el: lineEl}) => {
-                                lineEl.attr('x1',p2.x1).attr('y1',p2.y1)
-                                      .attr('x2',p2.x2).attr('y2',p2.y2);
+                            (edgeEls[e.ruleId]||[]).forEach(item => {
+                                if (item.edgeData !== e) return;
+                                item.el.attr('x1',p2.x1).attr('y1',p2.y1)
+                                       .attr('x2',p2.x2-p2.ux*AH).attr('y2',p2.y2-p2.uy*AH);
+                                const tip = {x:p2.x2,y:p2.y2};
+                                const base = {x:tip.x-p2.ux*AH,y:tip.y-p2.uy*AH};
+                                const lx=-p2.uy,ly=p2.ux,AW=5;
+                                item.arrow.attr('points',[
+                                    `${tip.x},${tip.y}`,
+                                    `${base.x+lx*AW},${base.y+ly*AW}`,
+                                    `${base.x-lx*AW},${base.y-ly*AW}`,
+                                ].join(' '));
                             });
                         });
                     }));
@@ -17721,7 +17738,10 @@ class Dashboard {
                 (ruleNodeIds[ruleId]||[]).forEach(nid => {
                     if (nodeEls[nid]) nodeEls[nid].attr('opacity', opacity);
                 });
-                (edgeEls[ruleId]||[]).forEach(({el}) => el.attr('opacity', show ? 0.6 : 0.04));
+                (edgeEls[ruleId]||[]).forEach(({el, arrow}) => {
+                    el.attr('opacity', show ? 0.6 : 0.04);
+                    if (arrow) arrow.attr('opacity', show ? 0.7 : 0.04);
+                });
             });
         };
 
@@ -17776,27 +17796,33 @@ class Dashboard {
         });
 
         // ── Fit SVG to content, resize-aware ──────────────────────────────────
-        // Fit: size SVG to container, seed zoom transform so content fills the view.
-        // No viewBox — D3 zoom owns all scaling so each wheel tick is a predictable step.
-        const _applyFit = () => {
+        // Fit once: size SVG to container and seed zoom so content fills the view.
+        // ResizeObserver only updates SVG dimensions — never resets zoom.transform,
+        // which would cause a feedback loop and re-trigger ResizeObserver.
+        const _initialFit = () => {
             const availW = wrap.clientWidth  || 800;
             const availH = wrap.clientHeight || 500;
             svgEl.setAttribute('width',  availW);
             svgEl.setAttribute('height', availH);
             svgEl.removeAttribute('viewBox');
-            wrap.style.height = availH + 'px';
-            // Fit-to-container: scale so content fills width, centre vertically
-            const k  = Math.min(availW / contentW, availH / contentH) * 0.9;
+            const k  = Math.min(availW / contentW, availH / contentH) * 0.88;
             const tx = (availW - contentW * k) / 2 - vbX * k;
             const ty = (availH - contentH * k) / 2 - vbY * k;
             svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
         };
+        const _onResize = () => {
+            const availW = wrap.clientWidth  || 800;
+            const availH = wrap.clientHeight || 500;
+            svgEl.setAttribute('width',  availW);
+            svgEl.setAttribute('height', availH);
+            // Do NOT reset zoom.transform — let the user's zoom/pan state persist
+        };
 
         requestAnimationFrame(() => {
-            _applyFit();
+            _initialFit();
             if (typeof ResizeObserver !== 'undefined') {
                 if (this._socKgResizeObserver) this._socKgResizeObserver.disconnect();
-                this._socKgResizeObserver = new ResizeObserver(_applyFit);
+                this._socKgResizeObserver = new ResizeObserver(_onResize);
                 this._socKgResizeObserver.observe(wrap);
             }
         });
@@ -17915,6 +17941,7 @@ class Dashboard {
         }
 
         if (d.type === 'action') {
+            const ACTION_COLOR = '#10b981';
             const ACTION_DESC = {
                 audit_log:        'Write a tamper-evident record to the governance audit log. Keeps the pipeline running — low disruption, full evidence trail.',
                 quarantine_trace: 'Hold this analysis run for human review before the output is used in any decision. The result is held, not deleted.',
@@ -17925,16 +17952,17 @@ class Dashboard {
             };
             const acts = m.allActions || (m.actionType ? [{ type: m.actionType, params: m.params }] : []);
             if (acts.length) {
-                html += `<div style="margin-bottom:0.4rem;font-size:0.73rem;font-weight:600;color:var(--text-secondary);">${acts.length} response action${acts.length > 1 ? 's' : ''}:</div>`;
+                html += `<div style="margin-bottom:0.5rem;font-size:0.73rem;font-weight:600;color:var(--text-secondary);">${acts.length} response action${acts.length > 1 ? 's' : ''}:</div>`;
                 acts.forEach(act => {
                     const desc = ACTION_DESC[act.type] || 'Response action triggered by this alert.';
-                    const ac = NODE_COLOR.action;
-                    html += `<div style="margin-bottom:0.5rem;padding:0.45rem 0.65rem;background:var(--code-bg);border-radius:4px;border-left:3px solid ${ac};">
-                        <div style="font-weight:700;font-size:0.78rem;color:${ac};">${act.type}</div>
+                    html += `<div style="margin-bottom:0.5rem;padding:0.45rem 0.65rem;background:var(--code-bg);border-radius:4px;border-left:3px solid ${ACTION_COLOR};">
+                        <div style="font-weight:700;font-size:0.78rem;color:${ACTION_COLOR};">${act.type}</div>
                         <div style="font-size:0.74rem;color:var(--text-secondary);margin-top:0.2rem;line-height:1.5;">${desc}</div>
                         ${act.params ? `<div style="font-family:monospace;font-size:0.7rem;color:var(--text-tertiary);margin-top:0.25rem;">${JSON.stringify(act.params)}</div>` : ''}
                     </div>`;
                 });
+            } else {
+                html += `<div style="font-size:0.78rem;color:var(--text-secondary);">No actions configured for this node.</div>`;
             }
         }
 
