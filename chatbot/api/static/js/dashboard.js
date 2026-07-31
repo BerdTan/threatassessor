@@ -17491,7 +17491,17 @@ class Dashboard {
                 _addNode(actId, 5, ri, _short(primaryAct.type), 'action', actMeta, NODE_COLOR.action, 1.5);
                 nodeData.set(actId, actMeta);
             }
-            nodeMap.get(actId).ruleIds.push(ruleId);
+            const actNode = nodeMap.get(actId);
+            actNode.ruleIds.push(ruleId);
+            // Accumulate all actions from all rules into the shared node's meta
+            const existingMeta = nodeData.get(actId);
+            if (existingMeta) {
+                const existing = existingMeta.meta.allActions || [];
+                const merged = [...existing, ...acts.filter(a => !existing.find(x => x.type === a.type))];
+                existingMeta.meta.allActions = merged;
+                existingMeta.label = merged.length > 1 ? `${merged.length} actions` : merged[0]?.type;
+                actNode.label = _short(existingMeta.label, 12);
+            }
             edges.push({ from:alertId, to:actId, color:rc, ruleId, sev });
         });
 
@@ -17533,14 +17543,16 @@ class Dashboard {
         const contentH = maxY - minY + PAD * 2;
         const vbX = minX - PAD, vbY = minY - PAD;
 
-        // Arrowhead markers per rule colour + neutral
+        // Arrowhead markers per rule colour
+        // refX=8 → tip of the 'M0,-4L8,0L0,4' path; the line's x2/y2 is already
+        // pulled back to the node boundary, so refX=8 places the tip exactly there.
         const defs = svg.append('defs');
-        const markerColors = [...new Set(edges.map(e => e.color)), NODE_COLOR.action];
+        const markerColors = [...new Set(edges.map(e => e.color))];
         markerColors.forEach(c => {
             defs.append('marker')
                 .attr('id', 'kg3-arr-' + c.replace('#',''))
-                .attr('viewBox','0 -4 8 8').attr('refX', NODE_R + 6).attr('refY', 0)
-                .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient','auto')
+                .attr('viewBox','0 -4 8 8').attr('refX', 8).attr('refY', 0)
+                .attr('markerWidth', 7).attr('markerHeight', 7).attr('orient','auto')
               .append('path').attr('d','M0,-4L8,0L0,4').attr('fill', c);
         });
 
@@ -17586,50 +17598,35 @@ class Dashboard {
         });
 
         // Node groups — draggable
+        // Click handled via event delegation on g (avoids D3 drag suppressing click)
         const nodeEls = {};
         const nodeG = g.append('g');
         nodes.forEach(n => {
             const ng = nodeG.append('g')
                 .attr('class', 'kg3-node')
-                .attr('data-id', n.id)
+                .attr('data-nid', n.id)
                 .attr('transform', `translate(${n.x},${n.y})`)
                 .style('cursor','pointer')
                 .call(d3.drag()
                     .on('start', function() { d3.select(this).raise(); })
                     .on('drag', (ev) => {
                         n.x = ev.x; n.y = ev.y;
-                        d3.select(ng.node()).attr('transform', `translate(${n.x},${n.y})`);
-                        // Redraw edges touching this node
-                        edges.forEach(e => {
-                            const s = nodeById[e.from], t = nodeById[e.to];
-                            if (!s || !t || (s.id !== n.id && t.id !== n.id)) return;
-                            const p = _edgePts(s, t);
-                            (edgeEls[e.ruleId] || []).forEach(({el: lineEl}) => {
-                                const ld = lineEl.datum();
-                                if (ld && (ld.from === e.from && ld.to === e.to)) {
-                                    lineEl.attr('x1',p.x1).attr('y1',p.y1).attr('x2',p.x2).attr('y2',p.y2);
-                                }
-                            });
-                        });
-                        // Simpler: just redraw all edges (few nodes)
+                        ng.attr('transform', `translate(${n.x},${n.y})`);
+                        // Redraw all edges (small graph — fast)
                         edges.forEach(e => {
                             const s2 = nodeById[e.from], t2 = nodeById[e.to];
                             if (!s2 || !t2) return;
                             const p2 = _edgePts(s2, t2);
                             (edgeEls[e.ruleId]||[]).forEach(({el: lineEl}) => {
-                                lineEl.attr('x1',p2.x1).attr('y1',p2.y1).attr('x2',p2.x2).attr('y2',p2.y2);
+                                lineEl.attr('x1',p2.x1).attr('y1',p2.y1)
+                                      .attr('x2',p2.x2).attr('y2',p2.y2);
                             });
                         });
-                    }))
-                .on('click', (ev) => {
-                    ev.stopPropagation();
-                    const nd = nodeData.get(n.id);
-                    if (nd) this._socKgShowDetail(nd);
-                });
+                    }));
 
-            // Outer ring for shared/multi-rule action nodes
-            if (n.ruleIds && n.ruleIds.length > 1) {
-                ng.append('circle').attr('r', NODE_R + 5)
+            // Outer dashed ring for action nodes shared by multiple rules
+            if (n.type === 'action' && n.ruleIds && n.ruleIds.length > 1) {
+                ng.append('circle').attr('r', NODE_R + 6)
                     .attr('fill','none').attr('stroke', NODE_COLOR.action)
                     .attr('stroke-width', 1.5).attr('stroke-dasharray','4 3').attr('opacity',0.5);
             }
@@ -17653,20 +17650,31 @@ class Dashboard {
                 .attr('pointer-events','none')
                 .text(n.type.toUpperCase());
 
-            // Badge: AP count on shared action nodes
-            if (n.ruleIds && n.ruleIds.length > 1) {
+            // Badge: show count of rules (for action nodes shared by multiple rules)
+            const badgeCount = n.type === 'action' && n.ruleIds && n.ruleIds.length > 1
+                ? n.ruleIds.length : 0;
+            if (badgeCount > 0) {
                 ng.append('circle').attr('cx', NODE_R+2).attr('cy',-(NODE_R+2))
-                    .attr('r', 7).attr('fill','#1e293b').attr('stroke','#475569').attr('stroke-width',1);
+                    .attr('r', 8).attr('fill','#1e293b').attr('stroke','#475569').attr('stroke-width',1);
                 ng.append('text').attr('x', NODE_R+2).attr('y',-(NODE_R+2))
                     .attr('text-anchor','middle').attr('dominant-baseline','central')
                     .attr('font-size','8px').attr('font-weight','700').attr('fill','#94a3b8')
-                    .attr('pointer-events','none').text(n.ruleIds.length);
+                    .attr('pointer-events','none').text(badgeCount + ' rules');
             }
 
             ng.append('title').text(n.label);
             nodeEls[n.id] = ng;
         });
 
+        // Event delegation — click on any .kg3-node group opens detail panel.
+        // Must be on the g container, not per-node, so drag doesn't suppress it.
+        g.on('click', (ev) => {
+            const grpEl = ev.target.closest('[data-nid]');
+            if (!grpEl) { this._socKgClearDetail(); return; }
+            ev.stopPropagation();
+            const nd = nodeData.get(grpEl.dataset.nid);
+            if (nd) this._socKgShowDetail(nd);
+        });
         svg.on('click', () => this._socKgClearDetail());
 
         // ── Severity filter chips → show/hide rule rows ────────────────────────
