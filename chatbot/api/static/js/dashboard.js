@@ -17456,11 +17456,15 @@ class Dashboard {
         const d3 = window.d3;
         if (!d3) return;
 
-        // Use full parent dimensions
-        const wrap = svgEl.parentElement;
-        const W = wrap.clientWidth  || 900;
-        const H = wrap.clientHeight || 600;
+        // Named container — getBoundingClientRect gives correct pixel dimensions
+        // even when flexbox hasn't resolved clientHeight yet
+        const wrap = document.getElementById('soc-kg-graph-wrap') || svgEl.parentElement;
         const R = 28;
+
+        // Measure after layout; SVG is position:absolute so it doesn't affect the rect
+        const rect = wrap.getBoundingClientRect();
+        const W = rect.width  || wrap.offsetWidth  || 900;
+        const H = rect.height || wrap.offsetHeight || 600;
 
         svgEl.setAttribute('width',  W);
         svgEl.setAttribute('height', H);
@@ -17537,25 +17541,24 @@ class Dashboard {
 
         svg.on('click', () => this._socKgClearDetail());
 
-        // Dynamically resize SVG and re-centre simulation whenever the container changes size
+        // Resize handler — uses getBoundingClientRect so it works even when
+        // clientHeight is 0 due to flex not yet having assigned a pixel height
         const applySize = () => {
-            const nW = wrap.clientWidth;
-            const nH = wrap.clientHeight;
+            const r = wrap.getBoundingClientRect();
+            const nW = r.width  || wrap.offsetWidth;
+            const nH = r.height || wrap.offsetHeight;
             if (!nW || !nH) return;
             svgEl.setAttribute('width',  nW);
             svgEl.setAttribute('height', nH);
             sim.force('center', d3.forceCenter(nW / 2, nH / 2));
-            // Only nudge — don't restart from scratch, so nodes keep their positions
-            if (sim.alpha() < 0.05) sim.alpha(0.1).restart();
+            if (sim.alpha() < 0.05) sim.alpha(0.12).restart();
         };
 
-        // One deferred call to catch layout settling after tab switch
+        // Two rAF: first lets the browser finish flex layout, second measures it
         requestAnimationFrame(() => requestAnimationFrame(applySize));
 
-        // Tear down any previous observer on this element before attaching a new one
-        if (this._socKgResizeObserver) {
-            this._socKgResizeObserver.disconnect();
-        }
+        // Disconnect any stale observer before attaching a fresh one
+        if (this._socKgResizeObserver) this._socKgResizeObserver.disconnect();
         if (typeof ResizeObserver !== 'undefined') {
             this._socKgResizeObserver = new ResizeObserver(applySize);
             this._socKgResizeObserver.observe(wrap);
