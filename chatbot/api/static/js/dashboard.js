@@ -17329,15 +17329,9 @@ class Dashboard {
                 return `<span style="color:${c};font-weight:700;">${m.severity || 'Unknown'} severity alert.</span> This is the formal finding that would appear in your SIEM. It carries the evidence trail — which signals fired, which rule matched, which real-world incident it resembles.`;
             },
             action: () => {
-                const actions = {
-                    audit_log:        'Write a tamper-evident record of this finding. Low disruption — keeps the pipeline running while preserving evidence for later review.',
-                    quarantine_trace: 'Flag this analysis run for human review before the output is used in any decision. The result is held, not deleted.',
-                    reduce_budget:    'Cut the token allowance for the critic that spiked. Limits how much compute an AI component can spend on any single subtask.',
-                    forensic_capture: 'Export the full OCSF event stream for this run. Needed when you\'ll want to hand this to a forensics team or feed it into a SIEM for deeper correlation.',
-                    page_soc:         'Send a high-priority alert to the security operations team. Use for Critical findings that need a human within minutes, not hours.',
-                    block_run:        'Hard stop — abort the pipeline. No analysis output is written. Use when the input itself is the attack (adversarial files, injection patterns).',
-                };
-                return actions[d.label] || 'A response action triggered by this alert.';
+                const acts = (d.meta || {}).allActions || [];
+                const count = acts.length || 1;
+                return `${count} response action${count > 1 ? 's' : ''} triggered by this alert. See the list below for what each one does and why.`;
             },
         };
         return (SO_WHAT[type] || (() => ''))();
@@ -17558,11 +17552,13 @@ class Dashboard {
 
         const g = svg.append('g');
 
-        // Zoom + pan on the SVG — transforms the g group, keeps nodes draggable
+        // Zoom + pan: D3 zoom owns all scaling — no viewBox, no compound multiply.
+        // wheelDelta override gives finer steps (~6% per tick instead of D3's default ~25%).
         const zoom = d3.zoom()
-            .scaleExtent([0.3, 4])
+            .scaleExtent([0.2, 5])
+            .wheelDelta(ev => -ev.deltaY * (ev.deltaMode === 1 ? 0.05 : ev.deltaMode ? 1 : 0.002))
             .on('zoom', (ev) => g.attr('transform', ev.transform));
-        svg.call(zoom).on('dblclick.zoom', null); // disable double-click zoom
+        svg.call(zoom).on('dblclick.zoom', null);
 
         // Edges (behind nodes)
         // Compute line endpoint offsets to node boundary
@@ -17780,16 +17776,20 @@ class Dashboard {
         });
 
         // ── Fit SVG to content, resize-aware ──────────────────────────────────
-        // Same pattern as Visualise tab: viewBox set to content bounds,
-        // width = container width, height scales proportionally.
+        // Fit: size SVG to container, seed zoom transform so content fills the view.
+        // No viewBox — D3 zoom owns all scaling so each wheel tick is a predictable step.
         const _applyFit = () => {
-            const availW = wrap.clientWidth || 800;
-            const scale  = availW / contentW;
-            const dispH  = Math.max(contentH * scale, 200);
-            svgEl.setAttribute('viewBox', `${vbX} ${vbY} ${contentW} ${contentH}`);
-            svgEl.setAttribute('width',   availW);
-            svgEl.setAttribute('height',  dispH);
-            wrap.style.height = dispH + 'px';
+            const availW = wrap.clientWidth  || 800;
+            const availH = wrap.clientHeight || 500;
+            svgEl.setAttribute('width',  availW);
+            svgEl.setAttribute('height', availH);
+            svgEl.removeAttribute('viewBox');
+            wrap.style.height = availH + 'px';
+            // Fit-to-container: scale so content fills width, centre vertically
+            const k  = Math.min(availW / contentW, availH / contentH) * 0.9;
+            const tx = (availW - contentW * k) / 2 - vbX * k;
+            const ty = (availH - contentH * k) / 2 - vbY * k;
+            svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
         };
 
         requestAnimationFrame(() => {
