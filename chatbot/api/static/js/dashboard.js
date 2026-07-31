@@ -17380,182 +17380,307 @@ class Dashboard {
         }
         if (emptyEl) emptyEl.style.display = 'none';
 
-        // ── Constants ──────────────────────────────────────────────────────────
-        const COLOR   = { trace:'#6366f1', signal:'#0ea5e9', threshold:'#f59e0b', rule:'#8b5cf6', alert:'#ef4444', action:'#10b981' };
+        // ── Constants ─────────────────────────────────────────────────────────
+        const NODE_COLOR = { trace:'#6366f1', signal:'#0ea5e9', threshold:'#f59e0b', rule:'#8b5cf6', alert:'#ef4444', action:'#10b981' };
         const SEV_ORD = { Critical:4, High:3, Medium:2, Low:1 };
         const SEV_COL = { Critical:'#ef4444', High:'#f97316', Medium:'#f59e0b', Low:'#6b7280' };
-        const SEV_W   = { Critical:4.5, High:3, Medium:2, Low:1.5 };
+        const SEV_W   = { Critical:4, High:3, Medium:2, Low:1.5 };
+        // One colour per rule (AP-chip style) — used for edges and rule-specific nodes
+        const RULE_PAL = ['#3b82f6','#a855f7','#f97316','#14b8a6','#ec4899','#84cc16','#f59e0b','#06b6d4'];
+
+        const COL_LABELS = ['Run','Signal','Condition','Rule','Alert','Action'];
+        const NODE_R  = 22;
+        const COL_W   = 180;   // horizontal gap between column centres
+        const ROW_H   = 90;    // vertical gap between rows in same column
+        const PAD     = 60;    // canvas padding
 
         // Sort detections: highest severity first
         const sorted = [...detections].sort((a,b) =>
             (SEV_ORD[b.severity]||0) - (SEV_ORD[a.severity]||0));
 
-        // Severity filter state — all on by default
-        const severities = [...new Set(sorted.map(f => f.severity))];
-        const active = new Set(severities);
+        const SEV_COL_FOR = f => SEV_COL[f.severity] || '#6b7280';
 
         // Banner
         if (banner) {
             const worst = sorted[0];
-            const sc = SEV_COL[worst.severity] || '#6b7280';
+            const sc = SEV_COL_FOR(worst);
             const ruleNames = sorted.map(f => f.unmapped?.rule_id).join(', ');
             banner.innerHTML = `<span style="font-weight:700;color:${sc};">${worst.severity} — ${ruleNames}</span>
                 <span style="margin-left:0.75rem;color:var(--text-secondary);">${sorted.length} rule${sorted.length>1?'s':''} fired on <strong>${arch}</strong>. Click any node for details.</span>`;
             banner.style.display = 'block';
         }
 
-        // ── Render chain rows ──────────────────────────────────────────────────
-        // One collapsible HTML row per rule, stacked highest severity first.
-        // Each row contains a fixed-proportion SVG chain that fills its width.
-        // No physics, no rAF — width fills automatically via 100% SVG viewBox.
+        // ── Build unified node + edge graph ───────────────────────────────────
+        // Columns: 0=trace(shared), 1=signal, 2=threshold, 3=rule, 4=alert, 5=action
+        // Shared nodes: trace (col 0, one per arch run), action (col 5, shared by same type)
+        // Each rule gets its own nodes at cols 1-4; rows stacked highest severity first.
 
-        const CHAIN_TYPES = ['trace','signal','threshold','rule','alert','action'];
-        const CHAIN_LABELS = { trace:'Run', signal:'Signal', threshold:'Condition', rule:'Rule', alert:'Alert', action:'Action' };
-        const R = 28;
-        const CX_STEP = 160;   // column centre spacing in SVG user units
-        const CY = 60;         // centre y of nodes within the SVG
-        const SVG_H = 130;     // fixed pixel height per chain row SVG
-        const N_COLS = CHAIN_TYPES.length;
-        const VB_W = (N_COLS - 1) * CX_STEP + R * 4;  // viewBox width (user units)
-        const VB_H = SVG_H;
+        const nodeMap  = new Map();  // id → node data
+        const edges    = [];
+        const nodeData = new Map();  // id → rich click data (for detail panel)
 
-        const _makeChainSvg = (f, rowId) => {
-            const u   = f.unmapped || {};
-            const ruleId = u.rule_id || '?';
-            const sev    = f.severity || 'Low';
-            const tvs    = u.triggered_values || {};
+        const _short = (s, n=13) => s && s.length > n ? s.slice(0,n-1)+'…' : (s||'');
+
+        // Severity filter state
+        const activeSev = new Set(['Critical','High','Medium','Low']);
+
+        const _addNode = (id, col, row, label, type, meta, ruleColor, sevStroke) => {
+            if (!nodeMap.has(id)) {
+                nodeMap.set(id, { id, col, row, label, type, meta, ruleColor, sevStroke,
+                                  x:0, y:0, ruleIds:[] });
+            }
+            return nodeMap.get(id);
+        };
+
+        // Shared trace node at col 0, row 0
+        const traceId   = `trace:${arch}`;
+        const traceNode = _addNode(traceId, 0, 0, _short(arch), 'trace',
+            { type:'trace', label:arch, meta:{ runId:arch, arch } },
+            NODE_COLOR.trace, 2);
+        nodeData.set(traceId, { type:'trace', label:arch, meta:{ runId:arch, arch } });
+
+        sorted.forEach((f, ri) => {
+            const u       = f.unmapped || {};
+            const ruleId  = u.rule_id || '?';
+            const sev     = f.severity || 'Low';
+            const rc      = RULE_PAL[ri % RULE_PAL.length];
+            const sw      = SEV_W[sev] || 1.5;
+            const tvs     = u.triggered_values || {};
             const sigLabel = u.rule_name ? u.rule_name.replace(/_/g,' ') : ruleId;
-            const actions  = (u.action_detail || (u.actions||[]).map(a=>({type:a})));
+            const acts    = u.action_detail || (u.actions||[]).map(a=>({type:a}));
 
-            // Build chain nodes for this rule (one per column, first action only for simplicity)
-            const chainNodes = [
-                { type:'trace',     label: arch.length>12 ? arch.slice(0,11)+'…' : arch,    meta:{ runId:arch, arch } },
-                { type:'signal',    label: sigLabel.length>12 ? sigLabel.slice(0,11)+'…' : sigLabel, meta:{ fields:tvs, ruleId, fullLabel:sigLabel } },
-                { type:'threshold', label: `${Object.keys(tvs).length} cond`,    meta:{ ruleId, severity:sev, condCount:Object.keys(tvs).length } },
-                { type:'rule',      label: ruleId,                                meta:{ ruleId, severity:sev,
-                    killChain:u.kill_chain_stage||'', incidentRefs:u.incident_refs||[],
-                    owasp:u.owasp||[], atlas:u.atlas_tactic||'', tuningNote:u.tuning_note||'',
-                    playbook_steps:u.playbook_steps||[], _rawFinding: f }, findings:[f] },
-                { type:'alert',     label: sev,                                   meta:{ severity:sev, finding:f.finding } },
-                { type:'action',    label: actions[0]?.type || 'audit_log',       meta:{ params:actions[0]?.params, actionType:actions[0]?.type } },
-            ];
-            if (actions.length > 1) {
-                chainNodes[5].label = `${actions.length} actions`;
-                chainNodes[5].meta.allActions = actions;
+            // Signal (col 1, row ri)
+            const sigId = `signal:${ruleId}`;
+            const sigMeta = { type:'signal', label:sigLabel, meta:{ fields:tvs, ruleId, fullLabel:sigLabel } };
+            _addNode(sigId, 1, ri, _short(sigLabel), 'signal', sigMeta, rc, sw);
+            nodeData.set(sigId, sigMeta);
+            edges.push({ from:traceId, to:sigId, color:rc, ruleId, sev });
+
+            // Threshold (col 2, row ri)
+            const thrId   = `threshold:${ruleId}`;
+            const condCount = Object.keys(tvs).length;
+            const thrMeta = { type:'threshold', label:`${condCount} cond`, meta:{ ruleId, severity:sev, condCount } };
+            _addNode(thrId, 2, ri, `${condCount} cond`, 'threshold', thrMeta, rc, sw);
+            nodeData.set(thrId, thrMeta);
+            edges.push({ from:sigId, to:thrId, color:rc, ruleId, sev });
+
+            // Rule (col 3, row ri)
+            const ruleNodeId = `rule:${ruleId}`;
+            const ruleMeta = { type:'rule', label:ruleId, meta:{ ruleId, severity:sev,
+                killChain:u.kill_chain_stage||'', incidentRefs:u.incident_refs||[],
+                owasp:u.owasp||[], atlas:u.atlas_tactic||'', tuningNote:u.tuning_note||'',
+                playbook_steps:u.playbook_steps||[] }, findings:[f] };
+            _addNode(ruleNodeId, 3, ri, ruleId, 'rule', ruleMeta, rc, sw);
+            nodeData.set(ruleNodeId, ruleMeta);
+            edges.push({ from:thrId, to:ruleNodeId, color:rc, ruleId, sev });
+
+            // Alert (col 4, row ri)
+            const alertId   = `alert:${ruleId}`;
+            const alertMeta = { type:'alert', label:sev, meta:{ severity:sev, finding:f.finding } };
+            _addNode(alertId, 4, ri, sev, 'alert', alertMeta, rc, sw);
+            nodeData.set(alertId, alertMeta);
+            edges.push({ from:ruleNodeId, to:alertId, color:rc, ruleId, sev });
+
+            // Action(s) (col 5) — shared if same type
+            const primaryAct = acts[0] || { type:'audit_log' };
+            const actLabel   = acts.length > 1 ? `${acts.length} actions` : primaryAct.type;
+            const actId      = `action:${primaryAct.type}`;
+            const actMeta    = { type:'action', label:actLabel, meta:{ params:primaryAct.params, actionType:primaryAct.type, allActions:acts } };
+            if (!nodeMap.has(actId)) {
+                // First rule to claim this action: place at its row
+                _addNode(actId, 5, ri, _short(primaryAct.type), 'action', actMeta, NODE_COLOR.action, 1.5);
+                nodeData.set(actId, actMeta);
+            }
+            nodeMap.get(actId).ruleIds.push(ruleId);
+            edges.push({ from:alertId, to:actId, color:rc, ruleId, sev });
+        });
+
+        // Assign x/y coordinates — column × COL_W, row centred within column
+        const byCol = {};
+        nodeMap.forEach(n => { if (!byCol[n.col]) byCol[n.col] = []; byCol[n.col].push(n); });
+        Object.values(byCol).forEach(grp => {
+            const totalH = (grp.length - 1) * ROW_H;
+            grp.forEach((n, ri) => {
+                n.x = n.col * COL_W;
+                n.y = ri * ROW_H - totalH / 2;
+            });
+        });
+
+        const nodes   = Array.from(nodeMap.values());
+        const nodeById = {};
+        nodes.forEach(n => { nodeById[n.id] = n; });
+
+        // ── D3 draw ────────────────────────────────────────────────────────────
+        const d3 = window.d3;
+        if (!d3) return;
+
+        const svgEl  = document.getElementById('soc-kg-svg');
+        const wrap   = document.getElementById('soc-kg-svg-wrap');
+        if (!svgEl || !wrap) return;
+
+        const svg = d3.select(svgEl);
+        svg.selectAll('*').remove();
+
+        // Compute content bounds
+        let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+        nodes.forEach(n => {
+            minX = Math.min(minX, n.x - NODE_R - 4);
+            minY = Math.min(minY, n.y - NODE_R - 20);  // -20 for col header
+            maxX = Math.max(maxX, n.x + NODE_R + 4);
+            maxY = Math.max(maxY, n.y + NODE_R + 18);  // +18 for label
+        });
+        const contentW = maxX - minX + PAD * 2;
+        const contentH = maxY - minY + PAD * 2;
+        const vbX = minX - PAD, vbY = minY - PAD;
+
+        // Arrowhead markers per rule colour + neutral
+        const defs = svg.append('defs');
+        const markerColors = [...new Set(edges.map(e => e.color)), NODE_COLOR.action];
+        markerColors.forEach(c => {
+            defs.append('marker')
+                .attr('id', 'kg3-arr-' + c.replace('#',''))
+                .attr('viewBox','0 -4 8 8').attr('refX', NODE_R + 6).attr('refY', 0)
+                .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient','auto')
+              .append('path').attr('d','M0,-4L8,0L0,4').attr('fill', c);
+        });
+
+        const g = svg.append('g');
+
+        // Column headers (drawn at fixed y above nodes)
+        COL_LABELS.forEach((lbl, ci) => {
+            const nodesInCol = nodes.filter(n => n.col === ci);
+            if (!nodesInCol.length) return;
+            const cx = ci * COL_W;
+            const topY = Math.min(...nodesInCol.map(n => n.y)) - NODE_R - 14;
+            g.append('text')
+                .attr('x', cx).attr('y', topY)
+                .attr('text-anchor','middle').attr('font-size','10px').attr('font-weight','700')
+                .attr('fill', Object.values(NODE_COLOR)[ci] || 'var(--text-tertiary)')
+                .attr('opacity', 0.7).attr('pointer-events','none')
+                .text(lbl);
+        });
+
+        // Edges (behind nodes)
+        // Compute line endpoint offsets to node boundary
+        const _edgePts = (s, t) => {
+            const dx = t.x - s.x, dy = t.y - s.y;
+            const d  = Math.sqrt(dx*dx + dy*dy) || 1;
+            const ux = dx/d, uy = dy/d;
+            return { x1: s.x + ux*(NODE_R+2), y1: s.y + uy*(NODE_R+2),
+                     x2: t.x - ux*(NODE_R+9), y2: t.y - uy*(NODE_R+9) };
+        };
+
+        // Store edge elements per ruleId for filter toggling
+        const edgeEls = {};
+        edges.forEach(e => {
+            const s = nodeById[e.from], t = nodeById[e.to];
+            if (!s || !t) return;
+            const p = _edgePts(s, t);
+            const el = g.append('line')
+                .attr('x1', p.x1).attr('y1', p.y1).attr('x2', p.x2).attr('y2', p.y2)
+                .attr('stroke', e.color).attr('stroke-width', 2)
+                .attr('stroke-opacity', 0.6)
+                .attr('marker-end', `url(#kg3-arr-${e.color.replace('#','')})`);
+            if (!edgeEls[e.ruleId]) edgeEls[e.ruleId] = [];
+            edgeEls[e.ruleId].push({ el, sev: e.sev });
+        });
+
+        // Node groups — draggable
+        const nodeEls = {};
+        const nodeG = g.append('g');
+        nodes.forEach(n => {
+            const ng = nodeG.append('g')
+                .attr('class', 'kg3-node')
+                .attr('data-id', n.id)
+                .attr('transform', `translate(${n.x},${n.y})`)
+                .style('cursor','pointer')
+                .call(d3.drag()
+                    .on('start', function() { d3.select(this).raise(); })
+                    .on('drag', (ev) => {
+                        n.x = ev.x; n.y = ev.y;
+                        d3.select(ng.node()).attr('transform', `translate(${n.x},${n.y})`);
+                        // Redraw edges touching this node
+                        edges.forEach(e => {
+                            const s = nodeById[e.from], t = nodeById[e.to];
+                            if (!s || !t || (s.id !== n.id && t.id !== n.id)) return;
+                            const p = _edgePts(s, t);
+                            (edgeEls[e.ruleId] || []).forEach(({el: lineEl}) => {
+                                const ld = lineEl.datum();
+                                if (ld && (ld.from === e.from && ld.to === e.to)) {
+                                    lineEl.attr('x1',p.x1).attr('y1',p.y1).attr('x2',p.x2).attr('y2',p.y2);
+                                }
+                            });
+                        });
+                        // Simpler: just redraw all edges (few nodes)
+                        edges.forEach(e => {
+                            const s2 = nodeById[e.from], t2 = nodeById[e.to];
+                            if (!s2 || !t2) return;
+                            const p2 = _edgePts(s2, t2);
+                            (edgeEls[e.ruleId]||[]).forEach(({el: lineEl}) => {
+                                lineEl.attr('x1',p2.x1).attr('y1',p2.y1).attr('x2',p2.x2).attr('y2',p2.y2);
+                            });
+                        });
+                    }))
+                .on('click', (ev) => {
+                    ev.stopPropagation();
+                    const nd = nodeData.get(n.id);
+                    if (nd) this._socKgShowDetail(nd);
+                });
+
+            // Outer ring for shared/multi-rule action nodes
+            if (n.ruleIds && n.ruleIds.length > 1) {
+                ng.append('circle').attr('r', NODE_R + 5)
+                    .attr('fill','none').attr('stroke', NODE_COLOR.action)
+                    .attr('stroke-width', 1.5).attr('stroke-dasharray','4 3').attr('opacity',0.5);
             }
 
-            // SVG markup as a string — avoids D3 dependency for this simple static layout
-            const PAD_L = R * 2;
-            let svgInner = `<defs>`;
-            // arrowhead markers
-            CHAIN_TYPES.forEach((t,i) => {
-                if (i === CHAIN_TYPES.length - 1) return;
-                const c = COLOR[CHAIN_TYPES[i+1]];
-                svgInner += `<marker id="kg2-arr-${rowId}-${i}" viewBox="0 -4 8 8" refX="${R+5}" refY="0" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,-4L8,0L0,4" fill="${c}"/></marker>`;
-            });
-            svgInner += `</defs>`;
+            ng.append('circle')
+                .attr('r', NODE_R)
+                .attr('fill', NODE_COLOR[n.type] + '28')
+                .attr('stroke', n.type === 'rule' ? n.ruleColor : NODE_COLOR[n.type])
+                .attr('stroke-width', n.sevStroke || 1.5);
 
-            // column header labels
-            chainNodes.forEach((n, ci) => {
-                const cx = PAD_L + ci * CX_STEP;
-                svgInner += `<text x="${cx}" y="14" text-anchor="middle" font-size="9" font-weight="700" fill="${COLOR[n.type]}" opacity="0.75">${CHAIN_LABELS[n.type]}</text>`;
-            });
+            ng.append('text')
+                .attr('text-anchor','middle').attr('dy','-0.2em')
+                .attr('font-size','9px').attr('font-weight','700')
+                .attr('fill', n.type === 'rule' ? n.ruleColor : NODE_COLOR[n.type])
+                .attr('pointer-events','none')
+                .text(_short(n.label, 12));
 
-            // edges
-            chainNodes.forEach((n, ci) => {
-                if (ci === chainNodes.length - 1) return;
-                const x1 = PAD_L + ci * CX_STEP + R;
-                const x2 = PAD_L + (ci+1) * CX_STEP - R;
-                const nextColor = COLOR[chainNodes[ci+1].type];
-                svgInner += `<line x1="${x1}" y1="${CY}" x2="${x2}" y2="${CY}" stroke="${nextColor}" stroke-width="2" stroke-opacity="0.5" marker-end="url(#kg2-arr-${rowId}-${ci})"/>`;
-            });
+            ng.append('text')
+                .attr('text-anchor','middle').attr('dy','1em')
+                .attr('font-size','7px').attr('fill','var(--text-tertiary)')
+                .attr('pointer-events','none')
+                .text(n.type.toUpperCase());
 
-            // nodes
-            chainNodes.forEach((n, ci) => {
-                const cx = PAD_L + ci * CX_STEP;
-                const sw = SEV_W[n.meta?.severity] || 1.5;
-                const fill = COLOR[n.type] + '28';
-                const stroke = COLOR[n.type];
-                const shortLabel = n.label.length > 11 ? n.label.slice(0,10)+'…' : n.label;
-                svgInner += `
-                <g class="kg-node" data-row="${rowId}" data-col="${ci}"
-                   style="cursor:pointer;" transform="translate(${cx},${CY})">
-                    <circle r="${R}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
-                    <text text-anchor="middle" dy="-0.2em" font-size="9px" font-weight="700"
-                          fill="${stroke}" pointer-events="none">${shortLabel}</text>
-                    <text text-anchor="middle" dy="0.95em" font-size="7px"
-                          fill="var(--text-tertiary)" pointer-events="none">${n.type.toUpperCase()}</text>
-                </g>`;
-            });
+            // Badge: AP count on shared action nodes
+            if (n.ruleIds && n.ruleIds.length > 1) {
+                ng.append('circle').attr('cx', NODE_R+2).attr('cy',-(NODE_R+2))
+                    .attr('r', 7).attr('fill','#1e293b').attr('stroke','#475569').attr('stroke-width',1);
+                ng.append('text').attr('x', NODE_R+2).attr('y',-(NODE_R+2))
+                    .attr('text-anchor','middle').attr('dominant-baseline','central')
+                    .attr('font-size','8px').attr('font-weight','700').attr('fill','#94a3b8')
+                    .attr('pointer-events','none').text(n.ruleIds.length);
+            }
 
-            return { svgInner, chainNodes };
-        };
+            ng.append('title').text(n.label);
+            nodeEls[n.id] = ng;
+        });
 
-        // Store chain node data for click handling
-        this._socKgChainData = {};
+        svg.on('click', () => this._socKgClearDetail());
 
-        // Build all chain rows, wire filter + collapse
-        const _rebuildRows = () => {
-            // Clear existing rows (keep empty placeholder)
-            chainsEl.querySelectorAll('.kg-chain-row').forEach(el => el.remove());
+        // ── Severity filter chips → show/hide rule rows ────────────────────────
+        // Store node/edge elements per ruleId so we can dim them
+        const ruleNodeIds = {};
+        sorted.forEach((f, ri) => {
+            const ruleId = f.unmapped?.rule_id;
+            if (!ruleId) return;
+            ruleNodeIds[ruleId] = [
+                `signal:${ruleId}`, `threshold:${ruleId}`,
+                `rule:${ruleId}`,   `alert:${ruleId}`,
+            ];
+        });
 
-            let visibleCount = 0;
-            sorted.forEach((f, fi) => {
-                const sev = f.severity || 'Low';
-                if (!active.has(sev)) return;
-                visibleCount++;
-
-                const u = f.unmapped || {};
-                const ruleId = u.rule_id || '?';
-                const sc = SEV_COL[sev] || '#6b7280';
-                const rowId = `kg-row-${fi}`;
-                const collapsed = this._socKgCollapsed?.[rowId] || false;
-
-                const { svgInner, chainNodes } = _makeChainSvg(f, rowId);
-                this._socKgChainData[rowId] = chainNodes;
-
-                // actions summary for header
-                const actionList = (u.action_detail || (u.actions||[]).map(a=>({type:a})))
-                    .map(a => a.type).join(' · ');
-
-                const row = document.createElement('div');
-                row.className = 'kg-chain-row';
-                row.dataset.severity = sev;
-                row.style.cssText = 'margin-bottom:0.6rem;border-radius:8px;border:1px solid var(--border-color);overflow:hidden;background:var(--card-bg);';
-
-                row.innerHTML = `
-                <div class="kg-chain-header" style="display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0.75rem;cursor:pointer;background:var(--nav-hover-bg);user-select:none;"
-                     onclick="(function(el){
-                        const body=el.nextElementSibling;
-                        const chev=el.querySelector('.kg-chev');
-                        const open=body.style.display!=='none';
-                        body.style.display=open?'none':'block';
-                        chev.textContent=open?'▶':'▼';
-                        if(window.dashboard) window.dashboard._socKgCollapsed['${rowId}']=open;
-                     })(this)">
-                    <span style="display:inline-block;padding:0.1rem 0.45rem;border-radius:3px;background:${sc}22;color:${sc};font-size:0.68rem;font-weight:800;">${sev}</span>
-                    <span style="font-weight:700;font-size:0.82rem;color:var(--text-primary);">${ruleId}</span>
-                    <span style="font-size:0.72rem;color:var(--text-tertiary);margin-left:0.25rem;">${u.kill_chain_stage ? '· ' + u.kill_chain_stage.replace(/_/g,' ') : ''}</span>
-                    <span style="margin-left:auto;font-size:0.7rem;color:var(--text-tertiary);">${actionList}</span>
-                    <span class="kg-chev" style="font-size:0.65rem;color:var(--text-tertiary);margin-left:0.5rem;">${collapsed?'▶':'▼'}</span>
-                </div>
-                <div class="kg-chain-body" style="display:${collapsed?'none':'block'};padding:0.5rem 0.75rem 0.75rem;">
-                    <svg viewBox="0 0 ${(N_COLS-1)*CX_STEP + R*4} ${VB_H}"
-                         preserveAspectRatio="xMidYMid meet"
-                         style="width:100%;height:${SVG_H}px;display:block;">${svgInner}</svg>
-                </div>`;
-
-                chainsEl.appendChild(row);
-            });
-
-            // Show empty state if all filtered out
-            if (emptyEl) emptyEl.style.display = visibleCount === 0 ? 'flex' : 'none';
-        };
-
-        // Collapse state persisted across filter changes
-        if (!this._socKgCollapsed) this._socKgCollapsed = {};
-
-        // ── Severity filter chips ──────────────────────────────────────────────
         if (filtersEl) {
             filtersEl.innerHTML = '';
             const allSevs = ['Critical','High','Medium','Low'];
@@ -17565,27 +17690,101 @@ class Dashboard {
                 const sc = SEV_COL[sev];
                 const btn = document.createElement('button');
                 btn.textContent = `${sev} (${count})`;
-                btn.style.cssText = `padding:0.15rem 0.6rem;border-radius:4px;border:1.5px solid ${sc};background:${active.has(sev)?sc+'28':'transparent'};color:${active.has(sev)?sc:'var(--text-tertiary)'};font-size:0.72rem;font-weight:600;cursor:pointer;transition:all 0.15s;`;
-                btn.onclick = () => {
-                    if (active.has(sev)) { active.delete(sev); btn.style.background='transparent'; btn.style.color='var(--text-tertiary)'; }
-                    else                 { active.add(sev);    btn.style.background=sc+'28'; btn.style.color=sc; }
-                    _rebuildRows();
-                };
+                btn.style.cssText = `padding:0.15rem 0.6rem;border-radius:4px;border:1.5px solid ${sc};background:${sc+'28'};color:${sc};font-size:0.72rem;font-weight:600;cursor:pointer;transition:all 0.15s;`;
+                btn.dataset.active = '1';
+                // onclick set after _applyFilterFull is defined (below)
+                btn.dataset.sev = sev;
                 filtersEl.appendChild(btn);
             });
         }
 
-        // Wire node clicks via event delegation on the chains container
-        chainsEl.onclick = (ev) => {
-            const nodeEl = ev.target.closest('.kg-node');
-            if (!nodeEl) { this._socKgClearDetail(); return; }
-            const rowId = nodeEl.dataset.row;
-            const ci    = parseInt(nodeEl.dataset.col, 10);
-            const chainNodes = this._socKgChainData[rowId];
-            if (chainNodes && chainNodes[ci]) this._socKgShowDetail(chainNodes[ci]);
+        // ── Rule chips — filterable, colour-coded ──────────────────────────────
+        const activeRules = new Set(sorted.map(f => f.unmapped?.rule_id).filter(Boolean));
+
+        // Extend _applyFilter to also respect activeRules
+        const _applyFilterFull = () => {
+            sorted.forEach(f => {
+                const ruleId = f.unmapped?.rule_id;
+                const show   = activeSev.has(f.severity) && activeRules.has(ruleId);
+                const opacity = show ? 1 : 0.08;
+                (ruleNodeIds[ruleId]||[]).forEach(nid => {
+                    if (nodeEls[nid]) nodeEls[nid].attr('opacity', opacity);
+                });
+                (edgeEls[ruleId]||[]).forEach(({el}) => el.attr('opacity', show ? 0.6 : 0.04));
+            });
         };
 
-        _rebuildRows();
+        // Wire severity chip clicks now that _applyFilterFull is defined
+        if (filtersEl) {
+            filtersEl.querySelectorAll('button[data-sev]').forEach(btn => {
+                const sev = btn.dataset.sev;
+                const sc  = SEV_COL[sev];
+                btn.onclick = () => {
+                    if (btn.dataset.active === '1') {
+                        activeSev.delete(sev); btn.dataset.active = '0';
+                        btn.style.background = 'transparent'; btn.style.color = 'var(--text-tertiary)';
+                    } else {
+                        activeSev.add(sev); btn.dataset.active = '1';
+                        btn.style.background = sc + '28'; btn.style.color = sc;
+                    }
+                    _applyFilterFull();
+                };
+            });
+        }
+
+        let legendBar = document.getElementById('soc-kg-rule-legend');
+        if (!legendBar) {
+            legendBar = document.createElement('div');
+            legendBar.id = 'soc-kg-rule-legend';
+            legendBar.style.cssText = 'flex-shrink:0;padding:0.3rem 1.25rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);display:flex;gap:0.5rem;flex-wrap:wrap;font-size:0.7rem;align-items:center;';
+            filtersEl?.closest('div')?.after(legendBar);
+        }
+        legendBar.innerHTML = '<span style="color:var(--text-secondary);font-weight:600;margin-right:0.25rem;">Rules:</span>';
+        sorted.forEach((f, ri) => {
+            const ruleId = f.unmapped?.rule_id || '?';
+            const sc = RULE_PAL[ri % RULE_PAL.length];
+            const sev = f.severity || 'Low';
+            const btn = document.createElement('button');
+            btn.style.cssText = `display:inline-flex;align-items:center;gap:0.3rem;padding:0.1rem 0.5rem;border-radius:4px;border:1.5px solid ${sc};background:${sc}28;color:${sc};font-size:0.7rem;font-weight:600;cursor:pointer;transition:all 0.15s;`;
+            btn.dataset.active = '1';
+            btn.innerHTML = `<svg width="8" height="8" style="flex-shrink:0;"><circle cx="4" cy="4" r="4" fill="${sc}"/></svg>${ruleId} <span style="color:var(--text-tertiary);font-weight:400;margin-left:0.2rem;">${sev}</span>`;
+            btn.title = `Toggle ${ruleId} visibility`;
+            btn.onclick = () => {
+                if (btn.dataset.active === '1') {
+                    activeRules.delete(ruleId); btn.dataset.active = '0';
+                    btn.style.background = 'transparent'; btn.style.color = 'var(--text-tertiary)';
+                    btn.style.borderColor = 'var(--border-color)';
+                } else {
+                    activeRules.add(ruleId); btn.dataset.active = '1';
+                    btn.style.background = sc + '28'; btn.style.color = sc;
+                    btn.style.borderColor = sc;
+                }
+                _applyFilterFull();
+            };
+            legendBar.appendChild(btn);
+        });
+
+        // ── Fit SVG to content, resize-aware ──────────────────────────────────
+        // Same pattern as Visualise tab: viewBox set to content bounds,
+        // width = container width, height scales proportionally.
+        const _applyFit = () => {
+            const availW = wrap.clientWidth || 800;
+            const scale  = availW / contentW;
+            const dispH  = Math.max(contentH * scale, 200);
+            svgEl.setAttribute('viewBox', `${vbX} ${vbY} ${contentW} ${contentH}`);
+            svgEl.setAttribute('width',   availW);
+            svgEl.setAttribute('height',  dispH);
+            wrap.style.height = dispH + 'px';
+        };
+
+        requestAnimationFrame(() => {
+            _applyFit();
+            if (typeof ResizeObserver !== 'undefined') {
+                if (this._socKgResizeObserver) this._socKgResizeObserver.disconnect();
+                this._socKgResizeObserver = new ResizeObserver(_applyFit);
+                this._socKgResizeObserver.observe(wrap);
+            }
+        });
     }
 
     _socKgShowDetail(d) {
