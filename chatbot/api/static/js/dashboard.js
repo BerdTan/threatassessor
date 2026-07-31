@@ -17291,7 +17291,9 @@ class Dashboard {
         const countEl = document.getElementById('soc-kg-rule-count');
         if (!svgEl) return;
 
-        const arch = this.currentArchitecture;
+        const arch = (this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture))
+                     || this.currentArchName
+                     || '';
         if (!arch) {
             svgEl.style.display = 'none';
             if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.querySelector('span:last-child').textContent = 'Select an architecture first.'; }
