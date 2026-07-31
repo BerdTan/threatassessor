@@ -17344,29 +17344,27 @@ class Dashboard {
     }
 
     async _renderSocKg() {
-        const svgEl   = document.getElementById('soc-kg-svg');
-        const emptyEl = document.getElementById('soc-kg-empty');
-        const countEl = document.getElementById('soc-kg-rule-count');
-        const banner  = document.getElementById('soc-kg-banner');
-        if (!svgEl) return;
+        const chainsEl = document.getElementById('soc-kg-chains');
+        const emptyEl  = document.getElementById('soc-kg-empty');
+        const countEl  = document.getElementById('soc-kg-rule-count');
+        const banner   = document.getElementById('soc-kg-banner');
+        const filtersEl= document.getElementById('soc-kg-sev-filters');
+        if (!chainsEl) return;
 
         const arch = (this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture))
                      || this.currentArchName || '';
         if (!arch) {
-            svgEl.style.display = 'none';
-            if (emptyEl) { emptyEl.style.display = 'flex'; }
+            if (emptyEl) emptyEl.style.display = 'flex';
             if (banner) banner.style.display = 'none';
             return;
         }
 
-        // Fetch ocsf_findings.json
         let findings = [];
         try {
             const resp = await fetch(`/api/v1/reports/${arch}/files/ocsf_findings.json`);
             if (!resp.ok) throw new Error('not found');
             findings = await resp.json();
         } catch {
-            svgEl.style.display = 'none';
             if (emptyEl) emptyEl.style.display = 'flex';
             if (banner) banner.style.display = 'none';
             return;
@@ -17376,200 +17374,218 @@ class Dashboard {
         if (countEl) countEl.textContent = `${detections.length} detection finding${detections.length !== 1 ? 's' : ''}`;
 
         if (!detections.length) {
-            svgEl.style.display = 'none';
             if (emptyEl) emptyEl.style.display = 'flex';
             if (banner) banner.style.display = 'none';
             return;
         }
-        svgEl.style.display = 'block';
         if (emptyEl) emptyEl.style.display = 'none';
 
-        // Banner — plain-language summary of what fired and why it matters
+        // ── Constants ──────────────────────────────────────────────────────────
+        const COLOR   = { trace:'#6366f1', signal:'#0ea5e9', threshold:'#f59e0b', rule:'#8b5cf6', alert:'#ef4444', action:'#10b981' };
+        const SEV_ORD = { Critical:4, High:3, Medium:2, Low:1 };
+        const SEV_COL = { Critical:'#ef4444', High:'#f97316', Medium:'#f59e0b', Low:'#6b7280' };
+        const SEV_W   = { Critical:4.5, High:3, Medium:2, Low:1.5 };
+
+        // Sort detections: highest severity first
+        const sorted = [...detections].sort((a,b) =>
+            (SEV_ORD[b.severity]||0) - (SEV_ORD[a.severity]||0));
+
+        // Severity filter state — all on by default
+        const severities = [...new Set(sorted.map(f => f.severity))];
+        const active = new Set(severities);
+
+        // Banner
         if (banner) {
-            const sevOrder = { Critical: 4, High: 3, Medium: 2, Low: 1 };
-            const worst = detections.reduce((a, b) =>
-                (sevOrder[b.severity] || 0) > (sevOrder[a.severity] || 0) ? b : a);
-            const ruleNames = [...new Set(detections.map(f => f.unmapped?.rule_id))].join(', ');
-            const sevColor = { Critical: '#ef4444', High: '#f97316', Medium: '#f59e0b', Low: '#6b7280' };
-            const c = sevColor[worst.severity] || '#6b7280';
-            banner.innerHTML = `<span style="font-weight:700;color:${c};">${worst.severity} — ${ruleNames}</span>
-                <span style="margin-left:0.75rem;color:var(--text-secondary);">${detections.length} rule${detections.length > 1 ? 's' : ''} fired on <strong>${arch}</strong>.
-                The graph below traces exactly how each signal became this alert.
-                Click any node to understand what it means and what to do next.</span>`;
+            const worst = sorted[0];
+            const sc = SEV_COL[worst.severity] || '#6b7280';
+            const ruleNames = sorted.map(f => f.unmapped?.rule_id).join(', ');
+            banner.innerHTML = `<span style="font-weight:700;color:${sc};">${worst.severity} — ${ruleNames}</span>
+                <span style="margin-left:0.75rem;color:var(--text-secondary);">${sorted.length} rule${sorted.length>1?'s':''} fired on <strong>${arch}</strong>. Click any node for details.</span>`;
             banner.style.display = 'block';
         }
 
-        // Build node/edge graph
-        const nodeMap = new Map();
-        const edges   = [];
-        const addNode = (id, type, label, meta = {}) => {
-            if (!nodeMap.has(id)) nodeMap.set(id, { id, type, label, meta, findings: [] });
-            return nodeMap.get(id);
-        };
+        // ── Render chain rows ──────────────────────────────────────────────────
+        // One collapsible HTML row per rule, stacked highest severity first.
+        // Each row contains a fixed-proportion SVG chain that fills its width.
+        // No physics, no rAF — width fills automatically via 100% SVG viewBox.
 
-        const COLOR = { trace:'#6366f1', signal:'#0ea5e9', threshold:'#f59e0b', rule:'#8b5cf6', alert:'#ef4444', action:'#10b981' };
-        const SEV_W = { Critical: 4.5, High: 3, Medium: 2, Low: 1.5 };
+        const CHAIN_TYPES = ['trace','signal','threshold','rule','alert','action'];
+        const CHAIN_LABELS = { trace:'Run', signal:'Signal', threshold:'Condition', rule:'Rule', alert:'Alert', action:'Action' };
+        const R = 28;
+        const CX_STEP = 160;   // column centre spacing in SVG user units
+        const CY = 60;         // centre y of nodes within the SVG
+        const SVG_H = 130;     // fixed pixel height per chain row SVG
+        const N_COLS = CHAIN_TYPES.length;
+        const VB_W = (N_COLS - 1) * CX_STEP + R * 4;  // viewBox width (user units)
+        const VB_H = SVG_H;
 
-        detections.forEach(f => {
-            const u      = f.unmapped || {};
+        const _makeChainSvg = (f, rowId) => {
+            const u   = f.unmapped || {};
             const ruleId = u.rule_id || '?';
             const sev    = f.severity || 'Low';
-            const runId  = u.run_id || arch;
-            const kc     = u.kill_chain_stage || '';
+            const tvs    = u.triggered_values || {};
+            const sigLabel = u.rule_name ? u.rule_name.replace(/_/g,' ') : ruleId;
+            const actions  = (u.action_detail || (u.actions||[]).map(a=>({type:a})));
 
-            const traceId = `trace:${runId}`;
-            addNode(traceId, 'trace', arch.length > 18 ? arch.slice(0, 17) + '…' : arch, { runId, arch });
+            // Build chain nodes for this rule (one per column, first action only for simplicity)
+            const chainNodes = [
+                { type:'trace',     label: arch.length>12 ? arch.slice(0,11)+'…' : arch,    meta:{ runId:arch, arch } },
+                { type:'signal',    label: sigLabel.length>12 ? sigLabel.slice(0,11)+'…' : sigLabel, meta:{ fields:tvs, ruleId, fullLabel:sigLabel } },
+                { type:'threshold', label: `${Object.keys(tvs).length} cond`,    meta:{ ruleId, severity:sev, condCount:Object.keys(tvs).length } },
+                { type:'rule',      label: ruleId,                                meta:{ ruleId, severity:sev,
+                    killChain:u.kill_chain_stage||'', incidentRefs:u.incident_refs||[],
+                    owasp:u.owasp||[], atlas:u.atlas_tactic||'', tuningNote:u.tuning_note||'',
+                    playbook_steps:u.playbook_steps||[], _rawFinding: f }, findings:[f] },
+                { type:'alert',     label: sev,                                   meta:{ severity:sev, finding:f.finding } },
+                { type:'action',    label: actions[0]?.type || 'audit_log',       meta:{ params:actions[0]?.params, actionType:actions[0]?.type } },
+            ];
+            if (actions.length > 1) {
+                chainNodes[5].label = `${actions.length} actions`;
+                chainNodes[5].meta.allActions = actions;
+            }
 
-            const tvs = u.triggered_values || {};
-            const signalId = `signal:${ruleId}`;
-            const sigLabel = u.rule_name ? u.rule_name.replace(/_/g, ' ') : ruleId;
-            addNode(signalId, 'signal', sigLabel.length > 18 ? sigLabel.slice(0, 17) + '…' : sigLabel,
-                { fields: tvs, ruleId, fullLabel: sigLabel });
-            edges.push({ source: traceId, target: signalId, color: COLOR.signal });
-
-            const threshId = `threshold:${ruleId}`;
-            addNode(threshId, 'threshold', `${Object.keys(tvs).length} condition${Object.keys(tvs).length !== 1 ? 's' : ''} met`,
-                { ruleId, severity: sev, condCount: Object.keys(tvs).length });
-            edges.push({ source: signalId, target: threshId, color: COLOR.threshold });
-
-            const ruleNodeId = `rule:${ruleId}`;
-            addNode(ruleNodeId, 'rule', ruleId,
-                { ruleId, severity: sev, killChain: kc,
-                  incidentRefs: u.incident_refs || [],
-                  owasp: u.owasp || [], atlas: u.atlas_tactic || '',
-                  tuningNote: u.tuning_note || '' });
-            nodeMap.get(ruleNodeId).findings.push(f);
-            edges.push({ source: threshId, target: ruleNodeId, color: COLOR.rule });
-
-            const alertId = `alert:${ruleId}`;
-            addNode(alertId, 'alert', `${sev} Alert`, { severity: sev, finding: f.finding });
-            edges.push({ source: ruleNodeId, target: alertId, color: COLOR.alert });
-
-            (u.action_detail || (u.actions || []).map(a => ({ type: a }))).forEach(act => {
-                const actId = `action:${act.type}`;
-                addNode(actId, 'action', act.type, { params: act.params, actionType: act.type });
-                edges.push({ source: alertId, target: actId, color: COLOR.action });
+            // SVG markup as a string — avoids D3 dependency for this simple static layout
+            const PAD_L = R * 2;
+            let svgInner = `<defs>`;
+            // arrowhead markers
+            CHAIN_TYPES.forEach((t,i) => {
+                if (i === CHAIN_TYPES.length - 1) return;
+                const c = COLOR[CHAIN_TYPES[i+1]];
+                svgInner += `<marker id="kg2-arr-${rowId}-${i}" viewBox="0 -4 8 8" refX="${R+5}" refY="0" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,-4L8,0L0,4" fill="${c}"/></marker>`;
             });
-        });
+            svgInner += `</defs>`;
 
-        // ── Deterministic left-to-right column layout ─────────────────────────
-        // Column order matches the provenance chain: Run → Signal → Condition
-        // → Rule → Alert → Action. Fixed columns mean all nodes are always
-        // visible. viewBox scales the content to fill the container — no physics,
-        // no rAF dependency for sizing.
-        const COL_ORDER = ['trace', 'signal', 'threshold', 'rule', 'alert', 'action'];
-        const R   = 32;
-        const PAD = 60;        // outer padding
-        const COL_W = 170;     // horizontal gap between column centres
-        const ROW_H = 110;     // vertical gap between rows in same column
-
-        // Group nodes by column, assign (cx, cy)
-        const byCol = {};
-        COL_ORDER.forEach(t => { byCol[t] = []; });
-        nodes.forEach(n => { if (byCol[n.type]) byCol[n.type].push(n); });
-
-        // Lay out: x = column index × COL_W, y = row index × ROW_H, centred
-        const nCols  = COL_ORDER.length;
-        const maxRows = Math.max(...COL_ORDER.map(t => byCol[t].length), 1);
-        const contentW = (nCols - 1) * COL_W;
-        const contentH = (maxRows - 1) * ROW_H;
-
-        COL_ORDER.forEach((type, ci) => {
-            const col = byCol[type];
-            col.forEach((n, ri) => {
-                const totalH = (col.length - 1) * ROW_H;
-                n.cx = ci * COL_W;
-                n.cy = ri * ROW_H - totalH / 2;   // vertically centred within column
+            // column header labels
+            chainNodes.forEach((n, ci) => {
+                const cx = PAD_L + ci * CX_STEP;
+                svgInner += `<text x="${cx}" y="14" text-anchor="middle" font-size="9" font-weight="700" fill="${COLOR[n.type]}" opacity="0.75">${CHAIN_LABELS[n.type]}</text>`;
             });
-        });
 
-        // Edge path: straight line between node centres
-        const pos = {};
-        nodes.forEach(n => { pos[n.id] = { x: n.cx, y: n.cy }; });
+            // edges
+            chainNodes.forEach((n, ci) => {
+                if (ci === chainNodes.length - 1) return;
+                const x1 = PAD_L + ci * CX_STEP + R;
+                const x2 = PAD_L + (ci+1) * CX_STEP - R;
+                const nextColor = COLOR[chainNodes[ci+1].type];
+                svgInner += `<line x1="${x1}" y1="${CY}" x2="${x2}" y2="${CY}" stroke="${nextColor}" stroke-width="2" stroke-opacity="0.5" marker-end="url(#kg2-arr-${rowId}-${ci})"/>`;
+            });
 
-        const d3 = window.d3;
-        if (!d3) return;
-        if (this._socKgResizeObserver) { this._socKgResizeObserver.disconnect(); this._socKgResizeObserver = null; }
+            // nodes
+            chainNodes.forEach((n, ci) => {
+                const cx = PAD_L + ci * CX_STEP;
+                const sw = SEV_W[n.meta?.severity] || 1.5;
+                const fill = COLOR[n.type] + '28';
+                const stroke = COLOR[n.type];
+                const shortLabel = n.label.length > 11 ? n.label.slice(0,10)+'…' : n.label;
+                svgInner += `
+                <g class="kg-node" data-row="${rowId}" data-col="${ci}"
+                   style="cursor:pointer;" transform="translate(${cx},${CY})">
+                    <circle r="${R}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+                    <text text-anchor="middle" dy="-0.2em" font-size="9px" font-weight="700"
+                          fill="${stroke}" pointer-events="none">${shortLabel}</text>
+                    <text text-anchor="middle" dy="0.95em" font-size="7px"
+                          fill="var(--text-tertiary)" pointer-events="none">${n.type.toUpperCase()}</text>
+                </g>`;
+            });
 
-        const svg = d3.select(svgEl);
-        svg.selectAll('*').remove();
+            return { svgInner, chainNodes };
+        };
 
-        // SVG fills container via position:absolute;inset:0 in CSS.
-        // viewBox maps content coords → viewport — this is what ensures all
-        // nodes are always visible and the chart fills the container at any size.
-        const vbX = -PAD;
-        const vbY = -(contentH / 2) - PAD;
-        const vbW = contentW + PAD * 2;
-        const vbH = contentH + PAD * 2;
+        // Store chain node data for click handling
+        this._socKgChainData = {};
 
-        svg.attr('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`)
-           .attr('preserveAspectRatio', 'xMidYMid meet')
-           .style('width', '100%')
-           .style('height', '100%');
+        // Build all chain rows, wire filter + collapse
+        const _rebuildRows = () => {
+            // Clear existing rows (keep empty placeholder)
+            chainsEl.querySelectorAll('.kg-chain-row').forEach(el => el.remove());
 
-        // Arrowhead markers
-        const defs = svg.append('defs');
-        Object.values(COLOR).forEach(c => {
-            defs.append('marker')
-                .attr('id', 'kg-arr-' + c.replace('#',''))
-                .attr('viewBox', '0 -4 8 8').attr('refX', R + 6).attr('refY', 0)
-                .attr('markerWidth', 7).attr('markerHeight', 7).attr('orient', 'auto')
-              .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', c);
-        });
+            let visibleCount = 0;
+            sorted.forEach((f, fi) => {
+                const sev = f.severity || 'Low';
+                if (!active.has(sev)) return;
+                visibleCount++;
 
-        // Column label headers
-        const LABELS = { trace:'Run', signal:'Signal', threshold:'Condition', rule:'Rule', alert:'Alert', action:'Action' };
-        COL_ORDER.forEach((type, ci) => {
-            svg.append('text')
-                .attr('x', ci * COL_W).attr('y', -(contentH / 2) - PAD + 18)
-                .attr('text-anchor', 'middle')
-                .attr('font-size', '11px').attr('font-weight', '700')
-                .attr('fill', COLOR[type]).attr('opacity', 0.7)
-                .text(LABELS[type]);
-        });
+                const u = f.unmapped || {};
+                const ruleId = u.rule_id || '?';
+                const sc = SEV_COL[sev] || '#6b7280';
+                const rowId = `kg-row-${fi}`;
+                const collapsed = this._socKgCollapsed?.[rowId] || false;
 
-        // Edges
-        edges.forEach(e => {
-            const s = pos[e.source] || pos[e.source.id];
-            const t = pos[e.target] || pos[e.target.id];
-            if (!s || !t) return;
-            svg.append('line')
-                .attr('x1', s.x).attr('y1', s.y)
-                .attr('x2', t.x).attr('y2', t.y)
-                .attr('stroke', e.color).attr('stroke-width', 2.5)
-                .attr('stroke-opacity', 0.55)
-                .attr('marker-end', `url(#kg-arr-${e.color.replace('#','')})`);
-        });
+                const { svgInner, chainNodes } = _makeChainSvg(f, rowId);
+                this._socKgChainData[rowId] = chainNodes;
 
-        // Nodes
-        const nodeG = svg.selectAll('.kg-node')
-            .data(nodes).join('g')
-            .attr('class', 'kg-node')
-            .attr('transform', n => `translate(${n.cx},${n.cy})`)
-            .style('cursor', 'pointer')
-            .on('click', (ev, d) => { ev.stopPropagation(); this._socKgShowDetail(d); });
+                // actions summary for header
+                const actionList = (u.action_detail || (u.actions||[]).map(a=>({type:a})))
+                    .map(a => a.type).join(' · ');
 
-        nodeG.append('circle')
-            .attr('r', R)
-            .attr('fill', d => COLOR[d.type] + '28')
-            .attr('stroke', d => COLOR[d.type])
-            .attr('stroke-width', d => SEV_W[d.meta?.severity] || 2);
+                const row = document.createElement('div');
+                row.className = 'kg-chain-row';
+                row.dataset.severity = sev;
+                row.style.cssText = 'margin-bottom:0.6rem;border-radius:8px;border:1px solid var(--border-color);overflow:hidden;background:var(--card-bg);';
 
-        nodeG.append('text')
-            .attr('text-anchor', 'middle').attr('dy', '-0.25em')
-            .attr('font-size', '10px').attr('font-weight', '700')
-            .attr('fill', d => COLOR[d.type]).attr('pointer-events', 'none')
-            .text(d => d.label.length > 14 ? d.label.slice(0,13) + '…' : d.label);
+                row.innerHTML = `
+                <div class="kg-chain-header" style="display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0.75rem;cursor:pointer;background:var(--nav-hover-bg);user-select:none;"
+                     onclick="(function(el){
+                        const body=el.nextElementSibling;
+                        const chev=el.querySelector('.kg-chev');
+                        const open=body.style.display!=='none';
+                        body.style.display=open?'none':'block';
+                        chev.textContent=open?'▶':'▼';
+                        if(window.dashboard) window.dashboard._socKgCollapsed['${rowId}']=open;
+                     })(this)">
+                    <span style="display:inline-block;padding:0.1rem 0.45rem;border-radius:3px;background:${sc}22;color:${sc};font-size:0.68rem;font-weight:800;">${sev}</span>
+                    <span style="font-weight:700;font-size:0.82rem;color:var(--text-primary);">${ruleId}</span>
+                    <span style="font-size:0.72rem;color:var(--text-tertiary);margin-left:0.25rem;">${u.kill_chain_stage ? '· ' + u.kill_chain_stage.replace(/_/g,' ') : ''}</span>
+                    <span style="margin-left:auto;font-size:0.7rem;color:var(--text-tertiary);">${actionList}</span>
+                    <span class="kg-chev" style="font-size:0.65rem;color:var(--text-tertiary);margin-left:0.5rem;">${collapsed?'▶':'▼'}</span>
+                </div>
+                <div class="kg-chain-body" style="display:${collapsed?'none':'block'};padding:0.5rem 0.75rem 0.75rem;">
+                    <svg viewBox="0 0 ${(N_COLS-1)*CX_STEP + R*4} ${VB_H}"
+                         preserveAspectRatio="xMidYMid meet"
+                         style="width:100%;height:${SVG_H}px;display:block;">${svgInner}</svg>
+                </div>`;
 
-        nodeG.append('text')
-            .attr('text-anchor', 'middle').attr('dy', '1em')
-            .attr('font-size', '8px').attr('fill', 'var(--text-tertiary)')
-            .attr('pointer-events', 'none')
-            .text(d => d.type.toUpperCase());
+                chainsEl.appendChild(row);
+            });
 
-        nodeG.append('title').text(d => d.meta?.fullLabel || d.label);
+            // Show empty state if all filtered out
+            if (emptyEl) emptyEl.style.display = visibleCount === 0 ? 'flex' : 'none';
+        };
 
-        svg.on('click', () => this._socKgClearDetail());
+        // Collapse state persisted across filter changes
+        if (!this._socKgCollapsed) this._socKgCollapsed = {};
+
+        // ── Severity filter chips ──────────────────────────────────────────────
+        if (filtersEl) {
+            filtersEl.innerHTML = '';
+            const allSevs = ['Critical','High','Medium','Low'];
+            allSevs.forEach(sev => {
+                const count = sorted.filter(f => f.severity === sev).length;
+                if (!count) return;
+                const sc = SEV_COL[sev];
+                const btn = document.createElement('button');
+                btn.textContent = `${sev} (${count})`;
+                btn.style.cssText = `padding:0.15rem 0.6rem;border-radius:4px;border:1.5px solid ${sc};background:${active.has(sev)?sc+'28':'transparent'};color:${active.has(sev)?sc:'var(--text-tertiary)'};font-size:0.72rem;font-weight:600;cursor:pointer;transition:all 0.15s;`;
+                btn.onclick = () => {
+                    if (active.has(sev)) { active.delete(sev); btn.style.background='transparent'; btn.style.color='var(--text-tertiary)'; }
+                    else                 { active.add(sev);    btn.style.background=sc+'28'; btn.style.color=sc; }
+                    _rebuildRows();
+                };
+                filtersEl.appendChild(btn);
+            });
+        }
+
+        // Wire node clicks via event delegation on the chains container
+        chainsEl.onclick = (ev) => {
+            const nodeEl = ev.target.closest('.kg-node');
+            if (!nodeEl) { this._socKgClearDetail(); return; }
+            const rowId = nodeEl.dataset.row;
+            const ci    = parseInt(nodeEl.dataset.col, 10);
+            const chainNodes = this._socKgChainData[rowId];
+            if (chainNodes && chainNodes[ci]) this._socKgShowDetail(chainNodes[ci]);
+        };
+
+        _rebuildRows();
     }
 
     _socKgShowDetail(d) {
