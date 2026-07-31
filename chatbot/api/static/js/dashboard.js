@@ -17801,13 +17801,7 @@ class Dashboard {
         // _initialFit: called once, seeds zoom so all nodes fill the view.
         // _onResize: called on ResizeObserver — only updates SVG dimensions,
         //            never resets zoom.transform (avoids ResizeObserver feedback loop).
-        const _measure = () => {
-            const r = wrap.getBoundingClientRect();
-            return { w: r.width || wrap.offsetWidth || 900,
-                     h: r.height || wrap.offsetHeight || 600 };
-        };
-        const _initialFit = () => {
-            const { w, h } = _measure();
+        const _doFit = (w, h) => {
             svgEl.setAttribute('width',  w);
             svgEl.setAttribute('height', h);
             svgEl.removeAttribute('viewBox');
@@ -17817,21 +17811,30 @@ class Dashboard {
             svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
         };
         const _onResize = () => {
-            const { w, h } = _measure();
-            svgEl.setAttribute('width',  w);
-            svgEl.setAttribute('height', h);
+            const r = wrap.getBoundingClientRect();
+            const w = r.width || wrap.offsetWidth;
+            const h = r.height || wrap.offsetHeight;
+            if (w > 10 && h > 10) { svgEl.setAttribute('width', w); svgEl.setAttribute('height', h); }
         };
 
-        // Double rAF: first yields to flex layout pass, second to paint —
-        // only then does getBoundingClientRect() return real pixel dimensions.
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            _initialFit();
-            if (typeof ResizeObserver !== 'undefined') {
-                if (this._socKgResizeObserver) this._socKgResizeObserver.disconnect();
-                this._socKgResizeObserver = new ResizeObserver(_onResize);
-                this._socKgResizeObserver.observe(wrap);
+        // Poll until the wrapper has real dimensions — display:flex resolves
+        // asynchronously and getBoundingClientRect returns 0 until it does.
+        const _waitAndFit = (attempts) => {
+            const r = wrap.getBoundingClientRect();
+            const w = r.width  || wrap.offsetWidth;
+            const h = r.height || wrap.offsetHeight;
+            if (w > 50 && h > 50) {
+                _doFit(w, h);
+                if (typeof ResizeObserver !== 'undefined') {
+                    if (this._socKgResizeObserver) this._socKgResizeObserver.disconnect();
+                    this._socKgResizeObserver = new ResizeObserver(_onResize);
+                    this._socKgResizeObserver.observe(wrap);
+                }
+            } else if (attempts > 0) {
+                requestAnimationFrame(() => _waitAndFit(attempts - 1));
             }
-        })); // end double-rAF
+        };
+        requestAnimationFrame(() => _waitAndFit(20)); // up to 20 frames (~330ms)
     }
 
     _socKgShowDetail(d) {
