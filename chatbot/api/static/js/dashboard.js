@@ -17558,6 +17558,12 @@ class Dashboard {
 
         const g = svg.append('g');
 
+        // Zoom + pan on the SVG — transforms the g group, keeps nodes draggable
+        const zoom = d3.zoom()
+            .scaleExtent([0.3, 4])
+            .on('zoom', (ev) => g.attr('transform', ev.transform));
+        svg.call(zoom).on('dblclick.zoom', null); // disable double-click zoom
+
         // Edges (behind nodes)
         // Compute line endpoint offsets to node boundary
         const _edgePts = (s, t) => {
