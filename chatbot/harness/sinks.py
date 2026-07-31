@@ -166,7 +166,11 @@ class LangfuseSink(BaseSink):
       stage_complete      → span  (one per stage)
       critic_complete     → generation (captures model + token + cost)
       governance_complete → trace metadata update (D1-D5 dims)
-      aivss_complete      → span  (inbound/internal/outbound scores)
+      aivss_complete      → span (inbound/internal/outbound) +
+                            Score objects (aivss_inbound / aivss_internal / aivss_outbound)
+                            Score objects make AIVSS composites queryable by name in the
+                            Langfuse API and consumable by langfuse-to-ocsf via
+                            lf.api.scores_v3.get_many_v3(trace_id=...).
       aivss_gate          → span  (outbound gate result)
       run_complete        → trace output update (confidence + errors)
 
@@ -250,16 +254,43 @@ class LangfuseSink(BaseSink):
                 })
 
             elif event.event_type == "aivss_complete" and self._trace:
+                # Payload field may be a float (stages.py path) or dict (test/legacy path)
+                def _composite(val) -> float:
+                    if isinstance(val, dict):
+                        return float(val.get("composite", 0.0))
+                    return float(val) if val is not None else 0.0
+
+                inbound  = _composite(p.get("inbound",  0.0))
+                internal = _composite(p.get("internal", 0.0))
+                outbound = _composite(p.get("outbound", 0.0))
+                overall_sev = p.get("overall_severity", "LOW")
+
                 self._trace.span(
                     name="aivss_scoring",
                     metadata={
-                        "inbound":  p.get("inbound", 0.0),
-                        "internal": p.get("internal", 0.0),
-                        "outbound": p.get("outbound", 0.0),
-                        "overall_severity": p.get("overall_severity", "LOW"),
+                        "inbound":  inbound,
+                        "internal": internal,
+                        "outbound": outbound,
+                        "overall_severity": overall_sev,
                     },
                     end_time=event.ts,
                 )
+
+                # Attach AIVSS composites as first-class Langfuse Score objects so
+                # langfuse-to-ocsf can fetch them via scores_v3.get_many_v3(trace_id=).
+                # Score name convention matches what score_to_ocsf() filters on.
+                for flow, value in (
+                    ("aivss_inbound",  inbound),
+                    ("aivss_internal", internal),
+                    ("aivss_outbound", outbound),
+                ):
+                    self._lf.create_score(
+                        name=flow,
+                        value=value,
+                        trace_id=event.run_id,
+                        data_type="NUMERIC",
+                        comment=f"AIVSS {flow.replace('aivss_','')} composite — {overall_sev}",
+                    )
 
             elif event.event_type == "aivss_gate" and self._trace:
                 self._trace.span(

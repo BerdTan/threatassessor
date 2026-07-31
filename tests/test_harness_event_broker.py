@@ -484,6 +484,52 @@ class TestLangfuseSink:
         sink.emit(_event("aivss_complete", payload=payload))
         mock_trace.span.assert_called_once()
 
+    def test_aivss_complete_creates_three_score_objects(self):
+        """Extension: AIVSS composites attached as Langfuse Score objects."""
+        sink, mock_lf = self._sink_with_mock_lf()
+        mock_trace = MagicMock()
+        sink._trace = mock_trace
+        payload = {"inbound": {"composite": 1.2}, "internal": {"composite": 6.25},
+                   "outbound": {"composite": 8.5}, "overall_severity": "HIGH"}
+        sink.emit(_event("aivss_complete", payload=payload, run_id="run-score-test"))
+        assert mock_lf.create_score.call_count == 3
+        calls = {c.kwargs["name"]: c.kwargs["value"]
+                 for c in mock_lf.create_score.call_args_list}
+        assert calls["aivss_inbound"]  == 1.2
+        assert calls["aivss_internal"] == 6.25
+        assert calls["aivss_outbound"] == 8.5
+
+    def test_aivss_complete_score_objects_carry_trace_id(self):
+        """Each Score object is linked to the correct trace_id."""
+        sink, mock_lf = self._sink_with_mock_lf()
+        sink._trace = MagicMock()
+        payload = {"inbound": 0.0, "internal": 6.25, "outbound": 0.0,
+                   "overall_severity": "MEDIUM"}
+        sink.emit(_event("aivss_complete", payload=payload, run_id="trace-xyz"))
+        for call in mock_lf.create_score.call_args_list:
+            assert call.kwargs["trace_id"] == "trace-xyz"
+
+    def test_aivss_complete_handles_float_payload(self):
+        """Payload inbound/internal/outbound as floats (stages.py path)."""
+        sink, mock_lf = self._sink_with_mock_lf()
+        sink._trace = MagicMock()
+        payload = {"inbound": 0.0, "internal": 6.25, "outbound": 0.0,
+                   "overall_severity": "MEDIUM"}
+        sink.emit(_event("aivss_complete", payload=payload))
+        calls = {c.kwargs["name"]: c.kwargs["value"]
+                 for c in mock_lf.create_score.call_args_list}
+        assert calls["aivss_internal"] == 6.25
+
+    def test_aivss_complete_score_data_type_is_numeric(self):
+        """Score objects must declare data_type=NUMERIC for SIEM queries."""
+        sink, mock_lf = self._sink_with_mock_lf()
+        sink._trace = MagicMock()
+        payload = {"inbound": 0.0, "internal": 5.0, "outbound": 0.0,
+                   "overall_severity": "LOW"}
+        sink.emit(_event("aivss_complete", payload=payload))
+        for call in mock_lf.create_score.call_args_list:
+            assert call.kwargs.get("data_type") == "NUMERIC"
+
     def test_run_complete_updates_trace_output(self):
         sink, mock_lf = self._sink_with_mock_lf()
         mock_trace = MagicMock()
