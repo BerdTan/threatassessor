@@ -17558,20 +17558,6 @@ class Dashboard {
 
         const g = svg.append('g');
 
-        // Column headers (drawn at fixed y above nodes)
-        COL_LABELS.forEach((lbl, ci) => {
-            const nodesInCol = nodes.filter(n => n.col === ci);
-            if (!nodesInCol.length) return;
-            const cx = ci * COL_W;
-            const topY = Math.min(...nodesInCol.map(n => n.y)) - NODE_R - 14;
-            g.append('text')
-                .attr('x', cx).attr('y', topY)
-                .attr('text-anchor','middle').attr('font-size','10px').attr('font-weight','700')
-                .attr('fill', Object.values(NODE_COLOR)[ci] || 'var(--text-tertiary)')
-                .attr('opacity', 0.7).attr('pointer-events','none')
-                .text(lbl);
-        });
-
         // Edges (behind nodes)
         // Compute line endpoint offsets to node boundary
         const _edgePts = (s, t) => {
@@ -17635,10 +17621,10 @@ class Dashboard {
                 .attr('r', NODE_R)
                 .attr('fill', NODE_COLOR[n.type] + '28')
                 .attr('stroke', n.type === 'rule' ? n.ruleColor : NODE_COLOR[n.type])
-                .attr('stroke-width', n.sevStroke || 1.5);
+                .attr('stroke-width', 2);
 
             ng.append('text')
-                .attr('text-anchor','middle').attr('dy','-0.2em')
+                .attr('text-anchor','middle').attr('dy','-0.15em')
                 .attr('font-size','9px').attr('font-weight','700')
                 .attr('fill', n.type === 'rule' ? n.ruleColor : NODE_COLOR[n.type])
                 .attr('pointer-events','none')
@@ -17649,6 +17635,22 @@ class Dashboard {
                 .attr('font-size','7px').attr('fill','var(--text-tertiary)')
                 .attr('pointer-events','none')
                 .text(n.type.toUpperCase());
+
+            // Severity pip — filled dot bottom-right, visible on rule + alert nodes
+            const sev = n.meta?.meta?.severity || n.meta?.severity;
+            if (sev && sev !== 'Low' && (n.type === 'rule' || n.type === 'alert')) {
+                const pipColor = SEV_COL[sev] || '#6b7280';
+                ng.append('circle')
+                    .attr('cx', NODE_R - 2).attr('cy', NODE_R - 2)
+                    .attr('r', 5).attr('fill', pipColor)
+                    .attr('stroke','var(--card-bg)').attr('stroke-width', 1.5);
+                ng.append('text')
+                    .attr('x', NODE_R - 2).attr('y', NODE_R - 2)
+                    .attr('text-anchor','middle').attr('dominant-baseline','central')
+                    .attr('font-size','6px').attr('font-weight','800')
+                    .attr('fill','#fff').attr('pointer-events','none')
+                    .text(sev[0]);   // C / H / M
+            }
 
             // Badge: show count of rules (for action nodes shared by multiple rules)
             const badgeCount = n.type === 'action' && n.ruleIds && n.ruleIds.length > 1
