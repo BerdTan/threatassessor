@@ -290,6 +290,24 @@ def detect_escape_signals(signals: Dict, arch_name: str,
     return findings
 
 
+def _evaluate_soc_rules(signals: Dict, arch_name: str,
+                        run_id: str, ts: int) -> List[Dict[str, Any]]:
+    """Evaluate policies/soc_detection_rules.yaml against signals. Non-fatal."""
+    try:
+        import sys
+        from pathlib import Path as _Path
+        _repo = _Path(__file__).resolve().parents[4]
+        if str(_repo) not in sys.path:
+            sys.path.insert(0, str(_repo))
+        from chatbot.harness.rule_evaluator import RuleEvaluator
+        return RuleEvaluator().evaluate(signals, arch_name=arch_name,
+                                        run_id=run_id, ts=ts)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).debug(f"SOC rule evaluation skipped: {exc}")
+        return []
+
+
 # ── OCSF building ───────────────────────────────────────────────────────────────
 
 def _severity_id(severity: str) -> int:
@@ -406,6 +424,9 @@ def process_signals(
 
     # Escape signal detection — incident-derived early warning indicators
     findings.extend(detect_escape_signals(signals, arch_name, run_id, ts))
+
+    # SOC rule evaluation — machine-readable ruleset from policies/soc_detection_rules.yaml
+    findings.extend(_evaluate_soc_rules(signals, arch_name, run_id, ts))
 
     return findings
 

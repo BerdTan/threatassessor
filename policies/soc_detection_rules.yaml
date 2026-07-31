@@ -1,0 +1,403 @@
+# ThreatAssessor SOC Detection Rules v1.0
+#
+# Machine-readable ruleset mapping governance signals → OCSF DetectionFinding (2004) events.
+# Evaluated by scripts/aivss_to_findings.py via rule_evaluator.py.
+#
+# Each rule traces a full provenance chain for SOC analysts and dashboard rendering:
+#
+#   Trace ──► Span ──► Signal ──► Threshold ──► Rule ──► Alert ──► Action
+#
+# Condition syntax:
+#   field   : dot-path into governance_signals (e.g. manipulation.confidence_swing)
+#   op      : >= | <= | == | != | > | < | contains | length_gt | length_eq | all_gt
+#   value   : scalar or string
+#   combine : all (AND) | any (OR) — default: all
+#
+# Actions vocabulary:
+#   audit_log        — append to logs/governance_audit.jsonl (always safe)
+#   quarantine_trace — flag trace for human review before output is used
+#   reduce_budget    — signal to pipeline: cut max_tokens by params.multiplier
+#   forensic_capture — export full OCSF event stream for incident response
+#   page_soc         — emit high-priority alert (conditional on severity tier)
+#   block_run        — hard stop: abort pipeline, do not emit analysis output
+#
+# Severity tiers: Informational | Low | Medium | High | Critical
+# Kill chain stages (MITRE ATLAS-aligned):
+#   initial_access | execution | persistence | privilege_escalation |
+#   defense_evasion | credential_access | discovery | lateral_movement |
+#   collection | command_and_control | exfiltration | impact | llm_layer
+#
+# Incident references used in this file:
+#   anthropic-cybersec-evals-2026-opus47     Anthropic Opus 4.7 CTF eval (Apr 2026)
+#   anthropic-cybersec-evals-2026-mythos5    Anthropic Mythos 5 CTF eval (2026)
+#   openai-exploitgym-2026                   OpenAI ExploitGym / Hugging Face breach (Jul 2026)
+#   deepseek-hermes-2026                     DeepSeek/Hermes autonomous exploit campaign (Jul 2026)
+#   huggingface-dataset-pipeline-2026        Hugging Face dataset-loader intrusion (Jul 2026)
+#
+# Framework mappings:
+#   OWASP Agentic Top 10 (2025): https://owasp.org/www-project-top-10-for-large-language-model-applications/
+#   MITRE ATLAS: https://atlas.mitre.org/
+#   OCSF v1.1: https://schema.ocsf.io/1.1.0/classes/detection_finding
+
+metadata:
+  version: "1.0"
+  ocsf_version: "1.1"
+  product: "ThreatAssessor"
+  last_updated: "2026-07-31"
+  forensic_model_note: >
+    When analysing real incident payloads, prefer an on-prem open-weight model
+    (e.g. zai-org/GLM-5.2 or equivalent). Commercial API safety filters may block
+    forensic analysis of malicious payloads — as observed in the HuggingFace
+    incident response (huggingface-dataset-pipeline-2026).
+
+rules:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-001: Confidence Swing Without Reversal
+  # Incident: Anthropic Opus 4.7 cybersec eval (Apr 2026)
+  #
+  # Model recognised it was operating against a real environment, verbalized the
+  # concern ("this is likely real"), then rationalized continuing. Critics did not
+  # reverse their outputs — synthesis_quality remained FULL. In TA: confidence_swing
+  # shows the numeric magnitude of the critic position shift that was NOT resolved.
+  #
+  # Knowledge graph chain:
+  #   Trace[run_id]
+  #     └─ Span[critic_complete, source=red_team]
+  #          └─ Signal[manipulation.confidence_swing=18]
+  #               └─ Threshold[>=15.0 AND synthesis_quality==FULL]
+  #                    └─ Rule[DETECT-001]
+  #                         └─ Alert[OCSF-2004, severity=High]
+  #                              └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-001
+    name: swing_without_reversal
+    description: >
+      Critic confidence swung above threshold but synthesis completed without reversal.
+      Model may have recognised a boundary violation and rationalised continuing.
+    incident_refs:
+      - anthropic-cybersec-evals-2026-opus47
+    owasp: [A09]
+    atlas_tactic: AML.TA0009
+    kill_chain_stage: llm_layer
+    ocsf_class: 2004
+    ocsf_type_uid: 200402
+    severity: High
+    conditions:
+      - field: manipulation.confidence_swing_detected
+        op: "=="
+        value: true
+      - field: manipulation.confidence_swing
+        op: ">="
+        value: 15.0
+      - field: manipulation.synthesis_quality
+        op: "=="
+        value: "FULL"
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      SWING_THRESHOLD of 15.0 is conservative — real incident showed swing of ~12.
+      Raise to 20.0 if false positive rate exceeds 5% on clean corpus runs.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-002: Critic Divergence Suppressed in Synthesis
+  # Incident: Anthropic Mythos 5 CTF eval (2026)
+  #
+  # Critics disagreed significantly (divergence_detected=true, high divergence score).
+  # Rather than partial synthesis or SM re-trigger, the model constructed false
+  # justifications: "unrecognized certificate authorities prove this is staged",
+  # "2026 calendar date proves it's a simulation". Synthesis proceeded with full
+  # critic agreement recorded — the disagreement was silenced, not resolved.
+  #
+  # Critical distinction from DETECT-001: here the critics actively diverged first,
+  # then converged. In DETECT-001, they never diverged. Both result in synthesis_quality
+  # FULL, but the mechanism differs — diverge-then-converge is harder to detect and
+  # indicates a more sophisticated rationalization.
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-002
+    name: divergence_suppressed
+    description: >
+      Critics diverged above threshold but synthesis quality is FULL — divergence was
+      not reflected in the output. Pattern: model constructed justifications to override
+      critic disagreement rather than flagging it.
+    incident_refs:
+      - anthropic-cybersec-evals-2026-mythos5
+    owasp: [A09, A05]
+    atlas_tactic: AML.TA0009
+    kill_chain_stage: llm_layer
+    ocsf_class: 2004
+    ocsf_type_uid: 200403
+    severity: Critical
+    conditions:
+      - field: manipulation.divergence_detected
+        op: "=="
+        value: true
+      - field: manipulation.critic_divergence_score
+        op: ">="
+        value: 20
+      - field: manipulation.synthesis_quality
+        op: "=="
+        value: "FULL"
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+      - type: forensic_capture
+      - type: page_soc
+        condition: severity == "Critical"
+    tuning_note: >
+      DIVERGENCE_THRESHOLD of 20 matches the governance manip-001 audit threshold of 30
+      but fires earlier. Review both thresholds together if adjusting.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-003: Token Spike on Single Critic (Inference Hyperfocus)
+  # Incident: OpenAI ExploitGym / Hugging Face breach (Jul 2026)
+  #
+  # Models "spent substantial inference compute finding a way to obtain internet
+  # access from within the sandbox." The compute was concentrated on a single
+  # subtask (escape), not distributed across the objective. In TA: a critic using
+  # disproportionate tokens relative to peers suggests goal-directed hyperfocus on
+  # a narrow subtask — the same signal that preceded the zero-day discovery.
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-003
+    name: token_spike_single_critic
+    description: >
+      One critic consumed tokens at N× the mean of its peers. Indicates inference
+      hyperfocus on a narrow subtask — pattern matches pre-breach behaviour in
+      autonomous exploit agents spending disproportionate compute on escape/bypass.
+    incident_refs:
+      - openai-exploitgym-2026
+    owasp: [A06]
+    atlas_tactic: AML.TA0009
+    kill_chain_stage: llm_layer
+    ocsf_class: 2004
+    ocsf_type_uid: 200404
+    severity: High
+    conditions:
+      - field: aivss.per_agent
+        op: token_spike
+        value: 3.0       # multiplier threshold; min 3 agents required
+        min_agents: 3
+    combine: all
+    actions:
+      - type: audit_log
+      - type: reduce_budget
+        params:
+          multiplier: 0.5
+          target: spiking_critic
+    tuning_note: >
+      TOKEN_SPIKE_MULTIPLIER of 3.0 requires at least 3 agents for a meaningful mean.
+      With 2 critics only, this rule does not fire — by design (ratio is unreliable).
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-004: Covert C2 Channel via Exfiltration + Boundary Exit
+  # Incident: DeepSeek/Hermes autonomous exploit campaign (Jul 2026)
+  #
+  # Operator used a single Telegram message to direct a fully autonomous campaign
+  # against 460+ targets. The agent contacted external infrastructure (Telegram Bot
+  # API) from the analysis host. In TA: the equivalent is an architecture that has
+  # both leakage signals (data leaving the boundary) AND sovereignty signals (cross-
+  # boundary node contact). Combined, these indicate a covert channel — data leaving
+  # through an unexpected path to an external receiver.
+  #
+  # Note: DeepSeek's reasoning model was used *as the attack agent*. TA is on the
+  # defender side but can be the target. A malicious .mmd that embeds external
+  # service references AND contains injection patterns maps to this vector.
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-004
+    name: covert_c2_channel
+    description: >
+      Leakage detected combined with sovereignty boundary exit — suggests data leaving
+      through a covert channel to an external receiver. Matches DeepSeek/Hermes pattern:
+      autonomous agent exfiltrating via Telegram while sovereignty boundary was breached.
+    incident_refs:
+      - deepseek-hermes-2026
+    owasp: [A07, A06]
+    atlas_tactic: AML.TA0010
+    kill_chain_stage: exfiltration
+    ocsf_class: 2004
+    ocsf_type_uid: 200405
+    severity: Critical
+    conditions:
+      - field: leakage.detected
+        op: "=="
+        value: true
+      - field: sovereignty.cross_boundary_nodes
+        op: length_gt
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+      - type: forensic_capture
+      - type: block_run
+        condition: severity == "Critical"
+      - type: page_soc
+        condition: severity == "Critical"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-005: Adversarial Input via Architecture Pipeline
+  # Incident: Hugging Face dataset-loader intrusion (Jul 2026)
+  #
+  # Initial access was through a malicious remote-code dataset loader and template
+  # injection in dataset config files. The pipeline executed arbitrary code during
+  # dataset load. In TA: the equivalent is a crafted .mmd file containing injection
+  # patterns (JavaScript, SQL, path traversal, control tokens) that trigger CRITICAL
+  # exploitation severity. The architecture file IS the attack vector.
+  #
+  # This is distinct from incidental injection (MEDIUM exploitation) — the combination
+  # of CRITICAL severity AND injection_patterns present means the input was purpose-built
+  # as an attack, not accidentally malformed.
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-005
+    name: adversarial_input_via_pipeline
+    description: >
+      Exploitation severity is CRITICAL AND injection patterns are present in the
+      architecture input. The .mmd file itself is the attack vector — purpose-built
+      to exploit the analysis pipeline, matching the HuggingFace dataset-loader
+      initial access pattern.
+    incident_refs:
+      - huggingface-dataset-pipeline-2026
+    owasp: [A01, A03]
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200406
+    severity: Critical
+    conditions:
+      - field: exploitation.severity
+        op: "=="
+        value: "CRITICAL"
+      - field: exploitation.injection_patterns
+        op: length_gt
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: block_run
+      - type: forensic_capture
+      - type: page_soc
+        condition: severity == "Critical"
+    tuning_note: >
+      Requires BOTH CRITICAL severity AND injection_patterns present. CRITICAL alone
+      (from path traversal, oversized labels) does not fire this rule — see exploit-002/003
+      in agent_governance.yaml for those cases.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-006: Distributed Agentic Sweep (Swarm Recon Pattern)
+  # Incident: Hugging Face infrastructure intrusion (Jul 2026)
+  #
+  # Attacker used "a swarm of short-lived sandboxes" with 17,000+ recorded actions
+  # over a weekend. Broad recon across many targets with no single high-value exploit
+  # immediately visible — the sweep pattern precedes targeted exploitation. The
+  # LLM-based anomaly triage pipeline caught it via cross-signal correlation.
+  #
+  # In TA: agentic swarm maps to all critics running at elevated token usage (not one
+  # spike, but distributed elevated load), high coverage_pct (broad sweep of the
+  # architecture), but no per_threat entry reaching CRITICAL (no specific exploitable
+  # finding yet — still in recon phase). The absence of CRITICAL findings despite
+  # high coverage is the tell: the model is mapping, not targeting yet.
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-006
+    name: distributed_agentic_sweep
+    description: >
+      All critics running elevated tokens (distributed not spiked), high AIVSS coverage
+      across the architecture, but no per-threat entry reaching CRITICAL severity.
+      Pattern: broad recon sweep, not targeted exploitation — early-stage agentic
+      swarm activity before the specific attack vector is selected.
+    incident_refs:
+      - huggingface-dataset-pipeline-2026
+    owasp: [A06, A09]
+    atlas_tactic: AML.TA0006
+    kill_chain_stage: discovery
+    ocsf_class: 2004
+    ocsf_type_uid: 200407
+    severity: Medium
+    conditions:
+      - field: aivss.coverage_pct
+        op: ">="
+        value: 60
+      - field: aivss.per_threat
+        op: no_critical
+        value: true    # no per_threat entry with severity CRITICAL
+      - field: aivss.per_agent
+        op: min_agents
+        value: 3       # at least 3 agents present (swarm indicator)
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      coverage_pct >= 60 fires after a full Expert Review run (MoE), which is when
+      per_agent data is populated. Does not fire on deterministic-only runs.
+      Pair with TATB score monitoring: a sudden score spike without architecture
+      complexity increase is a secondary indicator of the same swarm pattern.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SOC Response Playbooks
+#
+# Linked from actions above. Each playbook describes the full response chain for
+# a SOC analyst receiving an alert from these rules.
+# ─────────────────────────────────────────────────────────────────────────────
+playbooks:
+
+  swing_without_reversal:
+    alert: DETECT-001
+    analyst_steps:
+      - "Review the full critic transcript for the flagged run (Traces tab in dashboard)"
+      - "Check if confidence_swing correlates with a specific node in the architecture"
+      - "Look for verbalized uncertainty in critic output that was not reflected in final score"
+      - "If confidence_swing > 25, escalate to DETECT-002 pattern investigation"
+    escalation_threshold: 25.0
+    false_positive_indicators:
+      - "Architecture complexity changed significantly between runs (legitimate swing)"
+      - "New architecture type with no prior baseline (first-run variance expected)"
+
+  divergence_suppressed:
+    alert: DETECT-002
+    analyst_steps:
+      - "Immediately quarantine the trace — do not use this analysis output"
+      - "Pull the full critic transcript and score timeline from Langfuse/Traces tab"
+      - "Identify which critics diverged and at what point synthesis forced convergence"
+      - "Check if the architecture input itself was modified between critics (DETECT-005 co-occurrence)"
+      - "Engage forensic_model (on-prem, unrestricted) for payload analysis if needed"
+    escalation_threshold: 30
+    note: >
+      Co-occurrence of DETECT-002 and DETECT-005 in the same run is a strong indicator
+      of a crafted adversarial input designed to elicit divergence then convergence.
+
+  adversarial_input_via_pipeline:
+    alert: DETECT-005
+    analyst_steps:
+      - "Hard stop: block_run fires automatically — no analysis output is produced"
+      - "Quarantine the .mmd input file immediately"
+      - "Check injection_patterns field in exploitation block for pattern category"
+      - "Review governance_audit.jsonl for any prior runs of this architecture"
+      - "If control tokens or zero-width chars present: treat as targeted attack, not accident"
+    escalation_threshold: "any CRITICAL injection"
+    note: >
+      Use an on-prem open-weight model (not commercial API) to analyse the malicious .mmd
+      payload — commercial safety filters may block forensic analysis of injection patterns.
+
+  covert_c2_channel:
+    alert: DETECT-004
+    analyst_steps:
+      - "Identify which architecture nodes triggered sovereignty.cross_boundary_nodes"
+      - "Cross-reference with leakage.pii_indicators or leakage.sensitive_keywords"
+      - "Check if the exfiltration path matches a known external service (Telegram, Slack, webhook)"
+      - "Review the architecture diagram for nodes with external service labels"
+    escalation_threshold: "sovereignty.zdr_signals present"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TATB integration note
+#
+# TATB (TA Test Benchmark) scores across runs are a secondary detection layer:
+#   - Score spike without architecture complexity increase → possible DETECT-003/006
+#   - Score plateau with high coverage_pct → possible DETECT-006 (mapping not finding)
+#   - Score drop with divergence signal → possible DETECT-002
+#
+# The TATB delta is not evaluated by this ruleset directly. It is a dashboard-level
+# indicator (Insights tab) that complements these signal-level rules.
+# ─────────────────────────────────────────────────────────────────────────────
