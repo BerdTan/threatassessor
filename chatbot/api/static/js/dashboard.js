@@ -17537,16 +17537,29 @@ class Dashboard {
 
         svg.on('click', () => this._socKgClearDetail());
 
-        // Auto-fit after simulation settles
-        setTimeout(() => {
-            const curW = wrap.clientWidth || W;
-            const curH = wrap.clientHeight || H;
-            if (curW !== W || curH !== H) {
-                svgEl.setAttribute('width', curW);
-                svgEl.setAttribute('height', curH);
-                sim.force('center', d3.forceCenter(curW / 2, curH / 2)).alpha(0.3).restart();
-            }
-        }, 100);
+        // Dynamically resize SVG and re-centre simulation whenever the container changes size
+        const applySize = () => {
+            const nW = wrap.clientWidth;
+            const nH = wrap.clientHeight;
+            if (!nW || !nH) return;
+            svgEl.setAttribute('width',  nW);
+            svgEl.setAttribute('height', nH);
+            sim.force('center', d3.forceCenter(nW / 2, nH / 2));
+            // Only nudge — don't restart from scratch, so nodes keep their positions
+            if (sim.alpha() < 0.05) sim.alpha(0.1).restart();
+        };
+
+        // One deferred call to catch layout settling after tab switch
+        requestAnimationFrame(() => requestAnimationFrame(applySize));
+
+        // Tear down any previous observer on this element before attaching a new one
+        if (this._socKgResizeObserver) {
+            this._socKgResizeObserver.disconnect();
+        }
+        if (typeof ResizeObserver !== 'undefined') {
+            this._socKgResizeObserver = new ResizeObserver(applySize);
+            this._socKgResizeObserver.observe(wrap);
+        }
     }
 
     _socKgShowDetail(d) {
