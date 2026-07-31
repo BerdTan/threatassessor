@@ -17344,41 +17344,41 @@ class Dashboard {
     }
 
     async _renderSocKg() {
-        const chainsEl = document.getElementById('soc-kg-chains');
         const emptyEl  = document.getElementById('soc-kg-empty');
         const countEl  = document.getElementById('soc-kg-rule-count');
         const banner   = document.getElementById('soc-kg-banner');
         const filtersEl= document.getElementById('soc-kg-sev-filters');
-        if (!chainsEl) return;
+        // Guard on the SVG wrap — this is the new container after the HTML restructure
+        const wrapCheck = document.getElementById('soc-kg-svg-wrap');
+        if (!wrapCheck) return;
+
+        const svgWrap = document.getElementById('soc-kg-svg-wrap');
+        const _showEmpty = () => {
+            if (emptyEl) emptyEl.style.display = 'flex';
+            if (svgWrap) svgWrap.style.display = 'none';
+            if (banner)  banner.style.display  = 'none';
+        };
+        const _showGraph = () => {
+            if (emptyEl) emptyEl.style.display = 'none';
+            if (svgWrap) svgWrap.style.display = '';
+        };
 
         const arch = (this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture))
                      || this.currentArchName || '';
-        if (!arch) {
-            if (emptyEl) emptyEl.style.display = 'flex';
-            if (banner) banner.style.display = 'none';
-            return;
-        }
+        if (!arch) { _showEmpty(); return; }
 
         let findings = [];
         try {
             const resp = await fetch(`/api/v1/reports/${arch}/files/ocsf_findings.json`);
             if (!resp.ok) throw new Error('not found');
             findings = await resp.json();
-        } catch {
-            if (emptyEl) emptyEl.style.display = 'flex';
-            if (banner) banner.style.display = 'none';
-            return;
-        }
+        } catch { _showEmpty(); return; }
 
         const detections = findings.filter(f => f.class_uid === 2004 && f.unmapped?.rule_id);
         if (countEl) countEl.textContent = `${detections.length} detection finding${detections.length !== 1 ? 's' : ''}`;
 
-        if (!detections.length) {
-            if (emptyEl) emptyEl.style.display = 'flex';
-            if (banner) banner.style.display = 'none';
-            return;
-        }
-        if (emptyEl) emptyEl.style.display = 'none';
+        if (!detections.length) { _showEmpty(); return; }
+        _showGraph();
 
         // ── Constants ─────────────────────────────────────────────────────────
         const NODE_COLOR = { trace:'#6366f1', signal:'#0ea5e9', threshold:'#f59e0b', rule:'#8b5cf6', alert:'#ef4444', action:'#10b981' };
@@ -17515,7 +17515,7 @@ class Dashboard {
         if (!d3) return;
 
         const svgEl  = document.getElementById('soc-kg-svg');
-        const wrap   = document.getElementById('soc-kg-svg-wrap');
+        const wrap   = svgWrap;
         if (!svgEl || !wrap) return;
 
         const svg = d3.select(svgEl);
