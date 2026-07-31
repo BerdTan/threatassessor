@@ -17598,7 +17598,6 @@ class Dashboard {
                     .on('drag', (ev) => {
                         n.x = ev.x; n.y = ev.y;
                         ng.attr('transform', `translate(${n.x},${n.y})`);
-                        // Redraw all edges (small graph — fast)
                         edges.forEach(e => {
                             const s2 = nodeById[e.from], t2 = nodeById[e.to];
                             if (!s2 || !t2) return;
@@ -17609,6 +17608,14 @@ class Dashboard {
                             });
                         });
                     }));
+
+            // Native click — bypasses D3 drag suppression entirely.
+            // Closure captures n and nodeData from the enclosing scope.
+            ng.node().addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                const nd = nodeData.get(n.id);
+                if (nd) this._socKgShowDetail(nd);
+            });
 
             // Outer dashed ring for action nodes shared by multiple rules
             if (n.type === 'action' && n.ruleIds && n.ruleIds.length > 1) {
@@ -17668,19 +17675,8 @@ class Dashboard {
             nodeEls[n.id] = ng;
         });
 
-        // Event delegation — click on any .kg3-node group opens detail panel.
-        // Must be on the g container, not per-node, so drag doesn't suppress it.
-        // Single click on any node — event delegation on g.
-        // svg.on('click') is intentionally NOT registered: it would fire after
-        // g's handler (even with stopPropagation) and immediately clear the
-        // detail panel that was just populated.
-        g.on('click', (ev) => {
-            const grpEl = ev.target.closest('[data-nid]');
-            if (!grpEl) return;   // click on edge/background — do nothing
-            ev.stopPropagation();
-            const nd = nodeData.get(grpEl.dataset.nid);
-            if (nd) this._socKgShowDetail(nd);
-        });
+        // Clicks on edges/background do nothing — node clicks are handled
+        // by native addEventListener on each ng.node() above.
 
         // ── Severity filter chips → show/hide rule rows ────────────────────────
         // Store node/edge elements per ruleId so we can dim them
@@ -17909,6 +17905,30 @@ class Dashboard {
             const finding = m.finding || {};
             if (finding.desc) {
                 html += `<div style="font-size:0.77rem;color:var(--text-secondary);line-height:1.5;padding:0.5rem 0.65rem;background:var(--code-bg);border-radius:4px;">${finding.desc}</div>`;
+            }
+        }
+
+        if (d.type === 'action') {
+            const ACTION_DESC = {
+                audit_log:        'Write a tamper-evident record to the governance audit log. Keeps the pipeline running — low disruption, full evidence trail.',
+                quarantine_trace: 'Hold this analysis run for human review before the output is used in any decision. The result is held, not deleted.',
+                reduce_budget:    'Cut the token allowance for the critic that spiked. Limits how much compute any single component can spend on a narrow subtask.',
+                forensic_capture: 'Export the full OCSF event stream for this run. Hand to a forensics team or feed into a SIEM for deeper correlation.',
+                page_soc:         'Send a high-priority alert to the security operations team. Use when a human is needed within minutes, not hours.',
+                block_run:        'Hard stop — abort the pipeline. No analysis output is written. Use when the input itself is the attack.',
+            };
+            const acts = m.allActions || (m.actionType ? [{ type: m.actionType, params: m.params }] : []);
+            if (acts.length) {
+                html += `<div style="margin-bottom:0.4rem;font-size:0.73rem;font-weight:600;color:var(--text-secondary);">${acts.length} response action${acts.length > 1 ? 's' : ''}:</div>`;
+                acts.forEach(act => {
+                    const desc = ACTION_DESC[act.type] || 'Response action triggered by this alert.';
+                    const ac = NODE_COLOR.action;
+                    html += `<div style="margin-bottom:0.5rem;padding:0.45rem 0.65rem;background:var(--code-bg);border-radius:4px;border-left:3px solid ${ac};">
+                        <div style="font-weight:700;font-size:0.78rem;color:${ac};">${act.type}</div>
+                        <div style="font-size:0.74rem;color:var(--text-secondary);margin-top:0.2rem;line-height:1.5;">${desc}</div>
+                        ${act.params ? `<div style="font-family:monospace;font-size:0.7rem;color:var(--text-tertiary);margin-top:0.25rem;">${JSON.stringify(act.params)}</div>` : ''}
+                    </div>`;
+                });
             }
         }
 
