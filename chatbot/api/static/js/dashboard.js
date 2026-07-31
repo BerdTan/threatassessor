@@ -17456,113 +17456,112 @@ class Dashboard {
         const d3 = window.d3;
         if (!d3) return;
 
-        // Named container — getBoundingClientRect gives correct pixel dimensions
-        // even when flexbox hasn't resolved clientHeight yet
-        const wrap = document.getElementById('soc-kg-graph-wrap') || svgEl.parentElement;
-        const R = 28;
+        // Disconnect any stale observer before the new render
+        if (this._socKgResizeObserver) { this._socKgResizeObserver.disconnect(); this._socKgResizeObserver = null; }
 
-        // Measure after layout; SVG is position:absolute so it doesn't affect the rect
-        const rect = wrap.getBoundingClientRect();
-        const W = rect.width  || wrap.offsetWidth  || 900;
-        const H = rect.height || wrap.offsetHeight || 600;
+        // Defer the entire D3 build until after the flex wrapper has laid out.
+        // switchTab() shows the wrapper synchronously, but the browser hasn't
+        // painted or resolved flex heights yet at this point in the call stack.
+        // Two rAFs: first yields to the layout pass, second yields to paint —
+        // only then does getBoundingClientRect() return real pixel dimensions.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            const wrap = document.getElementById('soc-kg-graph-wrap') || svgEl.parentElement;
+            const R = 28;
 
-        svgEl.setAttribute('width',  W);
-        svgEl.setAttribute('height', H);
+            const _measure = () => {
+                const r = wrap.getBoundingClientRect();
+                return { W: r.width || wrap.offsetWidth || 900, H: r.height || wrap.offsetHeight || 600 };
+            };
+            let { W, H } = _measure();
 
-        const svg = d3.select(svgEl);
-        svg.selectAll('*').remove();
+            svgEl.setAttribute('width',  W);
+            svgEl.setAttribute('height', H);
 
-        const defs = svg.append('defs');
-        Object.values(COLOR).forEach(c => {
-            defs.append('marker')
-                .attr('id',          'kg-arrow-' + c.replace('#',''))
-                .attr('viewBox',     '0 -4 8 8')
-                .attr('refX',        R + 8).attr('refY', 0)
-                .attr('markerWidth', 6).attr('markerHeight', 6)
-                .attr('orient', 'auto')
-              .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', c);
-        });
+            const svg = d3.select(svgEl);
+            svg.selectAll('*').remove();
 
-        const g = svg.append('g');
-        svg.call(d3.zoom().scaleExtent([0.2, 4]).on('zoom', e => g.attr('transform', e.transform)));
+            const defs = svg.append('defs');
+            Object.values(COLOR).forEach(c => {
+                defs.append('marker')
+                    .attr('id',          'kg-arrow-' + c.replace('#',''))
+                    .attr('viewBox',     '0 -4 8 8')
+                    .attr('refX',        R + 8).attr('refY', 0)
+                    .attr('markerWidth', 6).attr('markerHeight', 6)
+                    .attr('orient', 'auto')
+                  .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', c);
+            });
 
-        const linkData = edges.map(e => ({ ...e }));
-        const sim = d3.forceSimulation(nodes)
-            .force('link',    d3.forceLink(linkData).id(d => d.id).distance(160).strength(0.7))
-            .force('charge',  d3.forceManyBody().strength(-400))
-            .force('center',  d3.forceCenter(W / 2, H / 2))
-            .force('collide', d3.forceCollide(R + 18))
-            .force('x',       d3.forceX(W / 2).strength(0.04))
-            .force('y',       d3.forceY(H / 2).strength(0.04));
+            const g = svg.append('g');
+            svg.call(d3.zoom().scaleExtent([0.2, 4]).on('zoom', e => g.attr('transform', e.transform)));
 
-        const link = g.append('g').selectAll('line')
-            .data(linkData).join('line')
-            .attr('stroke', d => d.color).attr('stroke-width', 2)
-            .attr('stroke-opacity', 0.55)
-            .attr('marker-end', d => `url(#kg-arrow-${d.color.replace('#','')})`);
+            const linkData = edges.map(e => ({ ...e }));
+            const sim = d3.forceSimulation(nodes)
+                .force('link',    d3.forceLink(linkData).id(d => d.id).distance(160).strength(0.7))
+                .force('charge',  d3.forceManyBody().strength(-400))
+                .force('center',  d3.forceCenter(W / 2, H / 2))
+                .force('collide', d3.forceCollide(R + 18))
+                .force('x',       d3.forceX(W / 2).strength(0.04))
+                .force('y',       d3.forceY(H / 2).strength(0.04));
 
-        const node = g.append('g').selectAll('g')
-            .data(nodes).join('g').style('cursor', 'pointer')
-            .call(d3.drag()
-                .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-                .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
-                .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }))
-            .on('click', (ev, d) => { ev.stopPropagation(); this._socKgShowDetail(d); });
+            const link = g.append('g').selectAll('line')
+                .data(linkData).join('line')
+                .attr('stroke', d => d.color).attr('stroke-width', 2)
+                .attr('stroke-opacity', 0.55)
+                .attr('marker-end', d => `url(#kg-arrow-${d.color.replace('#','')})`);
 
-        // Glow filter for selected
-        defs.append('filter').attr('id', 'kg-glow')
-          .append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur');
+            const node = g.append('g').selectAll('g')
+                .data(nodes).join('g').style('cursor', 'pointer')
+                .call(d3.drag()
+                    .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+                    .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+                    .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }))
+                .on('click', (ev, d) => { ev.stopPropagation(); this._socKgShowDetail(d); });
 
-        node.append('circle')
-            .attr('r', R)
-            .attr('fill', d => COLOR[d.type] + '28')
-            .attr('stroke', d => COLOR[d.type])
-            .attr('stroke-width', d => SEV_W[d.meta?.severity] || 2);
+            node.append('circle')
+                .attr('r', R)
+                .attr('fill', d => COLOR[d.type] + '28')
+                .attr('stroke', d => COLOR[d.type])
+                .attr('stroke-width', d => SEV_W[d.meta?.severity] || 2);
 
-        node.append('text')
-            .attr('text-anchor', 'middle').attr('dy', '-0.15em')
-            .attr('font-size', '10px').attr('font-weight', '700')
-            .attr('fill', d => COLOR[d.type]).attr('pointer-events', 'none')
-            .text(d => d.label.length > 16 ? d.label.slice(0,15) + '…' : d.label);
+            node.append('text')
+                .attr('text-anchor', 'middle').attr('dy', '-0.15em')
+                .attr('font-size', '10px').attr('font-weight', '700')
+                .attr('fill', d => COLOR[d.type]).attr('pointer-events', 'none')
+                .text(d => d.label.length > 16 ? d.label.slice(0,15) + '…' : d.label);
 
-        node.append('text')
-            .attr('text-anchor', 'middle').attr('dy', '0.95em')
-            .attr('font-size', '8px').attr('fill', 'var(--text-tertiary)')
-            .attr('pointer-events', 'none')
-            .text(d => d.type.toUpperCase());
+            node.append('text')
+                .attr('text-anchor', 'middle').attr('dy', '0.95em')
+                .attr('font-size', '8px').attr('fill', 'var(--text-tertiary)')
+                .attr('pointer-events', 'none')
+                .text(d => d.type.toUpperCase());
 
-        node.append('title').text(d => d.meta?.fullLabel || d.label);
+            node.append('title').text(d => d.meta?.fullLabel || d.label);
 
-        sim.on('tick', () => {
-            link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-                .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-            node.attr('transform', d => `translate(${d.x},${d.y})`);
-        });
+            sim.on('tick', () => {
+                link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
+            });
 
-        svg.on('click', () => this._socKgClearDetail());
+            svg.on('click', () => this._socKgClearDetail());
 
-        // Resize handler — uses getBoundingClientRect so it works even when
-        // clientHeight is 0 due to flex not yet having assigned a pixel height
-        const applySize = () => {
-            const r = wrap.getBoundingClientRect();
-            const nW = r.width  || wrap.offsetWidth;
-            const nH = r.height || wrap.offsetHeight;
-            if (!nW || !nH) return;
-            svgEl.setAttribute('width',  nW);
-            svgEl.setAttribute('height', nH);
-            sim.force('center', d3.forceCenter(nW / 2, nH / 2));
-            if (sim.alpha() < 0.05) sim.alpha(0.12).restart();
-        };
+            // ResizeObserver — fires on every container resize after initial render
+            const applySize = () => {
+                const { W: nW, H: nH } = _measure();
+                if (!nW || !nH) return;
+                svgEl.setAttribute('width',  nW);
+                svgEl.setAttribute('height', nH);
+                sim.force('center', d3.forceCenter(nW / 2, nH / 2));
+                sim.force('x', d3.forceX(nW / 2).strength(0.04));
+                sim.force('y', d3.forceY(nH / 2).strength(0.04));
+                if (sim.alpha() < 0.05) sim.alpha(0.12).restart();
+            };
 
-        // Two rAF: first lets the browser finish flex layout, second measures it
-        requestAnimationFrame(() => requestAnimationFrame(applySize));
-
-        // Disconnect any stale observer before attaching a fresh one
-        if (this._socKgResizeObserver) this._socKgResizeObserver.disconnect();
-        if (typeof ResizeObserver !== 'undefined') {
-            this._socKgResizeObserver = new ResizeObserver(applySize);
-            this._socKgResizeObserver.observe(wrap);
-        }
+            if (typeof ResizeObserver !== 'undefined') {
+                this._socKgResizeObserver = new ResizeObserver(applySize);
+                this._socKgResizeObserver.observe(wrap);
+            }
+        })); // end double-rAF
     }
 
     _socKgShowDetail(d) {
