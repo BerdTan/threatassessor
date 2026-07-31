@@ -17459,7 +17459,7 @@ class Dashboard {
             // Threshold (col 2, row ri)
             const thrId   = `threshold:${ruleId}`;
             const condCount = Object.keys(tvs).length;
-            const thrMeta = { type:'threshold', label:`${condCount} cond`, meta:{ ruleId, severity:sev, condCount } };
+            const thrMeta = { type:'threshold', label:`${condCount} cond`, meta:{ ruleId, severity:sev, condCount, fields:tvs } };
             _addNode(thrId, 2, ri, `${condCount} cond`, 'threshold', thrMeta, rc, sw);
             nodeData.set(thrId, thrMeta);
             edges.push({ from:sigId, to:thrId, color:rc, ruleId, sev });
@@ -17670,14 +17670,17 @@ class Dashboard {
 
         // Event delegation — click on any .kg3-node group opens detail panel.
         // Must be on the g container, not per-node, so drag doesn't suppress it.
+        // Single click on any node — event delegation on g.
+        // svg.on('click') is intentionally NOT registered: it would fire after
+        // g's handler (even with stopPropagation) and immediately clear the
+        // detail panel that was just populated.
         g.on('click', (ev) => {
             const grpEl = ev.target.closest('[data-nid]');
-            if (!grpEl) { this._socKgClearDetail(); return; }
+            if (!grpEl) return;   // click on edge/background — do nothing
             ev.stopPropagation();
             const nd = nodeData.get(grpEl.dataset.nid);
             if (nd) this._socKgShowDetail(nd);
         });
-        svg.on('click', () => this._socKgClearDetail());
 
         // ── Severity filter chips → show/hide rule rows ────────────────────────
         // Store node/edge elements per ruleId so we can dim them
@@ -17834,17 +17837,54 @@ class Dashboard {
         }
 
         if (d.type === 'threshold') {
-            html += `<div style="font-size:0.78rem;color:var(--text-secondary);">${m.condCount || 0} condition${m.condCount !== 1 ? 's' : ''} checked — all must be true for the rule to fire.</div>`;
+            // List all triggered field conditions
+            const tvs = m.fields || {};
+            const fieldList = Object.entries(tvs);
+            if (fieldList.length) {
+                html += `<div style="margin-bottom:0.4rem;font-size:0.73rem;font-weight:600;color:var(--text-secondary);">All ${fieldList.length} condition${fieldList.length !== 1 ? 's' : ''} met (all must be true):</div>`;
+                html += `<div style="background:var(--code-bg);border-radius:6px;padding:0.5rem 0.7rem;font-family:monospace;font-size:0.72rem;line-height:1.75;">`;
+                fieldList.forEach(([k, v]) => {
+                    const display = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                    const parts = k.split('.');
+                    const field = parts.slice(-1)[0];
+                    const prefix = parts.slice(0,-1).join('.');
+                    html += `<div><span style="color:var(--text-tertiary);">${prefix}.</span><span style="color:${c};font-weight:700;">${field}</span> = <strong style="color:var(--text-primary);">${display}</strong></div>`;
+                });
+                html += `</div>`;
+            } else {
+                html += `<div style="font-size:0.78rem;color:var(--text-secondary);">${m.condCount || 0} condition${m.condCount !== 1 ? 's' : ''} checked — all must be true for the rule to fire.</div>`;
+            }
         }
+
+        // MITRE ATLAS tactic descriptions
+        const ATLAS_DESC = {
+            'AML.TA0001': 'Initial Access — attacker gains a foothold in the AI system or its supply chain',
+            'AML.TA0002': 'Execution — attacker runs malicious code within the ML environment',
+            'AML.TA0004': 'Persistence — attacker maintains access across retraining or redeployment',
+            'AML.TA0005': 'Defence Evasion — attacker avoids detection by safety filters or monitoring',
+            'AML.TA0006': 'Credential Access — attacker steals secrets to impersonate components',
+            'AML.TA0007': 'Discovery — attacker probes the model or pipeline to map its capabilities',
+            'AML.TA0009': 'ML Attack Staging — attacker prepares adversarial inputs or poisons data before the main attack',
+            'AML.TA0010': 'Exfiltration — attacker extracts sensitive data (model weights, training data, PII) out of the boundary',
+            'AML.TA0015': 'Impact — attacker degrades, corrupts, or destroys the ML system\'s outputs or infrastructure',
+        };
 
         if (d.type === 'rule') {
             const sevColor = { Critical:'#ef4444', High:'#f97316', Medium:'#f59e0b', Low:'#6b7280' };
             const sc = sevColor[m.severity] || '#6b7280';
-            html += `<div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.65rem;font-size:0.75rem;">`;
+            html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.65rem;font-size:0.75rem;">`;
             if (m.severity) html += `<span style="padding:0.15rem 0.5rem;border-radius:3px;background:${sc}22;color:${sc};font-weight:700;">${m.severity}</span>`;
             if (m.killChain) html += `<span style="padding:0.15rem 0.5rem;border-radius:3px;background:var(--code-bg);color:var(--text-secondary);">${m.killChain.replace(/_/g,' ')}</span>`;
-            if (m.atlas) html += `<span style="padding:0.15rem 0.5rem;border-radius:3px;background:var(--code-bg);color:var(--text-secondary);">${m.atlas}</span>`;
             html += `</div>`;
+            // ATLAS tactic with plain-English description
+            if (m.atlas) {
+                const atlasDesc = ATLAS_DESC[m.atlas] || 'MITRE ATLAS adversarial ML tactic';
+                html += `<div style="margin-bottom:0.65rem;padding:0.45rem 0.65rem;background:var(--code-bg);border-radius:4px;font-size:0.73rem;">
+                    <span style="font-weight:700;color:var(--text-primary);">${m.atlas}</span>
+                    <span style="color:var(--text-tertiary);margin-left:0.35rem;">MITRE ATLAS</span><br>
+                    <span style="color:var(--text-secondary);line-height:1.5;">${atlasDesc}</span>
+                </div>`;
+            }
 
             if (m.incidentRefs?.length) {
                 html += `<div style="margin-bottom:0.4rem;font-size:0.72rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;">Based on real incidents</div>`;
