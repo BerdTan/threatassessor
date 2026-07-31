@@ -17795,37 +17795,43 @@ class Dashboard {
             legendBar.appendChild(btn);
         });
 
-        // ── Fit SVG to content, resize-aware ──────────────────────────────────
-        // Fit once: size SVG to container and seed zoom so content fills the view.
-        // ResizeObserver only updates SVG dimensions — never resets zoom.transform,
-        // which would cause a feedback loop and re-trigger ResizeObserver.
+        // ── Fit SVG to container, resize-aware ───────────────────────────────────
+        // SVG is position:absolute;inset:0 inside a position:relative flex child.
+        // getBoundingClientRect() gives the true rendered size after flex resolves.
+        // _initialFit: called once, seeds zoom so all nodes fill the view.
+        // _onResize: called on ResizeObserver — only updates SVG dimensions,
+        //            never resets zoom.transform (avoids ResizeObserver feedback loop).
+        const _measure = () => {
+            const r = wrap.getBoundingClientRect();
+            return { w: r.width || wrap.offsetWidth || 900,
+                     h: r.height || wrap.offsetHeight || 600 };
+        };
         const _initialFit = () => {
-            const availW = wrap.clientWidth  || 800;
-            const availH = wrap.clientHeight || 500;
-            svgEl.setAttribute('width',  availW);
-            svgEl.setAttribute('height', availH);
+            const { w, h } = _measure();
+            svgEl.setAttribute('width',  w);
+            svgEl.setAttribute('height', h);
             svgEl.removeAttribute('viewBox');
-            const k  = Math.min(availW / contentW, availH / contentH) * 0.88;
-            const tx = (availW - contentW * k) / 2 - vbX * k;
-            const ty = (availH - contentH * k) / 2 - vbY * k;
+            const k  = Math.min(w / contentW, h / contentH) * 0.88;
+            const tx = (w - contentW * k) / 2 - vbX * k;
+            const ty = (h - contentH * k) / 2 - vbY * k;
             svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
         };
         const _onResize = () => {
-            const availW = wrap.clientWidth  || 800;
-            const availH = wrap.clientHeight || 500;
-            svgEl.setAttribute('width',  availW);
-            svgEl.setAttribute('height', availH);
-            // Do NOT reset zoom.transform — let the user's zoom/pan state persist
+            const { w, h } = _measure();
+            svgEl.setAttribute('width',  w);
+            svgEl.setAttribute('height', h);
         };
 
-        requestAnimationFrame(() => {
+        // Double rAF: first yields to flex layout pass, second to paint —
+        // only then does getBoundingClientRect() return real pixel dimensions.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
             _initialFit();
             if (typeof ResizeObserver !== 'undefined') {
                 if (this._socKgResizeObserver) this._socKgResizeObserver.disconnect();
                 this._socKgResizeObserver = new ResizeObserver(_onResize);
                 this._socKgResizeObserver.observe(wrap);
             }
-        });
+        })); // end double-rAF
     }
 
     _socKgShowDetail(d) {
