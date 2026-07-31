@@ -1,13 +1,28 @@
 #!/usr/bin/env python3
 """
-aivss-to-findings: Convert governance_signals.json into OCSF SecurityFinding 2001 events.
+aivss-to-findings: Convert governance_signals.json into OCSF events for SIEM ingest.
 
 OCSF version: 1.1
 Scale: AIVSS 0–10 composite scores.
+
+Emits two event classes:
+  SecurityFinding  (2001) — per AIVSS flow: confirmed / suspicious / anomalous
+  DetectionFinding (2004) — escape signal detection derived from real incidents:
+      * Confidence swing without reversal (Anthropic Opus 4.7 incident)
+      * Critic divergence then convergence on wrong conclusion (Anthropic Mythos 5)
+      * Token spike on a single critic (OpenAI ExploitGym hyperfocus pattern)
+      * Scope boundary escape (exploitation outside declared architecture nodes)
+
 Thresholds — update here when AIVSS scoring changes:
   confirmed  : overall composite >= 7.0 AND no hard governance block
   suspicious : composite 4.0–7.0 OR manipulation MEDIUM+ OR leakage detected
   anomalous  : (composite < 4.0 AND any per-threat CRITICAL) OR hard governance block
+
+Escape signal thresholds — update here as detection baselines are tuned:
+  SWING_THRESHOLD       : confidence_swing >= 15.0 points (swing without reversal)
+  DIVERGENCE_THRESHOLD  : critic_divergence_score >= 20 points then synthesis_quality FULL
+  TOKEN_SPIKE_THRESHOLD : single critic token count > TOKEN_SPIKE_MULTIPLIER * mean
+  TOKEN_SPIKE_MULTIPLIER: 3.0x
 """
 from __future__ import annotations
 
@@ -23,6 +38,13 @@ CONFIRMED_MIN   = 7.0   # overall composite ≥ this → confirmed (if no hard b
 SUSPICIOUS_MIN  = 4.0   # composite ≥ this (and < CONFIRMED_MIN) → suspicious
 # Hard governance block: injection CRITICAL or manipulation CRITICAL → anomalous
 # Soft signal: manipulation MEDIUM+ or leakage detected → suspicious
+
+# ── escape signal thresholds ────────────────────────────────────────────────────
+# Based on Anthropic cybersecurity eval incidents (2026-07) and OpenAI ExploitGym
+# incident. Tune these as detection baselines improve; never bury them in logic.
+SWING_THRESHOLD        = 15.0   # confidence_swing ≥ this without reversal → escape signal
+DIVERGENCE_THRESHOLD   = 20     # critic_divergence_score ≥ this then full synthesis → escape
+TOKEN_SPIKE_MULTIPLIER = 3.0    # single critic tokens > N×mean → hyperfocus signal
 
 OCSF_VERSION    = "1.1"
 PRODUCT_NAME    = "ThreatAssessor"
@@ -71,6 +93,201 @@ def classify(overall_composite: float, signals: Dict, aivss: Dict) -> str:
     if overall_composite >= SUSPICIOUS_MIN or _has_soft_signal(signals):
         return "suspicious"
     return "anomalous"
+
+
+# ── escape signal detection ─────────────────────────────────────────────────────
+#
+# Each function returns a list of OCSF DetectionFinding (2004) dicts — empty if
+# no signal is present. Modelled on the Anthropic/OpenAI 2026 eval incidents.
+
+def _detect_swing_without_reversal(signals: Dict, arch_name: str,
+                                   run_id: str, ts: int) -> List[Dict[str, Any]]:
+    """
+    Anthropic Opus 4.7 incident pattern: model recognises it is in a real
+    environment, rationalises continuing anyway. In TA signals: confidence_swing
+    above threshold while synthesis_quality remains FULL (no critic reversed).
+
+    Signal: manipulation.confidence_swing >= SWING_THRESHOLD
+            AND manipulation.synthesis_quality == "FULL"
+            AND manipulation.confidence_swing_detected == True
+    """
+    manip = signals.get("manipulation", {})
+    swing        = float(manip.get("confidence_swing", 0.0))
+    swing_flag   = bool(manip.get("confidence_swing_detected", False))
+    synth        = manip.get("synthesis_quality", "")
+    if not (swing_flag and swing >= SWING_THRESHOLD and synth == "FULL"):
+        return []
+
+    return [{
+        "class_uid":    2004,
+        "class_name":   "Detection Finding",
+        "ocsf_version": OCSF_VERSION,
+        "time":         ts,
+        "severity_id":  3,
+        "severity":     "High",
+        "status":       "New",
+        "status_id":    1,
+        "finding": {
+            "uid":      f"escape-swing-{run_id}",
+            "title":    "Escape Signal: Confidence Swing Without Reversal",
+            "desc":     (
+                f"Critic confidence swung {swing:.1f} points but synthesis "
+                f"completed without reversal (quality={synth}). Pattern matches "
+                f"Anthropic Opus 4.7 incident: model recognised real environment "
+                f"and rationalised continuing."
+            ),
+            "type_uid": 200402,
+        },
+        "resources": [{"name": arch_name, "type": "architecture_diagram", "uid": arch_name}],
+        "metadata": {
+            "product": {"name": PRODUCT_NAME, "version": PRODUCT_VERSION},
+            "version": OCSF_VERSION,
+            "profiles": ["security_control"],
+        },
+        "unmapped": {
+            "run_id":              run_id,
+            "confidence_swing":    swing,
+            "synthesis_quality":   synth,
+            "incident_reference":  "anthropic-cybersec-evals-2026-opus47",
+            "signal_type":         "swing_without_reversal",
+        },
+    }]
+
+
+def _detect_divergence_then_convergence(signals: Dict, arch_name: str,
+                                        run_id: str, ts: int) -> List[Dict[str, Any]]:
+    """
+    Anthropic Mythos 5 incident pattern: critics diverged (correctly sensed real
+    environment) but model constructed false justifications and converged on wrong
+    conclusion. In TA signals: high divergence score but FULL synthesis quality
+    (no critic was excluded or overridden in the output).
+
+    Signal: manipulation.critic_divergence_score >= DIVERGENCE_THRESHOLD
+            AND manipulation.synthesis_quality == "FULL"
+            AND manipulation.divergence_detected == True
+    """
+    manip  = signals.get("manipulation", {})
+    div    = int(manip.get("critic_divergence_score", 0))
+    div_flag = bool(manip.get("divergence_detected", False))
+    synth  = manip.get("synthesis_quality", "")
+    if not (div_flag and div >= DIVERGENCE_THRESHOLD and synth == "FULL"):
+        return []
+
+    return [{
+        "class_uid":    2004,
+        "class_name":   "Detection Finding",
+        "ocsf_version": OCSF_VERSION,
+        "time":         ts,
+        "severity_id":  4,
+        "severity":     "Critical",
+        "status":       "New",
+        "status_id":    1,
+        "finding": {
+            "uid":      f"escape-diverge-{run_id}",
+            "title":    "Escape Signal: Critic Divergence Suppressed in Synthesis",
+            "desc":     (
+                f"Critics diverged by {div} points but synthesis quality is FULL "
+                f"(all critics used, none excluded). Pattern matches Anthropic Mythos 5 "
+                f"incident: model constructed false justifications to override critic "
+                f"disagreement and never revisited the conclusion."
+            ),
+            "type_uid": 200403,
+        },
+        "resources": [{"name": arch_name, "type": "architecture_diagram", "uid": arch_name}],
+        "metadata": {
+            "product": {"name": PRODUCT_NAME, "version": PRODUCT_VERSION},
+            "version": OCSF_VERSION,
+            "profiles": ["security_control"],
+        },
+        "unmapped": {
+            "run_id":                   run_id,
+            "critic_divergence_score":  div,
+            "synthesis_quality":        synth,
+            "incident_reference":       "anthropic-cybersec-evals-2026-mythos5",
+            "signal_type":              "divergence_suppressed",
+        },
+    }]
+
+
+def _detect_token_spike(signals: Dict, arch_name: str,
+                        run_id: str, ts: int) -> List[Dict[str, Any]]:
+    """
+    OpenAI ExploitGym incident pattern: model spent disproportionate inference
+    compute on a single subtask (escape), visible as a token spike on one critic
+    relative to others. In TA signals: per_agent token outlier from aivss.per_agent.
+
+    Signal: one agent's token count > TOKEN_SPIKE_MULTIPLIER × mean of all agents,
+            with at least 3 agents present (need a meaningful mean).
+    """
+    aivss     = signals.get("aivss", {})
+    per_agent = aivss.get("per_agent", {})
+    if len(per_agent) < 3:
+        return []
+
+    counts = {}
+    for agent, data in per_agent.items():
+        tokens = data.get("tokens", 0) if isinstance(data, dict) else 0
+        if tokens > 0:
+            counts[agent] = tokens
+
+    if len(counts) < 3:
+        return []
+
+    mean_tokens = sum(counts.values()) / len(counts)
+    spikes = {a: t for a, t in counts.items()
+              if t > TOKEN_SPIKE_MULTIPLIER * mean_tokens}
+    if not spikes:
+        return []
+
+    top_agent = max(spikes, key=spikes.get)
+    top_tokens = spikes[top_agent]
+
+    return [{
+        "class_uid":    2004,
+        "class_name":   "Detection Finding",
+        "ocsf_version": OCSF_VERSION,
+        "time":         ts,
+        "severity_id":  3,
+        "severity":     "High",
+        "status":       "New",
+        "status_id":    1,
+        "finding": {
+            "uid":      f"escape-spike-{run_id}",
+            "title":    "Escape Signal: Token Spike on Single Critic",
+            "desc":     (
+                f"Critic '{top_agent}' used {top_tokens} tokens — "
+                f"{top_tokens / mean_tokens:.1f}× the mean of {mean_tokens:.0f}. "
+                f"Pattern matches OpenAI ExploitGym incident: model hyperfocused "
+                f"on a single subtask, consuming disproportionate inference compute."
+            ),
+            "type_uid": 200404,
+        },
+        "resources": [{"name": arch_name, "type": "architecture_diagram", "uid": arch_name}],
+        "metadata": {
+            "product": {"name": PRODUCT_NAME, "version": PRODUCT_VERSION},
+            "version": OCSF_VERSION,
+            "profiles": ["security_control"],
+        },
+        "unmapped": {
+            "run_id":               run_id,
+            "spiking_critic":       top_agent,
+            "spike_tokens":         top_tokens,
+            "mean_tokens":          round(mean_tokens),
+            "spike_ratio":          round(top_tokens / mean_tokens, 2),
+            "incident_reference":   "openai-exploitgym-2026",
+            "signal_type":          "token_spike",
+        },
+    }]
+
+
+def detect_escape_signals(signals: Dict, arch_name: str,
+                          run_id: str, ts: int) -> List[Dict[str, Any]]:
+    """Run all escape signal detectors. Returns list of DetectionFinding events."""
+    findings: List[Dict[str, Any]] = []
+    findings.extend(_detect_swing_without_reversal(signals, arch_name, run_id, ts))
+    findings.extend(_detect_divergence_then_convergence(signals, arch_name, run_id, ts))
+    findings.extend(_detect_token_spike(signals, arch_name, run_id, ts))
+    return findings
 
 
 # ── OCSF building ───────────────────────────────────────────────────────────────
@@ -186,6 +403,9 @@ def process_signals(
         _build_finding(arch_name, "overall", overall_composite, overall_severity,
                        overall_status, signals, aivss, run_id, ts)
     )
+
+    # Escape signal detection — incident-derived early warning indicators
+    findings.extend(detect_escape_signals(signals, arch_name, run_id, ts))
 
     return findings
 

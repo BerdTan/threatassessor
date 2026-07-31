@@ -432,7 +432,9 @@ def export_trace(lf, trace) -> List[Dict[str, Any]]:
     try:
         observations = fetch_observations(lf, trace_id)
         for obs in observations:
-            obs_type = (getattr(obs, "type", "") or "").upper()
+            # Normalise: SDK may return ObservationType enum or plain string
+            raw_type = getattr(obs, "type", "") or ""
+            obs_type = (raw_type.value if hasattr(raw_type, "value") else str(raw_type)).upper()
             if obs_type == "GENERATION":
                 events.append(generation_to_ocsf(obs, trace_id))
             elif obs_type in ("SPAN", "EVENT", ""):

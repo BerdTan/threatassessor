@@ -11,6 +11,9 @@ Covers:
   - _epoch():             datetime str, int, None
   - export_trace():       full pipeline with mocked fetch_observations + fetch_scores
   - OCSF field invariants: class_uid, class_name, ocsf_version on every event
+  - FIX 2: governance key round-trip — LangfuseSink writes D1_exploitation etc,
+            governance_to_ocsf reads same keys; test verifies the contract end-to-end
+  - FIX 3: ObservationType enum coercion — SDK may return enum not string
 
 No LLM calls, no network. Langfuse objects are plain stubs.
 Expected runtime: < 1 second.
@@ -582,3 +585,159 @@ class TestExportTrace:
         t = _trace(metadata={"architecture": "x", "D1_exploitation": "HIGH"})
         for ev in export_trace(lf, t):
             assert ev["ocsf_version"] == "1.1", f"missing on {ev['class_uid']}"
+
+
+# ---------------------------------------------------------------------------
+# FIX 2: Governance key round-trip contract
+#
+# LangfuseSink writes governance dims to trace metadata as D1_exploitation,
+# D2_manipulation, D3_leakage, D4_identity, D5_sovereignty (sinks.py:244-248).
+# governance_to_ocsf() reads those exact keys. This test simulates the full
+# round-trip: construct a trace metadata dict the way LangfuseSink would write
+# it, pass it to governance_to_ocsf(), assert keys are consumed correctly.
+# ---------------------------------------------------------------------------
+
+class TestGovernanceKeyRoundTrip:
+    """
+    Validates that the key names LangfuseSink writes to trace metadata are
+    exactly the ones governance_to_ocsf() reads. A key rename in either side
+    would silently produce zero DetectionFindings — this test catches that.
+    """
+
+    def _langfuse_sink_metadata(self, D1="LOW", D2="LOW", D3="LOW",
+                                D4="LOW", D5="LOW", blocked=None) -> dict:
+        """Reproduce exactly what LangfuseSink.emit('governance_complete') writes."""
+        return {
+            "governance_risk_level": max([D1, D2, D3, D4, D5],
+                                         key=lambda s: {"LOW":0,"MEDIUM":1,"HIGH":2,"CRITICAL":3}.get(s,0)),
+            "D1_exploitation":  D1,
+            "D2_manipulation":  D2,
+            "D3_leakage":       D3,
+            "D4_identity":      D4,
+            "D5_sovereignty":   D5,
+            "blocked_agents":   blocked or [],
+        }
+
+    def test_elevated_d1_is_detected(self):
+        meta = self._langfuse_sink_metadata(D1="HIGH")
+        t = _trace(metadata=meta)
+        evs = governance_to_ocsf(t, "t1")
+        assert len(evs) == 1
+        assert evs[0]["unmapped"]["governance_dim"] == "D1_exploitation"
+
+    def test_elevated_d2_is_detected(self):
+        meta = self._langfuse_sink_metadata(D2="MEDIUM")
+        t = _trace(metadata=meta)
+        evs = governance_to_ocsf(t, "t1")
+        assert len(evs) == 1
+        assert evs[0]["unmapped"]["governance_dim"] == "D2_manipulation"
+
+    def test_elevated_d3_is_detected(self):
+        meta = self._langfuse_sink_metadata(D3="HIGH")
+        t = _trace(metadata=meta)
+        evs = governance_to_ocsf(t, "t1")
+        assert len(evs) == 1
+        assert evs[0]["unmapped"]["governance_dim"] == "D3_leakage"
+
+    def test_elevated_d4_is_detected(self):
+        meta = self._langfuse_sink_metadata(D4="MEDIUM")
+        t = _trace(metadata=meta)
+        evs = governance_to_ocsf(t, "t1")
+        assert len(evs) == 1
+        assert evs[0]["unmapped"]["governance_dim"] == "D4_identity"
+
+    def test_elevated_d5_is_detected(self):
+        meta = self._langfuse_sink_metadata(D5="HIGH")
+        t = _trace(metadata=meta)
+        evs = governance_to_ocsf(t, "t1")
+        assert len(evs) == 1
+        assert evs[0]["unmapped"]["governance_dim"] == "D5_sovereignty"
+
+    def test_all_low_produces_no_events(self):
+        meta = self._langfuse_sink_metadata()
+        t = _trace(metadata=meta)
+        evs = governance_to_ocsf(t, "t1")
+        assert evs == []
+
+    def test_multi_dim_all_detected(self):
+        meta = self._langfuse_sink_metadata(D1="CRITICAL", D2="HIGH", D3="MEDIUM")
+        t = _trace(metadata=meta)
+        evs = governance_to_ocsf(t, "t1")
+        detected_dims = {e["unmapped"]["governance_dim"] for e in evs}
+        assert detected_dims == {"D1_exploitation", "D2_manipulation", "D3_leakage"}
+
+    def test_blocked_agents_survive_round_trip(self):
+        meta = self._langfuse_sink_metadata(D1="HIGH", blocked=["ArchitectCritic", "TesterCritic"])
+        t = _trace(metadata=meta)
+        evs = governance_to_ocsf(t, "t1")
+        assert evs[0]["unmapped"]["blocked_agents"] == ["ArchitectCritic", "TesterCritic"]
+
+
+# ---------------------------------------------------------------------------
+# FIX 3: ObservationType enum coercion
+#
+# Langfuse SDK may return obs.type as an ObservationType enum (with .value)
+# rather than a plain string. The export pipeline must normalise either form.
+# ---------------------------------------------------------------------------
+
+class TestObservationTypeCoercion:
+    """
+    The SDK may return ObservationType.GENERATION (an enum with .value == "GENERATION")
+    instead of the string "GENERATION". The normalisation in export_trace() must handle both.
+    """
+
+    def _make_enum_like(self, value: str):
+        """Simulate an SDK enum object with a .value attribute."""
+        obj = MagicMock()
+        obj.value = value
+        obj.__str__ = lambda self: value
+        return obj
+
+    def test_generation_as_string(self):
+        obs = _generation()
+        obs.type = "GENERATION"
+        lf = MagicMock()
+        lf.api.observations.get_many.return_value.data = [obs]
+        lf.api.scores_v3.get_many_v3.return_value.data = []
+        events = export_trace(lf, _trace())
+        assert any(e["class_uid"] == 6003 for e in events)
+
+    def test_generation_as_enum(self):
+        obs = _generation()
+        obs.type = self._make_enum_like("GENERATION")
+        lf = MagicMock()
+        lf.api.observations.get_many.return_value.data = [obs]
+        lf.api.scores_v3.get_many_v3.return_value.data = []
+        events = export_trace(lf, _trace())
+        assert any(e["class_uid"] == 6003 for e in events), \
+            "GENERATION enum type was not coerced — generation_to_ocsf() not called"
+
+    def test_span_as_string(self):
+        obs = _span()
+        obs.type = "SPAN"
+        lf = MagicMock()
+        lf.api.observations.get_many.return_value.data = [obs]
+        lf.api.scores_v3.get_many_v3.return_value.data = []
+        events = export_trace(lf, _trace())
+        span_evs = [e for e in events if e["class_uid"] == 1007 and e["activity_id"] == 2]
+        assert len(span_evs) == 1
+
+    def test_span_as_enum(self):
+        obs = _span()
+        obs.type = self._make_enum_like("SPAN")
+        lf = MagicMock()
+        lf.api.observations.get_many.return_value.data = [obs]
+        lf.api.scores_v3.get_many_v3.return_value.data = []
+        events = export_trace(lf, _trace())
+        span_evs = [e for e in events if e["class_uid"] == 1007 and e["activity_id"] == 2]
+        assert len(span_evs) == 1, "SPAN enum type was not coerced — span_to_ocsf() not called"
+
+    def test_lowercase_generation_normalised(self):
+        """String case variants are also normalised."""
+        obs = _generation()
+        obs.type = "generation"
+        lf = MagicMock()
+        lf.api.observations.get_many.return_value.data = [obs]
+        lf.api.scores_v3.get_many_v3.return_value.data = []
+        events = export_trace(lf, _trace())
+        assert any(e["class_uid"] == 6003 for e in events)

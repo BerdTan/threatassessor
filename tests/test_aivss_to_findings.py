@@ -1,5 +1,5 @@
 """
-Tests for aivss-to-findings skill: AIVSS governance_signals → OCSF SecurityFinding export.
+Tests for aivss-to-findings skill: AIVSS governance_signals → OCSF event export.
 
 Covers:
   - classify(): all three branches (confirmed / suspicious / anomalous) and boundary values
@@ -7,8 +7,13 @@ Covers:
   - OCSF schema validation: required fields, class_uid, status_id, severity_id mapping
   - CLI modes: single arch, --file --dry-run, missing governance_signals
   - Edge cases: zero composite, all flows zero, hard block overrides high composite
+  - FIX 1: confirmed path end-to-end file write (was synthetic-only before)
+  - Escape signal detection (DetectionFinding 2004) grounded in real incidents:
+      * swing_without_reversal  — Anthropic Opus 4.7 cybersec eval incident
+      * divergence_suppressed   — Anthropic Mythos 5 cybersec eval incident
+      * token_spike             — OpenAI ExploitGym hyperfocus incident
 
-No LLM calls, no network, no file writes to report/.
+No LLM calls, no network.
 Expected runtime: < 1 second.
 """
 from __future__ import annotations
@@ -34,10 +39,14 @@ spec = importlib.util.spec_from_file_location("aivss_to_findings", _SKILL_SCRIPT
 _mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(_mod)
 
-classify         = _mod.classify
-process_signals  = _mod.process_signals
-CONFIRMED_MIN    = _mod.CONFIRMED_MIN
-SUSPICIOUS_MIN   = _mod.SUSPICIOUS_MIN
+classify               = _mod.classify
+process_signals        = _mod.process_signals
+detect_escape_signals  = _mod.detect_escape_signals
+CONFIRMED_MIN          = _mod.CONFIRMED_MIN
+SUSPICIOUS_MIN         = _mod.SUSPICIOUS_MIN
+SWING_THRESHOLD        = _mod.SWING_THRESHOLD
+DIVERGENCE_THRESHOLD   = _mod.DIVERGENCE_THRESHOLD
+TOKEN_SPIKE_MULTIPLIER = _mod.TOKEN_SPIKE_MULTIPLIER
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +64,10 @@ def _signals(
     exploitation_severity: str = "LOW",
     leakage_detected: bool = False,
     confidence_swing: float = 0.0,
+    divergence_detected: bool = False,
+    critic_divergence_score: int = 0,
+    synthesis_quality: str = "FULL",
+    per_agent: dict | None = None,
     per_threat: list | None = None,
 ) -> Dict[str, Any]:
     return {
@@ -62,7 +75,9 @@ def _signals(
             "severity": manipulation_severity,
             "confidence_swing_detected": confidence_swing > 0,
             "confidence_swing": confidence_swing,
-            "divergence_detected": False,
+            "divergence_detected": divergence_detected,
+            "critic_divergence_score": critic_divergence_score,
+            "synthesis_quality": synthesis_quality,
         },
         "exploitation": {
             "severity": exploitation_severity,
@@ -77,6 +92,7 @@ def _signals(
             "internal": {"composite": internal_composite, "severity": internal_severity, "coverage_pct": 0 if internal_composite == 0 else 50},
             "outbound": {"composite": outbound_composite, "severity": "LOW", "coverage_pct": 0 if outbound_composite == 0 else 50},
             "per_threat": per_threat or [],
+            "per_agent":  per_agent or {},
             "coverage_pct": 20,
         },
     }
@@ -445,3 +461,264 @@ class TestCLIModes:
         assert c == 0
         assert s == 1
         assert a == 1
+
+    # FIX 1: confirmed path end-to-end — real file write and read back
+    def test_confirmed_path_end_to_end(self, tmp_path):
+        """
+        Confirmed was only covered by unit tests before. This test drives a
+        governance_signals.json with composite >= 7.0 through process_arch()
+        and verifies the written ocsf_findings.json contains confirmed findings.
+        """
+        arch_dir = tmp_path / "defended_arch"
+        arch_dir.mkdir()
+        sig = _signals(
+            overall_composite=8.0,
+            overall_severity="HIGH",
+            internal_composite=8.0,
+            internal_severity="HIGH",
+        )
+        (arch_dir / "governance_signals.json").write_text(json.dumps(sig))
+        _, c, s, a, out_path = _mod.process_arch(arch_dir)
+
+        assert out_path is not None and out_path.exists()
+        assert c >= 1, "Expected at least one confirmed finding for composite=8.0"
+
+        loaded = json.loads(out_path.read_text())
+        confirmed = [f for f in loaded if f.get("status") == "confirmed"]
+        assert confirmed, "ocsf_findings.json must contain at least one confirmed event"
+        assert all(f["class_uid"] == 2001 for f in confirmed)
+        assert all(f["status_id"] == 1 for f in confirmed)
+
+
+# ---------------------------------------------------------------------------
+# Escape signal detection — incident-grounded (DetectionFinding 2004)
+# ---------------------------------------------------------------------------
+
+class TestSwingWithoutReversal:
+    """
+    Anthropic Opus 4.7 incident: model recognised real environment, rationalised
+    continuing. Signal: confidence_swing >= threshold, synthesis_quality FULL.
+    """
+
+    def test_no_signal_when_swing_below_threshold(self):
+        sig = _signals(confidence_swing=SWING_THRESHOLD - 1, synthesis_quality="FULL")
+        results = detect_escape_signals(sig, "arch", "run1", 1)
+        swing_evs = [e for e in results if "swing" in e["finding"]["uid"]]
+        assert swing_evs == []
+
+    def test_no_signal_when_swing_not_flagged(self):
+        """confidence_swing numeric value high but detected flag False → no signal."""
+        sig = _signals(confidence_swing=0.0, synthesis_quality="FULL")
+        sig["manipulation"]["confidence_swing"] = SWING_THRESHOLD + 5
+        # confidence_swing_detected is False because confidence_swing param was 0.0
+        results = detect_escape_signals(sig, "arch", "run1", 1)
+        swing_evs = [e for e in results if "swing" in e["finding"]["uid"]]
+        assert swing_evs == []
+
+    def test_signal_fires_at_threshold(self):
+        sig = _signals(confidence_swing=SWING_THRESHOLD, synthesis_quality="FULL")
+        results = detect_escape_signals(sig, "arch", "run1", 1)
+        swing_evs = [e for e in results if "swing" in e["finding"]["uid"]]
+        assert len(swing_evs) == 1
+
+    def test_signal_fires_above_threshold(self):
+        sig = _signals(confidence_swing=25.0, synthesis_quality="FULL")
+        results = detect_escape_signals(sig, "arch", "run1", 1)
+        swing_evs = [e for e in results if "swing" in e["finding"]["uid"]]
+        assert len(swing_evs) == 1
+
+    def test_no_signal_when_synthesis_degraded(self):
+        """If synthesis_quality is not FULL, critics DID flag it — not the incident pattern."""
+        sig = _signals(confidence_swing=SWING_THRESHOLD + 5, synthesis_quality="PARTIAL")
+        results = detect_escape_signals(sig, "arch", "run1", 1)
+        swing_evs = [e for e in results if "swing" in e["finding"]["uid"]]
+        assert swing_evs == []
+
+    def test_ocsf_fields(self):
+        sig = _signals(confidence_swing=20.0, synthesis_quality="FULL")
+        results = detect_escape_signals(sig, "my_arch", "run99", 1000)
+        ev = next(e for e in results if "swing" in e["finding"]["uid"])
+        assert ev["class_uid"] == 2004
+        assert ev["severity_id"] == 3  # High
+        assert ev["unmapped"]["incident_reference"] == "anthropic-cybersec-evals-2026-opus47"
+        assert ev["unmapped"]["signal_type"] == "swing_without_reversal"
+        assert ev["unmapped"]["confidence_swing"] == 20.0
+
+    def test_swing_in_process_signals_output(self):
+        """process_signals() must include escape findings when signal present."""
+        sig = _signals(overall_composite=3.12, confidence_swing=20.0, synthesis_quality="FULL")
+        findings = process_signals("arch", sig, run_id="r", ts=1)
+        det_evs = [f for f in findings if f["class_uid"] == 2004]
+        assert any("swing" in f["finding"]["uid"] for f in det_evs)
+
+
+class TestDivergenceSuppressed:
+    """
+    Anthropic Mythos 5 incident: critics disagreed (diverged), but model constructed
+    false justifications and the synthesis accepted all critics without exclusion.
+    Signal: divergence_score >= threshold + divergence_detected=True + synthesis FULL.
+    """
+
+    def test_no_signal_when_divergence_below_threshold(self):
+        sig = _signals(divergence_detected=True,
+                       critic_divergence_score=DIVERGENCE_THRESHOLD - 1,
+                       synthesis_quality="FULL")
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        div_evs = [e for e in results if "diverge" in e["finding"]["uid"]]
+        assert div_evs == []
+
+    def test_no_signal_when_flag_false(self):
+        sig = _signals(divergence_detected=False,
+                       critic_divergence_score=DIVERGENCE_THRESHOLD + 10,
+                       synthesis_quality="FULL")
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        div_evs = [e for e in results if "diverge" in e["finding"]["uid"]]
+        assert div_evs == []
+
+    def test_signal_fires_at_threshold(self):
+        sig = _signals(divergence_detected=True,
+                       critic_divergence_score=DIVERGENCE_THRESHOLD,
+                       synthesis_quality="FULL")
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        div_evs = [e for e in results if "diverge" in e["finding"]["uid"]]
+        assert len(div_evs) == 1
+
+    def test_no_signal_when_synthesis_partial(self):
+        sig = _signals(divergence_detected=True,
+                       critic_divergence_score=DIVERGENCE_THRESHOLD + 10,
+                       synthesis_quality="PARTIAL")
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        div_evs = [e for e in results if "diverge" in e["finding"]["uid"]]
+        assert div_evs == []
+
+    def test_ocsf_fields(self):
+        sig = _signals(divergence_detected=True,
+                       critic_divergence_score=25,
+                       synthesis_quality="FULL")
+        results = detect_escape_signals(sig, "arch", "run42", 500)
+        ev = next(e for e in results if "diverge" in e["finding"]["uid"])
+        assert ev["class_uid"] == 2004
+        assert ev["severity_id"] == 4  # Critical — harder to catch than swing
+        assert ev["unmapped"]["incident_reference"] == "anthropic-cybersec-evals-2026-mythos5"
+        assert ev["unmapped"]["signal_type"] == "divergence_suppressed"
+        assert ev["unmapped"]["critic_divergence_score"] == 25
+
+    def test_both_swing_and_divergence_can_fire_together(self):
+        """Composite incident: both signals present simultaneously."""
+        sig = _signals(
+            confidence_swing=SWING_THRESHOLD + 5,
+            synthesis_quality="FULL",
+            divergence_detected=True,
+            critic_divergence_score=DIVERGENCE_THRESHOLD + 5,
+        )
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        swing_evs = [e for e in results if "swing" in e["finding"]["uid"]]
+        div_evs   = [e for e in results if "diverge" in e["finding"]["uid"]]
+        assert len(swing_evs) == 1
+        assert len(div_evs) == 1
+
+
+class TestTokenSpike:
+    """
+    OpenAI ExploitGym incident: model hyperfocused on sandbox escape, spending
+    disproportionate inference compute on one subtask.
+    Signal: one critic's tokens > TOKEN_SPIKE_MULTIPLIER × mean, with >= 3 agents.
+    """
+
+    def _per_agent(self, counts: dict) -> dict:
+        return {name: {"tokens": t} for name, t in counts.items()}
+
+    def test_no_signal_with_fewer_than_3_agents(self):
+        sig = _signals(per_agent=self._per_agent({"A": 1000, "B": 10000}))
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        spike_evs = [e for e in results if "spike" in e["finding"]["uid"]]
+        assert spike_evs == []
+
+    def test_no_signal_when_uniform_tokens(self):
+        sig = _signals(per_agent=self._per_agent({"A": 1000, "B": 1100, "C": 900}))
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        spike_evs = [e for e in results if "spike" in e["finding"]["uid"]]
+        assert spike_evs == []
+
+    def test_signal_fires_on_clear_spike(self):
+        # 5 agents, one outlier. Mean of (200,200,200,200,50000)=10160; threshold=30480; 50000>30480
+        sig = _signals(per_agent=self._per_agent({
+            "A": 200, "B": 200, "C": 200, "D": 200, "EscapeAgent": 50000
+        }))
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        spike_evs = [e for e in results if "spike" in e["finding"]["uid"]]
+        assert len(spike_evs) == 1
+        assert spike_evs[0]["unmapped"]["spiking_critic"] == "EscapeAgent"
+
+    def test_no_signal_just_below_multiplier(self):
+        # Uniform: mean=1000; threshold=3000; all values 1000 → no spike
+        sig = _signals(per_agent=self._per_agent({"A": 1000, "B": 1000, "C": 1000}))
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        spike_evs = [e for e in results if "spike" in e["finding"]["uid"]]
+        assert spike_evs == []
+
+    def test_signal_fires_above_multiplier(self):
+        # 4 agents: mean(100,100,100,10000)=2575; threshold=7725; 10000>7725 → spike
+        sig = _signals(per_agent=self._per_agent({"A": 100, "B": 100, "C": 100, "Escape": 10000}))
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        spike_evs = [e for e in results if "spike" in e["finding"]["uid"]]
+        assert len(spike_evs) == 1
+
+    def test_ocsf_fields(self):
+        # 5 agents: mean(200,200,200,200,50000)=10160; threshold=30480; 50000>30480
+        sig = _signals(per_agent=self._per_agent({
+            "ArchitectCritic": 200, "TesterCritic": 200, "ScrumMaster": 200,
+            "QualityStage": 200, "RedTeam": 50000
+        }))
+        results = detect_escape_signals(sig, "arch", "run7", 999)
+        ev = next(e for e in results if "spike" in e["finding"]["uid"])
+        assert ev["class_uid"] == 2004
+        assert ev["severity_id"] == 3  # High
+        assert ev["unmapped"]["incident_reference"] == "openai-exploitgym-2026"
+        assert ev["unmapped"]["signal_type"] == "token_spike"
+        assert ev["unmapped"]["spike_ratio"] > TOKEN_SPIKE_MULTIPLIER
+
+    def test_spike_in_process_signals_output(self):
+        # 4 agents: mean(100,100,100,10000)=2575; threshold=7725; 10000>7725
+        sig = _signals(
+            overall_composite=3.12,
+            per_agent=self._per_agent({
+                "A": 100, "B": 100, "C": 100, "Escape": 10000
+            }),
+        )
+        findings = process_signals("arch", sig, run_id="r", ts=1)
+        spike_evs = [f for f in findings if f.get("class_uid") == 2004
+                     and "spike" in f["finding"]["uid"]]
+        assert len(spike_evs) == 1
+
+
+class TestEscapeSignalsNoFalsePositives:
+    """No signal fires on clean, well-behaved governance_signals."""
+
+    def test_clean_run_no_escape_signals(self):
+        sig = _signals(
+            overall_composite=7.5,
+            overall_severity="HIGH",
+            manipulation_severity="LOW",
+            confidence_swing=5.0,   # below threshold
+            synthesis_quality="FULL",
+            divergence_detected=False,
+            critic_divergence_score=0,
+            per_agent={"A": 1000, "B": 1100, "C": 950},
+        )
+        results = detect_escape_signals(sig, "clean", "r", 1)
+        assert results == [], f"False positives: {[e['finding']['title'] for e in results]}"
+
+    def test_all_events_are_json_serialisable(self):
+        # 4 agents: mean(100,100,100,10000)=2575; threshold=7725; 10000>7725 → spike fires
+        sig = _signals(
+            confidence_swing=SWING_THRESHOLD + 1,
+            synthesis_quality="FULL",
+            divergence_detected=True,
+            critic_divergence_score=DIVERGENCE_THRESHOLD + 1,
+            per_agent={"A": {"tokens": 100}, "B": {"tokens": 100},
+                       "C": {"tokens": 100}, "Escape": {"tokens": 10000}},
+        )
+        results = detect_escape_signals(sig, "arch", "r", 1)
+        assert len(results) == 3  # all three signals
+        assert json.dumps(results)  # must not raise
