@@ -321,7 +321,7 @@ class Dashboard {
 
     // Tabs that require a completed analysis to be meaningful
     _contentTabs() {
-        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data', 'insights', 'benchmark'];
+        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data', 'insights', 'benchmark', 'soc-kg'];
     }
 
     _setOverviewDetailVisible(visible) {
@@ -1030,6 +1030,9 @@ class Dashboard {
                 break;
             case 'benchmark':
                 this.loadBenchmarkTab();
+                break;
+            case 'soc-kg':
+                this._renderSocKg();
                 break;
         }
     }
@@ -17268,6 +17271,292 @@ class Dashboard {
             </div>
         </div>`;
     }
+
+    // ── SOC Detection Knowledge Graph ────────────────────────────────────────
+    //
+    // Renders a force-directed provenance chain for every DetectionFinding in
+    // ocsf_findings.json. Node types and their colours:
+    //   Trace      #6366f1  (one per arch run)
+    //   Signal     #0ea5e9  (governance field + value that triggered the rule)
+    //   Threshold  #f59e0b  (the numeric condition)
+    //   Rule       #8b5cf6  (DETECT-NNN from soc_detection_rules.yaml)
+    //   Alert      #ef4444  (OCSF DetectionFinding)
+    //   Action     #10b981  (audit_log | quarantine_trace | reduce_budget | …)
+    //
+    // Severity drives border width: Critical=4px, High=3px, Medium=2px, Low=1px.
+
+    async _renderSocKg() {
+        const svgEl   = document.getElementById('soc-kg-svg');
+        const emptyEl = document.getElementById('soc-kg-empty');
+        const countEl = document.getElementById('soc-kg-rule-count');
+        if (!svgEl) return;
+
+        const arch = this.currentArchitecture;
+        if (!arch) {
+            svgEl.style.display = 'none';
+            if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.querySelector('span:last-child').textContent = 'Select an architecture first.'; }
+            return;
+        }
+
+        // Fetch ocsf_findings.json
+        let findings = [];
+        try {
+            const resp = await fetch(`/api/v1/reports/${arch}/files/ocsf_findings.json`);
+            if (!resp.ok) throw new Error('not found');
+            findings = await resp.json();
+        } catch {
+            svgEl.style.display = 'none';
+            if (emptyEl) emptyEl.style.display = 'flex';
+            return;
+        }
+
+        // Filter to DetectionFinding (class_uid 2004) with a rule_id
+        const detections = findings.filter(f => f.class_uid === 2004 && f.unmapped?.rule_id);
+        if (countEl) countEl.textContent = `${detections.length} detection finding${detections.length !== 1 ? 's' : ''}`;
+
+        if (!detections.length) {
+            svgEl.style.display = 'none';
+            if (emptyEl) emptyEl.style.display = 'flex';
+            return;
+        }
+        svgEl.style.display = 'block';
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        // Build node/edge graph from provenance chain per finding
+        const nodeMap = new Map();
+        const edges   = [];
+
+        const addNode = (id, type, label, meta = {}) => {
+            if (!nodeMap.has(id)) nodeMap.set(id, { id, type, label, meta, findings: [] });
+            return nodeMap.get(id);
+        };
+
+        const COLOR = {
+            trace:     '#6366f1',
+            signal:    '#0ea5e9',
+            threshold: '#f59e0b',
+            rule:      '#8b5cf6',
+            alert:     '#ef4444',
+            action:    '#10b981',
+        };
+        const SEV_STROKE_W = { Critical: 4, High: 3, Medium: 2, Low: 1, Informational: 1 };
+
+        detections.forEach(f => {
+            const u        = f.unmapped || {};
+            const ruleId   = u.rule_id || '?';
+            const severity = f.severity || 'Low';
+            const runId    = u.run_id   || arch;
+            const kc       = u.kill_chain_stage || '';
+            const actions  = u.actions  || [];
+
+            // 1. Trace node (shared across findings from same run)
+            const traceId = `trace:${runId}`;
+            addNode(traceId, 'trace', arch, { runId });
+
+            // 2. Signal node — one per triggered field per finding
+            const tvs = u.triggered_values || {};
+            const signalLabels = Object.entries(tvs).map(([k, v]) => {
+                const short = k.split('.').slice(-1)[0];
+                const display = (typeof v === 'object') ? JSON.stringify(v).slice(0, 30) : String(v).slice(0, 30);
+                return `${short}=${display}`;
+            });
+            const signalId    = `signal:${ruleId}`;
+            const signalLabel = signalLabels.slice(0, 2).join(', ') || ruleId;
+            addNode(signalId, 'signal', signalLabel, { fields: tvs, ruleId });
+            edges.push({ source: traceId, target: signalId, color: COLOR.signal });
+
+            // 3. Threshold node
+            const threshId    = `threshold:${ruleId}`;
+            const threshLabel = u.rule_name ? u.rule_name.replace(/_/g, ' ') : ruleId;
+            addNode(threshId, 'threshold', threshLabel, { ruleId, severity });
+            edges.push({ source: signalId, target: threshId, color: COLOR.threshold });
+
+            // 4. Rule node
+            const ruleNodeId = `rule:${ruleId}`;
+            addNode(ruleNodeId, 'rule', ruleId, {
+                ruleId, severity, killChain: kc,
+                incidentRefs: u.incident_refs || [],
+                owasp: u.owasp || [],
+                atlas: u.atlas_tactic || '',
+            });
+            nodeMap.get(ruleNodeId).findings.push(f);
+            edges.push({ source: threshId, target: ruleNodeId, color: COLOR.rule });
+
+            // 5. Alert node
+            const alertId = `alert:${ruleId}`;
+            addNode(alertId, 'alert', `${ruleId} Alert`, { severity, finding: f.finding });
+            edges.push({ source: ruleNodeId, target: alertId, color: COLOR.alert });
+
+            // 6. Action nodes (one per distinct action type)
+            (u.action_detail || actions.map(a => ({ type: a }))).forEach(act => {
+                const actId = `action:${act.type}`;
+                addNode(actId, 'action', act.type, { params: act.params });
+                edges.push({ source: alertId, target: actId, color: COLOR.action });
+            });
+        });
+
+        const nodes = Array.from(nodeMap.values());
+
+        // ── D3 force layout ────────────────────────────────────────────────
+        const d3 = window.d3;
+        if (!d3) return;
+
+        const wrap   = svgEl.parentElement;
+        const W      = wrap.clientWidth  || 800;
+        const H      = wrap.clientHeight || 500;
+        const R      = 22;
+
+        svgEl.setAttribute('width',  W);
+        svgEl.setAttribute('height', H);
+
+        const svg = d3.select(svgEl);
+        svg.selectAll('*').remove();
+
+        // Arrowhead markers per colour
+        const defs = svg.append('defs');
+        Object.values(COLOR).forEach(c => {
+            defs.append('marker')
+                .attr('id',          'kg-arrow-' + c.replace('#',''))
+                .attr('viewBox',     '0 -4 8 8')
+                .attr('refX',        R + 8)
+                .attr('refY',        0)
+                .attr('markerWidth',  6)
+                .attr('markerHeight', 6)
+                .attr('orient',      'auto')
+              .append('path')
+                .attr('d',    'M0,-4L8,0L0,4')
+                .attr('fill', c);
+        });
+
+        const g = svg.append('g');
+
+        // Zoom + pan
+        svg.call(d3.zoom().scaleExtent([0.3, 3]).on('zoom', e => g.attr('transform', e.transform)));
+
+        // Simulation
+        const linkData = edges.map(e => ({ ...e, source: e.source, target: e.target }));
+        const sim = d3.forceSimulation(nodes)
+            .force('link',    d3.forceLink(linkData).id(d => d.id).distance(120).strength(0.6))
+            .force('charge',  d3.forceManyBody().strength(-280))
+            .force('center',  d3.forceCenter(W / 2, H / 2))
+            .force('collide', d3.forceCollide(R + 12));
+
+        // Links
+        const link = g.append('g').selectAll('line')
+            .data(linkData).join('line')
+            .attr('stroke',       d => d.color)
+            .attr('stroke-width', 1.5)
+            .attr('stroke-opacity', 0.6)
+            .attr('marker-end',  d => `url(#kg-arrow-${d.color.replace('#','')})`);
+
+        // Node groups
+        const node = g.append('g').selectAll('g')
+            .data(nodes).join('g')
+            .style('cursor', 'pointer')
+            .call(d3.drag()
+                .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+                .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+                .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }))
+            .on('click', (ev, d) => { ev.stopPropagation(); this._socKgShowDetail(d); });
+
+        node.append('circle')
+            .attr('r',           R)
+            .attr('fill',        d => COLOR[d.type] + '22')
+            .attr('stroke',      d => COLOR[d.type])
+            .attr('stroke-width', d => SEV_STROKE_W[d.meta?.severity] || 1.5);
+
+        node.append('text')
+            .attr('text-anchor', 'middle')
+            .attr('dy',          '0.35em')
+            .attr('font-size',   '9px')
+            .attr('fill',        d => COLOR[d.type])
+            .attr('font-weight', '600')
+            .attr('pointer-events', 'none')
+            .text(d => d.label.length > 14 ? d.label.slice(0, 13) + '…' : d.label);
+
+        // Type badge below circle
+        node.append('text')
+            .attr('text-anchor', 'middle')
+            .attr('dy',          R + 12)
+            .attr('font-size',   '8px')
+            .attr('fill',        'var(--text-tertiary)')
+            .attr('pointer-events', 'none')
+            .text(d => d.type.toUpperCase());
+
+        sim.on('tick', () => {
+            link
+                .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+            node.attr('transform', d => `translate(${d.x},${d.y})`);
+        });
+
+        // Click background to clear selection
+        svg.on('click', () => this._socKgClearDetail());
+    }
+
+    _socKgShowDetail(d) {
+        const panel = document.getElementById('soc-kg-detail-inner');
+        if (!panel) return;
+        const COLOR_MAP = { trace:'#6366f1', signal:'#0ea5e9', threshold:'#f59e0b', rule:'#8b5cf6', alert:'#ef4444', action:'#10b981' };
+        const c = COLOR_MAP[d.type] || '#888';
+        const m = d.meta || {};
+
+        let html = `<div style="margin-bottom:0.75rem;">
+            <span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:4px;background:${c}22;color:${c};font-size:0.7rem;font-weight:700;text-transform:uppercase;">${d.type}</span>
+            <span style="margin-left:0.5rem;font-weight:700;color:var(--text-primary);font-size:0.85rem;">${d.label}</span>
+        </div>`;
+
+        if (d.type === 'trace') {
+            html += `<p style="margin:0.25rem 0;"><strong>Architecture:</strong> ${m.runId || d.label}</p>`;
+        }
+        if (d.type === 'signal') {
+            const tvs = m.fields || {};
+            html += `<p style="margin:0.25rem 0;font-weight:600;">Triggered fields:</p><ul style="margin:0.25rem 0;padding-left:1.2rem;">`;
+            Object.entries(tvs).forEach(([k, v]) => {
+                const display = typeof v === 'object' ? JSON.stringify(v).slice(0, 60) : String(v).slice(0, 60);
+                html += `<li style="margin:0.2rem 0;font-family:monospace;font-size:0.75rem;"><span style="color:var(--text-secondary);">${k}</span> = <strong>${display}</strong></li>`;
+            });
+            html += `</ul>`;
+        }
+        if (d.type === 'threshold' || d.type === 'rule') {
+            if (m.severity)    html += `<p style="margin:0.2rem 0;"><strong>Severity:</strong> ${m.severity}</p>`;
+            if (m.killChain)   html += `<p style="margin:0.2rem 0;"><strong>Kill chain:</strong> ${m.killChain}</p>`;
+            if (m.atlas)       html += `<p style="margin:0.2rem 0;"><strong>ATLAS:</strong> ${m.atlas}</p>`;
+            if (m.owasp?.length) html += `<p style="margin:0.2rem 0;"><strong>OWASP:</strong> ${m.owasp.join(', ')}</p>`;
+            if (m.incidentRefs?.length) {
+                html += `<p style="margin:0.2rem 0;font-weight:600;">Incident refs:</p><ul style="margin:0.2rem 0;padding-left:1.2rem;">`;
+                m.incidentRefs.forEach(r => { html += `<li style="font-size:0.72rem;color:var(--text-secondary);">${r}</li>`; });
+                html += `</ul>`;
+            }
+        }
+        if (d.type === 'alert') {
+            const finding = m.finding || {};
+            if (m.severity) html += `<p style="margin:0.2rem 0;"><strong>Severity:</strong> <span style="color:#ef4444;">${m.severity}</span></p>`;
+            if (finding.desc) html += `<p style="margin:0.4rem 0;font-size:0.75rem;color:var(--text-secondary);line-height:1.4;">${finding.desc}</p>`;
+        }
+        if (d.type === 'action') {
+            if (m.params) html += `<pre style="font-size:0.72rem;background:var(--code-bg);padding:0.4rem;border-radius:4px;overflow:auto;">${JSON.stringify(m.params, null, 2)}</pre>`;
+        }
+
+        // Playbook steps (on rule node)
+        if (d.type === 'rule' && d.findings?.length) {
+            const steps = d.findings[0]?.unmapped?.playbook_steps || [];
+            if (steps.length) {
+                html += `<p style="margin:0.5rem 0 0.25rem;font-weight:600;">Analyst playbook:</p><ol style="margin:0;padding-left:1.2rem;">`;
+                steps.forEach(s => { html += `<li style="margin:0.2rem 0;font-size:0.72rem;color:var(--text-secondary);">${s}</li>`; });
+                html += `</ol>`;
+            }
+        }
+
+        panel.innerHTML = html;
+    }
+
+    _socKgClearDetail() {
+        const panel = document.getElementById('soc-kg-detail-inner');
+        if (panel) panel.innerHTML = '<p style="margin:0;color:var(--text-tertiary);">Click any node to see details.</p>';
+    }
+    // ── end SOC KG ────────────────────────────────────────────────────────────
+
 }
 
 // Initialize dashboard on page load
