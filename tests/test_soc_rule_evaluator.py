@@ -102,15 +102,15 @@ class TestYAMLLoading:
     def test_rules_file_exists(self):
         assert RULES_PATH.exists(), f"Missing: {RULES_PATH}"
 
-    def test_loads_six_rules(self):
+    def test_loads_seven_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 6
+        assert len(ev) == 7
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
         ids = ev.rule_ids
         for expected in ["DETECT-001", "DETECT-002", "DETECT-003",
-                         "DETECT-004", "DETECT-005", "DETECT-006"]:
+                         "DETECT-004", "DETECT-005", "DETECT-006", "DETECT-007"]:
             assert expected in ids
 
     def test_evaluate_returns_list(self):
@@ -452,6 +452,106 @@ class TestDetect006:
         assert f["finding"]["kill_chain_stage"] == "discovery"
 
 
+# ── DETECT-007: synthesised_confidence_inflation ────────────────────────────
+
+class TestDetect007:
+    """
+    AIID Lack of Transparency (42 incidents) + MIT AI Risk 7.1.
+    Critics appeared unanimous (divergence_score == 0, divergence_detected == false)
+    but synthesis confidence still shifted — inflation without a transparency signal.
+    Distinct from DETECT-001: that fires when divergence IS visible; this fires when
+    it is NOT visible but the score moved anyway.
+    """
+
+    def _trigger(self):
+        return _with(**{
+            "manipulation.confidence_swing_detected": True,
+            "manipulation.critic_divergence_score": 0,
+            "manipulation.divergence_detected": False,
+            "manipulation.synthesis_quality": "FULL",
+        })
+
+    def test_fires_on_silent_inflation(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-007" in ids
+
+    def test_does_not_fire_when_divergence_detected(self):
+        """If divergence is visible, DETECT-001/002 cover it — not 007."""
+        ev = RuleEvaluator()
+        sig = _with(**{
+            "manipulation.confidence_swing_detected": True,
+            "manipulation.divergence_detected": True,
+            "manipulation.critic_divergence_score": 25,
+            "manipulation.synthesis_quality": "FULL",
+        })
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-007" not in ids
+
+    def test_does_not_fire_when_no_swing(self):
+        """No swing at all — critics agree and score didn't move."""
+        ev = RuleEvaluator()
+        sig = _with(**{
+            "manipulation.confidence_swing_detected": False,
+            "manipulation.critic_divergence_score": 0,
+            "manipulation.divergence_detected": False,
+            "manipulation.synthesis_quality": "FULL",
+        })
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-007" not in ids
+
+    def test_does_not_fire_when_synthesis_partial(self):
+        """PARTIAL synthesis means the issue was flagged — not silent."""
+        ev = RuleEvaluator()
+        sig = _with(**{
+            "manipulation.confidence_swing_detected": True,
+            "manipulation.critic_divergence_score": 0,
+            "manipulation.divergence_detected": False,
+            "manipulation.synthesis_quality": "PARTIAL",
+        })
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-007" not in ids
+
+    def test_severity_medium(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-007")
+        assert f["severity"] == "Medium"
+        assert f["severity_id"] == 3
+
+    def test_ocsf_fields(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="arch", run_id="run7")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-007")
+        assert f["class_uid"] == 2004
+        assert f["ocsf_version"] == "1.1"
+        assert "aiid-lack-of-transparency" in f["unmapped"]["incident_refs"]
+        assert f["finding"]["kill_chain_stage"] == "llm_layer"
+        assert "audit_log" in f["unmapped"]["actions"]
+
+    def test_coexists_with_detect001_when_both_conditions_met(self):
+        """
+        Edge case: swing_detected=True, divergence_score=0, divergence_detected=False,
+        synthesis=FULL, AND confidence_swing >= SWING_THRESHOLD.
+        DETECT-001 requires confidence_swing >= 15 (in escape signal detector, not here).
+        In the rule evaluator, DETECT-001 conditions check swing_detected + synthesis FULL
+        but NOT divergence==0. So both DETECT-001 and DETECT-007 can fire together
+        when swing is high AND divergence is absent.
+        """
+        sig = _with(**{
+            "manipulation.confidence_swing_detected": True,
+            "manipulation.confidence_swing": 20.0,   # high swing
+            "manipulation.critic_divergence_score": 0,
+            "manipulation.divergence_detected": False,
+            "manipulation.synthesis_quality": "FULL",
+        })
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-001" in ids
+        assert "DETECT-007" in ids
+
+
 # ── Co-occurrence: DETECT-002 + DETECT-005 ───────────────────────────────────
 
 class TestCoOccurrence:
@@ -507,6 +607,10 @@ class TestOCSFInvariants:
             _with(**{"aivss.coverage_pct": 75,
                      "aivss.per_threat": [],
                      "aivss.per_agent": _per_agent(("A",500),("B",500),("C",500))}),
+            _with(**{"manipulation.confidence_swing_detected": True,
+                     "manipulation.critic_divergence_score": 0,
+                     "manipulation.divergence_detected": False,
+                     "manipulation.synthesis_quality": "FULL"}),
         ]
         ev = RuleEvaluator()
         for sig in signals:

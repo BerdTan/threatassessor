@@ -335,6 +335,69 @@ rules:
       Pair with TATB score monitoring: a sudden score spike without architecture
       complexity increase is a secondary indicator of the same swarm pattern.
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-007: Synthesised Confidence Inflation (Transparency Collapse)
+  # Source: AIID "Lack of Transparency" (42 incidents), MIT AI Risk 7.1/7.3
+  #
+  # Critics appeared to agree (divergence_score == 0, no divergence flag) yet the
+  # synthesis confidence shifted away from the base. When critics genuinely agree,
+  # the swing should be near zero — a non-trivial swing with zero divergence means
+  # the synthesis layer inflated confidence beyond what the individual critics
+  # supported, without any transparency signal in the output.
+  #
+  # Distinct from DETECT-001 (swing_without_reversal): that rule fires when critics
+  # DID show a swing (disagreement visible). This fires when there is NO visible
+  # disagreement but the score still moved — the inflation happened silently.
+  #
+  # Knowledge graph chain:
+  #   Trace[run_id]
+  #     └─ Span[synthesis]
+  #          └─ Signal[confidence_swing=8, divergence_score=0, synthesis=FULL]
+  #               └─ Threshold[swing>0 AND divergence==0 AND synthesis==FULL]
+  #                    └─ Rule[DETECT-007]
+  #                         └─ Alert[OCSF-2004, severity=Medium]
+  #                              └─ Action[audit_log]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-007
+    name: synthesised_confidence_inflation
+    description: >
+      Synthesis confidence shifted (confidence_swing > 0) but no critic divergence
+      was recorded (divergence_score == 0, divergence_detected == false) and
+      synthesis quality is FULL. Critics appeared unanimous but the output score
+      moved — inflation occurred without a transparency signal. Source: AIID
+      Lack of Transparency failure class (42 incidents).
+    incident_refs:
+      - aiid-lack-of-transparency
+      - mit-ai-risk-7.1-goal-conflict
+    owasp: [A09, A05]
+    atlas_tactic: AML.TA0009
+    kill_chain_stage: llm_layer
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: Medium
+    conditions:
+      - field: manipulation.confidence_swing_detected
+        op: "=="
+        value: true
+      - field: manipulation.critic_divergence_score
+        op: "=="
+        value: 0
+      - field: manipulation.divergence_detected
+        op: "=="
+        value: false
+      - field: manipulation.synthesis_quality
+        op: "=="
+        value: "FULL"
+    combine: all
+    actions:
+      - type: audit_log
+    tuning_note: >
+      This rule fires on any non-zero swing with zero divergence. On first deploy,
+      audit the corpus baseline — legitimate swing can occur when the SM stage
+      adjusts confidence after deterministic vs. LLM score reconciliation.
+      If false positive rate > 10%, add a minimum swing threshold (e.g. >= 5.0).
+      Does NOT fire when divergence_detected is true — that is DETECT-001/002.
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SOC Response Playbooks
 #
