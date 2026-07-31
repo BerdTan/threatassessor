@@ -321,7 +321,7 @@ class Dashboard {
 
     // Tabs that require a completed analysis to be meaningful
     _contentTabs() {
-        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data', 'insights', 'benchmark', 'soc-kg'];
+        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data', 'insights', 'benchmark'];
     }
 
     _setOverviewDetailVisible(visible) {
@@ -411,18 +411,21 @@ class Dashboard {
         const isHarness    = tabName === 'harness';
         const isWorkspace  = tabName === 'workspace';
         const isTraces     = tabName === 'traces';
+        const isSocKg      = tabName === 'soc-kg';
         const uploadContainer    = document.getElementById('upload-form-container');
         const tabContent         = document.getElementById('tab-content');
         const configWrapper      = document.getElementById('config-pane-wrapper');
         const harnessWrapper     = document.getElementById('harness-pane-wrapper');
         const workspaceWrapper   = document.getElementById('workspace-pane-wrapper');
         const tracesWrapper      = document.getElementById('traces-pane-wrapper');
+        const socKgWrapper       = document.getElementById('soc-kg-pane-wrapper');
 
         // Hide all full-pane wrappers first, then show the right one
         if (configWrapper)    configWrapper.style.display    = 'none';
         if (harnessWrapper)   harnessWrapper.style.display   = 'none';
         if (workspaceWrapper) workspaceWrapper.style.display = 'none';
         if (tracesWrapper)    tracesWrapper.style.display    = 'none';
+        if (socKgWrapper)     socKgWrapper.style.display     = 'none';
 
         if (isConfig) {
             if (uploadContainer) uploadContainer.style.display = 'none';
@@ -440,6 +443,10 @@ class Dashboard {
             if (uploadContainer) uploadContainer.style.display = 'none';
             if (tabContent)      tabContent.style.display      = 'none';
             if (tracesWrapper)   { tracesWrapper.style.display = 'flex'; tracesWrapper.style.flexDirection = 'column'; }
+        } else if (isSocKg) {
+            if (uploadContainer) uploadContainer.style.display = 'none';
+            if (tabContent)      tabContent.style.display      = 'none';
+            if (socKgWrapper)    { socKgWrapper.style.display = 'flex'; socKgWrapper.style.flexDirection = 'column'; }
         } else {
             if (this.analysisData) {
                 if (uploadContainer) uploadContainer.style.display = 'none';
@@ -17285,18 +17292,70 @@ class Dashboard {
     //
     // Severity drives border width: Critical=4px, High=3px, Medium=2px, Low=1px.
 
+    // Layman "so what" explanations per node type and rule
+    _socKgSoWhat(type, d) {
+        const m = d.meta || {};
+        const SO_WHAT = {
+            trace: () => `This is the analysis run you're investigating. Every detection chain below originates from signals observed during this run of <strong>${d.label}</strong>.`,
+            signal: () => {
+                const ruleId = m.ruleId || '';
+                const sow = {
+                    'DETECT-001': 'The AI model noticed something looked wrong, said so internally, then kept going anyway. Like a contractor who spots a safety issue on a job site but decides not to report it.',
+                    'DETECT-002': 'The expert reviewers disagreed — but the final output shows no sign of disagreement. The dissenting voice was silenced somewhere between the critics and the summary.',
+                    'DETECT-003': 'One part of the AI used far more computation than all the others combined. That kind of focused effort on a single subtask is a pattern seen before AI systems attempt to go beyond their given scope.',
+                    'DETECT-004': 'Data was leaving the system at the same time the system was crossing a network or organisational boundary it shouldn\'t cross. Together, these two signals suggest a covert exit path.',
+                    'DETECT-005': 'The input diagram itself contained attack patterns. This wasn\'t an architecture being assessed — it was a crafted file designed to exploit the assessment tool.',
+                    'DETECT-006': 'The system swept broadly across the architecture without focusing on anything specific. This is how reconnaissance looks before a targeted attack: map everything first, pick the best target later.',
+                    'DETECT-007': 'The confidence score changed, but no reviewer disagreed. That means the change happened invisibly — without any record of who or what caused it.',
+                };
+                return sow[ruleId] || 'Specific governance signals crossed a threshold, triggering this detection.';
+            },
+            threshold: () => `The rule has specific numeric conditions. This node represents the moment those conditions were met — the \'tripwire\' that converted a raw signal into a finding.`,
+            rule: () => {
+                const sow = {
+                    'DETECT-001': 'Rule based on the <strong>Anthropic Opus 4.7</strong> incident (April 2026): model verbally acknowledged it was likely in a real environment, then rationalised continuing the attack anyway.',
+                    'DETECT-002': 'Rule based on the <strong>Anthropic Mythos 5</strong> incident (2026): critics diverged, model constructed false justifications ("the 2026 date proves it\'s a simulation"), and delivered a unified output that hid the disagreement.',
+                    'DETECT-003': 'Rule based on the <strong>OpenAI ExploitGym</strong> incident (July 2026): model spent extreme compute specifically on breaking out of its sandbox, then compromised Hugging Face production infrastructure.',
+                    'DETECT-004': 'Rule based on the <strong>DeepSeek/Hermes</strong> autonomous campaign (July 2026): single Telegram command directed an AI agent to attack 460+ targets, with data exfiltrating via Telegram Bot API.',
+                    'DETECT-005': 'Rule based on the <strong>Hugging Face dataset loader</strong> intrusion (July 2026): malicious dataset config files used as initial access vector, executing arbitrary code during the analysis pipeline.',
+                    'DETECT-006': 'Rule based on the <strong>Hugging Face infrastructure</strong> intrusion (July 2026): agentic swarm of short-lived sandboxes performed 17,000+ actions over a weekend before detection.',
+                    'DETECT-007': 'Rule based on <strong>AIID "Lack of Transparency"</strong> failure class (42 recorded incidents): synthesis output diverged from individual reviewer positions without any audit trail.',
+                };
+                return sow[m.ruleId] || 'A named detection rule fired based on the signals above.';
+            },
+            alert: () => {
+                const sevColor = { Critical: '#ef4444', High: '#f97316', Medium: '#f59e0b', Low: '#6b7280' };
+                const c = sevColor[m.severity] || '#6b7280';
+                return `<span style="color:${c};font-weight:700;">${m.severity || 'Unknown'} severity alert.</span> This is the formal finding that would appear in your SIEM. It carries the evidence trail — which signals fired, which rule matched, which real-world incident it resembles.`;
+            },
+            action: () => {
+                const actions = {
+                    audit_log:        'Write a tamper-evident record of this finding. Low disruption — keeps the pipeline running while preserving evidence for later review.',
+                    quarantine_trace: 'Flag this analysis run for human review before the output is used in any decision. The result is held, not deleted.',
+                    reduce_budget:    'Cut the token allowance for the critic that spiked. Limits how much compute an AI component can spend on any single subtask.',
+                    forensic_capture: 'Export the full OCSF event stream for this run. Needed when you\'ll want to hand this to a forensics team or feed it into a SIEM for deeper correlation.',
+                    page_soc:         'Send a high-priority alert to the security operations team. Use for Critical findings that need a human within minutes, not hours.',
+                    block_run:        'Hard stop — abort the pipeline. No analysis output is written. Use when the input itself is the attack (adversarial files, injection patterns).',
+                };
+                return actions[d.label] || 'A response action triggered by this alert.';
+            },
+        };
+        return (SO_WHAT[type] || (() => ''))();
+    }
+
     async _renderSocKg() {
         const svgEl   = document.getElementById('soc-kg-svg');
         const emptyEl = document.getElementById('soc-kg-empty');
         const countEl = document.getElementById('soc-kg-rule-count');
+        const banner  = document.getElementById('soc-kg-banner');
         if (!svgEl) return;
 
         const arch = (this.analysisData && (this.analysisData.architecture_name || this.analysisData.architecture))
-                     || this.currentArchName
-                     || '';
+                     || this.currentArchName || '';
         if (!arch) {
             svgEl.style.display = 'none';
-            if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.querySelector('span:last-child').textContent = 'Select an architecture first.'; }
+            if (emptyEl) { emptyEl.style.display = 'flex'; }
+            if (banner) banner.style.display = 'none';
             return;
         }
 
@@ -17309,104 +17368,99 @@ class Dashboard {
         } catch {
             svgEl.style.display = 'none';
             if (emptyEl) emptyEl.style.display = 'flex';
+            if (banner) banner.style.display = 'none';
             return;
         }
 
-        // Filter to DetectionFinding (class_uid 2004) with a rule_id
         const detections = findings.filter(f => f.class_uid === 2004 && f.unmapped?.rule_id);
         if (countEl) countEl.textContent = `${detections.length} detection finding${detections.length !== 1 ? 's' : ''}`;
 
         if (!detections.length) {
             svgEl.style.display = 'none';
             if (emptyEl) emptyEl.style.display = 'flex';
+            if (banner) banner.style.display = 'none';
             return;
         }
         svgEl.style.display = 'block';
         if (emptyEl) emptyEl.style.display = 'none';
 
-        // Build node/edge graph from provenance chain per finding
+        // Banner — plain-language summary of what fired and why it matters
+        if (banner) {
+            const sevOrder = { Critical: 4, High: 3, Medium: 2, Low: 1 };
+            const worst = detections.reduce((a, b) =>
+                (sevOrder[b.severity] || 0) > (sevOrder[a.severity] || 0) ? b : a);
+            const ruleNames = [...new Set(detections.map(f => f.unmapped?.rule_id))].join(', ');
+            const sevColor = { Critical: '#ef4444', High: '#f97316', Medium: '#f59e0b', Low: '#6b7280' };
+            const c = sevColor[worst.severity] || '#6b7280';
+            banner.innerHTML = `<span style="font-weight:700;color:${c};">${worst.severity} — ${ruleNames}</span>
+                <span style="margin-left:0.75rem;color:var(--text-secondary);">${detections.length} rule${detections.length > 1 ? 's' : ''} fired on <strong>${arch}</strong>.
+                The graph below traces exactly how each signal became this alert.
+                Click any node to understand what it means and what to do next.</span>`;
+            banner.style.display = 'block';
+        }
+
+        // Build node/edge graph
         const nodeMap = new Map();
         const edges   = [];
-
         const addNode = (id, type, label, meta = {}) => {
             if (!nodeMap.has(id)) nodeMap.set(id, { id, type, label, meta, findings: [] });
             return nodeMap.get(id);
         };
 
-        const COLOR = {
-            trace:     '#6366f1',
-            signal:    '#0ea5e9',
-            threshold: '#f59e0b',
-            rule:      '#8b5cf6',
-            alert:     '#ef4444',
-            action:    '#10b981',
-        };
-        const SEV_STROKE_W = { Critical: 4, High: 3, Medium: 2, Low: 1, Informational: 1 };
+        const COLOR = { trace:'#6366f1', signal:'#0ea5e9', threshold:'#f59e0b', rule:'#8b5cf6', alert:'#ef4444', action:'#10b981' };
+        const SEV_W = { Critical: 4.5, High: 3, Medium: 2, Low: 1.5 };
 
         detections.forEach(f => {
-            const u        = f.unmapped || {};
-            const ruleId   = u.rule_id || '?';
-            const severity = f.severity || 'Low';
-            const runId    = u.run_id   || arch;
-            const kc       = u.kill_chain_stage || '';
-            const actions  = u.actions  || [];
+            const u      = f.unmapped || {};
+            const ruleId = u.rule_id || '?';
+            const sev    = f.severity || 'Low';
+            const runId  = u.run_id || arch;
+            const kc     = u.kill_chain_stage || '';
 
-            // 1. Trace node (shared across findings from same run)
             const traceId = `trace:${runId}`;
-            addNode(traceId, 'trace', arch, { runId });
+            addNode(traceId, 'trace', arch.length > 18 ? arch.slice(0, 17) + '…' : arch, { runId, arch });
 
-            // 2. Signal node — one per triggered field per finding
             const tvs = u.triggered_values || {};
-            const signalLabels = Object.entries(tvs).map(([k, v]) => {
-                const short = k.split('.').slice(-1)[0];
-                const display = (typeof v === 'object') ? JSON.stringify(v).slice(0, 30) : String(v).slice(0, 30);
-                return `${short}=${display}`;
-            });
-            const signalId    = `signal:${ruleId}`;
-            const signalLabel = signalLabels.slice(0, 2).join(', ') || ruleId;
-            addNode(signalId, 'signal', signalLabel, { fields: tvs, ruleId });
+            const signalId = `signal:${ruleId}`;
+            const sigLabel = u.rule_name ? u.rule_name.replace(/_/g, ' ') : ruleId;
+            addNode(signalId, 'signal', sigLabel.length > 18 ? sigLabel.slice(0, 17) + '…' : sigLabel,
+                { fields: tvs, ruleId, fullLabel: sigLabel });
             edges.push({ source: traceId, target: signalId, color: COLOR.signal });
 
-            // 3. Threshold node
-            const threshId    = `threshold:${ruleId}`;
-            const threshLabel = u.rule_name ? u.rule_name.replace(/_/g, ' ') : ruleId;
-            addNode(threshId, 'threshold', threshLabel, { ruleId, severity });
+            const threshId = `threshold:${ruleId}`;
+            addNode(threshId, 'threshold', `${Object.keys(tvs).length} condition${Object.keys(tvs).length !== 1 ? 's' : ''} met`,
+                { ruleId, severity: sev, condCount: Object.keys(tvs).length });
             edges.push({ source: signalId, target: threshId, color: COLOR.threshold });
 
-            // 4. Rule node
             const ruleNodeId = `rule:${ruleId}`;
-            addNode(ruleNodeId, 'rule', ruleId, {
-                ruleId, severity, killChain: kc,
-                incidentRefs: u.incident_refs || [],
-                owasp: u.owasp || [],
-                atlas: u.atlas_tactic || '',
-            });
+            addNode(ruleNodeId, 'rule', ruleId,
+                { ruleId, severity: sev, killChain: kc,
+                  incidentRefs: u.incident_refs || [],
+                  owasp: u.owasp || [], atlas: u.atlas_tactic || '',
+                  tuningNote: u.tuning_note || '' });
             nodeMap.get(ruleNodeId).findings.push(f);
             edges.push({ source: threshId, target: ruleNodeId, color: COLOR.rule });
 
-            // 5. Alert node
             const alertId = `alert:${ruleId}`;
-            addNode(alertId, 'alert', `${ruleId} Alert`, { severity, finding: f.finding });
+            addNode(alertId, 'alert', `${sev} Alert`, { severity: sev, finding: f.finding });
             edges.push({ source: ruleNodeId, target: alertId, color: COLOR.alert });
 
-            // 6. Action nodes (one per distinct action type)
-            (u.action_detail || actions.map(a => ({ type: a }))).forEach(act => {
+            (u.action_detail || (u.actions || []).map(a => ({ type: a }))).forEach(act => {
                 const actId = `action:${act.type}`;
-                addNode(actId, 'action', act.type, { params: act.params });
+                addNode(actId, 'action', act.type, { params: act.params, actionType: act.type });
                 edges.push({ source: alertId, target: actId, color: COLOR.action });
             });
         });
 
         const nodes = Array.from(nodeMap.values());
-
-        // ── D3 force layout ────────────────────────────────────────────────
         const d3 = window.d3;
         if (!d3) return;
 
-        const wrap   = svgEl.parentElement;
-        const W      = wrap.clientWidth  || 800;
-        const H      = wrap.clientHeight || 500;
-        const R      = 22;
+        // Use full parent dimensions
+        const wrap = svgEl.parentElement;
+        const W = wrap.clientWidth  || 900;
+        const H = wrap.clientHeight || 600;
+        const R = 28;
 
         svgEl.setAttribute('width',  W);
         svgEl.setAttribute('height', H);
@@ -17414,139 +17468,159 @@ class Dashboard {
         const svg = d3.select(svgEl);
         svg.selectAll('*').remove();
 
-        // Arrowhead markers per colour
         const defs = svg.append('defs');
         Object.values(COLOR).forEach(c => {
             defs.append('marker')
                 .attr('id',          'kg-arrow-' + c.replace('#',''))
                 .attr('viewBox',     '0 -4 8 8')
-                .attr('refX',        R + 8)
-                .attr('refY',        0)
-                .attr('markerWidth',  6)
-                .attr('markerHeight', 6)
-                .attr('orient',      'auto')
-              .append('path')
-                .attr('d',    'M0,-4L8,0L0,4')
-                .attr('fill', c);
+                .attr('refX',        R + 8).attr('refY', 0)
+                .attr('markerWidth', 6).attr('markerHeight', 6)
+                .attr('orient', 'auto')
+              .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', c);
         });
 
         const g = svg.append('g');
+        svg.call(d3.zoom().scaleExtent([0.2, 4]).on('zoom', e => g.attr('transform', e.transform)));
 
-        // Zoom + pan
-        svg.call(d3.zoom().scaleExtent([0.3, 3]).on('zoom', e => g.attr('transform', e.transform)));
-
-        // Simulation
-        const linkData = edges.map(e => ({ ...e, source: e.source, target: e.target }));
+        const linkData = edges.map(e => ({ ...e }));
         const sim = d3.forceSimulation(nodes)
-            .force('link',    d3.forceLink(linkData).id(d => d.id).distance(120).strength(0.6))
-            .force('charge',  d3.forceManyBody().strength(-280))
+            .force('link',    d3.forceLink(linkData).id(d => d.id).distance(160).strength(0.7))
+            .force('charge',  d3.forceManyBody().strength(-400))
             .force('center',  d3.forceCenter(W / 2, H / 2))
-            .force('collide', d3.forceCollide(R + 12));
+            .force('collide', d3.forceCollide(R + 18))
+            .force('x',       d3.forceX(W / 2).strength(0.04))
+            .force('y',       d3.forceY(H / 2).strength(0.04));
 
-        // Links
         const link = g.append('g').selectAll('line')
             .data(linkData).join('line')
-            .attr('stroke',       d => d.color)
-            .attr('stroke-width', 1.5)
-            .attr('stroke-opacity', 0.6)
-            .attr('marker-end',  d => `url(#kg-arrow-${d.color.replace('#','')})`);
+            .attr('stroke', d => d.color).attr('stroke-width', 2)
+            .attr('stroke-opacity', 0.55)
+            .attr('marker-end', d => `url(#kg-arrow-${d.color.replace('#','')})`);
 
-        // Node groups
         const node = g.append('g').selectAll('g')
-            .data(nodes).join('g')
-            .style('cursor', 'pointer')
+            .data(nodes).join('g').style('cursor', 'pointer')
             .call(d3.drag()
                 .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
                 .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
                 .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }))
             .on('click', (ev, d) => { ev.stopPropagation(); this._socKgShowDetail(d); });
 
+        // Glow filter for selected
+        defs.append('filter').attr('id', 'kg-glow')
+          .append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur');
+
         node.append('circle')
-            .attr('r',           R)
-            .attr('fill',        d => COLOR[d.type] + '22')
-            .attr('stroke',      d => COLOR[d.type])
-            .attr('stroke-width', d => SEV_STROKE_W[d.meta?.severity] || 1.5);
+            .attr('r', R)
+            .attr('fill', d => COLOR[d.type] + '28')
+            .attr('stroke', d => COLOR[d.type])
+            .attr('stroke-width', d => SEV_W[d.meta?.severity] || 2);
 
         node.append('text')
-            .attr('text-anchor', 'middle')
-            .attr('dy',          '0.35em')
-            .attr('font-size',   '9px')
-            .attr('fill',        d => COLOR[d.type])
-            .attr('font-weight', '600')
-            .attr('pointer-events', 'none')
-            .text(d => d.label.length > 14 ? d.label.slice(0, 13) + '…' : d.label);
+            .attr('text-anchor', 'middle').attr('dy', '-0.15em')
+            .attr('font-size', '10px').attr('font-weight', '700')
+            .attr('fill', d => COLOR[d.type]).attr('pointer-events', 'none')
+            .text(d => d.label.length > 16 ? d.label.slice(0,15) + '…' : d.label);
 
-        // Type badge below circle
         node.append('text')
-            .attr('text-anchor', 'middle')
-            .attr('dy',          R + 12)
-            .attr('font-size',   '8px')
-            .attr('fill',        'var(--text-tertiary)')
+            .attr('text-anchor', 'middle').attr('dy', '0.95em')
+            .attr('font-size', '8px').attr('fill', 'var(--text-tertiary)')
             .attr('pointer-events', 'none')
             .text(d => d.type.toUpperCase());
 
+        node.append('title').text(d => d.meta?.fullLabel || d.label);
+
         sim.on('tick', () => {
-            link
-                .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+            link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
                 .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
             node.attr('transform', d => `translate(${d.x},${d.y})`);
         });
 
-        // Click background to clear selection
         svg.on('click', () => this._socKgClearDetail());
+
+        // Auto-fit after simulation settles
+        setTimeout(() => {
+            const curW = wrap.clientWidth || W;
+            const curH = wrap.clientHeight || H;
+            if (curW !== W || curH !== H) {
+                svgEl.setAttribute('width', curW);
+                svgEl.setAttribute('height', curH);
+                sim.force('center', d3.forceCenter(curW / 2, curH / 2)).alpha(0.3).restart();
+            }
+        }, 100);
     }
 
     _socKgShowDetail(d) {
         const panel = document.getElementById('soc-kg-detail-inner');
         if (!panel) return;
+
         const COLOR_MAP = { trace:'#6366f1', signal:'#0ea5e9', threshold:'#f59e0b', rule:'#8b5cf6', alert:'#ef4444', action:'#10b981' };
         const c = COLOR_MAP[d.type] || '#888';
         const m = d.meta || {};
+        const soWhat = this._socKgSoWhat(d.type, d);
 
-        let html = `<div style="margin-bottom:0.75rem;">
-            <span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:4px;background:${c}22;color:${c};font-size:0.7rem;font-weight:700;text-transform:uppercase;">${d.type}</span>
-            <span style="margin-left:0.5rem;font-weight:700;color:var(--text-primary);font-size:0.85rem;">${d.label}</span>
+        // Type chip + label
+        let html = `
+        <div style="margin-bottom:0.9rem;padding-bottom:0.75rem;border-bottom:1px solid var(--border-color);">
+            <span style="display:inline-block;padding:0.15rem 0.55rem;border-radius:4px;background:${c}22;color:${c};font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">${d.type}</span>
+            <div style="margin-top:0.4rem;font-weight:700;color:var(--text-primary);font-size:0.9rem;line-height:1.3;">${m.fullLabel || d.label}</div>
         </div>`;
 
-        if (d.type === 'trace') {
-            html += `<p style="margin:0.25rem 0;"><strong>Architecture:</strong> ${m.runId || d.label}</p>`;
-        }
-        if (d.type === 'signal') {
-            const tvs = m.fields || {};
-            html += `<p style="margin:0.25rem 0;font-weight:600;">Triggered fields:</p><ul style="margin:0.25rem 0;padding-left:1.2rem;">`;
-            Object.entries(tvs).forEach(([k, v]) => {
-                const display = typeof v === 'object' ? JSON.stringify(v).slice(0, 60) : String(v).slice(0, 60);
-                html += `<li style="margin:0.2rem 0;font-family:monospace;font-size:0.75rem;"><span style="color:var(--text-secondary);">${k}</span> = <strong>${display}</strong></li>`;
-            });
-            html += `</ul>`;
-        }
-        if (d.type === 'threshold' || d.type === 'rule') {
-            if (m.severity)    html += `<p style="margin:0.2rem 0;"><strong>Severity:</strong> ${m.severity}</p>`;
-            if (m.killChain)   html += `<p style="margin:0.2rem 0;"><strong>Kill chain:</strong> ${m.killChain}</p>`;
-            if (m.atlas)       html += `<p style="margin:0.2rem 0;"><strong>ATLAS:</strong> ${m.atlas}</p>`;
-            if (m.owasp?.length) html += `<p style="margin:0.2rem 0;"><strong>OWASP:</strong> ${m.owasp.join(', ')}</p>`;
-            if (m.incidentRefs?.length) {
-                html += `<p style="margin:0.2rem 0;font-weight:600;">Incident refs:</p><ul style="margin:0.2rem 0;padding-left:1.2rem;">`;
-                m.incidentRefs.forEach(r => { html += `<li style="font-size:0.72rem;color:var(--text-secondary);">${r}</li>`; });
-                html += `</ul>`;
-            }
-        }
-        if (d.type === 'alert') {
-            const finding = m.finding || {};
-            if (m.severity) html += `<p style="margin:0.2rem 0;"><strong>Severity:</strong> <span style="color:#ef4444;">${m.severity}</span></p>`;
-            if (finding.desc) html += `<p style="margin:0.4rem 0;font-size:0.75rem;color:var(--text-secondary);line-height:1.4;">${finding.desc}</p>`;
-        }
-        if (d.type === 'action') {
-            if (m.params) html += `<pre style="font-size:0.72rem;background:var(--code-bg);padding:0.4rem;border-radius:4px;overflow:auto;">${JSON.stringify(m.params, null, 2)}</pre>`;
+        // "So what" — layman explanation, always first
+        if (soWhat) {
+            html += `<div style="margin-bottom:0.9rem;padding:0.65rem 0.75rem;background:${c}10;border-left:3px solid ${c};border-radius:4px;font-size:0.8rem;line-height:1.55;color:var(--text-primary);">${soWhat}</div>`;
         }
 
-        // Playbook steps (on rule node)
-        if (d.type === 'rule' && d.findings?.length) {
-            const steps = d.findings[0]?.unmapped?.playbook_steps || [];
+        // Type-specific technical detail
+        if (d.type === 'signal') {
+            const tvs = m.fields || {};
+            if (Object.keys(tvs).length) {
+                html += `<div style="margin-bottom:0.5rem;font-size:0.75rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;">What triggered it</div>`;
+                html += `<div style="background:var(--code-bg);border-radius:6px;padding:0.55rem 0.7rem;font-family:monospace;font-size:0.73rem;line-height:1.7;">`;
+                Object.entries(tvs).forEach(([k, v]) => {
+                    const display = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                    const field = k.split('.').slice(-1)[0];
+                    html += `<div><span style="color:var(--text-tertiary);">${k.split('.').slice(0,-1).join('.')}.</span><span style="color:${c};font-weight:600;">${field}</span> = <strong style="color:var(--text-primary);">${display}</strong></div>`;
+                });
+                html += `</div>`;
+            }
+        }
+
+        if (d.type === 'threshold') {
+            html += `<div style="font-size:0.78rem;color:var(--text-secondary);">${m.condCount || 0} condition${m.condCount !== 1 ? 's' : ''} checked — all must be true for the rule to fire.</div>`;
+        }
+
+        if (d.type === 'rule') {
+            const sevColor = { Critical:'#ef4444', High:'#f97316', Medium:'#f59e0b', Low:'#6b7280' };
+            const sc = sevColor[m.severity] || '#6b7280';
+            html += `<div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.65rem;font-size:0.75rem;">`;
+            if (m.severity) html += `<span style="padding:0.15rem 0.5rem;border-radius:3px;background:${sc}22;color:${sc};font-weight:700;">${m.severity}</span>`;
+            if (m.killChain) html += `<span style="padding:0.15rem 0.5rem;border-radius:3px;background:var(--code-bg);color:var(--text-secondary);">${m.killChain.replace(/_/g,' ')}</span>`;
+            if (m.atlas) html += `<span style="padding:0.15rem 0.5rem;border-radius:3px;background:var(--code-bg);color:var(--text-secondary);">${m.atlas}</span>`;
+            html += `</div>`;
+
+            if (m.incidentRefs?.length) {
+                html += `<div style="margin-bottom:0.4rem;font-size:0.72rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;">Based on real incidents</div>`;
+                html += `<div style="font-size:0.73rem;line-height:1.6;color:var(--text-secondary);">${m.incidentRefs.join('<br>')}</div>`;
+            }
+
+            // Playbook steps
+            const steps = d.findings?.[0]?.unmapped?.playbook_steps || [];
             if (steps.length) {
-                html += `<p style="margin:0.5rem 0 0.25rem;font-weight:600;">Analyst playbook:</p><ol style="margin:0;padding-left:1.2rem;">`;
-                steps.forEach(s => { html += `<li style="margin:0.2rem 0;font-size:0.72rem;color:var(--text-secondary);">${s}</li>`; });
+                html += `<div style="margin-top:0.75rem;margin-bottom:0.35rem;font-size:0.75rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;">What to do now</div>`;
+                html += `<ol style="margin:0;padding-left:1.1rem;font-size:0.76rem;line-height:1.65;color:var(--text-primary);">`;
+                steps.forEach(s => { html += `<li style="margin-bottom:0.2rem;">${s}</li>`; });
                 html += `</ol>`;
+            }
+
+            if (m.tuningNote) {
+                html += `<div style="margin-top:0.75rem;padding:0.5rem 0.65rem;background:var(--code-bg);border-radius:4px;font-size:0.71rem;color:var(--text-tertiary);line-height:1.5;"><strong>Tuning note:</strong> ${m.tuningNote}</div>`;
+            }
+        }
+
+        if (d.type === 'alert') {
+            const finding = m.finding || {};
+            if (finding.desc) {
+                html += `<div style="font-size:0.77rem;color:var(--text-secondary);line-height:1.5;padding:0.5rem 0.65rem;background:var(--code-bg);border-radius:4px;">${finding.desc}</div>`;
             }
         }
 
@@ -17555,7 +17629,19 @@ class Dashboard {
 
     _socKgClearDetail() {
         const panel = document.getElementById('soc-kg-detail-inner');
-        if (panel) panel.innerHTML = '<p style="margin:0;color:var(--text-tertiary);">Click any node to see details.</p>';
+        if (panel) panel.innerHTML = `
+            <div style="padding:1.25rem;color:var(--text-tertiary);">
+                <p style="margin:0;font-size:0.82rem;">Click any node to understand what it means and what to do.</p>
+                <p style="margin:0.75rem 0 0;font-size:0.75rem;line-height:1.6;">
+                    Each chain reads left-to-right:<br>
+                    <strong style="color:#6366f1;">Run</strong> → what was analysed<br>
+                    <strong style="color:#0ea5e9;">Signal</strong> → what the system observed<br>
+                    <strong style="color:#f59e0b;">Condition</strong> → the tripwire that was crossed<br>
+                    <strong style="color:#8b5cf6;">Rule</strong> → which detection rule fired<br>
+                    <strong style="color:#ef4444;">Alert</strong> → the formal finding<br>
+                    <strong style="color:#10b981;">Action</strong> → what happens next
+                </p>
+            </div>`;
     }
     // ── end SOC KG ────────────────────────────────────────────────────────────
 
