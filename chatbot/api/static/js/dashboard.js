@@ -426,6 +426,10 @@ class Dashboard {
         if (workspaceWrapper) workspaceWrapper.style.display = 'none';
         if (tracesWrapper)    tracesWrapper.style.display    = 'none';
         if (socKgWrapper)     socKgWrapper.style.display     = 'none';
+        // Restore main-pane defaults (may have been modified by SOC KG tab)
+        const _mp = document.querySelector('.main-pane');
+        if (_mp) { _mp.style.display = ''; _mp.style.flexDirection = '';
+                   _mp.style.padding = ''; _mp.style.overflow = ''; }
 
         if (isConfig) {
             if (uploadContainer) uploadContainer.style.display = 'none';
@@ -446,6 +450,10 @@ class Dashboard {
         } else if (isSocKg) {
             if (uploadContainer) uploadContainer.style.display = 'none';
             if (tabContent)      tabContent.style.display      = 'none';
+            // Make main-pane a flex column so flex:1 on wrapper fills height
+            const mp = document.querySelector('.main-pane');
+            if (mp) { mp.style.display = 'flex'; mp.style.flexDirection = 'column';
+                      mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
             if (socKgWrapper)    { socKgWrapper.style.display = 'flex'; socKgWrapper.style.flexDirection = 'column'; }
         } else {
             if (this.analysisData) {
