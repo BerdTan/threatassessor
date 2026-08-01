@@ -123,8 +123,7 @@ scripts/          Server lifecycle, validation, ingest, doc generation
   validation/     check_orphans.py, validate_llm_config.py
 tests/            Test suite + 25 sample .mmd architectures
 docs/             Project documentation (DECISIONS.md, operations, specs)
-demo_deterministic_engine.sh   Fast CLI analysis (no LLM, ~30 s)
-demo_expert_llm.sh             Full MoE pipeline CLI (~2 min)
+scripts/api/      api_start.sh / api_stop.sh / api_restart.sh / api_status.sh
 Makefile          Developer entry point (make help for all targets)
 openapi.yaml      OpenAPI 3.0 spec
 ```

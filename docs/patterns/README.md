@@ -158,7 +158,7 @@ ThreatAnalyst
 
 **Documentation:**
 - `docs/patterns/` - This folder (pattern-specific docs)
-- `docs/development/ARCHITECTURE.md` - System architecture
+- `docs/HARNESS_V2_DESIGN.md` - System architecture (v2)
 
 ## Contributing
 

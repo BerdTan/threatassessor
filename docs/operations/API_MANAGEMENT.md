@@ -382,7 +382,7 @@ pm2 save
 
 ## See Also
 
-- [API Specification](docs/api/API_SPECIFICATION.md) - API endpoints and usage
+- [OpenAPI Spec](../../openapi.yaml) - Machine-readable API endpoints
 - [Operations Guide](docs/operations/OPERATIONS.md) - Troubleshooting
 - [Cache Busting](docs/operations/CACHE_BUSTING.md) - Browser cache issues
 - [CLAUDE.md](CLAUDE.md) - Developer quick reference
