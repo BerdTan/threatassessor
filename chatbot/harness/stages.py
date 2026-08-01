@@ -430,7 +430,7 @@ class BouncerStage(PipelineStage):
     """
 
     name     = "bouncer"
-    required = False   # ← promote to True once callers handle BlockedPipelineError
+    required = True    # Hard stop — callers handle BlockedPipelineError with 400 response
 
     def _logic(self, ctx: PipelineContext, **kw) -> PipelineContext:
         from chatbot.harness.controller import BlockedPipelineError

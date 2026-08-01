@@ -176,7 +176,17 @@ async def analyze_with_progress(
                     eta_seconds=max(3, (len(heartbeat_messages) - ping_idx) * 3)
                 )
 
-        ctx = await harness_future
+        try:
+            ctx = await harness_future
+        except Exception as _harness_exc:
+            from chatbot.harness.controller import BlockedPipelineError
+            if isinstance(_harness_exc, BlockedPipelineError):
+                yield await SSEStream.send_error(
+                    error_message="Analysis blocked",
+                    detail=f"Pipeline blocked: {_harness_exc.reason}",
+                )
+                return
+            raise
 
         # Check required stage (analysis) succeeded
         if ctx.stage_outputs.get("analysis") == "error":

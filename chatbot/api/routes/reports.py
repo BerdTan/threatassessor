@@ -286,17 +286,24 @@ async def rerun_with_sm(
         )
 
         loop = asyncio.get_event_loop()
-        ctx = await loop.run_in_executor(
-            None,
-            lambda: harness.run(
-                architecture_path=tmp_path,
-                report_dir=str(sm_dir),
-                ssp_profile=ssp_profile,
-                enable_ssp=True,
-                include_validation=True,
-                architecture_name=arch_sm_name,
+        try:
+            ctx = await loop.run_in_executor(
+                None,
+                lambda: harness.run(
+                    architecture_path=tmp_path,
+                    report_dir=str(sm_dir),
+                    ssp_profile=ssp_profile,
+                    enable_ssp=True,
+                    include_validation=True,
+                    architecture_name=arch_sm_name,
+                )
             )
-        )
+        except Exception as _harness_exc:
+            from chatbot.harness.controller import BlockedPipelineError
+            if isinstance(_harness_exc, BlockedPipelineError):
+                raise HTTPException(status_code=400,
+                    detail=f"Analysis blocked: {_harness_exc.reason}")
+            raise
 
         import os
         try:
@@ -534,17 +541,24 @@ async def rerun_sm_analysis(
             progress_callback=lambda s, p, m: q.put((s, p, m)),
         )
         loop = asyncio.get_event_loop()
-        ctx = await loop.run_in_executor(
-            None,
-            lambda: harness.run(
-                architecture_path=tmp_path,
-                report_dir=str(sm_dir),
-                ssp_profile=ssp_profile,
-                enable_ssp=True,
-                include_validation=True,
-                architecture_name=f"sm{n}",
+        try:
+            ctx = await loop.run_in_executor(
+                None,
+                lambda: harness.run(
+                    architecture_path=tmp_path,
+                    report_dir=str(sm_dir),
+                    ssp_profile=ssp_profile,
+                    enable_ssp=True,
+                    include_validation=True,
+                    architecture_name=f"sm{n}",
+                )
             )
-        )
+        except Exception as _harness_exc:
+            from chatbot.harness.controller import BlockedPipelineError
+            if isinstance(_harness_exc, BlockedPipelineError):
+                raise HTTPException(status_code=400,
+                    detail=f"Analysis blocked: {_harness_exc.reason}")
+            raise
         try:
             os.unlink(tmp_path)
         except Exception:
