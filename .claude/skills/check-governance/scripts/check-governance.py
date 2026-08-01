@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -18,6 +19,7 @@ from pathlib import Path
 REPO_ROOT  = Path(__file__).resolve().parents[4]
 REPORT_DIR = REPO_ROOT / "report"
 TEST_FILE  = REPO_ROOT / "tests" / "test_harness_governance.py"
+SKILL_MD   = Path(__file__).resolve().parents[2] / "SKILL.md"
 
 GREEN  = lambda s: f"\033[32m{s}\033[0m"
 AMBER  = lambda s: f"\033[33m{s}\033[0m"
@@ -62,7 +64,35 @@ def run_unit_tests() -> bool:
             else:
                 in_fail = False
 
+    # Sync SKILL.md with actual passing test count
+    if result.returncode == 0:
+        import re as _re
+        m = _re.search(r'(\d+)\s+passed', summary_line)
+        if m:
+            sync_skill_metadata(int(m.group(1)))
+
     return result.returncode == 0
+
+
+# ── Skill metadata sync ───────────────────────────────────────────────────────
+
+def sync_skill_metadata(n_passed: int) -> None:
+    """Rewrite the test count in this skill's SKILL.md description. Silent when unchanged."""
+    if n_passed <= 0 or not SKILL_MD.exists():
+        return
+    try:
+        text    = SKILL_MD.read_text(encoding="utf-8")
+        updated = re.sub(
+            r'(\d+) tests,',
+            f'{n_passed} tests,',
+            text,
+            count=1,
+        )
+        if updated != text:
+            SKILL_MD.write_text(updated, encoding="utf-8")
+            print(f"  {GREEN('↺')} Synced check-governance SKILL.md ({n_passed} tests)")
+    except Exception:
+        pass
 
 
 # ── Live signal checker ───────────────────────────────────────────────────────
@@ -94,19 +124,36 @@ def check_live_signals(arch: str) -> None:
     blocked = expl.get("blocked", False)
     blocked_tag = f"  {RED('BLOCKED')}" if blocked else ""
     cat_tag = f"  cats={cats}" if cats else ""
+    ext_urls = expl.get("external_url_references", 0)
+    evasion  = expl.get("evasion_attempts", 0)
+    hom      = expl.get("homoglyph_count", 0)
+    url_enc  = expl.get("url_encoded_count", 0)
+    ast_tags = []
+    if ext_urls:  ast_tags.append(AMBER(f"ext_urls={ext_urls}"))
+    if hom:       ast_tags.append(AMBER(f"homoglyphs={hom}"))
+    if url_enc:   ast_tags.append(AMBER(f"url_encoded={url_enc}"))
+    ast_str = "  " + " ".join(ast_tags) if ast_tags else ""
     print(f"  exploitation:   {_sev_color(sev)}{blocked_tag}"
           + (f"  — {DIM(', '.join(pats[:3]))}" if pats else "  — no injection patterns")
-          + DIM(cat_tag))
+          + DIM(cat_tag) + ast_str)
 
     # Leakage
     leak = gs.get("leakage", {})
     pii  = leak.get("pii_indicators", [])
     creds = leak.get("sensitive_keywords", [])
+    stale = leak.get("supply_chain_stale_sources", [])
     leak_sev = "CRITICAL" if (pii and any("nric" in p.lower() for p in pii)) or creds \
                else "HIGH" if pii else "LOW"
     print(f"  leakage:        {_sev_color(leak_sev)}"
           + (f"  — PII: {DIM(str(pii[:2]))}" if pii else "  — no PII indicators")
-          + (f"  creds: {DIM(str(creds[:1]))}" if creds else ""))
+          + (f"  creds: {DIM(str(creds[:1]))}" if creds else "")
+          + (f"  {AMBER('stale_data: ' + str(len(stale)))}" if stale else ""))
+
+    # Identity (supply chain integrity)
+    identity = gs.get("identity", {})
+    modified = identity.get("supply_chain_modified_modules", [])
+    if modified:
+        print(f"  identity:       {RED('TAMPERED')}  — {RED(str(modified[:2]))}")
 
     # Manipulation
     manip = gs.get("manipulation", {})

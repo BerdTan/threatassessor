@@ -1,6 +1,6 @@
 ---
 name: check-governance
-description: Run the governance guardrail regression suite (56 tests, ~9s, no LLM calls). Covers all 5 governance dimensions — injection categories, evasion layers, PII/credential leakage, manipulation signals, sovereignty. Optionally re-check live governance_signals.json for one or all corpus architectures. Use after any change to chatbot/harness/governance.py to confirm no regressions.
+description: Run the governance guardrail regression suite (56 tests, ~9s, no LLM calls). Covers all 5 governance dimensions — injection categories, evasion layers, PII/credential leakage, manipulation signals, sovereignty — plus new signals: external_url_references (AST05), evasion_attempts/homoglyph_count/url_encoded_count (AST08), supply_chain_modified_modules (AST02). Optionally re-check live governance_signals.json for one or all corpus architectures. Use after any change to chatbot/harness/governance.py to confirm no regressions.
 allowed-tools: Bash(python3:*) Bash(source:*) Bash(pytest:*)
 ---
 
@@ -40,6 +40,11 @@ cd "$(git rev-parse --show-toplevel)" && source .venv/bin/activate \
 | `TestInjectionCategories` | 9 named categories, injection_categories dict |
 | `TestEvasionLayers` | Char-spacing, dot-spacing, base64, typoglycemia |
 | `TestNoFalsePositivesOnSecurityControls` | Security control labels → no FP |
+
+New fields now surfaced in live check output:
+- `exploitation.external_url_references` — http(s):// URLs in MMD (AST05)
+- `exploitation.evasion_attempts / homoglyph_count / url_encoded_count` — pre-normalisation evasion signals (AST08)
+- `identity.supply_chain_modified_modules` — critic file tampering (AST02)
 
 ### Live signal check (when arch or --all passed)
 

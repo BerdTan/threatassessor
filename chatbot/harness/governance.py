@@ -68,6 +68,16 @@ class GovernanceSignals:
     # Registry enforcement — critics to block based on governance policy decisions
     blocked_agents: list = field(default_factory=list)
 
+    # ScrumMaster per-critic verdicts — populated by AIVSSStage after SM runs.
+    # Keys: per_critic {critic→accepted|rejected}, acceptance_rate (0.0–1.0),
+    #       accepted (int), rejected (int), redesign_signal (bool).
+    sm_verdicts: dict = field(default_factory=dict)
+
+    # Technique validation coverage — populated by AIVSSStage from ground_truth.
+    # Keys: val_pct (0–100), total_techniques, valid_techniques,
+    #       invalid_techniques, detect_only_techniques.
+    validation: dict = field(default_factory=dict)
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -337,6 +347,25 @@ _RE_EXTERNAL_SERVICE = re.compile(
 _LABEL_MAX_CHARS = 512
 _STALE_DATA_DAYS = 90
 
+# AST05 — external URL references in MMD node labels / edge annotations.
+# Matches http(s):// patterns; these indicate mutable remote content that
+# may contain injected instructions and cannot be hash-pinned at analysis time.
+_RE_EXTERNAL_URL = re.compile(
+    r'https?://[^\s\]\[\(\)\{\}"\'<>,]{6,}',
+    re.IGNORECASE,
+)
+
+# AST08 — evasion attempt indicators: url-percent-encoded tokens + unicode
+# homoglyphs present BEFORE normalisation (post-normalisation they become
+# injection matches; pre-normalisation count is the evasion signal).
+_RE_URL_ENCODED_TOKEN = re.compile(
+    r'%[0-9A-Fa-f]{2}(?:%[0-9A-Fa-f]{2})+',  # ≥2 consecutive %XX sequences
+    re.IGNORECASE,
+)
+_RE_HOMOGLYPH_CANDIDATE = re.compile(
+    r'[Ѐ-ӿͰ-Ͽ℀-⅏＀-￯]',  # Cyrillic, Greek, letterlike, fullwidth
+)
+
 
 def _severity(level: int) -> str:
     return ["LOW", "MEDIUM", "HIGH", "CRITICAL"][min(level, 3)]
@@ -437,6 +466,24 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         # Oversized node labels (any token >512 chars between quotes or brackets)
         for token in re.findall(r'"[^"]{' + str(_LABEL_MAX_CHARS) + r',}"|\[[^\]]{' + str(_LABEL_MAX_CHARS) + r',}\]', mmd_content):
             sig.exploitation["oversized_labels"] += 1
+
+        # AST05 — external URL references in node labels / edge annotations.
+        # Counted on raw (pre-normalised) content; URLs are mutable remote content
+        # that may contain injected instructions and cannot be hash-pinned.
+        _ext_urls = _RE_EXTERNAL_URL.findall(mmd_content)
+        sig.exploitation["external_url_references"] = len(_ext_urls)
+        sig.exploitation["external_url_list"] = [u[:120] for u in _ext_urls[:10]]
+
+        # AST08 — evasion attempt indicators counted on raw content BEFORE
+        # normalisation so the pre-normalisation signal is preserved.
+        # homoglyph_count: non-ASCII confusable characters present in the input.
+        # url_encoded_count: runs of consecutive %-encoded bytes (obfuscation signal).
+        sig.exploitation["homoglyph_count"]  = len(_RE_HOMOGLYPH_CANDIDATE.findall(mmd_content))
+        sig.exploitation["url_encoded_count"] = len(_RE_URL_ENCODED_TOKEN.findall(mmd_content))
+        # Combined evasion_attempts = any non-zero evasion indicator
+        sig.exploitation["evasion_attempts"] = (
+            sig.exploitation["homoglyph_count"] + sig.exploitation["url_encoded_count"]
+        )
 
         # Severity — category-based escalation (highest category severity wins)
         # Tag/control-token injection are CRITICAL on a single match — unambiguous attacks.

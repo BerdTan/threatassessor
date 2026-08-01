@@ -85,6 +85,9 @@ class TestHarnessEvent:
             ev = _event(et)
             assert ev.event_type == et
 
+    def test_sm_verdicts_in_event_types(self):
+        assert "sm_verdicts" in EVENT_TYPES
+
     def test_default_payload_is_empty_dict(self):
         ev = HarnessEvent(event_type="run_start", source="harness",
                           run_id="x", ts="2026-01-01T00:00:00Z")
@@ -529,6 +532,110 @@ class TestLangfuseSink:
         sink.emit(_event("aivss_complete", payload=payload))
         for call in mock_lf.create_score.call_args_list:
             assert call.kwargs.get("data_type") == "NUMERIC"
+
+    # -----------------------------------------------------------------------
+    # sm_verdicts — per-critic SM acceptance scores
+    # -----------------------------------------------------------------------
+
+    def test_sm_verdicts_creates_span(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        mock_trace = MagicMock()
+        sink._trace = mock_trace
+        payload = {
+            "per_critic": {"architect": "accepted", "tester": "rejected",
+                           "red_team": "accepted", "purple_team": "accepted",
+                           "blackhat": "accepted"},
+            "accepted": 4, "rejected": 1,
+            "acceptance_rate": 0.8, "redesign_signal": False, "final_confidence": 88.0,
+        }
+        sink.emit(_event("sm_verdicts", payload=payload))
+        mock_trace.span.assert_called_once()
+
+    def test_sm_verdicts_creates_per_critic_scores(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        sink._trace = MagicMock()
+        payload = {
+            "per_critic": {"architect": "accepted", "tester": "rejected",
+                           "red_team": "accepted", "purple_team": "rejected",
+                           "blackhat": "accepted"},
+            "accepted": 3, "rejected": 2,
+            "acceptance_rate": 0.6, "redesign_signal": False, "final_confidence": 82.0,
+        }
+        sink.emit(_event("sm_verdicts", payload=payload, run_id="run-sm-001"))
+        score_names = {c.kwargs["name"] for c in mock_lf.create_score.call_args_list}
+        assert "sm_verdict_architect"   in score_names
+        assert "sm_verdict_tester"      in score_names
+        assert "sm_verdict_red_team"    in score_names
+        assert "sm_verdict_purple_team" in score_names
+        assert "sm_verdict_blackhat"    in score_names
+        assert "sm_acceptance_rate"     in score_names
+
+    def test_sm_verdicts_accepted_maps_to_1_rejected_to_0(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        sink._trace = MagicMock()
+        payload = {
+            "per_critic": {"architect": "accepted", "tester": "rejected",
+                           "red_team": "accepted", "purple_team": "accepted",
+                           "blackhat": "rejected"},
+            "accepted": 3, "rejected": 2,
+            "acceptance_rate": 0.6, "redesign_signal": False, "final_confidence": 80.0,
+        }
+        sink.emit(_event("sm_verdicts", payload=payload))
+        by_name = {c.kwargs["name"]: c.kwargs["value"]
+                   for c in mock_lf.create_score.call_args_list}
+        assert by_name["sm_verdict_architect"] == 1.0
+        assert by_name["sm_verdict_tester"]    == 0.0
+        assert by_name["sm_verdict_blackhat"]  == 0.0
+
+    def test_sm_verdicts_acceptance_rate_score_value(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        sink._trace = MagicMock()
+        payload = {
+            "per_critic": {"architect": "accepted", "tester": "accepted",
+                           "red_team": "accepted", "purple_team": "accepted",
+                           "blackhat": "accepted"},
+            "accepted": 5, "rejected": 0,
+            "acceptance_rate": 1.0, "redesign_signal": False, "final_confidence": 94.0,
+        }
+        sink.emit(_event("sm_verdicts", payload=payload))
+        by_name = {c.kwargs["name"]: c.kwargs["value"]
+                   for c in mock_lf.create_score.call_args_list}
+        assert by_name["sm_acceptance_rate"] == 1.0
+
+    def test_sm_verdicts_score_objects_carry_trace_id(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        sink._trace = MagicMock()
+        payload = {
+            "per_critic": {"architect": "accepted", "tester": "rejected",
+                           "red_team": "accepted", "purple_team": "accepted",
+                           "blackhat": "accepted"},
+            "accepted": 4, "rejected": 1,
+            "acceptance_rate": 0.8, "redesign_signal": False, "final_confidence": 88.0,
+        }
+        sink.emit(_event("sm_verdicts", payload=payload, run_id="trace-sm-test"))
+        for c in mock_lf.create_score.call_args_list:
+            assert c.kwargs["trace_id"] == "trace-sm-test"
+
+    def test_sm_verdicts_score_data_type_is_numeric(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        sink._trace = MagicMock()
+        payload = {
+            "per_critic": {"architect": "accepted", "tester": "accepted",
+                           "red_team": "rejected", "purple_team": "accepted",
+                           "blackhat": "accepted"},
+            "accepted": 4, "rejected": 1,
+            "acceptance_rate": 0.8, "redesign_signal": False, "final_confidence": 85.0,
+        }
+        sink.emit(_event("sm_verdicts", payload=payload))
+        for c in mock_lf.create_score.call_args_list:
+            assert c.kwargs.get("data_type") == "NUMERIC"
+
+    def test_sm_verdicts_noop_without_trace(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        sink._trace = None
+        payload = {"per_critic": {}, "acceptance_rate": 1.0, "redesign_signal": False}
+        sink.emit(_event("sm_verdicts", payload=payload))
+        mock_lf.create_score.assert_not_called()
 
     def test_run_complete_updates_trace_output(self):
         sink, mock_lf = self._sink_with_mock_lf()

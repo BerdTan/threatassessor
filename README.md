@@ -156,6 +156,7 @@ The full build story is on Medium — eleven parts covering the pipeline, cloud 
 | 11 | [The Honest Harness: Learning, Unlearning, Relearning](https://medium.com/@breadtan/the-honest-harness-learning-unlearning-relearning-ffeec3e0166f) | Skill machine, UNSURE triage, AIVSS governing the critics, EventBroker audit trail, and the staged autonomy arc |
 | 12 | [The Graph That Ate Its Own Architecture](https://medium.com/@breadtan/the-graph-that-ate-its-own-architecture-0186760253fe) | Replacing RAG with a 50ms deterministic graph; why frequency isn't criticality; canonicalisation as a query-time-only transform |
 | 13 | [The Instrumentation We Forgot to Talk About](https://medium.com/@breadtan/the-instrumentation-we-forgot-to-talk-about-cd44c4a7a893) | EventBroker + 48 unit tests; the test suite as specification; sink isolation; why the instrumentation TA recommends for others is the same instrumentation TA runs on itself |
+| 14 | [Beneath the Iceberg: The AI Pipeline Signals You Have But Aren't Reading](https://medium.com/@breadtan/beneath-the-iceberg-the-ai-pipeline-signals-you-have-but-arent-reading-e23abf9247f4) | 18 DETECT rules grounded in real 2026 incidents; the detect-loop flywheel; OWASP AST10 pipeline coverage; SOC KG provenance graph; 23/27 architectures silently inflate confidence |
 
 ---
 

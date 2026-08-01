@@ -398,6 +398,582 @@ rules:
       If false positive rate > 10%, add a minimum swing threshold (e.g. >= 5.0).
       Does NOT fire when divergence_detected is true — that is DETECT-001/002.
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-008: Selection Pressure / Reward Hacking Signal
+  # Source: MIT AI Risk 7.1 (Goal Conflict / Specification Gaming)
+  #
+  # The ScrumMaster repeatedly rejected and retriggered critics — acceptance_rate
+  # dropped below threshold. This pattern indicates critics may be optimising for
+  # SM approval rather than honest gap reporting (reward hacking under selection
+  # pressure). Grounded in MIT AI Risk 7.1: models learn to satisfy the evaluator
+  # rather than the underlying objective, producing systematically inflated outputs
+  # on re-run. Unlike DETECT-001/007 (single-run swing), this fires on the ratio of
+  # rejections across all five critics in a single SM synthesis pass.
+  #
+  # Knowledge graph chain:
+  #   Trace[run_id]
+  #     └─ Span[sm_verdicts, source=scrum_master]
+  #          └─ Signal[sm_verdicts.acceptance_rate=0.4]
+  #               └─ Threshold[<= 0.6 AND redesign_signal==false]
+  #                    └─ Rule[DETECT-008]
+  #                         └─ Alert[OCSF-2004, severity=High]
+  #                              └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-008
+    name: selection_pressure_reward_hacking
+    description: >
+      ScrumMaster acceptance rate for critics dropped below threshold in a single
+      synthesis pass. Low acceptance rate signals that critics are being repeatedly
+      retriggered until they satisfy the SM — a reward-hacking pattern (MIT AI Risk
+      7.1: goal conflict / specification gaming). Not fired when redesign_signal is
+      true, since high rejection rate is expected and legitimate when the architecture
+      has structural defects that no critic round can resolve.
+    incident_refs:
+      - mit-ai-risk-7.1-goal-conflict
+    owasp: [A09]
+    atlas_tactic: AML.TA0009
+    kill_chain_stage: llm_layer
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: High
+    conditions:
+      - field: sm_verdicts.acceptance_rate
+        op: "<="
+        value: 0.6
+      - field: sm_verdicts.redesign_signal
+        op: "=="
+        value: false
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      Threshold 0.6 means ≥ 3 of 5 critics were retriggered. On first deploy,
+      check corpus baseline — a single high-complexity architecture may legitimately
+      trigger 2 critics (rate 0.6, boundary). If false positive rate > 10%, lower
+      threshold to 0.4 (4 of 5 retriggered). redesign_signal guard prevents false
+      positives on structurally broken architectures where retriggers are expected.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-009: Credential / Secret Exposure in Architecture Artifact
+  # Source: OWASP A06 (Security Misconfiguration), MITRE T1552 (Unsecured Credentials)
+  #
+  # The governance adapter scans ground_truth for credential patterns (api_key=,
+  # password=, secret=, token= etc.). A non-empty sensitive_keywords list means
+  # real secrets were embedded in the architecture description or rationale text —
+  # an immediate hard-stop: any analysis produced from this run is contaminated.
+  # Distinct from DETECT-004 which requires co-occurring cross-boundary evidence.
+  #
+  # Knowledge graph chain:
+  #   Artifact[ground_truth.json]
+  #     └─ Scan[_RE_CRED pattern match]
+  #          └─ Signal[leakage.sensitive_keywords=["api_key","db_password"]]
+  #               └─ Threshold[length_gt 0 AND flagged==true]
+  #                    └─ Rule[DETECT-009]
+  #                         └─ Alert[OCSF-2004, severity=Critical]
+  #                              └─ Action[block_run, forensic_capture]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-009
+    name: credential_exposure_in_artifact
+    description: >
+      Ground truth artifact contains credential or secret patterns (api_key, password,
+      token, secret). Any analysis produced from this run is contaminated — the
+      architecture description itself is a data loss event. Hard-stop required.
+    incident_refs:
+      - owasp-a06-security-misconfiguration
+    owasp: [A06]
+    atlas_tactic: AML.TA0007
+    kill_chain_stage: deterministic_layer
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: Critical
+    conditions:
+      - field: leakage.sensitive_keywords
+        op: length_gt
+        value: 0
+      - field: leakage.flagged
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: block_run
+      - type: forensic_capture
+    tuning_note: >
+      sensitive_keywords is populated only when exact credential patterns match (api_key=,
+      password=, secret=, token= followed by a value). False positive rate is near zero
+      on clean architectures. If a legitimate architecture uses these exact label strings
+      without values (e.g. "API Key Service" as a node label), add the specific string
+      to a governance allowlist in policies/agent_governance.yaml.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-010: Path Traversal in Architecture Input
+  # Source: OWASP A01, MITRE T1059 (Command and Scripting Interpreter)
+  #
+  # Path traversal patterns (../../, /etc/passwd etc.) in architecture node labels
+  # or edge annotations indicate the .mmd file was crafted to probe file system
+  # access — an initial access attempt via the analysis pipeline input.
+  # DETECT-005 requires BOTH CRITICAL severity AND injection_patterns — this fires
+  # on path_traversal alone, catching the case where traversal is the only signal.
+  #
+  # Knowledge graph chain:
+  #   Input[architecture.mmd]
+  #     └─ Scan[_RE_PATH_TRAVERSAL]
+  #          └─ Signal[exploitation.path_traversal=["../../etc/passwd"]]
+  #               └─ Threshold[length_gt 0]
+  #                    └─ Rule[DETECT-010]
+  #                         └─ Alert[OCSF-2004, severity=High]
+  #                              └─ Action[block_run, audit_log]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-010
+    name: path_traversal_in_input
+    description: >
+      Architecture input contains path traversal sequences (../../, /etc/, %2e%2e%2f
+      etc.). The .mmd file is being used as a file system probe against the analysis
+      pipeline. Distinct from DETECT-005 which requires co-occurring injection_patterns.
+    incident_refs:
+      - huggingface-dataset-pipeline-2026
+    owasp: [A01]
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: High
+    conditions:
+      - field: exploitation.path_traversal
+        op: length_gt
+        value: 0
+    combine: all
+    actions:
+      - type: block_run
+      - type: audit_log
+    tuning_note: >
+      path_traversal fires on any occurrence of ../ or /etc/ style patterns after
+      Unicode normalisation. False positive rate is near zero — legitimate architecture
+      diagrams do not contain file system paths. If blocked on a legitimate edge label
+      (e.g. a node named "File Path Service"), rename the node label in the .mmd.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-011: LLM→External Service Egress Without Data Residency Control
+  # Source: OWASP A05, MITRE ATLAS AML.TA0010 (Exfiltration via External Service)
+  #
+  # The governance adapter detects LLM→external service edges in the architecture
+  # (zdr_signals). This means the architecture explicitly routes inference output to
+  # third-party services without a Zero Data Retention declaration — a sovereignty
+  # and data governance failure. Distinct from DETECT-004 which requires co-occurring
+  # leakage — zdr_signals fires on the architectural pattern alone, regardless of
+  # whether PII was detected.
+  #
+  # Knowledge graph chain:
+  #   Input[architecture.mmd]
+  #     └─ EdgeScan[LLM→ExternalService pattern]
+  #          └─ Signal[sovereignty.zdr_signals=["inference→external: LLM → SlackAPI"]]
+  #               └─ Threshold[length_gt 0]
+  #                    └─ Rule[DETECT-011]
+  #                         └─ Alert[OCSF-2004, severity=Medium]
+  #                              └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-011
+    name: llm_external_egress_without_zdr
+    description: >
+      Architecture diagram routes LLM inference output to an external service
+      (Slack, Telegram, webhook, third-party API) without a Zero Data Retention
+      declaration. Sovereign data may be leaving the controlled boundary without
+      governance approval. Fires on the architectural pattern alone — no leakage
+      evidence required (complement to DETECT-004).
+    incident_refs:
+      - huggingface-dataset-pipeline-2026
+    owasp: [A05]
+    atlas_tactic: AML.TA0010
+    kill_chain_stage: exfiltration
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: Medium
+    conditions:
+      - field: sovereignty.zdr_signals
+        op: length_gt
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      zdr_signals fires on any edge from a node whose label matches LLM/GPT/Claude/
+      Bedrock/OpenAI/AI Model/inference patterns to a node whose label matches
+      external service patterns. Legitimate internal service hops may trigger this —
+      review cross_boundary_nodes alongside zdr_signals to confirm the destination
+      is truly external. Adjust _RE_EXTERNAL_SERVICE in governance.py if false
+      positive rate > 5% on well-known internal service labels.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-012: Stale Threat Intelligence Feed
+  # Source: OWASP A05 (Security Misconfiguration), MITRE T1195 (Supply Chain Compromise)
+  #
+  # The governance adapter checks whether MITRE ATT&CK / embedding data files are
+  # older than 90 days. A stale feed means the threat assessment was produced with
+  # outdated technique mappings — new TTPs, technique deprecations, and sub-technique
+  # additions since the last update are invisible to the engine. Any risk scores and
+  # control recommendations should be treated as indicative only.
+  #
+  # Knowledge graph chain:
+  #   DataLayer[enterprise-attack.json]
+  #     └─ FreshnessCheck[mtime < now - 90 days]
+  #          └─ Signal[leakage.supply_chain_stale_sources=["chatbot/data/enterprise-attack.json (91 days)"]]
+  #               └─ Threshold[length_gt 0]
+  #                    └─ Rule[DETECT-012]
+  #                         └─ Alert[OCSF-2004, severity=Low]
+  #                              └─ Action[audit_log]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-012
+    name: stale_threat_intelligence_feed
+    description: >
+      MITRE ATT&CK or embedding data files are older than the declared freshness
+      threshold (90 days). Threat assessment output is based on stale technique
+      mappings — new TTPs since the last data update are invisible. Risk scores
+      should be treated as indicative only until data is refreshed via /update-data.
+    incident_refs:
+      - owasp-a05-security-misconfiguration
+    owasp: [A05]
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: Low
+    conditions:
+      - field: leakage.supply_chain_stale_sources
+        op: length_gt
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+    tuning_note: >
+      Threshold is 90 days (chatbot/harness/governance.py _STALE_DATA_DAYS=90).
+      This is an informational/audit rule — it does not block the run. Run
+      /update-data to refresh enterprise-attack.json and technique_embeddings.npz.
+      If your deployment intentionally uses a pinned dataset version, raise the
+      threshold to suppress this alert.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-013: High Outbound Threat Surface (Exfiltration Risk)
+  # Source: OWASP A06, MITRE ATLAS AML.TA0010 (Exfiltration)
+  #
+  # A high outbound AIVSS composite (>= 6.0) indicates the architecture has a
+  # significant exfiltration-capable surface — PII exposure, data confidentiality
+  # failure, or loss of governance signals present in the outbound flow. This fires
+  # independently of DETECT-004 (which requires both leakage.detected AND
+  # cross_boundary_nodes). An elevated outbound composite may arise from combinations
+  # of signals that individually fall below DETECT-004's threshold.
+  #
+  # Knowledge graph chain:
+  #   AIVSSStage[outbound_scorer]
+  #     └─ Signal[aivss.outbound.composite=7.2, severity=HIGH]
+  #          └─ Threshold[>= 6.0]
+  #               └─ Rule[DETECT-013]
+  #                    └─ Alert[OCSF-2004, severity=High]
+  #                         └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-013
+    name: high_outbound_threat_surface
+    description: >
+      AIVSS outbound composite score reached or exceeded 6.0 — the architecture
+      presents a significant exfiltration-capable surface. PII exposure, data
+      confidentiality failure, or sovereignty control loss signals are present in
+      the outbound flow. Complements DETECT-004 by catching broad outbound risk
+      not tied to a single leakage + cross-boundary co-occurrence.
+    incident_refs:
+      - huggingface-dataset-pipeline-2026
+    owasp: [A06]
+    atlas_tactic: AML.TA0010
+    kill_chain_stage: exfiltration
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: High
+    conditions:
+      - field: aivss.outbound.composite
+        op: ">="
+        value: 6.0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      Threshold 6.0 corresponds to AIVSS HIGH severity boundary. On first deploy,
+      run against corpus and verify no false positives on well-defended architectures.
+      If legitimate architectures with strict PII controls score near 6.0, raise
+      threshold to 7.0 (CRITICAL boundary). A score >= 6.0 with no leakage.detected
+      and no cross_boundary_nodes suggests the scoring model is picking up structural
+      patterns — cross-check aivss.outbound.metrics for which sub-scores are elevated.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-014: Low Technique Validation Coverage
+  # Source: MIT AI Risk 7.3 (Inaccurate Risk Assessment), OWASP A09
+  #
+  # val_pct measures what fraction of MITRE techniques in the attack paths were
+  # validated as relevant to this architecture (via self_validation.py heuristics).
+  # A low val_pct means the engine mapped many irrelevant techniques — risk scores
+  # and control recommendations are based on a bloated, inaccurate threat picture.
+  # This fires when val_pct drops below 75 AND at least 3 techniques are invalid
+  # (guards against small architectures where a single invalid entry skews the ratio).
+  #
+  # Knowledge graph chain:
+  #   AnalysisStage[ground_truth.json → technique_validation[]]
+  #     └─ Signal[validation.val_pct=62.0, invalid_techniques=8]
+  #          └─ Threshold[val_pct < 75 AND invalid_techniques >= 3]
+  #               └─ Rule[DETECT-014]
+  #                    └─ Alert[OCSF-2004, severity=Medium]
+  #                         └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-014
+    name: low_technique_validation_coverage
+    description: >
+      Technique validation pass rate (val_pct) dropped below 75% with at least 3
+      invalid technique mappings. The engine mapped a significant number of irrelevant
+      MITRE techniques to this architecture — risk scores and control recommendations
+      are built on an inaccurate threat model. Analysis output should be treated as
+      indicative only pending a manual review of the technique mappings.
+    incident_refs:
+      - mit-ai-risk-7.3-inaccurate-risk-assessment
+    owasp: [A09]
+    atlas_tactic: AML.TA0009
+    kill_chain_stage: deterministic_layer
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: Medium
+    conditions:
+      - field: validation.val_pct
+        op: "<"
+        value: 75
+      - field: validation.invalid_techniques
+        op: ">="
+        value: 3
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      val_pct < 75 catches cases where > 1 in 4 techniques is invalid. The
+      invalid_techniques >= 3 guard prevents noise on minimal architectures
+      (e.g. 1 invalid out of 3 total = 33% — statistically meaningless).
+      In practice, well-calibrated architectures run 90–97% val_pct. If baseline
+      corpus shows many architectures below 75%, tighten self_validation heuristics
+      first (see docs/DECISIONS.md Item 2 from Session 26).
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-015: Critic Gap Convergence (Multi-Agent Collusion Proxy)
+  # Source: MIT AI Risk 7.1 (Goal Conflict), OWASP A09
+  #
+  # After a full MoE run, AIVSSStage computes Jaccard similarity of gap text
+  # across all five critics. Independent critics analysing the same architecture
+  # from different perspectives should produce dissimilar gap vocabularies.
+  # A high average similarity (gap_similarity_avg > 0.4) or a single very-high
+  # pair similarity (gap_similarity_max > 0.6) indicates critics are converging
+  # on identical outputs rather than offering independent perspectives — a proxy
+  # for multi-agent collusion without requiring full Langfuse text storage.
+  #
+  # Note: this rule uses gap text Jaccard as a proxy for semantic similarity.
+  # Corpus baseline for independent critics: avg ~0.05–0.15, max ~0.10–0.20.
+  # These thresholds (0.4/0.6) are set conservatively high to avoid false positives
+  # until per-architecture baselines are established.
+  #
+  # Knowledge graph chain:
+  #   AIVSSStage[moe_result.{critic}_result.gaps → Jaccard]
+  #     └─ Signal[manipulation.gap_similarity_avg=0.52]
+  #          └─ Threshold[avg > 0.4 OR max > 0.6]
+  #               └─ Rule[DETECT-015]
+  #                    └─ Alert[OCSF-2004, severity=High]
+  #                         └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-015
+    name: critic_gap_convergence
+    description: >
+      Critic gap text Jaccard similarity exceeded collusion threshold — critics
+      are producing convergent rather than independent outputs. This is a proxy
+      signal for multi-agent collusion: independent critics analysing the same
+      architecture from different lenses should surface different gaps.
+      Either the average pairwise similarity exceeded 0.4 or the max pair exceeded
+      0.6. Analysis confidence should be discounted until a re-run with higher
+      temperature or reset critic context produces divergent outputs.
+    incident_refs:
+      - mit-ai-risk-7.1-goal-conflict
+    owasp: [A09]
+    atlas_tactic: AML.TA0009
+    kill_chain_stage: llm_layer
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: High
+    conditions:
+      - field: manipulation.gap_similarity_avg
+        op: ">"
+        value: 0.4
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      Jaccard on gap word sets is a conservative proxy — full semantic similarity
+      (cosine on embeddings) would be more sensitive but requires Langfuse text
+      storage. Corpus baseline avg ~0.05–0.15; threshold 0.4 is 3-4× baseline.
+      If false positives appear on architectures with narrow domains (IoT, minimal),
+      raise avg threshold to 0.5. Consider adding a gap_similarity_max >= 0.6
+      condition as a secondary trigger for single-pair convergence detection.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-016: Critic Module Tampering (AST02 Supply Chain Compromise)
+  # Source: OWASP AST02, MITRE T1195 (Supply Chain Compromise)
+  #
+  # The governance adapter compares SHA-1 hashes of critic .py files against their
+  # git object hashes. A mismatch means a critic module was modified outside of the
+  # normal git workflow — post-install tampering, a supply-chain-injected payload,
+  # or a live patch applied without review. Any analysis produced by the modified
+  # critic is untrusted. Grounded in AST02: "repository-controlled config files can
+  # silently execute arbitrary code" (CVE-2025-59536, CVSS 8.7).
+  #
+  # Knowledge graph chain:
+  #   Artifact[chatbot/modules/agents/critics/*.py]
+  #     └─ IntegrityCheck[SHA-1 disk vs git-object hash]
+  #          └─ Signal[identity.supply_chain_modified_modules=["architect_critic.py"]]
+  #               └─ Threshold[length_gt 0]
+  #                    └─ Rule[DETECT-016]
+  #                         └─ Alert[OCSF-2004, severity=Critical]
+  #                              └─ Action[block_run, forensic_capture]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-016
+    name: critic_module_tampering
+    description: >
+      One or more critic module files differ from their committed git object hash —
+      post-install tampering or supply-chain injection is indicated. Any analysis
+      produced by a modified critic is untrusted. Hard stop required: do not use
+      this run's output until the modified files are reviewed and restored.
+    incident_refs:
+      - owasp-ast02-supply-chain-compromise
+      - cve-2025-59536
+    owasp: [A05]
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: Critical
+    conditions:
+      - field: identity.supply_chain_modified_modules
+        op: length_gt
+        value: 0
+    combine: all
+    actions:
+      - type: block_run
+      - type: forensic_capture
+    tuning_note: >
+      Fires only when critic files differ from git HEAD. Will not fire in container
+      deployments without a .git directory (check falls back to empty list).
+      False positives: uncommitted local development edits — run `git diff
+      chatbot/modules/agents/critics/` to confirm intent before dismissing.
+      If intentionally patching critics outside git, commit first.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-017: External URL References in Architecture Input (AST05)
+  # Source: OWASP AST05 (Untrusted External Instructions)
+  #
+  # AST05 documents that skills fetching live external URLs "may contain malicious
+  # instructions" — Air's PoC proved a takeover of 26,000 agents via this vector.
+  # In TA: if an architecture .mmd file contains http(s):// URLs in node labels or
+  # edge annotations, those URLs are mutable remote content that the analysis engine
+  # may attempt to resolve. They cannot be hash-pinned and may have been modified
+  # since submission. This fires on the presence of any external URL in the input.
+  #
+  # Knowledge graph chain:
+  #   Input[architecture.mmd]
+  #     └─ URLScan[_RE_EXTERNAL_URL]
+  #          └─ Signal[exploitation.external_url_references=2]
+  #               └─ Threshold[> 0]
+  #                    └─ Rule[DETECT-017]
+  #                         └─ Alert[OCSF-2004, severity=High]
+  #                              └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-017
+    name: external_url_in_architecture_input
+    description: >
+      Architecture input contains http(s):// URLs in node labels or edge annotations.
+      These are mutable remote references that cannot be hash-pinned — the content
+      at those URLs may have changed since submission (AST05 "rug-pull" pattern).
+      If the analysis engine fetches any of these URLs, it is exposed to untrusted
+      external instructions that bypass the MMD injection scanner.
+    incident_refs:
+      - owasp-ast05-untrusted-external-instructions
+      - air-poc-agent-takeover-2026
+    owasp: [A05]
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: High
+    conditions:
+      - field: exploitation.external_url_references
+        op: ">"
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      Fires on any http(s):// URL in the MMD. Legitimate architectures rarely
+      embed live URLs in node labels — they use node names like "External API"
+      not "https://api.example.com". If a documentation reference is needed,
+      move URLs to a comment line (%%  ...) which is excluded from node label scanning.
+      If false positive rate > 5%, raise threshold to external_url_references > 2.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-018: Evasion Attempt via Encoding or Homoglyphs (AST08)
+  # Source: OWASP AST08 (Poor Scanning), OWASP A01
+  #
+  # The normalisation layer (governance.py _normalise()) defeats homoglyph
+  # substitution and URL-encoding before injection scanning. But the raw count
+  # of these characters/sequences in the original input is itself a signal:
+  # legitimate architecture files do not contain Cyrillic confusables or
+  # %-encoded byte sequences. Their presence indicates an active attempt to
+  # bypass pattern-matching scanners (AST08: "natural-language instruction
+  # manipulation bypasses signature-based scanners"). The normaliser defeats
+  # the bypass, but the attempt should still be flagged and quarantined.
+  #
+  # Knowledge graph chain:
+  #   Input[architecture.mmd]
+  #     └─ RawScan[pre-normalisation homoglyph + url-encoding count]
+  #          └─ Signal[exploitation.evasion_attempts=3]
+  #               └─ Threshold[> 0]
+  #                    └─ Rule[DETECT-018]
+  #                         └─ Alert[OCSF-2004, severity=High]
+  #                              └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-018
+    name: evasion_attempt_encoding_or_homoglyph
+    description: >
+      Architecture input contains unicode homoglyph characters (Cyrillic/Greek/fullwidth
+      confusables) or consecutive URL-percent-encoded sequences before normalisation.
+      The normaliser successfully deflects the bypass, but the presence of these
+      patterns in a legitimate architecture file is essentially impossible — they
+      indicate an active attempt to evade the injection scanner (AST08 pattern).
+    incident_refs:
+      - owasp-ast08-poor-scanning
+      - owasp-a01-broken-access-control
+    owasp: [A01]
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: defense_evasion
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: High
+    conditions:
+      - field: exploitation.evasion_attempts
+        op: ">"
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      homoglyph_count counts non-ASCII Cyrillic/Greek/fullwidth characters.
+      url_encoded_count counts runs of ≥2 consecutive %-encoded bytes.
+      evasion_attempts = homoglyph_count + url_encoded_count.
+      False positive: architecture with legitimate non-ASCII node names (e.g.
+      Chinese service names). Decompose the rule into separate homoglyph/url-encoded
+      conditions if the deployment environment uses non-Latin scripts legitimately.
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SOC Response Playbooks
 #
@@ -443,6 +1019,142 @@ playbooks:
     note: >
       Use an on-prem open-weight model (not commercial API) to analyse the malicious .mmd
       payload — commercial safety filters may block forensic analysis of injection patterns.
+
+  selection_pressure_reward_hacking:
+    alert: DETECT-008
+    analyst_steps:
+      - "Review 08_scrum_master.json for critics_retriggered list and iteration count"
+      - "Compare critic scores before and after retrigger — a large positive delta suggests optimisation for SM approval"
+      - "Check if the same critic is repeatedly retriggered across multiple runs (cross-run pattern)"
+      - "Cross-reference with DETECT-001/007 — concurrent swing signals strengthen the reward-hacking hypothesis"
+      - "If redesign_signal is false and acceptance_rate < 0.4, escalate to critical incident"
+    escalation_threshold: 0.4
+    false_positive_indicators:
+      - "Architecture has many conflicting signals across all critics (genuine disagreement, not gaming)"
+      - "First ER run on a new architecture type with no prior corpus baseline"
+      - "SM configuration has unusually high confidence_target (e.g. > 95%) — more retriggers expected"
+
+  critic_module_tampering:
+    alert: DETECT-016
+    analyst_steps:
+      - "Run `git diff chatbot/modules/agents/critics/` to identify modified files"
+      - "Review the diff — determine whether the change was intentional (local dev) or injected"
+      - "If injected: preserve the modified file for forensics, restore from git with `git checkout`"
+      - "Check git log for recent pushes to the critics directory — confirm no unauthorised commits"
+      - "Re-run the analysis after restoring clean critic files to produce a trusted output"
+    escalation_threshold: "2+ critics modified → treat as coordinated supply-chain attack"
+    false_positive_indicators:
+      - "Local development edits not yet committed — run `git add` and commit before analysis"
+      - "Container deployment without .git present — integrity check is skipped (no signal)"
+
+  external_url_in_architecture_input:
+    alert: DETECT-017
+    analyst_steps:
+      - "Check exploitation.external_url_list for the specific URLs embedded in the architecture"
+      - "Determine whether the URLs are documentation references or live instruction sources"
+      - "If live instruction sources: do not resolve — treat content at those URLs as untrusted"
+      - "Request submitter to replace URLs with static node labels in the .mmd"
+      - "Cross-reference with exploitation.injection_patterns — co-presence escalates to DETECT-005"
+    escalation_threshold: "URL domain matches known C2 or phishing lists → escalate to CRITICAL"
+    false_positive_indicators:
+      - "Documentation-only URL in a comment line (%% ...) — excluded from node scanning"
+      - "CI/CD pipeline embedding build artifact URLs — move to metadata, not node labels"
+
+  evasion_attempt_encoding_or_homoglyph:
+    alert: DETECT-018
+    analyst_steps:
+      - "Check exploitation.homoglyph_count vs url_encoded_count to identify which evasion type"
+      - "The normaliser has already neutralised the bypass — check exploitation.injection_patterns for what was found post-normalisation"
+      - "If injection_patterns is also non-empty (DETECT-005 co-fires): the bypass partially succeeded before normalisation caught it — escalate"
+      - "Flag the submitting source for review — this pattern does not appear in legitimate architectures"
+    escalation_threshold: "co-present injection_patterns → escalate to DETECT-005/010"
+    false_positive_indicators:
+      - "Architecture legitimately uses non-Latin scripts for node names — add to governance allowlist"
+      - "Markdown-encoded URLs in node labels — restructure to use plain text labels"
+
+  low_technique_validation_coverage:
+    alert: DETECT-014
+    analyst_steps:
+      - "Check validation.invalid_techniques list in governance_signals for which techniques failed"
+      - "Review ground_truth.json technique_validation[] for entries with valid=false"
+      - "Run ./demo_deterministic_engine.sh --validate-orphan on the architecture to surface mapping issues"
+      - "Cross-reference with the architecture .mmd — invalid techniques often map to node types not present"
+      - "If val_pct < 60 across multiple architectures, update self_validation.py heuristics"
+    escalation_threshold: "val_pct < 60 → escalate; run /tatb-score to assess impact on overall quality"
+    false_positive_indicators:
+      - "Architecture has very few paths (< 5) — small denominator amplifies single invalid mapping"
+      - "Novel architecture type with no self_validation coverage rules yet"
+
+  critic_gap_convergence:
+    alert: DETECT-015
+    analyst_steps:
+      - "Check manipulation.gap_similarity_avg and gap_similarity_max in governance_signals"
+      - "Review 07_moe_orchestrator.json expert_validations — compare gap descriptions across critics"
+      - "Re-run MoE with higher LLM temperature or a different model to test divergence"
+      - "If convergence persists across re-runs, check for shared context or caching artifacts"
+      - "Cross-reference with DETECT-008 (SM acceptance rate) — co-occurrence strengthens collusion signal"
+    escalation_threshold: "gap_similarity_max > 0.7 AND DETECT-008 also fired → treat as confirmed collusion"
+    false_positive_indicators:
+      - "Minimal/simple architecture — all critics correctly identify the same small set of gaps"
+      - "Architecture has a single dominant threat (e.g. injection-only surface) — unavoidable convergence"
+
+  credential_exposure_in_artifact:
+    alert: DETECT-009
+    analyst_steps:
+      - "Identify which sensitive_keywords were matched (api_key, password, token, secret)"
+      - "Locate the exact field in ground_truth.json that contains the credential pattern"
+      - "Determine whether the credential is real or a test placeholder — real values require immediate rotation"
+      - "Quarantine the analysis output — do not share reports from this run"
+      - "Remove the credential from the architecture description and re-run"
+    escalation_threshold: "any NRIC or PII co-present in pii_indicators"
+    false_positive_indicators:
+      - "Node label contains 'API Key Service' or 'Password Manager' as a service name (not a value)"
+      - "Test architecture with placeholder values like 'password=example'"
+
+  path_traversal_in_input:
+    alert: DETECT-010
+    analyst_steps:
+      - "Review exploitation.path_traversal list — identify the specific traversal sequence"
+      - "Check whether the architecture was submitted by an external/untrusted source"
+      - "Cross-reference with exploitation.injection_patterns — co-presence escalates to DETECT-005"
+      - "Block the submitting account if traversal was intentional"
+    escalation_threshold: "co-present injection_patterns → escalate to DETECT-005"
+    false_positive_indicators:
+      - "Node label contains a file path for documentation purposes (rename the node)"
+
+  llm_external_egress_without_zdr:
+    alert: DETECT-011
+    analyst_steps:
+      - "Review sovereignty.zdr_signals — identify which LLM node and which external service"
+      - "Verify whether the destination service has an approved ZDR agreement"
+      - "If ZDR agreement exists, add the service to the governance allowlist in policies/agent_governance.yaml"
+      - "If no ZDR agreement: flag the architecture for compliance review before deployment"
+    escalation_threshold: "co-present leakage.detected → escalate to DETECT-004"
+    false_positive_indicators:
+      - "Internal service with external-sounding name (e.g. 'Slack-like internal chat')"
+      - "LLM node connects only to an API Gateway that enforces ZDR"
+
+  stale_threat_intelligence_feed:
+    alert: DETECT-012
+    analyst_steps:
+      - "Run /update-data to refresh enterprise-attack.json and technique_embeddings.npz"
+      - "Re-run the analysis after data refresh to get current technique coverage"
+      - "Flag all reports generated with the stale dataset as indicative-only"
+    escalation_threshold: "data older than 180 days → quarantine all recent reports"
+    false_positive_indicators:
+      - "Intentionally pinned dataset version for reproducibility (raise threshold in governance.py)"
+
+  high_outbound_threat_surface:
+    alert: DETECT-013
+    analyst_steps:
+      - "Inspect aivss.outbound.metrics for which sub-scores (DS, CS) are elevated"
+      - "Cross-reference with leakage.pii_indicators — PII exposure is the most common driver"
+      - "Review sovereignty.cross_boundary_nodes to identify the data egress path"
+      - "If DETECT-004 also fired, treat as confirmed exfiltration surface — escalate immediately"
+    escalation_threshold: "composite >= 8.0 → escalate to critical, page SOC"
+    false_positive_indicators:
+      - "Architecture is a data analytics pipeline with legitimate PII processing under approved controls"
+      - "Outbound score driven by sovereignty.cross_boundary_nodes with approved cross-region replication"
 
   covert_c2_channel:
     alert: DETECT-004

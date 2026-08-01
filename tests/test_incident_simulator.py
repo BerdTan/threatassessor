@@ -78,6 +78,80 @@ class TestScenariosFire:
         fired = _fired_ids(fn())
         assert {"DETECT-001", "DETECT-002", "DETECT-004", "DETECT-005"} <= fired
 
+    # ── New scenarios (DETECT-008 through DETECT-015) ──────────────────────
+
+    def test_credential_leak_in_architecture(self):
+        fn, _ = SCENARIOS["credential_leak_in_architecture"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-009"} <= fired
+
+    def test_path_traversal_mmd_probe(self):
+        fn, _ = SCENARIOS["path_traversal_mmd_probe"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-010"} <= fired
+
+    def test_llm_egress_no_zdr(self):
+        fn, _ = SCENARIOS["llm_egress_no_zdr"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-011"} <= fired
+
+    def test_stale_mitre_data(self):
+        fn, _ = SCENARIOS["stale_mitre_data"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-012"} <= fired
+
+    def test_high_outbound_surface(self):
+        fn, _ = SCENARIOS["high_outbound_surface"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-013"} <= fired
+
+    def test_sm_selection_pressure(self):
+        fn, _ = SCENARIOS["sm_selection_pressure"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-008"} <= fired
+
+    def test_low_validation_coverage(self):
+        fn, _ = SCENARIOS["low_validation_coverage"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-014"} <= fired
+
+    def test_critic_convergence(self):
+        fn, _ = SCENARIOS["critic_convergence"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-015"} <= fired
+
+    def test_supply_chain_and_credentials(self):
+        fn, _ = SCENARIOS["supply_chain_and_credentials"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-009", "DETECT-012"} <= fired
+
+    def test_egress_and_low_validation(self):
+        fn, _ = SCENARIOS["egress_and_low_validation"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-011", "DETECT-014", "DETECT-015"} <= fired
+
+    # ── AST-grounded scenarios (DETECT-016/017/018) ────────────────────────
+
+    def test_critic_module_tampered(self):
+        fn, _ = SCENARIOS["critic_module_tampered"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-016"} <= fired
+
+    def test_mutable_url_in_mmd(self):
+        fn, _ = SCENARIOS["mutable_url_in_mmd"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-017"} <= fired
+
+    def test_homoglyph_evasion_attempt(self):
+        fn, _ = SCENARIOS["homoglyph_evasion_attempt"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-018"} <= fired
+
+    def test_ast_composite(self):
+        fn, _ = SCENARIOS["ast_composite"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-016", "DETECT-017", "DETECT-018"} <= fired
+
     def test_all_expected_rules_match_documented(self):
         """Every scenario fires at least its documented expected set."""
         for name, (fn, _) in SCENARIOS.items():

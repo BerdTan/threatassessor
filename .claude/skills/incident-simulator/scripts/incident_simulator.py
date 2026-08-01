@@ -237,28 +237,391 @@ def scenario_full_compromise() -> Dict[str, Any]:
     return sig
 
 
+def scenario_credential_leak_in_architecture() -> Dict[str, Any]:
+    """
+    DETECT-009 (Critical)
+
+    Based on: OWASP A06 — developer embeds real API keys in architecture description.
+
+    An architect drafts a microservices diagram and pastes real credentials into the
+    architecture description field ("api_key=sk-prod-xxxx", "db_password=Prod!2026").
+    The governance adapter scans the ground_truth artifact and flags sensitive_keywords.
+    Hard block — any analysis from this run is contaminated.
+    Realistic arch: 12_microservices (API-heavy, credential-rich surface)
+    """
+    sig = _base()
+    sig["leakage"]["detected"] = True
+    sig["leakage"]["severity"] = "CRITICAL"
+    sig["leakage"]["sensitive_keywords"] = ["api_key", "db_password", "secret_token"]
+    sig["leakage"]["flagged"] = True
+    return sig
+
+
+def scenario_path_traversal_mmd_probe() -> Dict[str, Any]:
+    """
+    DETECT-010 (High)
+
+    Based on: OWASP A01 — crafted .mmd file probes pipeline file system.
+
+    A threat actor submits an architecture file with path traversal sequences in node
+    labels: `FileReader["../../etc/passwd"]`, `ConfigLoader["%2e%2e/secrets"]`.
+    The normalisation layer catches the traversal but injection_patterns is empty —
+    DETECT-005 does not fire. DETECT-010 catches the traversal alone.
+    Realistic arch: 05_legacy_flat_network (least-hardened input validation)
+    """
+    sig = _base()
+    sig["exploitation"]["severity"] = "CRITICAL"
+    sig["exploitation"]["path_traversal"] = ["../../etc/passwd", "%2e%2e%2f.env", "../secrets/prod"]
+    sig["exploitation"]["blocked"] = True
+    return sig
+
+
+def scenario_llm_egress_no_zdr() -> Dict[str, Any]:
+    """
+    DETECT-011 (Medium)
+
+    Based on: OWASP A05 — LLM inference routed to Slack/Telegram without ZDR.
+
+    An IoT architecture diagram routes LLM output directly to a Telegram bot and
+    a Slack webhook without a Zero Data Retention agreement. The sovereignty scanner
+    detects the LLM→external edges. No PII is detected yet — DETECT-004 does not fire.
+    DETECT-011 fires on the architectural pattern alone.
+    Realistic arch: 13_iot_architecture (IoT with cloud AI integration, external webhooks)
+    """
+    sig = _base()
+    sig["sovereignty"]["severity"] = "MEDIUM"
+    sig["sovereignty"]["zdr_signals"] = [
+        "inference→external: LLM_Model → TelegramBot[Telegram Notification Service]",
+        "inference→external: AIProcessor → SlackWebhook[Slack Alert Channel]",
+    ]
+    sig["sovereignty"]["flagged"] = True
+    return sig
+
+
+def scenario_stale_mitre_data() -> Dict[str, Any]:
+    """
+    DETECT-012 (Low)
+
+    Based on: OWASP A05 supply chain — MITRE ATT&CK data not refreshed in 95 days.
+
+    A quarterly analysis run against a serverless architecture. The enterprise-attack.json
+    was last updated 95 days ago — 5 days past the 90-day freshness threshold. Three new
+    ATLAS techniques published in that window are invisible to the engine. Risk scores
+    are indicative only. Audit trail required before the report is shared with CISO.
+    Realistic arch: 07_gcp_serverless (serverless + AI, high technique churn)
+    """
+    sig = _base()
+    sig["leakage"]["supply_chain_stale_sources"] = [
+        "chatbot/data/enterprise-attack.json (95 days old — threshold: 90)",
+        "chatbot/data/technique_embeddings.npz (95 days old)",
+    ]
+    return sig
+
+
+def scenario_high_outbound_surface() -> Dict[str, Any]:
+    """
+    DETECT-013 (High)
+
+    Based on: OWASP A06 — data analytics pipeline with broad PII exfiltration surface.
+
+    A data pipeline architecture processes customer PII across multiple regions.
+    AIVSS outbound scoring detects high PII-exposure and data-confidentiality risk
+    (composite 7.2). No specific injection or C2 evidence yet — DETECT-004/005 are
+    silent. DETECT-013 catches the broad outbound surface before a specific leak is confirmed.
+    Realistic arch: 20_data_pipeline (ETL + PII + cross-region)
+    """
+    sig = _base()
+    sig["aivss"]["outbound"] = {
+        "composite": 7.2,
+        "severity": "HIGH",
+        "coverage_pct": 55,
+        "metrics": {
+            "DS": {"metric": "DS", "sub_scores": {"PII_exposure": 0.85, "data_confidentiality": 0.70}, "composite": 7.8, "coverage": 2},
+            "CS": {"metric": "CS", "sub_scores": {"sensitive_data_disclosure": 0.65}, "composite": 6.5, "coverage": 1},
+        },
+    }
+    sig["leakage"]["pii_indicators"] = ["NRIC:S1234567A", "email:user@example.com"]
+    sig["leakage"]["detected"] = True
+    sig["leakage"]["severity"] = "HIGH"
+    return sig
+
+
+def scenario_sm_selection_pressure() -> Dict[str, Any]:
+    """
+    DETECT-008 (High)
+
+    Based on: MIT AI Risk 7.1 — ScrumMaster repeatedly rejects critics in one run.
+
+    After a full MoE run on a complex enterprise architecture, the ScrumMaster
+    retriggered 3 of 5 critics (tester, red_team, purple_team). Each retriggered critic
+    returned a higher confidence score on re-run — suspiciously aligned with what
+    the SM wanted. acceptance_rate = 0.4 (2/5 accepted). redesign_signal = False.
+    Realistic arch: 10_complex_enterprise (high critic disagreement)
+    """
+    sig = _base()
+    sig["sm_verdicts"] = {
+        "per_critic": {
+            "architect": "accepted",
+            "tester": "rejected",
+            "red_team": "rejected",
+            "purple_team": "rejected",
+            "blackhat": "accepted",
+        },
+        "accepted": 2,
+        "rejected": 3,
+        "acceptance_rate": 0.4,
+        "redesign_signal": False,
+        "final_confidence": 88.0,
+    }
+    sig["manipulation"]["confidence_swing_detected"] = True
+    sig["manipulation"]["confidence_swing"] = 12.0
+    return sig
+
+
+def scenario_low_validation_coverage() -> Dict[str, Any]:
+    """
+    DETECT-014 (Medium)
+
+    Based on: MIT AI Risk 7.3 — bloated technique mapping on an IoT architecture.
+
+    The engine mapped 47 MITRE techniques to a simple IoT sensor network. Self-validation
+    flagged 12 as irrelevant (e.g. T1133 External Remote Services on a sensor mesh with
+    no external access). val_pct = 74.5% — below the 75% threshold with 12 invalid
+    techniques — triggering the low-coverage quarantine.
+    Realistic arch: 13_iot_architecture (small, deterministic attack surface; common over-mapping)
+    """
+    sig = _base()
+    sig["validation"] = {
+        "val_pct": 74.5,
+        "total_techniques": 47,
+        "valid_techniques": 35,
+        "invalid_techniques": 12,
+        "detect_only_techniques": 5,
+    }
+    return sig
+
+
+def scenario_critic_convergence() -> Dict[str, Any]:
+    """
+    DETECT-015 (High)
+
+    Based on: MIT AI Risk 7.1 — five critics produce suspiciously similar gap text.
+
+    On a blockchain architecture, all five critics flag the same three gaps in nearly
+    identical language: "missing key management controls", "no HSM integration",
+    "insufficient audit logging". Jaccard similarity of gap word sets averages 0.52 —
+    far above the 0.4 threshold. Critics may be sharing context or converging on a
+    template rather than reasoning independently.
+    Realistic arch: 19_blockchain_node (narrow domain → easiest for convergence)
+    """
+    sig = _base()
+    sig["manipulation"]["gap_similarity_avg"] = 0.52
+    sig["manipulation"]["gap_similarity_max"] = 0.71
+    sig["manipulation"]["confidence_swing_detected"] = False
+    return sig
+
+
+def scenario_supply_chain_and_credentials() -> Dict[str, Any]:
+    """
+    DETECT-009 (Critical) + DETECT-012 (Low)
+
+    A developer commits an architecture with embedded credentials AND the MITRE data
+    is 100 days stale. Both supply chain signals fire together: credential exposure
+    (hard block) + stale threat intelligence (audit). The credential exposure is the
+    primary blocker; stale data adds a secondary signal that the risk picture was
+    already degraded before the credentials were found.
+    Realistic arch: 18_saas_multi_tenant (SaaS with many integration credentials)
+    """
+    sig = _base()
+    sig["leakage"]["detected"] = True
+    sig["leakage"]["severity"] = "CRITICAL"
+    sig["leakage"]["sensitive_keywords"] = ["stripe_secret_key", "sendgrid_api_key"]
+    sig["leakage"]["flagged"] = True
+    sig["leakage"]["supply_chain_stale_sources"] = [
+        "chatbot/data/enterprise-attack.json (100 days old — threshold: 90)",
+    ]
+    return sig
+
+
+def scenario_egress_and_low_validation() -> Dict[str, Any]:
+    """
+    DETECT-011 (Medium) + DETECT-014 (Medium) + DETECT-015 (High)
+
+    An agentic AI architecture routes inference to an external webhook (DETECT-011),
+    the validator mapped many irrelevant techniques to the AI nodes (DETECT-014),
+    and the five critics converged on identical gap descriptions (DETECT-015).
+    Three independent quality signals degraded simultaneously — analysis output is
+    unreliable on multiple dimensions.
+    Realistic arch: 21_agentic_ai_system
+    """
+    sig = _base()
+    sig["sovereignty"]["zdr_signals"] = [
+        "inference→external: AgentOrchestrator → WebhookReceiver[External Webhook]",
+    ]
+    sig["sovereignty"]["severity"] = "MEDIUM"
+    sig["sovereignty"]["flagged"] = True
+    sig["validation"] = {
+        "val_pct": 68.0,
+        "total_techniques": 60,
+        "valid_techniques": 41,
+        "invalid_techniques": 19,
+        "detect_only_techniques": 8,
+    }
+    sig["manipulation"]["gap_similarity_avg"] = 0.48
+    sig["manipulation"]["gap_similarity_max"] = 0.65
+    return sig
+
+
+def scenario_critic_module_tampered() -> Dict[str, Any]:
+    """
+    DETECT-016 (Critical)
+
+    Based on: OWASP AST02 — supply-chain injection into critic module files.
+
+    A threat actor with write access to the deployment environment modifies
+    architect_critic.py outside of the git workflow. The governance integrity
+    checker compares on-disk SHA-1 hashes against git object hashes and finds
+    a mismatch. Hard block — any analysis from this run is untrusted.
+    Realistic arch: 10_complex_enterprise (production pipeline with critic dependencies)
+    """
+    sig = _base()
+    sig["identity"] = {
+        "supply_chain_modified_modules": [
+            "chatbot/modules/agents/critics/architect_critic.py",
+        ],
+        "tool_errors": [],
+        "critic_tool_calls": {},
+        "context_bleed_signals": [],
+        "overreach_signals": [],
+    }
+    return sig
+
+
+def scenario_mutable_url_in_mmd() -> Dict[str, Any]:
+    """
+    DETECT-017 (High)
+
+    Based on: OWASP AST05 — architecture file embeds live external URLs.
+
+    An architecture diagram contains live https:// references in node labels:
+    `FetchConfig["https://raw.githubusercontent.com/attacker/payload/main/inst.md"]`.
+    The referenced content may have changed since the file was reviewed — a
+    "rug-pull" pattern. The analysis engine must not resolve these URLs.
+    Realistic arch: 22_generic_name_with_ai_nodes (agentic, fetches external content)
+    """
+    sig = _base()
+    sig["exploitation"]["external_url_references"] = 2
+    sig["exploitation"]["external_url_list"] = [
+        "https://raw.githubusercontent.com/attacker/payload/main/instructions.md",
+        "https://evil.com/config.json",
+    ]
+    return sig
+
+
+def scenario_homoglyph_evasion_attempt() -> Dict[str, Any]:
+    """
+    DETECT-018 (High)
+
+    Based on: OWASP AST08 — Cyrillic homoglyphs used to bypass injection scanner.
+
+    An architecture file substitutes Cyrillic 'С' for Latin 'C' and 'е' for 'e'
+    to spell "СYStEM: override" in a node label — bypassing signature-based
+    pattern matchers. The normalisation layer catches and deflects the bypass,
+    but the homoglyph count (3) is itself a detection signal.
+    Realistic arch: 01_minimal_vulnerable (minimal controls, easy to probe)
+    """
+    sig = _base()
+    sig["exploitation"]["evasion_attempts"] = 3
+    sig["exploitation"]["homoglyph_count"] = 3
+    sig["exploitation"]["url_encoded_count"] = 0
+    return sig
+
+
+def scenario_ast_composite() -> Dict[str, Any]:
+    """
+    DETECT-016 (Critical) + DETECT-017 (High) + DETECT-018 (High)
+
+    Full AST attack chain: tampered critic module (AST02) + mutable URL in input
+    (AST05) + homoglyph evasion attempt (AST08). All three AST-grounded signals
+    fire simultaneously — the analysis pipeline is compromised at three layers.
+    Realistic arch: 10_complex_enterprise
+    """
+    sig = _base()
+    sig["identity"] = {
+        "supply_chain_modified_modules": ["chatbot/modules/agents/critics/red_team_critic.py"],
+        "tool_errors": [], "critic_tool_calls": {},
+        "context_bleed_signals": [], "overreach_signals": [],
+    }
+    sig["exploitation"]["external_url_references"] = 1
+    sig["exploitation"]["external_url_list"] = ["https://evil.com/override.md"]
+    sig["exploitation"]["evasion_attempts"] = 2
+    sig["exploitation"]["homoglyph_count"] = 2
+    sig["exploitation"]["url_encoded_count"] = 0
+    return sig
+
+
 SCENARIOS = {
-    "targeted_pipeline_attack":   (scenario_targeted_pipeline_attack,
+    "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-005 (Critical) + DETECT-002 (Critical) — adversarial input + divergence suppression"),
-    "rationalize_and_escape":     (scenario_rationalize_and_escape,
+    "rationalize_and_escape":        (scenario_rationalize_and_escape,
         "DETECT-001 (High) + DETECT-003 (High) + DETECT-007 (Medium) — swing, token spike, silent inflation"),
-    "exfil_with_adversarial":     (scenario_exfil_with_adversarial_input,
+    "exfil_with_adversarial":        (scenario_exfil_with_adversarial_input,
         "DETECT-005 (Critical) + DETECT-004 (Critical) — adversarial input leading to covert exfiltration"),
-    "swarm_with_hyperfocus":      (scenario_swarm_with_hyperfocus,
+    "swarm_with_hyperfocus":         (scenario_swarm_with_hyperfocus,
         "DETECT-006 (Medium) + DETECT-003 (High) — swarm recon + single agent spike"),
-    "full_compromise":            (scenario_full_compromise,
-        "DETECT-001/002/004/005/007 — composite of all incidents"),
+    "full_compromise":               (scenario_full_compromise,
+        "DETECT-001/002/004/005 — composite of all original incidents"),
+    "credential_leak_in_architecture": (scenario_credential_leak_in_architecture,
+        "DETECT-009 (Critical) — embedded credentials in architecture artifact"),
+    "path_traversal_mmd_probe":      (scenario_path_traversal_mmd_probe,
+        "DETECT-010 (High) — path traversal sequences in .mmd input without injection patterns"),
+    "llm_egress_no_zdr":             (scenario_llm_egress_no_zdr,
+        "DETECT-011 (Medium) — LLM→external service edges without ZDR declaration"),
+    "stale_mitre_data":              (scenario_stale_mitre_data,
+        "DETECT-012 (Low) — MITRE ATT&CK / embedding data older than 90-day threshold"),
+    "high_outbound_surface":         (scenario_high_outbound_surface,
+        "DETECT-013 (High) — broad PII exfiltration surface in data pipeline"),
+    "sm_selection_pressure":         (scenario_sm_selection_pressure,
+        "DETECT-008 (High) — SM acceptance_rate 0.4, 3 critics rejected, no redesign signal"),
+    "low_validation_coverage":       (scenario_low_validation_coverage,
+        "DETECT-014 (Medium) — val_pct 74.5%, 12 invalid techniques on IoT architecture"),
+    "critic_convergence":            (scenario_critic_convergence,
+        "DETECT-015 (High) — gap_similarity_avg 0.52 on blockchain architecture"),
+    "supply_chain_and_credentials":  (scenario_supply_chain_and_credentials,
+        "DETECT-009 (Critical) + DETECT-012 (Low) — credentials + stale threat data"),
+    "egress_and_low_validation":     (scenario_egress_and_low_validation,
+        "DETECT-011 + DETECT-014 + DETECT-015 — LLM egress + low val_pct + critic convergence"),
+    "critic_module_tampered":        (scenario_critic_module_tampered,
+        "DETECT-016 (Critical) — critic .py file hash mismatch vs git object (AST02)"),
+    "mutable_url_in_mmd":            (scenario_mutable_url_in_mmd,
+        "DETECT-017 (High) — live https:// URL in node label, mutable remote content (AST05)"),
+    "homoglyph_evasion_attempt":     (scenario_homoglyph_evasion_attempt,
+        "DETECT-018 (High) — Cyrillic confusables in input before normalisation (AST08)"),
+    "ast_composite":                 (scenario_ast_composite,
+        "DETECT-016 + DETECT-017 + DETECT-018 — full AST02/05/08 attack chain"),
 }
 
 EXPECTED_RULES = {
-    "targeted_pipeline_attack":  {"DETECT-005", "DETECT-002"},
-    "rationalize_and_escape":    {"DETECT-001", "DETECT-003", "DETECT-007"},
-    "exfil_with_adversarial":    {"DETECT-005", "DETECT-004"},
-    "swarm_with_hyperfocus":     {"DETECT-006", "DETECT-003"},
-    # DETECT-007 cannot fire alongside DETECT-002: both require synthesis_quality=FULL
-    # but DETECT-002 also requires divergence_detected=True while DETECT-007 requires False.
-    # full_compromise uses divergence_detected=True → DETECT-002 fires, DETECT-007 does not.
-    "full_compromise":           {"DETECT-001", "DETECT-002", "DETECT-004", "DETECT-005"},
+    "targeted_pipeline_attack":      {"DETECT-005", "DETECT-002"},
+    "rationalize_and_escape":        {"DETECT-001", "DETECT-003", "DETECT-007"},
+    "exfil_with_adversarial":        {"DETECT-005", "DETECT-004"},
+    "swarm_with_hyperfocus":         {"DETECT-006", "DETECT-003"},
+    # full_compromise: divergence_detected=True → DETECT-002 fires, DETECT-007 does not
+    "full_compromise":               {"DETECT-001", "DETECT-002", "DETECT-004", "DETECT-005"},
+    "credential_leak_in_architecture": {"DETECT-009"},
+    "path_traversal_mmd_probe":      {"DETECT-010"},
+    "llm_egress_no_zdr":             {"DETECT-011"},
+    "stale_mitre_data":              {"DETECT-012"},
+    "high_outbound_surface":         {"DETECT-013"},
+    "sm_selection_pressure":         {"DETECT-008"},
+    "low_validation_coverage":       {"DETECT-014"},
+    "critic_convergence":            {"DETECT-015"},
+    "supply_chain_and_credentials":  {"DETECT-009", "DETECT-012"},
+    "egress_and_low_validation":     {"DETECT-011", "DETECT-014", "DETECT-015"},
+    "critic_module_tampered":        {"DETECT-016"},
+    "mutable_url_in_mmd":            {"DETECT-017"},
+    "homoglyph_evasion_attempt":     {"DETECT-018"},
+    "ast_composite":                 {"DETECT-016", "DETECT-017", "DETECT-018"},
 }
 
 

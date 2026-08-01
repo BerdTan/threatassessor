@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -20,6 +21,7 @@ REPORT_DIR = REPO_ROOT / "report"
 TEST_FILE  = REPO_ROOT / "tests" / "test_harness_event_broker.py"
 POLICY     = REPO_ROOT / "policies" / "agent_governance.yaml"
 SIEM_LOG   = REPO_ROOT / "logs" / "siem.jsonl"
+SKILL_MD   = Path(__file__).resolve().parents[2] / "SKILL.md"
 
 GREEN  = lambda s: f"\033[32m{s}\033[0m"
 AMBER  = lambda s: f"\033[33m{s}\033[0m"
@@ -54,7 +56,32 @@ def run_unit_tests() -> bool:
             if line.startswith("FAILED") or line.startswith("ERROR"):
                 print(f"  {RED(line)}")
 
+    # Sync SKILL.md with actual passing test count
+    if result.returncode == 0:
+        m = re.search(r'(\d+)\s+passed', summary_line)
+        if m:
+            _sync_skill_metadata(int(m.group(1)))
+
     return result.returncode == 0
+
+
+def _sync_skill_metadata(n_passed: int) -> None:
+    """Rewrite the test count in this skill's SKILL.md description. Silent when unchanged."""
+    if n_passed <= 0 or not SKILL_MD.exists():
+        return
+    try:
+        text    = SKILL_MD.read_text(encoding="utf-8")
+        updated = re.sub(
+            r'(\d+) tests,',
+            f'{n_passed} tests,',
+            text,
+            count=1,
+        )
+        if updated != text:
+            SKILL_MD.write_text(updated, encoding="utf-8")
+            print(f"  {GREEN('↺')} Synced check-eventbroker SKILL.md ({n_passed} tests)")
+    except Exception:
+        pass
 
 
 # ── Live broker status ────────────────────────────────────────────────────────

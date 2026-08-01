@@ -1,6 +1,6 @@
 ---
 name: check-eventbroker
-description: Run the EventBroker + Sink regression suite (48 tests, ~9s, no LLM/network). Covers HarnessEvent, EventBrokerCritic fan-out and isolation, BaseSink subscription filtering, SiemSink file-write + schema translation, LangfuseSink credential resolution + event-to-call mapping for all 7 event types, WebhookSink POST, and multi-sink integration. Optionally check live broker status and last SIEM events for one or all corpus architectures. Use after any change to chatbot/harness/event_broker.py or chatbot/harness/sinks.py.
+description: Run the EventBroker + Sink regression suite (60 tests, ~9s, no LLM/network). Covers HarnessEvent, EventBrokerCritic fan-out and isolation, BaseSink subscription filtering, SiemSink file-write + schema translation, LangfuseSink credential resolution + event-to-call mapping for all 8 event types (including sm_verdicts), WebhookSink POST, and multi-sink integration. Optionally check live broker status and last SIEM events for one or all corpus architectures. Use after any change to chatbot/harness/event_broker.py or chatbot/harness/sinks.py.
 allowed-tools: Bash(python3:*) Bash(source:*)
 ---
 

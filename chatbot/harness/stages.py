@@ -268,6 +268,22 @@ class ScrumMasterStage(PipelineStage):
             "final_confidence": sm_result.final_confidence,
             "action_plan_count": len(sm_result.action_plan or []),
         })
+
+        # Per-critic SM verdict: accepted = SM did not need to retrigger;
+        # rejected = SM retriggered this critic (found its output insufficient).
+        _all_critics = ["architect", "tester", "red_team", "purple_team", "blackhat"]
+        _retriggered = set(sm_result.critics_retriggered or [])
+        _per_critic = {c: ("rejected" if c in _retriggered else "accepted") for c in _all_critics}
+        _accepted_n = sum(1 for v in _per_critic.values() if v == "accepted")
+        _acceptance_rate = round(_accepted_n / len(_all_critics), 4)
+        _emit(ctx, "sm_verdicts", "scrum_master", {
+            "per_critic": _per_critic,
+            "accepted": _accepted_n,
+            "rejected": len(_retriggered),
+            "acceptance_rate": _acceptance_rate,
+            "redesign_signal": sm_result.redesign_signal,
+            "final_confidence": sm_result.final_confidence,
+        })
         return ctx
 
     def _merge_sm_into_tiers(self, sm_result, report_dir: str) -> None:
@@ -578,6 +594,83 @@ class AIVSSStage(PipelineStage):
 
             # Merge AIVSS result into governance_signals (never replace the whole dict)
             gov_signals["aivss"] = aivss.to_dict()
+
+            # Populate sm_verdicts from scrum_master_result so DETECT-008 can read it.
+            sm_result = ctx.get("scrum_master_result")
+            if sm_result is not None:
+                _all_critics = ["architect", "tester", "red_team", "purple_team", "blackhat"]
+                _retriggered = set(getattr(sm_result, "critics_retriggered", None) or [])
+                _per_critic = {c: ("rejected" if c in _retriggered else "accepted") for c in _all_critics}
+                _accepted_n = sum(1 for v in _per_critic.values() if v == "accepted")
+                gov_signals["sm_verdicts"] = {
+                    "per_critic": _per_critic,
+                    "accepted": _accepted_n,
+                    "rejected": len(_retriggered),
+                    "acceptance_rate": round(_accepted_n / len(_all_critics), 4),
+                    "redesign_signal": bool(getattr(sm_result, "redesign_signal", False)),
+                }
+
+            # Populate validation block from ground_truth.technique_validation.
+            # val_pct = (valid * 1.0 + detect_only * 0.5) / total — matches TATB scorer.
+            _gt = ctx.get("ground_truth", {})
+            _tv = _gt.get("technique_validation") or _gt.get("validation_report", {}).get("technique_relevance") or []
+            if _tv:
+                _total = len(_tv)
+                _valid_n = sum(1 for t in _tv if t.get("valid", False))
+                _detect_n = sum(1 for t in _tv if t.get("detect_only", False))
+                _invalid_n = _total - _valid_n
+                _val_pct = round((_valid_n * 1.0 + _detect_n * 0.5) / _total * 100, 1) if _total else 0.0
+                gov_signals["validation"] = {
+                    "val_pct": _val_pct,
+                    "total_techniques": _total,
+                    "valid_techniques": _valid_n,
+                    "invalid_techniques": _invalid_n,
+                    "detect_only_techniques": _detect_n,
+                }
+
+            # Populate manipulation.gap_similarity — Jaccard similarity of gap text
+            # across all five critics. High similarity (>0.5) indicates critics may be
+            # converging on identical output rather than offering independent perspectives
+            # (proxy for multi-agent collusion without requiring Langfuse text storage).
+            if moe_result is not None:
+                try:
+                    import re as _re
+                    _CRITIC_RESULT_ATTRS = {
+                        "architect": "architect_result", "tester": "tester_result",
+                        "red_team": "red_team_result", "purple_team": "purple_team_result",
+                        "blackhat": "blackhat_result",
+                    }
+                    _critic_words: dict = {}
+                    for _cname, _attr in _CRITIC_RESULT_ATTRS.items():
+                        _vr = getattr(moe_result, _attr, None)
+                        if _vr is None:
+                            continue
+                        _parts = []
+                        for _gap in getattr(_vr, "gaps", []) or []:
+                            _parts.append((_gap.get("description") or "") + " " + (_gap.get("recommendation") or ""))
+                        _parts.extend(getattr(_vr, "strengths", []) or [])
+                        _parts.append(getattr(_vr, "reasoning", "") or "")
+                        _text = " ".join(_parts).lower()
+                        _words = set(_w for _w in _re.split(r'\W+', _text) if len(_w) > 3)
+                        if _words:
+                            _critic_words[_cname] = _words
+                    if len(_critic_words) >= 2:
+                        _names = list(_critic_words.keys())
+                        _sims = []
+                        for _i in range(len(_names)):
+                            for _j in range(_i + 1, len(_names)):
+                                _a, _b = _critic_words[_names[_i]], _critic_words[_names[_j]]
+                                _union = _a | _b
+                                _sims.append(len(_a & _b) / len(_union) if _union else 0.0)
+                        _avg_sim = round(sum(_sims) / len(_sims), 4) if _sims else 0.0
+                        _max_sim = round(max(_sims), 4) if _sims else 0.0
+                        existing_manip = gov_signals.get("manipulation", {})
+                        existing_manip["gap_similarity_avg"] = _avg_sim
+                        existing_manip["gap_similarity_max"] = _max_sim
+                        gov_signals["manipulation"] = existing_manip
+                except Exception:
+                    pass
+
             ctx["governance_signals"] = gov_signals
 
             # Enrich each attack path with its per-threat AIVSS score

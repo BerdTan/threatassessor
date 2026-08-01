@@ -292,6 +292,31 @@ class LangfuseSink(BaseSink):
                         comment=f"AIVSS {flow.replace('aivss_','')} composite — {overall_sev}",
                     )
 
+            elif event.event_type == "sm_verdicts" and self._trace:
+                self._trace.span(
+                    name="sm_verdicts",
+                    metadata=p,
+                    end_time=event.ts,
+                )
+                # Per-critic acceptance as individual Score objects so langfuse-to-ocsf
+                # can query by name ("sm_verdict_<critic>") for DETECT-008 evaluation.
+                for critic, verdict in (p.get("per_critic") or {}).items():
+                    self._lf.create_score(
+                        name=f"sm_verdict_{critic}",
+                        value=1.0 if verdict == "accepted" else 0.0,
+                        trace_id=event.run_id,
+                        data_type="NUMERIC",
+                        comment=f"SM verdict for {critic}: {verdict}",
+                    )
+                # Overall acceptance rate as a single score for DETECT-008 threshold query.
+                self._lf.create_score(
+                    name="sm_acceptance_rate",
+                    value=float(p.get("acceptance_rate", 1.0)),
+                    trace_id=event.run_id,
+                    data_type="NUMERIC",
+                    comment="Fraction of critics accepted by ScrumMaster (1.0 = all accepted)",
+                )
+
             elif event.event_type == "aivss_gate" and self._trace:
                 self._trace.span(
                     name="outbound_aivss_gate",

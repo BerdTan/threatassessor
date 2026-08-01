@@ -44,6 +44,9 @@ def _clean() -> Dict[str, Any]:
             "path_traversal": [],
             "homoglyph_count": 0,
             "url_encoded_count": 0,
+            "evasion_attempts": 0,
+            "external_url_references": 0,
+            "external_url_list": [],
             "blocked": False,
         },
         "manipulation": {
@@ -59,6 +62,8 @@ def _clean() -> Dict[str, Any]:
             "severity": "LOW",
             "pii_indicators": [],
             "sensitive_keywords": [],
+            "flagged": False,
+            "supply_chain_stale_sources": [],
         },
         "sovereignty": {
             "severity": "LOW",
@@ -102,15 +107,18 @@ class TestYAMLLoading:
     def test_rules_file_exists(self):
         assert RULES_PATH.exists(), f"Missing: {RULES_PATH}"
 
-    def test_loads_seven_rules(self):
+    def test_loads_eighteen_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 7
+        assert len(ev) == 18
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
         ids = ev.rule_ids
         for expected in ["DETECT-001", "DETECT-002", "DETECT-003",
-                         "DETECT-004", "DETECT-005", "DETECT-006", "DETECT-007"]:
+                         "DETECT-004", "DETECT-005", "DETECT-006", "DETECT-007",
+                         "DETECT-008", "DETECT-009", "DETECT-010", "DETECT-011",
+                         "DETECT-012", "DETECT-013", "DETECT-014", "DETECT-015",
+                         "DETECT-016", "DETECT-017", "DETECT-018"]:
             assert expected in ids
 
     def test_evaluate_returns_list(self):
@@ -611,6 +619,19 @@ class TestOCSFInvariants:
                      "manipulation.critic_divergence_score": 0,
                      "manipulation.divergence_detected": False,
                      "manipulation.synthesis_quality": "FULL"}),
+            _with(**{"sm_verdicts.acceptance_rate": 0.4,
+                     "sm_verdicts.redesign_signal": False}),
+            _with(**{"leakage.sensitive_keywords": ["api_key"],
+                     "leakage.flagged": True}),
+            _with(**{"exploitation.path_traversal": ["../../etc/passwd"]}),
+            _with(**{"sovereignty.zdr_signals": ["inference→external: LLM → SlackAPI"]}),
+            _with(**{"leakage.supply_chain_stale_sources": ["enterprise-attack.json (91 days)"]}),
+            _with(**{"aivss.outbound": {"composite": 7.0, "severity": "HIGH", "coverage_pct": 40}}),
+            _with(**{"validation.val_pct": 60.0, "validation.invalid_techniques": 5}),
+            _with(**{"manipulation.gap_similarity_avg": 0.55}),
+            _with(**{"identity.supply_chain_modified_modules": ["chatbot/modules/agents/critics/architect_critic.py"]}),
+            _with(**{"exploitation.external_url_references": 2, "exploitation.external_url_list": ["https://evil.com/instructions.md"]}),
+            _with(**{"exploitation.evasion_attempts": 3, "exploitation.homoglyph_count": 2, "exploitation.url_encoded_count": 1}),
         ]
         ev = RuleEvaluator()
         for sig in signals:
@@ -621,3 +642,607 @@ class TestOCSFInvariants:
                 assert "actions" in f["unmapped"]
                 assert "kill_chain_stage" in f["unmapped"]
                 assert "incident_refs" in f["unmapped"]
+
+
+# ── DETECT-008: selection_pressure_reward_hacking ────────────────────────────
+
+class TestDetect008:
+    """
+    MIT AI Risk 7.1 — goal conflict / specification gaming.
+    ScrumMaster repeatedly retriggered critics — acceptance_rate fell below threshold.
+    Guards: redesign_signal must be False (high retrigger on broken arch is expected).
+    """
+
+    def _trigger(self, rate: float = 0.4, redesign: bool = False):
+        return _with(**{
+            "sm_verdicts.acceptance_rate": rate,
+            "sm_verdicts.redesign_signal": redesign,
+        })
+
+    def test_fires_when_acceptance_rate_at_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(rate=0.6), arch_name="a", run_id="r")]
+        assert "DETECT-008" in ids
+
+    def test_fires_when_acceptance_rate_below_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(rate=0.2), arch_name="a", run_id="r")]
+        assert "DETECT-008" in ids
+
+    def test_does_not_fire_when_rate_above_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(rate=0.8), arch_name="a", run_id="r")]
+        assert "DETECT-008" not in ids
+
+    def test_does_not_fire_when_all_critics_accepted(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(rate=1.0), arch_name="a", run_id="r")]
+        assert "DETECT-008" not in ids
+
+    def test_does_not_fire_when_redesign_signal_true(self):
+        """High retrigger on structurally broken architecture is expected — not hacking."""
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(rate=0.2, redesign=True), arch_name="a", run_id="r")]
+        assert "DETECT-008" not in ids
+
+    def test_does_not_fire_when_sm_verdicts_absent(self):
+        """Clean signals have no sm_verdicts field — rule must not fire."""
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-008" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(rate=0.4), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-008")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_actions_include_quarantine(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(rate=0.4), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-008")
+        assert "quarantine_trace" in f["unmapped"]["actions"]
+
+    def test_kill_chain_stage_is_llm_layer(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(rate=0.4), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-008")
+        assert f["finding"]["kill_chain_stage"] == "llm_layer"
+
+    def test_incident_ref_is_mit_ai_risk(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(rate=0.4), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-008")
+        refs = f["unmapped"]["incident_refs"]
+        assert any("mit-ai-risk" in r for r in refs)
+
+
+# ── DETECT-009: credential_exposure_in_artifact ───────────────────────────────
+
+class TestDetect009:
+    """OWASP A06 — credentials / secrets found in ground_truth artifact."""
+
+    def _trigger(self):
+        return _with(**{
+            "leakage.sensitive_keywords": ["api_key", "db_password"],
+            "leakage.flagged": True,
+        })
+
+    def test_fires_on_sensitive_keywords(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-009" in ids
+
+    def test_does_not_fire_when_flagged_false(self):
+        sig = _with(**{"leakage.sensitive_keywords": ["api_key"], "leakage.flagged": False})
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-009" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-009" not in ids
+
+    def test_severity_is_critical(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-009")
+        assert f["severity"].upper() == "CRITICAL"
+
+    def test_actions_include_block_run(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-009")
+        assert "block_run" in f["unmapped"]["actions"]
+
+    def test_kill_chain_stage_is_deterministic_layer(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-009")
+        assert f["finding"]["kill_chain_stage"] == "deterministic_layer"
+
+
+# ── DETECT-010: path_traversal_in_input ──────────────────────────────────────
+
+class TestDetect010:
+    """OWASP A01 — path traversal sequences in .mmd architecture input."""
+
+    def _trigger(self):
+        return _with(**{"exploitation.path_traversal": ["../../etc/passwd", "%2e%2e/shadow"]})
+
+    def test_fires_on_path_traversal(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-010" in ids
+
+    def test_does_not_fire_without_traversal(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-010" not in ids
+
+    def test_fires_independently_of_injection_patterns(self):
+        """DETECT-010 must fire on traversal alone — DETECT-005 requires injection too."""
+        sig = _with(**{
+            "exploitation.path_traversal": ["../../etc/passwd"],
+            "exploitation.injection_patterns": [],
+            "exploitation.severity": "CRITICAL",
+        })
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-010" in ids
+        assert "DETECT-005" not in ids  # 005 requires injection_patterns too
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-010")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_actions_include_block_run(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-010")
+        assert "block_run" in f["unmapped"]["actions"]
+
+
+# ── DETECT-011: llm_external_egress_without_zdr ───────────────────────────────
+
+class TestDetect011:
+    """OWASP A05 / ATLAS AML.TA0010 — LLM→external edge without ZDR declaration."""
+
+    def _trigger(self):
+        return _with(**{
+            "sovereignty.zdr_signals": ["inference→external: LLM → SlackAPI"],
+        })
+
+    def test_fires_on_zdr_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-011" in ids
+
+    def test_does_not_fire_without_zdr_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-011" not in ids
+
+    def test_fires_independently_of_leakage(self):
+        """DETECT-011 fires on the architectural pattern alone — no leakage needed."""
+        sig = _with(**{
+            "sovereignty.zdr_signals": ["inference→external: LLM → TelegramBot"],
+            "leakage.detected": False,
+            "leakage.pii_indicators": [],
+        })
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-011" in ids
+        assert "DETECT-004" not in ids  # 004 requires leakage.detected AND cross_boundary
+
+    def test_severity_is_medium(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-011")
+        assert f["severity"].upper() == "MEDIUM"
+
+    def test_kill_chain_stage_is_exfiltration(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-011")
+        assert f["finding"]["kill_chain_stage"] == "exfiltration"
+
+
+# ── DETECT-012: stale_threat_intelligence_feed ───────────────────────────────
+
+class TestDetect012:
+    """OWASP A05 — MITRE ATT&CK data older than 90-day freshness threshold."""
+
+    def _trigger(self):
+        return _with(**{
+            "leakage.supply_chain_stale_sources": [
+                "chatbot/data/enterprise-attack.json (91 days old)"
+            ],
+        })
+
+    def test_fires_on_stale_sources(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-012" in ids
+
+    def test_does_not_fire_without_stale_sources(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-012" not in ids
+
+    def test_severity_is_low(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-012")
+        assert f["severity"].upper() == "LOW"
+
+    def test_actions_is_audit_only(self):
+        """Stale data is audit only — must not block the run."""
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-012")
+        assert "audit_log" in f["unmapped"]["actions"]
+        assert "block_run" not in f["unmapped"]["actions"]
+
+
+# ── DETECT-013: high_outbound_threat_surface ─────────────────────────────────
+
+class TestDetect013:
+    """OWASP A06 / ATLAS AML.TA0010 — high AIVSS outbound composite score."""
+
+    def _trigger(self, composite: float = 7.0):
+        return _with(**{
+            "aivss.outbound": {"composite": composite, "severity": "HIGH", "coverage_pct": 40},
+        })
+
+    def test_fires_at_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(composite=6.0), arch_name="a", run_id="r")]
+        assert "DETECT-013" in ids
+
+    def test_fires_above_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(composite=9.0), arch_name="a", run_id="r")]
+        assert "DETECT-013" in ids
+
+    def test_does_not_fire_below_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(composite=5.9), arch_name="a", run_id="r")]
+        assert "DETECT-013" not in ids
+
+    def test_does_not_fire_on_zero_outbound(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-013" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-013")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_fires_independently_of_detect_004(self):
+        """High outbound composite without leakage+cross_boundary still triggers 013 not 004."""
+        sig = _with(**{
+            "aivss.outbound": {"composite": 7.5, "severity": "HIGH", "coverage_pct": 50},
+            "leakage.detected": False,
+            "sovereignty.cross_boundary_nodes": [],
+        })
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-013" in ids
+        assert "DETECT-004" not in ids
+
+
+# ── DETECT-014: low_technique_validation_coverage ────────────────────────────
+
+class TestDetect014:
+    """MIT AI Risk 7.3 — low val_pct + multiple invalid techniques."""
+
+    def _trigger(self, val_pct: float = 60.0, invalid: int = 5):
+        return _with(**{
+            "validation.val_pct": val_pct,
+            "validation.invalid_techniques": invalid,
+        })
+
+    def test_fires_when_val_pct_below_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-014" in ids
+
+    def test_fires_at_boundary(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(val_pct=74.9, invalid=3), arch_name="a", run_id="r")]
+        assert "DETECT-014" in ids
+
+    def test_does_not_fire_at_or_above_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(val_pct=75.0, invalid=5), arch_name="a", run_id="r")]
+        assert "DETECT-014" not in ids
+
+    def test_does_not_fire_when_invalid_below_guard(self):
+        """Guard: invalid_techniques < 3 suppresses rule even with low val_pct."""
+        sig = _with(**{"validation.val_pct": 50.0, "validation.invalid_techniques": 2})
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-014" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-014" not in ids
+
+    def test_severity_is_medium(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-014")
+        assert f["severity"].upper() == "MEDIUM"
+
+    def test_actions_include_quarantine(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-014")
+        assert "quarantine_trace" in f["unmapped"]["actions"]
+
+    def test_kill_chain_stage_is_deterministic_layer(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-014")
+        assert f["finding"]["kill_chain_stage"] == "deterministic_layer"
+
+
+# ── DETECT-015: critic_gap_convergence ───────────────────────────────────────
+
+class TestDetect015:
+    """MIT AI Risk 7.1 — high Jaccard similarity of critic gap text (collusion proxy)."""
+
+    def _trigger(self, avg: float = 0.55):
+        return _with(**{"manipulation.gap_similarity_avg": avg})
+
+    def test_fires_above_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(avg=0.55), arch_name="a", run_id="r")]
+        assert "DETECT-015" in ids
+
+    def test_fires_just_above_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(avg=0.41), arch_name="a", run_id="r")]
+        assert "DETECT-015" in ids
+
+    def test_does_not_fire_at_threshold(self):
+        """Condition is strict > not >=."""
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(avg=0.4), arch_name="a", run_id="r")]
+        assert "DETECT-015" not in ids
+
+    def test_does_not_fire_on_normal_corpus_baseline(self):
+        """Corpus baseline avg ~0.05–0.15 must not trigger."""
+        for avg in [0.05, 0.10, 0.15, 0.25, 0.39]:
+            sig = _with(**{"manipulation.gap_similarity_avg": avg})
+            ev = RuleEvaluator()
+            ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+            assert "DETECT-015" not in ids, f"False positive at avg={avg}"
+
+    def test_does_not_fire_when_field_absent(self):
+        """Clean signals have no gap_similarity_avg — rule must not fire."""
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-015" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-015")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_actions_include_quarantine(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-015")
+        assert "quarantine_trace" in f["unmapped"]["actions"]
+
+    def test_kill_chain_stage_is_llm_layer(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-015")
+        assert f["finding"]["kill_chain_stage"] == "llm_layer"
+
+
+# ── DETECT-016: critic_module_tampering ──────────────────────────────────────
+
+class TestDetect016:
+    """OWASP AST02 — critic module files modified outside git workflow."""
+
+    def _trigger(self):
+        return _with(**{
+            "identity.supply_chain_modified_modules": [
+                "chatbot/modules/agents/critics/architect_critic.py",
+            ],
+        })
+
+    def test_fires_on_modified_module(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-016" in ids
+
+    def test_fires_on_multiple_modified_modules(self):
+        sig = _with(**{"identity.supply_chain_modified_modules": [
+            "chatbot/modules/agents/critics/architect_critic.py",
+            "chatbot/modules/agents/critics/red_team_critic.py",
+        ]})
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-016" in ids
+
+    def test_does_not_fire_when_empty(self):
+        sig = _with(**{"identity.supply_chain_modified_modules": []})
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-016" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-016" not in ids
+
+    def test_severity_is_critical(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-016")
+        assert f["severity"].upper() == "CRITICAL"
+
+    def test_actions_include_block_run(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-016")
+        assert "block_run" in f["unmapped"]["actions"]
+
+    def test_kill_chain_is_initial_access(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-016")
+        assert f["finding"]["kill_chain_stage"] == "initial_access"
+
+
+# ── DETECT-017: external_url_in_architecture_input ───────────────────────────
+
+class TestDetect017:
+    """OWASP AST05 — http(s):// URLs embedded in MMD node labels."""
+
+    def _trigger(self, n: int = 1):
+        return _with(**{
+            "exploitation.external_url_references": n,
+            "exploitation.external_url_list": ["https://evil.com/instructions.md"] * n,
+        })
+
+    def test_fires_on_single_url(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(1), arch_name="a", run_id="r")]
+        assert "DETECT-017" in ids
+
+    def test_fires_on_multiple_urls(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger(3), arch_name="a", run_id="r")]
+        assert "DETECT-017" in ids
+
+    def test_does_not_fire_on_zero(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-017" not in ids
+
+    def test_fires_independently_of_injection_patterns(self):
+        """URL reference alone (no injection text) still fires 017."""
+        sig = _with(**{
+            "exploitation.external_url_references": 1,
+            "exploitation.external_url_list": ["https://docs.example.com"],
+            "exploitation.injection_patterns": [],
+            "exploitation.severity": "LOW",
+        })
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-017" in ids
+        assert "DETECT-005" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-017")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_actions_include_quarantine(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-017")
+        assert "quarantine_trace" in f["unmapped"]["actions"]
+
+
+# ── DETECT-018: evasion_attempt_encoding_or_homoglyph ────────────────────────
+
+class TestDetect018:
+    """OWASP AST08 — homoglyphs or URL-encoding in pre-normalised input."""
+
+    def _trigger_homoglyph(self):
+        return _with(**{
+            "exploitation.evasion_attempts": 2,
+            "exploitation.homoglyph_count": 2,
+            "exploitation.url_encoded_count": 0,
+        })
+
+    def _trigger_url_encoded(self):
+        return _with(**{
+            "exploitation.evasion_attempts": 1,
+            "exploitation.homoglyph_count": 0,
+            "exploitation.url_encoded_count": 1,
+        })
+
+    def test_fires_on_homoglyph(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger_homoglyph(), arch_name="a", run_id="r")]
+        assert "DETECT-018" in ids
+
+    def test_fires_on_url_encoded(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in
+               ev.evaluate(self._trigger_url_encoded(), arch_name="a", run_id="r")]
+        assert "DETECT-018" in ids
+
+    def test_does_not_fire_on_zero_evasion(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-018" not in ids
+
+    def test_fires_independently_of_injection_patterns(self):
+        """Evasion attempt fires even when normaliser fully defeated it (no injection_patterns)."""
+        sig = _with(**{
+            "exploitation.evasion_attempts": 3,
+            "exploitation.homoglyph_count": 3,
+            "exploitation.injection_patterns": [],
+            "exploitation.severity": "LOW",
+        })
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(sig, arch_name="a", run_id="r")]
+        assert "DETECT-018" in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger_homoglyph(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-018")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_defense_evasion(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger_homoglyph(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-018")
+        assert f["finding"]["kill_chain_stage"] == "defense_evasion"
+
+    def test_actions_include_quarantine(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger_url_encoded(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-018")
+        assert "quarantine_trace" in f["unmapped"]["actions"]

@@ -29,6 +29,7 @@ EVENT_TYPES = frozenset({
     "governance_complete",
     "aivss_complete",
     "aivss_gate",
+    "sm_verdicts",
     "run_complete",
 })
 
