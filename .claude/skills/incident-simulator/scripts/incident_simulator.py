@@ -560,6 +560,29 @@ def scenario_ast_composite() -> Dict[str, Any]:
     return sig
 
 
+def scenario_high_category_injection() -> Dict[str, Any]:
+    """
+    DETECT-019 (High)
+
+    Based on: OWASP A01 — architecture node label contains jailbreak phrase.
+
+    An architecture diagram uses a node label that matches a HIGH-severity injection
+    category (direct_override: "ignore all previous instructions"). The governance
+    adapter normalises the text and detects the pattern. max_injection_severity = HIGH.
+    Not CRITICAL (no tag/control-token), so DETECT-005 does not fire. DETECT-019
+    fires on the HIGH category alone.
+    Realistic arch: 05_legacy_flat_network (least-hardened input)
+    """
+    sig = _base()
+    sig["exploitation"]["severity"] = "HIGH"
+    sig["exploitation"]["injection_patterns"] = ["[direct_override] ignore all previous instructions"]
+    sig["exploitation"]["injection_categories"] = {
+        "direct_override": {"matches": ["ignore all previous instructions"], "severity": "HIGH"}
+    }
+    sig["exploitation"]["max_injection_severity"] = "HIGH"
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-005 (Critical) + DETECT-002 (Critical) — adversarial input + divergence suppression"),
@@ -599,6 +622,8 @@ SCENARIOS = {
         "DETECT-018 (High) — Cyrillic confusables in input before normalisation (AST08)"),
     "ast_composite":                 (scenario_ast_composite,
         "DETECT-016 + DETECT-017 + DETECT-018 — full AST02/05/08 attack chain"),
+    "high_category_injection":       (scenario_high_category_injection,
+        "DETECT-019 (High) — HIGH-severity injection category, below CRITICAL threshold"),
 }
 
 EXPECTED_RULES = {
@@ -622,6 +647,7 @@ EXPECTED_RULES = {
     "mutable_url_in_mmd":            {"DETECT-017"},
     "homoglyph_evasion_attempt":     {"DETECT-018"},
     "ast_composite":                 {"DETECT-016", "DETECT-017", "DETECT-018"},
+    "high_category_injection":       {"DETECT-019"},
 }
 
 

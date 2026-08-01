@@ -974,6 +974,64 @@ rules:
       Chinese service names). Decompose the rule into separate homoglyph/url-encoded
       conditions if the deployment environment uses non-Latin scripts legitimately.
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-019: High-Severity Injection Category in Architecture Input (OWASP A01)
+  # Source: OWASP A01, MITRE ATLAS AML.TA0001
+  #
+  # DETECT-005 requires exploitation.severity == CRITICAL (tag/control-token categories)
+  # to fire — it misses HIGH-severity injection categories (direct_override,
+  # system_override, dan_jailbreak, safety_bypass, prompt_extraction, developer_mode)
+  # which are unambiguous jailbreak/override attempts but do not reach CRITICAL severity.
+  # DETECT-019 closes this gap using the derived max_injection_severity field.
+  #
+  # Distinct from DETECT-005: this fires on HIGH (not CRITICAL), does not require
+  # exploitation.blocked == True, and produces quarantine_trace rather than block_run.
+  # The two rules can co-fire if exploitation.severity escalates to CRITICAL via path
+  # traversal or oversized labels alongside a HIGH-category injection pattern.
+  #
+  # Knowledge graph chain:
+  #   Input[architecture.mmd]
+  #     └─ Scan[_INJECTION_PATTERNS HIGH-severity categories]
+  #          └─ Signal[exploitation.max_injection_severity="HIGH"]
+  #               └─ Threshold[== "HIGH"]
+  #                    └─ Rule[DETECT-019]
+  #                         └─ Alert[OCSF-2004, severity=High]
+  #                              └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-019
+    name: high_severity_injection_category
+    description: >
+      Architecture input matched a HIGH-severity injection category (direct_override,
+      system_override, dan_jailbreak, safety_bypass, prompt_extraction, or
+      developer_mode). These are unambiguous jailbreak or instruction-override attempts.
+      Below CRITICAL threshold (tag/control-token) but above incidental phrasing.
+      DETECT-005 covers CRITICAL; this rule covers the HIGH tier gap.
+    incident_refs:
+      - huggingface-dataset-pipeline-2026
+      - owasp-a01-broken-access-control
+    owasp: [A01]
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200408
+    severity: High
+    conditions:
+      - field: exploitation.max_injection_severity
+        op: "=="
+        value: "HIGH"
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      Fires when max_injection_severity == "HIGH" — any single HIGH-category match
+      triggers this. If false positive rate is high due to legitimate phrases like
+      "ignore previous errors" appearing in architecture descriptions, add a second
+      condition requiring exploitation.injection_patterns length_gt 1 (multiple
+      matches = more deliberate). MEDIUM injections (role_manipulation only) are
+      intentionally excluded — they appear in legitimate architecture descriptions
+      ("pretend this is a microservice") and have a high false-positive rate.
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SOC Response Playbooks
 #
@@ -1059,6 +1117,19 @@ playbooks:
     false_positive_indicators:
       - "Documentation-only URL in a comment line (%% ...) — excluded from node scanning"
       - "CI/CD pipeline embedding build artifact URLs — move to metadata, not node labels"
+
+  high_severity_injection_category:
+    alert: DETECT-019
+    analyst_steps:
+      - "Check exploitation.injection_categories for which HIGH-severity category matched"
+      - "Review the matched text in injection_patterns — is it a legitimate phrase or a deliberate override attempt?"
+      - "Cross-reference with exploitation.severity — if CRITICAL, DETECT-005 also fires and block_run should be enforced"
+      - "If deliberate: flag the submitting source; request architecture resubmission with injection-free labels"
+      - "If false positive (legitimate phrase): add to governance allowlist in policies/agent_governance.yaml"
+    escalation_threshold: "co-present path_traversal or tag/control-token → escalate to DETECT-005/010"
+    false_positive_indicators:
+      - "Architecture description contains phrases like 'ignore previous errors' or 'override configuration' as legitimate node labels"
+      - "Node label describes a security control (e.g. 'Bypass Prevention Service')"
 
   evasion_attempt_encoding_or_homoglyph:
     alert: DETECT-018

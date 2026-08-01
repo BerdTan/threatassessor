@@ -459,6 +459,17 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
             for k, v in _matched_cats.items()
         }
 
+        # Derived field: highest severity across all matched injection categories.
+        # Enables DETECT-019 rule using the existing >= op without a new evaluator op.
+        # Order: CRITICAL > HIGH > MEDIUM > LOW; empty categories → "NONE".
+        _SEV_ORD = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
+        _max_sev = max(
+            (_INJECTION_PATTERNS[k][1] for k in _matched_cats),
+            key=lambda s: _SEV_ORD.get(s, -1),
+            default="NONE",
+        )
+        sig.exploitation["max_injection_severity"] = _max_sev
+
         # Path traversal in node IDs / labels (on normalised text)
         for match in _RE_PATH_TRAVERSAL.finditer(normalised):
             sig.exploitation["path_traversal"].append(match.group(0))

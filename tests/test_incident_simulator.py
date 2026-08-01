@@ -152,6 +152,11 @@ class TestScenariosFire:
         fired = _fired_ids(fn())
         assert {"DETECT-016", "DETECT-017", "DETECT-018"} <= fired
 
+    def test_high_category_injection(self):
+        fn, _ = SCENARIOS["high_category_injection"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-019"} <= fired
+
     def test_all_expected_rules_match_documented(self):
         """Every scenario fires at least its documented expected set."""
         for name, (fn, _) in SCENARIOS.items():
