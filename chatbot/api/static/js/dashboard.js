@@ -17371,7 +17371,7 @@ class Dashboard {
 
         let findings = [];
         try {
-            const resp = await fetch(`/api/v1/reports/${arch}/files/ocsf_findings.json`);
+            const resp = await fetch(`/api/v1/reports/${arch}/files/ocsf_findings.json`, {cache: 'no-store'});
             if (!resp.ok) throw new Error('not found');
             findings = await resp.json();
         } catch { _showEmpty(); return; }

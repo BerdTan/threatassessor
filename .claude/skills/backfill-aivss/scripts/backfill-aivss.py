@@ -47,12 +47,13 @@ def _aivss_str(composite, severity):
 
 def score_directory(report_dir: Path, force: bool = False) -> dict:
     """
-    Load ground_truth + any available MoE/SM results, run QualityStage, return summary.
+    Load ground_truth + any available MoE/SM results, run QualityStage + AIVSSStage, return summary.
+    AIVSSStage populates the new session-35 fields: sm_verdicts, validation, gap_similarity_avg.
     Returns dict with keys: name, status, dims, aivss_inbound, aivss_internal,
     aivss_outbound, aivss_overall, used_moe, used_sm, error
     """
     from chatbot.harness.controller import PipelineContext, HarnessModelGuardian
-    from chatbot.harness.stages import QualityStage
+    from chatbot.harness.stages import QualityStage, AIVSSStage
 
     name = report_dir.name
     result = {
@@ -113,18 +114,133 @@ def score_directory(report_dir: Path, force: bool = False) -> dict:
                 # Wrap as a simple namespace so getattr works
                 class _SMProxy:
                     def __init__(self, d):
-                        self.retrigger_count = d.get("iterations_run", 0)
-                        self.redesign_signal = d.get("redesign_signal", False)
+                        self.retrigger_count   = d.get("iterations_run", 0)
+                        self.redesign_signal   = d.get("redesign_signal", False)
+                        self.final_confidence  = d.get("final_confidence", 0.0)
+                        self.action_plan       = d.get("action_plan", [])
+                        # critics_retriggered — used by AIVSSStage sm_verdicts enrichment
+                        self.critics_retriggered = d.get("critics_retriggered", [])
                 ctx["scrum_master_result"] = _SMProxy(sm_data)
                 result["used_sm"] = True
             except Exception:
                 pass
 
+        # Load existing governance_signals and preserve them in ctx BEFORE running stages.
+        # This is the key backfill invariant: QualityStage and AIVSSStage add new fields
+        # but must not overwrite the MoE-derived manipulation signals that were written by
+        # a real pipeline run and are already on disk.
+        original_signals = {}
+        if gov_path.exists():
+            try:
+                original_signals = json.loads(gov_path.read_text())
+                ctx["governance_signals"] = dict(original_signals)
+            except Exception:
+                pass
+
         QualityStage()._logic(ctx)
+
+        # Recompute MoE-derived manipulation signals from 07_moe_orchestrator.json.
+        # QualityStage writes fresh check_input signals (zero divergence/swing) which
+        # overwrite the real MoE values. We re-derive them here using the moe dict's
+        # actual key structure (original_score per critic, confidence.final/base).
+        moe_dict = ctx.get("moe_result")
+        if moe_dict is not None and isinstance(moe_dict, dict):
+            try:
+                ev_map = moe_dict.get("expert_validations", {})
+                scores = [
+                    v.get("original_score", 0)
+                    for v in ev_map.values()
+                    if isinstance(v, dict) and v.get("original_score") is not None
+                ]
+                div_score = int(max(scores) - min(scores)) if len(scores) >= 2 else 0
+
+                conf = moe_dict.get("confidence", {})
+                if isinstance(conf, dict):
+                    base_conf  = conf.get("base", 0.0) or 0.0
+                    final_conf = conf.get("final", 0.0) or 0.0
+                else:
+                    base_conf = final_conf = float(conf or 0)
+                swing = round(abs(final_conf - base_conf), 2)
+
+                synth = "FULL"
+                if div_score > 20:
+                    synth = "PARTIAL"
+
+                gs_now = ctx.get("governance_signals", {})
+                gs_now["manipulation"] = {
+                    "confidence_swing_detected": swing > 10,
+                    "divergence_detected":       div_score > 20,
+                    "confidence_swing":          swing,
+                    "critic_divergence_score":   div_score,
+                    "synthesis_quality":         synth,
+                    "severity":                  "HIGH" if (swing > 10 or div_score > 20) else "LOW",
+                    "arc_categories":            ["TRANS", "ACC"],
+                    "atlas_tactics":             ["AML.TA0009"],
+                    "kill_chain_stage":          "llm_layer",
+                }
+                ctx["governance_signals"] = gs_now
+            except Exception:
+                pass
+
+        # AIVSSStage adds: AIVSS three-flow scores, sm_verdicts, validation (val_pct).
+        # gap_similarity_avg cannot be computed here (requires live ValidationResult objects
+        # not JSON dicts); it will be None until the next live pipeline run.
+        AIVSSStage()._logic(ctx)
+
+        # IMPORTANT: AIVSSStage calls compute_manipulation_signals(moe_result) internally
+        # which returns zeros for a plain dict (it expects a MoEResult object).
+        # Re-apply correct manipulation signals AFTER AIVSSStage so they are not
+        # overwritten. This is the final write before saving.
+        if moe_dict is not None and isinstance(moe_dict, dict):
+            try:
+                ev_map = moe_dict.get("expert_validations", {})
+                scores = [
+                    v.get("original_score", 0)
+                    for v in ev_map.values()
+                    if isinstance(v, dict) and v.get("original_score") is not None
+                ]
+                div_score = int(max(scores) - min(scores)) if len(scores) >= 2 else 0
+                conf = moe_dict.get("confidence", {})
+                if isinstance(conf, dict):
+                    base_conf  = float(conf.get("base", 0.0) or 0.0)
+                    final_conf = float(conf.get("final", 0.0) or 0.0)
+                else:
+                    base_conf = final_conf = float(conf or 0)
+                swing = round(abs(final_conf - base_conf), 2)
+                gs_final = ctx.get("governance_signals", {})
+                gs_final["manipulation"] = {
+                    "confidence_swing_detected": swing > 10,
+                    "divergence_detected":       div_score > 20,
+                    "confidence_swing":          swing,
+                    "critic_divergence_score":   div_score,
+                    # synthesis_quality reflects whether synthesis completed, not whether
+                    # critics diverged. Backfill always sets FULL since synthesis ran.
+                    "synthesis_quality":         "FULL",
+                    "severity":                  "HIGH" if (swing > 10 or div_score > 20) else "LOW",
+                    "arc_categories":            ["TRANS", "ACC"],
+                    "atlas_tactics":             ["AML.TA0009"],
+                    "kill_chain_stage":          "llm_layer",
+                }
+                ctx["governance_signals"] = gs_final
+            except Exception:
+                pass
 
         gs = ctx.get("governance_signals", {})
         _fill_result_from_gs(result, gs)
         result["status"] = "scored"
+
+        # AIVSSStage writes governance_signals.json to disk before our post-AIVSSStage
+        # manipulation fix runs. Re-save the corrected version now so on-disk state matches.
+        if gs and ctx.get("report_dir"):
+            try:
+                from chatbot.config.settings import get_settings as _gs2
+                if _gs2().governance.save_signals_per_run:
+                    sig_final_path = __import__('pathlib').Path(ctx["report_dir"]) / "governance_signals.json"
+                    sig_final_path.write_text(
+                        __import__('json').dumps(gs, indent=2), encoding="utf-8"
+                    )
+            except Exception:
+                pass
 
     except Exception as exc:
         result["status"] = "error"
