@@ -17813,6 +17813,39 @@ class Dashboard {
             filtersEl?.closest('div')?.after(legendBar);
         }
         legendBar.innerHTML = '<span style="color:var(--text-secondary);font-weight:600;margin-right:0.25rem;">Rules:</span>';
+
+        // Trend badge legend — only shown when trend data is available
+        const _hasTrend = Object.keys(trendByRule).length > 0;
+        if (_hasTrend) {
+            const _TREND_LEGEND = [
+                { icon:'★', label:'new',     color:'#a855f7', tip:'Fired in latest run; never fired before' },
+                { icon:'↑', label:'rising',  color:'#22c55e', tip:'Firing rate increasing' },
+                { icon:'→', label:'stable',  color:'#94a3b8', tip:'Firing rate unchanged' },
+                { icon:'↓', label:'falling', color:'#f97316', tip:'Firing rate decreasing' },
+                { icon:'✓', label:'cleared', color:'#22c55e', tip:'Was firing; silent in latest run' },
+            ];
+            // Filter to only show badges that actually appear in this render
+            const activeTrends = new Set(Object.values(trendByRule).map(t => t.trend));
+            const relevantLegend = _TREND_LEGEND.filter(l => activeTrends.has(l.label));
+            if (relevantLegend.length) {
+                const sep = document.createElement('span');
+                sep.style.cssText = 'color:var(--border-color);margin:0 0.35rem;';
+                sep.textContent = '|';
+                legendBar.appendChild(sep);
+                const trendLabel = document.createElement('span');
+                trendLabel.style.cssText = 'color:var(--text-secondary);font-weight:600;margin-right:0.25rem;';
+                trendLabel.textContent = 'Trend:';
+                legendBar.appendChild(trendLabel);
+                relevantLegend.forEach(l => {
+                    const chip = document.createElement('span');
+                    chip.style.cssText = `display:inline-flex;align-items:center;gap:0.2rem;padding:0.1rem 0.45rem;border-radius:4px;border:1px solid ${l.color}66;background:${l.color}18;color:${l.color};font-size:0.7rem;font-weight:700;cursor:default;`;
+                    chip.title = l.tip;
+                    chip.textContent = `${l.icon} ${l.label}`;
+                    legendBar.appendChild(chip);
+                });
+            }
+        }
+
         sorted.forEach((f, ri) => {
             const ruleId = f.unmapped?.rule_id || '?';
             const sc = RULE_PAL[ri % RULE_PAL.length];
