@@ -15,14 +15,89 @@ patterns without importing them. Future swap is one line per stage:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from chatbot.config.settings import AgentModelConfig, AgentSwarmConfig
 
 _log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Public type aliases
+# ---------------------------------------------------------------------------
+
+#: Callback contract for pipeline progress updates.
+#: Called as: callback(stage_name: str, percent: int, message: str)
+ProgressCallback = Callable[[str, int, str], None]
+
+
+# ---------------------------------------------------------------------------
+# Typed request / response contract  (v2)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class PipelineRequest:
+    """Typed entry point for ThreatAssessorHarness.run_typed() and AsyncHarness.
+
+    Replaces the previous 9-keyword-argument surface. Old callers using
+    harness.run(...keyword args...) continue to work unchanged.
+    """
+    architecture_path:    str
+    report_dir:           str
+    ssp_profile:          str  = "low_risk_cloud"
+    use_llm:              bool = False
+    enable_ssp:           bool = True
+    enable_moe:           bool = False
+    enable_scrum_master:  bool = False
+    critic_mode:          str  = "partial_parallel"
+    run_blackhat:         Optional[bool] = None
+    architecture_name:    str  = ""
+    run_id:               str  = ""   # auto-generated if empty
+    metadata:             dict = field(default_factory=dict)
+
+
+@dataclass
+class PipelineResponse:
+    """Typed exit point from run_typed() / AsyncHarness.
+
+    success=False means the pipeline completed with errors but did not raise.
+    If BlockedPipelineError was raised, the caller receives the exception
+    directly rather than a PipelineResponse.
+    """
+    success:          bool
+    run_id:           str
+    architecture_name: str
+    confidence:       Optional[float]
+    errors:           List[str]
+    stage_timings:    Dict[str, dict]
+    governance_summary: dict   # {overall_risk_level, aivss_overall, aivss_severity}
+    detect_summary:   dict     # {rules_fired: [...], total_fired: int}
+    ctx:              "PipelineContext"   # raw context for callers that need it
+
+
+# ---------------------------------------------------------------------------
+# Bouncer exception
+# ---------------------------------------------------------------------------
+
+class BlockedPipelineError(Exception):
+    """Raised by BouncerStage when the pipeline must halt for safety reasons.
+
+    Callers should catch this and return a structured 400/403 response
+    rather than a 500 — the pipeline was deliberately stopped, not broken.
+
+    Attributes:
+        reason:  short machine-readable code (exploitation.blocked, kill_switch, etc.)
+        ctx:     PipelineContext at the point of blocking (for audit logging)
+    """
+
+    def __init__(self, reason: str, ctx: "PipelineContext"):
+        self.reason = reason
+        self.ctx    = ctx
+        super().__init__(f"Pipeline blocked: {reason}")
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +309,63 @@ class ModelRouter:
         """Return and clear all fallback events accumulated since last call."""
         events, self._fallback_events = list(self._fallback_events), []
         return events
+
+
+# ---------------------------------------------------------------------------
+# CircuitBreaker (v2) — wraps ModelRouter, opens after N consecutive failures
+# ---------------------------------------------------------------------------
+
+class CircuitBreaker:
+    """Wraps a ModelRouter and opens the circuit after consecutive failures.
+
+    When open, get_model() raises BlockedPipelineError immediately rather than
+    trying models that are known to be unavailable, preventing cascading retries.
+    The circuit resets after RESET_SECONDS.
+
+    Usage: opt-in only — existing callers that instantiate ModelRouter directly
+    are unaffected. HarnessModelGuardian can wrap routers on creation.
+    """
+
+    THRESHOLD      = 3     # consecutive failures before opening
+    RESET_SECONDS  = 60
+
+    def __init__(self, router: "ModelRouter"):
+        self._router       = router
+        self._failures     = 0
+        self._opened_at: Optional[float] = None
+
+    def _is_open(self) -> bool:
+        if self._opened_at is None:
+            return False
+        if time.monotonic() - self._opened_at > self.RESET_SECONDS:
+            # Auto-reset after timeout — try again
+            self._failures   = 0
+            self._opened_at  = None
+            return False
+        return True
+
+    def get_model(self, attempt: int = 0) -> Optional[str]:
+        if self._is_open():
+            raise BlockedPipelineError(
+                f"circuit_open:{self._router.agent_name}",
+                PipelineContext({}),
+            )
+        try:
+            model = self._router.get_model(attempt)
+            self._failures = 0   # success resets counter
+            return model
+        except ModelChainExhaustedError:
+            self._failures += 1
+            if self._failures >= self.THRESHOLD:
+                self._opened_at = time.monotonic()
+                _log.error(
+                    f"CircuitBreaker: opened for '{self._router.agent_name}' "
+                    f"after {self._failures} consecutive failures"
+                )
+            raise
+
+    def drain_events(self) -> List[Dict]:
+        return self._router.drain_events()
 
 
 # ---------------------------------------------------------------------------
@@ -505,6 +637,43 @@ class ThreatAssessorHarness:
             try:
                 stage.run(ctx, progress_callback=self.progress_callback)
                 ctx.stage_outputs[stage.name] = "ok"
+
+                # ── PolicyBroker: dynamic routing after QualityStage ─────────
+                # Runs immediately after quality checks complete so live signals
+                # (governance_signals populated by QualityStage) inform routing
+                # before CriticStage runs. Non-fatal — routing failure keeps
+                # existing blocked_agents unchanged.
+                if stage.name == "quality":
+                    try:
+                        from chatbot.harness.policy_broker import PolicyBroker
+                        broker   = PolicyBroker()
+                        decision = broker.decide(
+                            ctx.get("governance_signals", {}),
+                            ctx.get("_aivss_score"),
+                        )
+                        # Merge: add broker-decided blocks to existing list
+                        existing = set(ctx.get("blocked_agents", []))
+                        existing.update(decision.blocked_agents)
+                        ctx["blocked_agents"] = list(existing)
+                        ctx["_broker_decision"] = decision
+                        # Apply model overrides to guardian
+                        guardian = ctx.get("_model_guardian")
+                        if guardian and decision.model_overrides:
+                            for agent, model in decision.model_overrides.items():
+                                if hasattr(guardian, "_routers") and agent in guardian._routers:
+                                    from chatbot.harness.controller import ModelRouter
+                                    guardian._routers[agent] = ModelRouter(
+                                        model, [], agent_name=agent
+                                    )
+                        if decision.rationale and decision.rationale != "no policy match":
+                            _log.info(f"PolicyBroker: {decision.rationale}")
+                    except BlockedPipelineError:
+                        raise  # BouncerStage may raise this — let it propagate
+                    except Exception as _pb_exc:
+                        _log.debug(f"PolicyBroker skipped (non-fatal): {_pb_exc}")
+
+            except BlockedPipelineError:
+                raise  # always propagate — bouncer decisions are intentional
             except Exception as exc:
                 _status = "error"
                 ctx.errors.append(f"{stage.name}: {exc}")
@@ -591,6 +760,126 @@ class ThreatAssessorHarness:
 
         return ctx
 
+    # ------------------------------------------------------------------
+    # Typed interface (v2) — run_typed wraps run() with PipelineRequest/
+    # PipelineResponse so MCP tools and async callers get a clean contract.
+    # Old callers using run(**kwargs) are completely unaffected.
+    # ------------------------------------------------------------------
+
+    def run_typed(
+        self,
+        request: PipelineRequest,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> PipelineResponse:
+        """Execute the pipeline from a PipelineRequest, return a PipelineResponse.
+
+        Raises BlockedPipelineError if BouncerStage halts the pipeline.
+        All other exceptions propagate normally (caller decides 500 vs retry).
+        """
+        if progress_callback:
+            self.progress_callback = progress_callback
+
+        ctx = self.run(
+            architecture_path   = request.architecture_path,
+            report_dir          = request.report_dir,
+            use_llm             = request.use_llm,
+            ssp_profile         = request.ssp_profile,
+            enable_ssp          = request.enable_ssp,
+            enable_moe          = request.enable_moe,
+            enable_scrum_master = request.enable_scrum_master,
+            critic_mode         = request.critic_mode,
+            run_blackhat        = request.run_blackhat,
+            architecture_name   = request.architecture_name or "",
+            **(request.metadata or {}),
+        )
+
+        # Build governance summary
+        gov = ctx.get("governance_signals", {})
+        aivss = gov.get("aivss", {}).get("overall", {})
+        gov_summary = {
+            "overall_risk_level": gov.get("overall_risk_level", "LOW"),
+            "aivss_overall":      aivss.get("composite"),
+            "aivss_severity":     aivss.get("severity"),
+        }
+
+        # Build detect summary from ocsf_findings if available
+        detect_summary: dict = {"rules_fired": [], "total_fired": 0}
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            _ocsf = _Path(request.report_dir) / "ocsf_findings.json"
+            if _ocsf.exists():
+                findings = _json.loads(_ocsf.read_text(encoding="utf-8"))
+                fired = [
+                    f["unmapped"]["rule_id"]
+                    for f in findings
+                    if f.get("class_uid") == 2004 and f.get("unmapped", {}).get("rule_id")
+                ]
+                detect_summary = {"rules_fired": fired, "total_fired": len(fired)}
+        except Exception:
+            pass
+
+        # Extract confidence
+        confidence: Optional[float] = None
+        gt = ctx.get("ground_truth", {})
+        if gt:
+            cb = gt.get("confidence_breakdown", {})
+            confidence = cb.get("final") or gt.get("expected_risk_score")
+
+        return PipelineResponse(
+            success           = not ctx.errors,
+            run_id            = ctx.get("_run_id", ""),
+            architecture_name = ctx.get("architecture_name", ""),
+            confidence        = confidence,
+            errors            = list(ctx.errors),
+            stage_timings     = dict(ctx.stage_timings),
+            governance_summary = gov_summary,
+            detect_summary    = detect_summary,
+            ctx               = ctx,
+        )
+
+
+# ---------------------------------------------------------------------------
+# AsyncThreatAssessorHarness (v2)
+# ---------------------------------------------------------------------------
+
+class AsyncThreatAssessorHarness:
+    """Async wrapper around ThreatAssessorHarness for MCP tools and CI/CD jobs.
+
+    Runs the synchronous harness in a thread via asyncio.to_thread() so the
+    calling event loop is not blocked during the ~30s analysis.
+
+    Usage:
+        harness = AsyncThreatAssessorHarness(scenario=ScenarioConfig.API_ONLY)
+        response = await harness.run(request, progress_callback=cb)
+    """
+
+    def __init__(
+        self,
+        scenario: str = ScenarioConfig.API_ONLY,
+        model: Optional[str] = None,
+    ):
+        self.scenario = scenario
+        self.model    = model
+
+    async def run(
+        self,
+        request: PipelineRequest,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> PipelineResponse:
+        """Run analysis in a thread; return PipelineResponse.
+
+        Raises BlockedPipelineError if BouncerStage halts — callers should
+        catch this and return a structured error to the client.
+        """
+        harness = ThreatAssessorHarness(
+            scenario = self.scenario,
+            model    = self.model,
+        )
+        return await asyncio.to_thread(
+            harness.run_typed, request, progress_callback
+        )
+
 
 # ---------------------------------------------------------------------------
 # Scenario registrations (lazy-import stages to avoid circular imports)
@@ -604,22 +893,24 @@ def _quick_det() -> List[PipelineStage]:
 
 @register_scenario(ScenarioConfig.API_ONLY)
 def _api_only() -> List[PipelineStage]:
-    from chatbot.harness.stages import AnalysisStage, ReportStage, QualityStage, AIVSSStage
-    # AIVSSStage runs after QualityStage; no critics/SM so internal flow scores
-    # with governance signals only (moe_result=None, sm_result=None).
-    return [AnalysisStage(), ReportStage(), QualityStage(), AIVSSStage()]
+    from chatbot.harness.stages import (
+        AnalysisStage, ReportStage, QualityStage, BouncerStage, AIVSSStage,
+    )
+    # BouncerStage after QualityStage: reads exploitation.blocked + kill_switch.
+    # required=False (v2 phase 1) — non-fatal until callers handle BlockedPipelineError.
+    return [AnalysisStage(), ReportStage(), QualityStage(), BouncerStage(), AIVSSStage()]
 
 
 @register_scenario(ScenarioConfig.FULL_MOE)
 def _full_moe() -> List[PipelineStage]:
     from chatbot.harness.stages import (
-        AnalysisStage, ReportStage, QualityStage, CriticStage, ScrumMasterStage,
-        AIVSSStage, OutboundAIVSSGate,
+        AnalysisStage, ReportStage, QualityStage, BouncerStage,
+        CriticStage, ScrumMasterStage, AIVSSStage, OutboundAIVSSGate,
     )
-    # AIVSSStage runs after ScrumMasterStage so moe_result + scrum_master_result
-    # are available for internal flow (manipulation, drift signals).
+    # BouncerStage between QualityStage and CriticStage: blocks adversarial
+    # inputs before any LLM call is made.
     return [
-        AnalysisStage(), ReportStage(), QualityStage(),
+        AnalysisStage(), ReportStage(), QualityStage(), BouncerStage(),
         CriticStage(), ScrumMasterStage(), AIVSSStage(), OutboundAIVSSGate(),
     ]
 

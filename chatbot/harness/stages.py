@@ -412,6 +412,73 @@ class ScrumMasterStage(PipelineStage):
             _log.warning(f"ScrumMasterStage: could not regenerate improvement summary: {exc}")
 
 
+class BouncerStage(PipelineStage):
+    """Hard isolation gate — reads governance signals and halts the pipeline
+    when the input or configuration is explicitly blocked.
+
+    Phase 1 (v2 initial): required=False so any BouncerStage bug is non-fatal.
+    Callers that handle BlockedPipelineError properly can promote to required=True.
+
+    Checks (in order):
+      1. exploitation.blocked == True  — CRITICAL injection/traversal in input
+      2. ctx["_outbound_blocked"]      — AIVSS outbound gate tripped on prior run
+      3. kill_switch in agent_governance.yaml — unconditional operator override
+      4. blocked_architectures list in YAML  — explicit arch-name deny list
+
+    Emits stage_complete event with block reason for SIEM audit trail.
+    Does NOT re-evaluate governance — relies on QualityStage having already run.
+    """
+
+    name     = "bouncer"
+    required = False   # ← promote to True once callers handle BlockedPipelineError
+
+    def _logic(self, ctx: PipelineContext, **kw) -> PipelineContext:
+        from chatbot.harness.controller import BlockedPipelineError
+
+        exploit  = ctx.get("governance_signals", {}).get("exploitation", {})
+        outbound = ctx.get("_outbound_blocked", False)
+
+        # ── Check 1: CRITICAL exploitation (injection/traversal blocked) ─────
+        if exploit.get("blocked") is True:
+            reason = "exploitation.blocked=True"
+            _emit(ctx, "stage_complete", "bouncer", {"blocked": True, "reason": reason})
+            raise BlockedPipelineError(reason, ctx)
+
+        # ── Check 2: Outbound AIVSS gate tripped ─────────────────────────────
+        if outbound:
+            reason = "outbound_aivss_gate_tripped"
+            _emit(ctx, "stage_complete", "bouncer", {"blocked": True, "reason": reason})
+            raise BlockedPipelineError(reason, ctx)
+
+        # ── Check 3/4: YAML policy overrides ─────────────────────────────────
+        try:
+            import yaml as _yaml
+            from pathlib import Path as _Path
+            _policy_path = _Path("policies/agent_governance.yaml")
+            if _policy_path.exists():
+                _policy = _yaml.safe_load(_policy_path.read_text())
+                bouncer_cfg = _policy.get("bouncer", {})
+
+                if bouncer_cfg.get("kill_switch") is True:
+                    reason = "kill_switch=True in agent_governance.yaml"
+                    _emit(ctx, "stage_complete", "bouncer", {"blocked": True, "reason": reason})
+                    raise BlockedPipelineError(reason, ctx)
+
+                arch_name = ctx.get("architecture_name", "")
+                blocked_archs = bouncer_cfg.get("blocked_architectures", [])
+                if arch_name and arch_name in blocked_archs:
+                    reason = f"architecture '{arch_name}' in blocked_architectures"
+                    _emit(ctx, "stage_complete", "bouncer", {"blocked": True, "reason": reason})
+                    raise BlockedPipelineError(reason, ctx)
+        except BlockedPipelineError:
+            raise
+        except Exception:
+            pass  # YAML load failure → allow through (non-fatal)
+
+        _emit(ctx, "stage_complete", "bouncer", {"blocked": False})
+        return ctx
+
+
 class QualityStage(PipelineStage):
     """Governance checks on input MMD and ground_truth artifact.
 
