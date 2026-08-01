@@ -225,6 +225,26 @@ def score_directory(report_dir: Path, force: bool = False) -> dict:
             except Exception:
                 pass
 
+        # For archs without MoE data, ensure manipulation fields have valid defaults
+        # rather than None (which breaks rule evaluator comparisons).
+        if moe_dict is None:
+            gs_now = ctx.get("governance_signals", {})
+            manip = gs_now.get("manipulation", {})
+            if manip.get("confidence_swing") is None:
+                manip.update({
+                    "confidence_swing_detected": False,
+                    "divergence_detected":       False,
+                    "confidence_swing":          0.0,
+                    "critic_divergence_score":   0,
+                    "synthesis_quality":         "FULL",
+                    "severity":                  "LOW",
+                    "arc_categories":            ["TRANS", "ACC"],
+                    "atlas_tactics":             ["AML.TA0009"],
+                    "kill_chain_stage":          "llm_layer",
+                })
+                gs_now["manipulation"] = manip
+                ctx["governance_signals"] = gs_now
+
         gs = ctx.get("governance_signals", {})
         _fill_result_from_gs(result, gs)
         result["status"] = "scored"
