@@ -1,208 +1,134 @@
-# ThreatAssessor - Developer Quick Reference
+# ThreatAssessor — Developer Quick Reference
 
-**Version:** 1.4  
-**Status:** ✅ Production-Ready — REST API live, D3 Visualise tab + Expert Review UX complete  
-**Core Feature:** Architecture diagram → Threat assessment + AI/ML analysis + MoE validation + Hardening controls
+**Version:** 2.0  
+**Status:** Production-ready. REST API + dashboard live. MoE critics + SOC detection layer + Harness v2 shipped.  
+**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 19 SOC DETECT rules + AIVSS scoring
 
 ---
 
 ## Session Protocol
 
-**At the start of every session, read:** [`docs/DECISIONS.md`](docs/DECISIONS.md)
+**Read at session start:** [`docs/DECISIONS.md`](docs/DECISIONS.md) (gitignored — local only)
 
-This file is the architectural decision log. After any significant decision about architecture, logic, or format, add an entry with: date, what was decided, the reasoning, and what alternatives were rejected.
-
----
-
-## Primary Commands
-
-**Web Dashboard (Recommended):**
-```bash
-# Start API server
-./scripts/api/api_start.sh
-
-# Access dashboard: http://localhost:8000/dashboard
-# API docs:         http://localhost:8000/docs
-# See: docs/operations/API_MANAGEMENT.md for full details
-```
-
-**CLI Analysis:**
-```bash
-# Comprehensive analysis with MoE validation
-./demo_expert_llm.sh your_architecture.mmd
-
-# Quick deterministic validation (no LLM)
-./demo_deterministic_engine.sh --validate-orphan your_architecture.mmd
-```
-
-**Output:** 16 files (dashboard + reports + critiques + diagrams)  
-**Time:** 2 min (full) or 30 sec (deterministic only)  
-**Confidence:** 93-96% (99.5% base ± expert validations)
+Add an entry after any significant architectural decision: date, what, why, alternatives rejected.
 
 ---
 
-## REST API Endpoints
+## Start / Stop
 
-Base URL: `http://localhost:8000`  
-Authentication: `TM-API-KEY` header  
-Docs (Swagger UI): `http://localhost:8000/docs`  
-OpenAPI spec: `openapi.yaml` (root of repo)
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/health` | No | System health check |
-| POST | `/api/v1/analyze` | Yes | Deterministic threat analysis (99.5%) |
-| POST | `/api/v1/analyze-stream` | Yes | SSE streaming analysis with progress |
-| GET | `/api/v1/expert-review` | Yes | SSE stream for MoE validation |
-| GET | `/api/v1/reports` | No | List all report directories |
-| GET | `/api/v1/reports/{name}` | No | List files for an architecture |
-| GET | `/api/v1/reports/{name}/files/{file}` | No | Serve report file |
-| GET | `/api/v1/reports/{name}/summary` | No | JSON summary |
-| GET | `/api/v1/reports/{name}/download` | No | Download report as ZIP |
-| GET | `/api/v1/mitigations` | No | MITRE mitigation library |
-| GET | `/api/v1/technique-mitigations` | No | Technique→mitigation mapping |
-| GET | `/api/v1/techniques` | No | MITRE technique library |
+```bash
+./scripts/api/api_start.sh      # start API (http://localhost:8000/dashboard)
+./scripts/api/api_status.sh     # check
+./scripts/api/api_restart.sh    # restart
+./scripts/api/api_stop.sh       # stop
+tail -f logs/api.log            # logs
+```
 
 ---
 
 ## Key Module Paths
 
-**Analysis Pipeline:**
-- `chatbot/modules/ground_truth_generator.py` - Main analysis engine
-- `chatbot/modules/threat_analyst.py` - RAPIDS + AI/ML pattern detection
-- `chatbot/modules/completeness_validator.py` - 6-check validation
-- `chatbot/modules/threat_report.py` - Report generation with path-based + hardening controls
-- `chatbot/modules/exhaustive_mitigation_mapper.py` - Gap-filling controls (100% coverage)
-- `chatbot/modules/self_validation.py` - MITRE technique validation
-- `chatbot/modules/residual_risk.py` - Residual risk calculation (10% floor, NIST)
+**Analysis pipeline:**
+- `chatbot/modules/ground_truth_generator.py` — main engine
+- `chatbot/modules/threat_analyst.py` — RAPIDS + AI/ML
+- `chatbot/modules/threat_report.py` — report generation
+- `chatbot/modules/exhaustive_mitigation_mapper.py` — controls (100% coverage)
+- `chatbot/modules/self_validation.py` — MITRE technique validation
+
+**Harness (pipeline controller — v2):**
+- `chatbot/harness/controller.py` — `ThreatAssessorHarness`, `PipelineRequest/Response`, `AsyncThreatAssessorHarness`, `BlockedPipelineError`, `CircuitBreaker`
+- `chatbot/harness/stages.py` — `AnalysisStage`, `ReportStage`, `QualityStage`, `BouncerStage`(required=True), `CriticStage`, `ScrumMasterStage`, `AIVSSStage`
+- `chatbot/harness/governance.py` — `GovernanceSignals`, governance adapter, injection/evasion detection
+- `chatbot/harness/policy_broker.py` — `PolicyBroker`, `BrokerDecision` (dynamic routing after QualityStage)
+- `chatbot/harness/event_broker.py` — `EventBrokerCritic`, pub/sub to SIEM/Langfuse/Webhook sinks
+- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (19 DETECT rules)
+- `chatbot/harness/rule_trend_evaluator.py` — `RuleTrendEvaluator` (trend analysis from history JSONL)
+- `chatbot/harness/registry.py` — `CriticRegistry`
+
+**SOC detection:**
+- `policies/soc_detection_rules.yaml` — 19 DETECT rules with OWASP/ATLAS/incident provenance
+- `report/<arch>/governance_signals.json` — signal substrate for rule evaluation
+- `report/<arch>/governance_signals_history.jsonl` — append-only run history for trend analysis
+- `report/<arch>/ocsf_findings.json` — OCSF DetectionFinding 2004 export
 
 **REST API:**
-- `chatbot/api/app.py` - FastAPI application factory
-- `chatbot/api/dependencies.py` - Auth (`TM-API-KEY` header)
-- `chatbot/api/routes/reports.py` - Report serving endpoints
-- `chatbot/api/streaming.py` - SSE streaming + expert review
-- `chatbot/api/models/` - Pydantic request/response schemas
-- `chatbot/api/static/` - Dashboard UI (index.html + JS + CSS)
+- `chatbot/api/app.py` — FastAPI factory
+- `chatbot/api/routes/reports.py` — report endpoints + `/detect-trend/{arch}`
+- `chatbot/api/routes/streaming.py` — SSE analysis stream
+- `chatbot/api/static/` — dashboard (index.html + JS)
 
-**Harness (pipeline controller + governance + registry):**
-- `chatbot/harness/controller.py` - ThreatAssessorHarness, PipelineContext, ScenarioConfig
-- `chatbot/harness/stages.py` - AnalysisStage, ReportStage, QualityStage, CriticStage, ScrumMasterStage
-- `chatbot/harness/governance.py` - GovernanceSignals, InhouseGovernanceAdapter, AGTGovernanceAdapter
-- `chatbot/harness/registry.py` - CriticRegistry (control tower for agent activation + governance policy)
-- `chatbot/modules/harness*.py` - Re-export shims (backwards compat — canonical source is `chatbot/harness/`)
+**MoE agents:**
+- `chatbot/modules/agents/critics/` — Architect, Tester, Red Team, Purple Team, Blackhat
+- `chatbot/modules/agents/orchestrators/` — MoEOrchestrator
 
-**Agent Architecture (MoE):**
-- `chatbot/modules/agents/critics/` - Architect, Tester, Red Team
-- `chatbot/modules/agents/analysts/` - ThreatAnalyst + patterns
-- `chatbot/modules/agents/orchestrators/` - MoEOrchestrator
+**LLM client:**
+- `agentic/llm_client.py` — OpenRouter + Bedrock (use this, not `agentic/llm.py`)
 
-**LLM Client:**
-- `agentic/llm_client.py` - Multi-provider LLM client (OpenRouter, Bedrock)
-- `agentic/llm.py` - Deprecated wrapper (use llm_client directly)
-
-**Patterns:**
-- `chatbot/modules/patterns/ai_pattern.py` - ARC Framework + MITRE ATLAS
-- `chatbot/modules/pattern_registry.py` - Pattern registration
-
-**Data Sources (not in git):**
-- `chatbot/data/enterprise-attack.json` (44MB) - MITRE ATT&CK
-- `chatbot/data/technique_embeddings.json` (45MB) - Embeddings cache
-- `chatbot/data/atlas/*.yaml` (230KB) - MITRE ATLAS
+**Data (not in git):**
+- `chatbot/data/enterprise-attack.json` (44 MB) — MITRE ATT&CK
+- `chatbot/data/technique_embeddings.npz` (3 MB float16) — embeddings cache
 
 ---
 
-## Development Guidelines
+## Harness v2 key concepts
 
-### 95% Confidence Rule
-Before code changes: **Ask clarifying questions** → **Research thoroughly** → **Test incrementally**
+**Stage order (API_ONLY):** Analysis → Report → Quality → **Bouncer** → AIVSS  
+**Stage order (FULL_MOE):** Analysis → Report → Quality → **Bouncer** → Critics → SM → AIVSS → OutboundGate
 
-**Red flags:** "I think...", assumptions, unexplored code paths
+**BouncerStage** halts the pipeline (`required=True`) when `exploitation.blocked=True`, `_outbound_blocked`, or `kill_switch` in `policies/agent_governance.yaml`. Raises `BlockedPipelineError` → API returns 400.
 
-### Code Standards
-- Follow patterns in `chatbot/modules/`
-- Type hints + docstrings for public APIs
-- Test on multiple architectures before committing
-- No secrets in code (use `.env`)
+**PolicyBroker** runs after QualityStage on every pipeline run. Reads live governance signals → dynamically adjusts `blocked_agents` + model routing before critics run.
 
-### Testing Commands
+**AsyncThreatAssessorHarness** wraps `run_typed(PipelineRequest)` in `asyncio.to_thread()` for MCP/CI-CD callers.
+
+---
+
+## Check commands
+
 ```bash
-# Validate + analyze
-./demo_deterministic_engine.sh --validate-orphan architecture.mmd
-python3 -m chatbot.main --gen-arch-truth architecture.mmd
+# SOC detection regression (19 rules, 20 scenarios, 296 tests)
+python3 .claude/skills/check-detect/scripts/check-detect.py
+python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 
-# Check validation
-python3 -m chatbot.modules.completeness_validator architecture_name
+# Governance guardrails (56 tests)
+python3 .claude/skills/check-governance/scripts/check-governance.py
 
-# Batch test all architectures
-python3 scripts/backtest_all_architectures.py
+# EventBroker + sinks (60 tests)
+python3 .claude/skills/check-eventbroker/scripts/check-eventbroker.py
 
-# Orphan node check
-python3 scripts/validation/check_orphans.py architecture_name
+# DETECT coverage flywheel
+python3 .claude/skills/detect-loop/scripts/detect-loop.py --observe-only
+
+# Rule trend analysis
+python3 .claude/skills/detect-trend/scripts/detect-trend.py --all
 ```
 
 ---
 
-## What NOT to Commit
+## What NOT to commit
 
 ```
-_codex/                      # Experimental code
-archive/                     # Historical docs
-report/                      # Generated reports
-chatbot/data/*.json          # Large data files (44MB + 45MB)
-.env                         # API keys
+report/                  # generated reports (gitignored)
+chatbot/data/*.json      # large data files
+chatbot/data/*.npz       # embeddings
+.env                     # API keys
+docs/DECISIONS.md        # gitignored — local architectural log
+docs/blog/               # gitignored — blog drafts
+_codex/ archive/         # experimental / historical
 ```
 
-**DO commit:** `tests/data/architectures/*.mmd`, `docs/`, `.claude/skills/`, `openapi.yaml`
+**DO commit:** `tests/data/architectures/*.mmd`, `docs/` (except DECISIONS.md + blog/), `.claude/skills/`, `policies/`, `openapi.yaml`
 
 ---
 
-## Quick Troubleshooting
+## Troubleshooting
 
-**API Management (see [docs/operations/API_MANAGEMENT.md](docs/operations/API_MANAGEMENT.md) for full guide):**
 ```bash
-./scripts/api/api_status.sh    # Check status
-./scripts/api/api_stop.sh      # Stop API
-./scripts/api/api_restart.sh   # Restart API
-tail -f logs/api.log            # View logs
-```
-
-**Orphan nodes detected:**
-```bash
-python3 scripts/validation/check_orphans.py architecture_name
-# See: docs/operations/ARCHITECTURE_VALIDATION.md
-```
-
-**Validation fails:**
-```bash
-python3 -m chatbot.modules.completeness_validator architecture_name
-cat report/architecture_name/ground_truth.json
-```
-
-**Update MITRE data (quarterly):**
-```bash
-python3 -c "from chatbot.modules.mitre import MitreHelper; m = MitreHelper(); m.update_data()"
+python3 scripts/validation/check_orphans.py <arch>        # orphan nodes
+python3 -m chatbot.modules.completeness_validator <arch>  # validation
+cat report/<arch>/ground_truth.json                        # raw output
 ```
 
 ---
 
-## Documentation Map
-
-**Navigation:**
-- [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) - Start here for doc overview
-
-**Quick Reference:**
-- Markdown sources: [README.md](README.md), [docs/STATUS_AND_PLAN.md](docs/STATUS_AND_PLAN.md)
-- API spec: [openapi.yaml](openapi.yaml) - OpenAPI 3.0 machine-readable spec
-- API management: [docs/operations/API_MANAGEMENT.md](docs/operations/API_MANAGEMENT.md)
-- Development guide: [docs/development/NEXT_STEPS.md](docs/development/NEXT_STEPS.md)
-
-**Core references:**
-- [docs/core/V1_FEATURES.md](docs/core/V1_FEATURES.md) - Feature list
-- [docs/operations/OPERATIONS.md](docs/operations/OPERATIONS.md) - Troubleshooting
-- [docs/phases/phase3d/](docs/phases/phase3d/) - MoE architecture details
-- [docs/README.md](docs/README.md) - Full documentation index
-
----
-
-**Purpose:** AI assistant context + developer quick reference  
-**Last Updated:** 2026-06-14
+**Last Updated:** 2026-08-01
