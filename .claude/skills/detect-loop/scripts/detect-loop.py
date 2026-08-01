@@ -162,6 +162,118 @@ _ARCH_TYPE_MAP = {
 
 # Minimal signal payloads per rule
 _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
+    # ── DETECT-001 through 007: manipulation/MoE signals ─────────────────────
+    # These fire on real corpus (001: 17/27, 002: 21/27). Prescriptions allow
+    # detect-loop to generate new scenarios if coverage drops or new arch types
+    # need targeted simulation.
+    "DETECT-001": {
+        "arch_key": "sm_verdicts",  # complex enterprise has most MoE signal variance
+        "signals": {
+            "manipulation": {
+                "severity": "HIGH", "confidence_swing_detected": True,
+                "confidence_swing": 18.0, "divergence_detected": True,
+                "critic_divergence_score": 0, "synthesis_quality": "FULL",
+            },
+        },
+        "description": "confidence_swing=18 + swing_detected=True + synthesis FULL — visible rationalization",
+    },
+    "DETECT-002": {
+        "arch_key": "sm_verdicts",
+        "signals": {
+            "manipulation": {
+                "severity": "HIGH", "confidence_swing_detected": True,
+                "confidence_swing": 12.0, "divergence_detected": True,
+                "critic_divergence_score": 25, "synthesis_quality": "FULL",
+            },
+        },
+        "description": "divergence_detected=True + score>=20 + synthesis FULL — dissent suppressed",
+    },
+    "DETECT-003": {
+        "arch_key": "outbound",  # data pipeline with many agents
+        "signals": {
+            "aivss": {
+                "overall": {"composite": 3.0, "severity": "LOW"},
+                "inbound": {"composite": 0.0, "severity": "LOW", "coverage_pct": 0},
+                "internal": {"composite": 4.0, "severity": "MEDIUM", "coverage_pct": 20},
+                "outbound": {"composite": 0.0, "severity": "LOW", "coverage_pct": 0},
+                "coverage_pct": 10, "per_threat": [],
+                "per_agent": {
+                    "architect":   {"tokens": 200},
+                    "tester":      {"tokens": 180},
+                    "red_team":    {"tokens": 190},
+                    "purple_team": {"tokens": 210},
+                    "blackhat":    {"tokens": 9500},  # 45× mean — spike
+                },
+            },
+        },
+        "description": "blackhat token count 45× mean of peers (min 3 agents) — hyperfocus spike",
+    },
+    "DETECT-004": {
+        "arch_key": "outbound",
+        "signals": {
+            "leakage": {
+                "detected": True, "severity": "HIGH",
+                "pii_indicators": ["NRIC:S9876543B"], "sensitive_keywords": [],
+                "flagged": True, "supply_chain_stale_sources": [],
+            },
+            "sovereignty": {
+                "severity": "HIGH",
+                "cross_boundary_nodes": ["ExternalAPI", "TelegramWebhook"],
+                "zdr_signals": [], "inferred_regions": [],
+            },
+        },
+        "description": "leakage.detected=True + cross_boundary_nodes present — covert C2 channel",
+    },
+    "DETECT-005": {
+        "arch_key": "traversal",
+        "signals": {
+            "exploitation": {
+                "severity": "CRITICAL",
+                "injection_patterns": ["[tag_injection] <script>alert(1)</script>"],
+                "injection_categories": {"tag_injection": {"matches": ["<script>alert(1)</script>"], "severity": "CRITICAL"}},
+                "max_injection_severity": "CRITICAL",
+                "path_traversal": [], "blocked": True,
+                "homoglyph_count": 0, "url_encoded_count": 0, "evasion_attempts": 0,
+                "external_url_references": 0, "external_url_list": [],
+            },
+        },
+        "description": "exploitation.severity=CRITICAL + injection_patterns present — .mmd is the attack vector",
+    },
+    "DETECT-006": {
+        "arch_key": "outbound",
+        "signals": {
+            "aivss": {
+                "overall": {"composite": 4.0, "severity": "MEDIUM"},
+                "inbound": {"composite": 0.0, "severity": "LOW", "coverage_pct": 0},
+                "internal": {"composite": 4.0, "severity": "MEDIUM", "coverage_pct": 30},
+                "outbound": {"composite": 0.0, "severity": "LOW", "coverage_pct": 0},
+                "coverage_pct": 65,
+                "per_threat": [
+                    {"technique_id": "T1046", "severity": "MEDIUM", "composite": 4.0},
+                    {"technique_id": "T1083", "severity": "LOW",    "composite": 2.0},
+                ],
+                "per_agent": {
+                    "architect":   {"tokens": 520},
+                    "tester":      {"tokens": 490},
+                    "red_team":    {"tokens": 510},
+                    "purple_team": {"tokens": 480},
+                    "blackhat":    {"tokens": 505},
+                },
+            },
+        },
+        "description": "coverage_pct>=60 + no CRITICAL per_threat + min 3 agents — distributed sweep",
+    },
+    "DETECT-007": {
+        "arch_key": "sm_verdicts",
+        "signals": {
+            "manipulation": {
+                "severity": "MEDIUM", "confidence_swing_detected": True,
+                "confidence_swing": 16.5, "divergence_detected": False,
+                "critic_divergence_score": 0, "synthesis_quality": "FULL",
+            },
+        },
+        "description": "swing_detected=True + div_score=0 + div_detected=False + quality=FULL — silent inflation",
+    },
     "DETECT-008": {
         "arch_key": "sm_verdicts",
         "signals": {
@@ -281,6 +393,21 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
             },
         },
         "description": "Cyrillic homoglyphs + URL-encoded sequences in input — AST08 scanner evasion",
+    },
+    "DETECT-019": {
+        "arch_key": "traversal",  # legacy — most likely to have jailbreak probe attempts
+        "signals": {
+            "exploitation": {
+                "severity": "HIGH",
+                "injection_patterns": ["[direct_override] ignore all previous instructions"],
+                "injection_categories": {"direct_override": {"matches": ["ignore all previous instructions"], "severity": "HIGH"}},
+                "max_injection_severity": "HIGH",
+                "path_traversal": [], "blocked": False,
+                "homoglyph_count": 0, "url_encoded_count": 0, "evasion_attempts": 0,
+                "external_url_references": 0, "external_url_list": [],
+            },
+        },
+        "description": "max_injection_severity=HIGH (direct_override) — below CRITICAL, DETECT-005 not triggered",
     },
 }
 
