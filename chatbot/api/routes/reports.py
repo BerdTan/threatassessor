@@ -2157,3 +2157,45 @@ async def generate_ciso_brief(
         "snapshot": snap,
         "md_file": f"ciso_brief_{today}.md",
     }
+
+
+@router.get("/detect-trend/{architecture_name}")
+async def get_detect_trend(architecture_name: str):
+    """
+    Return per-rule firing trends for one architecture, derived from
+    governance_signals_history.jsonl.
+
+    Response shape:
+      {
+        "architecture": str,
+        "total_runs":   int,
+        "trends": [{ "rule_id", "trend", "fired_runs", "total_runs",
+                     "fire_rate", "last_n", "fired_on" }, ...]
+      }
+
+    trend values: new | rising | stable | falling | cleared | never
+    No auth required — read-only diagnostic data.
+    """
+    report_base = get_report_dir()
+    arch_dir    = report_base / architecture_name
+    if not arch_dir.exists() or not arch_dir.is_dir():
+        raise HTTPException(status_code=404, detail=f"Architecture not found: {architecture_name}")
+
+    try:
+        from chatbot.harness.rule_trend_evaluator import RuleTrendEvaluator, HISTORY_FILENAME
+        evaluator = RuleTrendEvaluator()
+        trends    = evaluator.compute_arch(arch_dir)
+
+        hist_path = arch_dir / HISTORY_FILENAME
+        total_runs = 0
+        if hist_path.exists():
+            with hist_path.open() as f:
+                total_runs = sum(1 for l in f if l.strip())
+
+        return {
+            "architecture": architecture_name,
+            "total_runs":   total_runs,
+            "trends": [tr.to_dict() for tr in sorted(trends.values(), key=lambda t: t.rule_id)],
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Trend computation failed: {exc}")

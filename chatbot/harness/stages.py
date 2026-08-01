@@ -684,6 +684,24 @@ class AIVSSStage(PipelineStage):
                     encoding="utf-8",
                 )
 
+            # Append snapshot to per-arch history JSONL for trend analysis.
+            # One line per pipeline run: {run_id, ts, signals}. Never overwrites;
+            # append-only so trend data accumulates across runs.
+            if _settings.governance.save_signals_per_run and ctx.get("report_dir"):
+                try:
+                    import datetime as _dt
+                    _hist_path = _Path(ctx["report_dir"]) / "governance_signals_history.jsonl"
+                    _entry = _json.dumps({
+                        "run_id": ctx.get("run_id", "unknown"),
+                        "ts": _dt.datetime.utcnow().isoformat() + "Z",
+                        "arch": ctx.get("architecture_name", ""),
+                        "signals": gov_signals,
+                    }, separators=(",", ":"))
+                    with _hist_path.open("a", encoding="utf-8") as _hf:
+                        _hf.write(_entry + "\n")
+                except Exception:
+                    pass
+
             # Update gate and store score for OutboundAIVSSGate
             gate = AIVSSAgentGate(critic_settings=_settings.critics)
             ctx["_aivss_gate"] = gate

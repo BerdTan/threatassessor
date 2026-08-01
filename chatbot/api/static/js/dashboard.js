@@ -17382,6 +17382,18 @@ class Dashboard {
         if (!detections.length) { _showEmpty(); return; }
         _showGraph();
 
+        // ── Fetch trend data (non-blocking — missing = no badges) ────────────
+        const _TREND_ICON = { new:'★', rising:'↑', stable:'→', falling:'↓', cleared:'✓' };
+        const _TREND_COL  = { new:'#a855f7', rising:'#22c55e', stable:'#94a3b8', falling:'#f97316', cleared:'#22c55e' };
+        let trendByRule = {};
+        try {
+            const tr = await fetch(`/api/v1/detect-trend/${encodeURIComponent(arch)}`, {cache: 'no-store'});
+            if (tr.ok) {
+                const td = await tr.json();
+                (td.trends || []).forEach(t => { if (t.trend !== 'never') trendByRule[t.rule_id] = t; });
+            }
+        } catch { /* trend badges optional — never block graph */ }
+
         // ── Constants ─────────────────────────────────────────────────────────
         const NODE_COLOR = { trace:'#6366f1', signal:'#0ea5e9', threshold:'#f59e0b', rule:'#8b5cf6', alert:'#ef4444', action:'#10b981' };
         const SEV_ORD = { Critical:4, High:3, Medium:2, Low:1 };
@@ -17686,6 +17698,28 @@ class Dashboard {
                     .text(sev[0]);   // C / H / M
             }
 
+            // Trend badge — top-left of rule node, from governance_signals_history
+            if (n.type === 'rule') {
+                const ruleId  = n.meta?.meta?.ruleId || n.label;
+                const trendInfo = trendByRule[ruleId];
+                if (trendInfo) {
+                    const icon  = _TREND_ICON[trendInfo.trend] || '';
+                    const color = _TREND_COL[trendInfo.trend]  || '#94a3b8';
+                    if (icon) {
+                        ng.append('circle')
+                            .attr('cx', -(NODE_R - 2)).attr('cy', -(NODE_R - 2))
+                            .attr('r', 6).attr('fill', color + '33')
+                            .attr('stroke', color).attr('stroke-width', 1.2);
+                        ng.append('text')
+                            .attr('x', -(NODE_R - 2)).attr('y', -(NODE_R - 2))
+                            .attr('text-anchor','middle').attr('dominant-baseline','central')
+                            .attr('font-size','7px').attr('font-weight','800')
+                            .attr('fill', color).attr('pointer-events','none')
+                            .text(icon);
+                    }
+                }
+            }
+
             // Badge: show count of rules (for action nodes shared by multiple rules)
             const badgeCount = n.type === 'action' && n.ruleIds && n.ruleIds.length > 1
                 ? n.ruleIds.length : 0;
@@ -17920,6 +17954,14 @@ class Dashboard {
             html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.65rem;font-size:0.75rem;">`;
             if (m.severity) html += `<span style="padding:0.15rem 0.5rem;border-radius:3px;background:${sc}22;color:${sc};font-weight:700;">${m.severity}</span>`;
             if (m.killChain) html += `<span style="padding:0.15rem 0.5rem;border-radius:3px;background:var(--code-bg);color:var(--text-secondary);">${m.killChain.replace(/_/g,' ')}</span>`;
+            // Trend badge in detail panel
+            const trendD = (typeof trendByRule !== 'undefined') ? trendByRule[m.ruleId] : null;
+            if (trendD) {
+                const tIcon  = { new:'★', rising:'↑', stable:'→', falling:'↓', cleared:'✓' }[trendD.trend] || '';
+                const tColor = { new:'#a855f7', rising:'#22c55e', stable:'#94a3b8', falling:'#f97316', cleared:'#22c55e' }[trendD.trend] || '#94a3b8';
+                const rateStr = trendD.total_runs > 0 ? `${trendD.fired_runs}/${trendD.total_runs} runs` : '';
+                if (tIcon) html += `<span style="padding:0.15rem 0.5rem;border-radius:3px;background:${tColor}22;color:${tColor};font-weight:700;">${tIcon} ${trendD.trend}${rateStr ? ' · ' + rateStr : ''}</span>`;
+            }
             html += `</div>`;
             // ATLAS tactic with plain-English description
             if (m.atlas) {
