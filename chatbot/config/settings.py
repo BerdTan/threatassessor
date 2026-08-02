@@ -760,10 +760,11 @@ def load_settings() -> AppSettings:
             except Exception:
                 pass  # malformed YAML → keep Python defaults for that section
 
-        # Layer 3 — user_config.json
+        # Layer 3 — user_config.json (env-var interpolation applied, same as settings.yaml)
         if USER_CONFIG_PATH.exists():
             try:
                 json_overrides = json.loads(USER_CONFIG_PATH.read_text())
+                json_overrides = _interpolate_env(json_overrides)  # resolve ${VAR} placeholders
                 merged = _merge_overrides(merged, json_overrides)
             except Exception:
                 pass  # malformed JSON → keep lower layers
