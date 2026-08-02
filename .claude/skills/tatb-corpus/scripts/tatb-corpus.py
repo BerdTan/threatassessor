@@ -512,9 +512,45 @@ def render_stage_attribution(results: list, use_color: bool):
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def _resolve_labeller_model() -> str:
-    """Return the configured TATB labeller model, falling back to Haiku if unset."""
-    raw = os.getenv('AGENT_MODEL_TATB_LABELLER', 'bedrock/us.amazon.nova-pro-v1:0')
-    return raw if raw.startswith('bedrock/') else f'bedrock/{raw}'
+    """Return the configured TATB labeller model string.
+
+    Reads AGENT_MODEL_TATB_LABELLER from the environment.
+    Default: bedrock/us.amazon.nova-pro-v1:0 (current Bedrock deployment).
+    Standby: openrouter/google/gemini-2.0-flash-001 (set in .env when switching).
+
+    The model string is returned as-is — no provider prefix is forced.
+    Provider is inferred from the prefix in _labeller_provider().
+    """
+    return os.getenv('AGENT_MODEL_TATB_LABELLER', 'bedrock/us.amazon.nova-pro-v1:0')
+
+
+def _labeller_fallback() -> str:
+    """Return the configured fallback model, or a sensible default matching the primary provider."""
+    default_fallback = 'bedrock/us.anthropic.claude-haiku-4-20250514-v1:0'
+    primary = _resolve_labeller_model()
+    # If primary is OpenRouter, default fallback should also be OpenRouter
+    if primary.startswith('openrouter/'):
+        default_fallback = 'openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'
+    return os.getenv('AGENT_MODEL_TATB_LABELLER_FALLBACK', default_fallback)
+
+
+def _labeller_provider():
+    """Infer LLMProvider from the model string prefix. Never hardcoded."""
+    try:
+        from agentic.llm_client import LLMProvider
+        model = _resolve_labeller_model()
+        if model.startswith('openrouter/'):
+            return LLMProvider.OPENROUTER
+        if model.startswith('anthropic/'):
+            return LLMProvider.ANTHROPIC
+        if model.startswith('bedrock/'):
+            return LLMProvider.BEDROCK
+        # Default: use the current environment provider setting
+        from agentic.helper import get_llm_provider
+        return LLMProvider(get_llm_provider())
+    except Exception:
+        from agentic.llm_client import LLMProvider
+        return LLMProvider.BEDROCK
 
 
 def _mmd_for_arch(arch_name: str, report_dir: Path) -> Optional[str]:
@@ -550,8 +586,8 @@ def auto_label(report_dir: Path, force: bool, use_color: bool):
         return
 
     model    = _resolve_labeller_model()
-    fallback = os.getenv('AGENT_MODEL_TATB_LABELLER_FALLBACK', 'bedrock/us.anthropic.claude-haiku-4-20250514-v1:0')
-    client   = LLMClient(primary_provider=LLMProvider.BEDROCK)
+    fallback = _labeller_fallback()
+    client   = LLMClient(primary_provider=_labeller_provider())
 
     arch_dirs = sorted([d for d in report_dir.iterdir()
                         if d.is_dir() and (d / 'ground_truth.json').exists()])
@@ -945,7 +981,7 @@ def main():
     parser.add_argument('--label-dir',  default='tests/data/architectures',
                         help='Fallback directory for manual label files (default: tests/data/architectures)')
     parser.add_argument('--auto-label', action='store_true',
-                        help='Auto-generate expected_threats.json via Nova Pro labeller (skips existing)')
+                        help='Auto-generate expected_threats.json via TATB labeller model (skips existing; model from AGENT_MODEL_TATB_LABELLER env var)')
     parser.add_argument('--force',      action='store_true',
                         help='With --auto-label: regenerate labels even if they already exist')
     args = parser.parse_args()
@@ -960,9 +996,10 @@ def main():
     # Auto-label mode — run labeller then exit (or continue to scoring if --regression also set)
     if args.auto_label:
         print()
-        print(('\033[1m' if use_color else '') + '🏷  TATB Auto-Labeller — Nova Pro' + ('\033[0m' if use_color else ''))
-        print(f'  Model: {_resolve_labeller_model()}')
-        print(f'  Fallback: {os.getenv("AGENT_MODEL_TATB_LABELLER_FALLBACK", "bedrock/us.anthropic.claude-haiku-4-20250514-v1:0")}')
+        print(('\033[1m' if use_color else '') + '🏷  TATB Auto-Labeller' + ('\033[0m' if use_color else ''))
+        print(f'  Model:    {_resolve_labeller_model()}')
+        print(f'  Fallback: {_labeller_fallback()}')
+        print(f'  Provider: {_labeller_provider()}')
         print()
         auto_label(report_dir, args.force, use_color)
         if not args.regression:
