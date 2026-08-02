@@ -43,66 +43,32 @@ logger = logging.getLogger(__name__)
 
 # Provider types
 class LLMProvider(str, Enum):
-    """Supported LLM providers."""
+    """Supported LLM providers.
+
+    Values must match the keys in agentic/providers.PROVIDER_MANIFEST.
+    To add a new provider: add to PROVIDER_MANIFEST first, then add the
+    enum value here. The elif chains in from_env/validate/_call_litellm
+    are gone — all logic reads from the manifest.
+    """
     OPENROUTER = "openrouter"
-    BEDROCK = "bedrock"
-    ANTHROPIC = "anthropic"
-    AZURE = "azure"
-    VERTEX = "vertex"
+    BEDROCK    = "bedrock"
+    ANTHROPIC  = "anthropic"
+    AZURE      = "azure"
+    VERTEX     = "vertex"
 
 
-def _bedrock_models() -> Dict[str, str]:
-    """Build Bedrock model map, honouring BEDROCK_MODEL / BEDROCK_MODEL_FAST env vars."""
-    from agentic.helper import load_env
-    load_env()
-    default = os.getenv("BEDROCK_MODEL", "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0")
-    fast    = os.getenv("BEDROCK_MODEL_FAST", "bedrock/us.anthropic.claude-haiku-4-20250514-v1:0")
-    # Ensure the bedrock/ prefix is present
-    if not default.startswith("bedrock/"):
-        default = f"bedrock/{default}"
-    if not fast.startswith("bedrock/"):
-        fast = f"bedrock/{fast}"
-    return {"default": default, "high_quality": default, "fast": fast}
+from agentic.providers import PROVIDER_MANIFEST as _PM
 
-
-# Model configurations per provider
+# PROVIDER_MODELS — derived from manifest, kept for backward compatibility
 PROVIDER_MODELS = {
-    LLMProvider.OPENROUTER: {
-        "default": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  # Most reliable free
-        "high_quality": "openrouter/anthropic/claude-sonnet-4",  # Paid tier
-        "fast": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"  # Same as default (fast & reliable)
-    },
-    LLMProvider.BEDROCK: _bedrock_models(),
-    # INACTIVE PROVIDERS (kept for reference, not used by default)
-    LLMProvider.ANTHROPIC: {
-        "default": "anthropic/claude-sonnet-4-20250514",
-        "high_quality": "anthropic/claude-opus-4-20250514",
-        "fast": "anthropic/claude-haiku-4-20250514"
-    },
-    LLMProvider.AZURE: {
-        "default": "azure/gpt-4",
-        "high_quality": "azure/gpt-4-turbo",
-        "fast": "azure/gpt-35-turbo"
-    },
-    LLMProvider.VERTEX: {
-        "default": "vertex_ai/claude-sonnet-4@20250514",
-        "high_quality": "vertex_ai/claude-opus-4@20250514",
-        "fast": "vertex_ai/claude-haiku-4@20250514"
-    }
+    LLMProvider(name): manifest["models"]
+    for name, manifest in _PM.items()
+    if manifest.get("active", False) and name in [p.value for p in LLMProvider]
 }
 
-# OpenRouter free tier fallback chain
-# Strategy: Use most reliable model first, then fallback if rate-limited
-# Configuration: Set OPENROUTER_ACTIVE_MODELS in .env to override (comma-separated)
-#
-# Available free models:
-#   - nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free (most reliable, reasoning capable)
-#   - google/gemma-4-31b-it:free (high quality, but often rate-limited)
-#   - meta-llama/llama-3.3-70b-instruct:free (70B params, often rate-limited)
-#
+# OpenRouter free tier fallback chain (backward compat alias)
 OPENROUTER_FALLBACK_MODELS = [
-    "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  # Primary (most reliable)
-    # Add more models here or configure via .env OPENROUTER_ACTIVE_MODELS
+    _PM["openrouter"]["models"]["default"],
 ]
 
 
@@ -118,75 +84,47 @@ class ProviderConfig:
 
     @classmethod
     def from_env(cls, provider: LLMProvider) -> "ProviderConfig":
-        """Load provider config from environment variables using helper functions."""
+        """Load provider config from the manifest. No elif chains — all providers
+        are configured in agentic/providers.PROVIDER_MANIFEST."""
+        from agentic.providers import get_manifest, resolve_api_key, base_url_for
         load_env()
 
-        if provider == LLMProvider.OPENROUTER:
-            return cls(
-                provider=provider,
-                api_key=get_openrouter_api_key(),
-                extra_headers={
-                    "HTTP-Referer": "http://localhost:8000",
-                    "X-Title": "MITRE-ThreatModeling"
-                }
+        m = get_manifest(provider.value)
+        if not m:
+            raise ValueError(
+                f"Unknown provider '{provider.value}'. "
+                f"Add it to agentic/providers.PROVIDER_MANIFEST first."
             )
 
-        elif provider == LLMProvider.BEDROCK:
-            return cls(
-                provider=provider,
-                api_key=get_aws_bedrock_api_key(),  # Bearer token
-                region=get_aws_region(),
-                cost_per_1k_tokens=0.003  # Claude Sonnet 4 pricing
-            )
+        api_key  = resolve_api_key(provider.value)
+        region   = os.getenv(m["region_env"]) if m.get("region_env") else None
+        endpoint = base_url_for(provider.value) or None
 
-        elif provider == LLMProvider.ANTHROPIC:
-            import os
-            return cls(
-                provider=provider,
-                api_key=os.getenv("ANTHROPIC_API_KEY"),
-                cost_per_1k_tokens=0.003  # Claude Sonnet 4 pricing
-            )
-
-        elif provider == LLMProvider.AZURE:
-            import os
-            return cls(
-                provider=provider,
-                api_key=os.getenv("AZURE_OPENAI_KEY"),
-                endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-            )
-
-        elif provider == LLMProvider.VERTEX:
-            import os
-            return cls(
-                provider=provider,
-                api_key=None,  # Vertex uses GCP credentials
-                region=os.getenv("GCP_REGION", "us-central1")
-            )
-
-        else:
-            raise ValueError(f"Unknown provider: {provider}")
+        return cls(
+            provider          = provider,
+            api_key           = api_key,
+            region            = region,
+            endpoint          = endpoint,
+            extra_headers     = dict(m.get("extra_headers", {})) or None,
+            cost_per_1k_tokens = m.get("cost_per_1k"),
+        )
 
     def validate(self) -> bool:
-        """Validate provider configuration."""
-        if self.provider == LLMProvider.OPENROUTER:
-            return self.api_key is not None
+        """Validate provider configuration against the manifest."""
+        from agentic.providers import get_manifest
+        m = get_manifest(self.provider.value)
+        if not m:
+            return False
 
-        elif self.provider == LLMProvider.BEDROCK:
-            # Bedrock API key is recommended (bearer token)
-            return self.api_key is not None
+        key_env = m.get("api_key_env")
+        if key_env is None:
+            # No key needed (Vertex GCP credentials, local Ollama)
+            # For Vertex: check GOOGLE_APPLICATION_CREDENTIALS separately
+            if self.provider.value == "vertex":
+                return os.getenv("GOOGLE_APPLICATION_CREDENTIALS") is not None
+            return True   # local provider, no key required
 
-        elif self.provider == LLMProvider.ANTHROPIC:
-            return self.api_key is not None
-
-        elif self.provider == LLMProvider.AZURE:
-            return self.api_key is not None and self.endpoint is not None
-
-        elif self.provider == LLMProvider.VERTEX:
-            import os
-            # Check GCP credentials
-            return os.getenv("GOOGLE_APPLICATION_CREDENTIALS") is not None
-
-        return False
+        return self.api_key is not None
 
 
 @dataclass
@@ -544,32 +482,34 @@ Be critical but constructive."""
         config: ProviderConfig,
         **kwargs
     ):
-        """Call LiteLLM with provider-specific configuration."""
-        # Set API key if needed
+        """Call LiteLLM. All provider-specific config read from the manifest —
+        no elif chains. Adding a new provider only requires editing providers.py."""
+        from agentic.providers import get_manifest
+
         if config.api_key:
             litellm.api_key = config.api_key
 
-        # Provider-specific setup
-        extra_kwargs = {}
+        m = get_manifest(config.provider.value) or {}
+        extra_kwargs: dict = {}
 
-        if config.provider == LLMProvider.OPENROUTER:
+        # Headers (e.g. OpenRouter HTTP-Referer)
+        if config.extra_headers:
             extra_kwargs["extra_headers"] = config.extra_headers
-            # Allow base URL override for LiteLLM proxy or custom OpenRouter-compatible endpoint.
-            # OPENROUTER_BASE_URL overrides the default https://openrouter.ai/api/v1
-            import os as _os
-            if _os.getenv("OPENROUTER_BASE_URL"):
-                extra_kwargs["api_base"] = _os.getenv("OPENROUTER_BASE_URL")
 
-        elif config.provider == LLMProvider.BEDROCK:
-            # Use Bedrock API key (bearer token authentication)
-            if config.api_key:
-                extra_kwargs["api_key"] = config.api_key
-            extra_kwargs["aws_region_name"] = config.region
-
-        elif config.provider == LLMProvider.AZURE:
+        # Base URL override — applies when base_url_env is set or provider has a custom base_url
+        if config.endpoint:
             extra_kwargs["api_base"] = config.endpoint
 
-        # Call LiteLLM
+        # Region (AWS Bedrock)
+        if config.region:
+            extra_kwargs["aws_region_name"] = config.region
+            # Bedrock bearer token passed as api_key kwarg (not litellm.api_key global)
+            if config.api_key:
+                extra_kwargs["api_key"] = config.api_key
+
+        # Any extra static litellm kwargs declared in manifest
+        extra_kwargs.update(m.get("litellm_kwargs", {}))
+
         return litellm.completion(
             model=model,
             messages=messages,

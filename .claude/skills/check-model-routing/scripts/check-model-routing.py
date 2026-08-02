@@ -32,17 +32,18 @@ CYAN   = lambda s: f"\033[36m{s}\033[0m"
 def _provider_from_model(model: Optional[str]) -> str:
     if not model:
         return "env_default"
+    # Use manifest for prefix matching — auto-covers new providers
+    try:
+        from agentic.providers import infer_provider_from_model
+        result = infer_provider_from_model(model)
+        if result:
+            return result
+    except Exception:
+        pass
+    # Fallbacks for known patterns not in manifest prefix
     m = model.lower()
-    if m.startswith("bedrock/") or m.startswith("us."):
+    if m.startswith("us.") or m.startswith("bedrock/"):
         return "bedrock"
-    if m.startswith("openrouter/"):
-        return "openrouter"
-    if m.startswith("anthropic/"):
-        return "anthropic"
-    if m.startswith("azure/"):
-        return "azure"
-    if m.startswith("ollama/"):
-        return "ollama"
     return "unknown"
 
 
@@ -61,12 +62,20 @@ def _family_from_model(model: Optional[str]) -> str:
     return "other"
 
 
-_PROVIDER_KEYS = {
-    "bedrock":    "AWS_BEDROCK_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-    "anthropic":  "ANTHROPIC_API_KEY",
-    "azure":      "AZURE_OPENAI_KEY",
-}
+def _build_provider_keys() -> dict:
+    """Build provider → api_key_env_var map from the manifest. Auto-extends when new providers added."""
+    try:
+        from agentic.providers import PROVIDER_MANIFEST
+        return {
+            name: m["api_key_env"]
+            for name, m in PROVIDER_MANIFEST.items()
+            if m.get("api_key_env")
+        }
+    except Exception:
+        return {"bedrock": "AWS_BEDROCK_API_KEY", "openrouter": "OPENROUTER_API_KEY",
+                "anthropic": "ANTHROPIC_API_KEY", "azure": "AZURE_OPENAI_KEY"}
+
+_PROVIDER_KEYS = _build_provider_keys()
 
 def _key_present(provider: str) -> Optional[bool]:
     """True = set, False = missing, None = no key required (ollama, env_default)."""

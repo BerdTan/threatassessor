@@ -548,6 +548,32 @@ class AgentSwarmConfig(BaseModel):
     )
 
 
+def _providers_from_manifest() -> dict:
+    """Build ProviderRegistry.providers dict from agentic/providers.PROVIDER_MANIFEST.
+    Active providers only. base_url resolved via base_url_env override → base_url default.
+    """
+    try:
+        from agentic.providers import PROVIDER_MANIFEST, base_url_for
+        result = {}
+        for name, m in PROVIDER_MANIFEST.items():
+            if not m.get("active", False):
+                continue
+            result[name] = ProviderConfig(
+                base_url    = base_url_for(name) or m.get("base_url", ""),
+                api_key_env = m.get("api_key_env"),
+                auth_type   = "sigv4" if name == "bedrock" else "bearer",
+            )
+        return result
+    except Exception:
+        # Fallback: minimal defaults so settings load never fails
+        return {
+            "openrouter": ProviderConfig(
+                base_url="https://openrouter.ai/api/v1",
+                api_key_env="OPENROUTER_API_KEY",
+            ),
+        }
+
+
 class ProviderConfig(BaseModel):
     """Connection config for one LLM provider (OpenAI-compatible or special-cased)."""
     base_url: str = Field(description="API base URL for this provider.")
@@ -569,36 +595,7 @@ class ProviderRegistry(BaseModel):
     commented out — uncomment and populate the env var to activate.
     """
     providers: Dict[str, ProviderConfig] = Field(
-        default_factory=lambda: {
-            "openrouter": ProviderConfig(
-                base_url="https://openrouter.ai/api/v1",
-                api_key_env="OPENROUTER_API_KEY",
-            ),
-            "bedrock": ProviderConfig(
-                base_url="",            # SigV4 — handled by existing Bedrock client path
-                api_key_env=None,
-                auth_type="sigv4",
-            ),
-            # ── Future providers (uncomment + set env var to activate) ──────────
-            # "doubleword": ProviderConfig(
-            #     base_url="https://api.doubleword.ai/v1",
-            #     api_key_env="DOUBLEWORD_API_KEY",
-            # ),
-            # "sakana": ProviderConfig(
-            #     base_url="https://api.sakana.ai/v1",
-            #     api_key_env="SAKANA_API_KEY",
-            # ),
-            # "ollama": ProviderConfig(
-            #     base_url="http://localhost:11434/v1",
-            #     api_key_env=None,
-            #     auth_type="none",
-            # ),
-            # "vllm_local": ProviderConfig(
-            #     base_url="http://localhost:8000/v1",
-            #     api_key_env=None,
-            #     auth_type="none",
-            # ),
-        }
+        default_factory=lambda: _providers_from_manifest()
     )
 
 
