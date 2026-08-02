@@ -22,7 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 def _embedding_url() -> str:
-    """Derive embeddings endpoint from settings.providers + settings.embedding."""
+    """Derive embeddings endpoint. Priority: OPENROUTER_BASE_URL env var → settings → default."""
+    # Allow base URL override for LiteLLM proxy or custom endpoint
+    base_override = os.getenv("OPENROUTER_BASE_URL")
+    if base_override:
+        return base_override.rstrip("/") + "/embeddings"
     try:
         from chatbot.config.settings import get_settings
         s = get_settings()

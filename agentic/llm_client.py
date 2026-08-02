@@ -554,6 +554,11 @@ Be critical but constructive."""
 
         if config.provider == LLMProvider.OPENROUTER:
             extra_kwargs["extra_headers"] = config.extra_headers
+            # Allow base URL override for LiteLLM proxy or custom OpenRouter-compatible endpoint.
+            # OPENROUTER_BASE_URL overrides the default https://openrouter.ai/api/v1
+            import os as _os
+            if _os.getenv("OPENROUTER_BASE_URL"):
+                extra_kwargs["api_base"] = _os.getenv("OPENROUTER_BASE_URL")
 
         elif config.provider == LLMProvider.BEDROCK:
             # Use Bedrock API key (bearer token authentication)
