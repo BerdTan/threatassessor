@@ -37,6 +37,11 @@ def _embedding_url() -> str:
 
 
 def _default_embedding_model() -> str:
+    # Priority: OPENROUTER_EMBED_MODEL env var → settings.embedding.model → hardcoded default.
+    # The env var gives operators a single line to override without touching settings files.
+    env_model = os.getenv("OPENROUTER_EMBED_MODEL")
+    if env_model:
+        return env_model
     try:
         from chatbot.config.settings import get_settings
         return get_settings().embedding.model
