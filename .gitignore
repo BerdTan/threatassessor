@@ -72,7 +72,6 @@ baseline_refactoring/
 docs/blog/
 .claude/skills/gen-blog/
 
-# Private decision log (personal reference, not for public repo)
-docs/DECISIONS.md
+# user_config.json — personal model overrides, gitignored per-developer
 chatbot/config/user_config.json
 .claude/codemap/
