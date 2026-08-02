@@ -6,6 +6,35 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 36 — 2026-08-01 (continued)
 
+### 10. Provider manifest — single source of truth (commit 4e8e364)
+
+**Problem:** Adding a new LLM provider required editing 7+ locations across 4 files (LLMProvider enum, PROVIDER_MODELS, from_env elif, validate elif, _call_litellm elif, ProviderRegistry, .env.example + config.py). Easy to miss one and produce silent failures.
+
+**Solution:** `agentic/providers.py` — a single `PROVIDER_MANIFEST` dict. One entry per provider declares everything: model prefix, API key env var, base URL, override env var, region env var, extra headers, LiteLLM kwargs, model tiers, cost, active flag, .env.example snippet.
+
+**What changed:**
+- `ProviderConfig.from_env()` reads manifest — all elif chains removed
+- `ProviderConfig.validate()` reads manifest — all elif chains removed
+- `_call_litellm()` reads manifest for headers/base_url/region — all elif chains removed
+- `ProviderRegistry.providers` built from manifest via `_providers_from_manifest()`
+- `check-model-routing._PROVIDER_KEYS` built from manifest (auto-extends)
+- `check-model-routing._provider_from_model()` uses `infer_provider_from_model()` from manifest
+
+**Active providers:** openrouter, bedrock, anthropic, azure, vertex  
+**Inactive stubs (ready to activate):** doubleword, ollama
+
+**Adding a new provider after this change:**
+1. Add one entry to `PROVIDER_MANIFEST` in `agentic/providers.py`
+2. Add one enum line `NEWNAME = "newname"` to `LLMProvider` in `agentic/llm_client.py`
+3. Add API key to `.env`
+4. Run `/add-provider --list` to confirm, `/check-model-routing` to validate
+
+**`/add-provider` skill:** interactive tool that writes the manifest entry, inserts the enum value, updates `.env.example`, and runs validation. Gate before writing.
+
+**Why enum is not auto-generated from manifest:** Python Enum metaclass doesn't support dynamic member addition after class creation without fragile hacks. Static enum + manifest validation is cleaner — the manifest is the authority, the enum is a typed alias.
+
+---
+
 ### 9. OpenRouter standby + embedding env var
 
 **OPENROUTER_EMBED_MODEL** added to `.env` (active). `embeddings.py._default_embedding_model()` now checks env var first, then `settings.embedding.model`, then hardcoded default. Embedding was already on OpenRouter; env var was missing and silently resolved from code default.
