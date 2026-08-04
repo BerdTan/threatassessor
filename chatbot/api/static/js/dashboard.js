@@ -412,6 +412,7 @@ class Dashboard {
         const isWorkspace  = tabName === 'workspace';
         const isTraces     = tabName === 'traces';
         const isSocKg      = tabName === 'soc-kg';
+        const isMcp        = tabName === 'mcp';
         const uploadContainer    = document.getElementById('upload-form-container');
         const tabContent         = document.getElementById('tab-content');
         const configWrapper      = document.getElementById('config-pane-wrapper');
@@ -419,6 +420,7 @@ class Dashboard {
         const workspaceWrapper   = document.getElementById('workspace-pane-wrapper');
         const tracesWrapper      = document.getElementById('traces-pane-wrapper');
         const socKgWrapper       = document.getElementById('soc-kg-pane-wrapper');
+        const mcpWrapper         = document.getElementById('mcp-pane-wrapper');
 
         // Hide all full-pane wrappers first, then show the right one
         if (configWrapper)    configWrapper.style.display    = 'none';
@@ -426,6 +428,7 @@ class Dashboard {
         if (workspaceWrapper) workspaceWrapper.style.display = 'none';
         if (tracesWrapper)    tracesWrapper.style.display    = 'none';
         if (socKgWrapper)     socKgWrapper.style.display     = 'none';
+        if (mcpWrapper)       mcpWrapper.style.display       = 'none';
         // Restore main-pane defaults (may have been modified by SOC KG tab)
         const _mp = document.querySelector('.main-pane');
         if (_mp) { _mp.style.display = ''; _mp.style.flexDirection = '';
@@ -455,6 +458,14 @@ class Dashboard {
             if (mp) { mp.style.display = 'flex'; mp.style.flexDirection = 'column';
                       mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
             if (socKgWrapper)    { socKgWrapper.style.display = 'flex'; socKgWrapper.style.flexDirection = 'column'; }
+        } else if (isMcp) {
+            if (uploadContainer) uploadContainer.style.display = 'none';
+            if (tabContent)      tabContent.style.display      = 'none';
+            const mp = document.querySelector('.main-pane');
+            if (mp) { mp.style.display = 'flex'; mp.style.flexDirection = 'column';
+                      mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
+            if (mcpWrapper) { mcpWrapper.style.display = 'flex'; mcpWrapper.style.flexDirection = 'column'; }
+            this._mcpInit();
         } else {
             if (this.analysisData) {
                 if (uploadContainer) uploadContainer.style.display = 'none';
@@ -1048,6 +1059,9 @@ class Dashboard {
                 break;
             case 'soc-kg':
                 this._renderSocKg();
+                break;
+            case 'mcp':
+                // handled by _mcpInit() called from switchTab
                 break;
         }
     }
@@ -17344,6 +17358,538 @@ class Dashboard {
         };
         return (SO_WHAT[type] || (() => ''))();
     }
+
+    // =========================================================================
+    // MCP TAB
+    // =========================================================================
+
+    _mcpInit() {
+        if (this._mcpInitDone) { this._mcpRefreshSignals(); return; }
+        this._mcpInitDone    = true;
+        this._mcpSubActive   = 'sim';
+        this._mcpSimEs       = null;
+        this._mcpRefreshTimer= null;
+        this._mcpPersonas    = null;
+
+        // Sub-tab switching
+        document.querySelectorAll('.mcp-sub-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const sub = btn.dataset.sub;
+                this._mcpSwitchSub(sub);
+            });
+        });
+
+        this._mcpRefreshSignals();
+        this._mcpLoadPersonas();
+        this._mcpRenderSim();
+
+        // Auto-refresh signals every 15s
+        this._mcpRefreshTimer = setInterval(() => this._mcpRefreshSignals(), 15000);
+    }
+
+    _mcpSwitchSub(sub) {
+        this._mcpSubActive = sub;
+        ['sim','jobs','signals'].forEach(s => {
+            const el = document.getElementById(`mcp-sub-${s}`);
+            if (el) el.style.display = s === sub ? (s === 'sim' ? 'flex' : 'block') : 'none';
+        });
+        document.querySelectorAll('.mcp-sub-tab').forEach(btn => {
+            const active = btn.dataset.sub === sub;
+            btn.style.color       = active ? 'var(--primary-color)' : 'var(--text-secondary)';
+            btn.style.borderBottom= active ? '2px solid var(--primary-color)' : '2px solid transparent';
+        });
+        if (sub === 'jobs')    this._mcpRenderJobs();
+        if (sub === 'signals') this._mcpRenderSignals();
+    }
+
+    async _mcpRefreshSignals() {
+        const label = document.getElementById('mcp-signal-refresh-label');
+        try {
+            const r = await fetch('/api/v1/mcp/access-signals', {
+                cache: 'no-store', headers: this._authHeaders()
+            });
+            if (!r.ok) return;
+            const data = await r.json();
+            this._mcpLastSignals = data.mcp_access || data;
+            this._mcpRenderStatusCards(this._mcpLastSignals);
+            if (label) label.textContent = `updated ${new Date().toLocaleTimeString()}`;
+            if (this._mcpSubActive === 'signals') this._mcpRenderSignals();
+        } catch(e) {}
+    }
+
+    _mcpRenderStatusCards(mac) {
+        const row = document.getElementById('mcp-status-row');
+        if (!row) return;
+        mac = mac || {};
+
+        const cards = [
+            {
+                key:     'recon_sequence',
+                rule:    'DETECT-020',
+                title:   'Recon Sequence',
+                icon:    '🔍',
+                detail:  () => `${mac.recon_list_calls||0} list call${mac.recon_list_calls===1?'':'s'} · ${mac.recon_gov_archs||0} archs queried`,
+                thresh:  `Threshold: ≥3 archs in ${mac.recon_window_seconds||60}s`,
+            },
+            {
+                key:     'job_flood',
+                rule:    'DETECT-021',
+                title:   'Job Flooding',
+                icon:    '⚙',
+                detail:  () => `${mac.job_flood_submissions||0} submit · ${mac.job_flood_polls||0} poll · ratio ${mac.job_flood_ratio!=null?mac.job_flood_ratio.toFixed(2):'—'}`,
+                thresh:  `Threshold: ≥3 submits, ratio <0.5 in ${mac.job_flood_window_seconds||120}s`,
+            },
+            {
+                key:     'auth_failures',
+                rule:    'DETECT-022',
+                title:   'Auth Probing',
+                icon:    '🔑',
+                detail:  () => `${mac.auth_failure_count||0} failure${mac.auth_failure_count===1?'':'s'}`,
+                thresh:  `Threshold: ≥5 failures in ${mac.auth_failure_window_s||300}s`,
+            },
+        ];
+
+        row.innerHTML = cards.map(c => {
+            const fired = !!mac[c.key];
+            const sev   = fired ? (c.key === 'recon_sequence' ? 'MEDIUM' : 'HIGH') : null;
+            const col   = fired ? (sev === 'HIGH' ? '#ef4444' : '#f59e0b') : '#16a34a';
+            const bg    = fired ? `${col}12` : 'var(--card-bg)';
+            const bdr   = fired ? `2px solid ${col}66` : '1px solid var(--border-color)';
+            const pulse = fired ? `animation:mcp-pulse 1.5s ease-in-out 3;` : '';
+            return `
+            <div style="padding:0.75rem 1rem;background:${bg};border:${bdr};border-radius:2px;${pulse}cursor:default;">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+                    <span style="font-size:1rem;">${c.icon}</span>
+                    <span style="font-size:0.8rem;font-weight:700;color:var(--text-primary);">${c.title}</span>
+                    <span style="margin-left:auto;font-size:0.65rem;color:var(--text-tertiary);font-family:var(--font-mono);">${c.rule}</span>
+                </div>
+                <div style="font-size:0.75rem;color:${fired ? col : 'var(--text-secondary)'};font-weight:${fired?'700':'400'};margin-bottom:0.25rem;">
+                    ${fired ? `⚡ FIRED — ${sev}` : '● CLEAR'}
+                </div>
+                <div style="font-size:0.7rem;color:var(--text-tertiary);font-family:var(--font-mono);">${c.detail()}</div>
+                <div style="font-size:0.65rem;color:var(--text-tertiary);margin-top:0.2rem;">${c.thresh}</div>
+            </div>`;
+        }).join('');
+    }
+
+    async _mcpLoadPersonas() {
+        try {
+            const r = await fetch('/api/v1/mcp/personas', {
+                cache: 'no-store', headers: this._authHeaders()
+            });
+            if (r.ok) this._mcpPersonas = (await r.json()).personas || [];
+        } catch(e) {}
+        this._mcpRenderSim();
+    }
+
+    _mcpRenderSim() {
+        const pane = document.getElementById('mcp-sub-sim');
+        if (!pane) return;
+
+        const archName = this.analysisData
+            ? (this.analysisData.architecture_name || this.analysisData.architecture || 'web_app')
+            : 'web_app';
+
+        const personas = this._mcpPersonas || [];
+        const benign   = personas.filter(p => !p.adversarial);
+        const adversarial = personas.filter(p => p.adversarial);
+
+        const _pill = (p) => {
+            const adv = p.adversarial;
+            const bc  = adv ? '#ef444422' : 'var(--card-bg)';
+            const tc  = adv ? '#ef4444'   : 'var(--text-secondary)';
+            const bdr = adv ? '1px solid #ef444466' : '1px solid var(--border-color)';
+            return `<button onclick="window.dashboard._mcpRunSim('${p.id}','${archName}')"
+                style="padding:0.35rem 0.8rem;background:${bc};border:${bdr};border-radius:2px;
+                       color:${tc};font-size:0.75rem;font-weight:600;cursor:pointer;text-align:left;white-space:nowrap;"
+                title="${p.description}">
+                ${adv ? '⚠ ' : ''}${p.id} <span style="font-size:0.65rem;opacity:0.7;">${p.steps}steps</span>
+            </button>`;
+        };
+
+        pane.innerHTML = `
+        <div style="flex-shrink:0;padding:0.75rem 1.25rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
+            <div style="font-size:0.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.5rem;">BENIGN PERSONAS</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.75rem;">
+                ${benign.map(_pill).join('')}
+            </div>
+            <div style="font-size:0.78rem;font-weight:600;color:#ef4444;margin-bottom:0.5rem;">ADVERSARIAL — triggers DETECT rules live</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
+                ${adversarial.map(_pill).join('')}
+            </div>
+            <div style="margin-top:0.5rem;font-size:0.7rem;color:var(--text-tertiary);">
+                Using arch: <strong style="color:var(--text-primary);">${archName}</strong>
+                · Status cards above update after each tool call
+                · Adversarial personas intentionally trigger DETECT-020/021/022
+            </div>
+        </div>
+        <div id="mcp-sim-body" style="flex:1;display:flex;overflow:hidden;min-height:0;">
+            <div id="mcp-sim-timeline" style="flex:1;overflow-y:auto;padding:1rem 1.25rem;font-size:0.78rem;border-right:1px solid var(--border-color);">
+                <p style="color:var(--text-tertiary);font-size:0.82rem;">Pick a persona above to start the live simulation.</p>
+            </div>
+            <div id="mcp-sim-right" style="width:300px;flex-shrink:0;overflow-y:auto;padding:1rem;background:var(--card-bg);">
+                <div style="font-size:0.72rem;font-weight:600;color:var(--text-tertiary);margin-bottom:0.5rem;">TOOL HEATMAP</div>
+                <div id="mcp-tool-heatmap" style="display:grid;grid-template-columns:1fr 1fr;gap:0.35rem;margin-bottom:1rem;"></div>
+                <div style="font-size:0.72rem;font-weight:600;color:var(--text-tertiary);margin-bottom:0.5rem;">DETECT ALERTS</div>
+                <div id="mcp-sim-alerts" style="font-size:0.75rem;color:var(--text-tertiary);">None fired yet.</div>
+            </div>
+        </div>`;
+
+        this._mcpRenderHeatmap({});
+    }
+
+    _mcpRenderHeatmap(counts) {
+        const el = document.getElementById('mcp-tool-heatmap');
+        if (!el) return;
+        const tools = [
+            'analyze_architecture','run_expert_review','get_job_status',
+            'get_threat_briefing','get_ciso_brief','get_governance_signals',
+            'get_detect_trends','get_tatb_scores','list_architectures',
+            'lookup_mitre_technique','get_mcp_access_signals',
+        ];
+        const max = Math.max(1, ...Object.values(counts));
+        el.innerHTML = tools.map(t => {
+            const n   = counts[t] || 0;
+            const pct = n / max;
+            const bg  = n === 0 ? 'var(--main-bg)' :
+                        `rgba(77,166,255,${0.15 + pct * 0.75})`;
+            const short = t.replace(/get_|_architecture|_signals|_review|_technique|_briefing|_trends|_scores/g,'').slice(0,14);
+            return `<div title="${t}: ${n} call${n===1?'':'s'}"
+                style="padding:0.25rem 0.4rem;background:${bg};border:1px solid var(--border-color);
+                       border-radius:2px;font-size:0.65rem;font-family:var(--font-mono);
+                       color:var(--text-secondary);text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">
+                ${short} ${n > 0 ? `<strong style="color:var(--primary-color);">${n}</strong>` : ''}
+            </div>`;
+        }).join('');
+    }
+
+    _mcpRunSim(persona, arch) {
+        // Stop any running sim
+        if (this._mcpSimEs) { this._mcpSimEs.close(); this._mcpSimEs = null; }
+
+        const timeline = document.getElementById('mcp-sim-timeline');
+        const alerts   = document.getElementById('mcp-sim-alerts');
+        if (!timeline) return;
+
+        const url = `/api/v1/mcp/simulate/${encodeURIComponent(persona)}?arch=${encodeURIComponent(arch)}`;
+
+        // Build EventSource with auth header via fetch-based fallback
+        // SSE with custom headers requires a workaround — use fetch+ReadableStream
+        this._mcpSimFetch(url, persona, arch, timeline, alerts);
+    }
+
+    async _mcpSimFetch(url, persona, arch, timeline, alerts) {
+        timeline.innerHTML = `<p style="color:var(--text-tertiary);font-size:0.75rem;">Connecting to sim stream…</p>`;
+        if (alerts) alerts.innerHTML = 'None fired yet.';
+
+        const toolCounts = {};
+        const firedRules = [];
+        let stepCount = 0;
+        let totalSteps = 0;
+
+        const _sev = (s) => {
+            const c = s==='CRITICAL'?'#dc2626':s==='HIGH'?'#ef4444':s==='MEDIUM'?'#f59e0b':'#16a34a';
+            return `<span style="padding:1px 5px;background:${c}18;color:${c};border:1px solid ${c}44;border-radius:2px;font-size:0.65rem;font-weight:700;">${s}</span>`;
+        };
+        const _status = (ok, code) => {
+            const c = ok ? '#16a34a' : '#ef4444';
+            return `<span style="color:${c};font-weight:700;">${code||( ok?'OK':'ERR')}</span>`;
+        };
+
+        try {
+            const headers = {'TM-API-KEY': this._lastApiKey || ''};
+            const resp = await fetch(url, {headers});
+            if (!resp.ok) {
+                timeline.innerHTML = `<p style="color:#ef4444;">Sim failed: ${resp.status} ${resp.statusText}</p>`;
+                return;
+            }
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+
+            timeline.innerHTML = '';
+
+            while (true) {
+                const {done, value} = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, {stream: true});
+
+                const parts = buf.split('\n\n');
+                buf = parts.pop();
+
+                for (const block of parts) {
+                    const eLine = block.split('\n').find(l => l.startsWith('event:'));
+                    const dLine = block.split('\n').find(l => l.startsWith('data:'));
+                    if (!eLine || !dLine) continue;
+
+                    const event = eLine.replace('event:','').trim();
+                    let data;
+                    try { data = JSON.parse(dLine.replace('data:','').trim()); }
+                    catch(e) { continue; }
+
+                    if (event === 'persona_start') {
+                        totalSteps = data.steps?.length || 0;
+                        const advBadge = data.adversarial
+                            ? `<span style="color:#ef4444;font-weight:700;margin-left:0.5rem;">⚠ ADVERSARIAL</span>`:'';
+                        timeline.innerHTML = `
+                        <div style="margin-bottom:0.75rem;padding-bottom:0.6rem;border-bottom:1px solid var(--border-color);">
+                            <span style="font-weight:700;color:var(--primary-color);">${data.persona}</span>${advBadge}
+                            <span style="font-size:0.7rem;color:var(--text-tertiary);margin-left:0.5rem;">${data.description}</span><br>
+                            <span style="font-size:0.68rem;color:var(--text-tertiary);">arch: ${data.arch} · ${totalSteps} steps</span>
+                        </div>`;
+                    }
+
+                    if (event === 'tool_start') {
+                        stepCount = data.step + 1;
+                        const pct = totalSteps ? Math.round((data.step / totalSteps) * 100) : 0;
+                        const div = document.createElement('div');
+                        div.id = `mcp-step-${data.step}`;
+                        div.style.cssText = 'margin-bottom:0.4rem;padding:0.35rem 0.6rem;background:var(--main-bg);border:1px solid var(--border-color);border-radius:2px;border-left:3px solid var(--primary-color);opacity:0.6;';
+                        div.innerHTML = `
+                            <div style="display:flex;align-items:center;gap:0.5rem;">
+                                <span style="font-size:0.65rem;color:var(--text-tertiary);font-family:var(--font-mono);">[${data.step+1}/${totalSteps}]</span>
+                                <span style="font-weight:600;color:var(--text-primary);font-size:0.75rem;">${data.label}</span>
+                                <span style="margin-left:auto;font-size:0.65rem;color:var(--text-tertiary);font-family:var(--font-mono);">${data.tool}</span>
+                            </div>
+                            <div style="font-size:0.65rem;color:var(--text-tertiary);margin-top:0.15rem;">calling…</div>`;
+                        timeline.appendChild(div);
+                        timeline.scrollTop = timeline.scrollHeight;
+                    }
+
+                    if (event === 'tool_result') {
+                        const div = document.getElementById(`mcp-step-${data.step}`);
+                        toolCounts[data.tool] = (toolCounts[data.tool] || 0) + 1;
+                        this._mcpRenderHeatmap(toolCounts);
+                        if (div) {
+                            div.style.opacity = '1';
+                            div.style.borderLeftColor = data.ok ? '#16a34a' : (data.auth_failed ? '#ef4444' : '#f59e0b');
+                            const detail = div.querySelector('div:last-child');
+                            if (detail) detail.innerHTML =
+                                `${_status(data.ok, data.status_code)} · ${data.summary} · <span style="color:var(--text-tertiary);">${data.duration_ms}ms</span>`;
+                        }
+                    }
+
+                    if (event === 'signal_update') {
+                        this._mcpLastSignals = data.mcp_access;
+                        this._mcpRenderStatusCards(data.mcp_access);
+                    }
+
+                    if (event === 'detect_fired') {
+                        firedRules.push(data);
+                        const sev = data.severity || 'HIGH';
+                        const col = sev === 'HIGH' ? '#ef4444' : '#f59e0b';
+                        // Flash status card
+                        const cards = document.querySelectorAll('#mcp-status-row > div');
+                        const trigIdx = ['recon_sequence','job_flood','auth_failures'].indexOf(data.trigger);
+                        if (cards[trigIdx]) {
+                            cards[trigIdx].style.boxShadow = `0 0 0 3px ${col}99`;
+                            setTimeout(() => { if(cards[trigIdx]) cards[trigIdx].style.boxShadow=''; }, 2000);
+                        }
+                        // Add alert to alerts panel
+                        if (alerts) {
+                            if (alerts.textContent.trim() === 'None fired yet.') alerts.innerHTML = '';
+                            alerts.innerHTML += `<div style="margin-bottom:0.5rem;padding:0.4rem 0.6rem;background:${col}18;border:1px solid ${col}44;border-radius:2px;">
+                                <div style="font-weight:700;color:${col};font-size:0.75rem;">⚡ ${data.rule_id} — ${data.name}</div>
+                                <div style="font-size:0.65rem;color:var(--text-tertiary);">${_sev(sev)} fired at step ${stepCount}/${totalSteps}</div>
+                            </div>`;
+                        }
+                        // Add flash row to timeline
+                        const flash = document.createElement('div');
+                        flash.style.cssText = `margin-bottom:0.4rem;padding:0.35rem 0.6rem;background:${col}18;border:2px solid ${col}66;border-radius:2px;`;
+                        flash.innerHTML = `<span style="font-weight:700;color:${col};font-size:0.75rem;">⚡ ${data.rule_id} FIRED</span>
+                            <span style="font-size:0.68rem;color:var(--text-tertiary);margin-left:0.5rem;">${data.name} · ${sev}</span>`;
+                        timeline.appendChild(flash);
+                        timeline.scrollTop = timeline.scrollHeight;
+                    }
+
+                    if (event === 'sim_done') {
+                        const fired = data.detect_rules_fired || [];
+                        const doneRow = document.createElement('div');
+                        doneRow.style.cssText = 'margin-top:0.75rem;padding:0.5rem 0.75rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:2px;font-size:0.75rem;color:var(--text-secondary);';
+                        doneRow.innerHTML = `✓ Sim complete · ${data.total_steps} steps · ${data.total_ms}ms`
+                            + (fired.length ? ` · <span style="color:#ef4444;font-weight:700;">${fired.length} DETECT rule${fired.length>1?'s':''} fired: ${fired.join(', ')}</span>` : ' · no DETECT rules fired');
+                        timeline.appendChild(doneRow);
+                        timeline.scrollTop = timeline.scrollHeight;
+                        this._mcpRefreshSignals();
+                    }
+
+                    if (event === 'sim_error') {
+                        timeline.innerHTML += `<p style="color:#ef4444;font-size:0.75rem;">Error: ${data.message}</p>`;
+                    }
+                }
+            }
+        } catch(err) {
+            timeline.innerHTML += `<p style="color:#ef4444;font-size:0.75rem;">Stream error: ${err.message}</p>`;
+        }
+    }
+
+    async _mcpRenderJobs() {
+        const pane = document.getElementById('mcp-sub-jobs');
+        if (!pane) return;
+        pane.innerHTML = '<p style="color:var(--text-tertiary);font-size:0.8rem;">Loading jobs…</p>';
+
+        try {
+            const r = await fetch('/api/v1/mcp/jobs', {
+                cache: 'no-store', headers: this._authHeaders()
+            });
+            if (!r.ok) { pane.innerHTML = `<p style="color:#ef4444;">Error ${r.status}</p>`; return; }
+            const data = await r.json();
+            const jobs = data.jobs || [];
+
+            if (!jobs.length) {
+                pane.innerHTML = '<p style="color:var(--text-tertiary);font-size:0.82rem;">No expert review jobs in this session.</p>';
+                return;
+            }
+
+            const _badge = (status) => {
+                const c = status==='completed'?'#16a34a':status==='running'?'#4da6ff':status==='failed'||status==='blocked'?'#ef4444':'#f59e0b';
+                return `<span style="padding:1px 6px;background:${c}18;color:${c};border:1px solid ${c}44;border-radius:2px;font-size:0.65rem;font-weight:700;">${status.toUpperCase()}</span>`;
+            };
+
+            pane.innerHTML = `
+            <div style="font-size:0.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.75rem;">${jobs.length} job${jobs.length===1?'':'s'} in session</div>
+            <table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
+                <thead>
+                    <tr style="color:var(--text-tertiary);border-bottom:1px solid var(--border-color);">
+                        <th style="text-align:left;padding:0.3rem 0.5rem;font-weight:600;">Architecture</th>
+                        <th style="text-align:left;padding:0.3rem 0.5rem;font-weight:600;">Status</th>
+                        <th style="text-align:left;padding:0.3rem 0.5rem;font-weight:600;">Progress</th>
+                        <th style="text-align:left;padding:0.3rem 0.5rem;font-weight:600;">Elapsed</th>
+                        <th style="text-align:left;padding:0.3rem 0.5rem;font-weight:600;">Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                ${jobs.map(j => `
+                    <tr style="border-bottom:1px solid var(--border-color)20;">
+                        <td style="padding:0.35rem 0.5rem;font-family:var(--font-mono);color:var(--text-primary);">${j.arch_name||'—'}</td>
+                        <td style="padding:0.35rem 0.5rem;">${_badge(j.status)}</td>
+                        <td style="padding:0.35rem 0.5rem;">
+                            <div style="width:80px;height:6px;background:var(--border-color);border-radius:1px;overflow:hidden;display:inline-block;vertical-align:middle;">
+                                <div style="height:100%;width:${j.progress}%;background:var(--primary-color);transition:width 0.3s;"></div>
+                            </div>
+                            <span style="margin-left:0.4rem;color:var(--text-tertiary);">${j.progress}%</span>
+                        </td>
+                        <td style="padding:0.35rem 0.5rem;color:var(--text-tertiary);font-family:var(--font-mono);">${j.elapsed_s}s</td>
+                        <td style="padding:0.35rem 0.5rem;color:var(--text-tertiary);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${j.message||''}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+            <button onclick="window.dashboard._mcpRenderJobs()" style="margin-top:1rem;font-size:0.72rem;padding:0.25rem 0.7rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-secondary);cursor:pointer;">↺ Refresh</button>`;
+        } catch(err) {
+            pane.innerHTML = `<p style="color:#ef4444;font-size:0.78rem;">Error: ${err.message}</p>`;
+        }
+    }
+
+    async _mcpRenderSignals() {
+        const pane = document.getElementById('mcp-sub-signals');
+        if (!pane) return;
+        pane.innerHTML = '<p style="color:var(--text-tertiary);font-size:0.8rem;">Loading…</p>';
+
+        // Fetch fresh signals + OCSF findings filtered to DETECT-020/021/022
+        const _nc = {cache:'no-store', headers: this._authHeaders()};
+        let mac = this._mcpLastSignals || {};
+        let findings = [];
+
+        await Promise.all([
+            fetch('/api/v1/mcp/access-signals', _nc).then(r => r.ok ? r.json() : null)
+                .then(d => { if(d) mac = d.mcp_access || d; }).catch(()=>{}),
+        ]);
+
+        // Try to get ocsf_findings for current arch
+        const arch = this.analysisData?.architecture_name || this.analysisData?.architecture;
+        if (arch) {
+            await fetch(`/api/v1/reports/${encodeURIComponent(arch)}/files/ocsf_findings.json`, _nc)
+                .then(r => r.ok ? r.json() : [])
+                .then(d => {
+                    findings = (d || []).filter(f =>
+                        ['DETECT-020','DETECT-021','DETECT-022'].includes(f?.unmapped?.rule_id)
+                    );
+                }).catch(()=>{});
+        }
+
+        const _field = (label, val, mono=false) =>
+            `<div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color)20;font-size:0.75rem;">
+                <span style="color:var(--text-tertiary);">${label}</span>
+                <span style="${mono?'font-family:var(--font-mono);':''}color:var(--text-primary);">${val??'—'}</span>
+            </div>`;
+
+        const _sev = (s) => {
+            const c = s==='CRITICAL'?'#dc2626':s==='HIGH'?'#ef4444':s==='MEDIUM'?'#f59e0b':'#16a34a';
+            return `<span style="padding:1px 5px;background:${c}18;color:${c};border:1px solid ${c}44;border-radius:2px;font-size:0.65rem;font-weight:700;">${s}</span>`;
+        };
+
+        pane.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;">
+            <!-- Recon signals -->
+            <div style="padding:0.75rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:2px;">
+                <div style="font-size:0.78rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">DETECT-020 · Recon Sequence</div>
+                ${_field('recon_sequence',    mac.recon_sequence ? '⚡ FIRED' : '● clear')}
+                ${_field('list_calls',        mac.recon_list_calls, true)}
+                ${_field('gov_archs_queried', mac.recon_gov_archs,  true)}
+                ${_field('window',            `${mac.recon_window_seconds||60}s`, true)}
+            </div>
+            <!-- Flood signals -->
+            <div style="padding:0.75rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:2px;">
+                <div style="font-size:0.78rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">DETECT-021 · Job Flooding</div>
+                ${_field('job_flood',         mac.job_flood ? '⚡ FIRED' : '● clear')}
+                ${_field('submissions',       mac.job_flood_submissions, true)}
+                ${_field('polls',             mac.job_flood_polls,       true)}
+                ${_field('poll_ratio',        mac.job_flood_ratio?.toFixed(3), true)}
+                ${_field('window',            `${mac.job_flood_window_seconds||120}s`, true)}
+            </div>
+            <!-- Auth signals -->
+            <div style="padding:0.75rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:2px;">
+                <div style="font-size:0.78rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">DETECT-022 · Auth Probing</div>
+                ${_field('auth_failures',     mac.auth_failures ? '⚡ FIRED' : '● clear')}
+                ${_field('failure_count',     mac.auth_failure_count, true)}
+                ${_field('window',            `${mac.auth_failure_window_s||300}s`, true)}
+            </div>
+            <!-- Session meta -->
+            <div style="padding:0.75rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:2px;">
+                <div style="font-size:0.78rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">Session Meta</div>
+                ${_field('total_tool_calls',     mac.total_tool_calls,    true)}
+                ${_field('unique_tools_called',  mac.unique_tools_called, true)}
+                ${_field('session_duration_s',   mac.session_duration_s?.toFixed(1), true)}
+                ${_field('severity',             mac.severity || 'LOW')}
+                ${_field('flagged',              mac.flagged ? '⚡ YES' : 'no')}
+            </div>
+        </div>
+
+        <div style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:0.6rem;">
+            MCP DETECT Findings ${arch ? `— ${arch}` : '(load an arch for OCSF findings)'}
+        </div>
+        ${findings.length === 0
+            ? `<p style="color:var(--text-tertiary);font-size:0.78rem;">No DETECT-020/021/022 findings in ocsf_findings.json yet.${!arch?' Load an architecture first.':''}</p>`
+            : findings.map(f => {
+                const rid = f.unmapped?.rule_id || '?';
+                const sev = (f.severity||'').toUpperCase();
+                const col = sev==='CRITICAL'?'#dc2626':sev==='HIGH'?'#ef4444':sev==='MEDIUM'?'#f59e0b':'#16a34a';
+                const steps = (f.unmapped?.playbook?.analyst_steps || []).slice(0,2);
+                return `<div style="margin-bottom:0.75rem;padding:0.6rem 0.875rem;background:${col}0d;border:1px solid ${col}44;border-radius:2px;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
+                        <span style="font-weight:700;color:${col};font-size:0.78rem;">${rid}</span>
+                        ${_sev(sev)}
+                        <span style="font-size:0.7rem;color:var(--text-tertiary);margin-left:auto;">${f.unmapped?.kill_chain_stage||''}</span>
+                    </div>
+                    <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:0.35rem;">${f.message||f.unmapped?.description||''}</div>
+                    ${steps.length ? `<div style="font-size:0.68rem;color:var(--text-tertiary);">
+                        <strong style="color:var(--text-secondary);">Analyst steps:</strong><br>
+                        ${steps.map(s => `· ${s}`).join('<br>')}
+                    </div>` : ''}
+                </div>`;
+            }).join('')}
+        <button onclick="window.dashboard._mcpRenderSignals()" style="margin-top:0.75rem;font-size:0.72rem;padding:0.25rem 0.7rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-secondary);cursor:pointer;">↺ Refresh</button>`;
+    }
+
+    _authHeaders() {
+        const key = localStorage.getItem('tm_api_key') || '';
+        return key ? {'TM-API-KEY': key} : {};
+    }
+
+    // =========================================================================
+    // END MCP TAB
+    // =========================================================================
 
     async _renderSocKg() {
         const emptyEl  = document.getElementById('soc-kg-empty');

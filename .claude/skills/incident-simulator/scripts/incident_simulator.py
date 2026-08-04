@@ -583,6 +583,119 @@ def scenario_high_category_injection() -> Dict[str, Any]:
     return sig
 
 
+def scenario_mcp_recon_sequence() -> Dict[str, Any]:
+    """
+    DETECT-020 (Medium)
+
+    Based on: OWASP Agentic Top 10 A09 — Excessive Agency / Discovery abuse.
+
+    An automated agent calls list_architectures() to enumerate all 26 corpus
+    architectures, then systematically pulls get_governance_signals() for 5 unique
+    architectures within 45 seconds. The rolling window catches this as a recon
+    sequence — one list call followed by bulk governance pulls is the MCP equivalent
+    of a network port scan before a targeted attack.
+    Realistic context: malicious CI/CD plugin with a stolen API key.
+    """
+    sig = _base()
+    sig["mcp_access"] = {
+        "recon_sequence":         True,
+        "recon_list_calls":       1,
+        "recon_gov_archs":        5,
+        "recon_window_seconds":   60,
+        "job_flood":              False,
+        "job_flood_submissions":  0,
+        "job_flood_polls":        0,
+        "job_flood_ratio":        1.0,
+        "job_flood_window_seconds": 120,
+        "auth_failures":          False,
+        "auth_failure_count":     0,
+        "auth_failure_window_s":  300,
+        "total_tool_calls":       6,
+        "unique_tools_called":    2,
+        "session_duration_s":     45.0,
+        "first_call_ts":          0.0,
+        "last_call_ts":           45.0,
+        "severity":               "Medium",
+        "flagged":                True,
+    }
+    return sig
+
+
+def scenario_mcp_job_flooding() -> Dict[str, Any]:
+    """
+    DETECT-021 (High)
+
+    Based on: OWASP Agentic Top 10 A10 — Model DoS / resource exhaustion.
+
+    An agent submits 4 run_expert_review() jobs in 90 seconds — targeting 4
+    different architectures — and never calls get_job_status() to retrieve results.
+    Poll/submit ratio is 0.0 (zero polls). Each FULL_MOE run consumes ~2 minutes
+    of LLM compute. Four simultaneous jobs saturate the pipeline and block
+    legitimate users. The agent is operating in fire-and-forget mode, treating
+    the expert review queue as a denial-of-service vector.
+    """
+    sig = _base()
+    sig["mcp_access"] = {
+        "recon_sequence":         False,
+        "recon_list_calls":       0,
+        "recon_gov_archs":        0,
+        "recon_window_seconds":   60,
+        "job_flood":              True,
+        "job_flood_submissions":  4,
+        "job_flood_polls":        0,
+        "job_flood_ratio":        0.0,
+        "job_flood_window_seconds": 120,
+        "auth_failures":          False,
+        "auth_failure_count":     0,
+        "auth_failure_window_s":  300,
+        "total_tool_calls":       4,
+        "unique_tools_called":    1,
+        "session_duration_s":     90.0,
+        "first_call_ts":          0.0,
+        "last_call_ts":           90.0,
+        "severity":               "High",
+        "flagged":                True,
+    }
+    return sig
+
+
+def scenario_mcp_auth_probing() -> Dict[str, Any]:
+    """
+    DETECT-022 (High)
+
+    Based on: OWASP Agentic Top 10 A02 — Broken Authentication.
+
+    An external agent cycles through 7 API keys in 120 seconds, each producing
+    a 401 Unauthorized response. The probing pattern is consistent with an
+    automated credential-stuffing attack: known API keys from a leak database
+    are tested in rapid succession. auth_failure_count exceeds the 5-failure
+    threshold within the 300-second window, triggering forensic capture and SOC page.
+    """
+    sig = _base()
+    sig["mcp_access"] = {
+        "recon_sequence":         False,
+        "recon_list_calls":       0,
+        "recon_gov_archs":        0,
+        "recon_window_seconds":   60,
+        "job_flood":              False,
+        "job_flood_submissions":  0,
+        "job_flood_polls":        0,
+        "job_flood_ratio":        1.0,
+        "job_flood_window_seconds": 120,
+        "auth_failures":          True,
+        "auth_failure_count":     7,
+        "auth_failure_window_s":  300,
+        "total_tool_calls":       7,
+        "unique_tools_called":    3,
+        "session_duration_s":     120.0,
+        "first_call_ts":          0.0,
+        "last_call_ts":           120.0,
+        "severity":               "High",
+        "flagged":                True,
+    }
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-005 (Critical) + DETECT-002 (Critical) — adversarial input + divergence suppression"),
@@ -624,6 +737,12 @@ SCENARIOS = {
         "DETECT-016 + DETECT-017 + DETECT-018 — full AST02/05/08 attack chain"),
     "high_category_injection":       (scenario_high_category_injection,
         "DETECT-019 (High) — HIGH-severity injection category, below CRITICAL threshold"),
+    "mcp_recon_sequence":            (scenario_mcp_recon_sequence,
+        "DETECT-020 (Medium) — list_architectures + bulk governance pulls = discovery recon"),
+    "mcp_job_flooding":              (scenario_mcp_job_flooding,
+        "DETECT-021 (High) — 4 expert review submissions, 0 polls, poll_ratio=0.0 = resource DoS"),
+    "mcp_auth_probing":              (scenario_mcp_auth_probing,
+        "DETECT-022 (High) — 7 auth failures in 120s = credential stuffing attack"),
 }
 
 EXPECTED_RULES = {
@@ -648,6 +767,9 @@ EXPECTED_RULES = {
     "homoglyph_evasion_attempt":     {"DETECT-018"},
     "ast_composite":                 {"DETECT-016", "DETECT-017", "DETECT-018"},
     "high_category_injection":       {"DETECT-019"},
+    "mcp_recon_sequence":            {"DETECT-020"},
+    "mcp_job_flooding":              {"DETECT-021"},
+    "mcp_auth_probing":              {"DETECT-022"},
 }
 
 

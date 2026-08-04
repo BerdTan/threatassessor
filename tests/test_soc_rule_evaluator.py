@@ -109,9 +109,9 @@ class TestYAMLLoading:
     def test_rules_file_exists(self):
         assert RULES_PATH.exists(), f"Missing: {RULES_PATH}"
 
-    def test_loads_nineteen_rules(self):
+    def test_loads_twentytwo_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 19
+        assert len(ev) == 22
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -120,7 +120,8 @@ class TestYAMLLoading:
                          "DETECT-004", "DETECT-005", "DETECT-006", "DETECT-007",
                          "DETECT-008", "DETECT-009", "DETECT-010", "DETECT-011",
                          "DETECT-012", "DETECT-013", "DETECT-014", "DETECT-015",
-                         "DETECT-016", "DETECT-017", "DETECT-018", "DETECT-019"]:
+                         "DETECT-016", "DETECT-017", "DETECT-018", "DETECT-019",
+                         "DETECT-020", "DETECT-021", "DETECT-022"]:
             assert expected in ids
 
     def test_evaluate_returns_list(self):
@@ -1319,3 +1320,161 @@ class TestDetect019:
         ids = [f["unmapped"]["rule_id"] for f in
                evaluator.evaluate(r, arch_name="a", run_id="r")]
         assert "DETECT-019" in ids
+
+
+# ── DETECT-020: mcp_recon_sequence ────────────────────────────────────────────
+
+class TestDetect020ReconSequence:
+    def _trigger(self):
+        s = _clean()
+        s["mcp_access"] = {
+            "recon_sequence": True,
+            "recon_gov_archs": 5,
+            "recon_list_calls": 1,
+            "job_flood": False,
+            "job_flood_submissions": 0,
+            "auth_failures": False,
+            "auth_failure_count": 0,
+            "flagged": True,
+            "severity": "Medium",
+        }
+        return s
+
+    def test_fires_on_recon_sequence(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in self._trigger() and
+               ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-020" in ids
+
+    def test_does_not_fire_when_no_recon(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-020" not in ids
+
+    def test_does_not_fire_below_arch_threshold(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["mcp_access"]["recon_gov_archs"] = 2  # below threshold of 3
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-020" not in ids
+
+    def test_severity_is_medium(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-020")
+        assert f["severity"].upper() == "MEDIUM"
+
+    def test_kill_chain_is_discovery(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-020")
+        assert f["finding"]["kill_chain_stage"] == "discovery"
+
+
+# ── DETECT-021: mcp_job_flooding ─────────────────────────────────────────────
+
+class TestDetect021JobFlooding:
+    def _trigger(self):
+        s = _clean()
+        s["mcp_access"] = {
+            "recon_sequence": False,
+            "recon_gov_archs": 0,
+            "recon_list_calls": 0,
+            "job_flood": True,
+            "job_flood_submissions": 4,
+            "job_flood_polls": 0,
+            "job_flood_ratio": 0.0,
+            "auth_failures": False,
+            "auth_failure_count": 0,
+            "flagged": True,
+            "severity": "High",
+        }
+        return s
+
+    def test_fires_on_job_flood(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-021" in ids
+
+    def test_does_not_fire_when_no_flood(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-021" not in ids
+
+    def test_does_not_fire_below_submission_threshold(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["mcp_access"]["job_flood_submissions"] = 2  # below threshold of 3
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-021" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-021")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_impact(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-021")
+        assert f["finding"]["kill_chain_stage"] == "impact"
+
+    def test_actions_include_block_run(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-021")
+        assert "block_run" in f["unmapped"]["actions"]
+
+
+# ── DETECT-022: mcp_auth_probing ─────────────────────────────────────────────
+
+class TestDetect022AuthProbing:
+    def _trigger(self):
+        s = _clean()
+        s["mcp_access"] = {
+            "recon_sequence": False,
+            "recon_gov_archs": 0,
+            "recon_list_calls": 0,
+            "job_flood": False,
+            "job_flood_submissions": 0,
+            "auth_failures": True,
+            "auth_failure_count": 7,
+            "flagged": True,
+            "severity": "High",
+        }
+        return s
+
+    def test_fires_on_auth_failures(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-022" in ids
+
+    def test_does_not_fire_when_no_auth_failures(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-022" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-022")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_credential_access(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-022")
+        assert f["finding"]["kill_chain_stage"] == "credential_access"
+
+    def test_actions_include_page_soc(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-022")
+        assert "page_soc" in f["unmapped"]["actions"]
+
+    def test_actions_include_forensic_capture(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-022")
+        assert "forensic_capture" in f["unmapped"]["actions"]

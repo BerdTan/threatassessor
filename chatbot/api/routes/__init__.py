@@ -10,5 +10,7 @@ from chatbot.api.routes.config import router as config_router
 from chatbot.api.routes.workspaces import router as workspaces_router
 from chatbot.api.routes.ta_wiz import router as ta_wiz_router
 from chatbot.api.routes.graph_search import router as graph_search_router
+from chatbot.api.routes.jobs import router as jobs_router
+from chatbot.api.routes.mcp_sim import router as mcp_sim_router
 
-__all__ = ["streaming_router", "reports_router", "config_router", "workspaces_router", "ta_wiz_router", "graph_search_router"]
+__all__ = ["streaming_router", "reports_router", "config_router", "workspaces_router", "ta_wiz_router", "graph_search_router", "jobs_router", "mcp_sim_router"]

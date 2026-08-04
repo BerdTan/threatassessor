@@ -99,6 +99,7 @@
                         <button class="nav-tab disabled" data-tab="insights" id="insights-nav-tab">Insights</button>
                         <button class="nav-tab disabled" data-tab="benchmark" id="benchmark-nav-tab" title="TA Test Benchmark — Threat-Model Quality Scorecard">TATB</button>
                         <button class="nav-tab" data-tab="soc-kg" id="soc-kg-nav-tab" title="SOC Detection Knowledge Graph — signal provenance chain">SOC</button>
+                        <button class="nav-tab" data-tab="mcp" id="mcp-nav-tab" title="MCP Server — external access monitor, live simulation, job queue">MCP</button>
                     </div>
                 </div>
                 <!-- Group: Reporting -->
@@ -520,6 +521,33 @@
             </div>
 
             <!-- Configuration Tab — full main-pane takeover, own scroll -->
+            <!-- MCP Tab — full main-pane takeover, always accessible -->
+            <div id="mcp-pane-wrapper" style="display:none;flex-direction:column;flex:1;overflow:hidden;background:var(--main-bg);">
+                <!-- Header bar -->
+                <div id="mcp-header" style="flex-shrink:0;display:flex;align-items:center;gap:1rem;padding:0.6rem 1.25rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
+                    <div>
+                        <span style="font-size:0.92rem;font-weight:700;color:var(--primary-color);">MCP Server</span>
+                        <span style="font-size:0.75rem;color:var(--text-tertiary);margin-left:0.5rem;">External access monitor · live simulation · job queue</span>
+                    </div>
+                    <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem;">
+                        <span id="mcp-signal-refresh-label" style="font-size:0.7rem;color:var(--text-tertiary);"></span>
+                        <button onclick="window.dashboard && window.dashboard._mcpRefreshSignals()" style="font-size:0.75rem;padding:0.25rem 0.7rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-secondary);cursor:pointer;" title="Refresh access signals">↺ Refresh</button>
+                    </div>
+                </div>
+                <!-- Status cards row -->
+                <div id="mcp-status-row" style="flex-shrink:0;display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;padding:0.75rem 1.25rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);"></div>
+                <!-- Sub-pane nav -->
+                <div style="flex-shrink:0;display:flex;gap:0;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);padding:0 1.25rem;">
+                    <button class="mcp-sub-tab" data-sub="sim"     style="padding:0.5rem 1.1rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid var(--primary-color);background:transparent;color:var(--primary-color);cursor:pointer;">▶ Live Sim</button>
+                    <button class="mcp-sub-tab" data-sub="jobs"    style="padding:0.5rem 1.1rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;">⚙ Jobs</button>
+                    <button class="mcp-sub-tab" data-sub="signals" style="padding:0.5rem 1.1rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;">⚑ Signals & Findings</button>
+                </div>
+                <!-- Sub-pane bodies -->
+                <div id="mcp-sub-sim"     style="flex:1;overflow:auto;display:flex;flex-direction:column;min-height:0;"></div>
+                <div id="mcp-sub-jobs"    style="flex:1;overflow:auto;display:none;padding:1.25rem;"></div>
+                <div id="mcp-sub-signals" style="flex:1;overflow:auto;display:none;padding:1.25rem;"></div>
+            </div>
+
             <div id="config-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:hidden; background:var(--main-bg);">
                 <!-- Sticky header bar -->
                 <div style="flex-shrink:0; display:flex; justify-content:space-between; align-items:center; padding:1rem 1.5rem; border-bottom:1px solid var(--border-color); background:var(--sidebar-bg);">

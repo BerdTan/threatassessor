@@ -1032,6 +1032,149 @@ rules:
       intentionally excluded — they appear in legitimate architecture descriptions
       ("pretend this is a microservice") and have a high false-positive rate.
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-020: MCP Recon Sequence (Discovery via API)
+  #
+  # An agent calls list_architectures() to enumerate all analysed targets, then
+  # bulk-pulls get_governance_signals() across ≥3 unique architectures within a
+  # 60-second window. This is the MCP equivalent of a network port scan:
+  # low-cost enumeration of the full threat surface before a targeted attack.
+  #
+  # Knowledge graph chain:
+  #   Trace[mcp_session]
+  #     └─ Span[list_architectures → get_governance_signals×N]
+  #          └─ Signal[mcp_access.recon_sequence=true, recon_gov_archs≥3]
+  #               └─ Threshold[recon_sequence==true AND recon_gov_archs>=3]
+  #                    └─ Rule[DETECT-020]
+  #                         └─ Alert[OCSF-2004, severity=Medium]
+  #                              └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-020
+    name: mcp_recon_sequence
+    description: >
+      MCP client enumerated architectures via list_architectures() then pulled
+      governance signals for ≥3 unique architectures within 60 seconds.
+      Indicates automated discovery of the threat surface — likely reconnaissance
+      before a targeted extraction or injection attempt.
+    incident_refs:
+      - owasp-agentic-a09-excessive-agency
+    owasp: [A09]
+    atlas_tactic: AML.TA0002
+    kill_chain_stage: discovery
+    ocsf_class: 2004
+    ocsf_type_uid: 200409
+    severity: Medium
+    conditions:
+      - field: mcp_access.recon_sequence
+        op: "=="
+        value: true
+      - field: mcp_access.recon_gov_archs
+        op: ">="
+        value: 3
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      Threshold of 3 unique archs in 60s is conservative for interactive use but
+      catches automated scanning. Raise to 5 if legitimate CISO dashboards trigger
+      false positives (they tend to batch all archs on load).
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-021: MCP Job Flooding (Resource Exhaustion via Expert Review)
+  #
+  # An agent submits ≥3 run_expert_review() jobs within 120 seconds but polls
+  # get_job_status() fewer than half as many times (poll/submit ratio < 0.5).
+  # This pattern indicates fire-and-forget job submission intended to exhaust
+  # the async job queue and pipeline compute resources, not to retrieve results.
+  # Normal usage always polls; flooding never polls back.
+  #
+  # Knowledge graph chain:
+  #   Trace[mcp_session]
+  #     └─ Span[run_expert_review×N, get_job_status×M where M/N < 0.5]
+  #          └─ Signal[mcp_access.job_flood=true, job_flood_ratio<0.5]
+  #               └─ Threshold[job_flood==true AND job_flood_submissions>=3]
+  #                    └─ Rule[DETECT-021]
+  #                         └─ Alert[OCSF-2004, severity=High]
+  #                              └─ Action[audit_log, block_run]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-021
+    name: mcp_job_flooding
+    description: >
+      MCP client submitted ≥3 expert review jobs in 120 seconds with a
+      poll/submit ratio below 0.5 — more submissions than polls indicates
+      fire-and-forget resource exhaustion, not legitimate async usage.
+    incident_refs:
+      - owasp-agentic-a10-model-dos
+    owasp: [A10]
+    atlas_tactic: AML.TA0015
+    kill_chain_stage: impact
+    ocsf_class: 2004
+    ocsf_type_uid: 200410
+    severity: High
+    conditions:
+      - field: mcp_access.job_flood
+        op: "=="
+        value: true
+      - field: mcp_access.job_flood_submissions
+        op: ">="
+        value: 3
+    combine: all
+    actions:
+      - type: audit_log
+      - type: block_run
+    tuning_note: >
+      poll_ratio threshold of 0.5 allows for one missed poll per two submissions
+      (network glitch). If rate drops to 0.0 (no polls at all), severity escalates
+      to Critical in the playbook. CI/CD agents that submit and exit should be
+      redesigned to use wait_for_completion=True instead.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-022: MCP Auth Probing (Credential Access via Repeated 401s)
+  #
+  # ≥5 requests return 401 Unauthorized within a 300-second window. This indicates
+  # a client cycling through API keys or tokens to find a valid credential.
+  # Unlike DETECT-010 (path traversal in .mmd input), this attack operates at
+  # the transport layer — no architecture content is needed to execute it.
+  #
+  # Knowledge graph chain:
+  #   Trace[mcp_session]
+  #     └─ Span[tool_call×N → 401 responses]
+  #          └─ Signal[mcp_access.auth_failures=true, auth_failure_count>=5]
+  #               └─ Threshold[auth_failures==true]
+  #                    └─ Rule[DETECT-022]
+  #                         └─ Alert[OCSF-2004, severity=High]
+  #                              └─ Action[audit_log, forensic_capture, page_soc]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-022
+    name: mcp_auth_probing
+    description: >
+      ≥5 MCP tool calls returned 401 Unauthorized within 300 seconds.
+      Indicates automated credential probing or API key rotation attack
+      targeting the ThreatAssessor MCP endpoint.
+    incident_refs:
+      - owasp-agentic-a02-broken-auth
+    owasp: [A02]
+    atlas_tactic: AML.TA0006
+    kill_chain_stage: credential_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200411
+    severity: High
+    conditions:
+      - field: mcp_access.auth_failures
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: forensic_capture
+      - type: page_soc
+    tuning_note: >
+      Threshold of 5 failures in 300s is intentionally tight — legitimate clients
+      never retry auth failures more than once or twice. If Claude Desktop triggers
+      this during key rotation (old key still in config), reduce window to 60s or
+      raise threshold to 8.
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SOC Response Playbooks
 #
@@ -1235,6 +1378,45 @@ playbooks:
       - "Check if the exfiltration path matches a known external service (Telegram, Slack, webhook)"
       - "Review the architecture diagram for nodes with external service labels"
     escalation_threshold: "sovereignty.zdr_signals present"
+
+  mcp_recon_sequence:
+    alert: DETECT-020
+    analyst_steps:
+      - "Review mcp_access.recon_gov_archs — which architectures were enumerated and in what order"
+      - "Check mcp_access.recon_list_calls — multiple list calls suggest automated retry loops"
+      - "Cross-reference with the client's TM_API_KEY to identify the source agent or service"
+      - "If followed by targeted get_threat_briefing or get_ciso_brief calls, escalate to DETECT-020+004 pattern"
+      - "Block the API key if the client is not a known integration (SOC dashboard, CI gate)"
+    escalation_threshold: "recon_gov_archs >= 10 in single session → treat as full corpus exfil attempt"
+    false_positive_indicators:
+      - "CISO dashboard loading all architectures on page load — batch all on startup, not sequential"
+      - "First-time /check-mcp --live run queries all corpus archs for smoke-test"
+
+  mcp_job_flooding:
+    alert: DETECT-021
+    analyst_steps:
+      - "Review mcp_access.job_flood_submissions and job_flood_polls — confirm poll_ratio below threshold"
+      - "Check job_store for active jobs — many queued/running with no caller polling indicates flood"
+      - "Identify the API key and revoke if the caller is not a known integration"
+      - "Drain the job queue: restart the API (./scripts/api/api_restart.sh) to clear in-memory store"
+      - "If recurs: add rate-limit middleware to POST /api/v1/jobs/expert-review"
+    escalation_threshold: "job_flood_ratio == 0.0 (zero polls) → escalate to Critical, drain queue immediately"
+    false_positive_indicators:
+      - "CI/CD agent submits and exits (fire-and-forget) — fix: use get_job_status(wait_for_completion=True)"
+      - "Network partition between submit and poll (transient) — re-check after 5 minutes"
+
+  mcp_auth_probing:
+    alert: DETECT-022
+    analyst_steps:
+      - "Review mcp_access.auth_failure_count and the 5-minute window boundary"
+      - "Identify the source IP or client identity from API access logs (logs/api.log)"
+      - "Rotate the API_KEY in .env immediately and restart the API"
+      - "Check logs for any 200 responses before the 401s — a successful probe precedes exploitation"
+      - "If auth_failure_count > 20, treat as brute-force campaign — escalate to infrastructure team"
+    escalation_threshold: "auth_failure_count > 20 → brute-force, block at network level"
+    false_positive_indicators:
+      - "Claude Desktop still has old API key in config after rotation — update claude_desktop_config.json"
+      - "CI/CD secret not yet updated after key rotation — check GitHub/GitLab secret store"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TATB integration note
