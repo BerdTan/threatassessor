@@ -109,9 +109,9 @@ class TestYAMLLoading:
     def test_rules_file_exists(self):
         assert RULES_PATH.exists(), f"Missing: {RULES_PATH}"
 
-    def test_loads_twentytwo_rules(self):
+    def test_loads_twentythree_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 22
+        assert len(ev) == 23
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -121,7 +121,7 @@ class TestYAMLLoading:
                          "DETECT-008", "DETECT-009", "DETECT-010", "DETECT-011",
                          "DETECT-012", "DETECT-013", "DETECT-014", "DETECT-015",
                          "DETECT-016", "DETECT-017", "DETECT-018", "DETECT-019",
-                         "DETECT-020", "DETECT-021", "DETECT-022"]:
+                         "DETECT-020", "DETECT-021", "DETECT-022", "DETECT-023"]:
             assert expected in ids
 
     def test_evaluate_returns_list(self):
@@ -1478,3 +1478,62 @@ class TestDetect022AuthProbing:
         findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
         f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-022")
         assert "forensic_capture" in f["unmapped"]["actions"]
+
+
+# ── DETECT-023: agentic_tool_exfil_vector ────────────────────────────────────
+
+class TestDetect023AgenticExfilVector:
+    def _trigger(self):
+        s = _clean()
+        s["arch_metadata"] = {
+            "architecture_type": "ai_system",
+            "node_count": 12,
+            "is_agentic": True,
+        }
+        s["sovereignty"]["cross_boundary_nodes"] = ["InternetGateway", "C2Server"]
+        s["aivss"]["outbound"] = {"composite": 4.8, "severity": "MEDIUM", "coverage_pct": 35}
+        return s
+
+    def test_fires_on_agentic_with_cross_boundary_and_outbound(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-023" in ids
+
+    def test_does_not_fire_when_not_agentic(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["arch_metadata"]["is_agentic"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-023" not in ids
+
+    def test_does_not_fire_when_no_cross_boundary(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["sovereignty"]["cross_boundary_nodes"] = []
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-023" not in ids
+
+    def test_does_not_fire_when_outbound_too_low(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["aivss"]["outbound"]["composite"] = 1.5
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-023" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-023")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_exfiltration(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-023")
+        assert f["finding"]["kill_chain_stage"] == "exfiltration"
+
+    def test_actions_include_block_deployment(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-023")
+        assert "block_deployment" in f["unmapped"]["actions"]

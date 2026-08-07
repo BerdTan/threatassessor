@@ -68,6 +68,10 @@ class GovernanceSignals:
     # Registry enforcement — critics to block based on governance policy decisions
     blocked_agents: list = field(default_factory=list)
 
+    # Architecture metadata — populated from ground_truth.metadata in check_artifact.
+    # Keys: architecture_type (str), node_count (int), is_agentic (bool).
+    arch_metadata: dict = field(default_factory=dict)
+
     # ScrumMaster per-critic verdicts — populated by AIVSSStage after SM runs.
     # Keys: per_critic {critic→accepted|rejected}, acceptance_rate (0.0–1.0),
     #       accepted (int), rejected (int), redesign_signal (bool).
@@ -644,6 +648,16 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         elif control_recs := ground_truth.get("control_recommendations"):
             # Derive approximate ARC scores from RAPIDS categories
             sig.arc_risk_scores = self._derive_arc_scores(ground_truth)
+
+        # Architecture metadata from ground_truth.metadata
+        meta = ground_truth.get("metadata", {})
+        arch_type = meta.get("architecture_type", "") or ""
+        _AGENTIC_TYPES = {"ai_system", "agentic_system", "ai_agent", "llm_agent", "rag_system"}
+        sig.arch_metadata = {
+            "architecture_type": arch_type,
+            "node_count": meta.get("node_count", 0),
+            "is_agentic": arch_type.lower() in _AGENTIC_TYPES,
+        }
 
         sig.kill_chain_coverage = ["deterministic_layer", "llm_layer"]
         sig.overall_risk_level = self._compute_overall(sig)

@@ -696,6 +696,35 @@ def scenario_mcp_auth_probing() -> Dict[str, Any]:
     return sig
 
 
+def scenario_agentic_exfil_vector() -> Dict[str, Any]:
+    """
+    DETECT-023 (High)
+
+    Based on: Meta AI agent escape (2026-08) + Anthropic Claude eval escape (2026-08).
+
+    An AI/agentic architecture (type=ai_system) was assessed with cross-boundary
+    outbound paths to an external internet gateway and a C2-labelled node. The
+    AIVSS outbound composite is 4.8 (MEDIUM band), indicating measurable outbound
+    data-flow risk. The combination of agentic node type + uncontrolled egress edge
+    matches the pre-deployment structural signal for sandbox escape incidents: an
+    agent with tool-use or CLI access can traverse the internet path if egress
+    controls are absent or misconfigured.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 12,
+        "is_agentic": True,
+    }
+    sig["sovereignty"]["cross_boundary_nodes"] = ["InternetGateway", "C2Server"]
+    sig["aivss"]["outbound"] = {
+        "composite": 4.8,
+        "severity": "MEDIUM",
+        "coverage_pct": 35,
+    }
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-005 (Critical) + DETECT-002 (Critical) — adversarial input + divergence suppression"),
@@ -743,6 +772,8 @@ SCENARIOS = {
         "DETECT-021 (High) — 4 expert review submissions, 0 polls, poll_ratio=0.0 = resource DoS"),
     "mcp_auth_probing":              (scenario_mcp_auth_probing,
         "DETECT-022 (High) — 7 auth failures in 120s = credential stuffing attack"),
+    "agentic_exfil_vector":          (scenario_agentic_exfil_vector,
+        "DETECT-023 (High) — ai_system arch + cross-boundary egress + outbound composite 4.8 = Meta/Anthropic escape pattern"),
 }
 
 EXPECTED_RULES = {
@@ -770,6 +801,7 @@ EXPECTED_RULES = {
     "mcp_recon_sequence":            {"DETECT-020"},
     "mcp_job_flooding":              {"DETECT-021"},
     "mcp_auth_probing":              {"DETECT-022"},
+    "agentic_exfil_vector":          {"DETECT-023"},
 }
 
 

@@ -1175,6 +1175,75 @@ rules:
       this during key rotation (old key still in config), reduce window to 60s or
       raise threshold to 8.
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-023: Agentic Tool Exfil Vector
+  #
+  # An AI/agentic architecture (ai_system, rag_system, llm_agent, etc.) has been
+  # assessed with cross-boundary outbound edges AND an elevated AIVSS outbound
+  # composite score. This combination — agent node type + uncontrolled internet
+  # path + high outbound signal — matches the structural pattern of the Meta AI
+  # sandbox escape incident (2026-08) and the Anthropic Claude eval escape:
+  # an agent with tool-use capability can traverse the boundary if egress is
+  # misconfigured. This fires pre-deployment (architecture review), not at runtime.
+  #
+  # Knowledge graph chain:
+  #   Architecture[type=ai_system]
+  #     └─ Edge[→ ExternalService / Internet / C2]          (cross_boundary_nodes)
+  #          └─ Signal[arch_metadata.is_agentic=true,
+  #                    sovereignty.cross_boundary_nodes ≥ 1,
+  #                    aivss.outbound.composite >= 3.0]
+  #               └─ Rule[DETECT-023]
+  #                    └─ Alert[OCSF-2004, severity=High]
+  #                         └─ Action[audit_log, block_deployment, page_soc]
+  #
+  # Incident reference: Meta AI agent / Anthropic Claude eval escape (2026-08)
+  # "Agent with CLI + offensive tools + misconfigured sandbox egress reached
+  #  external organisation's systems and exploited a third-party vulnerability."
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-023
+    name: agentic_tool_exfil_vector
+    description: >
+      An AI/agentic architecture has cross-boundary outbound paths AND an elevated
+      AIVSS outbound composite score (≥ 3.0). This structural combination — agent
+      node type + uncontrolled internet egress — matches the pre-deployment signal
+      for sandbox escape incidents (Meta AI / Anthropic Claude eval escape, 2026-08).
+      An agent with tool-use or CLI access can traverse this path if egress controls
+      are misconfigured or absent.
+    incident_refs:
+      - meta-ai-agent-escape-2026
+      - anthropic-claude-eval-escape-2026
+      - owasp-agentic-a09-excessive-agency
+    owasp: [A09]
+    atlas_tactic: AML.TA0010
+    kill_chain_stage: exfiltration
+    ocsf_class: 2004
+    ocsf_type_uid: 200412
+    severity: High
+    conditions:
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+      - field: sovereignty.cross_boundary_nodes
+        op: length_gt
+        value: 0
+      - field: aivss.outbound.composite
+        op: ">="
+        value: 3.0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: block_deployment
+      - type: page_soc
+    tuning_note: >
+      Threshold of 3.0 outbound composite is intentionally low — any measurable
+      outbound signal on an agentic architecture warrants review. On architectures
+      with legitimate external API calls (e.g. RAG retrieval from a known source),
+      verify sovereignty.cross_boundary_nodes identifies uncontrolled edges (internet
+      gateway, external SaaS, C2-labelled nodes) rather than named trusted services.
+      If false positive rate is high for RAG architectures with known API boundaries,
+      raise threshold to 5.0 (AIVSS HIGH band) or add a fourth condition requiring
+      sovereignty.zdr_signals length_gt 0 (uncontrolled data leaving jurisdiction).
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SOC Response Playbooks
 #
@@ -1417,6 +1486,21 @@ playbooks:
     false_positive_indicators:
       - "Claude Desktop still has old API key in config after rotation — update claude_desktop_config.json"
       - "CI/CD secret not yet updated after key rotation — check GitHub/GitLab secret store"
+
+  agentic_tool_exfil_vector:
+    alert: DETECT-023
+    analyst_steps:
+      - "Review sovereignty.cross_boundary_nodes — identify which nodes have uncontrolled outbound edges"
+      - "Check aivss.outbound.composite and aivss.outbound.metrics for which sub-scores are elevated"
+      - "Inspect the architecture diagram for direct internet/external egress from agent or tool-executor nodes"
+      - "Verify egress controls: is there a WAF, API gateway, or egress firewall between the agent and the internet?"
+      - "Check whether tool-call capabilities (CLI, shell, HTTP client) are scoped to allowlisted destinations"
+      - "If cross_boundary_nodes includes 'C2Server', 'Internet', or an unnamed external node — treat as CRITICAL"
+    escalation_threshold: "cross_boundary_nodes includes uncontrolled internet node AND aivss.outbound.composite >= 6.0 → escalate to CRITICAL, block deployment"
+    false_positive_indicators:
+      - "RAG architecture with named, trusted external knowledge source (e.g. 'Wikipedia API') — verify node label is specific, not generic 'ExternalAPI'"
+      - "Architecture under active redesign — egress edges may be placeholder nodes pending control assignment"
+      - "aivss.outbound.composite elevated due to data residency signals (ZDR), not tool-use egress — check aivss.outbound.metrics breakdown"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TATB integration note
