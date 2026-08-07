@@ -148,6 +148,10 @@ python3 .claude/skills/check-mcp/scripts/check-mcp.py --live  # + live REST + MC
 python3 mcp_server/client_sim.py --dry-run             # protocol handshake only
 python3 mcp_server/client_sim.py --all --arch <arch>   # all 6 benign personas live
 python3 mcp_server/client_sim.py --persona soc --arch <arch>
+
+# Connector layer (mcp_connector package + openapi.yaml + transport flag)
+python3 .claude/skills/check-connector/scripts/check-connector.py          # static + live
+python3 .claude/skills/check-connector/scripts/check-connector.py --static # no API needed
 ```
 
 ---
