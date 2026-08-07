@@ -1,26 +1,34 @@
 openapi: 3.1.0
 info:
   title: ThreatAssessor API
-  description: "\n# ThreatAssessor API\n\nArchitecture threat analysis with MITRE\
-    \ ATT&CK + AI/ML pattern detection.\n\n## Features\n- **Deterministic Engine**:\
-    \ 99.5% confidence RAPIDS threat assessment\n- **AI/ML Patterns**: MITRE ATLAS\
-    \ + ARC Framework detection\n- **Attack Path Analysis**: Multi-hop technique mapping\n\
-    - **Control Recommendations**: Prevention + DIR framework\n\n## API Dependencies\
-    \ & Sequencing\n\n### ✅ Independent Endpoints (No Prerequisites)\n- `GET /health`\
-    \ - Always callable\n- `POST /analyze` - **Entry point** for analysis\n\n### ⚠️\
-    \ Dependent Endpoints (Has Prerequisites)\n- `POST /validate` - Requires `ground_truth.json`\
-    \ from `/analyze`\n  - **Must call `/analyze` first** to generate ground truth\
-    \ file\n  - Error 404 if ground truth not found\n\n### \U0001F4CB Typical Workflows\n\
-    \n**Quick Assessment (No MoE Validation):**\n```\nPOST /analyze → 99.5% confidence\n\
-    ```\n\n**Two-Step Analysis:**\n```\n1. POST /analyze  → Generates ground_truth.json\
-    \ (99.5% confidence)\n2. POST /validate → Uses ground_truth.json (93-96% confidence)\n\
-    ```\n\n**Full Pipeline (Future):**\n```\nPOST /orchestrate → analyze + validate\
-    \ + synthesis (93-96% confidence)\n```\n\n## Authentication\nAPI key required\
-    \ via `TM-API-KEY` header.\n\n## Performance\n- Analysis: ~30 seconds (P95)\n\
-    - Timeout: 120 seconds (2 minutes)\n- Concurrent limit: 10 requests (tested)\n\
-    \n## Rate Limiting\n- 10 requests/minute per API key\n- 429 Too Many Requests\
-    \ if exceeded\n"
-  version: 1.3.0
+  version: 2.2.0
+  description: 'Architecture threat modelling — MITRE ATT&CK mapping, MoE expert review, SOC detection (24 DETECT rules),
+    AIVSS scoring, and TA export bundle (ta-export/1.0).
+
+
+    ## Authentication
+
+    All endpoints (except /health) require TM-API-KEY: <key> request header.
+
+
+    ## Typical workflows
+
+    - Quick assessment: POST /api/v1/analyze -> 99.5% confidence, ~30s
+
+    - Full pipeline: analyze -> POST /api/v1/jobs/expert-review -> poll GET /api/v1/jobs/{id}/status
+
+    - CI/CD gate: POST /api/v1/governance/check (50ms, no LLM) -> GET /api/v1/reports/{arch}/export -> check gate.result
+
+    - MCP: python -m mcp_server.server (stdio) or --transport streamable-http for remote agents'
+  contact:
+    name: ThreatAssessor
+    url: http://localhost:8000/dashboard
+  license:
+    name: Proprietary
+  x-mcp-server:
+    stdio: python -m mcp_server.server
+    streamable-http: python -m mcp_server.server --transport streamable-http
+    tools: 13
 paths:
   /health:
     get:
@@ -36,6 +44,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+      security: []
   /api/v1/analyze:
     post:
       tags:
@@ -96,7 +105,7 @@ paths:
           title: Include Validation
       - name: TM-API-KEY
         in: header
-        required: true
+        required: false
         schema:
           type: string
           description: ThreatAssessor API key for authentication
@@ -141,69 +150,29 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
       - ApiKeyAuth: []
-  /dashboard:
-    get:
-      tags:
-      - dashboard
-      summary: Dashboard
-      description: Serve the ThreatAssessor dashboard UI with cache busting.
-      operationId: dashboard_dashboard_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            text/html:
-              schema:
-                type: string
-  /:
-    get:
-      tags:
-      - dashboard
-      summary: Root
-      description: Redirect root to dashboard.
-      operationId: root__get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            text/html:
-              schema:
-                type: string
   /api/v1/analyze-stream:
     post:
       tags:
       - streaming
       summary: Analyze Architecture Stream
-      description: "Analyze architecture with real-time SSE progress updates.\n\n\
-        **SSE Events:**\n- `progress`: Stage updates with percentage and ETA\n- `patterns_detected`:\
-        \ Threat patterns applied (RAPIDS, AI/ML, etc.)\n- `threat_scores`: Threat\
-        \ scores grouped by pattern\n- `attack_path`: Attack path discovery (streamed\
-        \ as found)\n- `complete`: Final analysis result\n- `error`: Error occurred\n\
-        \n**Progress Stages:**\n1. Parsing (0-10%)\n2. MITRE Cache Loading (10-20%)\n\
-        3. RAPIDS Analysis (20-60%)\n4. AI/ML Analysis (60-80%, if detected)\n5. Validation\
-        \ (80-100%)\n\n**Example Client (JavaScript):**\n```javascript\nconst eventSource\
-        \ = new EventSource('/api/v1/analyze-stream');\n\neventSource.addEventListener('progress',\
-        \ (e) => {\n  const data = JSON.parse(e.data);\n  updateProgressBar(data.progress);\n\
-        \  updateStatusMessage(data.message);\n});\n\neventSource.addEventListener('complete',\
-        \ (e) => {\n  const result = JSON.parse(e.data);\n  displayResults(result);\n\
-        \  eventSource.close();\n});\n```\n\n**Example Client (Python):**\n```python\n\
-        import requests\n\nresponse = requests.post(\n    'http://localhost:8000/api/v1/analyze-stream',\n\
-        \    headers={'TM-API-KEY': 'your-key'},\n    files={'architecture_file':\
-        \ open('arch.mmd', 'rb')},\n    stream=True\n)\n\nfor line in response.iter_lines():\n\
-        \    if line.startswith(b'data: '):\n        data = json.loads(line[6:])\n\
-        \        print(f\"Progress: {data['progress']}% - {data['message']}\")\n```"
+      description: "Analyze architecture with real-time SSE progress updates.\n\n**SSE Events:**\n- `progress`: Stage updates\
+        \ with percentage and ETA\n- `patterns_detected`: Threat patterns applied (RAPIDS, AI/ML, etc.)\n- `threat_scores`:\
+        \ Threat scores grouped by pattern\n- `attack_path`: Attack path discovery (streamed as found)\n- `complete`: Final\
+        \ analysis result\n- `error`: Error occurred\n\n**Progress Stages:**\n1. Parsing (0-10%)\n2. MITRE Cache Loading (10-20%)\n\
+        3. RAPIDS Analysis (20-60%)\n4. AI/ML Analysis (60-80%, if detected)\n5. Validation (80-100%)\n\n**Example Client\
+        \ (JavaScript):**\n```javascript\nconst eventSource = new EventSource('/api/v1/analyze-stream');\n\neventSource.addEventListener('progress',\
+        \ (e) => {\n  const data = JSON.parse(e.data);\n  updateProgressBar(data.progress);\n  updateStatusMessage(data.message);\n\
+        });\n\neventSource.addEventListener('complete', (e) => {\n  const result = JSON.parse(e.data);\n  displayResults(result);\n\
+        \  eventSource.close();\n});\n```\n\n**Example Client (Python):**\n```python\nimport requests\n\nresponse = requests.post(\n\
+        \    'http://localhost:8000/api/v1/analyze-stream',\n    headers={'TM-API-KEY': 'your-key'},\n    files={'architecture_file':\
+        \ open('arch.mmd', 'rb')},\n    stream=True\n)\n\nfor line in response.iter_lines():\n    if line.startswith(b'data:\
+        \ '):\n        data = json.loads(line[6:])\n        print(f\"Progress: {data['progress']}% - {data['message']}\")\n\
+        ```"
       operationId: analyze_architecture_stream_api_v1_analyze_stream_post
       parameters:
-      - name: include_validation
-        in: query
-        required: false
-        schema:
-          type: boolean
-          default: true
-          title: Include Validation
       - name: TM-API-KEY
         in: header
-        required: true
+        required: false
         schema:
           type: string
           description: ThreatAssessor API key for authentication
@@ -234,20 +203,16 @@ paths:
       tags:
       - streaming
       summary: Expert Review Stream
-      description: "Run MoE Expert Review on a previously analyzed architecture.\n\
-        \nStreams real-time progress via SSE as three independent critic agents\n\
-        (Architect, Tester, Red Team) validate the deterministic analysis and\nproduce\
-        \ a consensus confidence score and unified recommendations.\n\n**Prerequisites:**\
-        \ Run `/api/v1/analyze-stream` first to generate `ground_truth.json`.\n\n\
-        **SSE Events:**\n- `progress`: Stage updates (architect → tester → red_team\
-        \ → synthesis)\n- `complete`: Final MoEResult with confidence and consensus\
-        \ recommendations\n- `error`: Error details (e.g. missing prerequisites)\n\
-        \n**Example Client (JavaScript):**\n```javascript\nconst url = `/api/v1/expert-review?architecture_name=${archName}`;\n\
-        const es = new EventSource(url);\n\nes.addEventListener('progress', (e) =>\
-        \ {\n  const d = JSON.parse(e.data);\n  console.log(`${d.message} (${d.progress}%)`);\n\
-        });\n\nes.addEventListener('complete', (e) => {\n  const result = JSON.parse(e.data);\n\
-        \  console.log('Final confidence:', result.confidence.final);\n  es.close();\n\
-        });\n```"
+      description: "Run MoE Expert Review on a previously analyzed architecture.\n\nStreams real-time progress via SSE as\
+        \ critics validate the deterministic\nanalysis and produce a consensus confidence score and unified recommendations.\n\
+        Which critics run (blackhat, purple_team) is controlled by server configuration.\n\n**Prerequisites:** Run `/api/v1/analyze-stream`\
+        \ first to generate `ground_truth.json`.\n\n**SSE Events:**\n- `progress`: Stage updates (architect → tester → red_team\
+        \ → [purple_team] → [blackhat] → synthesis)\n- `critic_result`: Emitted as each critic finishes — includes score,\
+        \ status, gap count, top gaps\n- `complete`: Final MoEResult with confidence and consensus recommendations\n- `error`:\
+        \ Error details (e.g. missing prerequisites)\n\n**Example Client (JavaScript):**\n```javascript\nconst url = `/api/v1/expert-review?architecture_name=${archName}`;\n\
+        const es = new EventSource(url);\n\nes.addEventListener('progress', (e) => {\n  const d = JSON.parse(e.data);\n  console.log(`${d.message}\
+        \ (${d.progress}%)`);\n});\n\nes.addEventListener('complete', (e) => {\n  const result = JSON.parse(e.data);\n  console.log('Final\
+        \ confidence:', result.confidence.final);\n  es.close();\n});\n```"
       operationId: expert_review_stream_api_v1_expert_review_get
       parameters:
       - name: architecture_name
@@ -263,23 +228,13 @@ paths:
         required: false
         schema:
           type: string
+          description: 'Critic execution mode: sequential | parallel | auto'
           default: sequential
-          enum: [sequential, parallel, auto]
-          description: "Critic execution mode: sequential | parallel | auto"
           title: Critic Mode
-        description: "Critic execution mode: sequential (default) | parallel | auto"
-      - name: run_blackhat
-        in: query
-        required: false
-        schema:
-          type: boolean
-          default: true
-          description: Enable Blackhat Layer 2D critic (cross-path chain analysis). Overrides blackhat.enabled config.
-          title: Run Blackhat
-        description: Enable Blackhat Layer 2D critic (cross-path chain analysis). Overrides blackhat.enabled config.
+        description: 'Critic execution mode: sequential | parallel | auto'
       - name: TM-API-KEY
         in: header
-        required: true
+        required: false
         schema:
           type: string
           description: ThreatAssessor API key for authentication
@@ -287,18 +242,66 @@ paths:
         description: ThreatAssessor API key for authentication
       responses:
         '200':
-          description: "SSE stream of expert review progress and results"
+          description: Successful Response
           content:
-            text/event-stream:
-              schema:
-                type: string
-                description: "Server-Sent Events stream. Events: progress, critic_result, complete, error"
-        '400':
-          description: Invalid parameters
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/run-critic:
+    get:
+      tags:
+      - streaming
+      summary: Run Single Critic
+      description: 'Run a single critic (or ScrumMaster) on an existing analysis without re-running the full pipeline.
+
+
+        Streams SSE progress events. Requires ground_truth.json and 07_moe_orchestrator.json to exist.
+
+        Useful for running optional critics (purple_team, blackhat, scrum_master) after enabling them
+
+        in Configuration, without re-running all three core critics.
+
+
+        SSE events: progress, complete, error'
+      operationId: run_single_critic_api_v1_run_critic_get
+      parameters:
+      - name: architecture_name
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Architecture name (must match an existing analysis)
+          title: Architecture Name
+        description: Architecture name (must match an existing analysis)
+      - name: critic
+        in: query
+        required: true
+        schema:
+          type: string
+          description: 'Critic to run: architect | tester | red_team | purple_team | blackhat | scrum_master'
+          title: Critic
+        description: 'Critic to run: architect | tester | red_team | purple_team | blackhat | scrum_master'
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
         '422':
           description: Validation Error
           content:
@@ -311,27 +314,34 @@ paths:
     delete:
       tags:
       - streaming
-      summary: Cancel Expert Review
-      description: "Cancel a running expert review and purge intermediate files for a given architecture."
-      operationId: cancel_expert_review_api_v1_expert_review_cancel_delete
+      summary: Expert Review Cancel
+      description: 'Cancel an in-progress Expert Review and purge any partial critic files.
+
+
+        The client is responsible for aborting its own SSE fetch.  This endpoint
+
+        removes the partial 04/05/06 critic JSON files so the next run starts clean.'
+      operationId: expert_review_cancel_api_v1_expert_review_cancel_delete
       parameters:
       - name: architecture_name
         in: query
         required: true
         schema:
           type: string
+          description: Architecture name to cancel and purge
           title: Architecture Name
         description: Architecture name to cancel and purge
       - name: TM-API-KEY
         in: header
-        required: true
+        required: false
         schema:
           type: string
+          description: ThreatAssessor API key for authentication
           title: Tm-Api-Key
         description: ThreatAssessor API key for authentication
       responses:
         '200':
-          description: Cancellation acknowledged
+          description: Successful Response
           content:
             application/json:
               schema: {}
@@ -343,70 +353,15 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - ApiKeyAuth: []
-  /api/v1/config:
-    get:
-      tags:
-      - config
-      summary: Get Configuration
-      description: "Return current ThreatAssessor configuration (all settings groups)."
-      operationId: get_config_api_v1_config_get
-      parameters:
-      - name: TM-API-KEY
-        in: header
-        required: false
-        schema:
-          type: string
-          title: Tm-Api-Key
-      responses:
-        '200':
-          description: Current configuration
-          content:
-            application/json:
-              schema: {}
-    put:
-      tags:
-      - config
-      summary: Update Configuration
-      description: "Update ThreatAssessor configuration. Accepts a partial or full settings payload."
-      operationId: update_config_api_v1_config_put
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              description: Partial or full settings payload
-      responses:
-        '200':
-          description: Updated configuration
-          content:
-            application/json:
-              schema: {}
-        '422':
-          description: Validation Error
-    post:
-      tags:
-      - config
-      summary: Reset Configuration
-      description: "Reset ThreatAssessor configuration to defaults."
-      operationId: reset_config_api_v1_config_post
-      responses:
-        '200':
-          description: Reset configuration
-          content:
-            application/json:
-              schema: {}
   /api/v1/reports:
     get:
       tags:
       - reports
       summary: List Architectures
-      description: "List all architectures that have generated reports.\n\nReturns:\n\
-        \    List of architecture names with report counts\n\nExample:\n    ```json\n\
-        \    {\n      \"architectures\": [\n        {\n          \"name\": \"web_app\"\
-        ,\n          \"report_count\": 4,\n          \"files\": [\"01_executive_summary.md\"\
-        , \"02_technical_report.md\", ...]\n        }\n      ],\n      \"total\":\
-        \ 5\n    }\n    ```"
+      description: "List all architectures that have generated reports.\n\nReturns:\n    List of architecture names with report\
+        \ counts\n\nExample:\n    ```json\n    {\n      \"architectures\": [\n        {\n          \"name\": \"web_app\",\n\
+        \          \"report_count\": 4,\n          \"files\": [\"01_executive_summary.md\", \"02_technical_report.md\", ...]\n\
+        \        }\n      ],\n      \"total\": 5\n    }\n    ```"
       operationId: list_architectures_api_v1_reports_get
       responses:
         '200':
@@ -421,48 +376,10 @@ paths:
       tags:
       - reports
       summary: List Reports
-    delete:
-      tags:
-      - reports
-      summary: Delete Architecture Reports
-      description: "Delete all report files for an architecture (removes the report directory)."
-      operationId: delete_architecture_api_v1_reports__architecture_name__delete
-      parameters:
-      - name: architecture_name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Architecture Name
-      - name: TM-API-KEY
-        in: header
-        required: true
-        schema:
-          type: string
-          title: Tm-Api-Key
-      responses:
-        '200':
-          description: Deletion acknowledged
-          content:
-            application/json:
-              schema: {}
-        '404':
-          description: Architecture not found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - ApiKeyAuth: []
-
-      description: "List all report files for a specific architecture.\n\nArgs:\n\
-        \    architecture_name: Architecture directory name\n\nReturns:\n    List\
-        \ of report files with metadata\n\nExample:\n    ```json\n    {\n      \"\
-        architecture\": \"web_app\",\n      \"reports\": [\n        {\n          \"\
-        filename\": \"01_executive_summary.md\",\n          \"type\": \"markdown\"\
-        ,\n          \"size\": 12345,\n          \"url\": \"/api/v1/reports/web_app/files/01_executive_summary.md\"\
+      description: "List all report files for a specific architecture.\n\nArgs:\n    architecture_name: Architecture directory\
+        \ name\n\nReturns:\n    List of report files with metadata\n\nExample:\n    ```json\n    {\n      \"architecture\"\
+        : \"web_app\",\n      \"reports\": [\n        {\n          \"filename\": \"01_executive_summary.md\",\n          \"\
+        type\": \"markdown\",\n          \"size\": 12345,\n          \"url\": \"/api/v1/reports/web_app/files/01_executive_summary.md\"\
         \n        }\n      ]\n    }\n    ```"
       operationId: list_reports_api_v1_reports__architecture_name__get
       parameters:
@@ -486,16 +403,424 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - ApiKeyAuth: []
+    delete:
+      tags:
+      - reports
+      summary: Delete Report
+      description: "Delete the report folder for an architecture.\n\nArgs:\n    architecture_name: Architecture directory\
+        \ name\n\nReturns:\n    Confirmation message\n\nRaises:\n    404: If architecture not found\n    400: If name contains\
+        \ path traversal attempts"
+      operationId: delete_report_api_v1_reports__architecture_name__delete
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/rerun-with-sm:
+    post:
+      tags:
+      - reports
+      summary: Rerun With Sm
+      description: 'Create an SM worktree rerun: copies 08b_recommended_target.mmd into
+
+        a new sm{N}/ subfolder, runs api_only analysis, then writes run_diff.json
+
+        comparing the result against the original base arch ground_truth.json.
+
+
+        Returns the new SM run number and basic delta metrics.'
+      operationId: rerun_with_sm_api_v1_reports__architecture_name__rerun_with_sm_post
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/sm:
+    get:
+      tags:
+      - reports
+      summary: List Sm Reruns
+      description: List all SM reruns for an architecture with diff metrics.
+      operationId: list_sm_reruns_api_v1_reports__architecture_name__sm_get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/sm/{n}/files/{filename}:
+    get:
+      tags:
+      - reports
+      summary: Get Sm File
+      description: Serve a file from an SM worktree subfolder.
+      operationId: get_sm_file_api_v1_reports__architecture_name__sm__n__files__filename__get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: n
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: N
+      - name: filename
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Filename
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/sm/{n}/diff:
+    get:
+      tags:
+      - reports
+      summary: Get Sm Diff
+      description: Return run_diff.json for a specific SM run.
+      operationId: get_sm_diff_api_v1_reports__architecture_name__sm__n__diff_get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: n
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: N
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/sm/{n}:
+    delete:
+      tags:
+      - reports
+      summary: Delete Sm Run
+      description: Delete an SM worktree subfolder.
+      operationId: delete_sm_run_api_v1_reports__architecture_name__sm__n__delete
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: n
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: N
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/sm/{n}/rerun:
+    post:
+      tags:
+      - reports
+      summary: Rerun Sm Analysis
+      description: 'Re-run api_only analysis on an existing SM run''s before.mmd.
+
+
+        Refreshes ground_truth.json, governance_signals.json, and run_diff.json
+
+        without creating a new SM subfolder. Useful after manually editing before.mmd.'
+      operationId: rerun_sm_analysis_api_v1_reports__architecture_name__sm__n__rerun_post
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: n
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: N
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/add-to-adr:
+    post:
+      tags:
+      - reports
+      summary: Add Sm Action To Adr
+      description: "Append a ScrumMaster action item as a new SM-ADR entry in 10_adr_report.md.\n\nBody: {\n    \"action\"\
+        : str, \"rationale\": str, \"priority\": str, \"first_step\": str,\n    \"source_techniques\": list[str],  # e.g.\
+        \ [\"T1078\", \"T1213\"] — for diff-based verification\n    \"source_controls\":   list[str],  # e.g. [\"micro-segmentation\"\
+        ] — matched against controls_missing\n}"
+      operationId: add_sm_action_to_adr_api_v1_reports__architecture_name__add_to_adr_post
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Payload
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/add-all-to-adr:
+    post:
+      tags:
+      - reports
+      summary: Add All Sm Actions To Adr
+      description: "Batch-append all non-antipattern ScrumMaster actions to 10_adr_report.md.\n\nReads 08_scrum_master.json,\
+        \ skips items where is_antipattern is True,\nskips duplicates (action text already present in ADR), and appends the\n\
+        rest as SM-ADR-XX entries in a single atomic write.\n\nReturns:\n    {\"status\":\"ok\",\"added\":N,\"skipped_antipattern\"\
+        :M,\"skipped_duplicate\":K,\"entry_ids\":[...]}"
+      operationId: add_all_sm_actions_to_adr_api_v1_reports__architecture_name__add_all_to_adr_post
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/rescore-aivss:
+    post:
+      tags:
+      - reports
+      summary: Rescore Aivss
+      description: 'Re-run AIVSS scoring for an existing report on demand.
+
+
+        Reads governance_signals.json and ground_truth.json from disk,
+
+        loads moe_result and scrum_master_result if available, runs the
+
+        full three-flow AIVSS scorer, and saves the updated
+
+        governance_signals.json in-place.  Works whether or not MoE has
+
+        been run — governance dims are preserved, only the aivss section
+
+        is replaced.
+
+
+        Returns the new aivss scores dict.'
+      operationId: rescore_aivss_api_v1_reports__architecture_name__rescore_aivss_post
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
   /api/v1/reports/{architecture_name}/files/{filename}:
     get:
       tags:
       - reports
       summary: Get Report File
-      description: "Download a specific report file.\n\nArgs:\n    architecture_name:\
-        \ Architecture directory name\n    filename: Report filename (e.g., \"01_executive_summary.md\"\
-        )\n\nReturns:\n    File contents (text/markdown for .md, application/json\
-        \ for .json)\n\nRaises:\n    404: If architecture or file not found\n    400:\
-        \ If filename contains path traversal attempts"
+      description: "Download a specific report file.\n\nArgs:\n    architecture_name: Architecture directory name\n    filename:\
+        \ Report filename (e.g., \"01_executive_summary.md\")\n\nReturns:\n    File contents (text/markdown for .md, application/json\
+        \ for .json)\n\nRaises:\n    404: If architecture or file not found\n    400: If filename contains path traversal\
+        \ attempts"
       operationId: get_report_file_api_v1_reports__architecture_name__files__filename__get
       parameters:
       - name: architecture_name
@@ -529,10 +854,9 @@ paths:
       tags:
       - reports
       summary: Get Report Summary
-      description: "Get a quick summary of available reports for an architecture.\n\
-        \nReturns metadata without file contents (faster than listing all files).\n\
-        \nArgs:\n    architecture_name: Architecture directory name\n\nReturns:\n\
-        \    Summary with file counts, types, has_moe, has_blackhat flags."
+      description: "Get a quick summary of available reports for an architecture.\n\nReturns metadata without file contents\
+        \ (faster than listing all files).\n\nArgs:\n    architecture_name: Architecture directory name\n\nReturns:\n    Summary\
+        \ with file counts and types"
       operationId: get_report_summary_api_v1_reports__architecture_name__summary_get
       parameters:
       - name: architecture_name
@@ -546,19 +870,7 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  architecture:
-                    type: string
-                  file_count:
-                    type: integer
-                  has_moe:
-                    type: boolean
-                    description: Whether MoE expert review has been run
-                  has_blackhat:
-                    type: boolean
-                    description: Whether Blackhat Layer 2D critic has been run
+              schema: {}
         '422':
           description: Validation Error
           content:
@@ -572,9 +884,9 @@ paths:
       tags:
       - reports
       summary: Download Reports Zip
-      description: "Download report files as a ZIP archive.\n\nArgs:\n    architecture_name:\
-        \ Architecture directory name\n    pack: \"stakeholder\" (decision-facing\
-        \ docs) or \"full\" (all non-suppressed files)\n\nReturns:\n    ZIP file stream"
+      description: "Download report files as a ZIP archive.\n\nArgs:\n    architecture_name: Architecture directory name\n\
+        \    pack: \"stakeholder\" (decision-facing docs) or \"full\" (all non-suppressed files)\n\nReturns:\n    ZIP file\
+        \ stream"
       operationId: download_reports_zip_api_v1_reports__architecture_name__download_get
       parameters:
       - name: architecture_name
@@ -604,13 +916,18 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - ApiKeyAuth: []
-  /api/v1/reports/{architecture_name}/ground-truth:
+  /api/v1/reports/{architecture_name}/briefing:
     get:
       tags:
       - reports
-      summary: Get Ground Truth
-      description: "Return the raw ground_truth.json for an architecture. Includes all threat paths, attack paths, MoE results, and blackhat critique if available."
-      operationId: get_ground_truth_api_v1_reports__architecture_name__ground_truth_get
+      summary: Get Briefing
+      description: "Export a self-contained two-page briefing for offline sharing.\n\nDistils the full analysis into a single\
+        \ Markdown document covering:\n- Architecture snapshot (type, primary actor, trust boundaries at risk)\n- Risk waterfall\
+        \ (before → after controls)\n- Top-3 critical findings with confidence labels\n- Expert consensus strip (critic name,\
+        \ status, key gap)\n- Improvement tiers (quick win / recommended / maximum)\n- Blindspots and supply chain / BCP flags\n\
+        - Action checklist\n\nArgs:\n    architecture_name: Architecture directory name\n    fmt: \"md\" (default) for Markdown\
+        \ plain text\n\nReturns:\n    text/markdown attachment"
+      operationId: get_briefing_api_v1_reports__architecture_name__briefing_get
       parameters:
       - name: architecture_name
         in: path
@@ -618,74 +935,19 @@ paths:
         schema:
           type: string
           title: Architecture Name
-      responses:
-        '200':
-          description: ground_truth.json contents
-          content:
-            application/json:
-              schema: {}
-        '404':
-          description: Architecture or ground_truth.json not found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - ApiKeyAuth: []
-  /api/v1/reports/{architecture_name}/moe:
-    get:
-      tags:
-      - reports
-      summary: Get MoE Results
-      description: "Return the MoE orchestrator result for an architecture (from ground_truth.moe_orchestrator). Requires expert review to have been run."
-      operationId: get_moe_results_api_v1_reports__architecture_name__moe_get
-      parameters:
-      - name: architecture_name
-        in: path
-        required: true
+      - name: fmt
+        in: query
+        required: false
         schema:
           type: string
-          title: Architecture Name
+          default: md
+          title: Fmt
       responses:
         '200':
-          description: MoE result object
+          description: Successful Response
           content:
             application/json:
               schema: {}
-        '404':
-          description: Architecture not found or MoE not yet run
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - ApiKeyAuth: []
-  /api/v1/reports/{architecture_name}/blackhat:
-    get:
-      tags:
-      - reports
-      summary: Get Blackhat Critique
-      description: "Return the blackhat critique for an architecture (from ground_truth.blackhat_critique). Requires expert review with run_blackhat=true."
-      operationId: get_blackhat_critique_api_v1_reports__architecture_name__blackhat_get
-      parameters:
-      - name: architecture_name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Architecture Name
-      responses:
-        '200':
-          description: Blackhat critique object
-          content:
-            application/json:
-              schema: {}
-        '404':
-          description: Architecture not found or Blackhat not yet run
         '422':
           description: Validation Error
           content:
@@ -699,9 +961,8 @@ paths:
       tags:
       - reports
       summary: Get Mitigation Names
-      description: "Get MITRE ATT&CK mitigation names for given IDs.\n\nArgs:\n  \
-        \  mitigation_ids: Comma-separated mitigation IDs\n\nReturns:\n    Dictionary\
-        \ mapping mitigation IDs to names"
+      description: "Get MITRE ATT&CK mitigation names for given IDs.\n\nArgs:\n    mitigation_ids: Comma-separated mitigation\
+        \ IDs\n\nReturns:\n    Dictionary mapping mitigation IDs to names"
       operationId: get_mitigation_names_api_v1_mitigations_get
       parameters:
       - name: mitigation_ids
@@ -731,8 +992,8 @@ paths:
       tags:
       - reports
       summary: Get Technique Mitigations
-      description: "Return which MITRE mitigation IDs apply to each given technique\
-        \ ID.\n\nReturns:\n    mappings: { techniqueId: [mitigationId, ...] }"
+      description: "Return which MITRE mitigation IDs apply to each given technique ID.\n\nReturns:\n    mappings: { techniqueId:\
+        \ [mitigationId, ...] }"
       operationId: get_technique_mitigations_api_v1_technique_mitigations_get
       parameters:
       - name: technique_ids
@@ -762,13 +1023,11 @@ paths:
       tags:
       - reports
       summary: Get Technique Names
-      description: "Get MITRE ATT&CK technique names for given IDs.\n\nThis reduces\
-        \ API calls and keeps users on dashboard instead of clicking to MITRE site.\n\
-        \nArgs:\n    technique_ids: Comma-separated technique IDs\n\nReturns:\n  \
-        \  Dictionary mapping technique IDs to names\n\nExample:\n    GET /api/v1/techniques?technique_ids=T1566,T1078,T1059\n\
-        \n    Response:\n    ```json\n    {\n      \"techniques\": {\n        \"T1566\"\
-        : \"Phishing\",\n        \"T1078\": \"Valid Accounts\",\n        \"T1059\"\
-        : \"Command and Scripting Interpreter\"\n      }\n    }\n    ```"
+      description: "Get MITRE ATT&CK technique names for given IDs.\n\nThis reduces API calls and keeps users on dashboard\
+        \ instead of clicking to MITRE site.\n\nArgs:\n    technique_ids: Comma-separated technique IDs\n\nReturns:\n    Dictionary\
+        \ mapping technique IDs to names\n\nExample:\n    GET /api/v1/techniques?technique_ids=T1566,T1078,T1059\n\n    Response:\n\
+        \    ```json\n    {\n      \"techniques\": {\n        \"T1566\": \"Phishing\",\n        \"T1078\": \"Valid Accounts\"\
+        ,\n        \"T1059\": \"Command and Scripting Interpreter\"\n      }\n    }\n    ```"
       operationId: get_technique_names_api_v1_techniques_get
       parameters:
       - name: technique_ids
@@ -779,6 +1038,976 @@ paths:
           description: Comma-separated technique IDs (e.g., T1566,T1078,T1059)
           title: Technique Ids
         description: Comma-separated technique IDs (e.g., T1566,T1078,T1059)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/insights:
+    get:
+      tags:
+      - reports
+      summary: Get Insights
+      description: "Merged Insights endpoint — returns governance signals (with AIVSS) + ground truth summary\nfor one or\
+        \ more architectures.\n\nUsed by the Insights tab (Section A: Input Safety, Section B: Design Patterns).\n\nArgs:\n\
+        \    archs: Comma-separated architecture names. If empty, returns the most recently modified.\n\nReturns:\n    Dict\
+        \ with `architectures` list, each entry containing governance_signals + ground_truth summary."
+      operationId: get_insights_api_v1_insights_get
+      parameters:
+      - name: archs
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Comma-separated architecture names. Empty = current (most recent)
+          default: ''
+          title: Archs
+        description: Comma-separated architecture names. Empty = current (most recent)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/insights/all:
+    get:
+      tags:
+      - reports
+      summary: Get All Insights Trending
+      description: 'Return all architectures with flattened trending metrics in one call.
+
+        Used by Insights tab: Single Arch trend, Multi-Arch comparison, Domain view.
+
+        No auth required — read-only reporting data.'
+      operationId: get_all_insights_trending_api_v1_insights_all_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - ApiKeyAuth: []
+  /api/v1/tatb-corpus:
+    get:
+      tags:
+      - reports
+      summary: Get Tatb Corpus
+      description: "Return TATB rubric scores for all architectures plus corpus averages.\n\nResponse shape:\n  {\n    \"\
+        architectures\": [{ \"name\", \"overall\", \"threat\", \"ttp\", \"risk\", \"plan\" }, ...],\n    \"avg\":        \
+        \   { \"overall\", \"threat\", \"ttp\", \"risk\", \"plan\" }\n  }\n\nScoring is computed server-side using the same\
+        \ logic as /tatb-score CLI.\nMITRE alignment requires API server to be running on localhost:8000 (self-call).\nNo\
+        \ auth required — read-only diagnostic data."
+      operationId: get_tatb_corpus_api_v1_tatb_corpus_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/generate-ciso-brief:
+    post:
+      tags:
+      - reports
+      summary: Generate Ciso Brief
+      description: 'Generate or regenerate the CISO brief for an architecture.
+
+
+        Runs the ciso-brief BUILD + LOOK + RELEASE pipeline:
+
+        - Reads ground_truth.json, 07_moe_orchestrator.json, 08_scrum_master.json
+
+        - Computes metrics, selects KNOWN findings (multi-critic first)
+
+        - Optionally generates LLM narrative (llm=true query param)
+
+        - Loads previous snapshot for trend delta
+
+        - Writes ciso_brief_latest.json + ciso_brief_<date>.md
+
+
+        Returns the snapshot JSON so the UI can render immediately.'
+      operationId: generate_ciso_brief_api_v1_reports__architecture_name__generate_ciso_brief_post
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: llm
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include LLM narrative (slower)
+          default: false
+          title: Llm
+        description: Include LLM narrative (slower)
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/detect-trend/{architecture_name}:
+    get:
+      tags:
+      - reports
+      summary: Get Detect Trend
+      description: "Return per-rule firing trends for one architecture, derived from\ngovernance_signals_history.jsonl.\n\n\
+        Response shape:\n  {\n    \"architecture\": str,\n    \"total_runs\":   int,\n    \"trends\": [{ \"rule_id\", \"trend\"\
+        , \"fired_runs\", \"total_runs\",\n                 \"fire_rate\", \"last_n\", \"fired_on\" }, ...]\n  }\n\ntrend\
+        \ values: new | rising | stable | falling | cleared | never\nNo auth required — read-only diagnostic data."
+      operationId: get_detect_trend_api_v1_detect_trend__architecture_name__get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/reports/{architecture_name}/export:
+    get:
+      tags:
+      - reports
+      summary: Export Assessment
+      description: 'Export a unified TA assessment bundle (schema ta-export/1.0).
+
+
+        Returns a single JSON object containing:
+
+        - gate:            CI/CD result (PASS|BLOCK) + blocking signals
+
+        - assessment:      risk scores, attack paths, MITRE techniques, controls
+
+        - tatb:            quality benchmark scores
+
+        - governance:      AIVSS composite, signal summary
+
+        - moe_consensus:   critic confidence + redesign signal (if ER has run)
+
+        - detect_findings: OCSF DetectionFinding 2004 events
+
+        - security_findings: OCSF SecurityFinding 2001 events
+
+        - otm:             OTM-compatible threats/assets/mitigations'
+      operationId: export_assessment_api_v1_reports__architecture_name__export_get
+      parameters:
+      - name: architecture_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Architecture Name
+      - name: save
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Write ta_export.json to report directory
+          default: false
+          title: Save
+        description: Write ta_export.json to report directory
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/governance/check:
+    post:
+      tags:
+      - reports
+      summary: Governance Check
+      description: "Run governance input checks on raw MMD content without a full analysis.\n\nExecutes check_input() and\
+        \ returns the exploitation, leakage, sovereignty,\nand DETECT rule evaluation in ~50ms — no LLM calls, no pipeline.\n\
+        \nUse for:\n  - Pre-commit / CI hooks that want to screen .mmd files before submission\n  - MCP adversarial sim personas\
+        \ that trigger DETECT rules without 30s analysis\n  - Lightweight governance audit of any MMD string\n\nBody: {\"\
+        mmd_content\": \"graph LR ...\", \"arch_name\": \"optional label\"}\n\nReturns governance signals dict + fired DETECT\
+        \ rules.\nResponds 400 with governance signals embedded if exploitation.severity == CRITICAL\n(mirrors the BouncerStage\
+        \ block behaviour)."
+      operationId: governance_check_api_v1_governance_check_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Payload
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/config:
+    get:
+      tags:
+      - config
+      summary: Get Config
+      description: 'Return the current runtime configuration (authenticated).
+
+
+        Requires TM-API-KEY. Returns tunable parameters with their live values
+
+        plus a provider chain status block. Key values are never returned.'
+      operationId: get_config_api_v1_config_get
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+    put:
+      tags:
+      - config
+      summary: Put Config
+      description: 'Update one or more configuration sections (authenticated).
+
+
+        Accepts a partial dict. Validates, persists to user_config.json, and
+
+        reloads the singleton — takes effect on the next analysis request.
+
+        Strips _provider_chain silently (read-only).'
+      operationId: put_config_api_v1_config_put
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Payload
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/llm-check:
+    get:
+      tags:
+      - config
+      summary: Llm Check
+      description: 'Verify the configured LLM provider is reachable and responds.
+
+
+        Makes a minimal probe call (max_tokens=5) using the resolved synthesis model.
+
+        Returns: {ok, provider, model, latency_ms, error?}
+
+        Authenticated — exposes model name which is internal config.'
+      operationId: llm_check_api_v1_llm_check_get
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/config/reset:
+    post:
+      tags:
+      - config
+      summary: Reset Config
+      description: 'Reset all configuration to built-in defaults (authenticated).
+
+
+        Deletes user_config.json and reloads the singleton from scratch.'
+      operationId: reset_config_api_v1_config_reset_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/workspaces:
+    get:
+      tags:
+      - workspaces
+      summary: List Workspaces
+      description: 'List all workspaces with per-member metrics and aggregate heat scores.
+
+
+        No auth required — read-only, no secrets exposed.'
+      operationId: list_workspaces_api_v1_workspaces_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response List Workspaces Api V1 Workspaces Get
+      security:
+      - ApiKeyAuth: []
+    post:
+      tags:
+      - workspaces
+      summary: Create Workspace
+      description: Create a new workspace.
+      operationId: create_workspace_api_v1_workspaces_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Create Workspace Api V1 Workspaces Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/workspaces/{workspace_name}:
+    put:
+      tags:
+      - workspaces
+      summary: Update Workspace
+      description: Update description, domain, or architectures of an existing workspace.
+      operationId: update_workspace_api_v1_workspaces__workspace_name__put
+      parameters:
+      - name: workspace_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace Name
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Update Workspace Api V1 Workspaces  Workspace Name  Put
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+    delete:
+      tags:
+      - workspaces
+      summary: Delete Workspace
+      description: Delete a workspace (does not delete the underlying architecture reports).
+      operationId: delete_workspace_api_v1_workspaces__workspace_name__delete
+      parameters:
+      - name: workspace_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace Name
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Delete Workspace Api V1 Workspaces  Workspace Name  Delete
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/ta-wiz/ask:
+    post:
+      tags:
+      - ta-wiz
+      summary: Ta Wiz Ask
+      description: 'Stream a TA-Wiz response grounded in the workspace''s report files.
+
+
+        Sends SSE events: progress (×3) → complete | error.
+
+        complete payload: {answer, model, sources_used, tokens_est}'
+      operationId: ta_wiz_ask_api_v1_ta_wiz_ask_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TAWizAskRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/graph/query:
+    get:
+      tags:
+      - graph-index
+      summary: Graph Query
+      description: "Answer a structural question from the graph without an LLM call.\n\nReturns:\n    {answer: str, from_graph:\
+        \ true, missing_archs: [...]} on a hit\n    {answer: null, from_graph: false, missing_archs: [...]} on a miss"
+      operationId: graph_query_api_v1_graph_query_get
+      parameters:
+      - name: workspace
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Workspace name
+          title: Workspace
+        description: Workspace name
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Natural language question
+          title: Q
+        description: Natural language question
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/graph/refresh:
+    post:
+      tags:
+      - graph-index
+      summary: Graph Refresh
+      description: Invalidate and rebuild the graph for a workspace.
+      operationId: graph_refresh_api_v1_graph_refresh_post
+      parameters:
+      - name: workspace
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/broker/config:
+    get:
+      tags:
+      - event-broker
+      summary: Get Broker Config
+      description: Return the current event_broker block from policies/agent_governance.yaml.
+      operationId: get_broker_config_api_v1_broker_config_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Broker Config Api V1 Broker Config Get
+      security:
+      - ApiKeyAuth: []
+    post:
+      tags:
+      - event-broker
+      summary: Save Broker Config
+      description: 'Merge payload into the event_broker block and save to policies/agent_governance.yaml.
+
+        Only keys present in payload are updated — other policy sections untouched.'
+      operationId: save_broker_config_api_v1_broker_config_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: Payload
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Save Broker Config Api V1 Broker Config Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/broker/status:
+    get:
+      tags:
+      - event-broker
+      summary: Broker Status
+      description: 'Test connectivity for each enabled sink.
+
+        Returns {siem: "ok"|"error", langfuse: "ok"|"error"|"not_configured", webhook: ...}'
+      operationId: broker_status_api_v1_broker_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Broker Status Api V1 Broker Status Get
+      security:
+      - ApiKeyAuth: []
+  /api/v1/jobs/expert-review:
+    post:
+      tags:
+      - jobs
+      summary: Submit Expert Review
+      description: 'Queue a FULL_MOE expert review for an existing architecture.
+
+
+        Returns immediately with a job_id. Poll GET /api/v1/jobs/{job_id}/status
+
+        to track progress and retrieve the result when status == ''completed''.'
+      operationId: submit_expert_review_api_v1_jobs_expert_review_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpertReviewRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/jobs/{job_id}/status:
+    get:
+      tags:
+      - jobs
+      summary: Get Job Status
+      description: "Poll the status of a queued or running job.\n\nReturns:\n    status:   queued | running | completed |\
+        \ failed | blocked\n    progress: 0-100\n    message:  current stage description\n    result:   present when status\
+        \ == 'completed'\n    error:    present when status == 'failed' or 'blocked'"
+      operationId: get_job_status_api_v1_jobs__job_id__status_get
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/mcp/access-signals:
+    get:
+      tags:
+      - jobs
+      summary: Get Mcp Access Signals
+      description: 'Return the current MCP session access pattern signals.
+
+
+        Used by the dashboard MCP tab to power the DETECT-020/021/022 status cards
+
+        and the tool-usage heatmap. No parameters — always returns the live state
+
+        of the module-level MCPAccessLogger singleton.'
+      operationId: get_mcp_access_signals_api_v1_mcp_access_signals_get
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/mcp/jobs:
+    get:
+      tags:
+      - jobs
+      summary: List Mcp Jobs
+      description: 'Return all non-expired jobs from the job store.
+
+
+        Used by the dashboard MCP tab Jobs sub-pane. Jobs expire after 1 hour;
+
+        this endpoint returns whatever is still in the in-memory store.'
+      operationId: list_mcp_jobs_api_v1_mcp_jobs_get
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/mcp/simulate/{persona}:
+    get:
+      tags:
+      - mcp-sim
+      summary: Simulate Persona
+      description: "SSE stream simulating an MCP client persona's tool chain.\n\nEmits events: persona_start, tool_start,\
+        \ tool_result, signal_update,\ndetect_fired, sim_done, sim_error.\n\nPersonas: chatbot, code-agent, ciso, soc, copilot,\
+        \ chatgpt (benign)\n          recon_attack, flood_attack, auth_probe (adversarial)"
+      operationId: simulate_persona_api_v1_mcp_simulate__persona__get
+      parameters:
+      - name: persona
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Persona
+      - name: arch
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Architecture name to use in tool calls
+          default: web_app
+          title: Arch
+        description: Architecture name to use in tool calls
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/mcp/personas:
+    get:
+      tags:
+      - mcp-sim
+      summary: List Personas
+      description: List available simulation personas with descriptions.
+      operationId: list_personas_api_v1_mcp_personas_get
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          description: ThreatAssessor API key for authentication
+          title: Tm-Api-Key
+        description: ThreatAssessor API key for authentication
       responses:
         '200':
           description: Successful Response
@@ -857,10 +2086,39 @@ components:
           contentMediaType: application/octet-stream
           title: Architecture File
           description: Mermaid diagram file (.mmd format, max 10MB)
+        include_validation:
+          type: boolean
+          title: Include Validation
+          default: true
+        ssp_profile:
+          type: string
+          title: Ssp Profile
+          default: low_risk_cloud
+        enable_ssp:
+          type: boolean
+          title: Enable Ssp
+          default: true
       type: object
       required:
       - architecture_file
       title: Body_analyze_architecture_stream_api_v1_analyze_stream_post
+    ChatMessage:
+      properties:
+        role:
+          type: string
+          enum:
+          - user
+          - assistant
+          title: Role
+        content:
+          type: string
+          title: Content
+      type: object
+      required:
+      - role
+      - content
+      title: ChatMessage
+      description: Single turn in a TA-Wiz conversation.
     ErrorResponse:
       properties:
         type:
@@ -905,6 +2163,19 @@ components:
         status: 400
         title: Invalid request
         type: https://api.threatassessor.example.com/errors/bad-request
+    ExpertReviewRequest:
+      properties:
+        arch_name:
+          type: string
+          title: Arch Name
+        critic_mode:
+          type: string
+          title: Critic Mode
+          default: partial_parallel
+      type: object
+      required:
+      - arch_name
+      title: ExpertReviewRequest
     HTTPValidationError:
       properties:
         detail:
@@ -956,6 +2227,40 @@ components:
         status: healthy
         timestamp: '2026-05-23T10:30:00Z'
         version: 1.3.0
+    TAWizAskRequest:
+      properties:
+        workspace_name:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Workspace Name
+        question:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Question
+        selected_architectures:
+          anyOf:
+          - items:
+              type: string
+            type: array
+            maxItems: 50
+          - type: 'null'
+          title: Selected Architectures
+          description: Subset of workspace architectures to include in context. Defaults to all workspace members if omitted.
+        history:
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          type: array
+          maxItems: 12
+          title: History
+          description: Prior conversation turns (sliding window, oldest dropped after 12).
+      type: object
+      required:
+      - workspace_name
+      - question
+      title: TAWizAskRequest
+      description: Request body for POST /api/v1/ta-wiz/ask.
     ValidationError:
       properties:
         loc:
@@ -982,11 +2287,94 @@ components:
       - msg
       - type
       title: ValidationError
+    WorkspaceCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 80
+          pattern: ^[a-zA-Z0-9_\-]+$
+          title: Name
+          description: URL-safe workspace name (letters, digits, _ and - only).
+        description:
+          type: string
+          maxLength: 300
+          title: Description
+          default: ''
+        domain:
+          type: string
+          maxLength: 80
+          title: Domain
+          description: Domain tag for EventBroker sink routing (e.g. financial, healthcare).
+          default: ''
+        architectures:
+          items:
+            type: string
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Architectures
+          description: Architecture names that belong to this workspace.
+      type: object
+      required:
+      - name
+      - architectures
+      title: WorkspaceCreate
+      description: Create a new workspace grouping architectures into a named mega-system.
+    WorkspaceUpdate:
+      properties:
+        description:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Description
+        domain:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Domain
+        architectures:
+          anyOf:
+          - items:
+              type: string
+            type: array
+            maxItems: 50
+          - type: 'null'
+          title: Architectures
+      type: object
+      title: WorkspaceUpdate
+      description: Partial update for an existing workspace.
   securitySchemes:
-    ApiKeyAuth:
+    ApiKeyHeader:
       type: apiKey
       in: header
       name: TM-API-KEY
+      description: API key issued at server setup. Set API_KEY in .env.
 servers:
 - url: http://localhost:8000
   description: Local development
+security:
+- ApiKeyHeader: []
+x-tagGroups:
+- name: Core Analysis
+  tags:
+  - analysis
+  - streaming
+- name: Reports and Export
+  tags:
+  - reports
+- name: SOC and Governance
+  tags:
+  - mcp-sim
+  - jobs
+- name: Intelligence
+  tags:
+  - graph-index
+  - ta-wiz
+- name: Configuration
+  tags:
+  - config
+  - event-broker
+  - workspaces
+

@@ -446,4 +446,34 @@ def governance_check(mmd_content: str, arch_name: str = "mcp_input") -> str:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    import argparse as _ap
+    _parser = _ap.ArgumentParser(description="ThreatAssessor MCP Server")
+    _parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "streamable-http"],
+        default="stdio",
+        help=(
+            "Transport protocol: stdio (Claude Desktop, default), "
+            "sse (legacy HTTP+SSE), "
+            "streamable-http (OpenAI Responses API, remote agents)"
+        ),
+    )
+    _parser.add_argument(
+        "--host", default="0.0.0.0",
+        help="Bind host for sse/streamable-http (default: 0.0.0.0)",
+    )
+    _parser.add_argument(
+        "--port", type=int, default=8001,
+        help="Bind port for sse/streamable-http (default: 8001)",
+    )
+    _args = _parser.parse_args()
+
+    if _args.transport == "stdio":
+        mcp.run(transport="stdio")
+    else:
+        # For remote transports, set host/port via env vars that FastMCP reads
+        import os as _os
+        _os.environ.setdefault("FASTMCP_HOST", _args.host)
+        _os.environ.setdefault("FASTMCP_PORT", str(_args.port))
+        print(f"[ThreatAssessor MCP] {_args.transport} on {_args.host}:{_args.port}", flush=True)
+        mcp.run(transport=_args.transport)
