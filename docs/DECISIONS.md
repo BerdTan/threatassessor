@@ -4,6 +4,191 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 38 — 2026-08-07
+
+### 17. TA Export Bundle (ta-export/1.0) — unified pipeline artefact
+
+**Problem:** TA produces ~12 files per architecture. Downstream consumers (CI/CD gates, IriusRisk, Startlift, SIEM) each need to parse a different file. No single machine-readable entry point.
+
+**Decision:** `chatbot/modules/ta_exporter.py` assembles all artefacts into `ta_export.json` (schema `ta-export/1.0`). Exposed via `GET /api/v1/reports/{arch}/export` and MCP tool `export_assessment` (tool #12).
+
+**Bundle sections:**
+- `gate` — CI/CD PASS|BLOCK + blocking_signals. One `jq '.gate.result'` → exit 0/1.
+- `assessment` — risk scores, attack paths, MITRE techniques, top 20 controls
+- `tatb` — threat/ttp/risk/plan quality scores
+- `governance` — AIVSS composite + signal summary
+- `moe_consensus` — critic confidence + redesign signal (if ER ran)
+- `detect_findings` / `security_findings` — OCSF 2004/2001 embedded directly
+- `otm` — OTM 0.2.0 assets/threats/mitigations (importable by Startlift/IriusRisk)
+
+**Why OTM embedded vs separate converter:** OTM adoption is thin; embedding as one section costs nothing and makes the bundle importable without a second tool. If a pure OTM export is needed later, `_build_otm()` is already isolated and can be called standalone.
+
+**Why not ground_truth.json as the canonical export:** Ground truth is engine-internal — schema changes frequently with engine improvements. The export bundle is versioned and consumer-stable.
+
+**Alternatives rejected:**
+- *STIX 2.1*: attack-path graph format mismatch; mapping would lose control/mitigation detail
+- *Separate OTM file*: forces consumers to stitch two files; single bundle is simpler
+
+---
+
+### 16. DETECT-023 agentic_tool_exfil_vector — Meta/Anthropic escape pattern
+
+**Problem:** No pre-deployment rule caught the structural precondition for the Meta AI agent escape incident (2026-08) and the Anthropic Claude eval escape: agentic architecture + uncontrolled outbound internet path.
+
+**Decision:** DETECT-023 fires when all three hold simultaneously:
+1. `arch_metadata.is_agentic = true` (architecture_type ∈ {ai_system, rag_system, llm_agent, …})
+2. `sovereignty.cross_boundary_nodes length_gt 0` (outbound edge to external/internet node)
+3. `aivss.outbound.composite ≥ 3.0` (measurable outbound signal)
+
+New `arch_metadata` field added to `GovernanceSignals`, populated from `ground_truth.metadata.architecture_type` in `check_artifact()`. No new pipeline stage — evaluator picks it up via the same dotted-path resolver.
+
+**Why composite ≥ 3.0 not ≥ 6.0 (HIGH):** Any outbound signal on an agentic architecture warrants review. 3.0 is intentionally low; analysts can suppress false positives for RAG archs with named trusted APIs by raising to 5.0 or adding a `zdr_signals` fourth condition.
+
+**Tuning note in rule:** Covers the RAG false-positive case (named trusted knowledge source) and the "arch under redesign" case (placeholder egress edges).
+
+---
+
+### 15. MCP sim fixes — access logger, auth, TATB keys (session 38 testing)
+
+**Problem:** During live testing, three bugs found in session 37 code:
+
+1. **DETECT-020/021/022 never fired in dashboard** — the REST-based sim (`mcp_sim.py`) made direct HTTP calls without logging to `MCPAccessLogger`. The logger only got calls from the MCP stdio server subprocess.
+2. **CISO brief 401** — `job_client.py` read only `TM_API_KEY` env var; MCP server subprocess had no `.env` loaded, so the key was empty.
+3. **TATB averages showed 0** — `client_sim.py` read `threat_relevant`/`ttp_accurate` keys but the API returns `threat`/`ttp`/`risk`/`plan`.
+
+**Fixes:**
+- `mcp_sim.py`: call `get_access_logger().record_tool_call()` after every REST tool call, so the in-process singleton accumulates signals.
+- `mcp_server/server.py`: `load_dotenv()` on startup (override=False so Claude Desktop env wins).
+- `job_client.py`: `API_KEY` fallback: `os.environ.get("TM_API_KEY", "") or os.environ.get("API_KEY", "")`.
+- `client_sim.py`: fix TATB key names; add `resolve_arch()` fallback for all personas; guard `avg()` against None scores.
+- `recon_attack` in `mcp_sim.py`: use three distinct arch names so `recon_gov_archs ≥ 3` threshold is reached.
+
+**Why the logger was split:** Dashboard sim calls the REST API directly (in-process); MCP stdio server is a subprocess. Both need to update the same singleton. Wrapping `_call_tool` in `mcp_sim.py` was the minimal fix — no new IPC, no shared state file.
+
+---
+
+## Session 37 — 2026-08-04 (continued)
+
+### 14. MCP dashboard tab — master view + live simulation
+
+**Problem:** The MCP server existed and DETECT rules fired, but nothing in the dashboard showed what was happening at the MCP layer. External integrators had no way to watch tool chains execute, and SOC operators couldn't see MCP-layer access signals alongside the rest of the pipeline signals.
+
+**Decision:** Add a standalone MCP tab (always accessible, no analysis required) with three sub-panes anchored by a persistent status row.
+
+**Master view — 3 status cards (always visible):**
+One card per MCP DETECT rule (020/021/022). Each shows current signal values, the threshold, and a CLEAR/FIRED state. Auto-refreshes every 15s. Cards pulse red when a rule fires mid-simulation. This is the anchor — reader always knows the current security state of the MCP layer regardless of which sub-pane is open.
+
+**Sub-pane 1 — Live Simulation:**
+9 personas: 6 benign (chatbot, code-agent, ciso, soc, copilot, chatgpt) + 3 adversarial (recon_attack, flood_attack, auth_probe). Each runs against the real REST API via SSE stream (`GET /api/v1/mcp/simulate/{persona}`). Events: `persona_start → tool_start → tool_result → signal_update → detect_fired → sim_done`. Timeline animates step by step; heatmap updates per tool call; DETECT alerts panel lights up when rules fire. Adversarial personas deliberately trigger DETECT-020/021/022 so the detection layer is visible in real-time — not just in reports.
+
+**Sub-pane 2 — Jobs:** Live table of expert review jobs from `GET /api/v1/mcp/jobs` (job store snapshot). Status badge, progress bar, elapsed time.
+
+**Sub-pane 3 — Signals & Findings:** Full `mcp_access` signal breakdown (counts, ratios, thresholds per rule) + filtered OCSF findings for DETECT-020/021/022 with inline playbook analyst steps.
+
+**New REST endpoints:**
+- `GET /api/v1/mcp/access-signals` — live `MCPAccessLogger` state
+- `GET /api/v1/mcp/jobs` — job store snapshot
+- `GET /api/v1/mcp/personas` — 9 persona definitions
+- `GET /api/v1/mcp/simulate/{persona}` — SSE stream (tool_start/result/signal_update/detect_fired/sim_done)
+
+**Why adversarial personas in the dashboard:** The only way to demonstrate that DETECT-020/021/022 actually work is to trigger them live. The sim is the demo layer — run `recon_attack` and watch the status card flip red mid-run. This makes the detection layer tangible for anyone reviewing the system and avoids the problem of security features that are invisible until something goes wrong.
+
+**Why master view + sub-panes over a flat tab:** The three sub-panes have different update cadences (signals: 15s polling; sim: event-driven; jobs: on-demand). Keeping them behind one anchor row means the health state is never buried — you always see the three signal cards regardless of which pane you're in.
+
+**Testing deferred to next session:** API must be running with an existing architecture. Test checklist:
+1. `./scripts/api/api_start.sh`
+2. Load any arch → switch to MCP tab → status cards appear
+3. Run `recon_attack` persona → confirm DETECT-020 fires, card pulses
+4. Run `flood_attack` → DETECT-021
+5. Run `auth_probe` → DETECT-022
+6. Switch to Jobs sub-pane → confirm job store table renders
+7. Switch to Signals → confirm mcp_access fields and OCSF findings section
+
+**Alternatives rejected:**
+- *Separate page / route:* breaks the single-SPA pattern and requires separate auth handling
+- *Embed in SOC tab:* SOC tab is architecture-specific; MCP layer is session-global — wrong anchor
+- *REST polling only (no SSE):* can't animate step-by-step — the live feel is the point
+
+---
+
+### 13. DETECT-020/021/022 — MCP access pattern detection
+
+**Problem:** The MCP server is a new trust boundary. Existing DETECT rules watch what happens *inside* the pipeline (critic manipulation, injection in .mmd input, supply chain). Nothing watched *how the MCP tools are being used from the outside* — recon, resource exhaustion, credential probing.
+
+**Solution:** Three new rules targeting MCP-layer abuse patterns, each grounded in a real OWASP Agentic Top 10 item:
+
+| Rule | Name | Signal | OWASP | Kill chain |
+|------|------|--------|-------|-----------|
+| DETECT-020 | `mcp_recon_sequence` | `list_architectures` + ≥3 `get_governance_signals` in 60s | A09 Excessive Agency | discovery |
+| DETECT-021 | `mcp_job_flooding` | ≥3 `run_expert_review` in 120s, poll/submit ratio < 0.5 | A10 Model DoS | impact |
+| DETECT-022 | `mcp_auth_probing` | ≥5 auth failures in 300s | A02 Broken Auth | credential_access |
+
+**Signal source:** `mcp_server/access_logger.py` — `MCPAccessLogger`, rolling-window singleton. Writes `mcp_access` dict into governance_signals via `get_mcp_access_signals()` tool (tool #11). Also merges into `governance_signals.json` when the SOC analyst calls the tool — same field resolution path as all existing signals.
+
+**Why tool #11 for signal delivery:** MCP tool #11 (`get_mcp_access_signals`) lets any caller — including CI gates and SOC dashboards — pull the live session signals and feed them into the rule evaluator. This keeps the evaluation path consistent: access logger → signals dict → `RuleEvaluator.evaluate()` → OCSF findings. No new pipeline stage needed.
+
+**Test coverage added:**
+- 3 new `TestDetect020/021/022` classes in `test_soc_rule_evaluator.py` (18 new test cases)
+- 3 new scenario functions + SCENARIOS + EXPECTED_RULES entries in `incident_simulator.py`
+- Rule count updated: 19 → 22 in `test_loads_twentytwo_rules`
+- All 191 tests pass
+
+**Alternatives rejected:**
+- *Middleware on the REST API:* would catch REST calls but not MCP-level tool patterns (persona-level chains)
+- *Separate access log file:* adds an I/O path; in-memory rolling window is sufficient for session-level detection, report dir is the durable artefact
+
+---
+
+### 12. MCP server — client simulator + persona-driven testing strategy
+
+**Problem:** Building the MCP server was necessary but not sufficient. Without a way to test the server from a client's perspective — and without documentation that shows *how* different integration types actually use it — external teams have no onboarding path and we can't validate the server against real protocol behaviour.
+
+**Decision:** Ship `mcp_server/client_sim.py` — a persona-based client simulator that exercises the server over the real MCP stdio protocol, not mocked HTTP. Each persona maps to a concrete integration pattern. `/check-mcp --live` wires the simulator's dry-run into the CI gate.
+
+**Personas and their tool chains:**
+
+| Persona | Chain | Exit signal |
+|---------|-------|-------------|
+| `chatbot` | list → briefing → governance → MITRE | Natural language response |
+| `code-agent` | TATB + governance → gate decision | exit 0 / exit 1 |
+| `ciso` | CISO brief → corpus TATB | Formatted digest |
+| `soc` | DETECT trends → governance → MITRE triage | SIEM enrichment record |
+| `copilot` | MITRE lookup + briefing | Inline hover card |
+| `chatgpt` | list → briefing → governance | OpenAI function-call bridge |
+
+**Why stdio, not mocked HTTP:** The MCP transport layer (framing, initialization, capability negotiation) is where real integration bugs surface. Testing only the REST layer misses protocol-level failures. The simulator spawns `server.py` as a subprocess and does a real `ClientSession.initialize()` handshake — same path Claude Desktop takes.
+
+**Why per-persona, not a generic smoke-test:** Different clients chain tools differently. A CI gate needs structured JSON and an exit code; a chatbot needs to gracefully handle missing data across multiple calls. A single smoke-test that calls all 10 tools in sequence doesn't surface integration-specific failure modes.
+
+**Code snippet strategy:** Every persona ends with a copy-paste integration snippet (Python or TypeScript). This is the primary onboarding artifact — someone adding TA to their service should be able to copy one block and be done.
+
+**Alternatives rejected:**
+- *Mock HTTP client:* Fast but skips protocol layer; gives false confidence.
+- *Single end-to-end test:* Doesn't differentiate client patterns or produce reusable snippets.
+- *OpenAPI-only docs:* Describes REST, not MCP tool semantics or multi-step chains.
+
+---
+
+### 11. MCP server — transport and job async design
+
+**Problem:** ThreatAssessor has two fundamentally different latency profiles: analysis (~30s, sync tolerable) and expert review (~90–120s FULL_MOE, must be async). Exposing both through MCP tools requires a clear async contract that works for all client types.
+
+**Decision:**
+- `analyze_architecture` — synchronous. MCP tools block fine for 30s; all clients handle this without polling.
+- `run_expert_review` — async via job store. Returns `job_id` immediately. Clients poll `get_job_status` or pass `wait_for_completion=True` to block in the tool itself. The job store (`chatbot/api/job_store.py`) is in-memory with a 1-hour TTL — intentionally not persisted (jobs are fire-and-forget; results are always readable from the report directory after completion).
+- `get_job_status(wait_for_completion=True)` — convenience flag for clients (e.g. CI pipelines) that want to block without writing their own poll loop.
+
+**Transport:** stdio. This is the standard for Claude Desktop and most MCP clients. SSE/HTTP transport deferred — no identified use case yet that stdio can't serve.
+
+**Auth:** `TM_API_KEY` env var passed to the server process. The MCP server itself has no auth layer — auth is enforced by the underlying REST API via `TM-API-KEY` header on every call.
+
+**Alternatives rejected:**
+- *SSE transport:* More complex, no current client requires it.
+- *Persistent job store (Redis/SQLite):* Overkill — jobs are short-lived and the report directory is the durable artefact.
+- *Streaming job progress via MCP:* MCP 1.x has no server-push; polling is the correct pattern.
+
+---
+
 ## Session 36 — 2026-08-01 (continued)
 
 ### 10. Provider manifest — single source of truth (commit 4e8e364)

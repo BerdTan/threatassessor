@@ -37,6 +37,8 @@ EXPECTED_TOOLS = [
     "get_tatb_scores",
     "list_architectures",
     "lookup_mitre_technique",
+    "get_mcp_access_signals",
+    "export_assessment",
 ]
 
 MCP_FILES = [
@@ -332,8 +334,8 @@ def check_live(base_url: str) -> None:
             timeout=30,
             env={**os.environ, "TM_API_BASE_URL": base_url},
         )
-        if "10 tools registered" in result.stdout:
-            ok("MCP stdio handshake → 10 tools negotiated")
+        if "12 tools registered" in result.stdout:
+            ok("MCP stdio handshake → 12 tools negotiated")
         elif result.returncode == 0:
             ok("MCP stdio handshake completed")
         else:
