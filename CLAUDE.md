@@ -42,7 +42,7 @@ tail -f logs/api.log            # logs
 - `chatbot/harness/governance.py` — `GovernanceSignals`, governance adapter, injection/evasion detection
 - `chatbot/harness/policy_broker.py` — `PolicyBroker`, `BrokerDecision` (dynamic routing after QualityStage)
 - `chatbot/harness/event_broker.py` — `EventBrokerCritic`, pub/sub to SIEM/Langfuse/Webhook sinks
-- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (22 DETECT rules)
+- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (24 DETECT rules)
 - `chatbot/harness/rule_trend_evaluator.py` — `RuleTrendEvaluator` (trend analysis from history JSONL)
 - `chatbot/harness/registry.py` — `CriticRegistry`
 
@@ -91,13 +91,9 @@ tail -f logs/api.log            # logs
 
 **PolicyBroker** runs after QualityStage on every pipeline run. Reads live governance signals → dynamically adjusts `blocked_agents` + model routing before critics run.
 
-**`GovernanceSignals` new fields (session 38):**
-- `arch_metadata` — `{architecture_type, node_count, is_agentic}` from `ground_truth.metadata`; feeds DETECT-023
-- `aivss.delta` — `{composite_drop, prev_composite, curr_composite}` computed in `AIVSSStage` vs last history entry; feeds DETECT-024
-
-**`governance_check` endpoint** — `POST /api/v1/governance/check` — runs `check_input()` only (~50ms, no LLM). Returns signals + fired DETECT rules. Returns 400 with embedded signals on CRITICAL block. Use as pre-commit hook or CI gate.
-
 **AsyncThreatAssessorHarness** wraps `run_typed(PipelineRequest)` in `asyncio.to_thread()` for MCP/CI-CD callers.
+
+**`GovernanceSignals` key fields:** `arch_metadata.is_agentic` (from `ground_truth.metadata`) · `aivss.delta.composite_drop` (computed vs prior history entry) · `mcp_access.*` (from `MCPAccessLogger`)
 
 ---
 
@@ -121,38 +117,7 @@ tail -f logs/api.log            # logs
 
 **Transport:** stdio (Claude Desktop standard). See `mcp_server/README.md` for setup + all client types.
 
-**MCP access DETECT rules (020–022):**
-
-| Rule | Signal | Trigger | Severity |
-|------|--------|---------|---------|
-| DETECT-020 | `mcp_access.recon_sequence` | `list_architectures` + ≥3 `get_governance_signals` in 60s | Medium |
-| DETECT-021 | `mcp_access.job_flood` | ≥3 `run_expert_review` in 120s, poll/submit < 0.5 | High |
-| DETECT-022 | `mcp_access.auth_failures` | ≥5 auth failures in 300s | High |
-
-**Governance-layer DETECT rules (triggered by `governance_check` / `analyze_architecture`):**
-
-| Rule | Signal | Trigger | Severity |
-|------|--------|---------|---------|
-| DETECT-005 | `exploitation.severity == CRITICAL` | Tag injection / control tokens in MMD → pipeline block | Critical |
-| DETECT-010 | `exploitation.path_traversal length_gt 0` | `../../` traversal sequences in MMD | High |
-| DETECT-017 | `exploitation.external_url_references > 0` | `https://` URL in MMD node label | High |
-| DETECT-018 | `exploitation.evasion_attempts > 0` | Cyrillic homoglyphs / URL-encoded evasion in MMD | High |
-| DETECT-019 | `exploitation.max_injection_severity == HIGH` | HIGH-category injection phrase in MMD | High |
-| DETECT-023 | `arch_metadata.is_agentic + cross_boundary + outbound ≥ 3.0` | AI/agentic arch with uncontrolled internet egress | High |
-| DETECT-024 | `aivss.delta.composite_drop ≥ 2.0` | AIVSS composite dropped ≥ 2pts vs prior run | High |
-
-**MCP sim personas — 13 total (6 benign + 7 adversarial):**
-
-| Persona | Type | Rules demonstrated |
-|---------|------|--------------------|
-| chatbot, code-agent, ciso, soc, copilot, chatgpt | Benign | — |
-| `recon_attack` | Adversarial | DETECT-020 |
-| `flood_attack` | Adversarial | DETECT-021 |
-| `auth_probe` | Adversarial | DETECT-022 |
-| `injection_attack` | Adversarial (governance) | DETECT-005 · 010 · 019 |
-| `tag_injection` | Adversarial (governance) | DETECT-005 (CRITICAL block) |
-| `url_injection` | Adversarial (governance) | DETECT-017 · 018 · 019 |
-| `c2_exfil_arch` | Adversarial (governance) | DETECT-020 · 019 |
+**Sim personas — 13 total:** 6 benign (chatbot/code-agent/ciso/soc/copilot/chatgpt) + 7 adversarial: `recon_attack` (020), `flood_attack` (021), `auth_probe` (022), `injection_attack` (005/010/019), `tag_injection` (005 CRITICAL), `url_injection` (017/018/019), `c2_exfil_arch` (020/019). Run via dashboard MCP tab or `GET /api/v1/mcp/simulate/{persona}`.
 
 ---
 
@@ -181,17 +146,8 @@ python3 .claude/skills/check-mcp/scripts/check-mcp.py --live  # + live REST + MC
 
 # MCP client simulator — integration persona testing (API must be running)
 python3 mcp_server/client_sim.py --dry-run             # protocol handshake only
-python3 mcp_server/client_sim.py --all --arch web_app  # all 6 personas live
-python3 mcp_server/client_sim.py --persona soc --arch web_app
-
-# Governance check (fast, no LLM — screens MMD for injection/traversal/URL/homoglyph)
-curl -s -X POST http://localhost:8000/api/v1/governance/check \
-  -H "TM-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"mmd_content": "graph LR\n  A --> B", "arch_name": "test"}'
-
-# TA export bundle (CI/CD gate — jq '.gate.result' → PASS or BLOCK)
-curl -s http://localhost:8000/api/v1/reports/{arch}/export -H "TM-API-KEY: $API_KEY"
-curl -s "...?save=true"  # also writes ta_export.json to report dir
+python3 mcp_server/client_sim.py --all --arch <arch>   # all 6 benign personas live
+python3 mcp_server/client_sim.py --persona soc --arch <arch>
 ```
 
 ---
