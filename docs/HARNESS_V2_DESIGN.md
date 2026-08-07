@@ -1,6 +1,6 @@
 # ThreatAssessor Harness v2 — Extension Architecture Design
 
-**Status:** Design draft — 2026-08-01  
+**Status:** Implemented — 2026-08-01 (commits 224d95a, 5c4326e). Two items intentionally deferred (see end of doc).  
 **Scope:** Three roles: Orchestrator (decouple front/backend), Broker (policy-driven routing), Bouncer (kill switch / isolation). Incremental additions only — nothing removed, existing callers unaffected.
 
 ---
@@ -241,7 +241,7 @@ class CircuitBreaker:
 QualityStage          ← governance signals from input + artifact
 BouncerStage (NEW)    ← hard isolation gate (required=True)
 PolicyBroker call     ← dynamic routing decision injected into ctx
-CriticStage           ← MoE critics (now with post-output guard)
+CriticStage           ← MoE critics (post-output guard deferred — see status table)
 ScrumMasterStage
 AIVSSStage
 OutboundAIVSSGate     ← wire _outbound_blocked read → BouncerStage handles it
@@ -270,3 +270,20 @@ When MCP calls `analyze_architecture()`:
 5. `PipelineResponse.detect_summary` gives the caller the DETECT rule firing summary in one field — no need to call `get_detect_trends()` separately for a quick assessment
 
 This design makes TA safe to expose externally: external callers cannot affect the internal pipeline (bouncer), and the pipeline cannot affect external systems without explicit policy (broker + outbound gate).
+
+---
+
+## Implementation status — 2026-08-08
+
+| Component | Status | Notes |
+|---|---|---|
+| `PipelineRequest` / `PipelineResponse` | ✅ Shipped | `controller.py` |
+| `AsyncThreatAssessorHarness` | ✅ Shipped | `asyncio.to_thread()` wrapper |
+| `ProgressCallback` TypeAlias | ✅ Shipped | `controller.py` |
+| `PolicyBroker` / `BrokerDecision` | ✅ Shipped | `policy_broker.py`; 5 routing rules |
+| `BouncerStage` (`required=True`) | ✅ Shipped | `stages.py`; kill_switch + blocked_architectures |
+| `BlockedPipelineError` | ✅ Shipped | `controller.py`; API returns 400 |
+| `CircuitBreaker` | ✅ Shipped | `controller.py`; wraps ModelRouter |
+| `PipelineResponse.detect_summary` | ✅ Shipped | `{rules_fired, total_fired}` populated by AIVSSStage |
+| **`EventPriority` / `_priority_sinks`** | ⏸ Deferred | `sink_tier` is computed in `BrokerDecision` but `EventBrokerCritic` does not read it. No current consumer needs priority routing — all sinks receive all events. Implement when a SIEM sink needs to suppress DEBUG events. |
+| **Post-critic output guard** | ⏸ Deferred | Design: scan MoE output dict through `check_artifact()` for leakage before writing to ctx. Not built — MoE critics do not handle raw user data, so leakage risk is low. Revisit if critics gain direct file/network access. |
