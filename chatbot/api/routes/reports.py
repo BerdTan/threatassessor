@@ -2213,3 +2213,61 @@ async def get_detect_trend(architecture_name: str):
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Trend computation failed: {exc}")
+
+
+# ── TA Export Bundle ──────────────────────────────────────────────────────────
+
+@router.get("/reports/{architecture_name}/export")
+async def export_assessment(
+    architecture_name: str,
+    save: bool = Query(False, description="Write ta_export.json to report directory"),
+    _: str = Depends(verify_api_key),
+):
+    """Export a unified TA assessment bundle (schema ta-export/1.0).
+
+    Returns a single JSON object containing:
+    - gate:            CI/CD result (PASS|BLOCK) + blocking signals
+    - assessment:      risk scores, attack paths, MITRE techniques, controls
+    - tatb:            quality benchmark scores
+    - governance:      AIVSS composite, signal summary
+    - moe_consensus:   critic confidence + redesign signal (if ER has run)
+    - detect_findings: OCSF DetectionFinding 2004 events
+    - security_findings: OCSF SecurityFinding 2001 events
+    - otm:             OTM-compatible threats/assets/mitigations
+    """
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+
+    report_dir = resolve_arch_dir(architecture_name)
+    if not report_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Architecture '{architecture_name}' not found")
+
+    try:
+        from chatbot.modules.ta_exporter import build_export, save_export
+
+        # Fetch TATB scores for this arch (best-effort)
+        tatb_scores = None
+        try:
+            import importlib.util as _ilu
+            _skill_path = Path(__file__).parent.parent.parent / ".claude" / "skills" / "tatb-score" / "scripts" / "tatb_score.py"
+            if _skill_path.exists():
+                spec = _ilu.spec_from_file_location("tatb_score_skill", _skill_path)
+                mod  = _ilu.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                rows = mod.compute_corpus(str(report_dir.parent))
+                tatb_scores = {"architectures": [r.__dict__ if hasattr(r, "__dict__") else dict(r) for r in rows]}
+        except Exception:
+            pass
+
+        if save:
+            out_path = save_export(architecture_name, report_dir, tatb_scores)
+            bundle = build_export(architecture_name, report_dir, tatb_scores)
+            bundle["_saved_to"] = str(out_path)
+        else:
+            bundle = build_export(architecture_name, report_dir, tatb_scores)
+
+        return bundle
+
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Export failed: {exc}")

@@ -121,3 +121,8 @@ def lookup_mitre_technique(technique_ids: str) -> Dict:
     techniques   = _get("/api/v1/techniques",            params={"technique_ids": technique_ids})
     mitigations  = _get("/api/v1/technique-mitigations", params={"technique_ids": technique_ids})
     return {"techniques": techniques, "mitigations": mitigations}
+
+
+def export_assessment(arch_name: str, save: bool = False) -> Dict:
+    """GET /api/v1/reports/{arch}/export — unified TA bundle (ta-export/1.0)."""
+    return _get(f"/api/v1/reports/{arch_name}/export", params={"save": str(save).lower()})

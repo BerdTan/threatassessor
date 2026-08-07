@@ -4,7 +4,7 @@ ThreatAssessor MCP Server
 Exposes ThreatAssessor capabilities to Claude Desktop and external agents
 via the Model Context Protocol (stdio transport).
 
-10 tools:
+12 tools:
   1.  analyze_architecture      — submit MMD, get full threat model
   2.  run_expert_review         — queue FULL_MOE, return job_id
   3.  get_job_status            — poll a queued/running job
@@ -15,6 +15,8 @@ via the Model Context Protocol (stdio transport).
   8.  get_tatb_scores           — TATB benchmark scores (corpus or single arch)
   9.  list_architectures        — all analysed architectures + metadata
   10. lookup_mitre_technique    — technique details + recommended mitigations
+  11. get_mcp_access_signals    — live session access patterns for DETECT-020/021/022
+  12. export_assessment         — unified TA export bundle (ta-export/1.0, OTM-compatible)
 
 Setup (Claude Desktop):
   {
@@ -361,6 +363,46 @@ def get_mcp_access_signals() -> str:
     """
     signals = _access_log.get_signals()
     return json.dumps(signals, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Tool 12 — export_assessment
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def export_assessment(arch_name: str, save: bool = False) -> str:
+    """Export a unified TA assessment bundle for an architecture (schema ta-export/1.0).
+
+    The bundle is a single JSON object designed for pipeline consumption:
+
+      gate             — CI/CD result (PASS|BLOCK) + blocking signals
+      assessment       — risk scores, attack paths, MITRE techniques, controls
+      tatb             — quality benchmark (threat/ttp/risk/plan scores)
+      governance       — AIVSS composite + signal summary
+      moe_consensus    — critic confidence + redesign signal (if ER ran)
+      detect_findings  — OCSF DetectionFinding 2004 events
+      security_findings — OCSF SecurityFinding 2001 events
+      otm              — OTM-compatible threats / assets / mitigations
+
+    The OTM section makes the bundle importable by Startlift, IriusRisk, and
+    other Open Threat Model-compatible tools without a separate converter.
+
+    Args:
+        arch_name: Name of the analysed architecture.
+        save:      If True, also write ta_export.json to the report directory.
+
+    Returns:
+        JSON export bundle (ta-export/1.0).
+    """
+    try:
+        result = api.export_assessment(arch_name, save=save)
+        _access_log.record_tool_call("export_assessment", arch_name=arch_name)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        auth_failed = "401" in str(e) or "Unauthorized" in str(e)
+        _access_log.record_tool_call("export_assessment", arch_name=arch_name,
+                                     success=False, auth_failed=auth_failed)
+        return json.dumps({"error": str(e)})
 
 
 # ---------------------------------------------------------------------------
