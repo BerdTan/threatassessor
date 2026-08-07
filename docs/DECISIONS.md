@@ -4,7 +4,32 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
-## Session 38 — 2026-08-07
+## Session 38 — 2026-08-07 (continued)
+
+### 18. Governance-layer adversarial personas + `governance_check` tool
+
+**Problem:** The 7 original adversarial personas (recon/flood/auth) only covered MCP access-layer rules (DETECT-020/021/022). Nothing in the live simulation could trigger the governance layer rules (DETECT-005/010/017/018/019/023) — those required a full 30s LLM analysis. The detection suite had no live demonstration path.
+
+**Decision:** Add `POST /api/v1/governance/check` — a lightweight endpoint that runs `check_input()` against raw MMD in ~50ms with no LLM. Returns governance signals + fired DETECT rules. Returns 400 with signals embedded when `exploitation.severity == CRITICAL` (mirrors BouncerStage block). Add 4 new adversarial sim personas that use it, and expose `governance_check` as MCP tool #13.
+
+**4 new personas:**
+
+| Persona | MMD payload strategy | Rules triggered |
+|---|---|---|
+| `injection_attack` | HIGH injection phrase + path traversal across 3 steps | DETECT-005 · DETECT-010 · DETECT-019 |
+| `tag_injection` | LLM control tokens (`<\|im_end\|>`, `[INST]`) | DETECT-005 (CRITICAL block) |
+| `url_injection` | External `https://` URL + Cyrillic homoglyph evasion chars | DETECT-017 · DETECT-018 · DETECT-019 |
+| `c2_exfil_arch` | 3-arch recon (→ DETECT-020) + governance_check with C2 injection combo | DETECT-020 · DETECT-019 |
+
+**Why ~50ms matters:** The full `analyze_architecture` pipeline takes 30s+ (LLM calls). A simulation that waited 30s per step would be unusable for demo purposes. `governance_check` runs `check_input()` only — no ground_truth, no AIVSS, no critics. This covers all input-layer rules (injection, traversal, URL, homoglyph) which are the most relevant for adversarial input scenarios.
+
+**Why DETECT-023 isn't directly triggerable via `governance_check`:** DETECT-023 (`agentic_tool_exfil_vector`) requires `arch_metadata.is_agentic` + `sovereignty.cross_boundary_nodes` + `aivss.outbound.composite`, all of which come from `check_artifact()` and `AIVSSStage` — they need a completed pipeline run, not just input screening. The `c2_exfil_arch` persona demonstrates the *approach* to DETECT-023 (enumeration of agentic archs + injection in the C2-arch MMD), with DETECT-020 as the observable signal.
+
+**`governance_check` as a CI/CD primitive:** The endpoint and MCP tool are designed for use outside the simulation — any CI pipeline can `POST /api/v1/governance/check` with a `.mmd` file contents and get a machine-readable `{"blocked": true/false, "fired_rules": [...]}` response in under 100ms. This is the pre-submission screening layer.
+
+**Totals after this session:** 13 MCP tools, 13 sim personas (6 benign + 7 adversarial), 40/40 check-mcp, 327 tests.
+
+---
 
 ### 17. TA Export Bundle (ta-export/1.0) — unified pipeline artefact
 

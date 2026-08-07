@@ -1,8 +1,8 @@
 # ThreatAssessor — Developer Quick Reference
 
-**Version:** 2.1  
-**Status:** Production-ready. REST API + dashboard live. MoE critics + SOC detection layer (22 rules) + Harness v2 + MCP server shipped.  
-**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 22 SOC DETECT rules + AIVSS scoring + MCP external access
+**Version:** 2.2  
+**Status:** Production-ready. REST API + dashboard live. MoE critics + SOC detection layer (24 rules) + Harness v2 + MCP server (13 tools) + TA export bundle shipped.  
+**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 24 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0
 
 ---
 
@@ -34,6 +34,7 @@ tail -f logs/api.log            # logs
 - `chatbot/modules/threat_report.py` — report generation
 - `chatbot/modules/exhaustive_mitigation_mapper.py` — controls (100% coverage)
 - `chatbot/modules/self_validation.py` — MITRE technique validation
+- `chatbot/modules/ta_exporter.py` — TA export bundle (`ta-export/1.0`): gate + assessment + TATB + governance + MoE + OCSF + OTM
 
 **Harness (pipeline controller — v2):**
 - `chatbot/harness/controller.py` — `ThreatAssessorHarness`, `PipelineRequest/Response`, `AsyncThreatAssessorHarness`, `BlockedPipelineError`, `CircuitBreaker`
@@ -46,21 +47,23 @@ tail -f logs/api.log            # logs
 - `chatbot/harness/registry.py` — `CriticRegistry`
 
 **SOC detection:**
-- `policies/soc_detection_rules.yaml` — 22 DETECT rules with OWASP/ATLAS/incident provenance
-- `report/<arch>/governance_signals.json` — signal substrate for rule evaluation
-- `report/<arch>/governance_signals_history.jsonl` — append-only run history for trend analysis
+- `policies/soc_detection_rules.yaml` — 24 DETECT rules with OWASP/ATLAS/incident provenance
+- `report/<arch>/governance_signals.json` — signal substrate for rule evaluation (includes `arch_metadata`, `aivss.delta`)
+- `report/<arch>/governance_signals_history.jsonl` — append-only run history; AIVSS delta computed on each append
 - `report/<arch>/ocsf_findings.json` — OCSF DetectionFinding 2004 export
+- `report/<arch>/ta_export.json` — TA export bundle (written by `save=true` on `/export` endpoint)
 
 **REST API:**
 - `chatbot/api/app.py` — FastAPI factory
-- `chatbot/api/routes/reports.py` — report endpoints + `/detect-trend/{arch}`
+- `chatbot/api/routes/reports.py` — report endpoints + `/detect-trend/{arch}` + `/governance/check` + `/reports/{arch}/export`
 - `chatbot/api/routes/streaming.py` — SSE analysis stream
 - `chatbot/api/routes/jobs.py` — `POST /jobs/expert-review` + `GET /jobs/{id}/status` (async job layer for MCP)
+- `chatbot/api/routes/mcp_sim.py` — SSE sim stream + personas endpoint + access-signals + jobs snapshot
 - `chatbot/api/job_store.py` — in-memory job store, 1-hr TTL, `get_job_store()` singleton
-- `chatbot/api/static/` — dashboard (index.html + JS)
+- `chatbot/api/static/` — dashboard (index.html + JS; nav: Overview/Assessment/Simulation/Reporting/Workspace/Settings)
 
 **MCP server:**
-- `mcp_server/server.py` — FastMCP app, 11 tools (stdio transport); all tools log to `MCPAccessLogger`
+- `mcp_server/server.py` — FastMCP app, 13 tools (stdio transport); all tools log to `MCPAccessLogger`
 - `mcp_server/job_client.py` — HTTP wrapper for all REST calls
 - `mcp_server/access_logger.py` — `MCPAccessLogger` rolling-window singleton; produces `mcp_access` signals for DETECT-020/021/022
 - `mcp_server/client_sim.py` — 6-persona integration simulator (chatbot, code-agent, ciso, soc, copilot, chatgpt)
@@ -88,11 +91,17 @@ tail -f logs/api.log            # logs
 
 **PolicyBroker** runs after QualityStage on every pipeline run. Reads live governance signals → dynamically adjusts `blocked_agents` + model routing before critics run.
 
+**`GovernanceSignals` new fields (session 38):**
+- `arch_metadata` — `{architecture_type, node_count, is_agentic}` from `ground_truth.metadata`; feeds DETECT-023
+- `aivss.delta` — `{composite_drop, prev_composite, curr_composite}` computed in `AIVSSStage` vs last history entry; feeds DETECT-024
+
+**`governance_check` endpoint** — `POST /api/v1/governance/check` — runs `check_input()` only (~50ms, no LLM). Returns signals + fired DETECT rules. Returns 400 with embedded signals on CRITICAL block. Use as pre-commit hook or CI gate.
+
 **AsyncThreatAssessorHarness** wraps `run_typed(PipelineRequest)` in `asyncio.to_thread()` for MCP/CI-CD callers.
 
 ---
 
-## MCP server — 11 tools
+## MCP server — 13 tools
 
 | Tool | What it does |
 |------|-------------|
@@ -107,6 +116,8 @@ tail -f logs/api.log            # logs
 | `list_architectures` | All analysed architectures + metadata |
 | `lookup_mitre_technique` | Technique details + recommended mitigations by ATT&CK ID |
 | `get_mcp_access_signals` | Live session access patterns → feeds DETECT-020/021/022 |
+| `export_assessment` | Unified TA bundle (ta-export/1.0): gate + OTM + OCSF + TATB |
+| `governance_check` | Fast MMD governance scan (~50ms, no LLM) → signals + fired DETECT rules |
 
 **Transport:** stdio (Claude Desktop standard). See `mcp_server/README.md` for setup + all client types.
 
@@ -118,12 +129,37 @@ tail -f logs/api.log            # logs
 | DETECT-021 | `mcp_access.job_flood` | ≥3 `run_expert_review` in 120s, poll/submit < 0.5 | High |
 | DETECT-022 | `mcp_access.auth_failures` | ≥5 auth failures in 300s | High |
 
+**Governance-layer DETECT rules (triggered by `governance_check` / `analyze_architecture`):**
+
+| Rule | Signal | Trigger | Severity |
+|------|--------|---------|---------|
+| DETECT-005 | `exploitation.severity == CRITICAL` | Tag injection / control tokens in MMD → pipeline block | Critical |
+| DETECT-010 | `exploitation.path_traversal length_gt 0` | `../../` traversal sequences in MMD | High |
+| DETECT-017 | `exploitation.external_url_references > 0` | `https://` URL in MMD node label | High |
+| DETECT-018 | `exploitation.evasion_attempts > 0` | Cyrillic homoglyphs / URL-encoded evasion in MMD | High |
+| DETECT-019 | `exploitation.max_injection_severity == HIGH` | HIGH-category injection phrase in MMD | High |
+| DETECT-023 | `arch_metadata.is_agentic + cross_boundary + outbound ≥ 3.0` | AI/agentic arch with uncontrolled internet egress | High |
+| DETECT-024 | `aivss.delta.composite_drop ≥ 2.0` | AIVSS composite dropped ≥ 2pts vs prior run | High |
+
+**MCP sim personas — 13 total (6 benign + 7 adversarial):**
+
+| Persona | Type | Rules demonstrated |
+|---------|------|--------------------|
+| chatbot, code-agent, ciso, soc, copilot, chatgpt | Benign | — |
+| `recon_attack` | Adversarial | DETECT-020 |
+| `flood_attack` | Adversarial | DETECT-021 |
+| `auth_probe` | Adversarial | DETECT-022 |
+| `injection_attack` | Adversarial (governance) | DETECT-005 · 010 · 019 |
+| `tag_injection` | Adversarial (governance) | DETECT-005 (CRITICAL block) |
+| `url_injection` | Adversarial (governance) | DETECT-017 · 018 · 019 |
+| `c2_exfil_arch` | Adversarial (governance) | DETECT-020 · 019 |
+
 ---
 
 ## Check commands
 
 ```bash
-# SOC detection regression (22 rules, 23 scenarios, 191 tests)
+# SOC detection regression (24 rules, 25 scenarios, 327 tests)
 python3 .claude/skills/check-detect/scripts/check-detect.py
 python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 
@@ -139,7 +175,7 @@ python3 .claude/skills/detect-loop/scripts/detect-loop.py --observe-only
 # Rule trend analysis
 python3 .claude/skills/detect-trend/scripts/detect-trend.py --all
 
-# MCP server — static validation (30 checks, no API needed)
+# MCP server — static validation (40 checks, no API needed)
 python3 .claude/skills/check-mcp/scripts/check-mcp.py
 python3 .claude/skills/check-mcp/scripts/check-mcp.py --live  # + live REST + MCP stdio
 
@@ -147,6 +183,15 @@ python3 .claude/skills/check-mcp/scripts/check-mcp.py --live  # + live REST + MC
 python3 mcp_server/client_sim.py --dry-run             # protocol handshake only
 python3 mcp_server/client_sim.py --all --arch web_app  # all 6 personas live
 python3 mcp_server/client_sim.py --persona soc --arch web_app
+
+# Governance check (fast, no LLM — screens MMD for injection/traversal/URL/homoglyph)
+curl -s -X POST http://localhost:8000/api/v1/governance/check \
+  -H "TM-API-KEY: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"mmd_content": "graph LR\n  A --> B", "arch_name": "test"}'
+
+# TA export bundle (CI/CD gate — jq '.gate.result' → PASS or BLOCK)
+curl -s http://localhost:8000/api/v1/reports/{arch}/export -H "TM-API-KEY: $API_KEY"
+curl -s "...?save=true"  # also writes ta_export.json to report dir
 ```
 
 ---
@@ -177,4 +222,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-08-04
+**Last Updated:** 2026-08-07
