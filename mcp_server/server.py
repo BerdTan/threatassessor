@@ -4,7 +4,7 @@ ThreatAssessor MCP Server
 Exposes ThreatAssessor capabilities to Claude Desktop and external agents
 via the Model Context Protocol (stdio transport).
 
-12 tools:
+13 tools:
   1.  analyze_architecture      — submit MMD, get full threat model
   2.  run_expert_review         — queue FULL_MOE, return job_id
   3.  get_job_status            — poll a queued/running job
@@ -17,6 +17,7 @@ via the Model Context Protocol (stdio transport).
   10. lookup_mitre_technique    — technique details + recommended mitigations
   11. get_mcp_access_signals    — live session access patterns for DETECT-020/021/022
   12. export_assessment         — unified TA export bundle (ta-export/1.0, OTM-compatible)
+  13. governance_check          — fast MMD governance scan, no LLM, returns fired DETECT rules
 
 Setup (Claude Desktop):
   {
@@ -402,6 +403,41 @@ def export_assessment(arch_name: str, save: bool = False) -> str:
         auth_failed = "401" in str(e) or "Unauthorized" in str(e)
         _access_log.record_tool_call("export_assessment", arch_name=arch_name,
                                      success=False, auth_failed=auth_failed)
+        return json.dumps({"error": str(e)})
+
+
+# ---------------------------------------------------------------------------
+# Tool 13 — governance_check
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def governance_check(mmd_content: str, arch_name: str = "mcp_input") -> str:
+    """Run fast governance checks on raw MMD content without a full analysis.
+
+    Executes check_input() against the submitted Mermaid diagram string and
+    returns exploitation, leakage, and sovereignty signals plus any DETECT
+    rules that fired — all in ~50ms with no LLM calls.
+
+    Use for:
+      - Pre-submission screening of .mmd files before running analyze_architecture
+      - CI/CD hooks that want to catch injection, path traversal, or URL injection
+      - Security-aware agents that want to self-screen input before forwarding
+
+    Args:
+        mmd_content: Raw Mermaid diagram string to screen.
+        arch_name:   Optional label for this check (appears in signals).
+
+    Returns:
+        JSON with signals dict, fired_rules list, and blocked flag.
+        If exploitation.severity == CRITICAL, the response indicates a block.
+    """
+    try:
+        result = api.governance_check(mmd_content, arch_name)
+        _access_log.record_tool_call("governance_check")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        auth_failed = "401" in str(e) or "Unauthorized" in str(e)
+        _access_log.record_tool_call("governance_check", success=False, auth_failed=auth_failed)
         return json.dumps({"error": str(e)})
 
 

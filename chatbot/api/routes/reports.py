@@ -2271,3 +2271,72 @@ async def export_assessment(
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Export failed: {exc}")
+
+
+# ── Governance Input Check ────────────────────────────────────────────────────
+
+@router.post("/governance/check")
+async def governance_check(
+    payload: dict,
+    _: str = Depends(verify_api_key),
+):
+    """Run governance input checks on raw MMD content without a full analysis.
+
+    Executes check_input() and returns the exploitation, leakage, sovereignty,
+    and DETECT rule evaluation in ~50ms — no LLM calls, no pipeline.
+
+    Use for:
+      - Pre-commit / CI hooks that want to screen .mmd files before submission
+      - MCP adversarial sim personas that trigger DETECT rules without 30s analysis
+      - Lightweight governance audit of any MMD string
+
+    Body: {"mmd_content": "graph LR ...", "arch_name": "optional label"}
+
+    Returns governance signals dict + fired DETECT rules.
+    Responds 400 with governance signals embedded if exploitation.severity == CRITICAL
+    (mirrors the BouncerStage block behaviour).
+    """
+    mmd = payload.get("mmd_content", "")
+    arch_name = payload.get("arch_name", "mcp_sim")
+
+    if not mmd:
+        raise HTTPException(status_code=400, detail="mmd_content is required")
+
+    try:
+        from chatbot.harness.governance import get_governance_adapter
+        from chatbot.harness.rule_evaluator import RuleEvaluator
+        import uuid as _uuid
+
+        adapter = get_governance_adapter()
+        sig = adapter.check_input(mmd, arch_name)
+        sig.architecture_name = arch_name
+
+        signals = sig.to_dict()
+
+        # Evaluate DETECT rules against these signals
+        evaluator = RuleEvaluator()
+        run_id = str(_uuid.uuid4())[:8]
+        findings = evaluator.evaluate(signals, arch_name=arch_name, run_id=run_id)
+        fired_rules = [f["unmapped"]["rule_id"] for f in findings]
+
+        result = {
+            "arch_name":   arch_name,
+            "signals":     signals,
+            "fired_rules": fired_rules,
+            "findings":    findings,
+            "blocked":     signals.get("exploitation", {}).get("blocked", False),
+        }
+
+        # Mirror BouncerStage: return 400 if CRITICAL exploitation
+        if signals.get("exploitation", {}).get("severity") == "CRITICAL":
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "Input blocked by governance guardrail", **result},
+            )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Governance check failed: {exc}")

@@ -126,3 +126,8 @@ def lookup_mitre_technique(technique_ids: str) -> Dict:
 def export_assessment(arch_name: str, save: bool = False) -> Dict:
     """GET /api/v1/reports/{arch}/export — unified TA bundle (ta-export/1.0)."""
     return _get(f"/api/v1/reports/{arch_name}/export", params={"save": str(save).lower()})
+
+
+def governance_check(mmd_content: str, arch_name: str = "mcp_sim") -> Dict:
+    """POST /api/v1/governance/check — fast governance scan, no LLM, returns fired DETECT rules."""
+    return _post("/api/v1/governance/check", {"mmd_content": mmd_content, "arch_name": arch_name})
