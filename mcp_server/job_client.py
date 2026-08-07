@@ -23,7 +23,7 @@ def _base_url() -> str:
 
 
 def _headers() -> Dict[str, str]:
-    key = os.environ.get("TM_API_KEY", "")
+    key = os.environ.get("TM_API_KEY", "") or os.environ.get("API_KEY", "")
     h = {"Content-Type": "application/json"}
     if key:
         h["TM-API-KEY"] = key
@@ -81,8 +81,14 @@ def await_job(job_id: str, poll_interval: int = _POLL_INTERVAL) -> Dict:
 
 
 def get_threat_briefing(arch_name: str, fmt: str = "md") -> Any:
-    """GET /api/v1/reports/{arch}/briefing."""
-    return _get(f"/api/v1/reports/{arch_name}/briefing", params={"fmt": fmt})
+    """GET /api/v1/reports/{arch}/briefing. Returns str for md, dict for json."""
+    url = f"{_base_url()}/api/v1/reports/{arch_name}/briefing"
+    r = requests.get(url, headers=_headers(), params={"fmt": fmt}, timeout=_DEFAULT_TIMEOUT)
+    r.raise_for_status()
+    ct = r.headers.get("content-type", "")
+    if "json" in ct:
+        return r.json()
+    return r.text
 
 
 def get_ciso_brief(arch_name: str) -> Dict:

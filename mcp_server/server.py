@@ -33,6 +33,10 @@ Setup (Claude Desktop):
 
 import json
 import sys
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent.parent / ".env", override=False)
+
 from mcp.server.fastmcp import FastMCP
 from mcp_server import job_client as api
 from mcp_server.access_logger import get_access_logger

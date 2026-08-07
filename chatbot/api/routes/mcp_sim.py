@@ -110,8 +110,8 @@ def _personas(arch: str) -> dict:
             "steps": [
                 ("list_architectures",    "Enumerate all architectures [recon step 1]",  lambda a: {}),
                 ("get_governance_signals","Pull signals: arch_1 [recon step 2]",         lambda a: {"arch_name": a}),
-                ("get_governance_signals","Pull signals: arch_2 [recon step 3]",         lambda a: {"arch_name": a}),
-                ("get_governance_signals","Pull signals: arch_3 [recon step 4]",         lambda a: {"arch_name": a}),
+                ("get_governance_signals","Pull signals: arch_2 [recon step 3]",         lambda a: {"arch_name": "00_serviceentry"}),
+                ("get_governance_signals","Pull signals: arch_3 [recon step 4]",         lambda a: {"arch_name": "01_minimal_vulnerable"}),
                 ("get_mcp_access_signals","Check own access footprint",                  lambda a: {}),
             ],
         },
@@ -190,13 +190,22 @@ def _call_tool(tool: str, args: dict, bad_key: bool = False) -> tuple[bool, dict
             r = requests.post(url, headers=headers, json=body or {}, timeout=15)
         ms = round((time.time() - t0) * 1000)
         ok = r.status_code < 400 or r.status_code == 404
+        auth_failed = r.status_code == 401
+        # Log to the in-process access logger so DETECT-020/021/022 can fire
+        from mcp_server.access_logger import get_access_logger
+        get_access_logger().record_tool_call(
+            tool,
+            arch_name=args.get("arch_name") or "",
+            success=ok,
+            auth_failed=auth_failed or bad_key,
+        )
         # Build a short summary of the result
         try:
             data = r.json()
         except Exception:
             data = {}
         summary = _summarise(tool, r.status_code, data)
-        return ok, {"status_code": r.status_code, "summary": summary, "auth_failed": r.status_code == 401}, ms
+        return ok, {"status_code": r.status_code, "summary": summary, "auth_failed": auth_failed}, ms
     except Exception as exc:
         ms = round((time.time() - t0) * 1000)
         return False, {"error": str(exc), "auth_failed": False}, ms

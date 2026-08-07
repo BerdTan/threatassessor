@@ -88,6 +88,19 @@ async def _connect(api_url: str, api_key: str):
 
 # ── Tool call helper ──────────────────────────────────────────────────────────
 
+async def resolve_arch(session: ClientSession, arch_name: str) -> str:
+    """Return arch_name if it exists in the corpus, else fall back to first available."""
+    data = await call(session, "list_architectures")
+    archs = data if isinstance(data, list) else data.get("architectures", [])
+    names = [a.get("name") or a.get("arch_name") or str(a) for a in archs] if archs else []
+    if arch_name in names:
+        return arch_name
+    if names:
+        _warn(f"'{arch_name}' not found — using first available: {names[0]}")
+        return names[0]
+    return arch_name
+
+
 async def call(session: ClientSession, tool: str, **kwargs) -> dict:
     """Call a tool, parse JSON result, return as dict."""
     result = await session.call_tool(tool, arguments=kwargs or None)
@@ -207,9 +220,13 @@ async def persona_chatbot(session: ClientSession, arch_name: str) -> None:
         _warn("No architectures found — using provided name anyway")
 
     _step(2, f"Get threat briefing for '{arch_name}'")
-    briefing = await call(session, "get_threat_briefing", arch_name=arch_name, fmt="json")
+    briefing = await call(session, "get_threat_briefing", arch_name=arch_name, fmt="md")
     if "error" in briefing:
         _err(briefing["error"])
+    elif "raw" in briefing:
+        _ok("Briefing retrieved (markdown)")
+        lines = briefing["raw"].splitlines()
+        _result("preview", _truncate(lines[0] if lines else "", 80))
     else:
         _ok("Briefing retrieved")
         _result("risk_level",   briefing.get("risk_level") or briefing.get("overall_risk"))
@@ -334,6 +351,8 @@ async def persona_ciso(session: ClientSession, arch_name: str) -> None:
     print(f"  {DIM('Pattern: list → ciso_brief → tatb corpus summary')}")
     print(f"  {DIM('Use case: Weekly security posture email / Slack digest / dashboard widget')}\n")
 
+    arch_name = await resolve_arch(session, arch_name)
+
     _step(1, "Get CISO brief")
     brief = await call(session, "get_ciso_brief", arch_name=arch_name)
     if "error" in brief:
@@ -350,12 +369,12 @@ async def persona_ciso(session: ClientSession, arch_name: str) -> None:
     tatb = await call(session, "get_tatb_scores")
     archs = tatb.get("architectures", [])
     if archs:
-        avg = lambda k: sum(a.get(k, 0) for a in archs) / len(archs)
+        avg = lambda k: sum((a.get(k) or 0) for a in archs) / len(archs)
         _ok(f"{len(archs)} architectures scored")
-        _result("avg threat_relevant",  f"{avg('threat_relevant'):.0f}")
-        _result("avg ttp_accurate",     f"{avg('ttp_accurate'):.0f}")
-        _result("avg risk_defensible",  f"{avg('risk_defensible'):.0f}")
-        _result("avg plan_actionable",  f"{avg('plan_actionable'):.0f}")
+        _result("avg threat_relevant",  f"{avg('threat'):.0f}")
+        _result("avg ttp_accurate",     f"{avg('ttp'):.0f}")
+        _result("avg risk_defensible",  f"{avg('risk'):.0f}")
+        _result("avg plan_actionable",  f"{avg('plan'):.0f}")
     else:
         _warn("No TATB corpus data returned")
 
@@ -379,6 +398,8 @@ async def persona_soc(session: ClientSession, arch_name: str) -> None:
     _section("SOC Analyst", "soc", "🛡️")
     print(f"  {DIM('Pattern: detect_trends → governance → MITRE drill-down on fired rules')}")
     print(f"  {DIM('Use case: SIEM enrichment, Tier-1 triage, incident response kick-off')}\n")
+
+    arch_name = await resolve_arch(session, arch_name)
 
     _step(1, "Check DETECT rule firing trends")
     trends = await call(session, "get_detect_trends", arch_name=arch_name)
@@ -454,8 +475,15 @@ async def persona_copilot(session: ClientSession, arch_name: str) -> None:
         _result(tid, f"{t.get('name')}  |  {', '.join(t.get('tactics', [])[:3])}")
 
     _step(2, "Quick threat briefing (summary mode)")
-    brief = await call(session, "get_threat_briefing", arch_name=arch_name, fmt="json")
-    if "error" not in brief:
+    resolved = await resolve_arch(session, arch_name)
+    brief = await call(session, "get_threat_briefing", arch_name=resolved, fmt="md")
+    if "error" in brief:
+        _err(brief["error"])
+    elif "raw" in brief:
+        _ok("Briefing retrieved — showing first line for inline display")
+        lines = brief["raw"].splitlines()
+        _result("preview", _truncate(lines[0] if lines else "", 80))
+    else:
         _ok("Briefing retrieved — showing top 3 fields for inline display")
         for k in ["risk_level", "overall_risk", "confidence", "top_threats"]:
             if brief.get(k):
@@ -501,15 +529,20 @@ async def persona_chatgpt(session: ClientSession, arch_name: str) -> None:
     archs = data if isinstance(data, list) else data.get("architectures", [])
     names = [a.get("name") or a.get("arch_name") or str(a) for a in archs] if archs else []
     _ok(f"{len(names)} architectures available")
+    arch_name = await resolve_arch(session, arch_name)
 
     _step(2, "Retrieve threat briefing (maps to GET /api/v1/reports/{arch}/briefing)")
-    brief = await call(session, "get_threat_briefing", arch_name=arch_name, fmt="json")
-    if "error" not in brief:
+    brief = await call(session, "get_threat_briefing", arch_name=arch_name, fmt="md")
+    if "error" in brief:
+        _err(brief.get("error"))
+    elif "raw" in brief:
         _ok("Briefing retrieved — GPT would format this as natural language answer")
+        lines = brief["raw"].splitlines()
+        _result("preview", _truncate(lines[0] if lines else "", 80))
+    else:
+        _ok("Briefing retrieved")
         _result("confidence", brief.get("confidence"))
         _result("risk_level", brief.get("risk_level") or brief.get("overall_risk"))
-    else:
-        _err(brief.get("error"))
 
     _step(3, "Get AIVSS score (maps to GET /api/v1/insights?archs={arch})")
     gov = await call(session, "get_governance_signals", arch_name=arch_name)
