@@ -17553,12 +17553,15 @@ class Dashboard {
             const pct = n / max;
             const bg  = n === 0 ? 'var(--main-bg)' :
                         `rgba(77,166,255,${0.15 + pct * 0.75})`;
+            // Dark text on lit cells (blue bg), theme text on empty cells
+            const fg  = n === 0 ? 'var(--text-tertiary)' : '#0f172a';
+            const numFg = n === 0 ? 'var(--text-tertiary)' : '#1e3a5f';
             const short = t.replace(/get_|_architecture|_signals|_review|_technique|_briefing|_trends|_scores/g,'').slice(0,14);
             return `<div title="${t}: ${n} call${n===1?'':'s'}"
                 style="padding:0.25rem 0.4rem;background:${bg};border:1px solid var(--border-color);
                        border-radius:2px;font-size:0.65rem;font-family:var(--font-mono);
-                       color:var(--text-secondary);text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">
-                ${short} ${n > 0 ? `<strong style="color:var(--primary-color);">${n}</strong>` : ''}
+                       color:${fg};text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">
+                ${short} ${n > 0 ? `<strong style="color:${numFg};">${n}</strong>` : ''}
             </div>`;
         }).join('');
     }

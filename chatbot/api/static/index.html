@@ -82,14 +82,23 @@
         <!-- Sidebar -->
         <aside class="sidebar">
             <nav class="sidebar-nav">
-                <!-- Group: Analysis -->
-                <div class="nav-group" data-group="analysis">
-                    <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('analysis')">
-                        <span class="nav-group-label">Analysis</span>
+                <!-- Group: Overview -->
+                <div class="nav-group" data-group="overview">
+                    <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('overview')">
+                        <span class="nav-group-label">Overview</span>
                         <span class="nav-group-chevron">▾</span>
                     </button>
                     <div class="nav-group-items">
                         <button class="nav-tab active" data-tab="overview">Overview</button>
+                    </div>
+                </div>
+                <!-- Group: Assessment -->
+                <div class="nav-group" data-group="assessment">
+                    <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('assessment')">
+                        <span class="nav-group-label">Assessment</span>
+                        <span class="nav-group-chevron">▾</span>
+                    </button>
+                    <div class="nav-group-items">
                         <button class="nav-tab disabled" data-tab="attacks">Threat Paths</button>
                         <button class="nav-tab disabled" data-tab="controls">Mitigations</button>
                         <button class="nav-tab disabled" data-tab="hardening">Visualise</button>
@@ -98,6 +107,15 @@
                         <button class="nav-tab disabled" data-tab="threat-model" id="threat-model-nav-tab" style="display:none;">Threat Model</button>
                         <button class="nav-tab disabled" data-tab="insights" id="insights-nav-tab">Insights</button>
                         <button class="nav-tab disabled" data-tab="benchmark" id="benchmark-nav-tab" title="TA Test Benchmark — Threat-Model Quality Scorecard">TATB</button>
+                    </div>
+                </div>
+                <!-- Group: Simulation -->
+                <div class="nav-group" data-group="simulation">
+                    <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('simulation')">
+                        <span class="nav-group-label">Simulation</span>
+                        <span class="nav-group-chevron">▾</span>
+                    </button>
+                    <div class="nav-group-items">
                         <button class="nav-tab" data-tab="soc-kg" id="soc-kg-nav-tab" title="SOC Detection Knowledge Graph — signal provenance chain">SOC</button>
                         <button class="nav-tab" data-tab="mcp" id="mcp-nav-tab" title="MCP Server — external access monitor, live simulation, job queue">MCP</button>
                     </div>
@@ -113,7 +131,7 @@
                         <button class="nav-tab disabled" data-tab="raw-data">Raw Data</button>
                     </div>
                 </div>
-                <!-- Group: Settings -->
+                <!-- Group: Workspace -->
                 <div class="nav-group" data-group="workspace">
                     <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('workspace')">
                         <span class="nav-group-label">Workspace</span>
@@ -123,7 +141,7 @@
                         <button class="nav-tab" id="workspace-nav-tab" data-tab="workspace">Workspace</button>
                     </div>
                 </div>
-
+                <!-- Group: Settings -->
                 <div class="nav-group" data-group="settings">
                     <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('settings')">
                         <span class="nav-group-label">Settings</span>
