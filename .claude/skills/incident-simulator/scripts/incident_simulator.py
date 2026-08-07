@@ -696,6 +696,33 @@ def scenario_mcp_auth_probing() -> Dict[str, Any]:
     return sig
 
 
+def scenario_assessment_quality_regression() -> Dict[str, Any]:
+    """
+    DETECT-024 (High)
+
+    Based on: NIST CSF ID.RA-3 (risk assessment regression) + OWASP A05.
+
+    An architecture's AIVSS overall composite dropped 3.1 points between two
+    consecutive pipeline runs — from 6.2 to 3.1. The drop was caused by a
+    developer removing three security controls from the .mmd diagram during a
+    refactor ("just for testing"), reducing the inbound control coverage from
+    65% to 28%. The governance_signals_history.jsonl entry for run_N contains
+    aivss.delta.composite_drop = 3.1, which crosses the ≥ 2.0 threshold.
+    This fires before the degraded assessment reaches a CI/CD gate.
+    """
+    sig = _base()
+    sig["aivss"]["overall"]  = {"composite": 3.1, "severity": "MEDIUM"}
+    sig["aivss"]["inbound"]  = {"composite": 2.1, "severity": "LOW",    "coverage_pct": 28}
+    sig["aivss"]["internal"] = {"composite": 4.8, "severity": "MEDIUM", "coverage_pct": 40}
+    sig["aivss"]["outbound"] = {"composite": 2.5, "severity": "LOW",    "coverage_pct": 20}
+    sig["aivss"]["delta"] = {
+        "composite_drop": 3.1,
+        "prev_composite": 6.2,
+        "curr_composite": 3.1,
+    }
+    return sig
+
+
 def scenario_agentic_exfil_vector() -> Dict[str, Any]:
     """
     DETECT-023 (High)
@@ -774,6 +801,8 @@ SCENARIOS = {
         "DETECT-022 (High) — 7 auth failures in 120s = credential stuffing attack"),
     "agentic_exfil_vector":          (scenario_agentic_exfil_vector,
         "DETECT-023 (High) — ai_system arch + cross-boundary egress + outbound composite 4.8 = Meta/Anthropic escape pattern"),
+    "assessment_quality_regression": (scenario_assessment_quality_regression,
+        "DETECT-024 (High) — AIVSS composite dropped 3.1 pts (6.2→3.1) after controls removed from .mmd"),
 }
 
 EXPECTED_RULES = {
@@ -802,6 +831,7 @@ EXPECTED_RULES = {
     "mcp_job_flooding":              {"DETECT-021"},
     "mcp_auth_probing":              {"DETECT-022"},
     "agentic_exfil_vector":          {"DETECT-023"},
+    "assessment_quality_regression": {"DETECT-024"},
 }
 
 

@@ -1198,6 +1198,43 @@ class Dashboard {
             }
         } catch (_) {}
 
+        // Gate badge — fetch export bundle for CI/CD gate status
+        let gateBadgeHtml = '';
+        try {
+            const gateResp = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/export`,
+                { cache: 'no-store', headers: this._authHeaders() });
+            if (gateResp.ok) {
+                const bundle = await gateResp.json();
+                const gate = bundle.gate || {};
+                const result = gate.result || 'UNKNOWN';
+                const isBlock = result === 'BLOCK';
+                const gateColor  = isBlock ? '#dc2626' : '#16a34a';
+                const gateLabel  = isBlock ? '⛔ BLOCK' : '✅ PASS';
+                const gateBg     = isBlock ? '#dc262612' : '#16a34a12';
+                const blocking   = (gate.blocking_signals || []).join(' · ') || '';
+                const archType   = bundle.architecture?.type || '';
+                const isAgentic  = bundle.architecture && archType.includes('ai') || archType.includes('agent');
+                const detectCount = (bundle.detect_findings || []).length;
+
+                gateBadgeHtml = `
+                <div style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem 0.875rem;
+                             background:${gateBg}; border:1px solid ${gateColor}44;
+                             border-radius:8px; margin-bottom:0.75rem; flex-wrap:wrap;">
+                    <span style="font-size:0.78rem; font-weight:700; color:${gateColor}; white-space:nowrap;">${gateLabel}</span>
+                    ${archType ? `<span style="font-size:0.72rem; color:var(--text-tertiary); padding:1px 6px; background:var(--main-bg); border:1px solid var(--border-color); border-radius:3px;">${archType}</span>` : ''}
+                    ${detectCount > 0 ? `<span style="font-size:0.72rem; color:#f59e0b; padding:1px 6px; background:#f59e0b10; border:1px solid #f59e0b44; border-radius:3px;">${detectCount} DETECT finding${detectCount > 1 ? 's' : ''}</span>` : ''}
+                    ${blocking ? `<span style="font-size:0.7rem; color:var(--text-secondary); font-family:var(--font-mono);">${blocking}</span>` : ''}
+                    <span style="margin-left:auto; display:flex; gap:0.5rem;">
+                        <button onclick="window.dashboard._downloadExport('${archName}')"
+                            style="padding:0.2rem 0.65rem; background:transparent; color:var(--text-secondary);
+                                   border:1px solid var(--border-color); border-radius:5px; cursor:pointer;
+                                   font-size:0.7rem; white-space:nowrap;"
+                            title="Download ta_export.json (ta-export/1.0)">⬇ Export</button>
+                    </span>
+                </div>`;
+            }
+        } catch (_) {}
+
         // Also pull Red Team roadmap requirements (most reliable control name source)
         try {
             const rtResp = await fetch(`/api/v1/reports/${archName}/files/06_red_team_critique.json`);
@@ -1509,6 +1546,7 @@ class Dashboard {
 
         container.innerHTML = `
         ${moeOverviewSummary}
+        ${gateBadgeHtml}
         ${scoreCardsHtml}
 
         <div style="display:flex; gap:0.875rem; flex-wrap:wrap; align-items:flex-start;">
@@ -17888,6 +17926,22 @@ class Dashboard {
     _authHeaders() {
         const key = localStorage.getItem('tm_api_key') || '';
         return key ? {'TM-API-KEY': key} : {};
+    }
+
+    async _downloadExport(archName) {
+        try {
+            const r = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/export`,
+                { cache: 'no-store', headers: this._authHeaders() });
+            if (!r.ok) { alert(`Export failed: ${r.status}`); return; }
+            const bundle = await r.json();
+            const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
+            a.download = `${archName}_ta_export.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) { alert(`Export error: ${e.message}`); }
     }
 
     // =========================================================================

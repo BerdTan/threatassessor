@@ -758,6 +758,35 @@ class AIVSSStage(PipelineStage):
                 try:
                     import datetime as _dt
                     _hist_path = _Path(ctx["report_dir"]) / "governance_signals_history.jsonl"
+
+                    # Compute AIVSS delta vs previous run for DETECT-024
+                    prev_composite = None
+                    if _hist_path.exists():
+                        with _hist_path.open(encoding="utf-8") as _hf:
+                            _lines = [l for l in _hf if l.strip()]
+                        if _lines:
+                            _prev = _json.loads(_lines[-1])
+                            prev_composite = (
+                                _prev.get("signals", {})
+                                     .get("aivss", {})
+                                     .get("overall", {})
+                                     .get("composite")
+                            )
+                    curr_composite = (
+                        gov_signals.get("aivss", {})
+                                   .get("overall", {})
+                                   .get("composite")
+                    )
+                    if prev_composite is not None and curr_composite is not None:
+                        drop = round(float(prev_composite) - float(curr_composite), 3)
+                        gov_signals.setdefault("aivss", {}).setdefault("delta", {})
+                        gov_signals["aivss"]["delta"] = {
+                            "composite_drop": drop,
+                            "prev_composite": prev_composite,
+                            "curr_composite": curr_composite,
+                        }
+                        ctx["governance_signals"] = gov_signals
+
                     _entry = _json.dumps({
                         "run_id": ctx.get("run_id", "unknown"),
                         "ts": _dt.datetime.utcnow().isoformat() + "Z",

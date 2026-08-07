@@ -109,9 +109,9 @@ class TestYAMLLoading:
     def test_rules_file_exists(self):
         assert RULES_PATH.exists(), f"Missing: {RULES_PATH}"
 
-    def test_loads_twentythree_rules(self):
+    def test_loads_twentyfour_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 23
+        assert len(ev) == 24
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -121,7 +121,8 @@ class TestYAMLLoading:
                          "DETECT-008", "DETECT-009", "DETECT-010", "DETECT-011",
                          "DETECT-012", "DETECT-013", "DETECT-014", "DETECT-015",
                          "DETECT-016", "DETECT-017", "DETECT-018", "DETECT-019",
-                         "DETECT-020", "DETECT-021", "DETECT-022", "DETECT-023"]:
+                         "DETECT-020", "DETECT-021", "DETECT-022", "DETECT-023",
+                         "DETECT-024"]:
             assert expected in ids
 
     def test_evaluate_returns_list(self):
@@ -1537,3 +1538,59 @@ class TestDetect023AgenticExfilVector:
         findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
         f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-023")
         assert "block_deployment" in f["unmapped"]["actions"]
+
+
+# ── DETECT-024: assessment_quality_regression ────────────────────────────────
+
+class TestDetect024AssessmentQualityRegression:
+    def _trigger(self):
+        s = _clean()
+        s["aivss"]["delta"] = {
+            "composite_drop": 3.1,
+            "prev_composite": 6.2,
+            "curr_composite": 3.1,
+        }
+        return s
+
+    def test_fires_on_large_composite_drop(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-024" in ids
+
+    def test_fires_at_exact_threshold(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["aivss"]["delta"]["composite_drop"] = 2.0
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-024" in ids
+
+    def test_does_not_fire_below_threshold(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["aivss"]["delta"]["composite_drop"] = 1.9
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-024" not in ids
+
+    def test_does_not_fire_when_no_delta(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-024" not in ids
+
+    def test_does_not_fire_on_improvement(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["aivss"]["delta"]["composite_drop"] = -1.5  # score improved
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-024" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-024")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_discovery(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-024")
+        assert f["finding"]["kill_chain_stage"] == "discovery"

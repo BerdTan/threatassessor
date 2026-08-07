@@ -1176,6 +1176,68 @@ rules:
       raise threshold to 8.
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-024: Assessment Quality Regression
+  #
+  # The AIVSS overall composite score dropped ≥ 2.0 points compared to the
+  # previous pipeline run for this architecture. A meaningful composite drop
+  # indicates the architecture regressed — new attack surface opened, controls
+  # removed, or validation coverage fell — without a corresponding architectural
+  # explanation. AIVSS composite covers inbound + internal + outbound risk weighted
+  # by control coverage, so a drop signals real change in the threat landscape.
+  #
+  # Signal flow:
+  #   AIVSSStage reads prev history entry before appending new one.
+  #   Computes drop = prev_composite - curr_composite.
+  #   Writes aivss.delta.composite_drop into governance_signals.
+  #   RuleEvaluator reads the field on next evaluate() call.
+  #
+  # Knowledge graph chain:
+  #   Pipeline[run_N-1]
+  #     └─ Signal[aivss.overall.composite=5.2]
+  #   Pipeline[run_N]
+  #     └─ Signal[aivss.overall.composite=2.8]
+  #          └─ Computed[aivss.delta.composite_drop=2.4]
+  #               └─ Threshold[composite_drop >= 2.0]
+  #                    └─ Rule[DETECT-024]
+  #                         └─ Alert[OCSF-2004, severity=High]
+  #                              └─ Action[audit_log, quarantine_trace]
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-024
+    name: assessment_quality_regression
+    description: >
+      AIVSS overall composite score dropped ≥ 2.0 points vs the previous pipeline
+      run. This indicates the architecture regressed — new attack surface, removed
+      controls, or lower validation coverage — without an approved architectural
+      change. A composite drop at this magnitude is outside normal run-to-run variance
+      and warrants review before the assessment is used for gating decisions.
+    incident_refs:
+      - owasp-a05-security-misconfiguration
+      - nist-csf-id-ra-3
+    owasp: [A05]
+    atlas_tactic: AML.TA0002
+    kill_chain_stage: discovery
+    ocsf_class: 2004
+    ocsf_type_uid: 200413
+    severity: High
+    conditions:
+      - field: aivss.delta.composite_drop
+        op: ">="
+        value: 2.0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: >
+      Threshold of 2.0 AIVSS points (20% of 10-point scale) is conservative enough
+      to exclude run-to-run noise (typically < 0.5 points for unchanged architectures)
+      but sensitive enough to catch meaningful regressions. First run for an arch will
+      never fire (no previous entry to compare). Backfill-baseline entries written by
+      /backfill-detect-history will trigger the rule on the first real run if the
+      baseline was significantly lower — verify that backfill composite is realistic.
+      If corp-wide false-positive rate is high after a MITRE data refresh (new
+      techniques raise the composite), raise threshold to 3.0.
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-023: Agentic Tool Exfil Vector
   #
   # An AI/agentic architecture (ai_system, rag_system, llm_agent, etc.) has been
@@ -1486,6 +1548,21 @@ playbooks:
     false_positive_indicators:
       - "Claude Desktop still has old API key in config after rotation — update claude_desktop_config.json"
       - "CI/CD secret not yet updated after key rotation — check GitHub/GitLab secret store"
+
+  assessment_quality_regression:
+    alert: DETECT-024
+    analyst_steps:
+      - "Check aivss.delta.composite_drop and aivss.delta.prev_composite vs curr_composite in governance_signals.json"
+      - "Compare the two most recent entries in governance_signals_history.jsonl — identify which AIVSS sub-score (inbound/internal/outbound) changed most"
+      - "Review the architecture .mmd for recent changes — new nodes, removed controls, or changed edge topology"
+      - "Check validation.val_pct: a drop in technique coverage explains an outbound composite drop"
+      - "If the drop correlates with a MITRE data refresh (/update-data), check if new techniques expanded the baseline score"
+      - "If unexplained, flag for architectural review before using this assessment in a CI/CD gate"
+    escalation_threshold: "composite_drop >= 5.0 → major regression, halt all gate decisions for this arch until reviewed"
+    false_positive_indicators:
+      - "MITRE ATT&CK data refresh added new techniques, raising the prior baseline composite — verify /update-data was run recently"
+      - "SSP profile changed between runs (e.g. low_risk_cloud → high_risk_gov) — profiles weight AIVSS differently"
+      - "Backfill-baseline entry had an unrealistically high composite — cross-check against actual analysis run"
 
   agentic_tool_exfil_vector:
     alert: DETECT-023
