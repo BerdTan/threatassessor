@@ -124,7 +124,16 @@ tail -f logs/api.log            # logs
 ## Check commands
 
 ```bash
-# SOC detection regression (24 rules, 25 scenarios, 327 tests)
+# ── Session start ────────────────────────────────────────────────────────────
+# Docs health — CLAUDE.md, DECISIONS.md, memory staleness (read-only, no API)
+/docs-health
+
+# ── Pipeline / gate ──────────────────────────────────────────────────────────
+# AIVSS gate config + HarnessModelGuardian model assignments + last SIEM scores
+/aivss-gate
+
+# ── SOC detection ────────────────────────────────────────────────────────────
+# Regression suite (24 rules, 25 scenarios, 327 tests)
 python3 .claude/skills/check-detect/scripts/check-detect.py
 python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 
@@ -140,6 +149,7 @@ python3 .claude/skills/detect-loop/scripts/detect-loop.py --observe-only
 # Rule trend analysis
 python3 .claude/skills/detect-trend/scripts/detect-trend.py --all
 
+# ── MCP / connector ──────────────────────────────────────────────────────────
 # MCP server — static validation (40 checks, no API needed)
 python3 .claude/skills/check-mcp/scripts/check-mcp.py
 python3 .claude/skills/check-mcp/scripts/check-mcp.py --live  # + live REST + MCP stdio
@@ -152,6 +162,18 @@ python3 mcp_server/client_sim.py --persona soc --arch <arch>
 # Connector layer (mcp_connector package + openapi.yaml + transport flag)
 python3 .claude/skills/check-connector/scripts/check-connector.py          # static + live
 python3 .claude/skills/check-connector/scripts/check-connector.py --static # no API needed
+```
+
+---
+
+## Occasional checks
+
+```bash
+/check-deprecation    # broken imports + anti-patterns — run after heavy refactoring
+/skill-stress-test    # red-team a skill before finalising — pass skill name as arg
+/langfuse-to-ocsf     # pipeline traces → OCSF events — requires LANGFUSE_* env vars
+/repo-organise        # audit docs/tests/scripts/report — proposes, never auto-executes
+/cost-estimate        # investment tier costs vs CIS/NIST/Gartner benchmarks
 ```
 
 ---
