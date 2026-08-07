@@ -17597,7 +17597,7 @@ class Dashboard {
         };
 
         try {
-            const headers = {'TM-API-KEY': this._lastApiKey || ''};
+            const headers = {'TM-API-KEY': localStorage.getItem('tm_api_key') || ''};
             const resp = await fetch(url, {headers});
             if (!resp.ok) {
                 timeline.innerHTML = `<p style="color:#ef4444;">Sim failed: ${resp.status} ${resp.statusText}</p>`;
