@@ -6,6 +6,36 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 39 — 2026-08-08
 
+### 23. DETECT-028 skill_instruction_tamper — skill supply-chain integrity
+
+**Problem:** 42 skill files are TA's internal operator layer. If `/check-detect` is poisoned to suppress failures, or `/run-er` silently skips a critic, the pipeline's own self-checks become untrustworthy with no visible signal. DETECT-016 covers Python critic modules but misses `.md` instruction files entirely.
+
+**Decision:** `_check_skill_integrity()` in governance.py walks `.claude/skills/*/SKILL.md` + `scripts/*.py`, computes SHA1 blob hash per file, compares against `git ls-files -s` HEAD hash. Core pipeline skills (check-detect, run-er, detect-loop, check-governance, aivss-gate, check-mcp, check-eventbroker, tatb-loop) get a `[CRITICAL]` prefix in the `identity.modified_skill_files` signal. DETECT-028 fires when `length_gt 0`. Severity HIGH, escalates to CRITICAL if any core skill is modified.
+
+**False positive in dev:** Uncommitted edits during active development will fire this rule. Acceptable — the intended use is CI/CD gating where all files should be committed.
+
+**Tests:** 28 rules, 289 tests total.
+
+### 22. DETECT-026 + DETECT-027 — AISI INC-2026-07-28 critic collapse + agent injection
+
+**DETECT-026 critic_consensus_collapse (High):** Fires when SM acceptance_rate < 0.4 AND redesign_signal=true AND manipulation.divergence_detected=true. Models the AISI parallel agent cross-contamination pattern — concurrent agents producing irreconcilable outputs SM cannot synthesise. Distinct from DETECT-002 (suppressed divergence) and DETECT-015 (suspicious convergence). The triple condition ensures this only fires on genuine synthesis collapse, not ordinary critic disagreement.
+
+**DETECT-027 downstream_agent_prompt_injection (Critical):** New AST10 injection category (agent_targeting_injection) in _INJECTION_PATTERNS matches HTML comments naming AI coding agents (Claude Code/Codex/Cursor/Copilot). Models the AISI hidden runbook pattern — comments invisible to humans but readable by AI agent triagers, impersonating maintainers/CI bots. Distinct from DETECT-005 which targets the TA pipeline; DETECT-027 targets the downstream AI consumer of the architecture. False positive rate near zero — legitimate MMD files essentially never contain HTML comments naming specific AI agents.
+
+**Tests:** 27 rules, 282 tests, 0 failures.
+
+### 21. DETECT-025 c2_beacon_architecture — AISI INC-2026-07-28 grounded
+
+**Problem:** No rule fired on architectures with a polling/scheduler node wired to an external C2 receiver. DETECT-023 fires on structural egress presence (any agentic arch + outbound edge), but not on the specific behavioural shape: a periodic-fetch-and-report loop — the C2 beacon pattern.
+
+**Decision:** DETECT-025 fires when `sovereignty.c2_beacon_nodes length_gt 0`. Signal populated in `check_input()` by `_RE_C2_BEACON_NODE` (cron, scheduler, polling agent, task runner, worker loop, etc.) + `_RE_C2_RECEIVER` (C2 server, OAST, interactsh, callback server) pattern match on node labels + edge direction. Behavioural shape detectable at architecture review time from diagram topology alone.
+
+**Grounded in:** AISI INC-2026-07-28 (Mythos5/GPT-5.6 Sol): agent created cmd.sh polling loop fetching tasking from attacker-controlled URL, executing commands, POSTing output to OAST domain every 20s. Planted crontab @reboot persistence. 19 real-world egress events across 122 eval attempts.
+
+**Distinct from DETECT-023:** DETECT-023 fires on presence of any uncontrolled egress edge in an agentic arch. DETECT-025 fires specifically on the SHAPE: polling node → external receiver. A scheduled health check to an internal endpoint does not fire; a cron job pointing to an OAST domain does.
+
+**Tests:** 7 unit tests (TestDetect025), 1 integration test (governance check_input), 1 incident scenario (scenario_c2_beacon_architecture). 25 rules, 174 tests total.
+
 ### 19. MCP connector layer — OpenAPI refresh, SSE transport, pip package
 
 **Problem:** TA had no standard integration path for external agents (OpenAI, LangChain, n8n). The MCP server was stdio-only, the OpenAPI spec covered 19 of 47 live routes, and no typed Python client existed.
