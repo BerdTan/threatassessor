@@ -117,7 +117,7 @@ tail -f logs/api.log            # logs
 
 **Transport:** stdio (Claude Desktop standard). See `mcp_server/README.md` for setup + all client types.
 
-**Sim personas — 13 total:** 6 benign (chatbot/code-agent/ciso/soc/copilot/chatgpt) + 7 adversarial: `recon_attack` (020), `flood_attack` (021), `auth_probe` (022), `injection_attack` (005/010/019), `tag_injection` (005 CRITICAL), `url_injection` (017/018/019), `c2_exfil_arch` (020/019). Run via dashboard MCP tab or `GET /api/v1/mcp/simulate/{persona}`.
+**Sim personas — 17 total:** 6 benign (chatbot/code-agent/ciso/soc/copilot/chatgpt) + 11 adversarial: `recon_attack` (020), `flood_attack` (021), `auth_probe` (022), `injection_attack` (005/010/019), `tag_injection` (005 CRITICAL), `url_injection` (017/018/019), `c2_exfil_arch` (020/019), `c2_beacon_architecture` (025), `downstream_agent_injection` (027 CRITICAL), `skill_instruction_tamper` (028), `critic_consensus_collapse` (026). Run via dashboard MCP tab or `GET /api/v1/mcp/simulate/{persona}`.
 
 ---
 
