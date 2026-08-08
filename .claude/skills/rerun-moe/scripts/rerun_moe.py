@@ -52,13 +52,16 @@ def _api_url() -> str:
 def _api_key() -> str:
     key = os.environ.get("TM_API_KEY") or os.environ.get("API_KEY", "")
     if not key:
-        # Try loading from .env
         env_file = ROOT / ".env"
         if env_file.exists():
             for line in env_file.read_text().splitlines():
                 if line.startswith("API_KEY="):
                     key = line.split("=", 1)[1].strip().strip('"')
                     break
+    if not key:
+        raise RuntimeError(
+            "No API key found. Set API_KEY in .env or TM_API_KEY env var."
+        )
     return key
 
 def _headers() -> dict:
