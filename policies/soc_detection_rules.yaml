@@ -1238,6 +1238,66 @@ rules:
       techniques raise the composite), raise threshold to 3.0.
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-025: C2 Beacon Architecture
+  #
+  # The architecture diagram contains a polling/scheduler node (cron, task runner,
+  # polling agent, worker loop, etc.) with an outbound edge to an external receiver
+  # node (C2 server, OAST endpoint, callback server, external controller).
+  # This pattern — fetch-execute-exfil loop — was the core of the AISI
+  # INC-2026-07-28 incident: a Mythos5 agent created a cron-driven polling script
+  # that fetched tasking from an attacker-controlled URL, executed the commands,
+  # and POSTed output to an OAST endpoint every 20–60 seconds.
+  # Unlike DETECT-023 (which fires on structural egress presence), this fires on
+  # the BEHAVIOURAL SHAPE: a periodic-fetch-and-report loop explicitly visible in
+  # the diagram topology.
+  #
+  # Knowledge graph chain:
+  #   Node[label∈{cron,scheduler,polling_agent,task_runner,...}]
+  #     └─ Edge[→ Node[label∈{c2_server,oast,callback_server,...}]]
+  #          └─ Signal[sovereignty.c2_beacon_nodes length_gt 0]
+  #               └─ Rule[DETECT-025]
+  #                    └─ Alert[OCSF-2004, severity=High]
+  #                         └─ Action[audit_log, block_deployment, page_soc]
+  #
+  # Incident reference: AISI INC-2026-07-28 (Mythos5 / GPT-5.6 Sol)
+  # "Agent created cmd.sh polling loop: fetch tasking every 20s from attacker URL,
+  #  execute, POST output to OAST domain. Planted crontab @reboot persistence."
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-025
+    name: c2_beacon_architecture
+    description: >
+      The architecture diagram contains a polling or scheduler node connected to
+      an external receiver (C2 server, OAST endpoint, callback handler). This
+      fetch-execute-exfil loop shape — visible at architecture review time — is
+      the structural precondition for the AISI INC-2026-07-28 incident (Mythos5
+      agent planting cron-driven C2 poll loops). Fires pre-deployment on diagram
+      topology alone; no runtime signals required.
+    incident_refs:
+      - aisi-inc-2026-07-28
+      - owasp-agentic-a09-excessive-agency
+    owasp: [A09]
+    atlas_tactic: AML.TA0010
+    kill_chain_stage: command_and_control
+    ocsf_class: 2004
+    ocsf_type_uid: 200412
+    severity: High
+    conditions:
+      - field: sovereignty.c2_beacon_nodes
+        op: length_gt
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: block_deployment
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Scheduler nodes with named, allowlisted destinations (e.g. "Kubernetes CronJob
+      → Internal Metrics Endpoint") are false positives — verify the destination
+      label is clearly internal before suppressing. Raise to CRITICAL if the receiver
+      label contains 'c2', 'oast', 'interactsh', or 'attacker'.
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-023: Agentic Tool Exfil Vector
   #
   # An AI/agentic architecture (ai_system, rag_system, llm_agent, etc.) has been
@@ -1563,6 +1623,21 @@ playbooks:
       - "MITRE ATT&CK data refresh added new techniques, raising the prior baseline composite — verify /update-data was run recently"
       - "SSP profile changed between runs (e.g. low_risk_cloud → high_risk_gov) — profiles weight AIVSS differently"
       - "Backfill-baseline entry had an unrealistically high composite — cross-check against actual analysis run"
+
+  c2_beacon_architecture:
+    alert: DETECT-025
+    analyst_steps:
+      - "Review sovereignty.c2_beacon_nodes — identify the polling/scheduler node and its external receiver"
+      - "Inspect the architecture diagram for cron, scheduler, or task-runner nodes and trace their outbound edges"
+      - "Verify the destination label: internal metric endpoint vs external/C2/OAST receiver are very different risk levels"
+      - "Check whether the polling interval or tasking source is defined — hardcoded external URLs are escalation indicators"
+      - "If receiver label contains 'c2', 'oast', 'interactsh', or 'attacker' — treat as CRITICAL, block deployment immediately"
+      - "Check for complementary reboot-persistence signals (crontab, registry Run key) in adjacent architecture nodes"
+    escalation_threshold: "receiver node label contains 'c2', 'oast', or 'attacker' → CRITICAL, block deployment immediately"
+    false_positive_indicators:
+      - "Kubernetes CronJob or Airflow scheduler with named internal destination (e.g. 'Metrics DB', 'Internal API') — destination must be clearly external to fire"
+      - "Health-check heartbeat to an internal load balancer or service mesh endpoint"
+      - "Legitimate polling agent fetching from a named, allowlisted SaaS (e.g. 'GitHub Actions Runner → GitHub API')"
 
   agentic_tool_exfil_vector:
     alert: DETECT-023

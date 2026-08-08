@@ -339,6 +339,23 @@ _RE_ZDR = re.compile(
     re.IGNORECASE,
 )
 
+# AST09 — C2 beacon architecture: polling/scheduler node labels that indicate
+# a fetch-execute-exfil loop (cron, scheduler, polling agent, task runner, etc.)
+_RE_C2_BEACON_NODE = re.compile(
+    r"\b(cron|scheduler|polling[\s_-]?agent|task[\s_-]?runner|beacon|heartbeat"
+    r"|periodic[\s_-]?task|poller|job[\s_-]?runner|worker[\s_-]?loop"
+    r"|callback[\s_-]?handler|command[\s_-]?executor|cmd[\s_-]?runner"
+    r"|tasking[\s_-]?agent|c2[\s_-]?client|c2[\s_-]?beacon)\b",
+    re.IGNORECASE,
+)
+# External receiver labels that form the other end of a C2 loop
+_RE_C2_RECEIVER = re.compile(
+    r"\b(c2[\s_-]?server|command[\s_-]?and[\s_-]?control|attacker[\s_-]?server"
+    r"|oast|interactsh|exfil[\s_-]?endpoint|callback[\s_-]?server"
+    r"|remote[\s_-]?tasking|external[\s_-]?controller)\b",
+    re.IGNORECASE,
+)
+
 # Sovereignty — external service + expanded LLM node vocabulary
 _RE_EXTERNAL_SERVICE = re.compile(
     r"\b(sendgrid|twilio|stripe|salesforce|external\s+api|external\s+webhook"
@@ -433,6 +450,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
                 "inferred_regions": [],
                 "zdr_signals": [],
                 "boundary_violations": [],
+                "c2_beacon_nodes": [],
                 "flagged": False,
                 "severity": "LOW",
                 "arc_categories": ["PRIV", "SEC", "SOC"],
@@ -576,10 +594,46 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         sig.sovereignty["inferred_regions"] = list(set(sig.sovereignty["inferred_regions"]))
         sig.sovereignty["cross_boundary_nodes"] = list(dict.fromkeys(sig.sovereignty["cross_boundary_nodes"]))
 
+        # AST09 — C2 beacon architecture detection.
+        # A polling/scheduler node + an outbound edge to an external/C2 receiver
+        # forms the fetch-execute-exfil loop pattern from the AISI INC-2026-07-28
+        # incident (Mythos5 cron+Poseidon C2 callback). Detectable at architecture
+        # review time from node labels alone — no runtime signals required.
+        _beacon_node_ids = {
+            nid for nid, lbl in node_labels.items() if _RE_C2_BEACON_NODE.search(lbl)
+        }
+        _beacon_node_ids |= {
+            nid for nid in node_labels if _RE_C2_BEACON_NODE.search(nid)
+        }
+        _c2_receiver_ids = {
+            nid for nid, lbl in node_labels.items() if _RE_C2_RECEIVER.search(lbl)
+        }
+        _c2_receiver_ids |= {
+            nid for nid in node_labels if _RE_C2_RECEIVER.search(nid)
+        }
+        for em in _RE_EDGE.finditer(_edges_content):
+            src, dst = em.group(1), em.group(2)
+            if src in _beacon_node_ids:
+                dst_label = node_labels.get(dst, dst)
+                src_label = node_labels.get(src, src)
+                if (dst in _c2_receiver_ids
+                        or _RE_C2_RECEIVER.search(dst_label)
+                        or _RE_EXTERNAL_SERVICE.search(dst_label)
+                        or dst_label.lower() in ("internet", "external", "c2server", "c2")):
+                    sig.sovereignty["c2_beacon_nodes"].append(
+                        f"{src}[{src_label[:40]}] → {dst}[{dst_label[:40]}]"
+                    )
+
+        if sig.sovereignty["c2_beacon_nodes"]:
+            sig.sovereignty["flagged"] = True
+            sig.sovereignty["severity"] = "HIGH"
+
         if sig.sovereignty["cross_boundary_nodes"] or sig.sovereignty["zdr_signals"]:
             sig.sovereignty["flagged"] = True
             sev_level = 2 if sig.sovereignty["zdr_signals"] else 1
-            sig.sovereignty["severity"] = _severity(sev_level)
+            # Don't downgrade if c2_beacon already set HIGH
+            if sig.sovereignty["severity"] != "HIGH":
+                sig.sovereignty["severity"] = _severity(sev_level)
 
         sig.kill_chain_coverage = ["external_boundary", "data_boundary"]
         sig.overall_risk_level = self._compute_overall(sig)

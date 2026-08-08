@@ -109,9 +109,9 @@ class TestYAMLLoading:
     def test_rules_file_exists(self):
         assert RULES_PATH.exists(), f"Missing: {RULES_PATH}"
 
-    def test_loads_twentyfour_rules(self):
+    def test_loads_twentyfive_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 24
+        assert len(ev) == 25
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -1594,3 +1594,65 @@ class TestDetect024AssessmentQualityRegression:
         findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
         f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-024")
         assert f["finding"]["kill_chain_stage"] == "discovery"
+
+
+class TestDetect025C2BeaconArchitecture:
+    def _trigger(self):
+        s = _clean()
+        s["sovereignty"]["c2_beacon_nodes"] = [
+            "CronJob[Polling Agent] → C2Server[C2 Receiver]"
+        ]
+        s["sovereignty"]["flagged"] = True
+        s["sovereignty"]["severity"] = "HIGH"
+        return s
+
+    def test_fires_on_c2_beacon_node(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-025" in ids
+
+    def test_fires_on_multiple_beacon_nodes(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["sovereignty"]["c2_beacon_nodes"] = [
+            "CronJob[Polling Agent] → C2Server[C2 Receiver]",
+            "TaskRunner[Worker Loop] → OASTEndpoint[OAST]",
+        ]
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-025" in ids
+
+    def test_does_not_fire_on_empty_c2_beacon_nodes(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["sovereignty"]["c2_beacon_nodes"] = []
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-025" not in ids
+
+    def test_does_not_fire_on_missing_c2_beacon_nodes(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-025" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-025")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_command_and_control(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-025")
+        assert f["finding"]["kill_chain_stage"] == "command_and_control"
+
+    def test_governance_input_detects_c2_beacon_shape(self):
+        from chatbot.harness.governance import get_governance_adapter
+        adapter = get_governance_adapter()
+        mmd = (
+            "graph LR\n"
+            "  Agent[AI Agent] --> CronJob[Polling Agent]\n"
+            "  CronJob --> C2Server[C2 Receiver]\n"
+            "  C2Server --> ExfilEndpoint[Internet]\n"
+        )
+        sig = adapter.check_input(mmd, "c2_test")
+        assert len(sig.sovereignty.get("c2_beacon_nodes", [])) > 0

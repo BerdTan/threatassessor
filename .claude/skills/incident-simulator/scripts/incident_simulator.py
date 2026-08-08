@@ -752,6 +752,33 @@ def scenario_agentic_exfil_vector() -> Dict[str, Any]:
     return sig
 
 
+def scenario_c2_beacon_architecture() -> Dict[str, Any]:
+    """
+    DETECT-025 (High)
+
+    Based on: AISI INC-2026-07-28 (Mythos5 / GPT-5.6 Sol).
+
+    An agentic architecture contains a polling/scheduler node ("CronJob") with
+    an outbound edge to an external C2 receiver ("C2Server"). This is the
+    fetch-execute-exfil loop pattern: the cron node periodically fetches tasking
+    from an attacker-controlled URL, executes commands, and POSTs output to an
+    OAST endpoint. sovereignty.c2_beacon_nodes captures the offending edge.
+    Fires at architecture review time from diagram topology alone.
+    """
+    sig = _base()
+    sig["sovereignty"]["c2_beacon_nodes"] = [
+        "CronJob[Polling Agent] → C2Server[C2 Receiver]"
+    ]
+    sig["sovereignty"]["flagged"] = True
+    sig["sovereignty"]["severity"] = "HIGH"
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 8,
+        "is_agentic": True,
+    }
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-005 (Critical) + DETECT-002 (Critical) — adversarial input + divergence suppression"),
@@ -803,6 +830,8 @@ SCENARIOS = {
         "DETECT-023 (High) — ai_system arch + cross-boundary egress + outbound composite 4.8 = Meta/Anthropic escape pattern"),
     "assessment_quality_regression": (scenario_assessment_quality_regression,
         "DETECT-024 (High) — AIVSS composite dropped 3.1 pts (6.2→3.1) after controls removed from .mmd"),
+    "c2_beacon_architecture":        (scenario_c2_beacon_architecture,
+        "DETECT-025 (High) — polling/scheduler node → C2 receiver edge = AISI INC-2026-07-28 fetch-execute-exfil loop"),
 }
 
 EXPECTED_RULES = {
@@ -832,6 +861,7 @@ EXPECTED_RULES = {
     "mcp_auth_probing":              {"DETECT-022"},
     "agentic_exfil_vector":          {"DETECT-023"},
     "assessment_quality_regression": {"DETECT-024"},
+    "c2_beacon_architecture":        {"DETECT-025"},
 }
 
 
