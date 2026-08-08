@@ -24,14 +24,19 @@ import json
 try:
     raw = json.load(open('/tmp/gov_response.json'))
     d = raw.get('detail', raw)
+    exp = d.get('signals', {}).get('exploitation', {})
     out = {
         'blocked': d.get('blocked', False),
+        'overall_risk_level': d.get('signals', {}).get('overall_risk_level', 'LOW'),
         'fired_rules': d.get('fired_rules', []),
-        'severity': d.get('signals', {}).get('exploitation', {}).get('severity', 'LOW'),
-        'injection_categories': list(d.get('signals', {}).get('exploitation', {}).get('injection_categories', {}).keys()),
-        'kill_chain_stage': d.get('signals', {}).get('exploitation', {}).get('kill_chain_stage', ''),
+        'pipeline_severity': exp.get('severity', 'LOW'),
+        'downstream_agent_threat': exp.get('downstream_agent_threat', None),
+        'injection_categories': list(exp.get('injection_categories', {}).keys()),
+        'kill_chain_stage': exp.get('kill_chain_stage', ''),
         'actions': d.get('findings', [{}])[0].get('unmapped', {}).get('actions', []) if d.get('findings') else [],
     }
+    # Remove None values for cleaner output
+    out = {k: v for k, v in out.items() if v is not None}
     print(json.dumps(out, indent=2))
 except Exception as e:
     print('Parse error:', e)
