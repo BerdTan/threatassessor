@@ -4,6 +4,33 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 39 — 2026-08-08
+
+### 19. MCP connector layer — OpenAPI refresh, SSE transport, pip package
+
+**Problem:** TA had no standard integration path for external agents (OpenAI, LangChain, n8n). The MCP server was stdio-only, the OpenAPI spec covered 19 of 47 live routes, and no typed Python client existed.
+
+**Decision:** Three deliverables built together:
+1. **OpenAPI spec** regenerated from live FastAPI `/openapi.json` — 47 paths, `ApiKeyHeader` security scheme, `x-mcp-server` hint, tag groups
+2. **FastMCP `--transport` flag** — `python -m mcp_server.server --transport streamable-http --port 8001` exposes all 13 tools over HTTP for OpenAI Responses API (`server_url`), LangChain, remote CI runners
+3. **`mcp_connector/` pip package** — `MCPClient` (typed REST wrapper), `openai_tools()` (13 Chat Completions defs), `openai_mcp_tool()` (single Responses API `{"type":"mcp"}` def), `langchain_tools()` (11 BaseTool subclasses), `pyproject.toml`, README with 6 integration patterns
+
+**Why OpenAI connectors aren't the path:** OpenAI `connector_id` is for OpenAI's own pre-built wrappers (Dropbox, Gmail). Third parties use `server_url` pointing at a streamable-http MCP server — that's the correct open standard for remote agents.
+
+**`/check-connector` skill added:** 57 checks across package structure, openai_bridge shape, LangChain graceful import, OpenAPI validity, transport flag, and live MCPClient calls (governance_check + export_assessment).
+
+---
+
+### 20. Docs housekeeping — harness_v2_design.md, docs/README.md
+
+**Decision:** Two deferred items in Harness v2 documented explicitly rather than silently dropped:
+- `EventPriority / _priority_sinks` — `sink_tier` is computed in `BrokerDecision` but `EventBrokerCritic` never reads it; implement when a SIEM sink needs to suppress DEBUG events
+- Post-critic output guard — scan MoE output via `check_artifact()`; low risk until critics have direct file/network access
+
+`docs/README.md` bumped to v2.2; 19→24 rules, "MCP planned"→shipped, new MCP/connector section.
+
+---
+
 ## Session 38 — 2026-08-07 (continued)
 
 ### 18. Governance-layer adversarial personas + `governance_check` tool
