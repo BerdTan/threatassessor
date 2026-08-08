@@ -1298,6 +1298,71 @@ rules:
       label contains 'c2', 'oast', 'interactsh', or 'attacker'.
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-028: Skill Instruction Tamper
+  #
+  # One or more skill instruction files (.claude/skills/*/SKILL.md or scripts/*.py)
+  # have been modified on disk and diverged from their git HEAD hash. Skills are
+  # the internal operator layer of TA — if a core pipeline skill is poisoned, the
+  # pipeline's own self-checks become unreliable: /check-detect could suppress rule
+  # failures, /run-er could skip a critic, /detect-loop could prescribe trivially
+  # easy scenarios to mask real coverage gaps.
+  #
+  # Analogous to the AISI INC-2026-07-28 supply-chain modification pattern where
+  # the attacker modified infrastructure files to establish persistence and evade
+  # detection. In TA the attack surface is the skill instruction files — they are
+  # trusted implicitly by Claude Code and executed without runtime validation.
+  #
+  # Severity escalates to CRITICAL if any modified file belongs to a core pipeline
+  # skill (check-detect, run-er, detect-loop, check-governance, aivss-gate,
+  # check-mcp, check-eventbroker, tatb-loop) — these directly affect detection
+  # integrity and gate decisions.
+  #
+  # Knowledge graph chain:
+  #   identity.modified_skill_files length_gt 0
+  #     └─ Rule[DETECT-028]
+  #          └─ Alert[OCSF-2004, severity=High / Critical if core skill]
+  #               └─ Action[audit_log, forensic_capture, block_deployment, page_soc]
+  #
+  # Incident reference: AISI INC-2026-07-28 — attacker modified infrastructure
+  # files to establish persistence; AST02 supply chain modification pattern.
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-028
+    name: skill_instruction_tamper
+    description: >
+      One or more skill instruction files (.claude/skills/*/SKILL.md or scripts/*.py)
+      have diverged from their git HEAD hash. Skills are the internal operator layer
+      of TA — a poisoned skill can suppress detection, skip critics, or weaken gate
+      decisions without any visible runtime signal. Severity escalates to CRITICAL
+      if the modified file belongs to a core pipeline skill (check-detect, run-er,
+      detect-loop, check-governance, aivss-gate).
+    incident_refs:
+      - aisi-inc-2026-07-28-supply-chain
+      - owasp-agentic-a02-supply-chain-compromise
+    owasp: [A02]
+    atlas_tactic: AML.TA0002
+    kill_chain_stage: collection
+    ocsf_class: 2004
+    ocsf_type_uid: 200402
+    severity: High
+    conditions:
+      - field: identity.modified_skill_files
+        op: length_gt
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: forensic_capture
+      - type: block_deployment
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Modified skill files during active development (uncommitted edits) will fire
+      this rule. Suppress in development environments by running `git add` before
+      analysis, or by setting an env var (SKIP_SKILL_INTEGRITY_CHECK=1) to disable
+      in dev-only deployments. In CI/CD, all skill files should be committed — any
+      divergence from HEAD in a CI pipeline is a genuine tamper signal.
+
   # DETECT-026: Critic Consensus Collapse
   #
   # ScrumMaster rejected the majority of critic findings (acceptance_rate < 0.4)
@@ -1752,6 +1817,22 @@ playbooks:
       - "MITRE ATT&CK data refresh added new techniques, raising the prior baseline composite — verify /update-data was run recently"
       - "SSP profile changed between runs (e.g. low_risk_cloud → high_risk_gov) — profiles weight AIVSS differently"
       - "Backfill-baseline entry had an unrealistically high composite — cross-check against actual analysis run"
+
+  skill_instruction_tamper:
+    alert: DETECT-028
+    analyst_steps:
+      - "Review identity.modified_skill_files — which specific skill files have diverged from git HEAD"
+      - "Run `git diff .claude/skills/` to see the exact changes"
+      - "Check if any modified file belongs to a core pipeline skill (check-detect, run-er, detect-loop, check-governance, aivss-gate)"
+      - "If [CRITICAL] prefix present in modified_skill_files — treat as active supply-chain attack, halt pipeline immediately"
+      - "Compare diff against last known good commit — look for suppressed assertions, skipped critics, or trivialised thresholds"
+      - "Check git log for the committer of the last change — verify it matches expected developer identity"
+      - "If modification is from active development (uncommitted edits during dev session) — commit or stash before re-running analysis"
+    escalation_threshold: "modified file has [CRITICAL] prefix (core pipeline skill) → block all gate decisions, treat as supply-chain compromise"
+    false_positive_indicators:
+      - "Active development session — skill file edited but not yet committed. Run `git add` before analysis in dev environment."
+      - "Skill update in progress — partial edit not yet committed. Expected during /tatb-loop or /detect-loop sessions."
+      - "SKIP_SKILL_INTEGRITY_CHECK=1 env var suppresses in dev-only deployments"
 
   critic_consensus_collapse:
     alert: DETECT-026

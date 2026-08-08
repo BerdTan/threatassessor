@@ -670,6 +670,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
                 "context_bleed_signals": [],
                 "overreach_signals": [],
                 "supply_chain_modified_modules": [],
+                "modified_skill_files": [],
                 "arc_categories": ["ACC", "FAIR"],
                 "atlas_tactics": ["AML.TA0006"],
                 "kill_chain_stage": "llm_layer",
@@ -703,6 +704,9 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
 
         # Supply chain: module integrity (git hash check)
         sig.identity["supply_chain_modified_modules"] = self._check_module_integrity()
+
+        # Skill integrity: check .claude/skills/ instruction + script files
+        sig.identity["modified_skill_files"] = self._check_skill_integrity()
 
         # Attach tool errors captured so far
         sig.identity["tool_errors"] = [e.to_dict() for e in self._tool_errors]
@@ -808,6 +812,55 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
                     modified.append(file_path)
         except Exception as exc:
             logger.debug(f"Module integrity check skipped: {exc}")
+        return modified
+
+    # Core pipeline skills whose modification should escalate to CRITICAL.
+    _CORE_SKILLS = frozenset({
+        "check-detect", "run-er", "detect-loop", "check-governance",
+        "aivss-gate", "check-mcp", "check-eventbroker", "tatb-loop",
+    })
+
+    def _check_skill_integrity(self) -> List[str]:
+        """
+        Compare .claude/skills/ SKILL.md and scripts/*.py file hashes against git.
+        Returns list of modified skill file paths. Falls back to [] if .git absent.
+        Marks core pipeline skills with a [CRITICAL] prefix.
+        """
+        modified = []
+        try:
+            import subprocess
+            skills_dir = Path(".claude/skills")
+            if not skills_dir.exists() or not Path(".git").exists():
+                return []
+            result = subprocess.run(
+                ["git", "ls-files", "-s", str(skills_dir)],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode != 0:
+                return []
+            for line in result.stdout.strip().splitlines():
+                parts = line.split()
+                if len(parts) < 4:
+                    continue
+                git_hash = parts[1]
+                file_path = parts[3]
+                # Only check SKILL.md and scripts/ Python files
+                p = Path(file_path)
+                if p.name != "SKILL.md" and not (
+                    "scripts" in p.parts and p.suffix == ".py"
+                ):
+                    continue
+                if not p.exists():
+                    continue
+                content = p.read_bytes()
+                blob = f"blob {len(content)}\x00".encode() + content
+                disk_hash = hashlib.sha1(blob).hexdigest()
+                if disk_hash != git_hash:
+                    skill_name = p.parts[2] if len(p.parts) > 2 else p.name
+                    prefix = "[CRITICAL] " if skill_name in self._CORE_SKILLS else ""
+                    modified.append(f"{prefix}{file_path}")
+        except Exception as exc:
+            logger.debug(f"Skill integrity check skipped: {exc}")
         return modified
 
     def _summarise_capability_log(self) -> dict:

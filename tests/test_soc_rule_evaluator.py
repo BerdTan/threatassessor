@@ -73,6 +73,11 @@ def _clean() -> Dict[str, Any]:
             "zdr_signals": [],
             "inferred_regions": [],
         },
+        "identity": {
+            "supply_chain_modified_modules": [],
+            "modified_skill_files": [],
+            "tool_errors": [],
+        },
         "aivss": {
             "overall": {"composite": 3.0, "severity": "LOW"},
             "inbound":  {"composite": 0.0, "coverage_pct": 0},
@@ -109,9 +114,9 @@ class TestYAMLLoading:
     def test_rules_file_exists(self):
         assert RULES_PATH.exists(), f"Missing: {RULES_PATH}"
 
-    def test_loads_twentyseven_rules(self):
+    def test_loads_twentyeight_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 27
+        assert len(ev) == 28
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -1663,6 +1668,61 @@ class TestDetect025C2BeaconArchitecture:
         )
         sig = adapter.check_input(mmd, "c2_test")
         assert len(sig.sovereignty.get("c2_beacon_nodes", [])) > 0
+
+
+class TestDetect028SkillInstructionTamper:
+    def _trigger(self):
+        s = _clean()
+        s["identity"]["modified_skill_files"] = [
+            "[CRITICAL] .claude/skills/check-detect/scripts/check-detect.py"
+        ]
+        return s
+
+    def test_fires_on_modified_skill_files(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-028" in ids
+
+    def test_fires_on_non_core_skill_modification(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s["identity"]["modified_skill_files"] = [".claude/skills/gen-blog/SKILL.md"]
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-028" in ids
+
+    def test_does_not_fire_on_empty_modified_skills(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s["identity"]["modified_skill_files"] = []
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-028" not in ids
+
+    def test_does_not_fire_on_missing_field(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-028" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-028")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_collection(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-028")
+        assert f["finding"]["kill_chain_stage"] == "collection"
+
+    def test_core_skill_marked_critical_in_signal(self):
+        s = _clean()
+        s["identity"]["modified_skill_files"] = [
+            "[CRITICAL] .claude/skills/check-detect/scripts/check-detect.py",
+            ".claude/skills/gen-blog/SKILL.md",
+        ]
+        core = [f for f in s["identity"]["modified_skill_files"] if f.startswith("[CRITICAL]")]
+        assert len(core) == 1
+        assert "check-detect" in core[0]
 
 
 class TestDetect026CriticConsensusCollapse:

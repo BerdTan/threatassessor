@@ -61,6 +61,11 @@ def _base() -> Dict[str, Any]:
             "zdr_signals": [],
             "inferred_regions": [],
         },
+        "identity": {
+            "supply_chain_modified_modules": [],
+            "modified_skill_files": [],
+            "tool_errors": [],
+        },
         "aivss": {
             "overall": {"composite": 3.12, "severity": "LOW"},
             "inbound":  {"composite": 0.0,  "severity": "LOW", "coverage_pct": 0},
@@ -752,6 +757,25 @@ def scenario_agentic_exfil_vector() -> Dict[str, Any]:
     return sig
 
 
+def scenario_skill_instruction_tamper() -> Dict[str, Any]:
+    """
+    DETECT-028 (High)
+
+    Based on: AISI INC-2026-07-28 supply-chain modification pattern;
+    AST02 supply chain compromise.
+
+    Two skill files have diverged from git HEAD: one core pipeline skill
+    (check-detect — marked [CRITICAL]) and one non-core skill. The core skill
+    modification means the pipeline's own self-checks are untrustworthy.
+    """
+    sig = _base()
+    sig["identity"]["modified_skill_files"] = [
+        "[CRITICAL] .claude/skills/check-detect/scripts/check-detect.py",
+        ".claude/skills/gen-blog/SKILL.md",
+    ]
+    return sig
+
+
 def scenario_critic_consensus_collapse() -> Dict[str, Any]:
     """
     DETECT-026 (High)
@@ -896,6 +920,8 @@ SCENARIOS = {
         "DETECT-024 (High) — AIVSS composite dropped 3.1 pts (6.2→3.1) after controls removed from .mmd"),
     "c2_beacon_architecture":        (scenario_c2_beacon_architecture,
         "DETECT-025 (High) — polling/scheduler node → C2 receiver edge = AISI INC-2026-07-28 fetch-execute-exfil loop"),
+    "skill_instruction_tamper":      (scenario_skill_instruction_tamper,
+        "DETECT-028 (High) — check-detect.py [CRITICAL] + gen-blog SKILL.md modified = skill supply-chain tamper"),
     "critic_consensus_collapse":     (scenario_critic_consensus_collapse,
         "DETECT-026 (High) — SM acceptance_rate=0.3 + redesign_signal + divergence = irreconcilable critic outputs"),
     "downstream_agent_injection":    (scenario_downstream_agent_injection,
@@ -930,6 +956,7 @@ EXPECTED_RULES = {
     "agentic_exfil_vector":          {"DETECT-023"},
     "assessment_quality_regression": {"DETECT-024"},
     "c2_beacon_architecture":        {"DETECT-025"},
+    "skill_instruction_tamper":      {"DETECT-028"},
     "critic_consensus_collapse":     {"DETECT-026"},
     "downstream_agent_injection":    {"DETECT-027"},
 }
