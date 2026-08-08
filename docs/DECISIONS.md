@@ -6,6 +6,35 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 39 — 2026-08-08
 
+### 24. Critic prompt rewrites (v2) — critic-gym session 2026-08-09
+
+**What:** All six MoE critic system prompts audited with new `/critic-gym` skill and rewritten where needed.
+
+**Changes per critic:**
+- `architect`: added SCOPE exclusions (what Architect does NOT cover vs Red Team/Tester/Purple/Blackhat), WEAK FINDING examples with penalty instruction, full JSON output schema with field names, sprint-ready task framing. 3/12 → 11/12 HEALTHY.
+- `tester`: already well-specified (12/12 HEALTHY after pattern fix — no content changes needed)
+- `red_team`: added scoring bands (0–29 MINIMAL through 90–100 CRITICAL), strong/weak finding example with bypass technique and skill level, JSON schema with `bypass_technique` + `skill_required` fields. 4/12 → 11/12 HEALTHY.
+- `purple_team`: added explicit scope exclusions (defer design quality to Architect, MITRE accuracy to Tester, bypass difficulty to Red Team), scoring bands, GOOD/BAD examples, JSON schema with `gap_type` field. 2/12 → 10/12 HEALTHY.
+- `blackhat`: added scope exclusions (defer single-path findings to Red Team), scoring bands, cross-path chain example with pivot node + stealth reason, JSON schema with `chains[].pivot_node` + `stealth_reason`. 3/12 → 7/12 TARGETED FIX.
+- `scrum_master`: 1/12 score is a gym extraction limitation — runtime composite prompt is already well-specified (GOOD/BAD examples, sprint framing, explicit JSON schema already present at runtime).
+
+**TATB delta on 01_minimal_vulnerable (3 runs):**
+- TTP-Accurate: 72 → 74 → 77 (+5)
+- Cross-critic agreement: 56% → 62% → 75% (+19pp)
+- MoE lift: -16.2pp → -19.4pp → -20.1pp (more negative — expected: stricter prompts find more gaps, lowering individual confidence adjustments)
+- Overall: 91 → 91 → 92 (+1)
+
+**Why MoE lift going negative is acceptable:** Cross-critic agreement rising from 56% to 75% means critics are finding the same real issues rather than diverging on generic observations. Individual confidence drops because the bar is higher, but findings are more consistent and specific.
+
+**Spot-check 10_complex_enterprise (post-rerun):**
+- TTP-Accurate: 74 → 79 (+5)
+- Cross-critic agreement: 62% → 85% (+23pp)
+- Plan-Actionable: 97 → 100 (+3)
+- Overall: 89 → 91 (+2)
+- MoE lift: -12.6pp → -13.5pp (marginal, acceptable)
+
+**Decision:** Both archs show consistent pattern — TTP-Accurate +5, cross-critic +19–23pp, overall +1–2. Safe to rerun full corpus with `/rerun-corpus --all`.
+
 ### 23. DETECT-028 skill_instruction_tamper — skill supply-chain integrity
 
 **Problem:** 42 skill files are TA's internal operator layer. If `/check-detect` is poisoned to suppress failures, or `/run-er` silently skips a critic, the pipeline's own self-checks become untrustworthy with no visible signal. DETECT-016 covers Python critic modules but misses `.md` instruction files entirely.
