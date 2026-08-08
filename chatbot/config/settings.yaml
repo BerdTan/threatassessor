@@ -73,6 +73,8 @@ agent_models:
   architect:        {model: "${AGENT_MODEL_ARCHITECT}"}
   tester:           {model: "${AGENT_MODEL_TESTER}"}
   red_team:         {model: "${AGENT_MODEL_RED_TEAM}"}
+  purple_team:      {model: "${AGENT_MODEL_PURPLE_TEAM}"}
+  blackhat:         {model: "${AGENT_MODEL_BLACKHAT}"}
   scrum_master:     {model: "${AGENT_MODEL_SCRUM_MASTER}"}
   moe_orchestrator: {model: "${AGENT_MODEL_MOE}"}
   threat_analyst:   {model: "${AGENT_MODEL_THREAT_ANALYST}"}

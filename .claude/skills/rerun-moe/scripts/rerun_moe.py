@@ -17,6 +17,13 @@ from pathlib import Path
 # ── Paths ────────────────────────────────────────────────────────────────────
 
 ROOT = Path(__file__).resolve().parents[4]
+
+# Load .env before any harness imports so ${AGENT_MODEL_*} vars are in os.environ
+try:
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env")
+except ImportError:
+    pass
 REPORT_DIR = ROOT / "report"
 
 # Critic files written by the MoE orchestrator — cleared before rerun so the

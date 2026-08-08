@@ -4,6 +4,24 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 40 — 2026-08-08
+
+### 26. Bedrock → OpenRouter cutover + rerun-moe fixes
+
+**What:** Switched LLM provider from Bedrock (expired, boto3 missing) to OpenRouter free tier (`openrouter/openrouter/free`). Fixed two bugs found during corpus rerun: (1) `rerun_moe.py` ran harness directly without calling `load_dotenv()`, so `${AGENT_MODEL_*}` placeholders in `settings.yaml` were never resolved; (2) `purple_team` and `blackhat` were missing from `chatbot/config/settings.yaml` agent_models section, causing them to fall through to provider default silently.
+
+**Why:** Bedrock API key expired and `boto3` not installed in the environment. OpenRouter paid tier (claude-sonnet-4) returns 402 — account has no credits. `openrouter/openrouter/free` (double-prefix is LiteLLM's format for OpenRouter free router) confirmed working at 95% conf, ~11.5 min/arch. Full corpus rerun (~5h) deferred to backlog.
+
+**Alternatives rejected:** `openrouter/free` (502 from provider "Stealth"), `openrouter/auto` (also requires credits, 402).
+
+### 27. Corpus rerun deferred to backlog
+
+**What:** Full 27-arch MoE rerun to apply critic-gym prompt rewrites deferred. Will run overnight with `python3 .claude/skills/rerun-moe/scripts/rerun_moe.py --all`.
+
+**Why:** ~5 hours on free tier is not worth blocking a session on. Code fixes are committed; rerun can happen independently.
+
+---
+
 ## Session 39 — 2026-08-08
 
 ### 24. Critic prompt rewrites (v2) — critic-gym session 2026-08-09
