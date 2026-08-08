@@ -302,6 +302,18 @@ _INJECTION_PATTERNS: dict = {
         r"|​|‌|‍|﻿"          # zero-width space/non-joiner/joiner/BOM
         r"| | "                        # line/paragraph separators
     ), "CRITICAL"),
+
+    # AST10 — downstream AI agent targeting: hidden instructions directed at
+    # AI coding agents (Claude Code, Codex, Cursor, Copilot) embedded in the
+    # architecture diagram. Pattern from AISI INC-2026-07-28: HTML comments
+    # invisible to humans but readable by AI agent issue triagers, containing
+    # hidden runbooks impersonating maintainers/CI bots.
+    "agent_targeting_injection": (re.compile(
+        r"<!--.*?(?:claude\s*code|codex|cursor|copilot|ai\s*agent|coding\s*agent"
+        r"|llm\s*agent|note\s*for\s*(?:ai|llm|agent)|assistant\s*instructions?"
+        r"|agent\s*runbook|hidden\s*(?:for\s*)?(?:ai|agent|llm))"
+        r".*?-->",
+        re.IGNORECASE | re.DOTALL), "CRITICAL"),
 }
 
 # Exploitation — path traversal (raw + URL-encoded variants, case-insensitive hex)

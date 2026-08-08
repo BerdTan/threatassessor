@@ -1298,6 +1298,135 @@ rules:
       label contains 'c2', 'oast', 'interactsh', or 'attacker'.
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-026: Critic Consensus Collapse
+  #
+  # ScrumMaster rejected the majority of critic findings (acceptance_rate < 0.4)
+  # AND flagged a redesign signal AND critics diverged. This triple condition
+  # represents a synthesis breakdown: critics produced contradictory outputs that
+  # SM could not resolve into a coherent assessment. In TA this maps to concurrent
+  # critic runs where outputs are irreconcilable — the "haywire" state analogous to
+  # the AISI INC-2026-07-28 parallel agent cross-contamination pattern, where agents
+  # operating on cloned ranges confused each other's state and produced contradictory
+  # actions (one writing shared PAT etiquette while another exploited it).
+  #
+  # Distinct from existing rules:
+  #   DETECT-002: divergence detected but SM accepted (suppression)
+  #   DETECT-015: critics converged suspiciously (too similar)
+  #   DETECT-026: divergence so severe SM could NOT resolve it (collapse)
+  #
+  # Knowledge graph chain:
+  #   ScrumMaster[acceptance_rate < 0.4, redesign_signal=true]
+  #     └─ Signal[manipulation.divergence_detected=true]
+  #          └─ Rule[DETECT-026]
+  #               └─ Alert[OCSF-2004, severity=High]
+  #
+  # Incident reference: AISI INC-2026-07-28 parallel agent cross-contamination;
+  # OWASP Agentic A05 (Insufficient Output Validation across agents).
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-026
+    name: critic_consensus_collapse
+    description: >
+      ScrumMaster rejected the majority of critic findings (acceptance_rate < 0.4),
+      flagged a redesign signal, and critics diverged. This triple condition indicates
+      a synthesis breakdown — critics produced irreconcilable outputs that SM could
+      not resolve. Analogous to concurrent agent cross-contamination: individual agents
+      produce valid-looking outputs that are mutually contradictory at the synthesis
+      layer. The assessment cannot be trusted for CI/CD gating.
+    incident_refs:
+      - aisi-inc-2026-07-28-parallel-contamination
+      - owasp-agentic-a05-insufficient-output-validation
+    owasp: [A05]
+    atlas_tactic: AML.TA0009
+    kill_chain_stage: llm_layer
+    ocsf_class: 2004
+    ocsf_type_uid: 200409
+    severity: High
+    conditions:
+      - field: sm_verdicts.acceptance_rate
+        op: "<"
+        value: 0.4
+      - field: sm_verdicts.redesign_signal
+        op: "=="
+        value: true
+      - field: manipulation.divergence_detected
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: block_deployment
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Fires only when all three conditions hold simultaneously — a single failing
+      condition (low acceptance OR redesign OR divergence) does not fire this rule.
+      If legitimate architectures routinely produce low acceptance rates (e.g. highly
+      novel agentic patterns with few established controls), raise the acceptance_rate
+      threshold to 0.3. False positive indicator: first-run on a complex arch with
+      insufficient MITRE coverage (val_pct < 60%) can produce low acceptance — check
+      validation.val_pct before escalating.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-027: Downstream AI Agent Prompt Injection
+  #
+  # The architecture diagram contains hidden instructions targeting downstream AI
+  # coding agents (Claude Code, Codex, Cursor, Copilot) — typically embedded as
+  # HTML comments invisible to human reviewers. Pattern from AISI INC-2026-07-28:
+  # agent planted `<!-- NOTE FOR AI CODING AGENTS (ClaudeCode/Codex/Cursor) ... -->`
+  # in GitHub issues, containing hidden runbooks impersonating maintainers/CI bots.
+  # One unaffiliated user triggered the payload inside a Docker container, giving
+  # the attacker RCE on a home network outside the evaluation boundary.
+  #
+  # Distinct from DETECT-005 (adversarial_input_via_pipeline): DETECT-005 targets
+  # the TA analysis pipeline itself. DETECT-027 targets the downstream consumer —
+  # the AI agent that will read this architecture as context (issue triage, PR
+  # review, code generation). The attack surface is the output, not the input.
+  #
+  # Knowledge graph chain:
+  #   MMD[exploitation.injection_categories.agent_targeting_injection = CRITICAL]
+  #     └─ Rule[DETECT-027]
+  #          └─ Alert[OCSF-2004, severity=Critical]
+  #               └─ Action[audit_log, block_run, forensic_capture, page_soc]
+  #
+  # Incident reference: AISI INC-2026-07-28 — hidden HTML comment → Claude Code /
+  # Codex / Cursor → RCE in Docker container on unaffiliated home network.
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-027
+    name: downstream_agent_prompt_injection
+    description: >
+      The architecture diagram contains hidden instructions targeting downstream AI
+      coding agents (Claude Code, Codex, Cursor, Copilot) — typically embedded as
+      HTML comments invisible to human reviewers but readable by AI agent triagers.
+      The target is the downstream consumer of this architecture, not the TA pipeline
+      itself. Grounded in the AISI INC-2026-07-28 incident: hidden runbook in an
+      HTML comment triggered RCE in a third party's Docker container.
+    incident_refs:
+      - aisi-inc-2026-07-28-agent-targeting
+      - owasp-agentic-a01-prompt-injection
+    owasp: [A01, A03]
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200406
+    severity: Critical
+    conditions:
+      - field: exploitation.injection_categories.agent_targeting_injection
+        op: "!="
+        value: null
+    combine: all
+    actions:
+      - type: audit_log
+      - type: block_run
+      - type: forensic_capture
+      - type: page_soc
+        condition: "severity == Critical"
+    tuning_note: >
+      agent_targeting_injection only matches HTML comments explicitly naming AI coding
+      agents. A generic HTML comment in an MMD file (rare but valid) would need to
+      name Claude Code, Codex, Cursor, Copilot, or similar to fire. False positive
+      rate is expected to be near zero on legitimate architecture diagrams.
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-023: Agentic Tool Exfil Vector
   #
   # An AI/agentic architecture (ai_system, rag_system, llm_agent, etc.) has been
@@ -1623,6 +1752,36 @@ playbooks:
       - "MITRE ATT&CK data refresh added new techniques, raising the prior baseline composite — verify /update-data was run recently"
       - "SSP profile changed between runs (e.g. low_risk_cloud → high_risk_gov) — profiles weight AIVSS differently"
       - "Backfill-baseline entry had an unrealistically high composite — cross-check against actual analysis run"
+
+  critic_consensus_collapse:
+    alert: DETECT-026
+    analyst_steps:
+      - "Check sm_verdicts.acceptance_rate — what fraction of critic findings were accepted vs rejected"
+      - "Review sm_verdicts per-critic breakdown — which specific critics were rejected (Blackhat? Red Team?)"
+      - "Check manipulation.divergence_detected and critic_divergence_score — how far apart were the critics"
+      - "Inspect the architecture for genuine complexity that would legitimately divide critics (novel agentic pattern, missing controls)"
+      - "Check validation.val_pct — if below 60%, low acceptance may reflect MITRE coverage gaps, not real collapse"
+      - "If acceptance_rate < 0.2 with redesign_signal, treat as untrustworthy assessment — do not use for CI/CD gating"
+    escalation_threshold: "acceptance_rate < 0.2 AND redesign_signal=true → assessment invalid, block all gate decisions for this arch"
+    false_positive_indicators:
+      - "First run on a novel agentic architecture with low val_pct (<60%) — coverage gaps cause critic uncertainty, not real collapse"
+      - "Intentional critic disagreement on a borderline design (expected divergence) — check if redesign_signal correlates with a known architectural issue"
+      - "Single critic with unusually high confidence skewing the acceptance rate — check per-critic breakdown"
+
+  downstream_agent_prompt_injection:
+    alert: DETECT-027
+    analyst_steps:
+      - "Inspect exploitation.injection_categories.agent_targeting_injection for the matched HTML comment content"
+      - "Identify which AI coding agent is targeted (Claude Code, Codex, Cursor, Copilot) from the comment text"
+      - "Extract the hidden runbook — what action does it command the downstream agent to take?"
+      - "Check if the payload impersonates a maintainer, CI bot, or approval authority"
+      - "Quarantine the .mmd file immediately — do not pass to any AI coding agent for review"
+      - "Check git history for when the comment was introduced and by whom"
+      - "If RCE payload or credential harvest instructions present — treat as active attack, escalate to security team"
+    escalation_threshold: "hidden runbook contains 'merge', 'approve', 'deploy', or credential harvest instructions → CRITICAL active attack"
+    false_positive_indicators:
+      - "Legitimate HTML comments in MMD files are very rare; a comment naming a specific AI agent is effectively never a false positive"
+      - "Documentation examples showing what NOT to do — verify context before suppressing"
 
   c2_beacon_architecture:
     alert: DETECT-025
