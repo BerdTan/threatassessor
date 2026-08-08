@@ -35,6 +35,12 @@ Read this file at the start of every session. After any significant decision abo
 
 **Decision:** Both archs show consistent pattern — TTP-Accurate +5, cross-critic +19–23pp, overall +1–2. Safe to rerun full corpus with `/rerun-corpus --all`.
 
+**Extended validation — 21_agentic_ai_system + 09_hybrid_cloud (full harness rerun):**
+- 21_agentic: TTP-Accurate 79→99 (+20), Plan-Actionable 82→100, Overall 87→96 (+9)
+- 09_hybrid: TTP-Accurate 71→84 (+13), Plan-Actionable 92→100, Overall 88→93 (+5)
+- Agentic arch shows largest gain — complex cross-boundary architectures benefit most from specific findings
+- Confidence display fixed (0–1 float → percentage in rerun-moe output)
+
 ### 23. DETECT-028 skill_instruction_tamper — skill supply-chain integrity
 
 **Problem:** 42 skill files are TA's internal operator layer. If `/check-detect` is poisoned to suppress failures, or `/run-er` silently skips a critic, the pipeline's own self-checks become untrustworthy with no visible signal. DETECT-016 covers Python critic modules but misses `.md` instruction files entirely.

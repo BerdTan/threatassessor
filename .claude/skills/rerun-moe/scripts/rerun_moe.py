@@ -130,7 +130,9 @@ def _run_one(arch: str, dry_run: bool = False, force: bool = True) -> dict:
 
         elapsed = time.time() - t0
         ok = bool(response and response.success)
-        conf = response.confidence if response else None
+        raw_conf = response.confidence if response else None
+        # confidence is a 0-1 float from harness — display as percentage
+        conf = round(float(raw_conf) * 100, 1) if raw_conf is not None and float(raw_conf) <= 1 else raw_conf
         return {"arch": arch, "ok": ok, "elapsed": elapsed, "confidence": conf,
                 "error": None if ok else "harness returned failure"}
 
