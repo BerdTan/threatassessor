@@ -46,30 +46,6 @@ DIM   = lambda t: _c("2", t)
 
 AI_ARCH_TYPES = {"ai_system", "rag_system", "llm_agent", "agentic"}
 
-def _api_url() -> str:
-    return os.environ.get("TM_API_BASE_URL", "http://localhost:8000")
-
-def _api_key() -> str:
-    key = os.environ.get("TM_API_KEY") or os.environ.get("API_KEY", "")
-    if not key:
-        env_file = ROOT / ".env"
-        if env_file.exists():
-            for line in env_file.read_text().splitlines():
-                if line.startswith("API_KEY="):
-                    key = line.split("=", 1)[1].strip().strip('"')
-                    break
-    if not key:
-        raise RuntimeError(
-            "No API key found. Set API_KEY in .env or TM_API_KEY env var."
-        )
-    return key
-
-def _headers() -> dict:
-    return {
-        "Content-Type": "application/json",
-        "TM-API-KEY": _api_key(),
-    }
-
 # ── Arch discovery ────────────────────────────────────────────────────────────
 
 def _all_archs() -> list:
@@ -88,38 +64,10 @@ def _arch_type(arch: str) -> str:
 def _ai_archs() -> list:
     return [a for a in _all_archs() if _arch_type(a) in AI_ARCH_TYPES]
 
-# ── Job runner ────────────────────────────────────────────────────────────────
-
-def _submit_job(arch: str) -> str:
-    import urllib.request
-    url = f"{_api_url()}/api/v1/jobs/expert-review"
-    payload = json.dumps({
-        "arch_name": arch,
-        "critic_mode": "parallel",  # runs all 5 critics + SM; fastest full coverage
-    }).encode()
-    req = urllib.request.Request(url, data=payload, headers=_headers(), method="POST")
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read())["job_id"]
-
-
-def _poll_job(job_id: str, arch: str, timeout: int = 300) -> dict:
-    import urllib.request
-    url = f"{_api_url()}/api/v1/jobs/{job_id}/status"
-    req = urllib.request.Request(url, headers=_headers())
-    t0 = time.time()
-    while time.time() - t0 < timeout:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            status = json.loads(r.read())
-        if status["status"] == "completed":
-            return {"ok": True, "status": status}
-        if status["status"] == "failed":
-            return {"ok": False, "error": status.get("error", "unknown")}
-        time.sleep(8)
-    return {"ok": False, "error": f"timeout after {timeout}s"}
-
+# ── Runner ───────────────────────────────────────────────────────────────────
 
 def _clear_critic_files(arch: str) -> int:
-    """Delete existing critic JSON files so orchestrator runs fresh LLM calls. Returns count deleted."""
+    """Delete existing critic JSON files so orchestrator runs fresh LLM calls."""
     arch_dir = REPORT_DIR / arch
     deleted = 0
     for fname in CRITIC_FILES_TO_CLEAR:
@@ -131,25 +79,61 @@ def _clear_critic_files(arch: str) -> int:
 
 
 def _run_one(arch: str, dry_run: bool = False, force: bool = True) -> dict:
+    """Run FULL_MOE for one arch by calling the harness directly in-process.
+
+    Uses ThreatAssessorHarness.run_typed() directly — same path as the
+    streaming endpoint. Avoids the async job API which doesn't reliably
+    flush critic files before reporting completion.
+    """
     t0 = time.time()
     if dry_run:
         existing = sum(1 for f in CRITIC_FILES_TO_CLEAR if (REPORT_DIR / arch / f).exists())
         return {"arch": arch, "ok": True, "elapsed": 0, "dry_run": True, "would_clear": existing}
     try:
         if force:
-            cleared = _clear_critic_files(arch)
-        job_id = _submit_job(arch)
-        result = _poll_job(job_id, arch)
+            _clear_critic_files(arch)
+
+        sys.path.insert(0, str(ROOT))
+        from chatbot.harness.controller import (
+            ThreatAssessorHarness, PipelineRequest, ScenarioConfig
+        )
+
+        report_dir = REPORT_DIR / arch
+        mmd_path = report_dir / "before.mmd"
+        if not mmd_path.exists():
+            mmd_path = report_dir / f"{arch}.mmd"
+        if not mmd_path.exists():
+            return {"arch": arch, "ok": False, "elapsed": time.time() - t0,
+                    "error": "no .mmd file found in report dir"}
+
+        ssp_profile = "low_risk_cloud"
+        gt_path = report_dir / "ground_truth.json"
+        if gt_path.exists():
+            gt = json.loads(gt_path.read_text())
+            ssp_profile = (gt.get("ssp_profile")
+                           or gt.get("metadata", {}).get("ssp_profile")
+                           or ssp_profile)
+
+        request = PipelineRequest(
+            architecture_path=str(mmd_path),
+            report_dir=str(report_dir),
+            ssp_profile=ssp_profile,
+            enable_ssp=True,
+            enable_moe=True,
+            enable_scrum_master=True,
+            critic_mode="parallel",
+            architecture_name=arch,
+        )
+
+        harness = ThreatAssessorHarness(scenario=ScenarioConfig.FULL_MOE)
+        response = harness.run_typed(request)
+
         elapsed = time.time() - t0
-        conf = None
-        if result["ok"]:
-            raw_conf = result["status"].get("result", {}).get("confidence")
-            if raw_conf is not None:
-                # confidence is 0-100 float from harness
-                conf = float(raw_conf) if float(raw_conf) > 1 else float(raw_conf) * 100
-        return {"arch": arch, "ok": result["ok"],
-                "elapsed": elapsed, "confidence": conf,
-                "error": result.get("error")}
+        ok = bool(response and response.success)
+        conf = response.confidence if response else None
+        return {"arch": arch, "ok": ok, "elapsed": elapsed, "confidence": conf,
+                "error": None if ok else "harness returned failure"}
+
     except Exception as exc:
         return {"arch": arch, "ok": False, "elapsed": time.time() - t0, "error": str(exc)}
 
