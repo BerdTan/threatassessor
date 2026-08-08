@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
-**Version:** 2.2  
-**Status:** Production-ready. REST API + dashboard live. MoE critics + SOC detection layer (28 rules) + Harness v2 + MCP server (13 tools) + TA export bundle shipped.  
+**Version:** 2.3  
+**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (28 rules) + Harness v2 + MCP server (13 tools) + TA export bundle + rerun-moe + critic-gym shipped.  
 **Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 28 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0
 
 ---
@@ -204,4 +204,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-08-07
+**Last Updated:** 2026-08-09
