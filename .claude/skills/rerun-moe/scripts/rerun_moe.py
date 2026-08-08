@@ -19,6 +19,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 REPORT_DIR = ROOT / "report"
 
+# Critic files written by the MoE orchestrator — cleared before rerun so the
+# orchestrator doesn't load cached results and skip LLM calls.
+CRITIC_FILES_TO_CLEAR = [
+    "04_architect_critique.json",
+    "05_tester_critique.json",
+    "06_red_team_critique.json",
+    "06b_purple_team_critique.json",
+    "06c_blackhat_critique.json",
+    "07_moe_orchestrator.json",
+    "07_orchestrator_report.json",
+    "08_scrum_master.json",
+]
+
 # ── Terminal helpers ──────────────────────────────────────────────────────────
 
 def _c(code, text): return f"\033[{code}m{text}\033[0m"
@@ -102,17 +115,35 @@ def _poll_job(job_id: str, arch: str, timeout: int = 300) -> dict:
     return {"ok": False, "error": f"timeout after {timeout}s"}
 
 
-def _run_one(arch: str, dry_run: bool = False) -> dict:
+def _clear_critic_files(arch: str) -> int:
+    """Delete existing critic JSON files so orchestrator runs fresh LLM calls. Returns count deleted."""
+    arch_dir = REPORT_DIR / arch
+    deleted = 0
+    for fname in CRITIC_FILES_TO_CLEAR:
+        p = arch_dir / fname
+        if p.exists():
+            p.unlink()
+            deleted += 1
+    return deleted
+
+
+def _run_one(arch: str, dry_run: bool = False, force: bool = True) -> dict:
     t0 = time.time()
     if dry_run:
-        return {"arch": arch, "ok": True, "elapsed": 0, "dry_run": True}
+        existing = sum(1 for f in CRITIC_FILES_TO_CLEAR if (REPORT_DIR / arch / f).exists())
+        return {"arch": arch, "ok": True, "elapsed": 0, "dry_run": True, "would_clear": existing}
     try:
+        if force:
+            cleared = _clear_critic_files(arch)
         job_id = _submit_job(arch)
         result = _poll_job(job_id, arch)
         elapsed = time.time() - t0
         conf = None
         if result["ok"]:
-            conf = result["status"].get("result", {}).get("confidence")
+            raw_conf = result["status"].get("result", {}).get("confidence")
+            if raw_conf is not None:
+                # confidence is 0-100 float from harness
+                conf = float(raw_conf) if float(raw_conf) > 1 else float(raw_conf) * 100
         return {"arch": arch, "ok": result["ok"],
                 "elapsed": elapsed, "confidence": conf,
                 "error": result.get("error")}
@@ -152,6 +183,7 @@ def main():
     parser.add_argument("--concurrency", type=int, default=1,
                         help="Concurrent jobs (default 1 — sequential)")
     parser.add_argument("--dry-run",     action="store_true", help="Show what would run, no API calls")
+    parser.add_argument("--no-force",    action="store_true", help="Skip clearing cached critic files (use orchestrator resume)")
     parser.add_argument("--tatb",        action="store_true", help="Run tatb-corpus after completion")
     args = parser.parse_args()
 
@@ -181,7 +213,8 @@ def main():
         print(YLW("No architectures found."))
         return
 
-    mode = "DRY RUN" if args.dry_run else f"FULL_MOE (concurrency={args.concurrency})"
+    force = not args.no_force
+    mode = "DRY RUN" if args.dry_run else f"FULL_MOE (concurrency={args.concurrency}, force={'yes' if force else 'no'})"
     print(f"\n{BOLD('── rerun-moe ─────────────────────────────────────────')}")
     print(f"  Mode    : {CYAN(mode)}")
     print(f"  Archs   : {len(archs)}")
@@ -197,9 +230,9 @@ def main():
         for i, arch in enumerate(archs, 1):
             prefix = f"  [{i:02d}/{len(archs):02d}]"
             print(f"{prefix} {arch:<40} ", end="", flush=True)
-            r = _run_one(arch, dry_run=args.dry_run)
+            r = _run_one(arch, dry_run=args.dry_run, force=force)
             if args.dry_run:
-                print(DIM("(dry run)"))
+                print(DIM(f"(dry run — would clear {r.get('would_clear',0)} critic files)"))
             elif r["ok"]:
                 conf_str = f"conf={r['confidence']:.1f}%" if r.get("confidence") else ""
                 print(GRN(f"✓ {r['elapsed']:.0f}s {conf_str}"))
@@ -209,11 +242,11 @@ def main():
     else:
         # Concurrent
         with ThreadPoolExecutor(max_workers=args.concurrency) as ex:
-            futures = {ex.submit(_run_one, arch, args.dry_run): arch for arch in archs}
+            futures = {ex.submit(_run_one, arch, args.dry_run, force): arch for arch in archs}
             done = 0
             for fut in as_completed(futures):
                 arch = futures[fut]
-                r = fut.result()
+                r = fut.result()  # already has force baked in from the lambda below
                 done += 1
                 if r["ok"]:
                     conf_str = f"conf={r['confidence']:.1f}%" if r.get("confidence") else ""
