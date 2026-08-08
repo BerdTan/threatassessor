@@ -479,14 +479,21 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         # unicode homoglyph substitution (e.g. Cyrillic 'о' swapped for 'o').
         normalised = _normalise(mmd_content)
 
-        # Injection patterns — categorised scan on normalised text
+        # Injection patterns — categorised scan on normalised text.
+        # agent_targeting_injection is excluded from injection_patterns to avoid
+        # co-firing DETECT-005 (pipeline-targeted injection) alongside DETECT-027
+        # (downstream AI agent targeting). They are distinct attack surfaces.
+        _PIPELINE_INJECTION_CATS = {
+            k for k in _INJECTION_PATTERNS if k != "agent_targeting_injection"
+        }
         _matched_cats: dict = {}
         for cat_name, (pattern, _cat_sev) in _INJECTION_PATTERNS.items():
             for match in pattern.finditer(normalised):
                 _matched_cats.setdefault(cat_name, []).append(match.group(0)[:80])
-                sig.exploitation["injection_patterns"].append(
-                    f"[{cat_name}] {match.group(0)[:60]}"
-                )
+                if cat_name in _PIPELINE_INJECTION_CATS:
+                    sig.exploitation["injection_patterns"].append(
+                        f"[{cat_name}] {match.group(0)[:60]}"
+                    )
         # Per-category detail for SIEM / audit trail
         sig.exploitation["injection_categories"] = {
             k: {"matches": v, "severity": _INJECTION_PATTERNS[k][1]}
@@ -530,17 +537,20 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
             sig.exploitation["homoglyph_count"] + sig.exploitation["url_encoded_count"]
         )
 
-        # Severity — category-based escalation (highest category severity wins)
-        # Tag/control-token injection are CRITICAL on a single match — unambiguous attacks.
-        # System/DAN/Safety/Extraction categories are HIGH on first match.
+        # Severity — category-based escalation (highest category severity wins).
+        # agent_targeting_injection is excluded from pipeline severity escalation:
+        # it targets downstream consumers, not this pipeline. Its presence raises
+        # exploitation.injection_categories but does NOT set blocked=True or
+        # escalate exploitation.severity — DETECT-027 owns that signal.
         n_inj = len(sig.exploitation["injection_patterns"])
         n_trav = len(sig.exploitation["path_traversal"])
         n_over = sig.exploitation["oversized_labels"]
+        _pipeline_cats = {k: v for k, v in _matched_cats.items() if k in _PIPELINE_INJECTION_CATS}
         _has_critical_cat = any(
-            _INJECTION_PATTERNS[k][1] == "CRITICAL" for k in _matched_cats
+            _INJECTION_PATTERNS[k][1] == "CRITICAL" for k in _pipeline_cats
         )
         _has_high_cat = any(
-            _INJECTION_PATTERNS[k][1] == "HIGH" for k in _matched_cats
+            _INJECTION_PATTERNS[k][1] == "HIGH" for k in _pipeline_cats
         )
         if n_trav > 0 or n_over > 0 or _has_critical_cat:
             sig.exploitation["severity"] = "CRITICAL"
@@ -549,6 +559,12 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
             sig.exploitation["severity"] = "HIGH"
         elif n_inj == 1:
             sig.exploitation["severity"] = "MEDIUM"
+
+        # Downstream agent threat — separate severity for agent_targeting_injection.
+        # Does not affect exploitation.severity (pipeline threat) but surfaces
+        # the risk to downstream AI consumers for DETECT-027 and SOC visibility.
+        if "agent_targeting_injection" in _matched_cats:
+            sig.exploitation["downstream_agent_threat"] = "CRITICAL"
 
         # Sovereignty: cloud region hints in node labels
         for match in _RE_REGION.finditer(mmd_content):
@@ -898,6 +914,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         _REV = {v: k for k, v in _SEV.items()}
         levels = [
             sig.exploitation.get("severity", "LOW"),
+            sig.exploitation.get("downstream_agent_threat", "LOW"),
             sig.manipulation.get("severity", "LOW"),
             sig.leakage.get("severity", "LOW"),
             sig.identity.get("severity", "LOW"),
