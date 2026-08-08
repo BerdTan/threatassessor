@@ -1029,8 +1029,8 @@ def apply_confidence_adjustments(
 
         if control in adjustments:
             adjustment = adjustments[control]
-            if "confidence" not in rec:
-                rec["confidence"] = {"score": 0.85, "level": "HIGH"}
+            if "confidence" not in rec or isinstance(rec["confidence"], str):
+                rec["confidence"] = {"score": 0.85, "level": rec.get("confidence", "HIGH") if isinstance(rec.get("confidence"), str) else "HIGH"}
             old_conf = rec["confidence"]
             old_score = old_conf.get("score", 0.85)
 
