@@ -17584,6 +17584,7 @@ class Dashboard {
             'get_threat_briefing','get_ciso_brief','get_governance_signals',
             'get_detect_trends','get_tatb_scores','list_architectures',
             'lookup_mitre_technique','get_mcp_access_signals',
+            'governance_check','export_assessment',
         ];
         const max = Math.max(1, ...Object.values(counts));
         el.innerHTML = tools.map(t => {

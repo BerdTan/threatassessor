@@ -305,6 +305,7 @@ def _call_tool(tool: str, args: dict, bad_key: bool = False) -> tuple[bool, dict
             "mmd_content": args.get("mmd_content", ""),
             "arch_name":   args.get("arch_name", "mcp_sim"),
         }),
+        "export_assessment":     ("GET",  "/api/v1/reports/{arch_name}/export", None),
     }
 
     spec = _TOOL_MAP.get(tool)
