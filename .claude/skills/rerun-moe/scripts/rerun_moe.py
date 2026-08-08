@@ -95,7 +95,7 @@ def _submit_job(arch: str) -> str:
     url = f"{_api_url()}/api/v1/jobs/expert-review"
     payload = json.dumps({
         "arch_name": arch,
-        "critic_mode": "full_moe",
+        "critic_mode": "parallel",  # runs all 5 critics + SM; fastest full coverage
     }).encode()
     req = urllib.request.Request(url, data=payload, headers=_headers(), method="POST")
     with urllib.request.urlopen(req, timeout=30) as r:
