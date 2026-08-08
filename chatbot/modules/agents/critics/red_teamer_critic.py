@@ -120,7 +120,40 @@ IMPORTANT - INVERTED SCORING:
 - Low score (0-40) = Hard to exploit = GOOD defense ✅
 - High score (60-100) = Easy to exploit = BAD defense ❌
 
-Be realistic, not optimistic. If a deployed control can be bypassed with public tools, score accordingly."""
+Be realistic, not optimistic. If a deployed control can be bypassed with public tools, score accordingly.
+
+SCORING BANDS (inverted — lower = better defense):
+- 0–29: MINIMAL — nearly impossible to exploit — EXCELLENT defense
+- 30–49: LOW — very difficult — GOOD defense
+- 50–69: MEDIUM — difficult — ACCEPTABLE defense
+- 70–89: HIGH — moderate difficulty — WEAK defense
+- 90–100: CRITICAL — trivial to exploit — BAD defense
+
+A strong finding names the specific control, the bypass technique (e.g. "WAF bypassed via chunked encoding"), and the tool or skill level required. Example: "MFA on WebApp is SIM-swappable (T1111) using public SIMjacking services — skill: LOW, bypass probability: HIGH → score +15."
+
+Reject and penalise findings that:
+- State "no controls present" without analysing bypass realism elsewhere on the path
+- Use generic phrases like "attacker could escalate privileges" without naming the technique or tool
+- Score a path without citing the specific control and bypass method
+
+OUTPUT FORMAT: Return a single JSON object — no prose before or after.
+{
+  "score": <integer 0-100, inverted>,
+  "rating": "MINIMAL|LOW|MEDIUM|HIGH|CRITICAL",
+  "confidence_adjustment": <float>,
+  "gaps": [
+    {
+      "path_id": "<AP-N>",
+      "control": "<specific control name>",
+      "bypass_technique": "<T-ID + method>",
+      "skill_required": "LOW|MEDIUM|HIGH|APT",
+      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+      "recommendation": "<specific hardening action for this control>"
+    }
+  ],
+  "strengths": ["<specific, one per item>"],
+  "improvement_roadmap": ["<sprint-ready hardening task>"]
+}"""
 
     def _create_rubric(self) -> Dict:
         """

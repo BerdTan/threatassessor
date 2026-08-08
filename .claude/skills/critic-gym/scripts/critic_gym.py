@@ -121,8 +121,11 @@ DIMENSIONS = [
         "Rubric clarity",
         "Are scoring bands defined with concrete examples (not just 'high/medium/low')?",
         [
-            (r"\d+\s*(point|pts|/\s*\d+)", "Numeric scoring bands present"),
-            (r"(example|e\.g\.|for instance|such as).{0,100}(finding|gap|issue|control)", "Concrete examples in rubric"),
+            (r"(\d+\s*(point|pts|/\s*\d+)|\d+[-–]\d+\s*[:=]\s*\w+|\d+[-–]\d+.*GOOD|EXCELLENT|POOR|CRITICAL|defense)",
+             "Numeric scoring bands present"),
+            (r"(example|e\.g\.|for instance|such as|GOOD:|BAD:|Example:).{0,200}"
+             r"(finding|gap|issue|control|attacker|bypass|technique|node|path)",
+             "Concrete examples in rubric"),
         ],
     ),
     (
@@ -130,7 +133,8 @@ DIMENSIONS = [
         "Output schema",
         "Is the expected JSON shape fully specified with field names?",
         [
-            (r'(json|JSON)\s*(output|format|schema|response)', "JSON output mentioned"),
+            (r'(json|JSON|Return valid|OUTPUT FORMAT|output format|response format)',
+             "JSON output mentioned"),
             (r'"[a-z_]{3,30}"\s*:', "Field names specified in prompt"),
         ],
     ),
@@ -139,8 +143,12 @@ DIMENSIONS = [
         "Adversarial edge cases",
         "Does the prompt tell the model what a weak or misleading finding looks like?",
         [
-            (r"(weak|thin|vague|generic|superficial|boilerplate).{0,60}(finding|gap|issue|result)", "Describes weak findings"),
-            (r"(penali[sz]e|avoid|reject|flag).{0,60}(generic|vague|boilerplate|superficial)", "Instructs to penalise weak output"),
+            (r"(weak|thin|vague|generic|superficial|boilerplate|incorrect|wrong|error|hallucin)"
+             r".{0,80}(finding|gap|issue|result|mapping|claim|fact)",
+             "Describes weak or incorrect findings"),
+            (r"(penali[sz]e|avoid|reject|flag|report|note|do not).{0,80}"
+             r"(generic|vague|boilerplate|superficial|hallucin|incorrect|wrong|missing)",
+             "Instructs to flag or penalise weak output"),
         ],
     ),
     (
@@ -148,8 +156,12 @@ DIMENSIONS = [
         "Critic separation",
         "Does the prompt say what this critic does NOT cover?",
         [
-            (r"(NOT|outside|beyond|scope).{0,80}(this|your|critic|role)", "Explicit scope exclusion"),
-            (r"(leave|defer|pass).{0,60}(other|another|separate)\s*(critic|reviewer|agent)", "Defers out-of-scope items"),
+            (r"(NOT\s+YOURS|NOT YOUR|not yours|❌|outside|beyond|scope|do not cover|doesn'?t cover)"
+             r".{0,120}(this|your|critic|role|review|cover)",
+             "Explicit scope exclusion"),
+            (r"(leave|defer|pass|that is|that'?s|belongs? to|owned? by).{0,80}"
+             r"(other|another|separate|Red Team|Purple|Architect|Tester|Blackhat|ScrumMaster|critic|reviewer)",
+             "Defers out-of-scope items to named critic"),
         ],
     ),
     (
@@ -157,8 +169,12 @@ DIMENSIONS = [
         "Actionability",
         "Do findings include enough detail for a sprint ticket?",
         [
-            (r"(sprint|ticket|story|action|task|remediat|mitigat).{0,80}(item|step|recommendation)", "Sprint/action framing"),
-            (r"(specific|concrete|exact|precise).{0,60}(step|action|control|implementation)", "Specificity requirement stated"),
+            (r"(sprint|ticket|story|action|task|remediat|mitigat|hardening|recommendation|improvement_roadmap)"
+             r".{0,80}(item|step|recommendation|task|action)",
+             "Sprint/action framing"),
+            (r"(specific|concrete|exact|precise|name the|names the|cite|citing|specific control|specific node|"
+             r"sprint.ready|engineer.can act|act immediately).{0,100}",
+             "Specificity requirement stated"),
         ],
     ),
 ]
