@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
-**Version:** 2.4  
-**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (28 rules) + Harness v2 + MCP server (13 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer shipped.  
+**Version:** 2.5  
+**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (28 rules) + Harness v2 + MCP server (13 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel (Recent/Upload/Paste/Generate) + harden-audit security assessment shipped.  
 **Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 28 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0
 
 ---

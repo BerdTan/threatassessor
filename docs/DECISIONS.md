@@ -4,6 +4,37 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 40 — 2026-08-09 (continued IV)
+
+### 37. security-assessment/ gitignored
+
+**What:** Added `security-assessment/` to `.gitignore` and removed it from tracking. Reports, evidence, and HTML pages from `/harden-audit` stay local only.
+
+**Why:** Assessment artifacts contain finding details and evidence — not appropriate for a public repo. Future runs won't accidentally push findings.
+
+### 36. ethical-hacking skill renamed to harden-audit
+
+**What:** `.claude/skills/ethical-hacking/` → `.claude/skills/harden-audit/`. Trigger phrases updated to include "harden this", "audit security", "/harden-audit".
+
+**Why:** More descriptive and less intimidating — signals both sides of the assessment (audit = find, harden = fix).
+
+### 35. harden-audit run on ThreatAssessor + all findings fixed
+
+**What:** Full red/blue/purple assessment of TA itself (depth B — static + safe local probes). 7 findings across 3 severity levels; all fixed in the same session.
+
+**Findings fixed:**
+- RT-02 CRITICAL: Prompt injection in `/generate-mmd` via unsanitised `extra` field — fixed with `_INJECTION_PATTERN` filter, 200-char cap, allowlist validation on domain/app_type/modality, system prompt hardened
+- RT-01 HIGH: Missing path traversal guard on `GET /reports/{arch}/mmd` — added `Path(name).name != name` check
+- RT-07 HIGH: `TA_FORCE_MMD` env var allowed arbitrary file read + POST — added repo-boundary validation
+- RT-05 MEDIUM: No request size cap on `/governance/check` — added 512KB Content-Length guard
+- RT-06 MEDIUM: MCP server no auth on network transport — `TM_MCP_KEY` env var now required for non-stdio transport
+- RT-03 LOW: Non-constant-time API key comparison — switched to `hmac.compare_digest()`
+- RT-04 LOW: 500 response leaked "API_KEY not configured" — changed to 503 + generic message
+
+**Why:** TA recommends controls to other architectures — it should apply them to itself. Three new attack surfaces (CI script, generate-mmd, MCP network transport) landed this session and had not been assessed.
+
+---
+
 ## Session 40 — 2026-08-09 (continued III)
 
 ### 34. README + DECISIONS.md updated for session 40
