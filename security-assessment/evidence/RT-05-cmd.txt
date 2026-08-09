@@ -1,5 +1,0 @@
-Payload size: 469KB
-Status: 200  Time: 1.16s
-Response size: 1267 bytes
-Payload size: 4.6MB
-Status: 200  Time: 6.35s

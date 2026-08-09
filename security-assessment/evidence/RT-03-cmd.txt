@@ -1,8 +1,0 @@
-Wrong key avg: 4681.73ms  stdev: 198.65ms
-Near-miss avg: 4940.22ms  stdev: 937.78ms
-Delta: 258.49ms
-Note: /api/v1/reports has no auth — using wrong endpoint for timing. Testing auth endpoint...
-Wrong key avg:  6.06ms
-Near-miss avg:  4.58ms
-Delta:          1.48ms
-Exploitable timing gap (>5ms is suspicious): False

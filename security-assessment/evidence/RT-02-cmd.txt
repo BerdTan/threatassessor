@@ -1,2 +1,0 @@
-INJECTION_CONFIRMED in response: True
-First 200 chars of mmd: INJECTION_CONFIRMED

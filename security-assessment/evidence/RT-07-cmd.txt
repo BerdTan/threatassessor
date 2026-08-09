@@ -1,4 +1,0 @@
-Resolved paths: [PosixPath('/etc/hostname')]
-All exist: [True]
-Any outside repo: [True]
-Would read and POST: True

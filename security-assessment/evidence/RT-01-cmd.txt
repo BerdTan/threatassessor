@@ -1,1 +1,0 @@
-{"type":"https://api.threatassessor.example.com/errors/not-found","title":"Not Found","status":404,"detail":"The requested endpoint does not exist: /api/v1/reports/../../etc/passwd/mmd","instance":"/api/v1/reports/../../etc/passwd/mmd"}
