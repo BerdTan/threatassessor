@@ -2,13 +2,15 @@
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue) ![License](https://img.shields.io/badge/license-TBD-lightgrey)
 
-Upload a Mermaid (`.mmd`) architecture diagram and receive a full, MITRE-mapped threat assessment in under two minutes.
+Upload a Mermaid (`.mmd`) architecture diagram and receive a full, MITRE-mapped threat assessment in under two minutes. Now with a GitHub Actions PR reviewer — every `.mmd` change is screened and assessed automatically.
 
 ## What it does
 
 | Capability | What you get |
 |---|---|
 | **Threat mapping** | MITRE ATT&CK techniques per node and hop, prioritised controls, before/after architecture diagrams |
+| **GitHub Actions CI** | Automatic PR reviewer — governance screen (50ms) + full analysis on every `.mmd` change; posts a risk table comment; blocks merge on CRITICAL findings |
+| **Unified input panel** | Recent / Upload / Paste / Generate tabs — reuse past analyses instantly, paste MMD text, or generate a starter diagram from Domain × App-Type × Modality |
 | **User journey intelligence** | Every attack path cross-referenced against real user workflows — tells you whether an attacker blends with legitimate traffic or is on a post-compromise pivot with no user baseline |
 | **Real-world threat intel** | APT group attribution (MITRE intrusion-sets) and CVEs per attack path, cross-checked against CISA Known Exploited Vulnerabilities including ransomware flags |
 | **Policy alignment** | Singapore Government ICT&SS SSP baseline overlay — mandatory controls surfaced per profile (cloud, on-prem, GenAI, etc.) |
@@ -31,6 +33,8 @@ make start      # start the FastAPI server on port 8000
 ```
 
 Then open **http://localhost:8000/dashboard** in your browser.
+
+The dashboard opens with a **Recent** tab showing all previously analysed architectures — click any to reload results instantly. Use the **Generate** tab to create a starter diagram from Domain × App-Type × Modality if you have no `.mmd` file to hand. 30 sample architectures are included in `tests/data/architectures/`.
 
 ### Required data files (not in repo)
 
@@ -117,11 +121,14 @@ chatbot/          Core analysis engine and REST API
 agentic/          Multi-provider LLM client (OpenRouter, Bedrock)
 scripts/          Server lifecycle, validation, ingest, doc generation
   api/            api_start/stop/restart/status scripts
+  ci/             ta_pr_review.py — GitHub Actions PR reviewer script
   data/           fetch_kev.py — download CTID + CISA KEV indexes
   ingest/         scrape_ssp_catalog.py — refresh SSP data from source
   integration/    test_openrouter.py and other integration tests
   validation/     check_orphans.py, validate_llm_config.py
-tests/            Test suite + 25 sample .mmd architectures
+.github/
+  workflows/      ta-review.yml — TA PR reviewer GitHub Actions workflow
+tests/            Test suite + 30 sample .mmd architectures (25–30 added this session)
 docs/             Project documentation (DECISIONS.md, operations, specs)
 scripts/api/      api_start.sh / api_stop.sh / api_restart.sh / api_status.sh
 Makefile          Developer entry point (make help for all targets)
@@ -138,7 +145,7 @@ The scoring rubric TATB uses to evaluate every threat model is open and document
 
 ## Read more
 
-The full build story is on Medium — eleven parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, and the honest harness that learns, unlearns, and relearns:
+The full build story is on Medium — 18 parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, and TA as a GitHub Actions PR reviewer:
 
 | # | Title | What it covers |
 |---|-------|----------------|
@@ -159,6 +166,7 @@ The full build story is on Medium — eleven parts covering the pipeline, cloud 
 | 15 | [19 in a Day. Frequency Isn't the Signal.](https://medium.com/@breadtan/19-in-a-day-frequency-isnt-the-signal-ce2b3e459124) | DETECT-019 added the same day Part 14 published (flywheel in practice); rule firing trend infrastructure (history JSONL + RuleTrendEvaluator); SOC KG trend badges (★→✓); baseline vs. new signal distinction |
 | 16 | [Two Handymen and the Face: How ThreatAssessor Grew Ways to Be Used](https://medium.com/@breadtan/two-handymen-and-the-face-how-threatassessor-grew-ways-to-be-used-f6a80bb75064) | Skills as internal operator (41 skills, left hand); MCP as external interface (13 tools, right hand); adversarial sim live fire; governance_check 50ms gate; ta-export/1.0 bundle |
 | 17 | [The Architecture That Told You First: Four Signals from the AISI Incident](https://medium.com/@breadtan/architecture-that-told-you-first-four-signals-from-the-aisi-incident-727bfb75960c) | AISI INC-2026-07-28 plain-language breakdown; DETECT-025–028 grounded in C2 beacon, critic collapse, downstream agent injection, skill tamper; governance_check two-severity split (pipeline vs downstream consumer) |
+| 18 | [Skills That Built the Builder: How Developer Automation Grew Alongside ThreatAssessor](https://medium.com/@breadtan/skills-that-built-the-builder-how-developer-automation-grew-alongside-threatassessor-cc23897eee82) | 44-skill developer automation layer — regression suites, feedback flywheels (observe→diagnose→prescribe→gate→apply→verify), data portability, and operational skills; why the gate in every loop exists |
 
 ---
 
