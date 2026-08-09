@@ -981,6 +981,20 @@ class Dashboard {
         const dropZoneLabel = document.getElementById('drop-zone-label');
         if (dropZoneLabel) dropZoneLabel.innerHTML = 'Drop .mmd file here or click to browse';
 
+        // Reset recent tab state
+        this._selectedRecentArch = null;
+        this._selectedRecentMmd = null;
+        const recentLabel = document.getElementById('recent-selected-label');
+        if (recentLabel) recentLabel.textContent = '';
+        const recentSearch = document.getElementById('recent-search');
+        if (recentSearch) recentSearch.value = '';
+        this._highlightSelected();
+        const pasteInput = document.getElementById('paste-mmd-input');
+        if (pasteInput) pasteInput.value = '';
+        const pasteName = document.getElementById('paste-mmd-name');
+        if (pasteName) pasteName.value = '';
+        this._switchInputTab('recent');
+
         // Reset analysis status bar
         const statusBar = document.getElementById('analysis-status-bar');
         if (statusBar) statusBar.style.display = 'none';
