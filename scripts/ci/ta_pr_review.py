@@ -54,7 +54,15 @@ def get_changed_mmds() -> list[Path]:
     # Allow skill/CI override via env var (used by /taci --arch)
     force_mmd = os.environ.get("TA_FORCE_MMD", "").strip()
     if force_mmd:
-        return [Path(f) for f in force_mmd.split(",") if f.strip()]
+        repo_root = Path(__file__).resolve().parents[2]
+        safe = []
+        for f in force_mmd.split(","):
+            p = Path(f).resolve()
+            if not str(p).startswith(str(repo_root)):
+                print(f"  BLOCKED: {p} is outside repo boundary — skipped")
+                continue
+            safe.append(p)
+        return safe
     try:
         result = subprocess.run(
             ["git", "diff", f"origin/{BASE_REF}...HEAD", "--name-only", "--diff-filter=ACM"],

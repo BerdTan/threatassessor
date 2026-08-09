@@ -1,0 +1,4 @@
+Input: ../../etc
+Resolved: /mnt/c/BACKUP/DEV-TEST/report/../../etc
+Resolved absolute: /mnt/c/BACKUP/etc
+Is outside report_dir: True

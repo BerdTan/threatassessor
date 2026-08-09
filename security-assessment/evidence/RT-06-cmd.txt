@@ -1,0 +1,30 @@
+2:ThreatAssessor MCP Server
+4:Exposes ThreatAssessor capabilities to Claude Desktop and external agents
+5:via the Model Context Protocol (stdio transport).
+19:  12. export_assessment         — unified TA export bundle (ta-export/1.0, OTM-compatible)
+25:      "threatassessor": {
+29:          "TM_API_BASE_URL": "http://localhost:8000",
+50:    name="threatassessor",
+52:        "ThreatAssessor analyses software architecture diagrams (Mermaid .mmd format) "
+305:    """List all architectures that have been analysed by ThreatAssessor.
+370:# Tool 12 — export_assessment
+374:def export_assessment(arch_name: str, save: bool = False) -> str:
+375:    """Export a unified TA assessment bundle for an architecture (schema ta-export/1.0).
+380:      assessment       — risk scores, attack paths, MITRE techniques, controls
+386:      otm              — OTM-compatible threats / assets / mitigations
+399:        result = api.export_assessment(arch_name, save=save)
+400:        _access_log.record_tool_call("export_assessment", arch_name=arch_name)
+404:        _access_log.record_tool_call("export_assessment", arch_name=arch_name,
+449:    import argparse as _ap
+450:    _parser = _ap.ArgumentParser(description="ThreatAssessor MCP Server")
+451:    _parser.add_argument(
+5:via the Model Context Protocol (stdio transport).
+451:    _parser.add_argument(
+452:        "--transport",
+461:    _parser.add_argument(
+465:    _parser.add_argument(
+471:    if _args.transport == "stdio":
+472:        mcp.run(transport="stdio")
+474:        # For remote transports, set host/port via env vars that FastMCP reads
+478:        print(f"[ThreatAssessor MCP] {_args.transport} on {_args.host}:{_args.port}", flush=True)
+479:        mcp.run(transport=_args.transport)

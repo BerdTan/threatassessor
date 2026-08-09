@@ -950,7 +950,10 @@ async def delete_report(architecture_name: str, _: str = Depends(verify_api_key)
 @router.get("/reports/{architecture_name}/mmd")
 async def get_arch_mmd(architecture_name: str):
     """Return the original input MMD for a previously analysed architecture (before.mmd)."""
-    mmd_path = resolve_arch_dir(architecture_name) / "before.mmd"
+    safe_name = Path(architecture_name).name
+    if safe_name != architecture_name or ".." in architecture_name:
+        raise HTTPException(status_code=400, detail="Invalid architecture_name")
+    mmd_path = resolve_arch_dir(safe_name) / "before.mmd"
     if not mmd_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

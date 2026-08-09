@@ -4,6 +4,7 @@ API Dependencies
 Shared dependencies for FastAPI routes (authentication, etc.)
 """
 
+import hmac
 import os
 from fastapi import Header, HTTPException, status
 
@@ -32,11 +33,11 @@ async def verify_api_key(
     expected_key = os.getenv("API_KEY")
     if not expected_key:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="API_KEY not configured in .env file",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service not available",
         )
 
-    if tm_api_key != expected_key:
+    if not hmac.compare_digest(tm_api_key.encode(), expected_key.encode()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
