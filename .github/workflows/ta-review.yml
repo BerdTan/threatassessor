@@ -25,6 +25,28 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Write .env for TA API
+        run: |
+          cat > .env << 'ENVEOF'
+          API_KEY=${{ secrets.TA_API_KEY }}
+          LLM_PROVIDER=openrouter
+          OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL=openrouter/openrouter/free
+          AGENT_MODEL_ARCHITECT=openrouter/openrouter/free
+          AGENT_MODEL_TESTER=openrouter/openrouter/free
+          AGENT_MODEL_RED_TEAM=openrouter/openrouter/free
+          AGENT_MODEL_PURPLE_TEAM=openrouter/openrouter/free
+          AGENT_MODEL_BLACKHAT=openrouter/openrouter/free
+          AGENT_MODEL_SCRUM_MASTER=openrouter/openrouter/free
+          AGENT_MODEL_MOE=openrouter/openrouter/free
+          AGENT_MODEL_THREAT_ANALYST=openrouter/openrouter/free
+          AGENT_MODEL_TATB_LABELLER=openrouter/google/gemini-flash-1.5:free
+          AGENT_MODEL_TATB_LABELLER_FALLBACK=openrouter/openrouter/free
+          LLM_FALLBACK_PROVIDERS=openrouter
+          LLM_VERIFIER_PROVIDER=openrouter
+          OPENROUTER_EMBED_MODEL=nvidia/llama-nemotron-embed-vl-1b-v2:free
+          ENVEOF
+
       - name: Start TA API
         run: |
           ./scripts/api/api_start.sh
@@ -37,18 +59,6 @@ jobs:
             echo "Waiting for API... ($i/20)"
             sleep 3
           done
-        env:
-          API_KEY: ${{ secrets.TA_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          LLM_PROVIDER: openrouter
-          AGENT_MODEL_ARCHITECT: openrouter/openrouter/free
-          AGENT_MODEL_TESTER: openrouter/openrouter/free
-          AGENT_MODEL_RED_TEAM: openrouter/openrouter/free
-          AGENT_MODEL_PURPLE_TEAM: openrouter/openrouter/free
-          AGENT_MODEL_BLACKHAT: openrouter/openrouter/free
-          AGENT_MODEL_SCRUM_MASTER: openrouter/openrouter/free
-          AGENT_MODEL_MOE: openrouter/openrouter/free
-          AGENT_MODEL_THREAT_ANALYST: openrouter/openrouter/free
 
       - name: Run TA Architecture Review
         id: ta-review
