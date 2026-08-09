@@ -4,6 +4,22 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 40 — 2026-08-09 (continued V)
+
+### 39. Incident simulator — mmd_injection + mcp_unauth_exposure scenarios
+
+**What:** Added 2 scenarios to `incident_simulator.py`: `mmd_injection` (DETECT-029, HIGH injection via direct_override) and `mcp_unauth_exposure` (DETECT-030, agentic arch + MCP tool calls + zero auth failures). 31 scenarios, 30 DETECT rules. Both confirmed firing in smoke test.
+
+**Why:** DETECT-029 and DETECT-030 had no test coverage — the simulation tab showed them with no firing history. Scenarios complete the loop: harden-audit → audit-to-detect → DETECT rules → incident scenarios → check-detect coverage.
+
+### 38. audit-to-detect skill + DETECT-029/030
+
+**What:** New `/audit-to-detect` skill at `.claude/skills/audit-to-detect/`. Reads `security-assessment/REPORT.md`, filters findings to those structurally detectable in MMD/governance signals, proposes DETECT rule YAML, gates on human approval, inserts before `playbooks:` section, verifies with `/check-detect`. Applied: DETECT-029 (`llm_generated_mmd_injection`) and DETECT-030 (`unauthenticated_mcp_tool_exposure`). Total: 30 DETECT rules.
+
+**Why:** Closes the loop between `/harden-audit` findings and the SOC detection layer. Not every finding becomes a DETECT rule — filter requires High/Critical severity + structural detectability + not already covered.
+
+---
+
 ## Session 40 — 2026-08-09 (continued IV)
 
 ### 37. security-assessment/ gitignored
