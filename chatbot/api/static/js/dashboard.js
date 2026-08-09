@@ -17740,33 +17740,31 @@ class Dashboard {
         const benign   = personas.filter(p => !p.adversarial);
         const adversarial = personas.filter(p => p.adversarial);
 
-        const _pill = (p) => {
-            const adv = p.adversarial;
-            const bc  = adv ? '#ef444422' : 'var(--card-bg)';
-            const tc  = adv ? '#ef4444'   : 'var(--text-secondary)';
-            const bdr = adv ? '1px solid #ef444466' : '1px solid var(--border-color)';
-            return `<button onclick="window.dashboard._mcpRunSim('${p.id}','${archName}')"
-                style="padding:0.35rem 0.8rem;background:${bc};border:${bdr};border-radius:2px;
-                       color:${tc};font-size:0.75rem;font-weight:600;cursor:pointer;text-align:left;white-space:nowrap;"
-                title="${p.description}">
-                ${adv ? '⚠ ' : ''}${p.id} <span style="font-size:0.65rem;opacity:0.7;">${p.steps}steps</span>
-            </button>`;
-        };
+        const _opt = (p) =>
+            `<option value="${p.id}" title="${p.description}">${p.id} (${p.steps} steps)</option>`;
 
         pane.innerHTML = `
         <div style="flex-shrink:0;padding:0.75rem 1.25rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
-            <div style="font-size:0.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.5rem;">BENIGN PERSONAS</div>
-            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.75rem;">
-                ${benign.map(_pill).join('')}
+            <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.5rem;align-items:end;">
+                <div>
+                    <label style="display:block;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-tertiary);margin-bottom:0.3rem;">Benign (${benign.length})</label>
+                    <select id="mcp-sim-benign-select" style="width:100%;padding:0.4rem 0.6rem;font-size:0.8125rem;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-color);cursor:pointer;">
+                        <option value="">— select —</option>
+                        ${benign.map(_opt).join('')}
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#ef4444;margin-bottom:0.3rem;">Adversarial (${adversarial.length})</label>
+                    <select id="mcp-sim-adv-select" style="width:100%;padding:0.4rem 0.6rem;font-size:0.8125rem;border:1px solid #ef444466;border-radius:2px;background:#ef444408;color:var(--text-color);cursor:pointer;">
+                        <option value="">— select —</option>
+                        ${adversarial.map(_opt).join('')}
+                    </select>
+                </div>
+                <button id="mcp-sim-run-btn" style="padding:0.4rem 1rem;font-size:0.8125rem;font-weight:600;background:var(--accent-color);color:#fff;border:none;border-radius:2px;cursor:pointer;white-space:nowrap;">Run ▶</button>
             </div>
-            <div style="font-size:0.78rem;font-weight:600;color:#ef4444;margin-bottom:0.5rem;">ADVERSARIAL — triggers DETECT rules live</div>
-            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
-                ${adversarial.map(_pill).join('')}
-            </div>
-            <div style="margin-top:0.5rem;font-size:0.7rem;color:var(--text-tertiary);">
+            <div style="margin-top:0.4rem;font-size:0.7rem;color:var(--text-tertiary);">
                 Using arch: <strong style="color:var(--text-primary);">${archName}</strong>
-                · Status cards above update after each tool call
-                · Adversarial personas trigger DETECT-005/019–030 (13 adversarial scenarios)
+                · Adversarial personas trigger DETECT-005/019–030
             </div>
         </div>
         <div id="mcp-sim-body" style="flex:1;display:flex;overflow:hidden;min-height:0;">
@@ -17782,6 +17780,25 @@ class Dashboard {
         </div>`;
 
         this._mcpRenderHeatmap({});
+
+        // Wire dropdowns + Run button
+        const benignSel = document.getElementById('mcp-sim-benign-select');
+        const advSel    = document.getElementById('mcp-sim-adv-select');
+        const runBtn    = document.getElementById('mcp-sim-run-btn');
+
+        // Mutual exclusion — selecting one clears the other
+        if (benignSel) benignSel.addEventListener('change', () => {
+            if (benignSel.value && advSel) advSel.value = '';
+        });
+        if (advSel) advSel.addEventListener('change', () => {
+            if (advSel.value && benignSel) benignSel.value = '';
+        });
+
+        if (runBtn) runBtn.addEventListener('click', () => {
+            const persona = (benignSel && benignSel.value) || (advSel && advSel.value);
+            if (!persona) { alert('Select a persona first'); return; }
+            this._mcpRunSim(persona, archName);
+        });
     }
 
     _mcpRenderHeatmap(counts) {
