@@ -204,13 +204,15 @@ def build_rule_yaml(candidate: dict, rule_id: str) -> str:
 # ── Apply rule ────────────────────────────────────────────────────────────────
 
 def apply_rule(yaml_block: str):
-    text = RULES_FILE.read_text(encoding="utf-8")
-    # Append before end of file (after last rule)
-    if text.endswith("\n"):
-        text += yaml_block + "\n"
-    else:
-        text += "\n" + yaml_block + "\n"
-    RULES_FILE.write_text(text, encoding="utf-8")
+    lines = RULES_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
+    # Insert before 'playbooks:' top-level section (keeps new rule inside rules: list)
+    # Fall back to appending if playbooks: not found
+    insert_idx = next(
+        (i for i, l in enumerate(lines) if l.strip() == "playbooks:"),
+        len(lines)
+    )
+    lines.insert(insert_idx, yaml_block + "\n")
+    RULES_FILE.write_text("".join(lines), encoding="utf-8")
     print(GRN(f"  Written to {RULES_FILE.relative_to(ROOT)}"))
 
 

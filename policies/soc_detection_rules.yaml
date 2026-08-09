@@ -1566,6 +1566,76 @@ rules:
 # Linked from actions above. Each playbook describes the full response chain for
 # a SOC analyst receiving an alert from these rules.
 # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-029: Llm Generated Mmd Injection
+  #
+  # An LLM-generated architecture diagram contains prompt injection markers or agent-targeting instructions. Indicates the g...
+  #
+  # Grounded in: ta-harden-audit-2026-08-09-rt02
+  # OWASP: A01, A03  ATLAS: AML.TA0001
+  # Kill chain: initial_access
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-029
+    name: llm_generated_mmd_injection
+    description: >
+      An LLM-generated architecture diagram contains prompt injection markers or agent-targeting instructions. Indicates the generate-mmd endpoint was used to produce a malicious diagram that could poison the TA pipeline or downstream AI coding agents. Grounded in TA harden-audit 2026-08-09 RT-02: unsanitised 'extra' field allowed full LLM instruction override.
+    incident_refs:
+      - ta-harden-audit-2026-08-09-rt02
+    owasp: ['A01', 'A03']
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200406
+    severity: High
+    conditions:
+      - field: exploitation.injection_categories
+        op: "length_gt"
+        value: 0
+      - field: exploitation.severity
+        op: "=="
+        value: HIGH
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+      - type: page_soc
+
+
+  # DETECT-030: Unauthenticated Mcp Tool Exposure
+  #
+  # An agentic architecture exposes MCP-compatible tool APIs over a network transport with no authentication layer. All tool...
+  #
+  # Grounded in: ta-harden-audit-2026-08-09-rt06
+  # OWASP: A02  ATLAS: AML.TA0003
+  # Kill chain: initial_access
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-030
+    name: unauthenticated_mcp_tool_exposure
+    description: >
+      An agentic architecture exposes MCP-compatible tool APIs over a network transport with no authentication layer. All tools are callable without credentials — any caller can trigger analysis jobs, read reports, and access governance signals. Extends DETECT-020/021/022 (MCP recon/flood/auth-probe) with a structural pre-condition check. Grounded in TA harden-audit 2026-08-09 RT-06: MCP server accepted network transport with no auth gate.
+    incident_refs:
+      - ta-harden-audit-2026-08-09-rt06
+    owasp: ['A02']
+    atlas_tactic: AML.TA0003
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200406
+    severity: High
+    conditions:
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+      - field: mcp_access.tool_calls_total
+        op: ">"
+        value: 0
+      - field: mcp_access.auth_failures
+        op: "=="
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: page_soc
+
+# ─────────────────────────────────────────────────────────────────────────────
 playbooks:
 
   swing_without_reversal:
@@ -1894,7 +1964,6 @@ playbooks:
       - "Architecture under active redesign — egress edges may be placeholder nodes pending control assignment"
       - "aivss.outbound.composite elevated due to data residency signals (ZDR), not tool-use egress — check aivss.outbound.metrics breakdown"
 
-# ─────────────────────────────────────────────────────────────────────────────
 # TATB integration note
 #
 # TATB (TA Test Benchmark) scores across runs are a secondary detection layer:
@@ -1905,3 +1974,4 @@ playbooks:
 # The TATB delta is not evaluated by this ruleset directly. It is a dashboard-level
 # indicator (Insights tab) that complements these signal-level rules.
 # ─────────────────────────────────────────────────────────────────────────────
+
