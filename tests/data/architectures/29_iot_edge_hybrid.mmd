@@ -1,0 +1,40 @@
+flowchart TB
+    Sensors((IoT Sensors))
+
+    subgraph Edge_Layer[Edge Layer]
+        EdgeGateway[Edge Gateway]
+        LocalProcessor[Local Data Processor]
+        EdgeStore[(Edge Data Store)]
+    end
+
+    subgraph Cloud_Layer[Cloud Layer]
+        IoTHub[IoT Hub]
+        StreamProcessor[Stream Processor]
+        MLInference[ML Inference Service]
+        AlertEngine[Alert Engine]
+    end
+
+    subgraph Data_Layer[Data Layer]
+        TimeSeriesDB[(Time Series Database)]
+        DeviceRegistry[(Device Registry)]
+        AuditLog[(Audit Log)]
+    end
+
+    subgraph Management[Management]
+        DeviceManagement[Device Management Console]
+        FirmwareOTA[OTA Firmware Service]
+    end
+
+    Sensors --> EdgeGateway
+    EdgeGateway --> LocalProcessor
+    LocalProcessor --> EdgeStore
+    EdgeGateway --> IoTHub
+    IoTHub --> StreamProcessor
+    IoTHub --> DeviceRegistry
+    StreamProcessor --> MLInference
+    StreamProcessor --> TimeSeriesDB
+    MLInference --> AlertEngine
+    AlertEngine --> AuditLog
+    DeviceManagement --> DeviceRegistry
+    DeviceManagement --> FirmwareOTA
+    FirmwareOTA --> EdgeGateway

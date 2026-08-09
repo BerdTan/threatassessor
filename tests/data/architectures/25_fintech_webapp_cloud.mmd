@@ -1,0 +1,48 @@
+flowchart TB
+    Users((Internet Users))
+
+    subgraph Edge_Layer[Edge Layer]
+        WAF[Web Application Firewall]
+        CDN[CDN / Load Balancer]
+    end
+
+    subgraph App_Layer[Application Layer]
+        WebPortal[Web Portal]
+        MobileAPI[Mobile API Gateway]
+        AuthService[Auth Service]
+    end
+
+    subgraph Payment_Layer[Payment Layer]
+        PaymentProcessor[Payment Processor]
+        FraudEngine[Fraud Detection Engine]
+        CardVault[Card Vault Service]
+    end
+
+    subgraph Data_Layer[Data Layer]
+        UserDB[(User Database)]
+        TransactionDB[(Transaction Database)]
+        AuditLog[(Audit Log)]
+    end
+
+    subgraph External[External]
+        PaymentGateway[Payment Gateway]
+        KYCProvider[KYC Provider]
+    end
+
+    Users --> WAF
+    WAF --> CDN
+    CDN --> WebPortal
+    CDN --> MobileAPI
+    WebPortal --> AuthService
+    MobileAPI --> AuthService
+    AuthService --> UserDB
+    WebPortal --> PaymentProcessor
+    MobileAPI --> PaymentProcessor
+    PaymentProcessor --> FraudEngine
+    PaymentProcessor --> CardVault
+    PaymentProcessor --> PaymentGateway
+    FraudEngine --> TransactionDB
+    CardVault --> TransactionDB
+    AuthService --> AuditLog
+    PaymentProcessor --> AuditLog
+    PaymentProcessor --> KYCProvider

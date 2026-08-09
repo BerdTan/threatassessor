@@ -1,0 +1,46 @@
+flowchart TB
+    Users((Internet Users))
+
+    subgraph Edge_Layer[Edge Layer]
+        APIGateway[API Gateway]
+        AuthService[Auth Service]
+    end
+
+    subgraph Services[Microservices]
+        ProductService[Product Service]
+        CartService[Cart Service]
+        OrderService[Order Service]
+        PaymentService[Payment Service]
+        NotificationService[Notification Service]
+    end
+
+    subgraph Messaging[Event Bus]
+        MessageBus[Message Bus]
+    end
+
+    subgraph Data_Layer[Data Layer]
+        ProductDB[(Product Database)]
+        CartDB[(Cart Store)]
+        OrderDB[(Order Database)]
+        PaymentDB[(Payment Records)]
+    end
+
+    subgraph External[External]
+        PaymentGateway[Payment Gateway]
+        EmailProvider[Email Provider]
+    end
+
+    Users --> APIGateway
+    APIGateway --> AuthService
+    APIGateway --> ProductService
+    APIGateway --> CartService
+    APIGateway --> OrderService
+    ProductService --> ProductDB
+    CartService --> CartDB
+    OrderService --> OrderDB
+    OrderService --> MessageBus
+    MessageBus --> PaymentService
+    MessageBus --> NotificationService
+    PaymentService --> PaymentDB
+    PaymentService --> PaymentGateway
+    NotificationService --> EmailProvider

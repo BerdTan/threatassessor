@@ -169,6 +169,7 @@
                         <button type="button" class="input-tab-btn active" data-input-tab="recent" style="flex:1; padding:0.45rem 0; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; border:none; cursor:pointer; background:var(--accent-color); color:#fff;">Recent</button>
                         <button type="button" class="input-tab-btn" data-input-tab="upload" style="flex:1; padding:0.45rem 0; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; border:none; border-left:1px solid var(--border-color); cursor:pointer; background:var(--card-bg); color:var(--text-secondary);">Upload</button>
                         <button type="button" class="input-tab-btn" data-input-tab="paste" style="flex:1; padding:0.45rem 0; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; border:none; border-left:1px solid var(--border-color); cursor:pointer; background:var(--card-bg); color:var(--text-secondary);">Paste</button>
+                        <button type="button" class="input-tab-btn" data-input-tab="generate" style="flex:1; padding:0.45rem 0; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; border:none; border-left:1px solid var(--border-color); cursor:pointer; background:var(--card-bg); color:var(--text-secondary);">Generate</button>
                     </div>
 
                     <!-- Recent tab -->
@@ -193,6 +194,52 @@
                     <div id="input-tab-paste" class="input-tab-panel" style="display:none;">
                         <textarea id="paste-mmd-input" placeholder="Paste Mermaid diagram here…" style="width:100%; height:180px; padding:0.5rem 0.75rem; font-size:0.8125rem; font-family:monospace; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color); resize:vertical; box-sizing:border-box;"></textarea>
                         <input type="text" id="paste-mmd-name" placeholder="Diagram name (optional)" style="width:100%; padding:0.4rem 0.6rem; font-size:0.8125rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color); margin-top:0.4rem; box-sizing:border-box;">
+                    </div>
+
+                    <!-- Generate tab -->
+                    <div id="input-tab-generate" class="input-tab-panel" style="display:none;">
+                        <div style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:0.6rem;">Generate a starter architecture using the naming convention <code style="font-size:0.7rem;">[domain]_[app-type]_[modality]</code></div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem; margin-bottom:0.5rem;">
+                            <div>
+                                <label style="display:block; font-size:0.6875rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-tertiary); margin-bottom:0.25rem;">Domain</label>
+                                <select id="gen-domain" style="width:100%; padding:0.4rem 0.5rem; font-size:0.8125rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color);">
+                                    <option value="fintech">Fintech</option>
+                                    <option value="healthcare">Healthcare</option>
+                                    <option value="govtech">GovTech</option>
+                                    <option value="ecommerce">E-Commerce</option>
+                                    <option value="iot">IoT</option>
+                                    <option value="saas">SaaS</option>
+                                    <option value="media">Media</option>
+                                    <option value="logistics">Logistics</option>
+                                    <option value="education">Education</option>
+                                    <option value="generic">Generic</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:0.6875rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-tertiary); margin-bottom:0.25rem;">App Type</label>
+                                <select id="gen-app-type" style="width:100%; padding:0.4rem 0.5rem; font-size:0.8125rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color);">
+                                    <option value="webapp">Web App</option>
+                                    <option value="api">API</option>
+                                    <option value="microservices">Microservices</option>
+                                    <option value="agentic">Agentic AI</option>
+                                    <option value="serverless">Serverless</option>
+                                    <option value="data_pipeline">Data Pipeline</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:0.6875rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-tertiary); margin-bottom:0.25rem;">Modality</label>
+                                <select id="gen-modality" style="width:100%; padding:0.4rem 0.5rem; font-size:0.8125rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color);">
+                                    <option value="cloud">Cloud</option>
+                                    <option value="hybrid">Hybrid</option>
+                                    <option value="edge">Edge</option>
+                                    <option value="onprem">On-Premises</option>
+                                </select>
+                            </div>
+                        </div>
+                        <input type="text" id="gen-extra" placeholder="Extra hint — e.g. 'with FHIR and HL7 integration' (optional)" style="width:100%; padding:0.4rem 0.6rem; font-size:0.8125rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color); margin-bottom:0.5rem; box-sizing:border-box;">
+                        <button type="button" id="gen-generate-btn" class="btn-secondary" style="width:100%;">Generate diagram</button>
+                        <div id="gen-status" style="font-size:0.8125rem; color:var(--text-tertiary); margin-top:0.4rem; min-height:1.25rem;"></div>
+                        <textarea id="gen-mmd-preview" placeholder="Generated diagram will appear here — edit before analysing" style="width:100%; height:130px; padding:0.5rem 0.75rem; font-size:0.8125rem; font-family:monospace; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color); resize:vertical; box-sizing:border-box; margin-top:0.4rem; display:none;"></textarea>
                     </div>
 
                     <!-- SSP Profile selector -->

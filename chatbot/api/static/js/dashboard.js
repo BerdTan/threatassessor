@@ -668,6 +668,12 @@ class Dashboard {
 
         // Load recent architectures
         this._loadRecentArchs();
+
+        // ── Generate tab ─────────────────────────────────────────────────────
+        const genBtn = document.getElementById('gen-generate-btn');
+        if (genBtn) {
+            genBtn.addEventListener('click', () => this._generateMmd());
+        }
     }
 
     _switchInputTab(tab) {
@@ -756,6 +762,45 @@ class Dashboard {
         });
     }
 
+    async _generateMmd() {
+        const btn    = document.getElementById('gen-generate-btn');
+        const status = document.getElementById('gen-status');
+        const preview = document.getElementById('gen-mmd-preview');
+        const domain   = document.getElementById('gen-domain')?.value || 'generic';
+        const appType  = document.getElementById('gen-app-type')?.value || 'webapp';
+        const modality = document.getElementById('gen-modality')?.value || 'cloud';
+        const extra    = document.getElementById('gen-extra')?.value || '';
+
+        if (btn) btn.disabled = true;
+        if (status) status.textContent = 'Generating…';
+        if (preview) preview.style.display = 'none';
+
+        try {
+            const apiKey = localStorage.getItem('tm_api_key') || '';
+            const res = await fetch('/api/v1/generate-mmd', {
+                method: 'POST',
+                headers: { 'TM-API-KEY': apiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domain, app_type: appType, modality, extra }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || res.statusText);
+            }
+            const data = await res.json();
+            if (preview) {
+                preview.value = data.mmd;
+                preview.style.display = '';
+            }
+            this._generatedMmd     = data.mmd;
+            this._generatedMmdName = data.suggested_name || `${domain}_${appType}_${modality}`;
+            if (status) status.textContent = `✓ Generated — edit if needed, then click Analyse`;
+        } catch (e) {
+            if (status) status.textContent = `✗ ${e.message}`;
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
     async startAnalysis() {
         const tab = this._activeInputTab || 'upload';
         const formData = new FormData();
@@ -769,6 +814,16 @@ class Dashboard {
             formData.append('mmd_name', this._selectedRecentArch || 'architecture');
             // Synthesise a File so diagram rendering still works
             this.uploadedFile = new File([this._selectedRecentMmd], (this._selectedRecentArch || 'architecture') + '.mmd', { type: 'text/plain' });
+
+        } else if (tab === 'generate') {
+            // Use edited preview if available, otherwise cached generated text
+            const preview = document.getElementById('gen-mmd-preview');
+            const text = (preview?.value || this._generatedMmd || '').trim();
+            if (!text) { alert('Generate a diagram first'); return; }
+            const name = this._generatedMmdName || 'generated';
+            formData.append('mmd_text', text);
+            formData.append('mmd_name', name);
+            this.uploadedFile = new File([text], name + '.mmd', { type: 'text/plain' });
 
         } else if (tab === 'paste') {
             const text = (document.getElementById('paste-mmd-input')?.value || '').trim();
@@ -993,6 +1048,12 @@ class Dashboard {
         if (pasteInput) pasteInput.value = '';
         const pasteName = document.getElementById('paste-mmd-name');
         if (pasteName) pasteName.value = '';
+        const genPreview = document.getElementById('gen-mmd-preview');
+        if (genPreview) { genPreview.value = ''; genPreview.style.display = 'none'; }
+        const genStatus = document.getElementById('gen-status');
+        if (genStatus) genStatus.textContent = '';
+        this._generatedMmd = null;
+        this._generatedMmdName = null;
         this._switchInputTab('recent');
 
         // Reset analysis status bar

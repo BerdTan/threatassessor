@@ -4,6 +4,18 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 40 — 2026-08-09 (continued II)
+
+### 32. Sample MMDs + Generate tab — [domain]_[app-type]_[modality] convention
+
+**What:** 6 new sample architectures committed to `tests/data/architectures/` covering fintech, healthcare, govtech, ecommerce, IoT, and SaaS/LLM patterns. New Generate tab in the input panel: three dropdowns (Domain / App Type / Modality) + optional hint → calls `POST /api/v1/generate-mmd` → LLM produces diagram → shown in editable preview textarea before analysis. Naming convention `[domain]_[apptype]_[modality]` applied to both samples and generated names.
+
+**Why:** Two use cases: (1) cloned repo has zero processed architectures — samples give instant content in the Recent tab; (2) terminal-constrained environments with no existing MMD can bootstrap a realistic diagram via self-gen without any file. The convention makes corpus filenames self-describing.
+
+**Key decisions:** Generate tab populates the Paste textarea pattern (editable before analysis, not black-box submit); governance_check fires on generated MMD before analysis like any other input path; `openrouter/openrouter/free` used — zero cost.
+
+---
+
 ## Session 40 — 2026-08-09 (continued)
 
 ### 31. GitHub Actions PR reviewer

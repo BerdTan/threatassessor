@@ -1,0 +1,37 @@
+flowchart TB
+    Clinicians((Clinicians))
+    Patients((Patients))
+
+    subgraph Cloud_Layer[Cloud Layer]
+        APIGateway[API Gateway]
+        FHIRServer[FHIR R4 Server]
+        IdentityProvider[Identity Provider]
+        AnalyticsService[Analytics Service]
+    end
+
+    subgraph OnPrem_Layer[On-Premises Layer]
+        EHRSystem[EHR System]
+        LegacyHL7[Legacy HL7 Interface]
+        PACS[PACS Imaging Server]
+    end
+
+    subgraph Data_Layer[Data Layer]
+        PatientDB[(Patient Records DB)]
+        ImagingStore[(Imaging Store)]
+        AuditLog[(Audit Log)]
+        AnalyticsDB[(Analytics Database)]
+    end
+
+    Clinicians --> APIGateway
+    Patients --> APIGateway
+    APIGateway --> IdentityProvider
+    APIGateway --> FHIRServer
+    FHIRServer --> PatientDB
+    FHIRServer --> LegacyHL7
+    FHIRServer --> AuditLog
+    LegacyHL7 --> EHRSystem
+    EHRSystem --> PatientDB
+    PACS --> ImagingStore
+    FHIRServer --> PACS
+    FHIRServer --> AnalyticsService
+    AnalyticsService --> AnalyticsDB

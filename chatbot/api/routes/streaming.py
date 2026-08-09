@@ -1045,3 +1045,110 @@ async def expert_review_cancel(
             purged.append(fname)
 
     return {"cancelled": True, "architecture": architecture_name, "purged_files": purged}
+
+
+# ── MMD Generator ──────────────────────────────────────────────────────────────
+
+_GENERATE_SYSTEM = """You are an expert software architect. Generate a Mermaid flowchart diagram for a given architecture.
+
+Rules:
+- Use `flowchart TB` (top-to-bottom only)
+- Node IDs: PascalCase, no spaces (e.g. ApiGateway, UserService)
+- Node labels: human-readable Title Case inside shape delimiters
+- Shapes: ((Label)) for external users/internet, [Label] for services/components, [(Label)] for databases/stores
+- Subgraphs: group related nodes using subgraph Snake_Case_Id[Human Label]
+- Edges: bare --> only, no labels
+- 10-20 nodes, realistic component names for the domain
+- Include at least one database/store node as a data target
+- No comments, no explanations — output ONLY the Mermaid diagram code"""
+
+_GENERATE_DOMAINS = {
+    "fintech": "financial technology (payments, banking, trading)",
+    "healthcare": "healthcare (patient records, clinical systems, FHIR)",
+    "govtech": "government technology (citizen services, case management)",
+    "ecommerce": "e-commerce (product catalogue, orders, payments)",
+    "iot": "IoT (sensors, edge computing, telemetry)",
+    "saas": "SaaS (multi-tenant, subscription, user management)",
+    "media": "media streaming (content delivery, transcoding, recommendations)",
+    "logistics": "logistics (shipment tracking, warehouse, routing)",
+    "education": "education (LMS, student records, assessments)",
+    "generic": "generic web application",
+}
+
+_GENERATE_APP_TYPES = {
+    "webapp": "web application with frontend and backend tiers",
+    "api": "API-first service with REST or GraphQL",
+    "microservices": "microservices architecture with message bus",
+    "agentic": "AI agent system with LLM, tools, and orchestration",
+    "serverless": "serverless / function-as-a-service architecture",
+    "data_pipeline": "data pipeline with ingestion, processing, and storage",
+}
+
+_GENERATE_MODALITIES = {
+    "cloud": "deployed on public cloud (AWS / Azure / GCP)",
+    "hybrid": "hybrid cloud with on-premises and cloud components",
+    "edge": "edge computing with local processing nodes",
+    "onprem": "on-premises deployment",
+}
+
+
+@router.post("/generate-mmd")
+async def generate_mmd(
+    payload: dict,
+    api_key: str = Depends(verify_api_key),
+):
+    """Generate a Mermaid architecture diagram from domain/app-type/modality parameters.
+
+    Body: {
+        "domain": "fintech|healthcare|govtech|ecommerce|iot|saas|media|logistics|education|generic",
+        "app_type": "webapp|api|microservices|agentic|serverless|data_pipeline",
+        "modality": "cloud|hybrid|edge|onprem",
+        "extra": "optional free-text hint (e.g. 'with FHIR and HL7 integration')"
+    }
+
+    Returns: {"mmd": "flowchart TB\\n...", "suggested_name": "XX_domain_apptype_modality"}
+    """
+    domain   = payload.get("domain", "generic")
+    app_type = payload.get("app_type", "webapp")
+    modality = payload.get("modality", "cloud")
+    extra    = payload.get("extra", "").strip()
+
+    domain_desc   = _GENERATE_DOMAINS.get(domain,   domain)
+    apptype_desc  = _GENERATE_APP_TYPES.get(app_type, app_type)
+    modality_desc = _GENERATE_MODALITIES.get(modality, modality)
+
+    prompt = (
+        f"Generate a Mermaid architecture diagram for:\n"
+        f"- Domain: {domain_desc}\n"
+        f"- Architecture type: {apptype_desc}\n"
+        f"- Deployment: {modality_desc}\n"
+    )
+    if extra:
+        prompt += f"- Additional requirements: {extra}\n"
+    prompt += "\nOutput ONLY the Mermaid diagram code, starting with 'flowchart TB'."
+
+    try:
+        from agentic.llm_client import LLMClient
+        from dotenv import load_dotenv
+        import re as _re
+        load_dotenv()
+        llm = LLMClient()
+        response = llm.generate(
+            prompt=prompt,
+            system_message=_GENERATE_SYSTEM,
+            max_tokens=1200,
+            temperature=0.4,
+        )
+        raw = getattr(response, "content", "") or str(response)
+        # Strip markdown fences if present
+        raw = _re.sub(r"^```[a-z]*\n?", "", raw.strip(), flags=_re.MULTILINE)
+        raw = _re.sub(r"\n?```$", "", raw.strip(), flags=_re.MULTILINE)
+        mmd = raw.strip()
+
+        # Suggest a filename following the [XX][domain][apptype][modality] convention
+        suggested_name = f"{domain}_{app_type}_{modality}"
+
+        return {"mmd": mmd, "suggested_name": suggested_name}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Generation failed: {e}")

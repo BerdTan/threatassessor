@@ -1,0 +1,47 @@
+flowchart TB
+    Officers((Government Officers))
+    Citizens((Citizens))
+
+    subgraph Portal_Layer[Portal Layer]
+        CitizenPortal[Citizen Portal]
+        OfficerDashboard[Officer Dashboard]
+    end
+
+    subgraph Agent_Layer[Agent Orchestration Layer]
+        AgentOrchestrator[Policy Agent Orchestrator]
+        ToolRegistry[Tool Registry]
+        PromptGuard[Prompt Injection Guard]
+    end
+
+    subgraph AI_Services[AI Services]
+        LLMGateway[LLM API Gateway]
+        ClassificationModel[Document Classifier]
+    end
+
+    subgraph Tool_Layer[Tools]
+        DatabaseTool[Database Query Tool]
+        EmailTool[Email Notification Tool]
+        ExternalAPITool[External Agency API]
+    end
+
+    subgraph Data_Layer[Data Layer]
+        CasesDB[(Cases Database)]
+        CitizenDB[(Citizen Records)]
+        AuditLog[(Audit Log)]
+    end
+
+    Citizens --> CitizenPortal
+    Officers --> OfficerDashboard
+    CitizenPortal --> AgentOrchestrator
+    OfficerDashboard --> AgentOrchestrator
+    AgentOrchestrator --> PromptGuard
+    PromptGuard --> LLMGateway
+    AgentOrchestrator --> ToolRegistry
+    ToolRegistry --> DatabaseTool
+    ToolRegistry --> EmailTool
+    ToolRegistry --> ExternalAPITool
+    AgentOrchestrator --> ClassificationModel
+    DatabaseTool --> CasesDB
+    DatabaseTool --> CitizenDB
+    AgentOrchestrator --> AuditLog
+    LLMGateway --> AuditLog
