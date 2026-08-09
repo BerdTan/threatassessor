@@ -1,6 +1,6 @@
 ---
 name: check-detect
-description: Run the SOC detection rule regression suite (~15s, no LLM/network). Covers all 24 DETECT rules (rule evaluator), AIVSS→OCSF findings export, incident simulator scenarios (25 scenarios covering all 24 rules), and EventBroker sm_verdicts path. Optionally re-evaluates live governance_signals.json for one or all corpus architectures and shows which rules fire. Use after any change to policies/soc_detection_rules.yaml, chatbot/harness/rule_evaluator.py, chatbot/harness/stages.py, or chatbot/harness/governance.py.
+description: Run the SOC detection rule regression suite (~15s, no LLM/network). Covers all 30 DETECT rules (rule evaluator), AIVSS→OCSF findings export, incident simulator scenarios (29 scenarios covering all 30 rules), and EventBroker sm_verdicts path. Optionally re-evaluates live governance_signals.json for one or all corpus architectures and shows which rules fire. Use after any change to policies/soc_detection_rules.yaml, chatbot/harness/rule_evaluator.py, chatbot/harness/stages.py, or chatbot/harness/governance.py.
 allowed-tools: Bash(python3:*) Bash(source:*) Bash(pytest:*)
 ---
 
