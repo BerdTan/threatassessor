@@ -1,0 +1,66 @@
+name: ThreatAssessor Architecture Review
+
+on:
+  pull_request:
+    paths:
+      - '**/*.mmd'
+
+jobs:
+  ta-review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Start TA API
+        run: |
+          ./scripts/api/api_start.sh
+          # Wait for healthy
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "API ready"
+              break
+            fi
+            echo "Waiting for API... ($i/20)"
+            sleep 3
+          done
+        env:
+          API_KEY: ${{ secrets.TA_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LLM_PROVIDER: openrouter
+          AGENT_MODEL_ARCHITECT: openrouter/openrouter/free
+          AGENT_MODEL_TESTER: openrouter/openrouter/free
+          AGENT_MODEL_RED_TEAM: openrouter/openrouter/free
+          AGENT_MODEL_PURPLE_TEAM: openrouter/openrouter/free
+          AGENT_MODEL_BLACKHAT: openrouter/openrouter/free
+          AGENT_MODEL_SCRUM_MASTER: openrouter/openrouter/free
+          AGENT_MODEL_MOE: openrouter/openrouter/free
+          AGENT_MODEL_THREAT_ANALYST: openrouter/openrouter/free
+
+      - name: Run TA Architecture Review
+        id: ta-review
+        run: python3 scripts/ci/ta_pr_review.py
+        env:
+          TA_API_URL: http://localhost:8000
+          TA_API_KEY: ${{ secrets.TA_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+
+      - name: Stop TA API
+        if: always()
+        run: ./scripts/api/api_stop.sh

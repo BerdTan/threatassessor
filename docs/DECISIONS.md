@@ -4,6 +4,22 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 40 — 2026-08-09 (continued)
+
+### 31. GitHub Actions PR reviewer
+
+**What:** TA as a GitHub Actions check on PRs that change `.mmd` files. Two new files: `.github/workflows/ta-review.yml` (workflow) and `scripts/ci/ta_pr_review.py` (review script). Flow: governance_check (50ms, no LLM) → skip full analysis on CRITICAL block, otherwise analyze-stream → export gate → post PR comment with risk table → request_changes on BLOCK.
+
+**Why:** TA was UI/CLI only. Making it a PR reviewer closes the loop — architecture diagrams get the same automated review treatment as code. governance_check already existed as a CI/CD gate endpoint; the workflow is the missing glue.
+
+**Key decisions:**
+- SSE stream parsed manually (no sseclient-py dependency)
+- Mode A (self-hosted, start API in action) as default — self-contained, no infra dependency
+- BLOCK on CRITICAL governance signals skips the 30s analysis — fail fast
+- `REQUEST_CHANGES` on BLOCK, `COMMENT` on PASS — matches PR review semantics
+
+---
+
 ## Session 40 — 2026-08-09
 
 ### 30. Blog Part 18 published

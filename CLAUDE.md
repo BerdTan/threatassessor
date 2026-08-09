@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
-**Version:** 2.3  
-**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (28 rules) + Harness v2 + MCP server (13 tools) + TA export bundle + rerun-moe + critic-gym shipped.  
+**Version:** 2.4  
+**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (28 rules) + Harness v2 + MCP server (13 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer shipped.  
 **Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 28 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0
 
 ---
@@ -11,6 +11,28 @@
 **Read at session start:** [`docs/DECISIONS.md`](docs/DECISIONS.md) (gitignored — local only)
 
 Add an entry after any significant architectural decision: date, what, why, alternatives rejected.
+
+---
+
+## GitHub Actions CI
+
+**Workflow:** `.github/workflows/ta-review.yml` — triggers on PRs that change `**/*.mmd` files.
+
+**Review script:** `scripts/ci/ta_pr_review.py`
+
+**Flow:** governance_check (50ms, no LLM) → analyze-stream (30s deterministic) → export gate → PR comment + request_changes on BLOCK
+
+**Required GitHub secrets:**
+- `TA_API_KEY` — matches `API_KEY` in `.env`
+- `OPENROUTER_API_KEY` — for LLM-dependent stages (optional for deterministic-only)
+
+**Local test:**
+```bash
+TA_API_URL=http://localhost:8000 \
+TA_API_KEY=<key> \
+BASE_REF=master \
+python3 scripts/ci/ta_pr_review.py   # posts comment to stdout if no GITHUB_TOKEN
+```
 
 ---
 
