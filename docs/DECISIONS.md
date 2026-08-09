@@ -4,6 +4,22 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 40 — 2026-08-09 (continued III)
+
+### 34. README + DECISIONS.md updated for session 40
+
+**What:** README updated — Part 18 added to blog table, CI reviewer + unified input panel added to capabilities table, Generate tab + 30 sample archs mentioned in Quick Start, repo layout updated with scripts/ci/ and .github/workflows/.
+
+**Why:** README was stale at Part 17 and didn't reflect the CI, input panel, or sample architecture work from this session.
+
+### 33. taci skill — TA CI workflow validator
+
+**What:** New `/taci` skill at `.claude/skills/taci/`. Four modes: `--check-workflow` (validates workflow file, secrets, venv step, script perms), `--arch <file.mmd>` (dry-run against a specific file via `TA_FORCE_MMD` env), `--dry-run` (run against changed files vs master), `--fix-perms` (marks API scripts executable). `ta_pr_review.py` extended to honour `TA_FORCE_MMD` env var for targeted single-file testing.
+
+**Why:** CI debugging without a skill required remembering env vars, the correct Python path, and the BASE_REF convention. The skill wraps all of it and adds static workflow validation so issues are caught before pushing.
+
+---
+
 ## Session 40 — 2026-08-09 (continued II)
 
 ### 32. Sample MMDs + Generate tab — [domain]_[app-type]_[modality] convention
