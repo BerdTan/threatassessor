@@ -471,9 +471,21 @@ if __name__ == "__main__":
     if _args.transport == "stdio":
         mcp.run(transport="stdio")
     else:
-        # For remote transports, set host/port via env vars that FastMCP reads
+        # Network transports require TM_MCP_KEY env var to prevent unauthenticated access.
+        # All tool calls still hit the downstream REST API with TM_API_BASE_URL auth,
+        # but this adds a transport-level gate before any tool is invoked.
         import os as _os
+        _mcp_key = _os.environ.get("TM_MCP_KEY", "")
+        if not _mcp_key:
+            print(
+                "[ThreatAssessor MCP] ERROR: TM_MCP_KEY env var required for network transport.\n"
+                "  Set TM_MCP_KEY to a strong secret before starting with --transport sse/streamable-http.",
+                flush=True,
+            )
+            raise SystemExit(1)
         _os.environ.setdefault("FASTMCP_HOST", _args.host)
         _os.environ.setdefault("FASTMCP_PORT", str(_args.port))
-        print(f"[ThreatAssessor MCP] {_args.transport} on {_args.host}:{_args.port}", flush=True)
+        # Pass the key to FastMCP as the bearer token guard
+        _os.environ.setdefault("FASTMCP_AUTH_TOKEN", _mcp_key)
+        print(f"[ThreatAssessor MCP] {_args.transport} on {_args.host}:{_args.port} (auth: TM_MCP_KEY)", flush=True)
         mcp.run(transport=_args.transport)

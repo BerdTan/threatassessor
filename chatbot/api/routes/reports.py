@@ -11,7 +11,7 @@ import re
 import shutil
 import zipfile
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from typing import List, Dict
 from chatbot.api.dependencies import verify_api_key
@@ -2292,6 +2292,7 @@ async def export_assessment(
 
 @router.post("/governance/check")
 async def governance_check(
+    request: Request,
     payload: dict,
     _: str = Depends(verify_api_key),
 ):
@@ -2311,6 +2312,10 @@ async def governance_check(
     Responds 400 with governance signals embedded if exploitation.severity == CRITICAL
     (mirrors the BouncerStage block behaviour).
     """
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > 512 * 1024:
+        raise HTTPException(status_code=413, detail="Request body exceeds 512KB limit")
+
     mmd = payload.get("mmd_content", "")
     arch_name = payload.get("arch_name", "mcp_sim")
 
