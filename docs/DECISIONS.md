@@ -6,6 +6,18 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 40 — 2026-08-09
 
+### 30. Blog Part 18 published
+
+**What:** "Skills That Built the Builder: How Developer Automation Grew Alongside ThreatAssessor" — https://medium.com/@breadtan/skills-that-built-the-builder-how-developer-automation-grew-alongside-threatassessor-cc23897eee82
+
+**Why:** Narrative of the 44-skill developer automation layer: regression suites, feedback flywheels (observe→diagnose→prescribe→gate→apply→verify), data portability, and operational skills. Written without LLM inference due to API cutover.
+
+### 29. Recent tab loads existing results immediately + Re-analyse button
+
+**What:** Clicking an arch in the Recent tab now calls `_loadArchFromReports()` directly — shows existing analysis instantly without re-running. Re-analyse button appears in header for explicit re-runs. New Analysis resets all tab state (label, selection, search, paste fields).
+
+**Why:** Past analyses are already processed — forcing a re-run on every load wastes ~30s and is the wrong default. Re-analyse stays available for when a fresh run is genuinely needed.
+
 ### 28. Unified input panel — Recent / Upload / Paste
 
 **What:** Replaced single file-drop form with a three-tab input panel. Recent tab (default) shows all processed architectures sorted by date, searchable, click to load `before.mmd` directly. Paste tab accepts raw MMD text. Upload tab is unchanged. New `GET /api/v1/reports/{arch}/mmd` endpoint serves `before.mmd`. `analyze-stream` now accepts optional `mmd_text` + `mmd_name` form fields alongside file upload.
