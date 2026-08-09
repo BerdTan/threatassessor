@@ -4,6 +4,20 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 40 — 2026-08-09
+
+### 28. Unified input panel — Recent / Upload / Paste
+
+**What:** Replaced single file-drop form with a three-tab input panel. Recent tab (default) shows all processed architectures sorted by date, searchable, click to load `before.mmd` directly. Paste tab accepts raw MMD text. Upload tab is unchanged. New `GET /api/v1/reports/{arch}/mmd` endpoint serves `before.mmd`. `analyze-stream` now accepts optional `mmd_text` + `mmd_name` form fields alongside file upload.
+
+**Why:** Two problems with one root: (1) terminal restrictions block file upload in some environments; (2) past analyses were buried behind a truncated history list even though `before.mmd` already exists per-arch. Making recent architectures the default input path solves both — no upload needed, and past work is immediately reusable.
+
+**Alternatives rejected:** URL fetch (SSRF risk, excluded by design); self-gen from description (stretch, deferred).
+
+**Next:** Expose `report_dir` in Settings tab so users can point to a different folder of processed architectures.
+
+---
+
 ## Session 40 — 2026-08-08
 
 ### 26. Bedrock → OpenRouter cutover + rerun-moe fixes
