@@ -552,6 +552,16 @@ class Dashboard {
             });
         }
 
+        // Re-analyse button — re-run analysis on the currently loaded arch
+        const reanalyseBtn = document.getElementById('reanalyse-btn');
+        if (reanalyseBtn) {
+            reanalyseBtn.addEventListener('click', async () => {
+                if (!this._selectedRecentMmd) { alert('No source diagram available for re-analysis'); return; }
+                this._activeInputTab = 'recent';
+                await this.startAnalysis();
+            });
+        }
+
         // Refresh dashboard button click
         const refreshDashboardBtn = document.getElementById('refresh-dashboard-btn');
         if (refreshDashboardBtn) {
@@ -722,19 +732,19 @@ class Dashboard {
     async _selectRecentArch(archName) {
         const label = document.getElementById('recent-selected-label');
         if (label) label.textContent = `Loading ${archName}…`;
+        this._selectedRecentArch = archName;
+        this._highlightSelected();
         try {
-            const apiKey = localStorage.getItem('tm_api_key') || '';
-            const res = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/mmd`, { headers: { 'TM-API-KEY': apiKey } });
-            if (!res.ok) throw new Error('No source diagram available');
-            const data = await res.json();
-            this._selectedRecentArch = archName;
-            this._selectedRecentMmd = data.mmd;
-            if (label) label.textContent = `✓ ${archName}`;
-            this._highlightSelected();
+            // Load existing results immediately — no re-analysis needed
+            await this._loadArchFromReports(archName);
+            // Also cache the MMD so re-analyse can use it
+            try {
+                const apiKey = localStorage.getItem('tm_api_key') || '';
+                const res = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/mmd`, { headers: { 'TM-API-KEY': apiKey } });
+                if (res.ok) { const d = await res.json(); this._selectedRecentMmd = d.mmd; }
+            } catch (_) {}
         } catch (e) {
-            if (label) label.textContent = `✗ ${e.message}`;
-            this._selectedRecentArch = null;
-            this._selectedRecentMmd = null;
+            if (label) label.textContent = `✗ Could not load results for ${archName}`;
         }
     }
 
@@ -956,8 +966,10 @@ class Dashboard {
         // Reset buttons
         const uploadBtn = document.getElementById('upload-btn');
         const newAnalysisBtn = document.getElementById('new-analysis-btn');
+        const reanalyseBtn = document.getElementById('reanalyse-btn');
         if (uploadBtn) uploadBtn.style.display = 'inline-block';
         if (newAnalysisBtn) newAnalysisBtn.style.display = 'none';
+        if (reanalyseBtn) reanalyseBtn.style.display = 'none';
 
         // Reset progress
         this.updateProgress(0, 'Ready to analyze architecture');
@@ -3532,11 +3544,13 @@ class Dashboard {
             const tmNavTabLoad = document.getElementById('threat-model-nav-tab');
             if (tmNavTabLoad) tmNavTabLoad.style.display = 'block';
 
-            // Show "New Analysis" button
+            // Show "New Analysis" + "Re-analyse" buttons
             const uploadBtn = document.getElementById('upload-btn');
             const newAnalysisBtn = document.getElementById('new-analysis-btn');
+            const reanalyseBtn = document.getElementById('reanalyse-btn');
             if (uploadBtn) uploadBtn.style.display = 'none';
             if (newAnalysisBtn) newAnalysisBtn.style.display = 'inline-block';
+            if (reanalyseBtn) reanalyseBtn.style.display = this._selectedRecentMmd ? 'inline-block' : 'none';
 
             // Fetch before.mmd so the arch-diagram subtab works without an uploadedFile
             this.originalMmdContent = null;
