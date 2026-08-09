@@ -678,9 +678,11 @@ class Dashboard {
         const list = document.getElementById('recent-arch-list');
         if (!list) return;
         try {
-            const res = await fetch('/api/v1/reports', { headers: { 'X-API-Key': this.apiKey } });
+            const apiKey = localStorage.getItem('tm_api_key') || '';
+            const res = await fetch('/api/v1/reports', { headers: { 'TM-API-KEY': apiKey } });
             if (!res.ok) throw new Error(res.statusText);
-            const archs = await res.json();
+            const data = await res.json();
+            const archs = Array.isArray(data) ? data : (data.architectures || []);
             this._recentArchs = archs.sort((a, b) => (b.analysed_at || 0) - (a.analysed_at || 0));
             this._renderRecentList(this._recentArchs);
         } catch (e) {
@@ -721,7 +723,8 @@ class Dashboard {
         const label = document.getElementById('recent-selected-label');
         if (label) label.textContent = `Loading ${archName}…`;
         try {
-            const res = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/mmd`, { headers: { 'X-API-Key': this.apiKey } });
+            const apiKey = localStorage.getItem('tm_api_key') || '';
+            const res = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/mmd`, { headers: { 'TM-API-KEY': apiKey } });
             if (!res.ok) throw new Error('No source diagram available');
             const data = await res.json();
             this._selectedRecentArch = archName;
