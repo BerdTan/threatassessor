@@ -22,15 +22,20 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install dependencies into venv
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -r requirements.txt
 
       - name: Write .env for TA API
+        env:
+          TA_API_KEY: ${{ secrets.TA_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          cat > .env << 'ENVEOF'
-          API_KEY=${{ secrets.TA_API_KEY }}
+          cat > .env << ENVEOF
+          API_KEY=${TA_API_KEY}
           LLM_PROVIDER=openrouter
-          OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
           OPENROUTER_MODEL=openrouter/openrouter/free
           AGENT_MODEL_ARCHITECT=openrouter/openrouter/free
           AGENT_MODEL_TESTER=openrouter/openrouter/free
@@ -62,7 +67,7 @@ jobs:
 
       - name: Run TA Architecture Review
         id: ta-review
-        run: python3 scripts/ci/ta_pr_review.py
+        run: .venv/bin/python scripts/ci/ta_pr_review.py
         env:
           TA_API_URL: http://localhost:8000
           TA_API_KEY: ${{ secrets.TA_API_KEY }}
