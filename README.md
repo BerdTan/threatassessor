@@ -145,7 +145,7 @@ The scoring rubric TATB uses to evaluate every threat model is open and document
 
 ## Read more
 
-The full build story is on Medium — 18 parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, and TA as a GitHub Actions PR reviewer:
+The full build story is on Medium — 19 parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, and the self-assessment that found a Critical in its own codebase:
 
 | # | Title | What it covers |
 |---|-------|----------------|
@@ -167,6 +167,7 @@ The full build story is on Medium — 18 parts covering the pipeline, cloud thre
 | 16 | [Two Handymen and the Face: How ThreatAssessor Grew Ways to Be Used](https://medium.com/@breadtan/two-handymen-and-the-face-how-threatassessor-grew-ways-to-be-used-f6a80bb75064) | Skills as internal operator (41 skills, left hand); MCP as external interface (13 tools, right hand); adversarial sim live fire; governance_check 50ms gate; ta-export/1.0 bundle |
 | 17 | [The Architecture That Told You First: Four Signals from the AISI Incident](https://medium.com/@breadtan/architecture-that-told-you-first-four-signals-from-the-aisi-incident-727bfb75960c) | AISI INC-2026-07-28 plain-language breakdown; DETECT-025–028 grounded in C2 beacon, critic collapse, downstream agent injection, skill tamper; governance_check two-severity split (pipeline vs downstream consumer) |
 | 18 | [Skills That Built the Builder: How Developer Automation Grew Alongside ThreatAssessor](https://medium.com/@breadtan/skills-that-built-the-builder-how-developer-automation-grew-alongside-threatassessor-cc23897eee82) | 44-skill developer automation layer — regression suites, feedback flywheels (observe→diagnose→prescribe→gate→apply→verify), data portability, and operational skills; why the gate in every loop exists |
+| 19 | [Always Verify, Never Trust — Even Yourself: ThreatAssessor's Self-Assessment](https://medium.com/@breadtan/always-verify-never-trust-even-yourself-threatassessors-self-assessment-47aea99e229b) | Running /harden-audit on TA itself — 1 Critical confirmed by execution (prompt injection in /generate-mmd), 7 findings fixed same session, 2 new DETECT rules (029/030) grounded in own findings; the self-assessment loop closed |
 
 ---
 
