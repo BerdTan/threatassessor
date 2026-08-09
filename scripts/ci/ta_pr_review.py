@@ -271,7 +271,10 @@ def main() -> int:
                     gate = export.get("gate", {})
                     result["gate_result"] = gate.get("result", "UNKNOWN")
                     result["blocking_signals"] = gate.get("blocking_signals", [])
-                    print(f"gate={result['gate_result']}")
+                    # Pull risk score from export bundle (authoritative source)
+                    assessment = export.get("assessment", {})
+                    result["risk_score"] = assessment.get("risk_score_before") or assessment.get("risk_score_after")
+                    print(f"gate={result['gate_result']} risk={result.get('risk_score')}")
                 else:
                     result["gate_result"] = "PASS"
                     print("not available — defaulting to PASS")
