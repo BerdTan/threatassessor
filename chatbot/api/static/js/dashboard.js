@@ -17626,8 +17626,8 @@ class Dashboard {
         });
 
         this._mcpRefreshSignals();
-        this._mcpLoadPersonas();
-        this._mcpRenderSim();
+        this._mcpRenderSim();      // render shell immediately (dropdowns empty until personas load)
+        this._mcpLoadPersonas();   // fills dropdowns when ready, re-renders
 
         // Auto-refresh signals every 15s
         this._mcpRefreshTimer = setInterval(() => this._mcpRefreshSignals(), 15000);
@@ -17748,14 +17748,14 @@ class Dashboard {
             <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.5rem;align-items:end;">
                 <div>
                     <label style="display:block;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-tertiary);margin-bottom:0.3rem;">Benign (${benign.length})</label>
-                    <select id="mcp-sim-benign-select" style="width:100%;padding:0.4rem 0.6rem;font-size:0.8125rem;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-color);cursor:pointer;">
+                    <select id="mcp-sim-benign-select" style="width:100%;padding:0.4rem 0.6rem;font-size:0.8125rem;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-color, #111);cursor:pointer;">
                         <option value="">— select —</option>
                         ${benign.map(_opt).join('')}
                     </select>
                 </div>
                 <div>
                     <label style="display:block;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#ef4444;margin-bottom:0.3rem;">Adversarial (${adversarial.length})</label>
-                    <select id="mcp-sim-adv-select" style="width:100%;padding:0.4rem 0.6rem;font-size:0.8125rem;border:1px solid #ef444466;border-radius:2px;background:#ef444408;color:var(--text-color);cursor:pointer;">
+                    <select id="mcp-sim-adv-select" style="width:100%;padding:0.4rem 0.6rem;font-size:0.8125rem;border:1px solid #ef444466;border-radius:2px;background:var(--card-bg);color:var(--text-color, #111);cursor:pointer;">
                         <option value="">— select —</option>
                         ${adversarial.map(_opt).join('')}
                     </select>
@@ -17779,7 +17779,7 @@ class Dashboard {
             </div>
         </div>`;
 
-        this._mcpRenderHeatmap({});
+        this._mcpRenderHeatmap(this._mcpToolCounts || {});
 
         // Wire dropdowns + Run button
         const benignSel = document.getElementById('mcp-sim-benign-select');
@@ -17850,6 +17850,7 @@ class Dashboard {
         if (alerts) alerts.innerHTML = 'None fired yet.';
 
         const toolCounts = {};
+        this._mcpToolCounts = {};   // reset on new run
         const firedRules = [];
         let stepCount = 0;
         let totalSteps = 0;
@@ -17927,6 +17928,7 @@ class Dashboard {
                     if (event === 'tool_result') {
                         const div = document.getElementById(`mcp-step-${data.step}`);
                         toolCounts[data.tool] = (toolCounts[data.tool] || 0) + 1;
+                        this._mcpToolCounts = toolCounts;
                         this._mcpRenderHeatmap(toolCounts);
                         if (div) {
                             div.style.opacity = '1';
