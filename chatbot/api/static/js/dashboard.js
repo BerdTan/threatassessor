@@ -17766,7 +17766,7 @@ class Dashboard {
             <div style="margin-top:0.5rem;font-size:0.7rem;color:var(--text-tertiary);">
                 Using arch: <strong style="color:var(--text-primary);">${archName}</strong>
                 · Status cards above update after each tool call
-                · Adversarial personas trigger DETECT-005/019–028 (11 adversarial scenarios)
+                · Adversarial personas trigger DETECT-005/019–030 (13 adversarial scenarios)
             </div>
         </div>
         <div id="mcp-sim-body" style="flex:1;display:flex;overflow:hidden;min-height:0;">
