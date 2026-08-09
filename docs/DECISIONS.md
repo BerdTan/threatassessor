@@ -4,6 +4,28 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 40 — 2026-08-09 (continued VI)
+
+### 42. MCP sim dropdown UX fixes
+
+**What:** Three fixes — dropdown text uses `var(--text-color, #111)` (readable on light and dark themes); sim panel renders immediately without waiting for status cards; heatmap counts persist across tab switches and reset only on new sim run start.
+
+**Why:** White dropdown background made text invisible on light theme. Dropdowns were blocked behind MCP server card loading. Heatmap reset on every tab switch, losing run history.
+
+### 41. MCP sim — benign/adversarial dropdowns replace pill grid
+
+**What:** 19 persona pills replaced with two compact `<select>` dropdowns (Benign 6, Adversarial 13) + Run button. Mutual exclusion between dropdowns. Adversarial count and DETECT range updated to 13 / DETECT-030.
+
+**Why:** 13 adversarial personas occupied too much vertical space as pills. Dropdowns compact the same information into one row.
+
+### 40. MCP sim — mmd_injection + mcp_unauth_exposure personas (DETECT-029/030)
+
+**What:** Added 2 adversarial sim personas to `mcp_sim.py`: `mmd_injection` (governance_check with injection markers → DETECT-029) and `mcp_unauth_exposure` (tool calls + zero auth failures → DETECT-030). 19 total personas, 13 adversarial.
+
+**Why:** DETECT-029/030 had no sim coverage. Personas complete the loop so the MCP tab can demonstrate the new rules live.
+
+---
+
 ## Session 40 — 2026-08-09 (continued V)
 
 ### 39. Incident simulator — mmd_injection + mcp_unauth_exposure scenarios
