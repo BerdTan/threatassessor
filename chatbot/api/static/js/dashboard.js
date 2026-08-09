@@ -569,6 +569,15 @@ class Dashboard {
                 fileInput.value = '';
                 const label = document.getElementById('drop-zone-label');
                 if (label) label.innerHTML = 'Drop .mmd file here or click to browse';
+                const pasteInput = document.getElementById('paste-mmd-input');
+                if (pasteInput) pasteInput.value = '';
+                const pasteName = document.getElementById('paste-mmd-name');
+                if (pasteName) pasteName.value = '';
+                const recentLabel = document.getElementById('recent-selected-label');
+                if (recentLabel) recentLabel.textContent = '';
+                this._selectedRecentArch = null;
+                this._selectedRecentMmd = null;
+                this._highlightSelected();
             });
         }
 
@@ -623,56 +632,166 @@ class Dashboard {
                 }
             }
         });
+
+        // ── Input tab switching ──────────────────────────────────────────────
+        this._activeInputTab = 'recent';
+        this._selectedRecentArch = null;
+        this._selectedRecentMmd = null;
+
+        document.querySelectorAll('.input-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.inputTab;
+                this._switchInputTab(tab);
+            });
+        });
+
+        // Show Browse button only on Upload tab
+        this._switchInputTab('recent');
+
+        // Recent search filter
+        const recentSearch = document.getElementById('recent-search');
+        if (recentSearch) {
+            recentSearch.addEventListener('input', () => {
+                this._filterRecentList(recentSearch.value.trim().toLowerCase());
+            });
+        }
+
+        // Load recent architectures
+        this._loadRecentArchs();
+    }
+
+    _switchInputTab(tab) {
+        this._activeInputTab = tab;
+        document.querySelectorAll('.input-tab-btn').forEach(btn => {
+            const active = btn.dataset.inputTab === tab;
+            btn.style.background = active ? 'var(--accent-color)' : 'var(--card-bg)';
+            btn.style.color = active ? '#fff' : 'var(--text-secondary)';
+        });
+        document.querySelectorAll('.input-tab-panel').forEach(p => {
+            p.style.display = p.id === `input-tab-${tab}` ? '' : 'none';
+        });
+        const pickBtn = document.getElementById('pick-file-btn');
+        if (pickBtn) pickBtn.style.display = tab === 'upload' ? '' : 'none';
+    }
+
+    async _loadRecentArchs() {
+        const list = document.getElementById('recent-arch-list');
+        if (!list) return;
+        try {
+            const res = await fetch('/api/v1/reports', { headers: { 'X-API-Key': this.apiKey } });
+            if (!res.ok) throw new Error(res.statusText);
+            const archs = await res.json();
+            this._recentArchs = archs.sort((a, b) => (b.analysed_at || 0) - (a.analysed_at || 0));
+            this._renderRecentList(this._recentArchs);
+        } catch (e) {
+            list.innerHTML = `<div style="padding:1rem; color:var(--text-tertiary); font-size:0.8125rem;">Could not load architectures</div>`;
+        }
+    }
+
+    _renderRecentList(archs) {
+        const list = document.getElementById('recent-arch-list');
+        if (!list) return;
+        if (!archs.length) {
+            list.innerHTML = `<div style="padding:1rem; color:var(--text-tertiary); font-size:0.8125rem;">No architectures found in report folder</div>`;
+            return;
+        }
+        list.innerHTML = archs.map(a => {
+            const date = a.analysed_at ? new Date(a.analysed_at * 1000).toLocaleDateString() : '';
+            return `<div class="recent-arch-item" data-arch="${this._escHtml(a.name)}"
+                style="padding:0.5rem 0.75rem; cursor:pointer; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; font-size:0.8125rem;">
+                <span style="font-weight:500; color:var(--text-color);">${this._escHtml(a.name)}</span>
+                <span style="color:var(--text-tertiary); font-size:0.75rem;">${date}</span>
+            </div>`;
+        }).join('');
+        list.querySelectorAll('.recent-arch-item').forEach(item => {
+            item.addEventListener('click', () => this._selectRecentArch(item.dataset.arch));
+            item.addEventListener('mouseenter', () => item.style.background = 'var(--hover-bg, rgba(0,0,0,0.04))');
+            item.addEventListener('mouseleave', () => item.style.background = item.dataset.arch === this._selectedRecentArch ? 'var(--accent-color)' : '');
+        });
+    }
+
+    _filterRecentList(query) {
+        if (!this._recentArchs) return;
+        const filtered = query ? this._recentArchs.filter(a => a.name.toLowerCase().includes(query)) : this._recentArchs;
+        this._renderRecentList(filtered);
+        if (this._selectedRecentArch) this._highlightSelected();
+    }
+
+    async _selectRecentArch(archName) {
+        const label = document.getElementById('recent-selected-label');
+        if (label) label.textContent = `Loading ${archName}…`;
+        try {
+            const res = await fetch(`/api/v1/reports/${encodeURIComponent(archName)}/mmd`, { headers: { 'X-API-Key': this.apiKey } });
+            if (!res.ok) throw new Error('No source diagram available');
+            const data = await res.json();
+            this._selectedRecentArch = archName;
+            this._selectedRecentMmd = data.mmd;
+            if (label) label.textContent = `✓ ${archName}`;
+            this._highlightSelected();
+        } catch (e) {
+            if (label) label.textContent = `✗ ${e.message}`;
+            this._selectedRecentArch = null;
+            this._selectedRecentMmd = null;
+        }
+    }
+
+    _highlightSelected() {
+        document.querySelectorAll('.recent-arch-item').forEach(item => {
+            item.style.background = item.dataset.arch === this._selectedRecentArch ? 'var(--accent-color)' : '';
+            item.style.color = item.dataset.arch === this._selectedRecentArch ? '#fff' : '';
+            item.querySelector('span')?.style && (item.querySelectorAll('span').forEach(s => s.style.color = item.dataset.arch === this._selectedRecentArch ? '#fff' : ''));
+        });
     }
 
     async startAnalysis() {
-        console.log('[DEBUG] startAnalysis() called');
-        const fileInput = document.getElementById('file-input');
+        const tab = this._activeInputTab || 'upload';
+        const formData = new FormData();
 
-        console.log('[DEBUG] File input:', fileInput);
-        console.log('[DEBUG] Files:', fileInput.files);
+        if (tab === 'recent') {
+            if (!this._selectedRecentMmd) {
+                alert('Select an architecture from the list first');
+                return;
+            }
+            formData.append('mmd_text', this._selectedRecentMmd);
+            formData.append('mmd_name', this._selectedRecentArch || 'architecture');
+            // Synthesise a File so diagram rendering still works
+            this.uploadedFile = new File([this._selectedRecentMmd], (this._selectedRecentArch || 'architecture') + '.mmd', { type: 'text/plain' });
 
-        if (!fileInput.files.length) {
-            alert('Please select an architecture file');
-            return;
+        } else if (tab === 'paste') {
+            const text = (document.getElementById('paste-mmd-input')?.value || '').trim();
+            if (!text) { alert('Paste a Mermaid diagram first'); return; }
+            const name = (document.getElementById('paste-mmd-name')?.value || 'pasted').trim();
+            formData.append('mmd_text', text);
+            formData.append('mmd_name', name);
+            this.uploadedFile = new File([text], name + '.mmd', { type: 'text/plain' });
+
+        } else {
+            // Upload tab — original path
+            const fileInput = document.getElementById('file-input');
+            if (!fileInput.files.length) { alert('Please select an architecture file'); return; }
+            const file = fileInput.files[0];
+            if (!file.name.endsWith('.mmd')) { alert('Please select a .mmd file'); return; }
+            this.uploadedFile = file;
+            formData.append('architecture_file', file);
         }
-
-        const file = fileInput.files[0];
-        console.log('[DEBUG] Selected file:', file.name);
-
-        if (!file.name.endsWith('.mmd')) {
-            alert('Please select a .mmd file');
-            return;
-        }
-
-        // Store uploaded file for diagram rendering
-        this.uploadedFile = file;
 
         // Hide upload form, show analysis view
         document.getElementById('upload-form-container').style.display = 'none';
         document.getElementById('tab-content').style.display = 'block';
 
-        // Grey out content tabs while analysis is in progress
         this._analysing = true;
         this._setContentTabsDisabled(true);
         this._setOverviewDetailVisible(false);
-
-        // Reset progress
         this.updateProgress(0, 'Starting analysis...');
 
-        // Capture SSP profile from selector
         const sspSelect = document.getElementById('ssp-profile-select');
         this.sspProfile = sspSelect ? sspSelect.value : 'low_risk_cloud';
         this._updateSspBadge();
 
-        // Start SSE connection
-        const formData = new FormData();
-        formData.append('architecture_file', file);
         formData.append('include_validation', 'true');
         formData.append('ssp_profile', this.sspProfile);
         formData.append('enable_ssp', 'true');
 
-        console.log('[DEBUG] Creating SSEClient for /api/v1/analyze-stream');
         this.sseClient = new SSEClient('/api/v1/analyze-stream', formData);
         this.sseClient.on('progress', (data) => this.handleProgress(data));
         this.sseClient.on('patterns_detected', (data) => this.handlePatternsDetected(data));
@@ -680,10 +799,7 @@ class Dashboard {
         this.sseClient.on('attack_path', (data) => this.handleAttackPath(data));
         this.sseClient.on('complete', async (data) => await this.handleComplete(data));
         this.sseClient.on('error', (data) => this.handleError(data));
-
-        console.log('[DEBUG] Connecting to SSE stream...');
         await this.sseClient.connect();
-        console.log('[DEBUG] SSE connection complete');
     }
 
     handleProgress(data) {

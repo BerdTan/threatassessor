@@ -12,7 +12,7 @@ import concurrent.futures
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from chatbot.services import ThreatAnalysisService
 from chatbot.api.dependencies import verify_api_key
@@ -343,10 +343,12 @@ async def analyze_with_progress(
 
 @router.post("/analyze-stream")
 async def analyze_architecture_stream(
-    architecture_file: UploadFile = File(
-        ...,
+    architecture_file: Optional[UploadFile] = File(
+        None,
         description="Mermaid diagram file (.mmd format, max 10MB)"
     ),
+    mmd_text: Optional[str] = Form(None, description="MMD content as text (alternative to file upload)"),
+    mmd_name: Optional[str] = Form(None, description="Name hint for the diagram when using mmd_text"),
     include_validation: bool = Form(True),
     ssp_profile: str = Form("low_risk_cloud"),
     enable_ssp: bool = Form(True),
@@ -404,19 +406,29 @@ async def analyze_architecture_stream(
             print(f"Progress: {data['progress']}% - {data['message']}")
     ```
     """
-    # Validate file extension
-    if not architecture_file.filename.endswith('.mmd'):
+    # Resolve content from either file upload or raw text
+    if mmd_text is not None:
+        content = mmd_text.encode("utf-8")
+        filename = (mmd_name or "pasted").rstrip(".mmd") + ".mmd"
+    elif architecture_file is not None:
+        if not architecture_file.filename.endswith('.mmd'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must have .mmd extension"
+            )
+        content = await architecture_file.read()
+        filename = architecture_file.filename
+    else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must have .mmd extension"
+            detail="Provide either architecture_file or mmd_text"
         )
 
-    # Validate file size (10MB limit)
-    content = await architecture_file.read()
-    if len(content) > 10 * 1024 * 1024:  # 10MB
+    # Validate size (10MB limit)
+    if len(content) > 10 * 1024 * 1024:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File size {len(content)} bytes exceeds 10MB limit"
+            detail=f"Content size {len(content)} bytes exceeds 10MB limit"
         )
 
     # Save to temp file
@@ -430,7 +442,7 @@ async def analyze_architecture_stream(
 
     try:
         return StreamingResponse(
-            analyze_with_progress(tmp_path, architecture_file.filename, include_validation, ssp_profile, enable_ssp),
+            analyze_with_progress(tmp_path, filename, include_validation, ssp_profile, enable_ssp),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

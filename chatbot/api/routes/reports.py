@@ -947,6 +947,18 @@ async def delete_report(architecture_name: str, _: str = Depends(verify_api_key)
     return {"deleted": architecture_name}
 
 
+@router.get("/reports/{architecture_name}/mmd")
+async def get_arch_mmd(architecture_name: str):
+    """Return the original input MMD for a previously analysed architecture (before.mmd)."""
+    mmd_path = resolve_arch_dir(architecture_name) / "before.mmd"
+    if not mmd_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No source diagram found for '{architecture_name}'"
+        )
+    return {"arch": architecture_name, "mmd": mmd_path.read_text(encoding="utf-8")}
+
+
 @router.get("/reports/{architecture_name}/files/{filename}")
 async def get_report_file(architecture_name: str, filename: str):
     """

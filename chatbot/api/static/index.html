@@ -162,9 +162,36 @@
             <div id="upload-form-container" class="upload-container">
                 <h2>Architecture Analysis</h2>
                 <form id="upload-form" class="upload-form">
-                    <div class="file-drop-zone" id="drop-zone">
-                        <p id="drop-zone-label">Drop .mmd file here or click to browse</p>
-                        <input type="file" id="file-input" accept=".mmd" required>
+
+                    <!-- Input mode tabs -->
+                    <div style="display:flex; gap:0; margin-bottom:1rem; border:1px solid var(--border-color); border-radius:2px; overflow:hidden;">
+                        <button type="button" class="input-tab-btn active" data-input-tab="recent" style="flex:1; padding:0.45rem 0; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; border:none; cursor:pointer; background:var(--accent-color); color:#fff;">Recent</button>
+                        <button type="button" class="input-tab-btn" data-input-tab="upload" style="flex:1; padding:0.45rem 0; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; border:none; border-left:1px solid var(--border-color); cursor:pointer; background:var(--card-bg); color:var(--text-secondary);">Upload</button>
+                        <button type="button" class="input-tab-btn" data-input-tab="paste" style="flex:1; padding:0.45rem 0; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; border:none; border-left:1px solid var(--border-color); cursor:pointer; background:var(--card-bg); color:var(--text-secondary);">Paste</button>
+                    </div>
+
+                    <!-- Recent tab -->
+                    <div id="input-tab-recent" class="input-tab-panel">
+                        <div style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:0.5rem;">Previously analysed architectures — click to load</div>
+                        <input type="text" id="recent-search" placeholder="Search…" style="width:100%; padding:0.4rem 0.6rem; font-size:0.8125rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color); margin-bottom:0.5rem; box-sizing:border-box;">
+                        <div id="recent-arch-list" style="max-height:220px; overflow-y:auto; border:1px solid var(--border-color); border-radius:2px;">
+                            <div style="padding:1.5rem; text-align:center; color:var(--text-tertiary); font-size:0.8125rem;">Loading…</div>
+                        </div>
+                        <div id="recent-selected-label" style="margin-top:0.5rem; font-size:0.8125rem; color:var(--text-secondary); min-height:1.25rem;"></div>
+                    </div>
+
+                    <!-- Upload tab -->
+                    <div id="input-tab-upload" class="input-tab-panel" style="display:none;">
+                        <div class="file-drop-zone" id="drop-zone">
+                            <p id="drop-zone-label">Drop .mmd file here or click to browse</p>
+                            <input type="file" id="file-input" accept=".mmd">
+                        </div>
+                    </div>
+
+                    <!-- Paste tab -->
+                    <div id="input-tab-paste" class="input-tab-panel" style="display:none;">
+                        <textarea id="paste-mmd-input" placeholder="Paste Mermaid diagram here…" style="width:100%; height:180px; padding:0.5rem 0.75rem; font-size:0.8125rem; font-family:monospace; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color); resize:vertical; box-sizing:border-box;"></textarea>
+                        <input type="text" id="paste-mmd-name" placeholder="Diagram name (optional)" style="width:100%; padding:0.4rem 0.6rem; font-size:0.8125rem; border:1px solid var(--border-color); border-radius:2px; background:var(--card-bg); color:var(--text-color); margin-top:0.4rem; box-sizing:border-box;">
                     </div>
 
                     <!-- SSP Profile selector -->
@@ -194,11 +221,11 @@
                         </p>
                     </div>
 
-                    <!-- Action buttons row: Clear · Upload · Analyse -->
+                    <!-- Action buttons row -->
                     <div style="display:flex; gap:0.5rem; margin-top:1.25rem; align-items:center;">
-                        <button type="button" id="clear-file-btn" class="btn-secondary" title="Clear selected file" style="flex:0 0 auto;">Clear</button>
-                        <button type="button" id="pick-file-btn" class="btn-secondary" style="flex:1;">Browse</button>
-                        <button type="submit" id="analyse-btn" class="btn-primary btn-large" style="flex:1;">Analyse</button>
+                        <button type="button" id="clear-file-btn" class="btn-secondary" title="Clear selection" style="flex:0 0 auto;">Clear</button>
+                        <button type="button" id="pick-file-btn" class="btn-secondary" style="flex:1; display:none;">Browse</button>
+                        <button type="submit" id="analyse-btn" class="btn-primary btn-large" style="flex:2;">Analyse</button>
                     </div>
                 </form>
 
