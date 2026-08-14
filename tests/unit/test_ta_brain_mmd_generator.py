@@ -293,15 +293,15 @@ def test_update_synthetic_status_approve(tmp_path):
 
 def test_update_synthetic_status_not_found(tmp_path):
     with pytest.raises(FileNotFoundError):
-        update_synthetic_status("GEN-NONEXISTENT-Z", "approved", queue_dir=tmp_path)
+        update_synthetic_status("GEN-GAP-999-20260101T000000Z", "approved", queue_dir=tmp_path)
 
 
 # ── get_generation_summary ────────────────────────────────────────────────────
 
 def test_get_generation_summary_counts(tmp_path):
-    _write_meta(tmp_path, "GEN-GAP-001-A", "GAP-001", status="staged")
-    _write_meta(tmp_path, "GEN-GAP-001-B", "GAP-001", status="approved")
-    _write_meta(tmp_path, "GEN-GAP-002-A", "GAP-002", status="rejected")
+    _write_meta(tmp_path, "GEN-GAP-001-20260814T100000Z", "GAP-001", status="staged")
+    _write_meta(tmp_path, "GEN-GAP-001-20260814T110000Z", "GAP-001", status="approved")
+    _write_meta(tmp_path, "GEN-GAP-002-20260814T120000Z", "GAP-002", status="rejected")
     summary = get_generation_summary(queue_dir=tmp_path)
     assert summary["total"] == 3
     assert summary["by_status"]["staged"] == 1

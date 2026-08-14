@@ -29,6 +29,9 @@ REPORT_DIR = ROOT / "report"
 BRAIN_PATH = REPORT_DIR / "ta_brain.json"
 QUEUE_DIR = REPORT_DIR / "brain_synthetic_queue"
 
+# gen_id must match this pattern — prevents path traversal via crafted IDs
+_GEN_ID_RE = re.compile(r'^GEN-[A-Z0-9_-]+-\d{8}T\d{6}Z$')
+
 MAX_DEFAULT = 3
 MIN_NODES = 3
 MIN_EDGES = 2
@@ -69,6 +72,10 @@ def validate_mmd(mmd_text: str) -> tuple:
     has_header = bool(re.search(r"^\s*(graph|flowchart)\s+(TD|LR|BT|RL)", text, re.MULTILINE | re.IGNORECASE))
     if not has_header:
         return False, "missing graph/flowchart header"
+
+    # Reject HTML tags in labels — prevents XSS when rendered with securityLevel: loose
+    if re.search(r'<\s*(script|iframe|object|embed|link|meta|img|svg|on\w+\s*=)', text, re.IGNORECASE):
+        return False, "HTML tags not permitted in diagram labels"
 
     # Count edge lines (contain --> or --- or ==> or -.->)
     edge_lines = [ln for ln in text.splitlines() if re.search(r"-{1,2}>|---", ln)]
@@ -295,11 +302,15 @@ def update_synthetic_status(gen_id: str, status: str, queue_dir: Path = None) ->
     Update status in a .meta.json file. Raises FileNotFoundError if gen_id not found.
     status must be one of: staged, approved, rejected, ingested.
     """
+    if not _GEN_ID_RE.match(gen_id):
+        raise ValueError(f"Invalid gen_id format: {gen_id!r}")
     if status not in VALID_STATUSES:
         raise ValueError(f"Invalid status '{status}'. Must be one of {VALID_STATUSES}")
 
-    qdir = queue_dir or QUEUE_DIR
-    meta_path = qdir / f"{gen_id}.meta.json"
+    qdir = (queue_dir or QUEUE_DIR).resolve()
+    meta_path = (qdir / f"{gen_id}.meta.json").resolve()
+    if not str(meta_path).startswith(str(qdir)):
+        raise ValueError("gen_id resolves outside queue directory")
     if not meta_path.exists():
         raise FileNotFoundError(f"Generation entry not found: {gen_id}")
 

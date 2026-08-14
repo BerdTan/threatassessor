@@ -34,7 +34,7 @@ class Dashboard {
             mermaid.initialize({
                 startOnLoad: false,
                 theme: document.body.classList.contains('dark-theme') ? 'dark' : 'default',
-                securityLevel: 'loose',
+                securityLevel: 'strict',
                 flowchart: { useMaxWidth: false }
             });
         }

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from chatbot.api.dependencies import verify_api_key
 from chatbot.modules.ta_brain_query import BRAIN_PATH, INSTANCES_PATH, INTERACTIONS_PATH, query_brain
@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/v1/brain", tags=["brain"])
 
 class BrainGenerateRequest(BaseModel):
     gap_ids: list = []
-    max_per_run: int = 3
+    max_per_run: int = Field(default=3, ge=1, le=10)
 
 
 class BrainQueryRequest(BaseModel):
