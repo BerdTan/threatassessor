@@ -413,6 +413,7 @@ class Dashboard {
         const isTraces     = tabName === 'traces';
         const isSocKg      = tabName === 'soc-kg';
         const isMcp        = tabName === 'mcp';
+        const isBrain      = tabName === 'brain';
         const uploadContainer    = document.getElementById('upload-form-container');
         const tabContent         = document.getElementById('tab-content');
         const configWrapper      = document.getElementById('config-pane-wrapper');
@@ -421,6 +422,7 @@ class Dashboard {
         const tracesWrapper      = document.getElementById('traces-pane-wrapper');
         const socKgWrapper       = document.getElementById('soc-kg-pane-wrapper');
         const mcpWrapper         = document.getElementById('mcp-pane-wrapper');
+        const brainWrapper       = document.getElementById('brain-pane-wrapper');
 
         // Hide all full-pane wrappers first, then show the right one
         if (configWrapper)    configWrapper.style.display    = 'none';
@@ -429,6 +431,7 @@ class Dashboard {
         if (tracesWrapper)    tracesWrapper.style.display    = 'none';
         if (socKgWrapper)     socKgWrapper.style.display     = 'none';
         if (mcpWrapper)       mcpWrapper.style.display       = 'none';
+        if (brainWrapper)     brainWrapper.style.display     = 'none';
         // Restore main-pane defaults (may have been modified by SOC KG tab)
         const _mp = document.querySelector('.main-pane');
         if (_mp) { _mp.style.display = ''; _mp.style.flexDirection = '';
@@ -466,6 +469,14 @@ class Dashboard {
                       mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
             if (mcpWrapper) { mcpWrapper.style.display = 'flex'; mcpWrapper.style.flexDirection = 'column'; }
             this._mcpInit();
+        } else if (isBrain) {
+            if (uploadContainer) uploadContainer.style.display = 'none';
+            if (tabContent)      tabContent.style.display      = 'none';
+            const mp = document.querySelector('.main-pane');
+            if (mp) { mp.style.display = 'flex'; mp.style.flexDirection = 'column';
+                      mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
+            if (brainWrapper) { brainWrapper.style.display = 'flex'; brainWrapper.style.flexDirection = 'column'; }
+            this._brainInit();
         } else {
             if (this.analysisData) {
                 if (uploadContainer) uploadContainer.style.display = 'none';
@@ -1268,6 +1279,9 @@ class Dashboard {
                 break;
             case 'mcp':
                 // handled by _mcpInit() called from switchTab
+                break;
+            case 'brain':
+                // handled by _brainInit() called from switchTab
                 break;
         }
     }
@@ -18909,6 +18923,235 @@ class Dashboard {
             </div>`;
     }
     // ── end SOC KG ────────────────────────────────────────────────────────────
+
+    // ── TA Brain ──────────────────────────────────────────────────────────────
+
+    _brainInit() {
+        if (this._brainInitDone) { this.loadBrainTab(); return; }
+        this._brainInitDone = true;
+        this.loadBrainTab();
+    }
+
+    async loadBrainTab() {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const h = { 'TM-API-KEY': apiKey, 'Content-Type': 'application/json' };
+
+        // Load all sections in parallel
+        const [statusRes, benchRes, queueRes] = await Promise.all([
+            fetch('/api/v1/brain/status',         { headers: h }).catch(() => null),
+            fetch('/api/v1/brain/benchmarks',     { headers: h }).catch(() => null),
+            fetch('/api/v1/brain/synthetic-queue',{ headers: h }).catch(() => null),
+        ]);
+
+        const status  = statusRes  && statusRes.ok  ? await statusRes.json()  : null;
+        const bench   = benchRes   && benchRes.ok   ? await benchRes.json()   : null;
+        const queueData = queueRes && queueRes.ok   ? await queueRes.json()   : null;
+
+        // Also load patterns via query endpoint
+        let patterns = [];
+        try {
+            const pr = await fetch('/api/v1/brain/query', {
+                method: 'POST', headers: h,
+                body: JSON.stringify({ mode: 'patterns', topology: {}, arch_type: '' }),
+            });
+            if (pr.ok) {
+                const pd = await pr.json();
+                patterns = pd.patterns || pd.results || [];
+            }
+        } catch (_) {}
+
+        // Also load gaps
+        let gaps = [];
+        try {
+            const gr = await fetch('/api/v1/brain/query', {
+                method: 'POST', headers: h,
+                body: JSON.stringify({ mode: 'gaps', topology: {}, arch_type: '' }),
+            });
+            if (gr.ok) {
+                const gd = await gr.json();
+                gaps = gd.gaps || gd.results || [];
+            }
+        } catch (_) {}
+
+        this._brainRenderStatus(status);
+        this._brainRenderPatterns(patterns, bench);
+        this._brainRenderGaps(gaps, bench);
+        this._brainRenderQueue(queueData);
+    }
+
+    _brainRenderStatus(status) {
+        const el = document.getElementById('brain-status-stats');
+        if (!el) return;
+        if (!status) { el.innerHTML = '<span style="color:var(--text-tertiary);font-size:0.75rem;">Failed to load</span>'; return; }
+        const stat = (label, val) =>
+            `<span style="font-size:0.78rem;color:var(--text-secondary);">${label}: <strong style="color:var(--text-primary);">${val}</strong></span>`;
+        el.innerHTML = [
+            stat('Instances', status.instances_count ?? '—'),
+            stat('Patterns',  status.patterns ?? '—'),
+            stat('Gaps',      status.gaps ?? '—'),
+            stat('v',         status.pattern_version ?? '—'),
+        ].join('');
+    }
+
+    _brainRenderPatterns(patterns, bench) {
+        const el = document.getElementById('brain-patterns-table');
+        if (!el) return;
+        if (!patterns || !patterns.length) {
+            el.innerHTML = '<span style="color:var(--text-tertiary);">No patterns loaded — use Rebuild to seed the brain.</span>';
+            return;
+        }
+        const brierMap = {};
+        if (bench && bench.brier_scores) {
+            Object.entries(bench.brier_scores).forEach(([pid, s]) => { brierMap[pid] = s; });
+        }
+        const trendArrow = t => t === 'rising' ? '↑' : t === 'falling' ? '↓' : '→';
+        const confColor  = v => v >= 0.7 ? '#10b981' : v >= 0.4 ? '#f59e0b' : '#ef4444';
+        const rows = patterns.map(p => {
+            const corpus = p.corpus_confidence ?? 0;
+            const bmark  = p.benchmark_confidence ?? 1;
+            const pub    = Math.min(corpus, bmark);
+            const suspect = p.suspect ? '<span style="color:#ef4444;font-weight:700;">⚠</span>' : '';
+            return `<tr style="border-bottom:1px solid var(--border-color);">
+                <td style="padding:0.3rem 0.6rem;font-weight:600;">${this._esc(p.id||'')}</td>
+                <td style="padding:0.3rem 0.6rem;color:var(--text-secondary);">${this._esc(p.trigger?.arch_type||'—')}</td>
+                <td style="padding:0.3rem 0.6rem;">${corpus.toFixed(2)}</td>
+                <td style="padding:0.3rem 0.6rem;">${bmark.toFixed(2)}</td>
+                <td style="padding:0.3rem 0.6rem;font-weight:700;color:${confColor(pub)};">${pub.toFixed(2)}</td>
+                <td style="padding:0.3rem 0.6rem;">${p.evidence_count ?? '—'}</td>
+                <td style="padding:0.3rem 0.6rem;">${trendArrow(p.trend)}</td>
+                <td style="padding:0.3rem 0.6rem;">${suspect}</td>
+            </tr>`;
+        }).join('');
+        el.innerHTML = `<table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="border-bottom:2px solid var(--border-color);font-size:0.72rem;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.04em;">
+                <th style="padding:0.2rem 0.6rem;text-align:left;">ID</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;">Arch Type</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;">Corpus</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;">Benchmark</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;">Published</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;">Evidence</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;">Trend</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;">⚠</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    _brainRenderGaps(gaps, bench) {
+        const el = document.getElementById('brain-gaps-grid');
+        if (!el) return;
+        if (!gaps || !gaps.length) {
+            el.innerHTML = '<span style="color:var(--text-tertiary);">No gaps detected.</span>';
+            return;
+        }
+        const cards = gaps.map(g => {
+            const forced = g.forced_gap;
+            const barColor = forced ? '#ef4444' : (g.priority >= 0.7 ? '#f59e0b' : '#10b981');
+            const brier = g.confidence_floor != null ? g.confidence_floor.toFixed(3) : '';
+            const prompt = (g.generation_prompt || '').slice(0, 90);
+            return `<div style="border:1px solid var(--border-color);border-radius:4px;padding:0.6rem 0.8rem;margin-bottom:0.5rem;background:var(--card-bg);">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
+                    <span style="font-weight:700;color:var(--text-primary);">${this._esc(g.id||'')}</span>
+                    <span style="font-size:0.7rem;padding:0.1rem 0.4rem;border-radius:3px;background:${barColor}20;color:${barColor};border:1px solid ${barColor}40;">${forced ? 'FORCED' : 'gap'}</span>
+                    <span style="font-size:0.7rem;color:var(--text-tertiary);">${this._esc(g.region||'')}</span>
+                    ${brier ? `<span style="font-size:0.7rem;color:var(--text-tertiary);margin-left:auto;">Brier ${brier}</span>` : ''}
+                </div>
+                <div style="width:100%;height:3px;background:var(--border-color);border-radius:2px;margin-bottom:0.4rem;">
+                    <div style="width:${Math.round((g.priority||0)*100)}%;height:100%;background:${barColor};border-radius:2px;"></div>
+                </div>
+                <div style="font-size:0.72rem;color:var(--text-secondary);">${this._esc(prompt)}${(g.generation_prompt||'').length > 90 ? '…' : ''}</div>
+            </div>`;
+        }).join('');
+        el.innerHTML = cards;
+    }
+
+    _brainRenderQueue(queueData) {
+        const el = document.getElementById('brain-queue-list');
+        if (!el) return;
+        const queue = queueData && queueData.queue ? queueData.queue : [];
+        if (!queue.length) {
+            el.innerHTML = '<span style="color:var(--text-tertiary);">Queue empty — click Generate MMDs to populate.</span>';
+            return;
+        }
+        const statusColor = s => ({ staged:'#3b82f6', approved:'#10b981', rejected:'#ef4444', ingested:'#6b7280' })[s] || '#6b7280';
+        const items = queue.map(item => {
+            const shortId = (item.gen_id || '').slice(-12);
+            const sc = statusColor(item.status);
+            const approveReject = item.status === 'staged' ? `
+                <button onclick="window.dashboard._brainApprove('${this._esc(item.gen_id)}')" style="font-size:0.68rem;padding:0.1rem 0.4rem;border:1px solid #10b981;border-radius:3px;background:transparent;color:#10b981;cursor:pointer;margin-right:0.3rem;">✓</button>
+                <button onclick="window.dashboard._brainReject('${this._esc(item.gen_id)}')" style="font-size:0.68rem;padding:0.1rem 0.4rem;border:1px solid #ef4444;border-radius:3px;background:transparent;color:#ef4444;cursor:pointer;">✕</button>` : '';
+            return `<div style="border:1px solid var(--border-color);border-radius:4px;padding:0.45rem 0.65rem;margin-bottom:0.4rem;background:var(--card-bg);">
+                <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.2rem;">
+                    <span style="font-size:0.7rem;font-weight:700;font-family:monospace;color:var(--text-primary);">${this._esc(shortId)}</span>
+                    <span style="font-size:0.68rem;padding:0.1rem 0.35rem;border-radius:3px;background:${sc}20;color:${sc};border:1px solid ${sc}40;">${this._esc(item.status)}</span>
+                    <span style="margin-left:auto;">${approveReject}</span>
+                </div>
+                <div style="font-size:0.7rem;color:var(--text-secondary);">${this._esc(item.gap_id||'')} · ${this._esc(item.arch_type||'')}</div>
+            </div>`;
+        }).join('');
+        el.innerHTML = items;
+    }
+
+    async _brainRebuild() {
+        const btn = document.getElementById('brain-btn-rebuild');
+        if (btn) btn.disabled = true;
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            await fetch('/api/v1/brain/process', { method: 'POST', headers: { 'TM-API-KEY': apiKey } });
+        } catch (_) {}
+        if (btn) btn.disabled = false;
+        this.loadBrainTab();
+    }
+
+    async _brainCalibrate() {
+        const btn = document.getElementById('brain-btn-calibrate');
+        if (btn) btn.disabled = true;
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            await fetch('/api/v1/brain/calibrate', { method: 'POST', headers: { 'TM-API-KEY': apiKey } });
+        } catch (_) {}
+        if (btn) btn.disabled = false;
+        this.loadBrainTab();
+    }
+
+    async _brainGenerateMmds() {
+        const btn = document.getElementById('brain-btn-generate');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            await fetch('/api/v1/brain/generate-mmds', {
+                method: 'POST',
+                headers: { 'TM-API-KEY': apiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gap_ids: [], max_per_run: 3 }),
+            });
+        } catch (_) {}
+        if (btn) { btn.disabled = false; btn.textContent = '⚡ Generate MMDs'; }
+        // Refresh queue only
+        const apiKey2 = localStorage.getItem('tm_api_key') || '';
+        const r = await fetch('/api/v1/brain/synthetic-queue', { headers: { 'TM-API-KEY': apiKey2 } }).catch(() => null);
+        const queueData = r && r.ok ? await r.json() : null;
+        this._brainRenderQueue(queueData);
+    }
+
+    async _brainApprove(genId) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        await fetch(`/api/v1/brain/synthetic-queue/${encodeURIComponent(genId)}/approve`, {
+            method: 'POST', headers: { 'TM-API-KEY': apiKey },
+        }).catch(() => {});
+        const r = await fetch('/api/v1/brain/synthetic-queue', { headers: { 'TM-API-KEY': apiKey } }).catch(() => null);
+        this._brainRenderQueue(r && r.ok ? await r.json() : null);
+    }
+
+    async _brainReject(genId) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        await fetch(`/api/v1/brain/synthetic-queue/${encodeURIComponent(genId)}/reject`, {
+            method: 'POST', headers: { 'TM-API-KEY': apiKey },
+        }).catch(() => {});
+        const r = await fetch('/api/v1/brain/synthetic-queue', { headers: { 'TM-API-KEY': apiKey } }).catch(() => null);
+        this._brainRenderQueue(r && r.ok ? await r.json() : null);
+    }
+
+    // ── end TA Brain ──────────────────────────────────────────────────────────
 
 }
 

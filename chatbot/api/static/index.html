@@ -119,6 +119,7 @@
                     <div class="nav-group-items">
                         <button class="nav-tab" data-tab="soc-kg" id="soc-kg-nav-tab" title="SOC Detection Knowledge Graph — signal provenance chain">SOC</button>
                         <button class="nav-tab" data-tab="mcp" id="mcp-nav-tab" title="MCP Server — external access monitor, live simulation, job queue">MCP</button>
+                        <button class="nav-tab" id="brain-nav-tab" data-tab="brain" title="TA Brain — self-growing knowledge graph + synthetic generation">Brain</button>
                     </div>
                 </div>
                 <!-- Group: Reporting -->
@@ -639,6 +640,41 @@
                 <div id="mcp-sub-sim"     style="flex:1;overflow:auto;display:flex;flex-direction:column;min-height:0;"></div>
                 <div id="mcp-sub-jobs"    style="flex:1;overflow:auto;display:none;padding:1.25rem;"></div>
                 <div id="mcp-sub-signals" style="flex:1;overflow:auto;display:none;padding:1.25rem;"></div>
+            </div>
+
+            <!-- Brain pane -->
+            <div id="brain-pane-wrapper" style="display:none;flex-direction:column;flex:1;overflow:hidden;background:var(--main-bg);">
+                <!-- Status bar -->
+                <div id="brain-status-bar" style="flex-shrink:0;display:flex;align-items:center;gap:1rem;padding:0.6rem 1.25rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
+                    <div>
+                        <span style="font-size:0.92rem;font-weight:700;color:var(--primary-color);">TA Brain</span>
+                        <span style="font-size:0.75rem;color:var(--text-tertiary);margin-left:0.5rem;">Self-growing knowledge graph · patterns · synthetic generation</span>
+                    </div>
+                    <div id="brain-status-stats" style="display:flex;gap:1.25rem;margin-left:1.5rem;"></div>
+                    <div style="margin-left:auto;display:flex;gap:0.5rem;">
+                        <button id="brain-btn-calibrate" onclick="window.dashboard && window.dashboard._brainCalibrate()" style="font-size:0.75rem;padding:0.25rem 0.7rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-secondary);cursor:pointer;">⚖ Calibrate</button>
+                        <button id="brain-btn-rebuild" onclick="window.dashboard && window.dashboard._brainRebuild()" style="font-size:0.75rem;padding:0.25rem 0.7rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-secondary);cursor:pointer;">↺ Rebuild</button>
+                    </div>
+                </div>
+                <!-- Patterns section -->
+                <div style="flex-shrink:0;padding:0.9rem 1.25rem 0.5rem;border-bottom:1px solid var(--border-color);">
+                    <div style="font-size:0.8rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">Patterns</div>
+                    <div id="brain-patterns-table" style="font-size:0.78rem;">Loading…</div>
+                </div>
+                <!-- Gaps + queue section -->
+                <div style="flex:1;display:flex;overflow:hidden;">
+                    <div style="flex:2;overflow:auto;padding:0.9rem 1.25rem;border-right:1px solid var(--border-color);">
+                        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;">
+                            <span style="font-size:0.8rem;font-weight:700;color:var(--text-primary);">Gaps</span>
+                            <button id="brain-btn-generate" onclick="window.dashboard && window.dashboard._brainGenerateMmds()" style="font-size:0.72rem;padding:0.2rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-secondary);cursor:pointer;">⚡ Generate MMDs</button>
+                        </div>
+                        <div id="brain-gaps-grid" style="font-size:0.78rem;">Loading…</div>
+                    </div>
+                    <div style="flex:1;overflow:auto;padding:0.9rem 1.25rem;">
+                        <div style="font-size:0.8rem;font-weight:700;color:var(--text-primary);margin-bottom:0.6rem;">Synthetic Queue</div>
+                        <div id="brain-queue-list" style="font-size:0.78rem;">Loading…</div>
+                    </div>
+                </div>
             </div>
 
             <div id="config-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:hidden; background:var(--main-bg);">
