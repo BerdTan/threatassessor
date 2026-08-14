@@ -19006,12 +19006,22 @@ class Dashboard {
         }
         const trendArrow = t => t === 'rising' ? '↑' : t === 'falling' ? '↓' : '→';
         const confColor  = v => v >= 0.7 ? '#10b981' : v >= 0.4 ? '#f59e0b' : '#ef4444';
+        const soWhat = (p, pub) => {
+            const arch = p.trigger?.arch_type || 'this arch type';
+            if (p.suspect) return `⚠ Conflicting feedback — verify predictions manually before trusting infer results.`;
+            if (pub < 0.15) return `🔴 Brain predictions for ${arch} are unreliable — generate more synthetic architectures to calibrate.`;
+            if (pub < 0.4)  return `🟡 Under-calibrated — run Generate MMDs for ${arch} to improve benchmark confidence.`;
+            if (pub < 0.7)  return `🟡 Moderate confidence — predictions are directionally useful but not authoritative.`;
+            return '';
+        };
         const rows = patterns.map(p => {
             const corpus = p.corpus_confidence ?? 0;
             const bmark  = p.benchmark_confidence ?? 1;
             const pub    = Math.min(corpus, bmark);
             const suspect = p.suspect ? '<span style="color:#ef4444;font-weight:700;">⚠</span>' : '';
-            return `<tr style="border-bottom:1px solid var(--border-color);">
+            const hint   = soWhat(p, pub);
+            const hintRow = hint ? `<tr><td colspan="8" style="padding:0.1rem 0.6rem 0.4rem;font-size:0.7rem;color:var(--text-secondary);border-bottom:1px solid var(--border-color);">${hint}</td></tr>` : '';
+            return `<tr style="border-bottom:${hint ? 'none' : '1px solid var(--border-color)}"};">
                 <td style="padding:0.3rem 0.6rem;font-weight:600;">${this._esc(p.id||'')}</td>
                 <td style="padding:0.3rem 0.6rem;color:var(--text-secondary);">${this._esc(p.trigger?.arch_type||'—')}</td>
                 <td style="padding:0.3rem 0.6rem;">${corpus.toFixed(2)}</td>
@@ -19020,18 +19030,18 @@ class Dashboard {
                 <td style="padding:0.3rem 0.6rem;">${p.evidence_count ?? '—'}</td>
                 <td style="padding:0.3rem 0.6rem;">${trendArrow(p.trend)}</td>
                 <td style="padding:0.3rem 0.6rem;">${suspect}</td>
-            </tr>`;
+            </tr>${hintRow}`;
         }).join('');
         el.innerHTML = `<table style="width:100%;border-collapse:collapse;">
             <thead><tr style="border-bottom:2px solid var(--border-color);font-size:0.72rem;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.04em;">
-                <th style="padding:0.2rem 0.6rem;text-align:left;">ID</th>
-                <th style="padding:0.2rem 0.6rem;text-align:left;">Arch Type</th>
-                <th style="padding:0.2rem 0.6rem;text-align:left;">Corpus</th>
-                <th style="padding:0.2rem 0.6rem;text-align:left;">Benchmark</th>
-                <th style="padding:0.2rem 0.6rem;text-align:left;">Published</th>
-                <th style="padding:0.2rem 0.6rem;text-align:left;">Evidence</th>
-                <th style="padding:0.2rem 0.6rem;text-align:left;">Trend</th>
-                <th style="padding:0.2rem 0.6rem;text-align:left;">⚠</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;" title="Pattern ID — traces every prediction back to specific corpus instances">ID</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;" title="Architecture type this pattern applies to">Arch Type</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;" title="Corpus confidence — how consistently this pattern appears across training instances (0–1)">Corpus</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;" title="Benchmark confidence — how accurately this pattern predicts outcomes on hold-out architectures (0–1). Low = brain predictions don't match real-world results.">Benchmark</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;" title="Published confidence = min(corpus, benchmark). This is what the brain claims. Red &lt; 0.4 → don't trust predictions; generate more synthetic data for this arch type.">Published</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;" title="Number of corpus instances used to build this pattern. More evidence = more reliable.">Evidence</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;" title="Trend across recent pipeline runs: ↑ rising, ↓ falling, → stable">Trend</th>
+                <th style="padding:0.2rem 0.6rem;text-align:left;" title="Suspect — pattern has received more 'wrong' feedback than confirmations. Treat predictions with caution.">⚠</th>
             </tr></thead>
             <tbody>${rows}</tbody>
         </table>`;
@@ -19044,6 +19054,12 @@ class Dashboard {
             el.innerHTML = '<span style="color:var(--text-tertiary);">No gaps detected.</span>';
             return;
         }
+        const legend = `<div style="font-size:0.7rem;color:var(--text-secondary);border:1px solid var(--border-color);border-radius:4px;padding:0.5rem 0.75rem;margin-bottom:0.75rem;background:var(--sidebar-bg);">
+            <div style="font-weight:700;color:var(--text-primary);margin-bottom:0.3rem;">Reading gaps</div>
+            <div style="margin-bottom:0.2rem;"><span style="color:#ef4444;font-weight:700;">● FORCED</span> — Brain predictions don't match real-world outcomes (Brier too high). <strong>Action: click Generate MMDs</strong> to create synthetic architectures that target this blind spot.</div>
+            <div style="margin-bottom:0.2rem;"><span style="color:#f59e0b;font-weight:700;">● High</span> — Thin corpus coverage for this arch type. More real or synthetic instances needed.</div>
+            <div><span style="color:#6b7280;font-weight:700;">Brier</span> — prediction error rate (0 = perfect, 1 = always wrong). Above 0.35 triggers a forced gap. Lower is better.</div>
+        </div>`;
         const cards = gaps.map(g => {
             const forced = g.forced_gap;
             const barColor = forced ? '#ef4444' : (g.priority >= 0.7 ? '#f59e0b' : '#10b981');
@@ -19062,7 +19078,7 @@ class Dashboard {
                 <div style="font-size:0.72rem;color:var(--text-secondary);">${this._esc(prompt)}${(g.generation_prompt||'').length > 90 ? '…' : ''}</div>
             </div>`;
         }).join('');
-        el.innerHTML = cards;
+        el.innerHTML = legend + cards;
     }
 
     _brainRenderQueue(queueData) {
