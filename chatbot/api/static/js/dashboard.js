@@ -19021,7 +19021,7 @@ class Dashboard {
             const suspect = p.suspect ? '<span style="color:#ef4444;font-weight:700;">⚠</span>' : '';
             const hint   = soWhat(p, pub);
             const hintRow = hint ? `<tr><td colspan="8" style="padding:0.1rem 0.6rem 0.4rem;font-size:0.7rem;color:var(--text-secondary);border-bottom:1px solid var(--border-color);">${hint}</td></tr>` : '';
-            return `<tr style="border-bottom:${hint ? 'none' : '1px solid var(--border-color)}"};">
+            return `<tr style="border-bottom:${hint ? 'none' : '1px solid var(--border-color)'};">
                 <td style="padding:0.3rem 0.6rem;font-weight:600;">${this._esc(p.id||'')}</td>
                 <td style="padding:0.3rem 0.6rem;color:var(--text-secondary);">${this._esc(p.trigger?.arch_type||'—')}</td>
                 <td style="padding:0.3rem 0.6rem;">${corpus.toFixed(2)}</td>
