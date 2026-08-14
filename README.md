@@ -255,7 +255,7 @@ DEV-TEST/
 
 ## Build story
 
-The full build story is on Medium — 19 published parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, and the self-assessment that found a Critical in its own codebase:
+The full build story is on Medium — 20 published parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, the self-assessment that found a Critical in its own codebase, and why a self-growing knowledge graph had the right answers all along:
 
 | # | Title | What it covers |
 |---|---|---|
@@ -278,3 +278,4 @@ The full build story is on Medium — 19 published parts covering the pipeline, 
 | 17 | [The Architecture That Told You First: Four Signals from the AISI Incident](https://medium.com/@breadtan/architecture-that-told-you-first-four-signals-from-the-aisi-incident-727bfb75960c) | AISI INC-2026-07-28 breakdown; DETECT-025–028 grounded in real incident; governance_check two-severity split |
 | 18 | [Skills That Built the Builder: How Developer Automation Grew Alongside ThreatAssessor](https://medium.com/@breadtan/skills-that-built-the-builder-how-developer-automation-grew-alongside-threatassessor-cc23897eee82) | 44-skill developer automation layer — regression suites, feedback flywheels, data portability, operational skills |
 | 19 | [Always Verify, Never Trust — Even Yourself: ThreatAssessor's Self-Assessment](https://medium.com/@breadtan/always-verify-never-trust-even-yourself-threatassessors-self-assessment-47aea99e229b) | Running /harden-audit on TA itself — 1 Critical confirmed, 7 findings fixed, 2 new DETECT rules grounded in own findings |
+| 20 | [The Wrong Ruler](https://medium.com/@breadtan/the-wrong-ruler-9b73117dbbbf) | Self-growing loop closed (Stage 8); brain-infer reveals 94% precision vs 0.09 calibration — the metric was measuring the wrong thing; 0.09→0.80 after fix |
