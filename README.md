@@ -17,7 +17,7 @@ flowchart TD
         dash_ui["Dashboard"]
     end
 
-    mcp_srv["MCP Server  15 tools"]
+    mcp_srv["MCP Server  16 tools"]
 
     subgraph Harness["Harness v2"]
         an_s["Analysis"]
@@ -57,9 +57,9 @@ flowchart TD
 | **Analysis engine** | Deterministic threat mapping — RAPIDS + MITRE ATT&CK embeddings | `chatbot/modules/ground_truth_generator.py` |
 | **MoE critics** | 5-critic panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster | `chatbot/modules/agents/critics/` |
 | **SOC detection layer** | 30 DETECT rules → OCSF DetectionFinding 2004 events per run | `policies/soc_detection_rules.yaml` |
-| **TA Brain** | Persistent knowledge graph distilled from corpus; TACO query and feedback loop | `chatbot/modules/ta_brain_*.py` |
+| **TA Brain** | Persistent knowledge graph distilled from corpus; Stages 1–8 (Gap→MMD closes the self-growing loop); TACO query surface + CLI skills | `chatbot/modules/ta_brain_*.py` |
 | **AIVSS v4** | Three-flow safety scoring: inbound / internal / outbound | `chatbot/harness/stages.py` |
-| **MCP server** | 15 tools exposing TA capabilities to Claude Desktop and external agents | `mcp_server/` |
+| **MCP server** | 16 tools exposing TA capabilities to Claude Desktop and external agents | `mcp_server/` |
 | **GitHub Actions CI** | PR reviewer — governance check + full analysis on every `.mmd` change | `.github/workflows/ta-review.yml` |
 
 ## How a request flows
@@ -134,7 +134,7 @@ No LLM key is required for deterministic-only analysis. Add `OPENROUTER_API_KEY`
 
 ## MCP server
 
-The MCP server exposes ThreatAssessor as 15 tools to Claude Desktop and any MCP-compatible agent. The REST API must be running first.
+The MCP server exposes ThreatAssessor as 16 tools to Claude Desktop and any MCP-compatible agent. The REST API must be running first.
 
 **Claude Desktop config** (`claude_desktop_config.json`):
 
@@ -172,6 +172,7 @@ For network transport (SSE / streamable-HTTP), start with `--transport sse --por
 | `governance_check` | Fast MMD governance scan (~50ms, no LLM) |
 | `query_ta_brain` | Query Brain patterns: infer / gaps / list |
 | `record_brain_feedback` | Mark a Brain prediction confirmed / wrong / partial |
+| `generate_synthetic_architectures` | Generate synthetic MMD diagrams from Brain meta-layer gaps; stages for approval |
 
 ## Configuration
 
@@ -203,9 +204,30 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 **BouncerStage as required.** Sits between QualityStage and the critics. A blocked pipeline raises `BlockedPipelineError` and returns HTTP 400 before any LLM token is spent.
 
-**TA Brain is LLM-free.** All 7 completed stages (ingest, distil, cache, confidence decay, gap weighting, calibration, TACO processor) derive values from formulas and hashes. The topology signature is a pure SHA-256 of node shapes and edge patterns — collision-resistant across the 33-architecture corpus.
+**TA Brain is LLM-free in its core.** All 8 completed stages (ingest, distil, cache, confidence decay, gap weighting, calibration, TACO processor, Gap→MMD generator) derive values from formulas and hashes — except the generator, which uses an LLM in the generation phase only and gates output behind human approval before entering the training loop. The topology signature is a pure SHA-256 of node shapes and edge patterns — collision-resistant across the corpus.
 
 **Event bus between stages.** Each stage emits `HarnessEvent` objects to `EventBrokerCritic`, which fans out to SIEM, Langfuse, and webhook sinks. Stages have no knowledge of their consumers.
+
+## TA Brain
+
+The Brain is a self-growing knowledge graph that accumulates learning from every pipeline run and drives corpus growth. It operates in three layers:
+
+- **Instance layer** (`ta_brain_instances.jsonl`) — append-only record of every analysed architecture: topology signature, techniques, missing controls, AIVSS score, fired DETECT rules.
+- **Pattern layer** (`ta_brain.json`) — frequency-derived generalizations per architecture type. Each pattern carries `corpus_confidence` (training evidence) and `benchmark_confidence` (hold-out calibration). Published confidence = `min(corpus, benchmark)`.
+- **Meta layer** (`ta_brain.json` gaps) — gaps the brain knows it doesn't cover; each gap carries a `generation_prompt` for targeted synthetic MMD generation.
+
+**Stage 8 closes the loop.** The Gap→MMD generator reads the meta layer, generates synthetic Mermaid diagrams via LLM targeting under-sampled topology regions, stages them for human approval, and — once approved — submits them to the full harness pipeline. The resulting instances feed back into the pattern layer on the next `brain-grow` run.
+
+Four CLI skills operate the Brain outside the dashboard:
+
+| Skill | What |
+|---|---|
+| `brain-grow` | Full rebuild + N-round generate→ingest→calibrate loop |
+| `brain-ingest` | Add one architecture report to the instance layer |
+| `brain-cache` | Cache stats, pre-warm, evict stale, record feedback |
+| `brain-infer` | Predictions vs ground truth — precision and recall per arch |
+
+The Brain tab in the dashboard shows the live pattern table, gap cards, and the synthetic generation queue with approve/reject controls.
 
 ## Repo layout
 
@@ -217,11 +239,11 @@ DEV-TEST/
 │   ├── modules/            Analysis engine, MoE critics, TA Brain (ta_brain_*.py)
 │   ├── config/             Settings loader, user_config.json, agent model config
 │   └── services.py         ThreatAnalysisService — single callable surface
-├── mcp_server/             MCP server: 15 tools, job client, access logger, sim personas
+├── mcp_server/             MCP server: 16 tools, job client, access logger, sim personas
 ├── policies/               soc_detection_rules.yaml (30 rules), agent_governance.yaml
 ├── tests/
 │   ├── data/architectures/ 33 sample .mmd files
-│   └── unit/               Unit tests (213 for TA Brain alone)
+│   └── unit/               Unit tests (233 for TA Brain alone)
 ├── scripts/
 │   ├── api/                api_start.sh  api_stop.sh  api_status.sh  api_restart.sh
 │   └── ci/                 ta_pr_review.py (GitHub Actions PR reviewer)
