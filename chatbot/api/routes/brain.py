@@ -20,8 +20,19 @@ from chatbot.modules.ta_brain_confidence import save_confidence_decay
 from chatbot.modules.ta_brain_gaps import enrich_brain_gaps, compute_gap_demand_weights
 from chatbot.modules.ta_brain_benchmarks import save_calibration, FRAMEWORK_FLOORS
 from chatbot.modules.ta_brain_taco_processor import run_taco_processor, load_processor_state
+from chatbot.modules.ta_brain_mmd_generator import (
+    generate_synthetic_mmds,
+    list_synthetic_queue,
+    update_synthetic_status,
+    get_generation_summary,
+)
 
 router = APIRouter(prefix="/api/v1/brain", tags=["brain"])
+
+
+class BrainGenerateRequest(BaseModel):
+    gap_ids: list = []
+    max_per_run: int = 3
 
 
 class BrainQueryRequest(BaseModel):
@@ -166,6 +177,55 @@ async def brain_decay():
         return JSONResponse(content=summary)
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@router.post("/generate-mmds", dependencies=[Depends(verify_api_key)])
+async def brain_generate_mmds(req: BrainGenerateRequest):
+    """Generate synthetic MMDs from meta-layer gaps. Stages results for human approval."""
+    import asyncio
+    try:
+        staged = await asyncio.to_thread(
+            generate_synthetic_mmds,
+            gap_ids=req.gap_ids or None,
+            max_per_run=req.max_per_run,
+        )
+        return JSONResponse(content={"staged": staged, "count": len(staged)})
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@router.get("/synthetic-queue", dependencies=[Depends(verify_api_key)])
+async def brain_synthetic_queue():
+    """Return staged synthetic MMD queue with summary stats."""
+    queue = list_synthetic_queue()
+    summary = get_generation_summary()
+    return JSONResponse(content={"queue": queue, "summary": summary})
+
+
+@router.post("/synthetic-queue/{gen_id}/approve", dependencies=[Depends(verify_api_key)])
+async def brain_approve_synthetic(gen_id: str):
+    """Mark a staged MMD as approved — ready for harness submission."""
+    try:
+        meta = update_synthetic_status(gen_id, "approved")
+        return JSONResponse(content=meta)
+    except FileNotFoundError as exc:
+        return JSONResponse(status_code=404, content={"error": str(exc)})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@router.post("/synthetic-queue/{gen_id}/reject", dependencies=[Depends(verify_api_key)])
+async def brain_reject_synthetic(gen_id: str):
+    """Mark a staged MMD as rejected."""
+    try:
+        meta = update_synthetic_status(gen_id, "rejected")
+        return JSONResponse(content=meta)
+    except FileNotFoundError as exc:
+        return JSONResponse(status_code=404, content={"error": str(exc)})
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
 

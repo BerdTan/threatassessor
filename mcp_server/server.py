@@ -559,6 +559,47 @@ def record_brain_feedback(
 
 
 # ---------------------------------------------------------------------------
+# Tool 16 — generate_synthetic_architectures
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def generate_synthetic_architectures(
+    gap_ids: str = "",
+    max_per_run: int = 3,
+) -> str:
+    """Generate synthetic Mermaid architecture diagrams from TA Brain meta-layer gaps.
+
+    Reads the brain's gap queue (under-sampled topology regions), generates targeted
+    MMD diagrams via LLM, and stages them for human approval before harness submission.
+
+    Use this to close the self-growing loop: the brain detects under-sampled regions,
+    this tool generates synthetic architectures to fill them, and once approved the
+    diagrams run through the full harness to produce new training instances.
+
+    Args:
+        gap_ids:     Comma-separated gap IDs to generate for (e.g. "GAP-001,GAP-003").
+                     Leave empty to auto-select by priority (forced_gap first).
+        max_per_run: Maximum diagrams to generate in this call (default: 3).
+
+    Returns:
+        JSON with staged generation results and queue summary.
+    """
+    try:
+        parsed_ids = [g.strip() for g in gap_ids.split(",") if g.strip()] if gap_ids else []
+        result = api.generate_synthetic_architectures(
+            gap_ids=parsed_ids or None,
+            max_per_run=max_per_run,
+        )
+        _access_log.record_tool_call("generate_synthetic_architectures")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        auth_failed = "401" in str(e) or "Unauthorized" in str(e)
+        _access_log.record_tool_call("generate_synthetic_architectures", success=False,
+                                     auth_failed=auth_failed)
+        return json.dumps({"error": str(e)})
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

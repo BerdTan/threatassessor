@@ -324,6 +324,11 @@ def run_calibration(
             existing_regions = {g["region"] for g in brain.get("gaps", [])}
             region = f"arch_type:{arch_type}"
             if region not in existing_regions:
+                # Prefer framework gaps; fall back to pattern's common_missing_controls
+                specific_gaps = (
+                    fw.get("missing_required")
+                    or p.get("predicts", {}).get("common_missing_controls", [])
+                )
                 new_forced_gaps.append({
                     "id": f"GAP-F{len(new_forced_gaps)+1:03d}",
                     "region": region,
@@ -332,7 +337,7 @@ def run_calibration(
                     "generation_prompt": (
                         f"Generate {arch_type} architecture variants that address the divergence: "
                         f"{'; '.join(reason)}. Focus on the specific gaps: "
-                        f"{', '.join(fw.get('missing_required', []))[:200]}."
+                        f"{', '.join(specific_gaps)[:200]}."
                     ),
                     "priority": 0.9,   # forced gaps get high priority
                     "forced_gap": True,

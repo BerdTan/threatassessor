@@ -397,10 +397,9 @@ class TestBuildBrain:
         self._populate_report_dir(tmp_path, [
             ("arch1", "web", ["T1078"], ["mfa"]),
         ])
-        build_brain(report_dir=tmp_path, hold_out=frozenset())
-        build_brain(report_dir=tmp_path, hold_out=frozenset())  # second run (non-incremental)
+        build_brain(report_dir=tmp_path, hold_out=frozenset(), incremental=False)
+        build_brain(report_dir=tmp_path, hold_out=frozenset(), incremental=False)  # explicit non-incremental re-appends
         lines = (tmp_path / "ta_brain_instances.jsonl").read_text().strip().splitlines()
-        # Both runs appended — non-incremental re-appends
         assert len(lines) == 2
 
     def test_incremental_skips_existing(self, tmp_path):

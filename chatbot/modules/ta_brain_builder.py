@@ -301,7 +301,7 @@ def detect_gaps(instances: list, patterns: list) -> list:
 def build_brain(
     report_dir: Path = REPORT_DIR,
     hold_out: Optional[frozenset] = None,
-    incremental: bool = False,
+    incremental: bool = True,
 ) -> dict:
     """
     Ingest all corpus archs → instance layer → distiller → brain JSON.

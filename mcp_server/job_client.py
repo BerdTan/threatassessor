@@ -167,3 +167,11 @@ def record_brain_feedback(
         "mode": mode,
         "reference_ts": reference_ts,
     })
+
+
+def generate_synthetic_architectures(gap_ids: list = None, max_per_run: int = 3) -> Dict:
+    """POST /api/v1/brain/generate-mmds — generate synthetic MMDs from meta-layer gaps."""
+    return _post("/api/v1/brain/generate-mmds", {
+        "gap_ids": gap_ids or [],
+        "max_per_run": max_per_run,
+    }, timeout=300)
