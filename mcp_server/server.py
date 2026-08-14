@@ -4,7 +4,7 @@ ThreatAssessor MCP Server
 Exposes ThreatAssessor capabilities to Claude Desktop and external agents
 via the Model Context Protocol (stdio transport).
 
-13 tools:
+15 tools:
   1.  analyze_architecture      — submit MMD, get full threat model
   2.  run_expert_review         — queue FULL_MOE, return job_id
   3.  get_job_status            — poll a queued/running job
@@ -18,6 +18,8 @@ via the Model Context Protocol (stdio transport).
   11. get_mcp_access_signals    — live session access patterns for DETECT-020/021/022
   12. export_assessment         — unified TA export bundle (ta-export/1.0, OTM-compatible)
   13. governance_check          — fast MMD governance scan, no LLM, returns fired DETECT rules
+  14. query_ta_brain            — query Brain patterns: infer threats | list gaps | list patterns
+  15. record_brain_feedback     — mark a Brain prediction confirmed/wrong/partial; feeds confidence decay
 
 Setup (Claude Desktop):
   {
@@ -438,6 +440,121 @@ def governance_check(mmd_content: str, arch_name: str = "mcp_input") -> str:
     except Exception as e:
         auth_failed = "401" in str(e) or "Unauthorized" in str(e)
         _access_log.record_tool_call("governance_check", success=False, auth_failed=auth_failed)
+        return json.dumps({"error": str(e)})
+
+
+# ---------------------------------------------------------------------------
+# Tool 14 — query_ta_brain
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def query_ta_brain(
+    mode: str = "infer",
+    arch_name: str = "",
+    topology_signature: str = "",
+    arch_type: str = "",
+    arch_type_filter: str = "",
+) -> str:
+    """Query TA Brain — the persistent knowledge graph distilled from the corpus.
+
+    Three modes:
+
+    infer — given an architecture, predict likely threats, missing controls,
+      and DETECT rules based on learned patterns from similar architectures.
+      Provide arch_name (corpus lookup) OR topology_signature+arch_type (new arch).
+      Returns: had_match, confidence, techniques, missing_controls, detect_rules,
+               aivss_floor, evidence trace (pattern IDs + source archs).
+
+    gaps — list meta-layer gaps: topology regions where the brain is under-sampled.
+      Returns generation prompts for synthetic MMD creation to fill those gaps.
+
+    patterns — list all learned patterns, optionally filtered by arch_type.
+      Returns: pattern triggers, predicted techniques, control frequencies, confidence.
+
+    All responses include pattern_version so callers can detect when the brain
+    was last rebuilt. Infer queries are logged to ta_brain_interactions.jsonl,
+    which feeds the TACO self-improvement loop.
+
+    Args:
+        mode:               "infer" | "gaps" | "patterns"
+        arch_name:          Corpus architecture name (e.g. "21_agentic_ai_system").
+                            Resolves topology_signature and arch_type automatically.
+        topology_signature: Direct 16-char topology hash (for architectures not in corpus).
+        arch_type:          Architecture type hint when using topology_signature directly.
+        arch_type_filter:   Filter patterns by arch_type (patterns mode only).
+
+    Returns:
+        JSON response. In infer mode: predictions with confidence and evidence trace.
+    """
+    try:
+        result = api.query_ta_brain(
+            mode=mode,
+            arch_name=arch_name,
+            topology_signature=topology_signature,
+            arch_type=arch_type,
+            arch_type_filter=arch_type_filter,
+        )
+        _access_log.record_tool_call("query_ta_brain", arch_name=arch_name or topology_signature)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        auth_failed = "401" in str(e) or "Unauthorized" in str(e)
+        _access_log.record_tool_call("query_ta_brain", success=False, auth_failed=auth_failed)
+        return json.dumps({"error": str(e)})
+
+
+# ---------------------------------------------------------------------------
+# Tool 15 — record_brain_feedback
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def record_brain_feedback(
+    feedback: str,
+    arch_name: str = "",
+    topology_signature: str = "",
+    arch_type: str = "",
+    mode: str = "infer",
+    reference_ts: str = "",
+) -> str:
+    """Record feedback on a TA Brain prediction to close the TACO learning loop.
+
+    After receiving a query_ta_brain response, call this tool to signal whether
+    the prediction was accurate. Feedback is appended to the interaction log
+    (append-only) and propagated to the cache layer immediately:
+      confirmed — cache entry strengthened; corpus_confidence raised on next decay run
+      wrong     — cache entry evicted; corpus_confidence decayed on next decay run
+      partial   — logged only; no cache change
+
+    This feeds Stage 4 (confidence decay) which adjusts pattern confidence between
+    brain rebuilds. Patterns that receive consistent wrong feedback lose confidence;
+    those confirmed repeatedly gain it.
+
+    Args:
+        feedback:           "confirmed" | "wrong" | "partial"
+        arch_name:          Corpus architecture name (resolves topology_sig + arch_type).
+        topology_signature: Direct topology hash (if arch_name not provided).
+        arch_type:          Architecture type (used with topology_signature).
+        mode:               Query mode the feedback applies to (default "infer").
+        reference_ts:       ISO timestamp of the original query (optional link).
+
+    Returns:
+        JSON with recorded, cache_updated, feedback, topology_sig, ts.
+    """
+    try:
+        result = api.record_brain_feedback(
+            feedback=feedback,
+            arch_name=arch_name,
+            topology_signature=topology_signature,
+            arch_type=arch_type,
+            mode=mode,
+            reference_ts=reference_ts,
+        )
+        _access_log.record_tool_call("record_brain_feedback",
+                                     arch_name=arch_name or topology_signature)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        auth_failed = "401" in str(e) or "Unauthorized" in str(e)
+        _access_log.record_tool_call("record_brain_feedback", success=False,
+                                     auth_failed=auth_failed)
         return json.dumps({"error": str(e)})
 
 

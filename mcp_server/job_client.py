@@ -131,3 +131,39 @@ def export_assessment(arch_name: str, save: bool = False) -> Dict:
 def governance_check(mmd_content: str, arch_name: str = "mcp_sim") -> Dict:
     """POST /api/v1/governance/check — fast governance scan, no LLM, returns fired DETECT rules."""
     return _post("/api/v1/governance/check", {"mmd_content": mmd_content, "arch_name": arch_name})
+
+
+def query_ta_brain(
+    mode: str = "infer",
+    arch_name: str = "",
+    topology_signature: str = "",
+    arch_type: str = "",
+    arch_type_filter: str = "",
+) -> Dict:
+    """POST /api/v1/brain/query — query TA Brain patterns (infer | gaps | patterns)."""
+    return _post("/api/v1/brain/query", {
+        "mode": mode,
+        "arch_name": arch_name,
+        "topology_signature": topology_signature,
+        "arch_type": arch_type,
+        "arch_type_filter": arch_type_filter,
+    })
+
+
+def record_brain_feedback(
+    feedback: str,
+    arch_name: str = "",
+    topology_signature: str = "",
+    arch_type: str = "",
+    mode: str = "infer",
+    reference_ts: str = "",
+) -> Dict:
+    """POST /api/v1/brain/feedback — record confirmed/wrong/partial on a brain prediction."""
+    return _post("/api/v1/brain/feedback", {
+        "feedback": feedback,
+        "arch_name": arch_name,
+        "topology_signature": topology_signature,
+        "arch_type": arch_type,
+        "mode": mode,
+        "reference_ts": reference_ts,
+    })
