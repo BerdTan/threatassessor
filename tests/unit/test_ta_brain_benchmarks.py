@@ -95,12 +95,12 @@ class TestBrierScoreSet:
         # brier = (1.0 - 0)^2 / 1 = 1.0
         assert abs(brier_score_set(predicted, actual) - 1.0) < 1e-6
 
-    def test_false_negative_penalized(self):
-        # Item in actual but not predicted → predicted_prob=0, actual=1
+    def test_false_negative_not_penalized(self):
+        # Item in actual but not predicted — precision-only scorer ignores this
+        # Returns 0.5 (neutral) because nothing was predicted
         predicted = {}
         actual = {"T1078"}
-        # brier = (0 - 1)^2 / 1 = 1.0
-        assert abs(brier_score_set(predicted, actual) - 1.0) < 1e-6
+        assert abs(brier_score_set(predicted, actual) - 0.5) < 1e-6
 
     def test_partial_prediction(self):
         # Predict 0.5 for item in actual
@@ -109,15 +109,18 @@ class TestBrierScoreSet:
         # brier = (0.5 - 1)^2 / 1 = 0.25
         assert abs(brier_score_set(predicted, actual) - 0.25) < 1e-6
 
-    def test_empty_inputs_return_zero(self):
-        assert brier_score_set({}, set()) == 0.0
+    def test_empty_inputs_return_neutral(self):
+        # No predictions → neutral score (0.5), not zero
+        assert brier_score_set({}, set()) == 0.5
 
-    def test_symmetric_treatment_of_universe(self):
-        # Both in predicted and actual
+    def test_precision_only_scores_predicted(self):
+        # T1078 predicted + correct, T1099 in actual but not predicted (ignored)
+        # T1059 predicted but wrong → penalised
         predicted = {"T1078": 0.8, "T1059": 0.2}
-        actual = {"T1078", "T1099"}  # T1059 not in actual, T1099 not predicted
+        actual = {"T1078", "T1099"}
+        # T1078: (0.8-1)^2 = 0.04; T1059: (0.2-0)^2 = 0.04 → avg = 0.04
         score = brier_score_set(predicted, actual)
-        assert 0.0 <= score <= 1.0
+        assert abs(score - 0.04) < 1e-4
 
 
 # ── brier_to_confidence ───────────────────────────────────────────────────────

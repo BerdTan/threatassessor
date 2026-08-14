@@ -98,22 +98,24 @@ FRAMEWORK_FLOORS: dict = {
 
 def brier_score_set(predicted_freqs: dict, actual_set: set) -> float:
     """
-    Brier score over the union of predicted items and actual items.
+    Precision-weighted Brier score over predicted items only.
 
-    Scores false positives (predicted prob > 0 but not in actual) and false
-    negatives (predicted prob = 0 but in actual). Bounded [0, 1].
+    The brain is a top-K predictor, not an exhaustive enumerator.
+    Scoring over the full union penalises recall gaps with max-penalty (1.0)
+    per missed item — making 100%-precision partial coverage score as ~0.6.
+    Instead: score only what was predicted. Brier=0 means every prediction
+    was correct; Brier=1 means every prediction was wrong.
 
-    Returns 0.0 if no items to score (vacuously perfect).
+    Returns 0.5 (neutral) when nothing was predicted.
     """
-    universe = set(predicted_freqs.keys()) | actual_set
-    if not universe:
-        return 0.0
+    if not predicted_freqs:
+        return 0.5
 
     total = sum(
-        (predicted_freqs.get(item, 0.0) - (1.0 if item in actual_set else 0.0)) ** 2
-        for item in universe
+        (freq - (1.0 if item in actual_set else 0.0)) ** 2
+        for item, freq in predicted_freqs.items()
     )
-    return round(total / len(universe), 6)
+    return round(total / len(predicted_freqs), 6)
 
 
 def brier_to_confidence(brier: float) -> float:
@@ -458,6 +460,9 @@ def save_calibration(
     updated_brain, benchmarks = run_calibration(
         brain, hold_out_instances, report_dir, existing
     )
+
+    # Bump pattern_version so cache entries built before this calibration are evicted
+    updated_brain["pattern_version"] = updated_brain.get("pattern_version", 0) + 1
 
     brain_path.write_text(json.dumps(updated_brain, indent=2))
     benchmarks_path.write_text(json.dumps(benchmarks, indent=2))
