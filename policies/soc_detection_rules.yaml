@@ -1635,6 +1635,46 @@ rules:
       - type: audit_log
       - type: page_soc
 
+  # DETECT-031: Brain Training Data Poisoning Attempt
+  #
+  # An architecture submitted to the pipeline shows evasion behaviour combined with
+  # injection markers — the signature of a targeted attempt to slip malicious content
+  # through validation into the TA Brain's synthetic training loop.
+  # Distinct from DETECT-029 (any injection) and DETECT-019 (HIGH severity injection):
+  # this requires evasion_attempts > 0 AND injection, flagging only architectures
+  # that tried to hide their malicious content before being caught.
+  #
+  # Grounded in: ta-harden-audit-2026-08-14-rt01, rt02, rt03
+  # OWASP: A03  ATLAS: AML.TA0001, AML.TA0002
+  # Kill chain: initial_access
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-031
+    name: brain_training_data_poisoning
+    description: >
+      An architecture submitted to the analysis pipeline shows both evasion attempts and injection categories — the combined signature of a targeted attempt to smuggle malicious content through validation into the TA Brain's training data. Unlike DETECT-029 (any injection) this specifically requires evasion_attempts > 0, indicating the attacker anticipated detection and tried to circumvent it. Grounded in TA harden-audit 2026-08-14 RT-01 (gen_id path traversal), RT-02 (max_per_run abuse), RT-03 (Mermaid XSS via generated MMDs). Attack path: craft adversarial synthetic MMD → trigger generate-mmds → pass approval → poison brain instance layer → corrupt pattern predictions.
+    incident_refs:
+      - ta-harden-audit-2026-08-14-rt01
+      - ta-harden-audit-2026-08-14-rt02
+      - ta-harden-audit-2026-08-14-rt03
+    owasp: ['A03']
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200406
+    severity: High
+    conditions:
+      - field: exploitation.evasion_attempts
+        op: ">"
+        value: 0
+      - field: exploitation.injection_categories
+        op: "length_gt"
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+      - type: page_soc
+
 # ─────────────────────────────────────────────────────────────────────────────
 playbooks:
 

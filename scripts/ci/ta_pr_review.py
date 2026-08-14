@@ -50,16 +50,18 @@ ANALYSIS_TIMEOUT = 120  # seconds to wait for analyze-stream to complete
 
 # ── Step 1: find changed .mmd files ──────────────────────────────────────────
 
-def get_changed_mmds() -> list[Path]:
-    # Allow skill/CI override via env var (used by /taci --arch)
-    force_mmd = os.environ.get("TA_FORCE_MMD", "").strip()
-    if force_mmd:
+def get_changed_mmds(arch_paths: list[str] | None = None) -> list[Path]:
+    # Explicit arch_paths (from --arch CLI arg) override git diff discovery
+    if arch_paths:
         repo_root = Path(__file__).resolve().parents[2]
         safe = []
-        for f in force_mmd.split(","):
+        for f in arch_paths:
             p = Path(f).resolve()
             if not str(p).startswith(str(repo_root)):
                 print(f"  BLOCKED: {p} is outside repo boundary — skipped")
+                continue
+            if not p.suffix == ".mmd":
+                print(f"  BLOCKED: {p} is not a .mmd file — skipped")
                 continue
             safe.append(p)
         return safe
@@ -217,8 +219,8 @@ def post_github_review(body: str, blocked: bool):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def main() -> int:
-    changed = get_changed_mmds()
+def main(arch_paths: list[str] | None = None) -> int:
+    changed = get_changed_mmds(arch_paths)
     if not changed:
         print("No .mmd files changed — skipping TA review")
         return 0
@@ -307,4 +309,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import argparse
+    parser = argparse.ArgumentParser(description="ThreatAssessor PR reviewer")
+    parser.add_argument("--arch", nargs="+", metavar="FILE",
+                        help="Explicit .mmd file(s) to review (overrides git diff discovery)")
+    args = parser.parse_args()
+    sys.exit(main(arch_paths=args.arch))

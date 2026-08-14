@@ -153,10 +153,11 @@ def run_dry(mmd_path: str | None, base_ref: str = "master"):
         # No GITHUB_TOKEN → comment prints to stdout
     }
 
+    cmd = [sys.executable, str(REVIEW_SCRIPT)]
     if mmd_path:
-        env["TA_FORCE_MMD"] = str(Path(mmd_path).resolve())
+        cmd += ["--arch", str(Path(mmd_path).resolve())]
 
-    result = subprocess.run([sys.executable, str(REVIEW_SCRIPT)], cwd=ROOT, env=env)
+    result = subprocess.run(cmd, cwd=ROOT, env=env)
     return result.returncode
 
 
