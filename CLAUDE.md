@@ -1,8 +1,8 @@
 # ThreatAssessor — Developer Quick Reference
 
-**Version:** 2.5  
-**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (28 rules) + Harness v2 + MCP server (13 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel (Recent/Upload/Paste/Generate) + harden-audit security assessment shipped.  
-**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 28 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0
+**Version:** 2.6  
+**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (28 rules) + Harness v2 + MCP server (16 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (233 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80).  
+**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 28 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG
 
 ---
 
@@ -85,11 +85,22 @@ tail -f logs/api.log            # logs
 - `chatbot/api/static/` — dashboard (index.html + JS; nav: Overview/Assessment/Simulation/Reporting/Workspace/Settings)
 
 **MCP server:**
-- `mcp_server/server.py` — FastMCP app, 13 tools (stdio transport); all tools log to `MCPAccessLogger`
+- `mcp_server/server.py` — FastMCP app, 16 tools (stdio transport); all tools log to `MCPAccessLogger`
 - `mcp_server/job_client.py` — HTTP wrapper for all REST calls
 - `mcp_server/access_logger.py` — `MCPAccessLogger` rolling-window singleton; produces `mcp_access` signals for DETECT-020/021/022
 - `mcp_server/client_sim.py` — 6-persona integration simulator (chatbot, code-agent, ciso, soc, copilot, chatgpt)
 - `mcp_server/README.md` — setup, 4-step testing protocol, per-client integration snippets
+
+**TA Brain:**
+- `chatbot/modules/ta_brain_builder.py` — instance ingest + distiller + `HOLD_OUT_ARCHS` (8 archs)
+- `chatbot/modules/ta_brain_benchmarks.py` — Brier calibration (precision-weighted, score over predicted only) + framework floors
+- `chatbot/modules/ta_brain_mmd_generator.py` — Gap→MMD generator (Stage 8); synthetic queue in `report/brain_synthetic_queue/`
+- `chatbot/modules/ta_brain_query.py` — TACO query surface (infer/gaps/patterns/explain modes)
+- `chatbot/modules/ta_brain_taco_processor.py` — idempotent feedback processor (Stage 7)
+- `chatbot/api/routes/brain.py` — all `/api/v1/brain/*` endpoints
+- `report/ta_brain.json` — pattern layer + meta layer (`pattern_version` key drives cache invalidation)
+- `report/ta_brain_instances.jsonl` — append-only instance layer (use `incremental=True` to avoid duplicates)
+- `report/brain_synthetic_queue/` — staged synthetic MMDs awaiting approval before harness submission
 
 **MoE agents:**
 - `chatbot/modules/agents/critics/` — Architect, Tester, Red Team, Purple Team, Blackhat
@@ -119,7 +130,7 @@ tail -f logs/api.log            # logs
 
 ---
 
-## MCP server — 13 tools
+## MCP server — 16 tools
 
 | Tool | What it does |
 |------|-------------|
@@ -136,6 +147,9 @@ tail -f logs/api.log            # logs
 | `get_mcp_access_signals` | Live session access patterns → feeds DETECT-020/021/022 |
 | `export_assessment` | Unified TA bundle (ta-export/1.0): gate + OTM + OCSF + TATB |
 | `governance_check` | Fast MMD governance scan (~50ms, no LLM) → signals + fired DETECT rules |
+| `query_ta_brain` | Query TA Brain (infer/gaps/patterns/explain modes) |
+| `record_brain_feedback` | Record confirmed/wrong feedback for a brain prediction |
+| `generate_synthetic_architectures` | Generate synthetic MMDs from brain meta-layer gaps; stage for approval |
 
 **Transport:** stdio (Claude Desktop standard). See `mcp_server/README.md` for setup + all client types.
 
@@ -226,4 +240,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-08-09
+**Last Updated:** 2026-08-14

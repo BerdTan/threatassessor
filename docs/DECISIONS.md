@@ -4,6 +4,63 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 43 continued — 2026-08-14
+
+### 61. Brier formula fixed + calibration cache invalidation
+
+**Brier formula (precision-weighted):** Old formula scored over `predicted ∪ actual` — every unpredicted item scored `(0-1)²=1.0` penalty. With 20 predicted vs 46 actual (100% precision), Brier ≈ 0.56 — terrible score for a correct predictor. New formula: score over predicted items only. Brier=0 means every prediction was correct; recall gaps not penalised.
+
+Result: ai_system 0.631→0.065, generic 0.434→0.083, web_app 0.425→0.000. Avg published_conf 0.09→0.80.
+
+**Cache invalidation bug:** `save_calibration` updated `benchmark_confidence` in patterns but didn't increment `pattern_version`. Cache entries at the current version were served as valid even though confidence values changed. Fix: `save_calibration` now bumps `pattern_version` after updating patterns.
+
+**Hold-out expansion:** `HOLD_OUT_ARCHS` expanded from 3 to 8 archs (2 ai_system, 3 generic, 3 web_app). Single-sample hold-out makes Brier a noise measurement; 2–3 samples per type makes it statistically meaningful.
+
+**Alternatives rejected:** Recall-weighted Brier — penalises partial coverage, which is inherent to a top-K predictor. The brain predicts the top likely threats, not all possible threats.
+
+### 60. Brain CLI skills (Stage 9)
+
+4 new CLI skills under `.claude/skills/`:
+- `brain-grow` — full rebuild + N-round generate→ingest→calibrate loop (`--rounds`, `--dry-run`, `--status`)
+- `brain-ingest` — add one arch dir to instance layer incrementally without full rebuild
+- `brain-cache` — stats / pre-warm / evict-stale / record-feedback for a topology_sig
+- `brain-infer` — predictions vs ground truth; technique/control precision+recall per arch, action hints
+
+`brain-infer --all` across 51 corpus archs revealed: avg technique precision 94%, control precision 99% — the brain was a good predictor all along. The calibration problem was in the Brier formula, not the predictions.
+
+### 59. Brain+TACO UI tab
+
+Brain tab added to dashboard (`index.html` + `dashboard.js`). Three sections:
+- Status bar: instances / patterns / gaps / pattern_version + Rebuild + Calibrate buttons
+- Patterns table: corpus/benchmark/published conf (color-coded green/amber/red), evidence, trend arrows, suspect flag, column header tooltips, per-row "so what" action hints
+- Gaps + Synthetic Queue: gap cards with priority bars + Brier score + Generate MMDs button; queue panel with approve/reject per staged item + Reading Gaps legend
+
+**UX principle:** every metric has a "so what" — column tooltips explain the number, action hints below each red/amber pattern row say exactly what to do. Legend uses action-first language: "FORCED — click Generate MMDs" not "FORCED — benchmark divergence detected."
+
+**Bug caught:** template literal syntax error (`}` inside single-quoted string) broke dashboard.js entirely on load — all clicks were dead. Found via `node --check`.
+
+### 58. Three brain data bugs fixed
+
+a) **Instance dedup** — `build_brain()` defaulted to `incremental=False`, so 3 prior runs accumulated 3× copies of every arch (90 entries → 30 after dedup). Fixed: default changed to `incremental=True`.
+
+b) **Brier calibration duplication** — `calibrate_pattern_brier` computed Brier against the same arch 3× because of instance duplication. Fixed as consequence of (a).
+
+c) **Empty GAP generation_prompt** — `run_calibration` built gap prompts from `fw.missing_required` only. For ai_system, framework shows 100% coverage so `missing_required=[]`, producing an empty prompt. Fixed: fall back to `common_missing_controls` from the pattern when `missing_required` is empty.
+
+### 57. Stage 8 — Gap→MMD generator
+
+**What:** `chatbot/modules/ta_brain_mmd_generator.py` — reads meta-layer gap prompts → generates synthetic Mermaid via LLM → stages to `report/brain_synthetic_queue/` for human approval before harness submission. Closes the self-growing loop: gap detected → MMD generated → harness run → instance ingest → pattern update.
+
+- 4 REST endpoints: `POST /generate-mmds`, `GET /synthetic-queue`, `POST /synthetic-queue/{id}/approve`, `POST /synthetic-queue/{id}/reject`
+- MCP Tool 16: `generate_synthetic_architectures`
+- 20 new tests → 233 total
+- LLM is ONLY in the generate phase; all validation and routing are deterministic
+- MMD validation (node count ≥3, edge count ≥2, graph header present) runs before staging
+
+**Alternatives rejected:** Auto-submit without human approval gate — too risky; synthetic data quality needs human review before entering training loop.
+
+---
+
 ## Session 43 — 2026-08-14
 
 ### 56. README updated to v2.5 via readme-forge
