@@ -1,180 +1,232 @@
 # ThreatAssessor
 
-![Python](https://img.shields.io/badge/python-3.10%2B-blue) ![License](https://img.shields.io/badge/license-TBD-lightgrey)
+Upload a Mermaid (`.mmd`) architecture diagram and receive a MITRE ATT&CK-mapped threat model, SOC detection signals, and optional MoE expert review — in under two minutes.
 
-Upload a Mermaid (`.mmd`) architecture diagram and receive a full, MITRE-mapped threat assessment in under two minutes. Now with a GitHub Actions PR reviewer — every `.mmd` change is screened and assessed automatically.
+## System overview
 
-## What it does
+```mermaid
+flowchart TD
+    subgraph Inputs
+        mmd_in["Mermaid .mmd"]
+        pr_in["GitHub PR"]
+        ai_in["AI agent"]
+    end
 
-| Capability | What you get |
-|---|---|
-| **Threat mapping** | MITRE ATT&CK techniques per node and hop, prioritised controls, before/after architecture diagrams |
-| **GitHub Actions CI** | Automatic PR reviewer — governance screen (50ms) + full analysis on every `.mmd` change; posts a risk table comment; blocks merge on CRITICAL findings |
-| **Unified input panel** | Recent / Upload / Paste / Generate tabs — reuse past analyses instantly, paste MMD text, or generate a starter diagram from Domain × App-Type × Modality |
-| **User journey intelligence** | Every attack path cross-referenced against real user workflows — tells you whether an attacker blends with legitimate traffic or is on a post-compromise pivot with no user baseline |
-| **Real-world threat intel** | APT group attribution (MITRE intrusion-sets) and CVEs per attack path, cross-checked against CISA Known Exploited Vulnerabilities including ransomware flags |
-| **Policy alignment** | Singapore Government ICT&SS SSP baseline overlay — mandatory controls surfaced per profile (cloud, on-prem, GenAI, etc.) |
-| **Expert Review** | Five MoE critic agents — Architect → Tester → Red Team → Purple Team → Blackhat — each receiving user journey context relevant to their rubric, producing a consensus with tiered improvement recommendations |
-| **ScrumMaster** | Synthesises critic findings into sprint-ready impediments, redesign proposals, and an 8-week action plan; runs a harmony check before calling the LLM — zero spend when all impediments are unresolvable architectural issues |
-| **Governance & AIVSS** | AIVSS v4 three-flow safety scoring (inbound / internal / outbound) per run; per-agent governance gate blocks critics when scores breach thresholds; SIEM emitter for audit trails |
-| **Per-agent model routing** | HarnessModelGuardian assigns different LLM models to different critics and stages; env-var defaults with per-run overrides via the Config tab |
-| **Insights & trending** | Cross-run Insights tab — AIVSS score trends, critic consensus drift, and governance signal history across all analysed architectures |
-| **Performance telemetry** | Per-critic cost, token count, and latency for every run — full pipeline tracked at ~$0.10 / 32k tokens / 113s on Claude Sonnet 4 |
-| **Confidence scoring** | Architecture-sensitive confidence band; recovers toward ceiling only when coverage signals prove the surface was thoroughly mapped |
+    subgraph Service["FastAPI  port 8000"]
+        rest_api["REST API"]
+        dash_ui["Dashboard"]
+    end
 
-## Quick Start
+    mcp_srv["MCP Server  15 tools"]
 
-```bash
-git clone <repo-url>
-cd DEV-TEST
-make install    # create virtualenv + install dependencies
-make setup      # configure .env (add your API key when prompted)
-make start      # start the FastAPI server on port 8000
+    subgraph Harness["Harness v2"]
+        an_s["Analysis"]
+        bo_s["Bouncer"]
+        cr_s["MoE Critics + SM"]
+        av_s["AIVSS Scorer"]
+    end
+
+    subgraph Outputs
+        rep_o["report/ directory"]
+        det_o["30 DETECT rules"]
+        brn_o["TA Brain"]
+    end
+
+    mmd_in --> rest_api
+    pr_in --> rest_api
+    ai_in --> mcp_srv
+    mcp_srv --> rest_api
+
+    rest_api --> an_s
+    dash_ui --> rest_api
+
+    an_s --> bo_s
+    bo_s -->|"API_ONLY"| av_s
+    bo_s -->|"FULL_MOE"| cr_s
+    cr_s --> av_s
+
+    av_s --> rep_o
+    av_s --> det_o
+    av_s --> brn_o
 ```
 
-Then open **http://localhost:8000/dashboard** in your browser.
+| Component | Responsibility | Location |
+|---|---|---|
+| **FastAPI service** | REST API, web dashboard, SSE streaming | `chatbot/api/` |
+| **Harness v2** | Pipeline controller: stages, circuit breaker, event broker | `chatbot/harness/` |
+| **Analysis engine** | Deterministic threat mapping — RAPIDS + MITRE ATT&CK embeddings | `chatbot/modules/ground_truth_generator.py` |
+| **MoE critics** | 5-critic panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster | `chatbot/modules/agents/critics/` |
+| **SOC detection layer** | 30 DETECT rules → OCSF DetectionFinding 2004 events per run | `policies/soc_detection_rules.yaml` |
+| **TA Brain** | Persistent knowledge graph distilled from corpus; TACO query and feedback loop | `chatbot/modules/ta_brain_*.py` |
+| **AIVSS v4** | Three-flow safety scoring: inbound / internal / outbound | `chatbot/harness/stages.py` |
+| **MCP server** | 15 tools exposing TA capabilities to Claude Desktop and external agents | `mcp_server/` |
+| **GitHub Actions CI** | PR reviewer — governance check + full analysis on every `.mmd` change | `.github/workflows/ta-review.yml` |
 
-The dashboard opens with a **Recent** tab showing all previously analysed architectures — click any to reload results instantly. Use the **Generate** tab to create a starter diagram from Domain × App-Type × Modality if you have no `.mmd` file to hand. 30 sample architectures are included in `tests/data/architectures/`.
+## How a request flows
 
-### Required data files (not in repo)
+A `.mmd` file submitted to `POST /api/v1/analyze` passes through Harness v2 in order:
 
-Two large reference files must be downloaded separately and placed in `chatbot/data/`:
+1. **AnalysisStage** — parses the diagram, runs RAPIDS pattern matching, maps MITRE ATT&CK techniques per node and hop, computes a confidence band, writes `ground_truth.json` and 16 report files to `report/<arch-name>/`.
+2. **ReportStage** — generates the executive summary, technical report, action plan, improvement summary, ADR, and TATB scores.
+3. **QualityStage** — evaluates governance signals (injection, evasion, PII leakage, sovereignty). Runs `PolicyBroker` to adjust per-agent model routing.
+4. **BouncerStage** (`required=True`) — halts the pipeline if `exploitation.blocked` is set, a kill-switch is active, or outbound signals indicate compromise. Raises `BlockedPipelineError` → API returns 400.
+5. **CriticStage × 5** (FULL_MOE only) — runs in `partial_parallel` mode by default; each critic receives user-journey context relevant to its rubric.
+6. **ScrumMasterStage** (FULL_MOE only) — synthesises critic findings into sprint-ready impediments and an 8-week action plan.
+7. **AIVSSStage** — produces inbound / internal / outbound safety scores and appends to `governance_signals_history.jsonl`.
+8. **RuleEvaluator** — evaluates all 30 DETECT rules against the governance signals and emits OCSF DetectionFinding events.
+
+For `POST /api/v1/analyze-stream`, the same pipeline runs with SSE progress events for the dashboard.
+
+## Running it locally
+
+### Prerequisites
+
+- Python 3.10+
+- Two data files in `chatbot/data/` (not in the repo):
 
 | File | Source | Size |
-|------|--------|------|
-| `enterprise-attack.json` | [MITRE ATT&CK releases](https://github.com/mitre/cti/tree/master/enterprise-attack) | ~44 MB |
-| `technique_embeddings.json` | Pre-computed — run `/build-embeddings-cache` after placing the JSON above | ~45 MB |
+|---|---|---|
+| `enterprise-attack.json` | [MITRE CTI releases](https://github.com/mitre/cti/tree/master/enterprise-attack) | ~44 MB |
+| `technique_embeddings.npz` | Pre-computed — run `/build-embeddings-cache` after placing the JSON above | ~3 MB |
 
-All other data files (ATLAS YAML, SSP catalog, ARC register) are included in the repo under `chatbot/data/`.
-
-## Try it
+### Install and start
 
 ```bash
-# No API key required — deterministic analysis (~30 s)
-make demo-quick
+# Create virtual environment and install dependencies
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 
-# Full Expert Review with MoE critics (~2 min, requires LLM key in .env)
-make demo
+# Configure environment
+cp .env.example .env
+# Edit .env — at minimum set API_KEY and one LLM provider key:
+#   OPENROUTER_API_KEY=sk-or-v1-...   (recommended — free tier at openrouter.ai)
+
+# Start the API server
+make start        # wraps ./scripts/api/api_start.sh
 ```
 
-Both commands write results to `report/<architecture-name>/` (16 files).
+Then open **http://localhost:8000/dashboard**.
 
-## How it works
-
-**1. Deterministic pass (~30 s, no LLM)** — The diagram is parsed into a graph. RAPIDS walks every attack path, maps each hop to MITRE ATT&CK techniques and mitigations, and overlays the selected SSP policy baseline. StoryCaster runs here too: it classifies each attack path as *corroborated* (a real user follows this route) or *post-compromise* (no user baseline — attacker must already be inside). APT group attribution and KEV-backed CVEs are added to each path's risk scenario.
-
-**2. Expert Review (~90 s, LLM)** — Five MoE critics audit in sequence, each receiving a slice of the journey intelligence relevant to their rubric. Blackhat runs last and looks for cross-path pivot chains the individual critics cannot see. The synthesis step applies deterministic tier-sharpening: post-compromise paths push preventive controls to Quick Win (no detection fallback); corroborated paths place preventive controls in Quick Win and precision-detection controls in Recommended.
-
-**3. Output** — Executive summary, technical report, 8-week action plan, three phased architecture diagrams, and a threat model with ADR walkthrough — all annotated with user journey context so every finding tells you *who is affected* and *whether the attacker looks like a real user*.
-
-## API usage
-
-The REST API is available at **http://localhost:8000/docs** (Swagger UI). The machine-readable spec is at `openapi.yaml`.
+| URL | What |
+|---|---|
+| `http://localhost:8000/dashboard` | Web dashboard |
+| `http://localhost:8000/docs` | Swagger API docs |
+| `http://localhost:8000/health` | Health check |
 
 ```bash
-# Analyze an architecture diagram
+make stop         # stop server
+make restart      # restart
+make logs         # tail logs/api.log
+make test         # run test suite
+```
+
+### Try it
+
+33 sample `.mmd` diagrams in `tests/data/architectures/` cover cloud-native, zero-trust, IoT, agentic AI, data pipeline, multi-region, and microservices patterns. Drag any into the dashboard's **Upload** tab, or run:
+
+```bash
 curl -X POST http://localhost:8000/api/v1/analyze \
-  -H "TM-API-KEY: <your-key>" \
-  -F "architecture_file=@my_architecture.mmd" \
-  -F "ssp_profile=medium_risk_cloud"
-
-# Stream analysis with real-time progress
-curl -N -X POST http://localhost:8000/api/v1/analyze-stream \
-  -H "TM-API-KEY: <your-key>" \
-  -F "architecture_file=@my_architecture.mmd" \
-  -F "ssp_profile=medium_risk_cloud"
+  -H "TM-API-KEY: your-key" \
+  -F "architecture_file=@tests/data/architectures/00_serviceentry.mmd"
 ```
 
-Set `API_KEY` in your `.env` file; the server reads it on startup.
+No LLM key is required for deterministic-only analysis. Add `OPENROUTER_API_KEY` to run MoE Expert Review.
 
-### Key endpoints
+## MCP server
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check (no auth) |
-| POST | `/api/v1/analyze` | Deterministic analysis, returns JSON |
-| POST | `/api/v1/analyze-stream` | Same analysis with SSE progress events |
-| GET | `/api/v1/expert-review` | SSE stream for MoE validation (`?critic_mode=parallel`) |
-| GET | `/api/v1/reports` | List generated report directories |
-| GET | `/api/v1/reports/{name}/briefing` | Self-contained Markdown two-pager (`?fmt=md`) for offline sharing |
-| GET | `/api/v1/reports/{name}/download` | Download report as ZIP |
+The MCP server exposes ThreatAssessor as 15 tools to Claude Desktop and any MCP-compatible agent. The REST API must be running first.
 
-## Repository layout
+**Claude Desktop config** (`claude_desktop_config.json`):
 
-```
-chatbot/          Core analysis engine and REST API
-  api/            FastAPI application (app.py, routes/, models/, static/)
-  harness/        Pipeline controller + governance + registry (controller.py, stages.py, governance.py, registry.py)
-  modules/        Threat analysis, RAPIDS, MoE agents, SSP mapper, self-validation
-    story_caster.py          User journey co-generation (StoryCaster)
-    threat_scene_deepener.py APT attribution + KEV CVE enrichment
-    kev_helper.py            CTID + CISA KEV singleton loader
-    agents/critics/          Five MoE critic agents (Architect, Tester, RedTeam, Purple, Blackhat)
-    agents/orchestrators/    MoE synthesis + tier sharpening
-  services/       Thread-safe service layer
-  data/
-    arc/          ARC Framework data (controls.yaml, risks.yaml) — in repo
-    atlas/        MITRE ATLAS YAML corpus — in repo
-    ssp/          Singapore Government SSP catalog JSON — in repo
-    kev/          CTID + CISA KEV indexes — not in git (run update-kev.sh to fetch)
-    *.json        MITRE ATT&CK + embeddings — not in git (large files)
-agentic/          Multi-provider LLM client (OpenRouter, Bedrock)
-scripts/          Server lifecycle, validation, ingest, doc generation
-  api/            api_start/stop/restart/status scripts
-  ci/             ta_pr_review.py — GitHub Actions PR reviewer script
-  data/           fetch_kev.py — download CTID + CISA KEV indexes
-  ingest/         scrape_ssp_catalog.py — refresh SSP data from source
-  integration/    test_openrouter.py and other integration tests
-  validation/     check_orphans.py, validate_llm_config.py
-.github/
-  workflows/      ta-review.yml — TA PR reviewer GitHub Actions workflow
-tests/            Test suite + 30 sample .mmd architectures (25–30 added this session)
-docs/             Project documentation (DECISIONS.md, operations, specs)
-scripts/api/      api_start.sh / api_stop.sh / api_restart.sh / api_status.sh
-Makefile          Developer entry point (make help for all targets)
-openapi.yaml      OpenAPI 3.0 spec
+```json
+{
+  "mcpServers": {
+    "threatassessor": {
+      "command": "python",
+      "args": ["-m", "mcp_server.server"],
+      "env": {
+        "TM_API_BASE_URL": "http://localhost:8000",
+        "TM_API_KEY": "your-key-here"
+      }
+    }
+  }
+}
 ```
 
-## Benchmark methodology
+For network transport (SSE / streamable-HTTP), start with `--transport sse --port 8001` and set `TM_MCP_KEY`.
 
-The scoring rubric TATB uses to evaluate every threat model is open and documented:
+| Tool | What it does |
+|---|---|
+| `analyze_architecture` | Submit `.mmd` → full threat model (~30s) |
+| `run_expert_review` | Queue FULL_MOE, returns `job_id` |
+| `get_job_status` | Poll job; `wait_for_completion=True` blocks until done |
+| `get_threat_briefing` | CISO-ready briefing (md or json) |
+| `get_ciso_brief` | Full CISO brief with investment tiers |
+| `get_governance_signals` | AIVSS composite + signal dimensions |
+| `get_detect_trends` | DETECT rule firing trends per architecture |
+| `get_tatb_scores` | TATB benchmark scores (corpus or single arch) |
+| `list_architectures` | All analysed architectures + metadata |
+| `lookup_mitre_technique` | Technique details + mitigations by ATT&CK ID |
+| `get_mcp_access_signals` | Live session access patterns (feeds DETECT-020–022) |
+| `export_assessment` | TA bundle (`ta-export/1.0`, OTM-compatible) |
+| `governance_check` | Fast MMD governance scan (~50ms, no LLM) |
+| `query_ta_brain` | Query Brain patterns: infer / gaps / list |
+| `record_brain_feedback` | Mark a Brain prediction confirmed / wrong / partial |
 
-**[docs/TATB_RUBRIC.md](docs/TATB_RUBRIC.md)** — four rubrics (Threat-Relevant, TTP-Accurate, Risk-Defensible, Plan-Actionable), signal weights, CONFIRMED/PLAUSIBLE/FAILED validation classes, and design principles. Anyone implementing a threat modelling tool could adopt these rubrics independently.
+## Configuration
 
----
+All variables documented in `.env.example`. Minimum required:
 
-## Read more
+| Variable | Description |
+|---|---|
+| `API_KEY` | REST API auth (`openssl rand -hex 32`) |
+| `LLM_PROVIDER` | `openrouter` \| `bedrock` \| `anthropic` \| `azure` |
+| `OPENROUTER_API_KEY` | `sk-or-v1-...` — free tier at openrouter.ai |
 
-The full build story is on Medium — 19 parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, and the self-assessment that found a Critical in its own codebase:
+Optional per-agent model overrides via `AGENT_MODEL_*` (Architect, Tester, Red Team, Purple Team, Blackhat, ScrumMaster, MOE). Validate routing without API calls:
 
-| # | Title | What it covers |
-|---|-------|----------------|
-| 1 | [From Diagram to Threat Model Report in Minutes](https://medium.com/@breadtan/from-diagram-to-threat-model-report-in-minutes-building-an-ai-assisted-threat-model-assessor-b730d9f91459) | MITRE ATT&CK + ATLAS + ARC + Singapore SSP — four sources, one diagram, under two minutes |
-| 2 | [Cloud Threat Modelling: CSP-Aware, Risk-First — CAVEAT + CCM + SSP](https://medium.com/@breadtan/cloud-threat-modelling-csp-aware-risk-first-caveat-ccm-ssp-c367ac96d6cf) | How cloud-specific attack patterns layer onto the RAPIDS baseline; SSRM, IAM inference, GenAI profiles |
-| 3 | [When Good Enough Is Not Enough: Teaching a Threat Assessor to See What It Couldn't](https://medium.com/@breadtan/when-good-enough-is-not-enough-teaching-a-threat-assessor-to-see-what-it-couldnt-0e027d6578fe) | MoE critics, self-validation, and closing the gaps a deterministic engine misses |
-| 4 | [StoryCaster: Read the Human Stories Hidden in Your Architecture](https://medium.com/@breadtan/storycaster-read-the-human-stories-hidden-in-your-architecture-4fed8dfdcf05) | User journey co-generation — corroborated vs post-compromise paths, APT attribution, KEV CVEs |
-| 5 | [When the Critics Disagree: ScrumMaster and the Art of Security Harmony](https://medium.com/@breadtan/when-the-critics-disagree-scrummaster-and-the-art-of-security-harmony-6cfacb7eb05e) | ScrumMaster synthesis, harmony checking, performance telemetry across the full critic pipeline |
-| 6 | [The Conductor's Job: How a Lightweight Harness Keeps Your AI Pipeline Together](https://medium.com/@breadtan/the-conductors-job-how-a-lightweight-harness-keeps-your-ai-pipeline-together-9667f5712d9f) | Harness architecture — scenario registry, stage isolation, model guardian, and governance gate |
-| 7 | [Threat Modeling Is the Art of Storytelling a Graph](https://medium.com/@breadtan/threat-modeling-is-the-art-of-storytelling-a-graph-719d0ef5a536) | Practitioner reflection — what good, bad, and ugly TM look like; what AI changes and what it doesn't |
-| 8 | [You Can't Improve What You Don't Measure: A Practical Rubric for Threat Model Quality](https://medium.com/@breadtan/you-cant-improve-what-you-don-t-measure-a-practical-rubric-for-threat-model-quality-354f6f5856a2) | TATB four-rubric scorecard — Threat-Relevant, TTP-Accurate, Risk-Defensible, Plan-Actionable; the deterministic feedback loop |
-| 9 | [The Flywheel Nobody Talks About: How a Benchmark Teaches Itself](https://medium.com/@breadtan/the-flywheel-nobody-talks-about-how-a-benchmark-teaches-itself-75e2dd955807) | Nova Pro independent labeller, labelled-corpus regression, recall 22% to 62% across 10 tuning rounds |
-| 10 | [When the Benchmark Finds Its Own Blind Spots](https://medium.com/@breadtan/when-the-benchmark-finds-its-own-blind-spots-0d6461a5406b) | 26-arch corpus gauntlet — engine gaps, T1083/T1018 mitigation holes, and what a truthful TTP-Accurate score really means |
-| 11 | [The Honest Harness: Learning, Unlearning, Relearning](https://medium.com/@breadtan/the-honest-harness-learning-unlearning-relearning-ffeec3e0166f) | Skill machine, UNSURE triage, AIVSS governing the critics, EventBroker audit trail, and the staged autonomy arc |
-| 12 | [The Graph That Ate Its Own Architecture](https://medium.com/@breadtan/the-graph-that-ate-its-own-architecture-0186760253fe) | Replacing RAG with a 50ms deterministic graph; why frequency isn't criticality; canonicalisation as a query-time-only transform |
-| 13 | [The Instrumentation We Forgot to Talk About](https://medium.com/@breadtan/the-instrumentation-we-forgot-to-talk-about-cd44c4a7a893) | EventBroker + 48 unit tests; the test suite as specification; sink isolation; why the instrumentation TA recommends for others is the same instrumentation TA runs on itself |
-| 14 | [Beneath the Iceberg: The AI Pipeline Signals You Have But Aren't Reading](https://medium.com/@breadtan/beneath-the-iceberg-the-ai-pipeline-signals-you-have-but-arent-reading-e23abf9247f4) | 18 DETECT rules at time of writing (now 24 — see post update); the detect-loop flywheel; OWASP AST10 pipeline coverage; SOC KG provenance graph; 23/27 architectures silently inflate confidence |
-| 15 | [19 in a Day. Frequency Isn't the Signal.](https://medium.com/@breadtan/19-in-a-day-frequency-isnt-the-signal-ce2b3e459124) | DETECT-019 added the same day Part 14 published (flywheel in practice); rule firing trend infrastructure (history JSONL + RuleTrendEvaluator); SOC KG trend badges (★→✓); baseline vs. new signal distinction |
-| 16 | [Two Handymen and the Face: How ThreatAssessor Grew Ways to Be Used](https://medium.com/@breadtan/two-handymen-and-the-face-how-threatassessor-grew-ways-to-be-used-f6a80bb75064) | Skills as internal operator (41 skills, left hand); MCP as external interface (13 tools, right hand); adversarial sim live fire; governance_check 50ms gate; ta-export/1.0 bundle |
-| 17 | [The Architecture That Told You First: Four Signals from the AISI Incident](https://medium.com/@breadtan/architecture-that-told-you-first-four-signals-from-the-aisi-incident-727bfb75960c) | AISI INC-2026-07-28 plain-language breakdown; DETECT-025–028 grounded in C2 beacon, critic collapse, downstream agent injection, skill tamper; governance_check two-severity split (pipeline vs downstream consumer) |
-| 18 | [Skills That Built the Builder: How Developer Automation Grew Alongside ThreatAssessor](https://medium.com/@breadtan/skills-that-built-the-builder-how-developer-automation-grew-alongside-threatassessor-cc23897eee82) | 44-skill developer automation layer — regression suites, feedback flywheels (observe→diagnose→prescribe→gate→apply→verify), data portability, and operational skills; why the gate in every loop exists |
-| 19 | [Always Verify, Never Trust — Even Yourself: ThreatAssessor's Self-Assessment](https://medium.com/@breadtan/always-verify-never-trust-even-yourself-threatassessors-self-assessment-47aea99e229b) | Running /harden-audit on TA itself — 1 Critical confirmed by execution (prompt injection in /generate-mmd), 7 findings fixed same session, 2 new DETECT rules (029/030) grounded in own findings; the self-assessment loop closed |
+```bash
+python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
+```
 
----
+## Security notes
 
-## Links
+**API authentication** — all endpoints require a `TM-API-KEY` header except `/health`. Generate with `openssl rand -hex 32`; set as `API_KEY` in `.env`.
 
-- **Dashboard** — http://localhost:8000/dashboard
-- **API docs (Swagger)** — http://localhost:8000/docs
-- **OpenAPI spec** — [openapi.yaml](openapi.yaml)
-- **API management guide** — [docs/operations/API_MANAGEMENT.md](docs/operations/API_MANAGEMENT.md)
-- **Developer reference** — [CLAUDE.md](CLAUDE.md)
+**MCP transport** — stdio transport (default) has no network exposure. Network transport (`--transport sse` / `--transport streamable-http`) requires `TM_MCP_KEY`; the server refuses to start without it.
+
+**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` exploitation signals before any critic or output stage runs. The 30 DETECT rules emit OCSF events for SOC consumption.
+
+## Design decisions
+
+**Deterministic first.** The analysis engine runs without any LLM call — RAPIDS pattern matching and MITRE ATT&CK embeddings produce the threat model. MoE critics run only on explicit `FULL_MOE` requests.
+
+**BouncerStage as required.** Sits between QualityStage and the critics. A blocked pipeline raises `BlockedPipelineError` and returns HTTP 400 before any LLM token is spent.
+
+**TA Brain is LLM-free.** All 7 completed stages (ingest, distil, cache, confidence decay, gap weighting, calibration, TACO processor) derive values from formulas and hashes. The topology signature is a pure SHA-256 of node shapes and edge patterns — collision-resistant across the 33-architecture corpus.
+
+**Event bus between stages.** Each stage emits `HarnessEvent` objects to `EventBrokerCritic`, which fans out to SIEM, Langfuse, and webhook sinks. Stages have no knowledge of their consumers.
+
+## Repo layout
+
+```
+DEV-TEST/
+├── chatbot/
+│   ├── api/                FastAPI app, routes, static dashboard (index.html + JS)
+│   ├── harness/            Harness v2: controller, stages, governance, rule evaluator
+│   ├── modules/            Analysis engine, MoE critics, TA Brain (ta_brain_*.py)
+│   ├── config/             Settings loader, user_config.json, agent model config
+│   └── services.py         ThreatAnalysisService — single callable surface
+├── mcp_server/             MCP server: 15 tools, job client, access logger, sim personas
+├── policies/               soc_detection_rules.yaml (30 rules), agent_governance.yaml
+├── tests/
+│   ├── data/architectures/ 33 sample .mmd files
+│   └── unit/               Unit tests (213 for TA Brain alone)
+├── scripts/
+│   ├── api/                api_start.sh  api_stop.sh  api_status.sh  api_restart.sh
+│   └── ci/                 ta_pr_review.py (GitHub Actions PR reviewer)
+├── .github/workflows/      ta-review.yml — triggers on *.mmd PR changes
+├── .env.example            All environment variable names with defaults
+├── Makefile                Developer shortcuts: install / setup / start / stop / test
+└── requirements.txt        Python dependencies
+```
