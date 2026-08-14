@@ -4,6 +4,36 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 43 security — 2026-08-14
+
+### 64. DETECT-031 — brain_training_data_poisoning
+
+**What:** New SOC detection rule grounded in harden-audit 2026-08-14 findings. Fires when `exploitation.evasion_attempts > 0` AND `exploitation.injection_categories` present — the combined signature of a targeted attempt to smuggle malicious content through `validate_mmd` into the TA Brain's synthetic training loop.
+
+**Why:** Distinct from DETECT-029 (any injection) and DETECT-019 (HIGH severity injection). Requiring evasion_attempts > 0 identifies only adversaries that anticipated detection and tried to circumvent it — a tighter, lower false-positive condition. Grounded in 2026-08-14 RT-01/02/03 (path traversal, max_per_run abuse, Mermaid XSS). Incident scenario: `brain_training_poisoning`. Rules: 31 total. Tests: 355.
+
+**Alternatives rejected:** Using `arch_metadata.is_agentic` as a condition — unpopulated for most corpus architectures in practice, would produce zero coverage.
+
+### 63. RT-07 closed — TA_FORCE_MMD replaced with --arch CLI arg
+
+**What:** `TA_FORCE_MMD` env var removed from `scripts/ci/ta_pr_review.py` (prior harden-audit High finding). Replaced with `--arch FILE [FILE...]` CLI argument. `taci.py` updated to pass `--arch` directly. `.mmd` extension check added (was missing in prior implementation).
+
+**Why:** Env vars are invisible across process boundaries and can be set by CI pipeline injection. A CLI arg is explicit, visible in process listings, and scoped to the invocation. The `.mmd` extension gap was the second part of the original finding.
+
+### 62. harden-audit 2026-08-14 — three medium findings in session-43 code
+
+**What:** Ran depth-B assessment on all new code from session 43. Three medium-severity findings, all fixed same session. No Critical findings. No secrets in new files or git history.
+
+**RT-01 (Medium) — path traversal via `gen_id` in `update_synthetic_status`:** `qdir / f"{gen_id}.meta.json"` with no format validation. Fix: `_GEN_ID_RE` regex + `.resolve()` boundary check. Exploitable only if `ta_brain.json` is modified directly — FastAPI routing blocks URL-level traversal.
+
+**RT-02 (Medium) — `max_per_run` unbounded:** Any authenticated caller could set `max_per_run=999`, triggering 999 LLM calls. Fix: `Field(ge=1, le=10)`.
+
+**RT-03 (Medium) — Mermaid `securityLevel: 'loose'` + `validate_mmd` passed HTML labels:** `<script>` in node labels passes structural validation and renders as raw HTML with `loose` setting. Fix: `securityLevel: 'strict'` in dashboard.js + HTML tag rejection in `validate_mmd`.
+
+**Why found now:** The brain's new attack surface (synthetic generation pipeline, queue file I/O, LLM generation) introduced these vectors this session. Self-audit after every session with new API surface is the policy.
+
+---
+
 ## Session 43 continued — 2026-08-14
 
 ### 61. Brier formula fixed + calibration cache invalidation
