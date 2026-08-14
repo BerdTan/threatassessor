@@ -25,7 +25,14 @@ REPORT_DIR = ROOT / "report"
 
 # Hold-out set: excluded from distiller training, used for E2E validation gate.
 # One agentic, one data-pipeline, one traditional.
-HOLD_OUT_ARCHS = frozenset({"21_agentic_ai_system", "03_aws_3tier", "20_data_pipeline"})
+HOLD_OUT_ARCHS = frozenset({
+    # ai_system — both real non-synthetic archs
+    "21_agentic_ai_system", "22_generic_ai_nodes",
+    # generic — three structurally diverse real archs
+    "20_data_pipeline", "14_container_orchestration", "01_minimal_vulnerable",
+    # web_app — three structurally diverse real archs
+    "03_aws_3tier", "10_complex_enterprise", "08_dmz_architecture",
+})
 
 # A technique or control must appear in at least this many instances of the
 # same arch_type to become part of a pattern.

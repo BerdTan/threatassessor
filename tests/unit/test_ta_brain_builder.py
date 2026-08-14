@@ -104,6 +104,8 @@ class TestComputeTopologySignature:
             pytest.skip("report dir not available")
         sigs = []
         for arch_dir in sorted(report.iterdir()):
+            if arch_dir.name.startswith("syn_") or arch_dir.name.startswith("ta_brain"):
+                continue  # synthetic archs legitimately share signatures by design
             gt_path = arch_dir / "ground_truth.json"
             if not gt_path.exists():
                 continue
