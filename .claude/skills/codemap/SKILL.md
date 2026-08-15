@@ -16,8 +16,33 @@ Five curated MMD relationship graphs live in `.claude/graphs/`. Read the relevan
 | `.claude/graphs/harness.mmd` | What runs in what order? What has side-effects? What's tested where? |
 | `.claude/graphs/dashboard-tabs.mmd` | Which JS function + API route + Python module powers tab X? |
 | `.claude/graphs/skills.mmd` | Which skill for this task? What's the recommended workflow sequence? |
+| `.claude/graphs/workspace+brain.mmd` | How do TACO, Brain, Workspace, and their API routes connect? Use before working on taco_agent.py, ta_brain_*.py, or graph_index.py. |
 
 Read `.claude/graphs/README.md` for the update policy (which graph to update when you change what).
+
+### Refreshing workspace+brain.mmd
+
+After editing any Brain/Workspace/TACO module, regenerate the diagram:
+
+```bash
+python3 .claude/skills/codemap/scripts/build_codemap.py gen-mmd \
+  --root . \
+  --modules \
+    "chatbot/modules/ta_brain_*.py" \
+    "chatbot/modules/taco_agent.py" \
+    "chatbot/modules/graph_index.py" \
+    "chatbot/api/routes/brain.py" \
+    "chatbot/api/routes/taco.py" \
+  --group "Brain:ta_brain_*" \
+  --group "TACO:taco_*" \
+  --group "Workspace:graph_index" \
+  --group "API:brain,taco" \
+  --output .claude/graphs/workspace+brain.mmd \
+  --title "ThreatAssessor — Workspace + Brain (TACO subsystem)"
+python3 .claude/skills/codemap/scripts/validate_graphs.py
+```
+
+The `gen-mmd` subcommand infers edges from cross-module imports. It captures static structure well; runtime relationships (e.g. injected minis) will need manual annotation if they matter for the analysis run.
 
 **After editing any graph:** always run `python3 .claude/skills/codemap/scripts/validate_graphs.py` — it catches the six failure modes that cause rendering errors (YAML multi-line values, `graph` mode inter-subgraph edges, `<br/>` in edge labels, literal `\n`, duplicate IDs, reserved keywords).
 

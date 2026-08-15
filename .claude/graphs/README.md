@@ -9,6 +9,7 @@ Five MMD files covering the six architectural domains. Use these before opening 
 | [harness.mmd](harness.mmd) | Changing stage order, adding a sink, debugging governance blocks | "What runs when, what fires side-effects, what's tested?" |
 | [dashboard-tabs.mmd](dashboard-tabs.mmd) | Fixing a UI bug, adding a tab, tracing a fetch | "Which JS function, which API route, which Python module?" |
 | [skills.mmd](skills.mmd) | Deciding which skill to run, adding a new skill | "Which skill for this task? What's the recommended sequence?" |
+| [workspace+brain.mmd](workspace+brain.mmd) | Working on TACO, Brain, or Workspace modules | "How do the TACO minis, Brain KG, and Workspace graph search connect?" |
 
 ## Validate before committing
 
@@ -30,7 +31,8 @@ Update the relevant graph **when you change**:
 - A tab's data sources or a new API route → `dashboard-tabs.mmd`
 - A new skill or a workflow sequence change → `skills.mmd`
 - Any of the above + the master picture → `master.mmd`
+- Brain/Workspace/TACO module structure changes → re-run `gen-mmd` (see SKILL.md) → `workspace+brain.mmd`
 
 These are **curated relationship maps**, not auto-generated call graphs. The value is in the semantic groupings and workflow edges — keep them accurate but don't add every function call.
 
-## Last updated: 2026-07-18
+## Last updated: 2026-08-15
