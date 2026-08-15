@@ -255,7 +255,7 @@ DEV-TEST/
 
 ## Build story
 
-The full build story is on Medium — 20 published parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, the self-assessment that found a Critical in its own codebase, and why a self-growing knowledge graph had the right answers all along:
+The full build story is on Medium — 21 published parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, the self-assessment that found a Critical in its own codebase, why a self-growing knowledge graph had the right answers all along, and why new capabilities always introduce new attack surface:
 
 | # | Title | What it covers |
 |---|---|---|
@@ -279,3 +279,4 @@ The full build story is on Medium — 20 published parts covering the pipeline, 
 | 18 | [Skills That Built the Builder: How Developer Automation Grew Alongside ThreatAssessor](https://medium.com/@breadtan/skills-that-built-the-builder-how-developer-automation-grew-alongside-threatassessor-cc23897eee82) | 44-skill developer automation layer — regression suites, feedback flywheels, data portability, operational skills |
 | 19 | [Always Verify, Never Trust — Even Yourself: ThreatAssessor's Self-Assessment](https://medium.com/@breadtan/always-verify-never-trust-even-yourself-threatassessors-self-assessment-47aea99e229b) | Running /harden-audit on TA itself — 1 Critical confirmed, 7 findings fixed, 2 new DETECT rules grounded in own findings |
 | 20 | [The Wrong Ruler](https://medium.com/@breadtan/the-wrong-ruler-9b73117dbbbf) | Self-growing loop closed (Stage 8); brain-infer reveals 94% precision vs 0.09 calibration — the metric was measuring the wrong thing; 0.09→0.80 after fix |
+| 21 | [Capability Is Attack Surface](https://medium.com/@breadtan/capability-is-attack-surface-57476a1f8ae2) | Every new capability introduces new surface — 3 findings all in same-session code; fix becomes detection rule (DETECT-031); 31 rules, 6 Critical |
