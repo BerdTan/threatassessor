@@ -1,8 +1,8 @@
 # ThreatAssessor — Developer Quick Reference
 
 **Version:** 2.6  
-**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (28 rules) + Harness v2 + MCP server (16 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (233 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80).  
-**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 28 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG
+**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (31 rules) + Harness v2 + MCP server (16 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (233 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised.  
+**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 31 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG
 
 ---
 
@@ -64,12 +64,12 @@ tail -f logs/api.log            # logs
 - `chatbot/harness/governance.py` — `GovernanceSignals`, governance adapter, injection/evasion detection
 - `chatbot/harness/policy_broker.py` — `PolicyBroker`, `BrokerDecision` (dynamic routing after QualityStage)
 - `chatbot/harness/event_broker.py` — `EventBrokerCritic`, pub/sub to SIEM/Langfuse/Webhook sinks
-- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (28 DETECT rules)
+- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (31 DETECT rules)
 - `chatbot/harness/rule_trend_evaluator.py` — `RuleTrendEvaluator` (trend analysis from history JSONL)
 - `chatbot/harness/registry.py` — `CriticRegistry`
 
 **SOC detection:**
-- `policies/soc_detection_rules.yaml` — 28 DETECT rules with OWASP/ATLAS/incident provenance
+- `policies/soc_detection_rules.yaml` — 31 DETECT rules with OWASP/ATLAS/incident provenance
 - `report/<arch>/governance_signals.json` — signal substrate for rule evaluation (includes `arch_metadata`, `aivss.delta`)
 - `report/<arch>/governance_signals_history.jsonl` — append-only run history; AIVSS delta computed on each append
 - `report/<arch>/ocsf_findings.json` — OCSF DetectionFinding 2004 export
@@ -240,4 +240,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-08-14
+**Last Updated:** 2026-08-15

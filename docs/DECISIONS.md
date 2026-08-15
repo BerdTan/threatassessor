@@ -4,6 +4,26 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 43b — 2026-08-15
+
+### 66. Parts 20 and 21 published + combined LinkedIn post
+
+**What:** Part 20 "The Wrong Ruler" published at https://medium.com/@breadtan/the-wrong-ruler-9b73117dbbbf. Part 21 "Capability Is Attack Surface" published at https://medium.com/@breadtan/capability-is-attack-surface-57476a1f8ae2. Combined LinkedIn post written covering both as one arc: calibration fix → security findings → "verify measurements AND capabilities."
+
+**Why:** Part 20 covers the Brier formula fix and brain precision story. Part 21 covers the security findings from the same session and DETECT-031 grounded in those findings. Published together because they share the same session and governing principle. Blog series now 21 parts.
+
+### 65. TA Brain data files reorganised into report/brain/
+
+**What:** All TA Brain data files moved from `report/` root into `report/brain/`. `brain_synthetic_queue/` renamed to `report/brain/synthetic_queue/`. All 9 Python modules + 4 CLI skills updated to use a lazy `_brain_dir()` that reads `system.report_dir` from live settings at call time — adaptive to any configured report_dir.
+
+**Why:** Brain files were mixing with architecture report dirs at the same level. With the brain growing (synthetic queue, processor state, interactions log), the root would become unnavigable. Lazy resolver ensures the reorganisation holds when report_dir is reconfigured.
+
+**Key invariant:** `BRAIN_DIR = get_settings().system.report_dir / "brain"` — computed at call time, never hardcoded. Architecture dirs (`report/03_aws_3tier/` etc.) stay at the report root. `build_brain(report_dir=None)` now resolves from settings when no explicit path is passed.
+
+**Alternatives rejected:** Adding `brain_` prefix to subdirs only — more churn with no structural benefit.
+
+---
+
 ## Session 43 security — 2026-08-14
 
 ### 64. DETECT-031 — brain_training_data_poisoning
