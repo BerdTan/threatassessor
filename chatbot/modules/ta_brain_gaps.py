@@ -30,8 +30,20 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORT_DIR = ROOT / "report"
-INTERACTIONS_PATH = REPORT_DIR / "ta_brain_interactions.jsonl"
-INSTANCES_PATH = REPORT_DIR / "ta_brain_instances.jsonl"
+
+
+def _brain_dir() -> Path:
+    try:
+        from chatbot.config import get_settings  # noqa: PLC0415
+        rd = get_settings().system.report_dir
+        base = Path(rd) if Path(rd).is_absolute() else ROOT / rd
+    except Exception:
+        base = ROOT / "report"
+    return base / "brain"
+
+
+INTERACTIONS_PATH = _brain_dir() / "ta_brain_interactions.jsonl"
+INSTANCES_PATH = _brain_dir() / "ta_brain_instances.jsonl"
 
 MIN_INSTANCES = 3          # below this → coverage_thin gap
 DEMAND_THRESHOLD = 0.25    # miss_rate above this for well-sampled types → query_miss gap

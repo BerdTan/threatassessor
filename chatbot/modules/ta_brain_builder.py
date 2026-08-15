@@ -21,7 +21,18 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
-REPORT_DIR = ROOT / "report"
+
+
+def _report_dir() -> Path:
+    try:
+        from chatbot.config import get_settings  # noqa: PLC0415
+        rd = get_settings().system.report_dir
+        return Path(rd) if Path(rd).is_absolute() else ROOT / rd
+    except Exception:
+        return ROOT / "report"
+
+
+REPORT_DIR = ROOT / "report"  # kept for backward compat; prefer _report_dir() at call time
 
 # Hold-out set: excluded from distiller training, used for E2E validation gate.
 # One agentic, one data-pipeline, one traditional.
@@ -306,7 +317,7 @@ def detect_gaps(instances: list, patterns: list) -> list:
 # ── Brain builder (main entry point) ─────────────────────────────────────────
 
 def build_brain(
-    report_dir: Path = REPORT_DIR,
+    report_dir: Path = None,
     hold_out: Optional[frozenset] = None,
     incremental: bool = True,
 ) -> dict:
@@ -319,11 +330,16 @@ def build_brain(
 
     Returns a summary dict. Raises nothing — errors are logged and skipped.
     """
+    if report_dir is None:
+        report_dir = _report_dir()
     if hold_out is None:
         hold_out = HOLD_OUT_ARCHS
 
-    instances_path = report_dir / "ta_brain_instances.jsonl"
-    brain_path = report_dir / "ta_brain.json"
+    brain_dir = report_dir / "brain"
+    brain_dir.mkdir(parents=True, exist_ok=True)
+
+    instances_path = brain_dir / "ta_brain_instances.jsonl"
+    brain_path = brain_dir / "ta_brain.json"
 
     # Load existing instances for incremental mode
     existing_ids: set = set()
@@ -472,9 +488,9 @@ if __name__ == "__main__":
     if args.enrich_gaps:
         from chatbot.modules.ta_brain_gaps import enrich_brain_gaps
         gap_result = enrich_brain_gaps(
-            brain_path=report_dir / "ta_brain.json",
-            instances_path=report_dir / "ta_brain_instances.jsonl",
-            interactions_path=report_dir / "ta_brain_interactions.jsonl",
+            brain_path=brain_dir / "ta_brain.json",
+            instances_path=brain_dir / "ta_brain_instances.jsonl",
+            interactions_path=brain_dir / "ta_brain_interactions.jsonl",
         )
         print(f"\nGap enrichment complete")
         print(f"  Total gaps:      {gap_result['gaps_total']}")
@@ -486,11 +502,11 @@ if __name__ == "__main__":
     if args.process:
         from chatbot.modules.ta_brain_taco_processor import run_taco_processor
         proc = run_taco_processor(
-            brain_path=report_dir / "ta_brain.json",
-            instances_path=report_dir / "ta_brain_instances.jsonl",
-            interactions_path=report_dir / "ta_brain_interactions.jsonl",
-            cache_path=report_dir / "ta_brain_cache.json",
-            state_path=report_dir / "ta_brain_processor_state.json",
+            brain_path=brain_dir / "ta_brain.json",
+            instances_path=brain_dir / "ta_brain_instances.jsonl",
+            interactions_path=brain_dir / "ta_brain_interactions.jsonl",
+            cache_path=brain_dir / "ta_brain_cache.json",
+            state_path=brain_dir / "ta_brain_processor_state.json",
         )
         print(f"\nTACO processor complete (run #{proc['processor_runs_total']})")
         print(f"  Patterns:     {proc['patterns']}  suspect={proc['suspect_patterns']}")
@@ -502,8 +518,8 @@ if __name__ == "__main__":
     if args.calibrate:
         from chatbot.modules.ta_brain_benchmarks import save_calibration
         cal_result = save_calibration(
-            brain_path=report_dir / "ta_brain.json",
-            instances_path=report_dir / "ta_brain_instances.jsonl",
+            brain_path=brain_dir / "ta_brain.json",
+            instances_path=brain_dir / "ta_brain_instances.jsonl",
             report_dir=report_dir,
         )
         print(f"\nBenchmark calibration complete")
@@ -518,7 +534,7 @@ if __name__ == "__main__":
 
         reset_singleton()
         brain_data = json.loads(Path(result["brain_path"]).read_text())
-        instances_path = report_dir / "ta_brain_instances.jsonl"
+        instances_path = brain_dir / "ta_brain_instances.jsonl"
         instances = []
         if instances_path.exists():
             for line in instances_path.read_text().strip().splitlines():
@@ -528,7 +544,7 @@ if __name__ == "__main__":
                     except Exception:
                         pass
 
-        cache = CacheManager(report_dir / "ta_brain_cache.json")
+        cache = CacheManager(brain_dir / "ta_brain_cache.json")
         evicted = cache.evict_stale(brain_data.get("pattern_version", 0))
         written = cache.pre_warm(instances, brain_data, _run_infer, report_dir)
         print(f"\nCache pre-warm complete")

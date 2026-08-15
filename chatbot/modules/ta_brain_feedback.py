@@ -26,7 +26,19 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORT_DIR = ROOT / "report"
-INTERACTIONS_PATH = REPORT_DIR / "ta_brain_interactions.jsonl"
+
+
+def _brain_dir() -> Path:
+    try:
+        from chatbot.config import get_settings  # noqa: PLC0415
+        rd = get_settings().system.report_dir
+        base = Path(rd) if Path(rd).is_absolute() else ROOT / rd
+    except Exception:
+        base = ROOT / "report"
+    return base / "brain"
+
+
+INTERACTIONS_PATH = _brain_dir() / "ta_brain_interactions.jsonl"
 
 VALID_FEEDBACK = ("confirmed", "wrong", "partial")
 

@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
 from chatbot.modules.ta_brain_builder import (
-    extract_instance, run_distiller, build_brain, REPORT_DIR, MIN_EVIDENCE,
+    extract_instance, run_distiller, build_brain, REPORT_DIR, MIN_EVIDENCE, _report_dir,
 )
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
@@ -39,8 +39,9 @@ def main():
         print(red(f"ground_truth.json not found in {arch_dir}"))
         sys.exit(1)
 
-    instances_path = REPORT_DIR / "ta_brain_instances.jsonl"
-    brain_path = REPORT_DIR / "ta_brain.json"
+    _bd = _report_dir() / "brain"
+    instances_path = _bd / "ta_brain_instances.jsonl"
+    brain_path = _bd / "ta_brain.json"
 
     # Check if already ingested
     existing_ids: set = set()

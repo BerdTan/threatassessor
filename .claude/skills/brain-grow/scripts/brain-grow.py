@@ -13,10 +13,10 @@ load_dotenv(ROOT / ".env")
 
 import requests
 
-from chatbot.modules.ta_brain_builder import build_brain, REPORT_DIR
-from chatbot.modules.ta_brain_benchmarks import save_calibration
+from chatbot.modules.ta_brain_builder import build_brain, REPORT_DIR, _report_dir
+from chatbot.modules.ta_brain_benchmarks import save_calibration, _brain_dir as _bench_brain_dir
 from chatbot.modules.ta_brain_mmd_generator import (
-    generate_synthetic_mmds, update_synthetic_status, list_synthetic_queue,
+    generate_synthetic_mmds, update_synthetic_status, list_synthetic_queue, QUEUE_DIR,
 )
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
@@ -107,9 +107,10 @@ def main():
     ap.add_argument("--status", action="store_true", help="print current state and exit")
     args = ap.parse_args()
 
-    brain_path = REPORT_DIR / "ta_brain.json"
-    bench_path = REPORT_DIR / "ta_brain_benchmarks.json"
-    instances_path = REPORT_DIR / "ta_brain_instances.jsonl"
+    _bd = _report_dir() / "brain"
+    brain_path = _bd / "ta_brain.json"
+    bench_path = _bd / "ta_brain_benchmarks.json"
+    instances_path = _bd / "ta_brain_instances.jsonl"
 
     if not brain_path.exists():
         print(red("ta_brain.json not found — run build_brain first"))
@@ -181,7 +182,7 @@ def main():
 
         queue = list_synthetic_queue()
         submitted = []
-        queue_dir = REPORT_DIR / "brain_synthetic_queue"
+        queue_dir = QUEUE_DIR
         for item in queue:
             if item["status"] != "approved":
                 continue

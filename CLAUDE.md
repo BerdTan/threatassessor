@@ -94,13 +94,13 @@ tail -f logs/api.log            # logs
 **TA Brain:**
 - `chatbot/modules/ta_brain_builder.py` — instance ingest + distiller + `HOLD_OUT_ARCHS` (8 archs)
 - `chatbot/modules/ta_brain_benchmarks.py` — Brier calibration (precision-weighted, score over predicted only) + framework floors
-- `chatbot/modules/ta_brain_mmd_generator.py` — Gap→MMD generator (Stage 8); synthetic queue in `report/brain_synthetic_queue/`
+- `chatbot/modules/ta_brain_mmd_generator.py` — Gap→MMD generator (Stage 8); synthetic queue in `report/brain/synthetic_queue/`
 - `chatbot/modules/ta_brain_query.py` — TACO query surface (infer/gaps/patterns/explain modes)
 - `chatbot/modules/ta_brain_taco_processor.py` — idempotent feedback processor (Stage 7)
 - `chatbot/api/routes/brain.py` — all `/api/v1/brain/*` endpoints
-- `report/ta_brain.json` — pattern layer + meta layer (`pattern_version` key drives cache invalidation)
-- `report/ta_brain_instances.jsonl` — append-only instance layer (use `incremental=True` to avoid duplicates)
-- `report/brain_synthetic_queue/` — staged synthetic MMDs awaiting approval before harness submission
+- `report/brain/ta_brain.json` — pattern layer + meta layer (`pattern_version` key drives cache invalidation)
+- `report/brain/ta_brain_instances.jsonl` — append-only instance layer (use `incremental=True` to avoid duplicates)
+- `report/brain/synthetic_queue/` — staged synthetic MMDs awaiting approval before harness submission
 
 **MoE agents:**
 - `chatbot/modules/agents/critics/` — Architect, Tester, Red Team, Purple Team, Blackhat

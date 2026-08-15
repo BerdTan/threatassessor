@@ -11,8 +11,8 @@ sys.path.insert(0, str(ROOT))
 from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
-from chatbot.modules.ta_brain_query import query_brain
-from chatbot.modules.ta_brain_builder import HOLD_OUT_ARCHS, REPORT_DIR
+from chatbot.modules.ta_brain_query import query_brain, INSTANCES_PATH
+from chatbot.modules.ta_brain_builder import HOLD_OUT_ARCHS, REPORT_DIR, _report_dir
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
 def _c(t, code): return f"\033[{code}m{t}\033[0m"
@@ -132,7 +132,7 @@ def main():
     if args.arch:
         arch_names = [args.arch]
     elif args.all:
-        instances_path = REPORT_DIR / "ta_brain_instances.jsonl"
+        instances_path = INSTANCES_PATH
         seen = {}
         if instances_path.exists():
             for line in instances_path.read_text().strip().splitlines():

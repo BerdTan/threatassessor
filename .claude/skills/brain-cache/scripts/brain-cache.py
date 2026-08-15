@@ -12,7 +12,8 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
 from chatbot.modules.ta_brain_cache import get_cache_manager, CACHE_PATH
-from chatbot.modules.ta_brain_builder import REPORT_DIR
+from chatbot.modules.ta_brain_builder import REPORT_DIR, _report_dir
+from chatbot.modules.ta_brain_query import BRAIN_PATH as _BRAIN_PATH, INSTANCES_PATH as _INSTANCES_PATH
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
 def _c(t, code): return f"\033[{code}m{t}\033[0m"
@@ -25,7 +26,7 @@ def cyan(t):  return _c(t, "36")
 
 
 def _print_stats(cm):
-    brain_path = REPORT_DIR / "ta_brain.json"
+    brain_path = _BRAIN_PATH
     current_pv = None
     if brain_path.exists():
         try:
@@ -66,7 +67,7 @@ def _print_stats(cm):
 
 
 def _pre_warm(cm):
-    instances_path = REPORT_DIR / "ta_brain_instances.jsonl"
+    instances_path = _INSTANCES_PATH
     if not instances_path.exists():
         print(red("ta_brain_instances.jsonl not found"))
         sys.exit(1)
@@ -109,7 +110,7 @@ def _pre_warm(cm):
 
 
 def _evict_stale(cm):
-    brain_path = REPORT_DIR / "ta_brain.json"
+    brain_path = _BRAIN_PATH
     if not brain_path.exists():
         print(red("ta_brain.json not found"))
         sys.exit(1)

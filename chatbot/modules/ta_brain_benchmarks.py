@@ -35,9 +35,21 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORT_DIR = ROOT / "report"
-BRAIN_PATH = REPORT_DIR / "ta_brain.json"
-BENCHMARKS_PATH = REPORT_DIR / "ta_brain_benchmarks.json"
-INSTANCES_PATH = REPORT_DIR / "ta_brain_instances.jsonl"
+
+
+def _brain_dir() -> Path:
+    try:
+        from chatbot.config import get_settings  # noqa: PLC0415
+        rd = get_settings().system.report_dir
+        base = Path(rd) if Path(rd).is_absolute() else ROOT / rd
+    except Exception:
+        base = ROOT / "report"
+    return base / "brain"
+
+
+BRAIN_PATH = _brain_dir() / "ta_brain.json"
+BENCHMARKS_PATH = _brain_dir() / "ta_brain_benchmarks.json"
+INSTANCES_PATH = _brain_dir() / "ta_brain_instances.jsonl"
 
 # Brier score thresholds
 DIVERGENCE_THRESHOLD = 0.35       # Brier > this → pattern systematically wrong

@@ -23,7 +23,7 @@ from chatbot.modules.ta_brain_cache import (
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _make_cache(tmp_path) -> CacheManager:
-    return CacheManager(tmp_path / "ta_brain_cache.json")
+    return CacheManager(tmp_path / "brain" / "ta_brain_cache.json")
 
 
 def _make_response(had_match=True, confidence=0.8, patterns_fired=None) -> dict:
@@ -191,7 +191,7 @@ class TestCacheManagerWrite:
         cache = _make_cache(tmp_path)
         cache.write("sig_x", "web", "infer", {"rectangle": 2}, _make_response(), 1)
 
-        raw = json.loads((tmp_path / "ta_brain_cache.json").read_text())
+        raw = json.loads((tmp_path / "brain" / "ta_brain_cache.json").read_text())
         assert "sig_x:web:infer" in raw["entries"]
 
     def test_overwrite_preserves_hit_count(self, tmp_path):
@@ -200,7 +200,7 @@ class TestCacheManagerWrite:
         cache.route("sig_x", "web", "infer", 1)  # bump hit_count to 1
         cache.write("sig_x", "web", "infer", {}, _make_response(confidence=0.9), 2)  # refresh
 
-        raw = json.loads((tmp_path / "ta_brain_cache.json").read_text())
+        raw = json.loads((tmp_path / "brain" / "ta_brain_cache.json").read_text())
         entry = raw["entries"]["sig_x:web:infer"]
         assert entry["hit_count"] >= 1  # preserved
         assert entry["pattern_version"] == 2
@@ -380,15 +380,15 @@ class TestQueryBrainCacheIntegration:
         reset_singleton()
 
         with patch("chatbot.modules.ta_brain_query.BRAIN_PATH",
-                   tmp_path / "ta_brain.json"), \
+                   tmp_path / "brain" / "ta_brain.json"), \
              patch("chatbot.modules.ta_brain_query.INSTANCES_PATH",
-                   tmp_path / "ta_brain_instances.jsonl"), \
+                   tmp_path / "brain" / "ta_brain_instances.jsonl"), \
              patch("chatbot.modules.ta_brain_query.INTERACTIONS_PATH",
-                   tmp_path / "ta_brain_interactions.jsonl"), \
+                   tmp_path / "brain" / "ta_brain_interactions.jsonl"), \
              patch("chatbot.modules.ta_brain_query.REPORT_DIR", tmp_path), \
              patch("chatbot.modules.ta_brain_query._brain_version", -1), \
              patch("chatbot.modules.ta_brain_cache.CACHE_PATH",
-                   tmp_path / "ta_brain_cache.json"):
+                   tmp_path / "brain" / "ta_brain_cache.json"):
             reset_singleton()
             from chatbot.modules.ta_brain_query import query_brain
 
@@ -401,17 +401,17 @@ class TestQueryBrainCacheIntegration:
     def test_interaction_log_records_cache_route(self, tmp_path):
         self._setup(tmp_path)
         reset_singleton()
-        log_path = tmp_path / "ta_brain_interactions.jsonl"
+        log_path = tmp_path / "brain" / "ta_brain_interactions.jsonl"
 
         with patch("chatbot.modules.ta_brain_query.BRAIN_PATH",
-                   tmp_path / "ta_brain.json"), \
+                   tmp_path / "brain" / "ta_brain.json"), \
              patch("chatbot.modules.ta_brain_query.INSTANCES_PATH",
-                   tmp_path / "ta_brain_instances.jsonl"), \
+                   tmp_path / "brain" / "ta_brain_instances.jsonl"), \
              patch("chatbot.modules.ta_brain_query.INTERACTIONS_PATH", log_path), \
              patch("chatbot.modules.ta_brain_query.REPORT_DIR", tmp_path), \
              patch("chatbot.modules.ta_brain_query._brain_version", -1), \
              patch("chatbot.modules.ta_brain_cache.CACHE_PATH",
-                   tmp_path / "ta_brain_cache.json"):
+                   tmp_path / "brain" / "ta_brain_cache.json"):
             reset_singleton()
             from chatbot.modules.ta_brain_query import query_brain
             query_brain(mode="infer", arch_name="arch1")

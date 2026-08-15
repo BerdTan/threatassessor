@@ -391,8 +391,8 @@ class TestBuildBrain:
             ("arch3", "agentic", ["AML.T0020"], ["rate_limiting"]),
         ])
         result = build_brain(report_dir=tmp_path, hold_out=frozenset())
-        assert (tmp_path / "ta_brain_instances.jsonl").exists()
-        assert (tmp_path / "ta_brain.json").exists()
+        assert (tmp_path / "brain" / "ta_brain_instances.jsonl").exists()
+        assert (tmp_path / "brain" / "ta_brain.json").exists()
         assert result["ingested"] == 3
 
     def test_instances_jsonl_is_append_only(self, tmp_path):
@@ -401,7 +401,7 @@ class TestBuildBrain:
         ])
         build_brain(report_dir=tmp_path, hold_out=frozenset(), incremental=False)
         build_brain(report_dir=tmp_path, hold_out=frozenset(), incremental=False)  # explicit non-incremental re-appends
-        lines = (tmp_path / "ta_brain_instances.jsonl").read_text().strip().splitlines()
+        lines = (tmp_path / "brain" / "ta_brain_instances.jsonl").read_text().strip().splitlines()
         assert len(lines) == 2
 
     def test_incremental_skips_existing(self, tmp_path):
@@ -421,7 +421,7 @@ class TestBuildBrain:
         result = build_brain(
             report_dir=tmp_path, hold_out=frozenset({"arch_holdout"})
         )
-        brain = json.loads((tmp_path / "ta_brain.json").read_text())
+        brain = json.loads((tmp_path / "brain" / "ta_brain.json").read_text())
         pattern_types = {p["trigger"]["arch_type"] for p in brain["patterns"]}
         assert "unique_type" not in pattern_types
         assert result["hold_out_instances"] == 1
@@ -439,7 +439,7 @@ class TestBuildBrain:
             ("arch1", "web", ["T1078"], ["mfa"]),
         ])
         build_brain(report_dir=tmp_path, hold_out=frozenset())
-        brain = json.loads((tmp_path / "ta_brain.json").read_text())
+        brain = json.loads((tmp_path / "brain" / "ta_brain.json").read_text())
         for key in ("version", "pattern_version", "built_ts", "corpus_size",
                     "train_size", "hold_out", "patterns", "gaps"):
             assert key in brain, f"Missing key: {key}"
