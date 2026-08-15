@@ -1,0 +1,405 @@
+"""
+taco_agent.py — TACO companion agent + TACOmini sub-agent registry.
+
+Architecture:
+  TACOmini     — single-responsibility hop executor; each subclass handles one task.
+                 Carries an optional `model` field so each mini can be routed to a
+                 cheaper/faster model independently (e.g. haiku for brain lookups,
+                 sonnet for harness, opus for critics).
+  TACOContext  — typed input passed to every mini's run() call.
+  TACOAgent    — master router/assembler; holds a mini registry, decides routing,
+                 assembles HopChain from mini results.
+
+Adding a new hop type = write one TACOmini subclass, inject it into TACOAgent.minis.
+
+Pydantic models (HopRecord, HopChain, TACOContext) are wire-safe:
+  HopChain.model_validate(data)   — deserialise over the wire
+  HopChain.model_json_schema()    — publish stable schema for external consumers
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import tempfile
+import time
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _brain_dir() -> Path:
+    """Mirror of ta_brain_query._brain_dir() — resolved fresh at call time."""
+    try:
+        from chatbot.config import get_settings  # noqa: PLC0415
+        rd = get_settings().system.report_dir
+        base = Path(rd) if Path(rd).is_absolute() else ROOT / rd
+    except Exception:
+        base = ROOT / "report"
+    return base / "brain"
+
+
+# ---------------------------------------------------------------------------
+# Wire-safe data model
+# ---------------------------------------------------------------------------
+
+class HopRecord(BaseModel):
+    """One system boundary crossed during a TACO routing chain."""
+    hop_id: str = Field(description="UUID4 identifier for this hop")
+    hop_type: str = Field(description="'brain' | 'harness' | 'critic'")
+    component: str = Field(description="'TABrain' | 'TAHarness' | 'TACritic'")
+    query_summary: str = Field(description="First 120 chars of query or arch_name")
+    response_summary: str = Field(description="Human-readable one-liner result")
+    confidence: Optional[float] = Field(None, description="Confidence score 0–1; None if unavailable")
+    duration_ms: int = Field(description="Wall time for this hop in milliseconds")
+    timestamp: str = Field(description="ISO 8601 UTC timestamp")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="JSON-native payload")
+    routed: bool = Field(False, description="True = triggered by a routing decision")
+    model_used: Optional[str] = Field(None, description="Model that served this hop, if applicable")
+
+
+class HopChain(BaseModel):
+    """Full routing trace for one TACO query. Portable via model_validate() / model_json_schema()."""
+    chain_id: str = Field(description="UUID4 chain identifier")
+    query: str = Field(description="Original user query")
+    arch_name: Optional[str] = Field(None, description="Corpus arch_id if provided")
+    hops: List[HopRecord] = Field(default_factory=list, description="Ordered hop records")
+    final_confidence: float = Field(description="Confidence of the last hop")
+    final_response: Dict[str, Any] = Field(default_factory=dict, description="Metadata of last hop")
+    total_duration_ms: int = Field(description="Sum of all hop durations (not wall-clock)")
+    routed_to_harness: bool = Field(False, description="True if TAHarness was invoked")
+    routed_to_critics: bool = Field(False, description="True if TACritic was invoked (Phase 3)")
+    created_at: str = Field(description="ISO 8601 UTC timestamp of chain creation")
+
+
+class TACOContext(BaseModel):
+    """Typed input passed to every TACOmini.run() call."""
+    query: str = Field("", description="Natural-language threat question")
+    arch_name: Optional[str] = Field(None, description="Known corpus arch_id")
+    arch_mmd: Optional[str] = Field(None, description="Raw Mermaid diagram content")
+
+
+# ---------------------------------------------------------------------------
+# TACOmini — single-responsibility sub-agent base
+# ---------------------------------------------------------------------------
+
+class TACOmini:
+    """Base class for TACO sub-agents. Each subclass handles exactly one hop type.
+
+    Subclass contract:
+      - Set `hop_type`, `component`, and `is_deterministic` as class attributes.
+      - Implement `run(context: TACOContext) -> HopRecord`.
+      - Never raise — errors should be returned as a HopRecord with confidence=0.0.
+
+    `is_deterministic = True`  → no LLM calls; model field is reserved but inert.
+    `is_deterministic = False` → makes LLM calls; model field controls which model is used:
+      TACOminiBrain(model="haiku")      # cheap + fast for KG lookups (currently deterministic)
+      TACOminiHarness(model="sonnet")   # balanced for pipeline runs (currently deterministic)
+      TACOminiCritic(model="opus")      # capable for expert review — Phase 3, LLM-active
+    """
+
+    hop_type: str = ""
+    component: str = ""
+    is_deterministic: bool = True   # False = makes LLM calls; model field is active
+
+    def __init__(self, model: Optional[str] = None) -> None:
+        self.model = model  # None = use default env-var routing; only matters when is_deterministic=False
+
+    def run(self, context: TACOContext) -> HopRecord:
+        raise NotImplementedError(f"{self.__class__.__name__}.run() not implemented")
+
+    def _base_hop(self, context: TACOContext, **kwargs) -> HopRecord:
+        """Convenience builder for subclasses — sets shared fields."""
+        return HopRecord(
+            hop_id=str(uuid.uuid4()),
+            hop_type=self.hop_type,
+            component=self.component,
+            model_used=self.model,
+            **kwargs,
+        )
+
+
+# ---------------------------------------------------------------------------
+# TACOminiBrain — queries TABrain KG (deterministic, no LLM, <50 ms)
+# ---------------------------------------------------------------------------
+
+class TACOminiBrain(TACOmini):
+    """Query the TABrain knowledge graph. Fast, deterministic, zero LLM cost."""
+
+    hop_type = "brain"
+    component = "TABrain"
+
+    def run(self, context: TACOContext) -> HopRecord:
+        from chatbot.modules.ta_brain_query import query_brain  # noqa: PLC0415
+
+        t0 = time.monotonic()
+        ts = datetime.now(timezone.utc).isoformat()
+
+        result = query_brain(
+            mode="infer",
+            arch_name=context.arch_name or "",
+            caller_type="taco_agent",
+        )
+
+        duration_ms = int((time.monotonic() - t0) * 1000)
+
+        if "error" in result:
+            return self._base_hop(
+                context,
+                query_summary=(context.query or "")[:120],
+                response_summary=f"error: {str(result['error'])[:80]}",
+                confidence=0.0,
+                duration_ms=duration_ms,
+                timestamp=ts,
+                metadata={"had_match": False, "error": str(result["error"])},
+            )
+
+        had_match = bool(result.get("had_match", False))
+        confidence = float(result.get("confidence") or 0.0)
+        patterns_fired = result.get("patterns_fired") or []
+
+        response_summary = (
+            f"conf={confidence:.2f}, {len(patterns_fired)} pattern(s)"
+            if had_match else "no match in brain"
+        )
+
+        predictions = result.get("predictions") or {}
+        metadata: dict = {
+            "had_match": had_match,
+            "patterns_fired": list(patterns_fired),
+            "arch_type": str(result.get("arch_type") or ""),
+            "cache_route": str(result.get("cache_route") or ""),
+            "predictions": {
+                "techniques": list(predictions.get("techniques") or [])[:10],
+                "detect_rules": list(predictions.get("detect_rules") or []),
+                "aivss_floor": float(predictions.get("aivss_floor") or 0.0),
+                "aivss_mean": float(predictions.get("aivss_mean") or 0.0),
+                "missing_controls": list(predictions.get("common_missing_controls") or [])[:5],
+            },
+        }
+
+        return self._base_hop(
+            context,
+            query_summary=(context.query or "")[:120],
+            response_summary=response_summary,
+            confidence=confidence,
+            duration_ms=duration_ms,
+            timestamp=ts,
+            metadata=metadata,
+        )
+
+
+# ---------------------------------------------------------------------------
+# TACOminiHarness — runs TAHarness pipeline (API_ONLY, ~30 s)
+# ---------------------------------------------------------------------------
+
+class TACOminiHarness(TACOmini):
+    """Run the TAHarness analysis pipeline. Writes MMD to tempfile; cleans up on exit."""
+
+    hop_type = "harness"
+    component = "TAHarness"
+
+    def __init__(self, model: Optional[str] = None, harness=None) -> None:
+        super().__init__(model=model)
+        self._harness = harness  # injectable for testing
+
+    def run(self, context: TACOContext) -> HopRecord:
+        from chatbot.harness.controller import (  # noqa: PLC0415
+            ThreatAssessorHarness,
+            PipelineRequest,
+        )
+
+        arch_name = context.arch_name or "taco_input"
+        mmd = context.arch_mmd or ""
+
+        t0 = time.monotonic()
+        ts = datetime.now(timezone.utc).isoformat()
+        tmp_mmd_path: Optional[str] = None
+        tmp_dir: Optional[str] = None
+
+        try:
+            tmp_fd, tmp_mmd_path = tempfile.mkstemp(suffix=".mmd")
+            with os.fdopen(tmp_fd, "w") as fh:
+                fh.write(mmd)
+
+            tmp_dir = tempfile.mkdtemp(prefix="taco_harness_")
+
+            request = PipelineRequest(
+                architecture_path=tmp_mmd_path,
+                report_dir=tmp_dir,
+                architecture_name=arch_name,
+                use_llm=False,
+                enable_moe=False,
+                enable_scrum_master=False,
+            )
+
+            harness = self._harness or ThreatAssessorHarness(scenario="api_only")
+            response = harness.run_typed(request)
+
+            duration_ms = int((time.monotonic() - t0) * 1000)
+
+            gov = response.governance_summary or {}
+            det = response.detect_summary or {}
+            metadata: dict = {
+                "success": bool(response.success),
+                "run_id": str(response.run_id or ""),
+                "confidence": float(response.confidence or 0.0),
+                "governance_summary": {
+                    "aivss_overall": float(gov.get("aivss_overall") or 0.0),
+                    "aivss_severity": str(gov.get("aivss_severity") or ""),
+                    "overall_risk_level": str(gov.get("overall_risk_level") or ""),
+                },
+                "detect_summary": {
+                    "rules_fired": list(det.get("rules_fired") or []),
+                    "total_fired": int(det.get("total_fired") or 0),
+                },
+                "errors": [str(e) for e in (response.errors or [])],
+            }
+
+            aivss = gov.get("aivss_overall", 0.0)
+            if response.success:
+                response_summary = (
+                    f"API_ONLY ok · AIVSS {aivss:.2f} · "
+                    f"{det.get('total_fired', 0)} rules fired"
+                )
+            else:
+                errs = "; ".join(str(e) for e in (response.errors or [])[:2])
+                response_summary = f"harness error: {errs[:80]}"
+
+            return self._base_hop(
+                context,
+                query_summary=arch_name[:120],
+                response_summary=response_summary,
+                confidence=float(response.confidence or 0.0),
+                duration_ms=duration_ms,
+                timestamp=ts,
+                metadata=metadata,
+            )
+
+        except Exception as exc:
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            logger.exception("TACOminiHarness failed for arch=%s", arch_name)
+            return self._base_hop(
+                context,
+                query_summary=arch_name[:120],
+                response_summary=f"exception: {str(exc)[:80]}",
+                confidence=0.0,
+                duration_ms=duration_ms,
+                timestamp=ts,
+                metadata={"success": False, "error": str(exc)},
+            )
+
+        finally:
+            if tmp_mmd_path and os.path.exists(tmp_mmd_path):
+                try:
+                    os.unlink(tmp_mmd_path)
+                except OSError:
+                    pass
+            if tmp_dir and os.path.exists(tmp_dir):
+                import shutil
+                try:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                except OSError:
+                    pass
+
+
+# ---------------------------------------------------------------------------
+# TACOAgent — master router + assembler
+# ---------------------------------------------------------------------------
+
+class TACOAgent:
+    """Master TACO agent. Holds a registry of TACOmini sub-agents, decides routing,
+    assembles HopChain from mini results.
+
+    Inject custom minis to swap models or behaviours without subclassing:
+        agent = TACOAgent(minis={
+            "brain":   TACOminiBrain(model="haiku"),
+            "harness": TACOminiHarness(model="sonnet"),
+        })
+    """
+
+    def __init__(
+        self,
+        brain_path: Optional[Path] = None,
+        threshold: Optional[float] = None,
+        minis: Optional[Dict[str, TACOmini]] = None,
+    ) -> None:
+        self.brain_path = brain_path or (_brain_dir() / "ta_brain.json")
+
+        # Read threshold and mini_models from settings; explicit args override.
+        cfg_threshold = 0.65
+        cfg_mini_models: Dict[str, str] = {}
+        try:
+            from chatbot.config import get_settings  # noqa: PLC0415
+            taco_cfg = get_settings().taco
+            cfg_threshold = taco_cfg.confidence_threshold
+            # Filter out unresolved ${VAR} placeholders — treat them as "no override"
+            cfg_mini_models = {
+                k: v for k, v in (taco_cfg.mini_models or {}).items()
+                if v and not v.startswith("${")
+            }
+        except Exception:
+            pass
+
+        self.threshold = threshold if threshold is not None else cfg_threshold
+
+        if minis is not None:
+            self.minis = minis
+        else:
+            self.minis = {
+                "brain":   TACOminiBrain(model=cfg_mini_models.get("brain")),
+                "harness": TACOminiHarness(model=cfg_mini_models.get("harness")),
+            }
+
+    # ── public surface ──────────────────────────────────────────────────────
+
+    def run(
+        self,
+        query: str,
+        arch_name: Optional[str] = None,
+        arch_mmd: Optional[str] = None,
+    ) -> HopChain:
+        """Execute the routing chain and return a complete HopChain."""
+        ctx = TACOContext(query=query, arch_name=arch_name, arch_mmd=arch_mmd)
+        hops: list[HopRecord] = []
+
+        brain_hop = self._run_mini("brain", ctx)
+        hops.append(brain_hop)
+
+        should_escalate = (
+            brain_hop.confidence is not None
+            and brain_hop.confidence < self.threshold
+            and ctx.arch_mmd is not None
+        )
+        if should_escalate:
+            harness_hop = self._run_mini("harness", ctx)
+            harness_hop.routed = True
+            hops.append(harness_hop)
+
+        return HopChain(
+            chain_id=str(uuid.uuid4()),
+            query=query,
+            arch_name=arch_name,
+            hops=hops,
+            final_confidence=hops[-1].confidence or 0.0,
+            final_response=hops[-1].metadata,
+            total_duration_ms=sum(h.duration_ms for h in hops),
+            routed_to_harness=should_escalate,
+            routed_to_critics=False,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def _run_mini(self, name: str, context: TACOContext) -> HopRecord:
+        """Dispatch to a named mini. Raises KeyError if the mini is not registered."""
+        return self.minis[name].run(context)
+
+    def to_dict(self, chain: HopChain) -> dict:
+        """Return a JSON-serializable dict of the HopChain."""
+        return chain.model_dump()

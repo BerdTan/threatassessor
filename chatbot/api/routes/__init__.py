@@ -13,5 +13,6 @@ from chatbot.api.routes.graph_search import router as graph_search_router
 from chatbot.api.routes.jobs import router as jobs_router
 from chatbot.api.routes.mcp_sim import router as mcp_sim_router
 from chatbot.api.routes.brain import router as brain_router
+from chatbot.api.routes.taco import router as taco_router
 
-__all__ = ["streaming_router", "reports_router", "config_router", "workspaces_router", "ta_wiz_router", "graph_search_router", "jobs_router", "mcp_sim_router", "brain_router"]
+__all__ = ["streaming_router", "reports_router", "config_router", "workspaces_router", "ta_wiz_router", "graph_search_router", "jobs_router", "mcp_sim_router", "brain_router", "taco_router"]

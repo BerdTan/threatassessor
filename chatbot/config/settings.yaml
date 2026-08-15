@@ -80,3 +80,20 @@ agent_models:
   threat_analyst:   {model: "${AGENT_MODEL_THREAT_ANALYST}"}
   tatb_labeller:    {model: "${AGENT_MODEL_TATB_LABELLER}", fallbacks: ["${AGENT_MODEL_TATB_LABELLER_FALLBACK}"]}
   ta_wiz:           {model: "${AGENT_MODEL_TA_WIZ}"}
+
+
+# ---------------------------------------------------------------------------
+# TACO companion agent
+# ---------------------------------------------------------------------------
+taco:
+  confidence_threshold: 0.65
+  aivss_drop_alert_threshold: 0.15
+  # Per-mini model overrides resolved from env vars at startup.
+  # brain + harness are deterministic (no LLM calls yet) — their vars are
+  # reserved and take effect when Phase 3 LLM calls are added.
+  # critic is the first non-deterministic mini (Phase 3); defaults to the
+  # free OpenRouter tier so it runs without credits.
+  mini_models:
+    brain:   "${AGENT_MODEL_TACO_BRAIN}"
+    harness: "${AGENT_MODEL_TACO_HARNESS}"
+    critic:  "${AGENT_MODEL_TACO_CRITIC}"

@@ -4,6 +4,94 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 44 — 2026-08-15
+
+### 73. TACO skills — taco-check + taco-run + taco-benchmark built as part of Phase 3
+
+**What:** Four Claude Code skills to be built alongside Phase 3 implementation:
+
+| Skill | What it does | Mirrors |
+|---|---|---|
+| `taco-check` | Validate routes (`/run`, `/run-sync`, `/schema`), config (TACOSettings), mini registry, placeholder filter; static + optional live smoke-test | `check-mcp`, `check-detect` |
+| `taco-run` | CLI wrapper for `POST /api/v1/taco/run-sync` — run a query, print HopChain with hop-by-hop summary | `tatb-score` |
+| `taco-benchmark` | Score Workspace vs TACO vs TACO+RAG on 7 dimensions for one or all hold-out archs; outputs per-arch radar data | `tatb-corpus` |
+| `taco-infer` | Brain-only infer against hold-out set, compare predictions to ground truth | `brain-infer` |
+
+**Why building all four in Phase 3 (not deferred):** `taco-check` is the regression gate for every subsequent phase — building it late means phases land without a check command. `taco-run` makes the agent usable from CLI without the dashboard. `taco-benchmark` IS the Phase 3 feature — the skill is the deliverable. `taco-infer` closes the hold-out validation loop for the Brain layer.
+
+**Why not building taco-check now (Phase 2 close):** A Phase 2-only `taco-check` would be thin (just 3 routes + config). Building it with Phase 3 content means it covers routes + schema + benchmark runner + mini registry in one pass — same design principle as `check-detect` covering rules + evaluator + scenarios together.
+
+### 72. TACO phase reorder — RAG+Benchmark before Critic; per-MMD spider chart
+
+**What:** Reordered TACO build phases. TACOminiCritic (LLM-dependent) is deferred to Phase 4; TACOminiRAG + benchmark visualization becomes the new Phase 3.
+
+Revised roadmap:
+- **Phase 3:** `TACOminiRAG` (deterministic graph search over Workspace/graph_rag.py) + `TACOBenchmark` (7-dimension scorer against hold-out archs) + per-MMD spider/radar chart in Assessment tab and TACO sub-tab
+- **Phase 4:** `TACOminiCritic` (LLM-backed expert review hop, `is_deterministic=False`, `AGENT_MODEL_TACO_CRITIC`)
+
+**Benchmark design:** Reuse TATB's 4 rubrics (Threat-Relevant, TTP-Accurate, Risk-Defensible, Plan-Actionable) + 3 new dimensions (Groundedness, Confidence-Calibration, CISO-Utility) = 7-dimension spider chart. Three series per arch: Workspace / TACO Phase 2 / TACO Phase 3 (with RAG). Hold-out archs (`HOLD_OUT_ARCHS` in `ta_brain_builder.py`, 8 archs) are the golden dataset — excluded from Brain training so Brain predictions on them are genuinely unseen.
+
+**Per-MMD chart:** Each analyzed architecture in the Assessment tab gets an embedded radar showing its benchmark scores. Turns "here is your threat model" into "here is your threat model and here is how grounded and calibrated it is" — a measurably different CISO conversation.
+
+**Why this order:** TACOminiRAG is deterministic (no LLM, no credits). Running the benchmark *before* adding the critic means the deterministic chain is provably honest before any LLM enhancement is claimed. The critic then arrives with a measured baseline to improve against — its uplift is visible and auditable rather than asserted.
+
+**Alternatives rejected:** Adding critic first (Phase 3) — the LLM hop would inflate apparent quality before the deterministic baseline is established, making it harder to measure the actual value of each layer separately.
+
+### 71. TACO env wiring — .env.example + settings.yaml + config tab
+
+**What:** Completed the TACO configuration chain end-to-end. (a) `.env.example` gains three commented vars: `AGENT_MODEL_TACO_BRAIN` and `AGENT_MODEL_TACO_HARNESS` (reserved, deterministic minis, no LLM calls yet) + `AGENT_MODEL_TACO_CRITIC=openrouter/openrouter/free` (Phase 3 default — free tier, not Sonnet, to avoid credits). (b) `settings.yaml` `taco.mini_models` now references `${AGENT_MODEL_TACO_*}` — resolved at startup by the existing `_interpolate_env` mechanism. (c) `TACOAgent.__init__` filters out unresolved `${...}` placeholders so unset vars produce `model=None` (default routing) rather than a literal string passed to the mini. (d) Config tab `🌮 TACO Agent` section added with `confidence_threshold` and `aivss_drop_alert_threshold` dropdowns; `sectionCatMap` and `catMap` updated so the section is visible under the "All" filter.
+
+**Why:** Without the placeholder filter, unset env vars would pass `"${AGENT_MODEL_TACO_BRAIN}"` as a literal model string to TACOminiBrain, silently breaking routing when the env var is not set. The `${...}` → `None` guard is the same pattern used across the codebase for optional agent model overrides.
+
+**Key invariant:** Critic defaults to `openrouter/openrouter/free` — Phase 3 critic runs stay zero-cost until the user explicitly sets `AGENT_MODEL_TACO_CRITIC` to a paid model. Brain and harness vars are reserved/commented only — setting them has no effect until Phase 3 adds LLM calls to those minis.
+
+### 70. TACO D3 topology — force-directed agent graph in Brain > TACO sub-tab
+
+**What:** D3 v7 force-directed graph rendered in the Brain > TACO sub-tab (260px canvas above the trace log). Shows TACOAgent (master, r=18) and TACOmini subagents (r=11) as nodes with edges, grouped into cluster teams via convex hull (`d3.polygonHull`). Live-updates from SSE events: `taco_start` creates an agent node, `hop_start` adds a mini node, `hop_complete` transitions mini to completed state, `taco_complete` transitions agent. Supports zoom+pan (same wheelDelta override as SOC KG), drag-to-reposition, hover tooltips, and CSS `@keyframes` pulse ring on running nodes.
+
+**State → color (validated, all-pairs dark mode):**
+- `running`: `#3987e5` (blue, categorical slot 1 dark)
+- `completed`: `#199e70` (aqua, categorical slot 3 dark)
+- `rested`: `#d95926` (orange, categorical slot 2 dark)
+- `unstarted`: hollow dashed circle, no fill — mark encoding, not color
+
+Yellow was rejected twice: `#fab219` failed dark-mode lightness band (L=0.811 > 0.67 ceiling); `#c98500` and `#0ca30c` collapsed under protanopia (ΔE 1.4) and deuteranopia (ΔE 3.0). Orange and green also collapse under deuteranopia. Only the pre-validated first 3 categorical slots (blue/orange/aqua) clear all-pairs in both modes — used exactly as documented in the palette reference.
+
+**Cluster force:** custom D3 force that pulls each TACOAgent's minis toward the team centroid (α × 0.06), creating natural spatial grouping without fixed positions. Hull fill at 7% opacity for grouping without occlusion.
+
+**Alternatives rejected:** Sub-tabs in place of hull grouping — rejected because clusters should grow organically as new agents spawn, not require manual tab creation. Static layout (SOC KG style) — rejected because agent count is dynamic and positions are meaningless in a column layout.
+
+### 69. TACOmini refactor — sub-agent base class + model field + injectable registry
+
+**What:** Refactored `TACOAgent._hop_brain()` and `._hop_harness()` into `TACOminiBrain` and `TACOminiHarness` subclasses of `TACOmini` base class. Added `is_deterministic: bool` class attribute (both currently True — no LLM calls). Added `model: Optional[str]` instance field for future per-mini model routing. `TACOAgent` now holds `minis: dict[str, TACOmini]` — injectable for testing and model override. Added `TACOContext(BaseModel)` as the typed input passed to every `TACOmini.run()`. Added `_run_mini(name, ctx)` as the sole dispatch point.
+
+**Why:** Portability goal — each mini can be used independently outside TACOAgent. Model-switching goal — `TACOAgent(minis={"brain": TACOminiBrain(model="haiku")})` swaps model per mini without subclassing. The model field is inert on deterministic minis; it activates when `TACOminiCritic` (Phase 3) makes LLM calls.
+
+**Key invariant:** `is_deterministic=True` means the `model` field is stored but ignored; `is_deterministic=False` means LLM calls will use `self.model` (or env-var default if None). Currently only TACOminiCritic (Phase 3) will be non-deterministic.
+
+### 68. TACO settings + Pydantic wire-safe models + Brain sub-tabs
+
+**What:** (a) `TACOSettings` added to `settings.py` / `settings.yaml` — `confidence_threshold` (0.65), `aivss_drop_alert_threshold` (0.15), `mini_models` dict (empty by default, keys: brain/harness/critic). `TACOAgent.__init__` reads all three from settings at startup; explicit constructor args override. (b) `HopRecord` and `HopChain` migrated from `@dataclass` to Pydantic `BaseModel` — `model_dump()` replaces `dataclasses.asdict()`, `model_validate()` enables wire-safe deserialization, `model_json_schema()` publishes a stable schema at `GET /api/v1/taco/schema`. (c) Brain pane gained a sub-tab strip (Knowledge | TACO Agent) so the TACO view has full-width space rather than being cramped in the right column.
+
+**Alternatives rejected:** Keeping dataclasses — no `model_validate()` for wire deserialization, no auto-generated JSON Schema, no Pydantic validation at FastAPI route boundaries.
+
+### 67. TACO Agent — HopChain + UI trace (planned, Phase 1 next)
+
+**What:** Planned a three-phase TACO companion agent that makes the Brain → Harness → Critic routing chain visible. Phase 1 (Enable): `chatbot/modules/taco_agent.py` — `HopRecord` + `HopChain` dataclasses + `TACOAgent` base class with confidence-threshold routing. Phase 2 (Innovate): `POST /api/v1/taco/run` + `GET /api/v1/taco/stream` SSE endpoints in `brain.py`; Brain tab gains a "TACO Trace" sub-tab rendering the hop chain live. Phase 3 (Scale): threshold from `settings.yaml`, AIVSS floor check, `_hop_feedback()` write-back, MCP tool #17.
+
+**Why:** TACO exists as a query surface (`query_brain()`) and feedback processor (`run_taco_processor()`) but has never operated as an agent with visible decision boundaries. There is no record of "brain confidence was low, so I escalated to the harness." The HopChain abstraction makes every system boundary crossed — and the routing decisions that drove them — observable. Phased so Phase 1 ships independently as a pure Python module with no API or UI dependencies.
+
+**Key design decisions:**
+- `caller_type="taco"` in `query_brain()` calls so TACO-initiated queries are distinct in `ta_brain_interactions.jsonl`
+- `BRAIN_PATH` constant reused directly (not `_brain_dir()` instantiation)
+- `PipelineRequest` takes `architecture_path` + `report_dir` — harness hop writes MMD to temp file, uses `report/{arch_name}/` as output dir
+- Brain pane gets a sub-tab strip (Patterns & Gaps / TACO Trace) — matches `mcp-sub-tab` pattern already in `dashboard.js`
+- UI JS lives in `dashboard.js` as `_brainSubTab()`, `_brainRenderTacoHop()`, `_brainRunTaco()` class methods
+
+**Alternatives rejected:** Adding TACO trace as a panel below the synthetic queue — Brain pane has no natural vertical overflow; sub-tabs are cleaner. Running harness in FULL_MOE for Phase 1 — too slow for an interactive trace demo; API_ONLY first, critics as opt-in in Phase 3.
+
+---
+
 ## Session 43b — 2026-08-15
 
 ### 66. Parts 20 and 21 published + combined LinkedIn post

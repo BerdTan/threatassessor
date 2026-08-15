@@ -656,25 +656,100 @@
                         <button id="brain-btn-rebuild" onclick="window.dashboard && window.dashboard._brainRebuild()" style="font-size:0.75rem;padding:0.25rem 0.7rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-secondary);cursor:pointer;">↺ Rebuild</button>
                     </div>
                 </div>
-                <!-- Patterns section -->
-                <div style="flex-shrink:0;padding:0.9rem 1.25rem 0.5rem;border-bottom:1px solid var(--border-color);">
-                    <div style="font-size:0.8rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">Patterns</div>
-                    <div id="brain-patterns-table" style="font-size:0.78rem;">Loading…</div>
+                <!-- Sub-tab strip: Knowledge | TACO Agent -->
+                <div id="brain-sub-tab-strip" style="flex-shrink:0;display:flex;gap:0;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
+                    <button id="brain-subtab-knowledge" onclick="window.dashboard && window.dashboard._brainSubTab('knowledge')"
+                        style="padding:0.45rem 1.1rem;font-size:0.78rem;font-weight:600;border:none;border-bottom:2px solid var(--primary-color);background:transparent;color:var(--primary-color);cursor:pointer;">
+                        Knowledge
+                    </button>
+                    <button id="brain-subtab-taco" onclick="window.dashboard && window.dashboard._brainSubTab('taco')"
+                        style="padding:0.45rem 1.1rem;font-size:0.78rem;font-weight:600;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;">
+                        TACO Agent
+                    </button>
                 </div>
-                <!-- Gaps + queue section -->
-                <div style="flex:1;display:flex;overflow:hidden;">
-                    <div style="flex:2;overflow:auto;padding:0.9rem 1.25rem;border-right:1px solid var(--border-color);">
-                        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;">
-                            <span style="font-size:0.8rem;font-weight:700;color:var(--text-primary);">Gaps</span>
-                            <button id="brain-btn-generate" onclick="window.dashboard && window.dashboard._brainGenerateMmds()" style="font-size:0.72rem;padding:0.2rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-secondary);cursor:pointer;">⚡ Generate MMDs</button>
+
+                <!-- Sub-view: Knowledge (Patterns + Gaps + Synthetic Queue) -->
+                <div id="brain-sub-knowledge" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+                    <div style="flex-shrink:0;padding:0.9rem 1.25rem 0.5rem;border-bottom:1px solid var(--border-color);">
+                        <div style="font-size:0.8rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">Patterns</div>
+                        <div id="brain-patterns-table" style="font-size:0.78rem;">Loading…</div>
+                    </div>
+                    <div style="flex:1;display:flex;overflow:hidden;">
+                        <div style="flex:2;overflow:auto;padding:0.9rem 1.25rem;border-right:1px solid var(--border-color);">
+                            <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;">
+                                <span style="font-size:0.8rem;font-weight:700;color:var(--text-primary);">Gaps</span>
+                                <button id="brain-btn-generate" onclick="window.dashboard && window.dashboard._brainGenerateMmds()" style="font-size:0.72rem;padding:0.2rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-secondary);cursor:pointer;">⚡ Generate MMDs</button>
+                            </div>
+                            <div id="brain-gaps-grid" style="font-size:0.78rem;">Loading…</div>
                         </div>
-                        <div id="brain-gaps-grid" style="font-size:0.78rem;">Loading…</div>
-                    </div>
-                    <div style="flex:1;overflow:auto;padding:0.9rem 1.25rem;">
-                        <div style="font-size:0.8rem;font-weight:700;color:var(--text-primary);margin-bottom:0.6rem;">Synthetic Queue</div>
-                        <div id="brain-queue-list" style="font-size:0.78rem;">Loading…</div>
+                        <div style="flex:1;overflow:auto;padding:0.9rem 1.25rem;">
+                            <div style="font-size:0.8rem;font-weight:700;color:var(--text-primary);margin-bottom:0.6rem;">Synthetic Queue</div>
+                            <div id="brain-queue-list" style="font-size:0.78rem;">Loading…</div>
+                        </div>
                     </div>
                 </div>
+
+                <!-- Sub-view: TACO Agent -->
+                <div id="brain-sub-taco" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+
+                    <!-- Input bar -->
+                    <div style="flex-shrink:0;padding:0.75rem 1.5rem 0.6rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
+                        <textarea id="taco-query-input" rows="2"
+                            placeholder="Ask a threat question… e.g. 'What are the top risks for a public API gateway?'"
+                            style="width:100%;font-size:0.78rem;padding:0.4rem 0.6rem;border:1px solid var(--border-color);border-radius:2px;background:var(--main-bg);color:var(--text-primary);resize:vertical;margin-bottom:0.45rem;box-sizing:border-box;font-family:inherit;line-height:1.45;">
+                        </textarea>
+                        <div style="display:flex;gap:0.5rem;align-items:center;">
+                            <select id="taco-arch-select"
+                                style="flex:1;font-size:0.78rem;padding:0.32rem 0.5rem;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);">
+                                <option value="">— brain only —</option>
+                            </select>
+                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:var(--text-secondary);cursor:pointer;white-space:nowrap;">
+                                <input type="checkbox" id="taco-sim-mode"> sim
+                            </label>
+                            <button id="taco-run-btn" onclick="window.dashboard && window.dashboard._tacoRun()"
+                                style="padding:0.32rem 1.1rem;font-size:0.78rem;font-weight:600;background:var(--accent-color);color:#fff;border:none;border-radius:2px;cursor:pointer;white-space:nowrap;">
+                                Run TACO
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- D3 topology canvas + state legend -->
+                    <div id="taco-topology-wrap" style="flex:0 0 260px;position:relative;border-bottom:1px solid var(--border-color);background:var(--main-bg);">
+                        <svg id="taco-topology-svg" style="width:100%;height:100%;display:block;"></svg>
+                        <!-- State legend (bottom-left overlay) -->
+                        <div id="taco-legend" style="position:absolute;bottom:8px;left:12px;display:flex;gap:10px;align-items:center;font-size:0.65rem;color:var(--text-secondary);pointer-events:none;">
+                            <span style="display:flex;align-items:center;gap:4px;">
+                                <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="none" stroke="#898781" stroke-width="1.5" stroke-dasharray="2,1.5"/></svg>unstarted
+                            </span>
+                            <span style="display:flex;align-items:center;gap:4px;">
+                                <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#3987e5"/></svg>running
+                            </span>
+                            <span style="display:flex;align-items:center;gap:4px;">
+                                <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#199e70"/></svg>completed
+                            </span>
+                            <span style="display:flex;align-items:center;gap:4px;">
+                                <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#d95926"/></svg>rested
+                            </span>
+                        </div>
+                        <!-- Empty state hint -->
+                        <div id="taco-topology-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:var(--text-tertiary);pointer-events:none;">
+                            Run a TACO query to see the agent topology
+                        </div>
+                    </div>
+
+                    <!-- Trace log -->
+                    <div id="taco-trace-log" style="flex:1;overflow-y:auto;padding:0.9rem 1.5rem;font-size:0.78rem;"></div>
+                </div>
+
+                <style>
+                /* TACO running-state pulse animation */
+                @keyframes taco-pulse {
+                    0%   { r: 0; opacity: 0.55; }
+                    60%  { r: 18; opacity: 0.15; }
+                    100% { r: 22; opacity: 0; }
+                }
+                .taco-pulse-ring { animation: taco-pulse 1.6s ease-out infinite; }
+                </style>
             </div>
 
             <div id="config-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:hidden; background:var(--main-bg);">

@@ -16080,6 +16080,7 @@ class Dashboard {
             'patterns':   ['patterns'],
             'provider':   ['provider'],
             'broker':     ['broker'],
+            'taco':       ['taco'],
         };
 
         const showQuick = filter === 'quick';
@@ -16894,6 +16895,37 @@ class Dashboard {
                 effects: ef('N/A','Larger = accepts bigger diagrams','None','None') },
             ]
           },
+          {
+            title: '🌮 TACO Agent',
+            subtitle: 'Self-routing companion agent — Brain → Harness → Critic routing thresholds. TACOmini model assignments are set via mini_models in settings.yaml or .env.',
+            cat: 'taco',
+            fields: [
+              { section:'taco', field:'confidence_threshold', label:'Brain Confidence Threshold',
+                vtype:'select',
+                options:[
+                  {v:'0.50', label:'0.50 — Aggressive escalation (more Harness calls)'},
+                  {v:'0.60', label:'0.60 — Lean toward Harness'},
+                  {v:'0.65', label:'0.65 — Default (recommended)', rec:true},
+                  {v:'0.70', label:'0.70 — Trust Brain more'},
+                  {v:'0.80', label:'0.80 — Escalate only on low-confidence queries'},
+                  {v:'0.90', label:'0.90 — Brain-first (minimal Harness calls)'},
+                ],
+                desc:'Brain confidence below which TACO escalates to TAHarness when an MMD diagram is provided. Lower = more fresh pipeline runs (slower, costlier). Higher = more brain-only answers (faster, cheaper but less fresh).',
+                effects: ef('Lower = more Harness calls','Lower = fresher analysis','Lower = more escalations','Lower = slower on average') },
+
+              { section:'taco', field:'aivss_drop_alert_threshold', label:'AIVSS Drop Advisory Threshold',
+                vtype:'select',
+                options:[
+                  {v:'0.05', label:'0.05 — Alert on any meaningful drop'},
+                  {v:'0.10', label:'0.10 — Moderate sensitivity'},
+                  {v:'0.15', label:'0.15 — Default (recommended)', rec:true},
+                  {v:'0.20', label:'0.20 — Alert only on large drops'},
+                  {v:'0.30', label:'0.30 — Suppress minor drops'},
+                ],
+                desc:'When the Harness AIVSS composite score is lower than the Brain\'s predicted AIVSS floor by more than this delta, TACO emits an advisory note in the HopChain. Phase 3: also triggers TACOminiCritic escalation.',
+                effects: ef('Lower = earlier warning','Surfaces risk regressions','Moderate','None') },
+            ]
+          },
         ];
 
         // ── Warning banner ────────────────────────────────────────────────────
@@ -17361,6 +17393,7 @@ class Dashboard {
             '🔒 Residual Risk':                          'residual_risk',
             '🗺️ StoryCaster — User Journey Stories':     'story_caster',
             '🤖 LLM & System':                           'llm_system',
+            '🌮 TACO Agent':                             'taco',
         };
 
         const sectionCards = sections.map(s => {
@@ -18932,6 +18965,26 @@ class Dashboard {
         this.loadBrainTab();
     }
 
+    _brainSubTab(name) {
+        const views = ['knowledge', 'taco'];
+        views.forEach(v => {
+            const el = document.getElementById(`brain-sub-${v}`);
+            const btn = document.getElementById(`brain-subtab-${v}`);
+            if (!el || !btn) return;
+            const active = v === name;
+            el.style.display = active ? (v === 'knowledge' ? 'flex' : 'flex') : 'none';
+            el.style.flexDirection = 'column';
+            btn.style.borderBottomColor = active ? 'var(--primary-color)' : 'transparent';
+            btn.style.color = active ? 'var(--primary-color)' : 'var(--text-secondary)';
+            btn.style.fontWeight = active ? '600' : '400';
+        });
+        // Lazy-init TACO arch selector on first open
+        if (name === 'taco') {
+            if (!this._tacoInitDone) { this._tacoInit(); this._tacoInitDone = true; }
+            this._tacoTopologyInit();
+        }
+    }
+
     async loadBrainTab() {
         const apiKey = localStorage.getItem('tm_api_key') || '';
         const h = { 'TM-API-KEY': apiKey, 'Content-Type': 'application/json' };
@@ -19117,6 +19170,405 @@ class Dashboard {
         } catch (_) {}
         if (btn) btn.disabled = false;
         this.loadBrainTab();
+    }
+
+    // ── TACO Agent Trace ────────────────────────────────────────────────────
+
+    async _tacoInit() {
+        // Populate arch selector from known architectures
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            const r = await fetch('/api/v1/insights/all', { headers: { 'TM-API-KEY': apiKey } });
+            if (!r.ok) return;
+            const data = await r.json();
+            const archs = Array.isArray(data) ? data : (data.architectures || []);
+            const sel = document.getElementById('taco-arch-select');
+            if (!sel) return;
+            archs.forEach(a => {
+                const name = typeof a === 'string' ? a : (a.arch_name || a.name || '');
+                if (!name) return;
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                sel.appendChild(opt);
+            });
+        } catch (_) {}
+    }
+
+    async _tacoRun() {
+        const log = document.getElementById('taco-trace-log');
+        const btn = document.getElementById('taco-run-btn');
+        if (!log || !btn) return;
+
+        const query = (document.getElementById('taco-query-input') || {}).value || '';
+        const archName = (document.getElementById('taco-arch-select') || {}).value || '';
+        const simMode = (document.getElementById('taco-sim-mode') || {}).checked || false;
+
+        if (!query.trim()) { log.innerHTML = '<div style="color:var(--text-tertiary);padding:0.3rem 0;">Enter a query to run TACO.</div>'; return; }
+
+        log.innerHTML = '';
+        btn.disabled = true;
+        btn.textContent = 'Running…';
+
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const hopColors = { brain: '#3b82f6', harness: '#f59e0b', critic: '#8b5cf6' };
+        const confColor = c => c >= 0.65 ? '#10b981' : c >= 0.4 ? '#f59e0b' : '#ef4444';
+
+        const pending = {};  // step → placeholder div
+
+        try {
+            const resp = await fetch('/api/v1/taco/run', {
+                method: 'POST',
+                headers: { 'TM-API-KEY': apiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query, arch_name: archName || null, sim_mode: simMode }),
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+            const reader = resp.body.getReader();
+            const dec = new TextDecoder();
+            let buf = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += dec.decode(value, { stream: true });
+                const blocks = buf.split('\n\n');
+                buf = blocks.pop();
+                for (const block of blocks) {
+                    if (!block.trim()) continue;
+                    let event = 'message', dataStr = '';
+                    for (const line of block.split('\n')) {
+                        if (line.startsWith('event: ')) event = line.slice(7).trim();
+                        else if (line.startsWith('data: ')) dataStr = line.slice(6).trim();
+                    }
+                    let data = {};
+                    try { data = JSON.parse(dataStr); } catch (_) { continue; }
+                    this._tacoHandleEvent(event, data, log, pending, hopColors, confColor);
+                }
+            }
+        } catch (err) {
+            log.innerHTML += `<div style="color:#ef4444;padding:0.3rem 0;font-size:0.72rem;">Error: ${this._esc(String(err))}</div>`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Run TACO';
+        }
+    }
+
+    _tacoHandleEvent(event, data, log, pending, hopColors, confColor) {
+        if (event === 'taco_start') {
+            const id8 = (data.chain_id || '').slice(0, 8);
+            const arch = data.arch_name ? ` · ${this._esc(data.arch_name)}` : '';
+            const sim = data.sim_mode ? ' · sim' : '';
+            log.innerHTML += `<div style="font-size:0.68rem;color:var(--text-tertiary);margin-bottom:0.4rem;">chain ${id8}${arch}${sim} · threshold ${(data.threshold||0.65).toFixed(2)}</div>`;
+            this._currentTacoChainId = data.chain_id;
+            this._tacoTopologyAddSession(data.chain_id, data.query, data.arch_name);
+        } else if (event === 'hop_start') {
+            const color = hopColors[data.hop_type] || '#6b7280';
+            const div = document.createElement('div');
+            div.style.cssText = 'display:flex;align-items:flex-start;gap:0.4rem;margin-bottom:0.35rem;opacity:0.45;';
+            div.innerHTML = `
+                <span style="flex-shrink:0;padding:0.15rem 0.4rem;border-radius:2px;font-size:0.68rem;font-weight:700;background:${color};color:#fff;">${this._esc(data.component||'')}</span>
+                <span style="color:var(--text-tertiary);font-size:0.7rem;padding-top:0.1rem;">running…</span>`;
+            log.appendChild(div);
+            pending[data.step] = div;
+            // Add mini node to topology
+            if (this._currentTacoChainId)
+                this._tacoTopologyAddMini(this._currentTacoChainId, data.step, data.hop_type, data.component, data.is_deterministic);
+        } else if (event === 'hop_complete') {
+            const div = pending[data.step];
+            if (!div) return;
+            const color = hopColors[data.hop_type] || '#6b7280';
+            const conf = data.confidence != null
+                ? `<span style="margin-left:0.35rem;padding:0.1rem 0.35rem;border-radius:2px;font-size:0.65rem;background:${confColor(data.confidence)};color:#fff;">${(data.confidence*100).toFixed(0)}%</span>`
+                : '';
+            const dur = `<span style="margin-left:0.3rem;color:var(--text-tertiary);font-size:0.65rem;">${data.duration_ms}ms</span>`;
+            const routed = data.routed ? `<span style="margin-left:0.3rem;font-size:0.62rem;color:#f59e0b;">↑ routed</span>` : '';
+            const summary = this._esc(data.response_summary || '');
+            const payload = JSON.stringify(data.metadata || {}, null, 2);
+            div.style.opacity = '1';
+            div.innerHTML = `
+                <span style="flex-shrink:0;padding:0.15rem 0.4rem;border-radius:2px;font-size:0.68rem;font-weight:700;background:${color};color:#fff;">${this._esc(data.component||'')}</span>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.72rem;color:var(--text-primary);line-height:1.4;">${summary}${conf}${dur}${routed}</div>
+                    <details style="margin-top:0.2rem;">
+                        <summary style="font-size:0.65rem;color:var(--text-tertiary);cursor:pointer;">payload</summary>
+                        <pre style="font-size:0.62rem;background:var(--card-bg);padding:0.4rem;border-radius:2px;overflow-x:auto;margin:0.2rem 0 0;">${this._esc(payload)}</pre>
+                    </details>
+                </div>`;
+            // Update mini state in topology
+            if (this._currentTacoChainId)
+                this._tacoTopologyCompleteMini(this._currentTacoChainId, data.hop_type,
+                    data.confidence, data.duration_ms);
+        } else if (event === 'taco_complete') {
+            const n = (data.hops || []).length;
+            const ms = data.total_duration_ms || 0;
+            const conf = ((data.final_confidence || 0) * 100).toFixed(0);
+            const harness = data.routed_to_harness ? ' · escalated→harness' : '';
+            log.innerHTML += `<div style="margin-top:0.4rem;font-size:0.68rem;color:var(--text-tertiary);border-top:1px solid var(--border-color);padding-top:0.35rem;">${n} hop${n!==1?'s':''} · ${ms}ms · conf ${conf}%${harness}</div>`;
+            // mark session completed in topology
+            if (this._tacoSessions && data.chain_id) {
+                const sess = this._tacoSessions[data.chain_id];
+                if (sess) { sess.state = 'completed'; this._tacoTopologyRender(); }
+            }
+        } else if (event === 'taco_error') {
+            log.innerHTML += `<div style="color:#ef4444;padding:0.3rem 0;font-size:0.72rem;">error: ${this._esc(data.message||'unknown')}</div>`;
+        }
+    }
+
+    // ── TACO D3 topology ────────────────────────────────────────────────────
+
+    // Validated palette (all-pairs dark-mode). Unstarted = hollow, no fill entry needed.
+    _tacoStateColor(state) {
+        return {running:'#3987e5', completed:'#199e70', rested:'#d95926', error:'#e66767'}[state] || null;
+    }
+
+    // Categorical slots for cluster hull fills (first 3 pre-validated all-pairs dark)
+    _tacoClusterHullColor(idx) {
+        return ['#2a78d6','#eb6834','#1baf7a'][idx % 3];
+    }
+
+    _tacoTopologyInit() {
+        if (this._tacoTopoInitDone) return;
+        this._tacoTopoInitDone = true;
+        this._tacoSessions = this._tacoSessions || {};
+        this._tacoSim = null;
+
+        const wrap = document.getElementById('taco-topology-wrap');
+        if (!wrap) return;
+
+        // ResizeObserver: re-render on size change (same pattern as SOC KG)
+        this._tacoResizeObs = new ResizeObserver(() => this._tacoTopologyRender());
+        this._tacoResizeObs.observe(wrap);
+    }
+
+    _tacoTopologyRender() {
+        const wrap = document.getElementById('taco-topology-wrap');
+        const svgEl = document.getElementById('taco-topology-svg');
+        const emptyEl = document.getElementById('taco-topology-empty');
+        if (!wrap || !svgEl) return;
+
+        const sessions = Object.values(this._tacoSessions || {});
+
+        // Show empty hint when no sessions
+        if (emptyEl) emptyEl.style.display = sessions.length ? 'none' : 'flex';
+        if (!sessions.length) { d3.select(svgEl).selectAll('*').remove(); return; }
+
+        const W = wrap.getBoundingClientRect().width || 600;
+        const H = wrap.getBoundingClientRect().height || 260;
+        if (W < 10 || H < 10) return;
+
+        // Build node + link arrays
+        const nodes = [], links = [];
+        sessions.forEach((sess, si) => {
+            nodes.push({ id: sess.id, type: 'agent', label: 'TACO', state: sess.state,
+                         cluster: sess.id, clusterIdx: si, r: 18, fx: null, fy: null });
+            (sess.minis || []).forEach(mini => {
+                nodes.push({ id: mini.id, type: mini.type, label: mini.label,
+                              state: mini.state, cluster: sess.id, clusterIdx: si, r: 11 });
+                links.push({ source: sess.id, target: mini.id });
+            });
+        });
+
+        const svg = d3.select(svgEl);
+
+        // Preserve simulation positions across re-renders
+        if (this._tacoSim) {
+            const posMap = {};
+            this._tacoSim.nodes().forEach(n => { posMap[n.id] = {x: n.x, y: n.y, vx: n.vx, vy: n.vy}; });
+            nodes.forEach(n => { const p = posMap[n.id]; if (p) { n.x = p.x; n.y = p.y; n.vx = p.vx; n.vy = p.vy; } });
+            this._tacoSim.stop();
+        }
+
+        svg.selectAll('*').remove();
+        const g = svg.append('g');
+
+        // Zoom + pan
+        const zoom = d3.zoom().scaleExtent([0.3, 4])
+            .wheelDelta(ev => -ev.deltaY * (ev.deltaMode === 1 ? 0.05 : ev.deltaMode ? 1 : 0.002))
+            .on('zoom', ev => g.attr('transform', ev.transform));
+        svg.call(zoom).on('dblclick.zoom', null);
+
+        // Cluster force — gentle pull toward cluster centroid
+        const centroids = {};
+        const clusterForce = alpha => {
+            // Update centroids
+            const sums = {};
+            nodes.forEach(n => {
+                sums[n.cluster] = sums[n.cluster] || {x: 0, y: 0, count: 0};
+                sums[n.cluster].x += n.x || 0; sums[n.cluster].y += n.y || 0; sums[n.cluster].count++;
+            });
+            Object.keys(sums).forEach(k => {
+                centroids[k] = {x: sums[k].x / sums[k].count, y: sums[k].y / sums[k].count};
+            });
+            nodes.forEach(n => {
+                const c = centroids[n.cluster];
+                if (!c) return;
+                n.vx += (c.x - n.x) * 0.06 * alpha;
+                n.vy += (c.y - n.y) * 0.06 * alpha;
+            });
+        };
+
+        // Hull layer (behind everything)
+        const hullG = g.append('g').attr('class', 'taco-hulls');
+        const linkG = g.append('g').attr('class', 'taco-links');
+        const nodeG = g.append('g').attr('class', 'taco-nodes');
+
+        // Link elements
+        const linkEls = linkG.selectAll('line').data(links).join('line')
+            .attr('stroke', '#383835').attr('stroke-width', 1.2).attr('stroke-opacity', 0.7);
+
+        // Node groups
+        const nodeEls = nodeG.selectAll('g').data(nodes, d => d.id).join('g')
+            .style('cursor', 'pointer')
+            .call(d3.drag()
+                .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+                .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+                .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+        // Pulse ring (running state only — CSS animated)
+        nodeEls.filter(d => d.state === 'running').append('circle')
+            .attr('class', 'taco-pulse-ring')
+            .attr('r', 0).attr('fill', 'none')
+            .attr('stroke', d => this._tacoStateColor('running'))
+            .attr('stroke-width', 1.5).attr('stroke-opacity', 0.55);
+
+        // Main circle
+        nodeEls.append('circle')
+            .attr('r', d => d.r)
+            .attr('fill', d => {
+                const c = this._tacoStateColor(d.state);
+                return c || 'none';
+            })
+            .attr('stroke', d => {
+                if (d.state === 'unstarted') return '#898781';
+                return d.type === 'agent' ? '#ffffff' : 'none';
+            })
+            .attr('stroke-width', d => {
+                if (d.state === 'unstarted') return 1.5;
+                return d.type === 'agent' ? 2 : 0;
+            })
+            .attr('stroke-dasharray', d => d.state === 'unstarted' ? '3,2' : null)
+            .attr('fill-opacity', d => this._tacoStateColor(d.state) ? 1 : 0);
+
+        // 2px surface ring on filled nodes (per marks spec)
+        nodeEls.filter(d => this._tacoStateColor(d.state)).append('circle')
+            .attr('r', d => d.r + 2)
+            .attr('fill', 'none')
+            .attr('stroke', '#1a1a19').attr('stroke-width', 2);
+
+        // Label: type abbreviation inside node
+        nodeEls.append('text')
+            .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+            .attr('font-size', d => d.type === 'agent' ? '7px' : '6px')
+            .attr('font-weight', '700')
+            .attr('font-family', 'system-ui, -apple-system, "Segoe UI", sans-serif')
+            .attr('fill', d => this._tacoStateColor(d.state) ? '#ffffff' : '#898781')
+            .attr('pointer-events', 'none')
+            .text(d => ({ agent: 'TACO', brain: 'B', harness: 'H', critic: 'C' }[d.type] || '?'));
+
+        // Label: below node
+        nodeEls.append('text')
+            .attr('text-anchor', 'middle').attr('y', d => d.r + 10)
+            .attr('font-size', '8px')
+            .attr('font-family', 'system-ui, -apple-system, "Segoe UI", sans-serif')
+            .attr('fill', '#898781').attr('pointer-events', 'none')
+            .text(d => d.type !== 'agent' ? d.label : '');
+
+        // Tooltip
+        const tooltip = d3.select(wrap).selectAll('.taco-tip').data([null]).join('div')
+            .attr('class', 'taco-tip')
+            .style('position', 'absolute').style('pointer-events', 'none')
+            .style('background', '#0d0d0d').style('border', '1px solid #383835')
+            .style('border-radius', '3px').style('padding', '4px 8px')
+            .style('font-size', '11px').style('color', '#c3c2b7')
+            .style('opacity', 0).style('z-index', 10).style('max-width', '200px');
+
+        nodeEls.on('mouseover', (ev, d) => {
+            const stateStr = d.state || 'unstarted';
+            const confStr = d.confidence != null ? ` · conf ${(d.confidence*100).toFixed(0)}%` : '';
+            const durStr = d.durationMs != null ? ` · ${d.durationMs}ms` : '';
+            tooltip.html(`<strong>${d.type === 'agent' ? 'TACOAgent' : d.label}</strong><br>${stateStr}${confStr}${durStr}`)
+                .style('opacity', 1)
+                .style('left', (ev.offsetX + 12) + 'px')
+                .style('top', (ev.offsetY - 8) + 'px');
+        }).on('mousemove', ev => {
+            tooltip.style('left', (ev.offsetX + 12) + 'px').style('top', (ev.offsetY - 8) + 'px');
+        }).on('mouseout', () => tooltip.style('opacity', 0));
+
+        // Hull drawing function
+        const drawHulls = () => {
+            const byCluster = {};
+            nodes.forEach(n => {
+                if (!byCluster[n.cluster]) byCluster[n.cluster] = [];
+                byCluster[n.cluster].push([n.x, n.y]);
+            });
+            const hullData = Object.entries(byCluster)
+                .map(([k, pts]) => ({ key: k, pts, hull: pts.length >= 3 ? d3.polygonHull(pts) : null }))
+                .filter(d => d.hull);
+
+            hullG.selectAll('path').data(hullData, d => d.key).join('path')
+                .attr('d', d => 'M' + d.hull.map(p => p.join(',')).join('L') + 'Z')
+                .attr('fill', (d, i) => {
+                    const si = sessions.findIndex(s => s.id === d.key);
+                    return this._tacoClusterHullColor(si >= 0 ? si : i);
+                })
+                .attr('fill-opacity', 0.07)
+                .attr('stroke', (d, i) => {
+                    const si = sessions.findIndex(s => s.id === d.key);
+                    return this._tacoClusterHullColor(si >= 0 ? si : i);
+                })
+                .attr('stroke-opacity', 0.2).attr('stroke-width', 1)
+                .attr('stroke-linejoin', 'round').lower();
+        };
+
+        // D3 force simulation
+        const sim = d3.forceSimulation(nodes)
+            .force('link', d3.forceLink(links).id(d => d.id).distance(55).strength(0.85))
+            .force('charge', d3.forceManyBody().strength(-160))
+            .force('center', d3.forceCenter(W / 2, H / 2).strength(0.06))
+            .force('collide', d3.forceCollide(d => d.r + 10))
+            .force('cluster', clusterForce)
+            .on('tick', () => {
+                linkEls
+                    .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                nodeEls.attr('transform', d => `translate(${d.x},${d.y})`);
+                drawHulls();
+            });
+
+        this._tacoSim = sim;
+    }
+
+    _tacoTopologyAddSession(chainId, query, archName) {
+        this._tacoSessions = this._tacoSessions || {};
+        this._tacoSessions[chainId] = {
+            id: chainId,
+            query: (query || '').slice(0, 60),
+            archName: archName || null,
+            state: 'running',
+            minis: [],
+        };
+        this._tacoTopologyRender();
+    }
+
+    _tacoTopologyAddMini(chainId, step, hopType, component, isDeterministic) {
+        const sess = (this._tacoSessions || {})[chainId];
+        if (!sess) return;
+        const miniId = `${chainId}:${hopType}`;
+        if (!sess.minis.find(m => m.id === miniId)) {
+            sess.minis.push({ id: miniId, type: hopType, label: component,
+                              state: 'running', confidence: null, durationMs: null,
+                              isDeterministic: isDeterministic !== false });
+        }
+        this._tacoTopologyRender();
+    }
+
+    _tacoTopologyCompleteMini(chainId, hopType, confidence, durationMs) {
+        const sess = (this._tacoSessions || {})[chainId];
+        if (!sess) return;
+        const mini = sess.minis.find(m => m.type === hopType);
+        if (mini) { mini.state = 'completed'; mini.confidence = confidence; mini.durationMs = durationMs; }
+        this._tacoTopologyRender();
     }
 
     async _brainCalibrate() {

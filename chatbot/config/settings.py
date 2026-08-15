@@ -650,6 +650,28 @@ class GovernanceSettings(BaseModel):
     )
 
 
+class TACOSettings(BaseModel):
+    """TACO companion agent configuration."""
+    confidence_threshold: float = Field(
+        default=0.65, ge=0.0, le=1.0,
+        description="Brain confidence below which TACO escalates to TAHarness "
+                    "(when mmd_content is provided). Lower = more harness calls.",
+    )
+    aivss_drop_alert_threshold: float = Field(
+        default=0.15, ge=0.0, le=1.0,
+        description="Emit advisory if harness AIVSS composite is lower than "
+                    "brain aivss_floor by more than this delta.",
+    )
+    mini_models: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Per-mini model overrides. Keys: 'brain', 'harness', 'critic'. "
+                    "Deterministic minis (brain, harness) ignore this until they make "
+                    "LLM calls. TACOminiCritic (Phase 3) uses 'critic' key. "
+                    "Empty = default env-var routing.",
+        examples=[{"brain": "haiku", "harness": "sonnet", "critic": "opus"}],
+    )
+
+
 class EventBrokerSettings(BaseModel):
     enabled: bool = Field(
         default=False,
@@ -682,6 +704,10 @@ class AppSettings(BaseModel):
     blackhat: BlackhatSettings = Field(default_factory=BlackhatSettings)
     scrum_master: "ScrumMasterSettings" = Field(default_factory=lambda: ScrumMasterSettings())
     governance: GovernanceSettings = Field(default_factory=GovernanceSettings)
+    taco: TACOSettings = Field(
+        default_factory=TACOSettings,
+        description="TACO companion agent — routing thresholds and per-mini model assignments.",
+    )
     event_broker: EventBrokerSettings = Field(
         default_factory=EventBrokerSettings,
         description="EventBroker pub/sub settings. Sinks configured in agent_governance.yaml.",
