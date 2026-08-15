@@ -13852,7 +13852,20 @@ class Dashboard {
             console.error('[TATB] render error:', e);
             return;
         }
-        container.innerHTML = html;
+        // Fetch TACO benchmark and append radar chart (non-blocking — degrades gracefully)
+        let radarHtml = '';
+        try {
+            const apiKey = localStorage.getItem('tm_api_key') || '';
+            const bResp = await fetch(
+                `/api/v1/taco/benchmark/${encodeURIComponent(archName)}`,
+                { cache: 'no-store', headers: { 'TM-API-KEY': apiKey } }
+            ).catch(() => null);
+            if (bResp && bResp.ok) {
+                const bData = await bResp.json();
+                radarHtml = this._renderTacoRadar(bData);
+            }
+        } catch (_) {}
+        container.innerHTML = html + radarHtml;
 
         // Event delegation for tile evidence clicks (data-tatb-key avoids embedding HTML in onclick).
         // Attach once per container replacement — listener is fresh because innerHTML replaced the subtree.
@@ -14389,6 +14402,92 @@ class Dashboard {
             overall,
             context: { nAP, nCritical, nHigh, hasAI },
         };
+    }
+
+    // ── TACO Quality Radar ──────────────────────────────────────────────────
+    _renderTacoRadar(data) {
+        const series = data && data.series;
+        if (!series) return '';
+        const DIMS = ['threat_relevant','ttp_accurate','risk_defensible','plan_actionable','groundedness','confidence_calibration','ciso_utility'];
+        const LABELS = ['Threat','TTP','Risk','Plan','Ground','Calib','CISO'];
+        const SERIES = [
+            { key: 'workspace',  label: 'Workspace',   stroke: '#f59e0b', fill: '#f59e0b22' },
+            { key: 'taco_brain', label: 'TACO Brain',  stroke: '#3b82f6', fill: '#3b82f622' },
+            { key: 'taco_rag',   label: 'TACO RAG',    stroke: '#8b5cf6', fill: '#8b5cf622' },
+        ];
+        const CX = 150, CY = 150, R = 110, LABEL_R = 133;
+        const N = DIMS.length;
+        const angle = (i) => -Math.PI / 2 + i * (2 * Math.PI / N);
+        const pt = (score, i) => {
+            const r = (score / 100) * R;
+            return [CX + r * Math.cos(angle(i)), CY + r * Math.sin(angle(i))];
+        };
+
+        // Grid rings
+        let rings = '';
+        for (const pct of [25, 50, 75, 100]) {
+            const r = (pct / 100) * R;
+            rings += `<circle cx="${CX}" cy="${CY}" r="${r}" fill="none" stroke="#374151" stroke-width="1" opacity="0.5"/>`;
+        }
+
+        // Spokes
+        let spokes = '';
+        for (let i = 0; i < N; i++) {
+            const [x, y] = pt(100, i);
+            spokes += `<line x1="${CX}" y1="${CY}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#374151" stroke-width="1" opacity="0.5"/>`;
+        }
+
+        // Labels
+        let labels = '';
+        for (let i = 0; i < N; i++) {
+            const lx = CX + LABEL_R * Math.cos(angle(i));
+            const ly = CY + LABEL_R * Math.sin(angle(i));
+            labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="9" font-family="monospace">${LABELS[i]}</text>`;
+        }
+
+        // Polygons
+        let polys = '';
+        for (const s of SERIES) {
+            const seriesData = series[s.key] && series[s.key].scores;
+            if (!seriesData) continue;
+            const pts = DIMS.map((d, i) => {
+                const v = seriesData[d];
+                return pt(typeof v === 'number' ? v : 0, i);
+            });
+            const points = [...pts, pts[0]].map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+            polys += `<polygon points="${points}" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1.5"/>`;
+        }
+
+        // Legend
+        const legend = SERIES.map(s => {
+            const ov = series[s.key] && series[s.key].scores && series[s.key].scores.overall;
+            const ovStr = typeof ov === 'number' ? ` ${ov.toFixed(0)}` : '';
+            return `<span style="display:inline-flex;align-items:center;gap:0.3rem;margin-right:1rem;font-size:0.7rem;color:var(--text-secondary)"><span style="width:12px;height:3px;background:${s.stroke};display:inline-block;border-radius:2px;"></span>${s.label}${ovStr}</span>`;
+        }).join('');
+
+        return `
+<div style="margin-top:1.5rem;padding:1rem;background:var(--surface-1,#111827);border:1px solid var(--border-color,#1f2937);border-radius:0.5rem;">
+  <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);margin-bottom:0.5rem;letter-spacing:0.05em;text-transform:uppercase;">TACO Quality Radar</div>
+  <div style="font-size:0.65rem;color:var(--text-tertiary);margin-bottom:0.75rem;">Coverage of ground truth across 7 dimensions — workspace / brain / rag</div>
+  <div style="display:flex;align-items:flex-start;gap:1.5rem;flex-wrap:wrap;">
+    <svg viewBox="0 0 300 300" width="220" height="220" style="flex-shrink:0">
+      ${rings}${spokes}${polys}${labels}
+    </svg>
+    <div style="display:flex;flex-direction:column;gap:0.6rem;padding-top:0.5rem;">
+      ${SERIES.map(s => {
+          const sd = series[s.key] && series[s.key].scores;
+          if (!sd) return '';
+          const rows = DIMS.map((d, i) => {
+              const v = sd[d];
+              const bar = typeof v === 'number' ? `<div style="display:inline-block;width:${(v/100*60).toFixed(0)}px;height:4px;background:${s.stroke};border-radius:2px;opacity:0.7;vertical-align:middle;margin-left:0.3rem;"></div>` : '';
+              return `<div style="font-size:0.65rem;color:var(--text-tertiary);">${LABELS[i]}: <span style="color:${s.stroke}">${typeof v === 'number' ? v.toFixed(0) : 'n/a'}</span>${bar}</div>`;
+          }).join('');
+          return `<div><div style="font-size:0.68rem;font-weight:600;color:${s.stroke};margin-bottom:0.2rem;">${s.label} <span style="font-weight:400;color:var(--text-tertiary)">overall ${(sd.overall||0).toFixed(0)}</span></div>${rows}</div>`;
+      }).join('')}
+    </div>
+  </div>
+  <div style="margin-top:0.75rem;display:flex;flex-wrap:wrap;">${legend}</div>
+</div>`;
     }
 
     // ── Rendering ───────────────────────────────────────────────────────────
@@ -19211,7 +19310,7 @@ class Dashboard {
         btn.textContent = 'Running…';
 
         const apiKey = localStorage.getItem('tm_api_key') || '';
-        const hopColors = { brain: '#3b82f6', harness: '#f59e0b', critic: '#8b5cf6' };
+        const hopColors = { brain: '#3b82f6', harness: '#f59e0b', critic: '#8b5cf6', rag: '#10b981' };
         const confColor = c => c >= 0.65 ? '#10b981' : c >= 0.4 ? '#f59e0b' : '#ef4444';
 
         const pending = {};  // step → placeholder div
@@ -19304,7 +19403,8 @@ class Dashboard {
             const ms = data.total_duration_ms || 0;
             const conf = ((data.final_confidence || 0) * 100).toFixed(0);
             const harness = data.routed_to_harness ? ' · escalated→harness' : '';
-            log.innerHTML += `<div style="margin-top:0.4rem;font-size:0.68rem;color:var(--text-tertiary);border-top:1px solid var(--border-color);padding-top:0.35rem;">${n} hop${n!==1?'s':''} · ${ms}ms · conf ${conf}%${harness}</div>`;
+            const rag = data.routed_to_rag ? ' · rag' : '';
+            log.innerHTML += `<div style="margin-top:0.4rem;font-size:0.68rem;color:var(--text-tertiary);border-top:1px solid var(--border-color);padding-top:0.35rem;">${n} hop${n!==1?'s':''} · ${ms}ms · conf ${conf}%${harness}${rag}</div>`;
             // mark session completed in topology
             if (this._tacoSessions && data.chain_id) {
                 const sess = this._tacoSessions[data.chain_id];
@@ -19464,7 +19564,7 @@ class Dashboard {
             .attr('font-family', 'system-ui, -apple-system, "Segoe UI", sans-serif')
             .attr('fill', d => this._tacoStateColor(d.state) ? '#ffffff' : '#898781')
             .attr('pointer-events', 'none')
-            .text(d => ({ agent: 'TACO', brain: 'B', harness: 'H', critic: 'C' }[d.type] || '?'));
+            .text(d => ({ agent: 'TACO', brain: 'B', harness: 'H', critic: 'C', rag: 'R' }[d.type] || '?'));
 
         // Label: below node
         nodeEls.append('text')

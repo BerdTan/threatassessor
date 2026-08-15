@@ -662,13 +662,19 @@ class TACOSettings(BaseModel):
         description="Emit advisory if harness AIVSS composite is lower than "
                     "brain aivss_floor by more than this delta.",
     )
+    rag_enabled: bool = Field(
+        default=True,
+        description="When True, TACOminiRAG (deterministic Workspace graph search) runs "
+                    "after brain on every query that has a known arch_name. "
+                    "Set False to revert to Phase 2 Brain→Harness routing.",
+    )
     mini_models: Dict[str, str] = Field(
         default_factory=dict,
-        description="Per-mini model overrides. Keys: 'brain', 'harness', 'critic'. "
-                    "Deterministic minis (brain, harness) ignore this until they make "
-                    "LLM calls. TACOminiCritic (Phase 3) uses 'critic' key. "
+        description="Per-mini model overrides. Keys: 'brain', 'harness', 'rag', 'critic'. "
+                    "Deterministic minis (brain, harness, rag) ignore this until they make "
+                    "LLM calls. TACOminiCritic (Phase 4) uses 'critic' key. "
                     "Empty = default env-var routing.",
-        examples=[{"brain": "haiku", "harness": "sonnet", "critic": "opus"}],
+        examples=[{"brain": "haiku", "harness": "sonnet", "rag": "haiku", "critic": "opus"}],
     )
 
 

@@ -88,12 +88,12 @@ agent_models:
 taco:
   confidence_threshold: 0.65
   aivss_drop_alert_threshold: 0.15
+  rag_enabled: true
   # Per-mini model overrides resolved from env vars at startup.
-  # brain + harness are deterministic (no LLM calls yet) — their vars are
-  # reserved and take effect when Phase 3 LLM calls are added.
-  # critic is the first non-deterministic mini (Phase 3); defaults to the
-  # free OpenRouter tier so it runs without credits.
+  # brain, harness, rag are deterministic (no LLM calls) — model vars reserved.
+  # critic (Phase 4) is the first non-deterministic mini; defaults to free tier.
   mini_models:
     brain:   "${AGENT_MODEL_TACO_BRAIN}"
     harness: "${AGENT_MODEL_TACO_HARNESS}"
+    rag:     "${AGENT_MODEL_TACO_RAG}"
     critic:  "${AGENT_MODEL_TACO_CRITIC}"

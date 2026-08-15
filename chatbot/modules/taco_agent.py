@@ -46,6 +46,16 @@ def _brain_dir() -> Path:
     return base / "brain"
 
 
+def _workspace_report_dir() -> Path:
+    """Return the report directory root for Workspace graph search."""
+    try:
+        from chatbot.config import get_settings  # noqa: PLC0415
+        rd = get_settings().system.report_dir
+        return Path(rd) if Path(rd).is_absolute() else ROOT / rd
+    except Exception:
+        return ROOT / "report"
+
+
 # ---------------------------------------------------------------------------
 # Wire-safe data model
 # ---------------------------------------------------------------------------
@@ -75,7 +85,8 @@ class HopChain(BaseModel):
     final_response: Dict[str, Any] = Field(default_factory=dict, description="Metadata of last hop")
     total_duration_ms: int = Field(description="Sum of all hop durations (not wall-clock)")
     routed_to_harness: bool = Field(False, description="True if TAHarness was invoked")
-    routed_to_critics: bool = Field(False, description="True if TACritic was invoked (Phase 3)")
+    routed_to_rag: bool = Field(False, description="True if TACOminiRAG was invoked")
+    routed_to_critics: bool = Field(False, description="True if TACritic was invoked (Phase 4)")
     created_at: str = Field(description="ISO 8601 UTC timestamp of chain creation")
 
 
@@ -311,6 +322,116 @@ class TACOminiHarness(TACOmini):
 
 
 # ---------------------------------------------------------------------------
+# TACOminiRAG — deterministic Workspace graph search (Phase 3)
+# ---------------------------------------------------------------------------
+
+class TACOminiRAG(TACOmini):
+    """Deterministic Workspace graph search using ThreatGraph.
+
+    Builds the ThreatGraph lazily on first call and caches it per arch_name.
+    Returns confidence=0.80 on a graph hit, 0.50 on a miss.
+    Metadata includes extracted techniques and missing controls for downstream
+    benchmark scoring without a second graph traversal.
+    """
+
+    hop_type = "rag"
+    component = "TAWorkspace"
+    is_deterministic = True
+
+    def __init__(
+        self,
+        model: Optional[str] = None,
+        report_dir: Optional[Path] = None,
+    ) -> None:
+        super().__init__(model=model)
+        self._report_dir = report_dir       # injectable; None → resolved at run time
+        self._graph: Optional[Any] = None   # ThreatGraph, lazy-built and cached
+        self._graph_arch: Optional[str] = None
+
+    def _get_graph(self, arch_name: str) -> Optional[Any]:
+        """Return a ThreatGraph for arch_name; build and cache if needed."""
+        if self._graph is not None and self._graph_arch == arch_name:
+            return self._graph
+        report_dir = self._report_dir or _workspace_report_dir()
+        arch_dir = report_dir / arch_name
+        if not arch_dir.is_dir() or not (arch_dir / "ground_truth.json").exists():
+            return None
+        from chatbot.modules.graph_index import ThreatGraph  # noqa: PLC0415
+        self._graph = ThreatGraph.build([arch_name], report_dir)
+        self._graph_arch = arch_name
+        return self._graph
+
+    def run(self, context: TACOContext) -> HopRecord:
+        t0 = time.monotonic()
+        ts = datetime.now(timezone.utc).isoformat()
+        arch_name = context.arch_name or ""
+
+        try:
+            g = self._get_graph(arch_name) if arch_name else None
+
+            if g is None:
+                return self._base_hop(
+                    context,
+                    query_summary=(context.query or "")[:120],
+                    response_summary="no workspace graph available",
+                    confidence=0.50,
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                    timestamp=ts,
+                    metadata={
+                        "had_hit": False,
+                        "arch_name": arch_name,
+                        "techniques": [],
+                        "missing_controls": [],
+                    },
+                )
+
+            answer = g.query(context.query)
+            had_hit = answer is not None
+
+            techniques = sorted({
+                t
+                for ap in g.attack_paths.values()
+                if ap.arch == arch_name
+                for t in ap.techniques
+            })
+            missing_controls = sorted(g.arch_controls_missing.get(arch_name, []))
+
+            confidence = 0.80 if had_hit else 0.50
+            response_summary = (
+                f"graph hit · {len(answer)} chars" if had_hit
+                else "no structural match"
+            )
+
+            return self._base_hop(
+                context,
+                query_summary=(context.query or "")[:120],
+                response_summary=response_summary,
+                confidence=confidence,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                timestamp=ts,
+                metadata={
+                    "had_hit": had_hit,
+                    "answer": answer or "",
+                    "arch_name": arch_name,
+                    "techniques": techniques[:20],
+                    "missing_controls": missing_controls[:20],
+                },
+            )
+
+        except Exception as exc:
+            logger.exception("TACOminiRAG failed for arch=%s", arch_name)
+            return self._base_hop(
+                context,
+                query_summary=(context.query or "")[:120],
+                response_summary=f"error: {str(exc)[:80]}",
+                confidence=0.0,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                timestamp=ts,
+                metadata={"had_hit": False, "arch_name": arch_name, "error": str(exc)},
+            )
+
+
+# ---------------------------------------------------------------------------
 # TACOAgent — master router + assembler
 # ---------------------------------------------------------------------------
 
@@ -350,13 +471,22 @@ class TACOAgent:
 
         self.threshold = threshold if threshold is not None else cfg_threshold
 
+        cfg_rag_enabled = True
+        try:
+            from chatbot.config import get_settings  # noqa: PLC0415
+            cfg_rag_enabled = getattr(get_settings().taco, "rag_enabled", True)
+        except Exception:
+            pass
+
         if minis is not None:
             self.minis = minis
         else:
-            self.minis = {
+            self.minis: Dict[str, TACOmini] = {
                 "brain":   TACOminiBrain(model=cfg_mini_models.get("brain")),
                 "harness": TACOminiHarness(model=cfg_mini_models.get("harness")),
             }
+            if cfg_rag_enabled:
+                self.minis["rag"] = TACOminiRAG(model=cfg_mini_models.get("rag"))
 
     # ── public surface ──────────────────────────────────────────────────────
 
@@ -370,14 +500,24 @@ class TACOAgent:
         ctx = TACOContext(query=query, arch_name=arch_name, arch_mmd=arch_mmd)
         hops: list[HopRecord] = []
 
+        # Hop 1: Brain (always)
         brain_hop = self._run_mini("brain", ctx)
         hops.append(brain_hop)
 
-        should_escalate = (
-            brain_hop.confidence is not None
-            and brain_hop.confidence < self.threshold
-            and ctx.arch_mmd is not None
-        )
+        # Hop 2: RAG (if registered)
+        rag_hop: Optional[HopRecord] = None
+        ran_rag = "rag" in self.minis
+        if ran_rag:
+            rag_hop = self._run_mini("rag", ctx)
+            rag_hop.routed = True
+            hops.append(rag_hop)
+
+        # Escalation: use best confidence from brain and RAG
+        brain_conf = brain_hop.confidence or 0.0
+        rag_conf = (rag_hop.confidence or 0.0) if rag_hop is not None else 0.0
+        best_conf = max(brain_conf, rag_conf)
+
+        should_escalate = best_conf < self.threshold and ctx.arch_mmd is not None
         if should_escalate:
             harness_hop = self._run_mini("harness", ctx)
             harness_hop.routed = True
@@ -392,6 +532,7 @@ class TACOAgent:
             final_response=hops[-1].metadata,
             total_duration_ms=sum(h.duration_ms for h in hops),
             routed_to_harness=should_escalate,
+            routed_to_rag=ran_rag,
             routed_to_critics=False,
             created_at=datetime.now(timezone.utc).isoformat(),
         )

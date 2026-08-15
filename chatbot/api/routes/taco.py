@@ -66,7 +66,7 @@ async def _taco_stream(req: TACORunRequest) -> AsyncGenerator[str, None]:
     hops: list[HopRecord] = []
 
     try:
-        # ── Hop 1: TABrain ──────────────────────────────────────────────────
+        # ── Hop 0: TABrain ──────────────────────────────────────────────────
         brain_mini = agent.minis["brain"]
         yield _sse("hop_start", {
             "hop_type": brain_mini.hop_type,
@@ -81,11 +81,32 @@ async def _taco_stream(req: TACORunRequest) -> AsyncGenerator[str, None]:
         yield _sse("hop_complete", hop_dict)
         await asyncio.sleep(0.05)
 
+        # ── Hop 1: TAWorkspace RAG (if registered) ──────────────────────────
+        rag_hop: Optional[HopRecord] = None
+        ran_rag = "rag" in agent.minis
+        if ran_rag:
+            rag_mini = agent.minis["rag"]
+            yield _sse("hop_start", {
+                "hop_type": rag_mini.hop_type,
+                "component": rag_mini.component,
+                "is_deterministic": rag_mini.is_deterministic,
+                "step": 1,
+            })
+            rag_hop = await asyncio.to_thread(agent._run_mini, "rag", ctx)
+            rag_hop.routed = True
+            hops.append(rag_hop)
+            hop_dict = rag_hop.model_dump()
+            hop_dict["step"] = 1
+            yield _sse("hop_complete", hop_dict)
+            await asyncio.sleep(0.05)
+
         # ── Routing decision ────────────────────────────────────────────────
+        brain_conf = brain_hop.confidence or 0.0
+        rag_conf = (rag_hop.confidence or 0.0) if rag_hop is not None else 0.0
+        best_conf = max(brain_conf, rag_conf)
+
         should_escalate = (req.sim_mode and req.mmd_content) or (
-            brain_hop.confidence is not None
-            and brain_hop.confidence < agent.threshold
-            and req.mmd_content
+            best_conf < agent.threshold and req.mmd_content
         )
 
         # ── Hop 2: TAHarness (if escalating) ────────────────────────────────
@@ -95,13 +116,13 @@ async def _taco_stream(req: TACORunRequest) -> AsyncGenerator[str, None]:
                 "hop_type": harness_mini.hop_type,
                 "component": harness_mini.component,
                 "is_deterministic": harness_mini.is_deterministic,
-                "step": 1,
+                "step": 2,
             })
             harness_hop: HopRecord = await asyncio.to_thread(agent._run_mini, "harness", ctx)
             harness_hop.routed = True
             hops.append(harness_hop)
             hop_dict = harness_hop.model_dump()
-            hop_dict["step"] = 1
+            hop_dict["step"] = 2
             yield _sse("hop_complete", hop_dict)
             await asyncio.sleep(0.05)
 
@@ -115,6 +136,7 @@ async def _taco_stream(req: TACORunRequest) -> AsyncGenerator[str, None]:
             final_response=hops[-1].metadata,
             total_duration_ms=sum(h.duration_ms for h in hops),
             routed_to_harness=bool(should_escalate),
+            routed_to_rag=ran_rag,
             routed_to_critics=False,
             created_at=datetime.now(timezone.utc).isoformat(),
         )
@@ -158,3 +180,33 @@ async def taco_schema() -> JSONResponse:
     """Publish HopChain JSON Schema — for external consumers and spec-driven integrations."""
     from chatbot.modules.taco_agent import HopChain  # noqa: PLC0415
     return JSONResponse(content=HopChain.model_json_schema())
+
+
+@router.get("/benchmark/{arch_name}", dependencies=[Depends(verify_api_key)])
+async def taco_benchmark_arch(arch_name: str) -> JSONResponse:
+    """7-dimension TACO benchmark for one architecture (workspace / taco_brain / taco_rag)."""
+    from chatbot.modules.taco_benchmark import TACOBenchmark  # noqa: PLC0415
+    try:
+        bm = TACOBenchmark()
+        result = await asyncio.to_thread(bm.score_arch, arch_name)
+        return JSONResponse(content=result.to_dict())
+    except FileNotFoundError as exc:
+        return JSONResponse(status_code=404, content={"error": str(exc)})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@router.get("/benchmark", dependencies=[Depends(verify_api_key)])
+async def taco_benchmark_hold_out() -> JSONResponse:
+    """7-dimension benchmark over all HOLD_OUT_ARCHS."""
+    from chatbot.modules.taco_benchmark import TACOBenchmark  # noqa: PLC0415
+    from chatbot.modules.ta_brain_builder import HOLD_OUT_ARCHS  # noqa: PLC0415
+    try:
+        bm = TACOBenchmark()
+        results = await asyncio.to_thread(bm.score_hold_out)
+        return JSONResponse(content={
+            "results": [r.to_dict() for r in results],
+            "hold_out_archs": sorted(HOLD_OUT_ARCHS),
+        })
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
