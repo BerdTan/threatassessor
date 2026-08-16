@@ -4,7 +4,7 @@ ThreatAssessor MCP Server
 Exposes ThreatAssessor capabilities to Claude Desktop and external agents
 via the Model Context Protocol (stdio transport).
 
-16 tools:
+17 tools:
   1.  analyze_architecture      — submit MMD, get full threat model
   2.  run_expert_review         — queue FULL_MOE, return job_id
   3.  get_job_status            — poll a queued/running job
@@ -20,6 +20,8 @@ via the Model Context Protocol (stdio transport).
   13. governance_check          — fast MMD governance scan, no LLM, returns fired DETECT rules
   14. query_ta_brain            — query Brain patterns: infer threats | list gaps | list patterns
   15. record_brain_feedback     — mark a Brain prediction confirmed/wrong/partial; feeds confidence decay
+  16. generate_synthetic_architectures — Generate synthetic MMDs from brain meta-layer gaps; stage for approval
+  17. run_taco_agent            — Run TACO routing chain (brain→rag→harness); returns full HopChain
 
 Setup (Claude Desktop):
   {
@@ -596,6 +598,47 @@ def generate_synthetic_architectures(
         auth_failed = "401" in str(e) or "Unauthorized" in str(e)
         _access_log.record_tool_call("generate_synthetic_architectures", success=False,
                                      auth_failed=auth_failed)
+        return json.dumps({"error": str(e)})
+
+
+# ---------------------------------------------------------------------------
+# Tool 17 — run_taco_agent
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def run_taco_agent(
+    query: str,
+    arch_name: str = "",
+    force_critic: bool = False,
+) -> str:
+    """Run the TACO routing chain for a threat question and return the full HopChain.
+
+    TACO routes through: TABrain (pattern KG) → TAWorkspace (graph search) →
+    TAHarness (full pipeline, only if confidence < threshold and diagram provided).
+
+    Each hop returns its findings — techniques, missing controls, confidence.
+    Use this to ask threat questions about a known architecture and get a
+    multi-source answer with routing trace.
+
+    Args:
+        query:        Natural-language threat question.
+                      e.g. "What are the main risks?" or "Which nodes are exposed?"
+        arch_name:    Known corpus architecture name (e.g. "03_aws_3tier").
+                      Leave empty for brain-only mode (no workspace graph search).
+        force_critic: If True and critic_enabled=true in settings, appends a
+                      TACOminiCritic hop reading existing MoE expert review data.
+
+    Returns:
+        JSON HopChain with: chain_id, hops (each with hop_type, confidence,
+        response_summary, metadata), final_confidence, routing flags.
+    """
+    try:
+        result = api.run_taco_agent(query=query, arch_name=arch_name, force_critic=force_critic)
+        _access_log.record_tool_call("run_taco_agent", arch_name=arch_name)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        auth_failed = "401" in str(e) or "Unauthorized" in str(e)
+        _access_log.record_tool_call("run_taco_agent", success=False, auth_failed=auth_failed)
         return json.dumps({"error": str(e)})
 
 

@@ -1,5 +1,5 @@
 """
-MCPClient — typed Python wrapper for all 16 ThreatAssessor MCP tools.
+MCPClient — typed Python wrapper for all 17 ThreatAssessor MCP tools.
 
 Calls the ThreatAssessor REST API directly (same endpoints as the MCP server
 job_client.py), so no running MCP subprocess is required. Suitable for use
@@ -240,6 +240,30 @@ class MCPClient:
         return self._post("/api/v1/governance/check", {
             "mmd_content": mmd_content,
             "arch_name": arch_name,
+        })
+
+    # ── Tool 17: run_taco_agent ───────────────────────────────────────────────
+
+    def run_taco_agent(
+        self,
+        query: str,
+        arch_name: str = "",
+        force_critic: bool = False,
+    ) -> Dict:
+        """Run the TACO routing chain and return the full HopChain.
+
+        Args:
+            query:        Natural-language threat question.
+            arch_name:    Known corpus architecture name. Empty = brain-only mode.
+            force_critic: Append TACOminiCritic hop (requires critic_enabled=true).
+
+        Returns:
+            HopChain dict with hops, final_confidence, routing flags.
+        """
+        return self._post("/api/v1/taco/run-sync", {
+            "query": query,
+            "arch_name": arch_name or None,
+            "force_critic": force_critic,
         })
 
     # ── Tool 14: query_ta_brain ───────────────────────────────────────────────

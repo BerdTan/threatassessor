@@ -2,7 +2,7 @@
 threatassessor-mcp — Python connector for ThreatAssessor MCP server.
 
 Provides:
-  MCPClient          — typed Python wrapper for all 16 MCP tools (REST-based)
+  MCPClient          — typed Python wrapper for all 17 MCP tools (REST-based)
   openai_tools()     — pre-built OpenAI Responses API tool definitions
   langchain_tools()  — LangChain BaseTool wrappers
   openai_mcp_tool()  — single MCP tool definition for OpenAI Responses API

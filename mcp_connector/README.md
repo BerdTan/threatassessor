@@ -1,6 +1,6 @@
 # threatassessor-mcp
 
-Python connector for [ThreatAssessor](http://localhost:8000/dashboard) — typed client, OpenAI Responses API integration, and LangChain tools for all 16 MCP tools.
+Python connector for [ThreatAssessor](http://localhost:8000/dashboard) — typed client, OpenAI Responses API integration, and LangChain tools for all 17 MCP tools.
 
 ```
 pip install -e mcp_connector/                  # local install
@@ -190,3 +190,4 @@ Key endpoints for automation:
 | 14 | `query_ta_brain` | Query Brain patterns (infer/gaps/patterns) |
 | 15 | `record_brain_feedback` | Record confirmed/wrong/partial feedback → TACO loop |
 | 16 | `generate_synthetic_architectures` | Generate synthetic MMDs from Brain meta-layer gaps |
+| 17 | `run_taco_agent` | Run TACO routing chain (brain→rag→harness) → HopChain |

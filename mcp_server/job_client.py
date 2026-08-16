@@ -169,6 +169,15 @@ def record_brain_feedback(
     })
 
 
+def run_taco_agent(query: str, arch_name: str = "", force_critic: bool = False) -> Dict:
+    """POST /api/v1/taco/run-sync — run TACO routing chain, return HopChain."""
+    return _post("/api/v1/taco/run-sync", {
+        "query": query,
+        "arch_name": arch_name or None,
+        "force_critic": force_critic,
+    }, timeout=120)
+
+
 def generate_synthetic_architectures(gap_ids: list = None, max_per_run: int = 3) -> Dict:
     """POST /api/v1/brain/generate-mmds — generate synthetic MMDs from meta-layer gaps."""
     return _post("/api/v1/brain/generate-mmds", {

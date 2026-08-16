@@ -133,6 +133,34 @@ async def _taco_stream(req: TACORunRequest) -> AsyncGenerator[str, None]:
             yield _sse("hop_complete", hop_dict)
             await asyncio.sleep(0.05)
 
+        # ── AIVSS drop advisory (after harness) ─────────────────────────────
+        if should_escalate and hops:
+            harness_h = hops[-1]
+            brain_m = brain_hop.metadata or {}
+            brain_preds = brain_m.get("predictions") or {}
+            brain_floor = float(brain_preds.get("aivss_floor") or 0.0)
+            harness_gov = (harness_h.metadata or {}).get("governance_summary") or {}
+            harness_aivss = float(harness_gov.get("aivss_overall") or 0.0)
+            try:
+                from chatbot.config import get_settings as _gs  # noqa: PLC0415
+                drop_threshold = _gs().taco.aivss_drop_alert_threshold
+            except Exception:
+                drop_threshold = 0.15
+            if brain_floor > 0 and (brain_floor - harness_aivss) > drop_threshold:
+                yield _sse("aivss_advisory", {
+                    "brain_floor": brain_floor,
+                    "harness_aivss": harness_aivss,
+                    "drop": round(brain_floor - harness_aivss, 3),
+                    "threshold": drop_threshold,
+                    "message": (
+                        f"AIVSS dropped {brain_floor - harness_aivss:.2f} below Brain prediction "
+                        f"({brain_floor:.2f} → {harness_aivss:.2f}). "
+                        "This architecture scores riskier than similar ones in the corpus — "
+                        "review the harness findings carefully."
+                    ),
+                })
+                await asyncio.sleep(0.05)
+
         # ── Hop 3: TACritic (human-triggered only) ──────────────────────────
         ran_critic = False
         if req.force_critic and "critic" in agent.minis:
@@ -169,8 +197,54 @@ async def _taco_stream(req: TACORunRequest) -> AsyncGenerator[str, None]:
         )
         yield _sse("taco_complete", chain.model_dump())
 
+        # ── Feedback write-back (fire-and-forget, never blocks the stream) ──
+        try:
+            _taco_write_feedback(brain_hop, chain.final_confidence)
+        except Exception:
+            pass
+
     except Exception as exc:
         yield _sse("taco_error", {"message": str(exc), "chain_id": chain_id})
+
+
+# ---------------------------------------------------------------------------
+# Feedback write-back helper
+# ---------------------------------------------------------------------------
+
+def _taco_write_feedback(brain_hop, final_confidence: float) -> None:
+    """Write TACO interaction result back into the brain feedback log.
+
+    Uses the brain hop's topology_sig and arch_type to identify the pattern,
+    then records 'confirmed' (conf ≥ 0.65) or 'partial' (<0.65) feedback.
+    Fire-and-forget — caller must catch all exceptions.
+    """
+    if not brain_hop:
+        return
+    meta = brain_hop.metadata or {}
+    if not meta.get("had_match"):
+        return  # no brain match to feed back on
+
+    topology_sig = str(meta.get("cache_route") or "")  # cache_route encodes the sig key
+    arch_type    = str(meta.get("arch_type") or "")
+    timestamp    = brain_hop.timestamp or ""
+
+    # Resolve actual topology_sig from predictions if available
+    preds = meta.get("predictions") or {}
+    if not topology_sig or topology_sig in ("cache_hit", "miss", ""):
+        # Fall back to arch_type-only path — feedback still useful for decay
+        topology_sig = arch_type or "unknown"
+
+    feedback = "confirmed" if final_confidence >= 0.65 else "partial"
+
+    from chatbot.modules.ta_brain_feedback import record_feedback  # noqa: PLC0415
+    record_feedback(
+        topology_sig=topology_sig,
+        arch_type=arch_type,
+        mode="infer",
+        feedback=feedback,
+        reference_ts=timestamp,
+        caller_type="taco",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +271,12 @@ async def taco_run_sync(req: TACORunRequest) -> JSONResponse:
         chain = await asyncio.to_thread(
             agent.run, req.query, req.arch_name, req.mmd_content, req.force_critic
         )
+        # Feedback write-back (best-effort)
+        brain_hop = next((h for h in chain.hops if h.hop_type == "brain"), None)
+        try:
+            _taco_write_feedback(brain_hop, chain.final_confidence)
+        except Exception:
+            pass
         return JSONResponse(content=chain.model_dump())
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})

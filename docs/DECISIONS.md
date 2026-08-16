@@ -6,6 +6,32 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 45 — 2026-08-16
 
+### 82. TACO Phase 4 — closed remaining items (2026-08-16)
+
+**AIVSS drop advisory (`_taco_stream`):**
+After every harness hop, compares `harness_aivss` vs `brain_floor` from Brain predictions.
+If `brain_floor - harness_aivss > aivss_drop_alert_threshold` (default 0.15), emits
+`aivss_advisory` SSE event with plain-English message: "AIVSS dropped X below Brain prediction
+(floor → actual). This architecture scores riskier than similar ones in the corpus."
+No-op when brain_floor = 0 (no prediction available).
+
+**TACOFeedbackProcessor write-back:**
+After `taco_complete` in both SSE stream and run-sync, calls `_taco_write_feedback(brain_hop, final_confidence)`.
+Extracts topology_sig + arch_type from brain hop metadata. Records `confirmed` (conf ≥ 0.65)
+or `partial` (<0.65) into `ta_brain_interactions.jsonl`. Fire-and-forget — never blocks the chain.
+Feeds Stage 4 confidence decay: confirmed = strengthen, partial = log only.
+
+**MCP tool #17 `run_taco_agent`:**
+- `server.py`: new `@mcp.tool()` calling `api.run_taco_agent()`
+- `job_client.py`: `run_taco_agent(query, arch_name, force_critic)` → `POST /api/v1/taco/run-sync`
+- `mcp_connector/client.py`: `run_taco_agent()` method (tool #17)
+- README + `__init__.py`: counts updated 16→17
+
+**TACO Phase 4 now complete.** All planned items shipped: TACOminiCritic (human-gated),
+AIVSS drop advisory, feedback write-back, MCP tool #17.
+
+---
+
 ### 81. critic-gym — blackhat + scrum_master rewrites (avg 8.7 → 11.3/12)
 
 **Before:**
