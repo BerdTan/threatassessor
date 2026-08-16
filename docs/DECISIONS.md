@@ -6,6 +6,29 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 45 — 2026-08-16
 
+### 80. Hetzner inference added as primary LLM provider
+
+**What:** Hetzner Cloud inference (experiments.hetzner.com) added as a new LLM provider, tried before OpenRouter in the provider chain. OpenAI-compatible REST API — standard Bearer auth, same LiteLLM `openai/` prefix with custom `api_base`.
+
+**Provider chain:** `hetzner → openrouter` (fallback). Per-agent overrides using `openrouter/openrouter/free` still route to OpenRouter directly — only agents without an explicit model override use Hetzner.
+
+**Available models on Hetzner:**
+
+| Model | Type | Active params | Context |
+|---|---|---|---|
+| `Qwen/Qwen3.6-35B-A3B-FP8` | MoE | 3B active | 262k |
+| `DeepSeek-V4-Flash-0731` | MoE | 13B active | 512k |
+| `GLM-5.2-NVFP4` | MoE | 40B active | 512k |
+| `Kimi-K2.7-Code` | MoE | 32B active | 262k |
+
+**Default:** `Qwen/Qwen3.6-35B-A3B-FP8` (fastest, 3B active). **High quality:** `DeepSeek-V4-Flash-0731`.
+
+**Key constraint — all models are thinking models:** They use tokens for internal reasoning before writing `content`. Need `max_tokens ≥ 500` or content is None (tokens exhausted on thinking). TA's default `max_tokens: 1000` is sufficient.
+
+**Files changed:** `agentic/providers.py` (manifest entry), `agentic/llm_client.py` (HETZNER enum), `.env` (`LLM_PROVIDER=hetzner`, `HETZNER_API_KEY`), `.env.example`.
+
+---
+
 ### 79. TACO Agent Phase 4 — complete session (2026-08-16)
 
 **Summary of all changes landed this session:**

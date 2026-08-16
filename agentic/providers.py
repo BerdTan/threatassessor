@@ -151,6 +151,31 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
         ),
     },
 
+
+    "hetzner": {
+        "model_prefix":  "openai/",
+        "api_key_env":   "HETZNER_API_KEY",
+        "base_url":      "https://inference.hetzner.com/api/v1",
+        "base_url_env":  None,
+        "region_env":    None,
+        "extra_headers": {},
+        "litellm_kwargs": {},
+        "models": {
+            # Qwen3.6-35B: smallest active params (3B), fast, multimodal — default/fast
+            # DeepSeek-V4-Flash: 13B active, 512k context — high quality reasoning
+            "default":      "openai/Qwen/Qwen3.6-35B-A3B-FP8",
+            "high_quality": "openai/DeepSeek-V4-Flash-0731",
+            "fast":         "openai/Qwen/Qwen3.6-35B-A3B-FP8",
+        },
+        "cost_per_1k": None,
+        "active": True,
+        "env_example": (
+            "# Hetzner Inference — https://experiments.hetzner.com/docs/inference\n"
+            "HETZNER_API_KEY=your-key-here\n"
+            "# Models: Qwen/Qwen3.6-35B-A3B-FP8 | DeepSeek-V4-Flash-0731 | GLM-5.2-NVFP4 | Kimi-K2.7-Code\n"
+        ),
+    },
+
     # ── Inactive providers — uncomment api_key_env + set active=True to enable ──
 
     "doubleword": {

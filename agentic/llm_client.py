@@ -50,6 +50,7 @@ class LLMProvider(str, Enum):
     enum value here. The elif chains in from_env/validate/_call_litellm
     are gone — all logic reads from the manifest.
     """
+    HETZNER    = "hetzner"
     OPENROUTER = "openrouter"
     BEDROCK    = "bedrock"
     ANTHROPIC  = "anthropic"
