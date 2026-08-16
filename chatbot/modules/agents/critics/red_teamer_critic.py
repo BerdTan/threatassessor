@@ -131,10 +131,11 @@ SCORING BANDS (inverted — lower = better defense):
 
 A strong finding names the specific control, the bypass technique (e.g. "WAF bypassed via chunked encoding"), and the tool or skill level required. Example: "MFA on WebApp is SIM-swappable (T1111) using public SIMjacking services — skill: LOW, bypass probability: HIGH → score +15."
 
-Reject and penalise findings that:
+Reject and penalise vague, generic, or boilerplate findings — they inflate scores without evidence.
 - State "no controls present" without analysing bypass realism elsewhere on the path
 - Use generic phrases like "attacker could escalate privileges" without naming the technique or tool
 - Score a path without citing the specific control and bypass method
+Flag weak findings as "WEAK: [reason]" and cap their score contribution at 0.
 
 OUTPUT FORMAT: Return a single JSON object — no prose before or after.
 {

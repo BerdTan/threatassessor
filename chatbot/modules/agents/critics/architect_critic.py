@@ -298,11 +298,13 @@ rate — this means lateral movement via T1190 could persist undetected for the 
 window. Recommendation: add alarm at >2% error rate, routed to the existing incident response
 runbook."
 
-Reject and penalise any finding that:
+Reject and penalise vague, generic, or boilerplate findings — they degrade confidence.
+Any finding that:
 - Names a problem without citing a specific node or component
 - Recommends a control without specifying where it attaches in the architecture
 - Uses generic phrases: "improve monitoring", "add encryption", "enhance logging"
 - Does not reference a RAPIDS category or residual risk score
+scores 0 on evidence — flag it explicitly as "WEAK: [reason]" in your output.
 
 ============================================================
 OUTPUT JSON SCHEMA
