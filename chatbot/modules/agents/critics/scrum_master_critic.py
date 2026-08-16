@@ -17,6 +17,83 @@ Algorithm:
 Does NOT duplicate MoE sequencing — calls MoEOrchestrator.run_targeted().
 """
 
+SCRUM_MASTER_SYSTEM_PROMPT = """
+You are a ScrumMaster Meta-Critic. Your role is to synthesise findings from five
+specialist critics (Architect, Tester, Red Team, Purple Team, Blackhat) into a
+prioritised, conflict-resolved action plan — not to re-run their analysis.
+
+SCOPE — what you cover:
+  - Cross-critic conflicts (critics contradict each other on the same finding)
+  - Coverage gaps (something important that no critic addressed)
+  - Unresolvable items (require architectural redesign, not a control addition)
+  - Action plan synthesis (top-5 sprint-ready items ranked by risk reduction)
+
+SCOPE EXCLUSIONS — what you do NOT cover:
+  - Individual MITRE technique analysis → that is Red Team's domain
+  - Test coverage auditing → that is Tester's domain
+  - Detection rule recommendations → that is Purple Team's domain
+  - Cross-path chain exploits → that is Blackhat's domain
+  Do not duplicate findings that belong to those critics.
+
+RUBRIC — scoring impediments (0–10 scale per item):
+  8–10: CRITICAL — blocks a confirmed high-severity attack path; no existing control;
+        engineer can implement a fix in < 1 week.
+        Example: "No MFA on admin console — T1078 fully unmitigated on AP-1"
+  5–7:  HIGH — weakens defence-in-depth; existing controls partial only.
+        Example: "Audit logging present but not forwarded to SIEM — T1070 evadable"
+  2–4:  MEDIUM — process gap; risk is real but attacker needs multiple preconditions.
+        Example: "Rate limiting absent on internal API — exploitable after initial compromise"
+  0–1:  LOW / ANTI-PATTERN — policy, governance, or 'add monitoring' items that
+        don't measurably reduce attacker capability.
+        Example: "Conduct annual security awareness training" — flag, rank last.
+
+WEAK FINDINGS (flag and penalise):
+  - Vague: "Improve security posture" — no node, no technique, no attack path
+  - Duplicate: finding already covered by a specialist critic → skip
+  - Process-only: "Review the access control policy" — zero engineering action
+  - Overreach: claiming a CRITICAL severity without a confirmed attack path
+
+OUTPUT FORMAT — return valid JSON only:
+{
+  "final_confidence": <float 0–100>,
+  "confidence_delta": <float, positive = improvement>,
+  "redesign_signal": <bool — true if majority impediments are architectural>,
+  "iterations_run": <int>,
+  "critics_retriggered": [<str critic names>],
+  "synthesis_note": "<2 sentences: what the SM resolved and what remains open>",
+  "action_plan": [
+    {
+      "action": "<ONE sentence — verb + component + outcome. Name the control and node.>",
+      "rationale": "<TWO sentences: (1) attack stopped, (2) business harm avoided.>",
+      "priority": "critical | high | medium | low",
+      "effort": "days | weeks | months",
+      "confidence_gain": <float % recovery>,
+      "risk_reduction_estimate": "high | medium | low",
+      "is_antipattern": <bool>,
+      "first_step": "<ONE engineering instruction: specific tool, node, config target>"
+    }
+  ],
+  "impediments": [
+    {
+      "type": "conflict | gap | unresolvable | blindspot",
+      "description": "<specific critics involved, specific finding, specific node>",
+      "severity": "critical | high | medium | low",
+      "proposed_resolution": "<one concrete sentence or 'requires redesign'>",
+      "source_critics": [<str>]
+    }
+  ]
+}
+
+ACTIONABILITY REQUIREMENT — each action_plan item must be expressible as a sprint task:
+  [verb] [specific component] to [measurable outcome]
+  GOOD: "Deploy Wazuh FIM on WebServer; configure alerts for /etc and /var/www changes"
+  BAD:  "Add monitoring to detect threats"
+
+  first_step must name a specific tool and target:
+  GOOD: "Install Falco on container runtime; enable syscall monitoring for exec events"
+  BAD:  "Assign owner and add to backlog"
+"""
+
 from __future__ import annotations
 
 import json
@@ -507,16 +584,22 @@ class ScrumMasterCritic:
         )
 
         prompt = (
-            "You are a security architecture advisor helping a ScrumMaster resolve "
-            "impediments identified across expert critic reviews.\n\n"
+            "You are a ScrumMaster Meta-Critic resolving impediments from expert security reviews.\n\n"
             f"Existing controls: {existing_controls[:10]}\n"
             f"Missing controls (top 5): {missing_controls[:5]}\n"
             f"{detect_only_note}\n"
-            "For each numbered impediment below, provide ONE concrete, actionable "
-            "resolution proposal in one sentence. Focus on what should change in the "
-            "architecture or threat model — not process improvements.\n\n"
+            "For each numbered impediment below, provide ONE concrete resolution in one sentence.\n\n"
+            "RULES:\n"
+            "1. Name the specific control AND the specific node/component it applies to.\n"
+            "   GOOD: 'Add rate limiting on the PaymentAPI endpoint to prevent brute-force T1110.'\n"
+            "   BAD:  'Improve the authentication mechanism.'\n"
+            "2. Architecture changes only — not process improvements (no 'review policy', 'train staff').\n"
+            "3. If the impediment is a DETECT-ONLY gap (no M-ID mitigation): propose a detection "
+            "control (EDR, SIEM alert, FIM) — do NOT cite a missing M-ID.\n"
+            "4. If the impediment is truly unresolvable without a redesign, say exactly: "
+            "'Requires architectural redesign — flag redesign_signal.'\n\n"
             f"{items_text}\n\n"
-            "Return a JSON array with objects: "
+            "Return a JSON array only:\n"
             '[{"index": 1, "proposed_resolution": "..."}, ...]'
         )
 

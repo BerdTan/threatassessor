@@ -6,6 +6,25 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 45 — 2026-08-16
 
+### 81. critic-gym — blackhat + scrum_master rewrites (avg 8.7 → 11.3/12)
+
+**Before:**
+
+| Critic | Score | Issue |
+|---|---|---|
+| blackhat | 7/12 | Gym couldn't extract prompt (return(...) format); rubric examples thin; weak-finding guidance absent |
+| scrum_master | 1/12 | No system prompt constant; gym picked up thin proposals prompt only |
+
+**After:** both 12/12. All 6 critics HEALTHY. Average 11.3/12.
+
+**blackhat fix:** Extracted `_build_system_prompt` inline return string → `BLACKHAT_SYSTEM_PROMPT` module-level constant (gym can now parse). Added WEAK FINDING section with concrete examples and score cap. Added explicit SCOPE EXCLUSIONS. Sprint-framing requirement in OUTPUT FORMAT. `_build_system_prompt` now returns the constant.
+
+**scrum_master fix:** Added `SCRUM_MASTER_SYSTEM_PROMPT` module-level constant covering: scope/exclusions, 4-band rubric with GOOD/BAD examples, full JSON output schema with all field names, weak-finding flags, actionability requirement with GOOD/BAD examples. Strengthened `_formulate_proposals` prompt with 4 explicit rules and GOOD/BAD examples.
+
+**Files:** `blackhat_critic.py`, `scrum_master_critic.py`.
+
+---
+
 ### 80. Hetzner inference added as primary LLM provider
 
 **What:** Hetzner Cloud inference (experiments.hetzner.com) added as a new LLM provider, tried before OpenRouter in the provider chain. OpenAI-compatible REST API — standard Bearer auth, same LiteLLM `openai/` prefix with custom `api_base`.
