@@ -706,6 +706,9 @@
                             <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:var(--text-secondary);cursor:pointer;white-space:nowrap;">
                                 <input type="checkbox" id="taco-sim-mode"> sim
                             </label>
+                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:#8b5cf6;cursor:pointer;white-space:nowrap;" title="Append TACOminiCritic hop — reads existing MoE results. Requires critic_enabled: true in settings.yaml.">
+                                <input type="checkbox" id="taco-force-critic"> critic
+                            </label>
                             <button id="taco-run-btn" onclick="window.dashboard && window.dashboard._tacoRun()"
                                 style="padding:0.32rem 1.1rem;font-size:0.78rem;font-weight:600;background:var(--accent-color);color:#fff;border:none;border-radius:2px;cursor:pointer;white-space:nowrap;">
                                 Run TACO
@@ -714,8 +717,20 @@
                     </div>
 
                     <!-- D3 topology canvas + state legend -->
-                    <div id="taco-topology-wrap" style="flex:0 0 260px;position:relative;border-bottom:1px solid var(--border-color);background:var(--main-bg);">
+                    <div id="taco-topology-wrap" style="flex:0 0 260px;position:relative;overflow:hidden;border-bottom:1px solid var(--border-color);background:var(--main-bg);">
                         <svg id="taco-topology-svg" style="width:100%;height:100%;display:block;"></svg>
+                        <!-- Vertical resize handle -->
+                        <div id="taco-topology-resize-handle"
+                             style="position:absolute;bottom:0;left:0;right:0;height:6px;cursor:ns-resize;z-index:10;background:transparent;transition:background 0.15s;"
+                             title="Drag to resize · Double-click to collapse/expand"></div>
+                        <!-- Clear button (top-right overlay) -->
+                        <button onclick="window.dashboard && window.dashboard._tacoClear()"
+                            style="position:absolute;top:6px;right:8px;font-size:0.62rem;padding:0.15rem 0.5rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:2px;color:var(--text-tertiary);cursor:pointer;z-index:5;opacity:0.75;"
+                            title="Clear topology canvas and trace log"
+                            onmouseenter="this.style.opacity='1';this.style.color='var(--text-primary)'"
+                            onmouseleave="this.style.opacity='0.75';this.style.color='var(--text-tertiary)'">
+                            Clear
+                        </button>
                         <!-- State legend (bottom-left overlay) -->
                         <div id="taco-legend" style="position:absolute;bottom:8px;left:12px;display:flex;gap:10px;align-items:center;font-size:0.65rem;color:var(--text-secondary);pointer-events:none;">
                             <span style="display:flex;align-items:center;gap:4px;">

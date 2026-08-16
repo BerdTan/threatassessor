@@ -1,6 +1,6 @@
 # threatassessor-mcp
 
-Python connector for [ThreatAssessor](http://localhost:8000/dashboard) — typed client, OpenAI Responses API integration, and LangChain tools for all 13 MCP tools.
+Python connector for [ThreatAssessor](http://localhost:8000/dashboard) — typed client, OpenAI Responses API integration, and LangChain tools for all 16 MCP tools.
 
 ```
 pip install -e mcp_connector/                  # local install
@@ -60,7 +60,7 @@ response = oai.responses.create(
 print(response.output_text)
 ```
 
-OpenAI proxies all 13 tools automatically — no individual function definitions needed.
+OpenAI proxies all 16 tools automatically — no individual function definitions needed.
 
 ---
 
@@ -187,3 +187,6 @@ Key endpoints for automation:
 | 11 | `get_mcp_access_signals` | Live session access patterns |
 | 12 | `export_assessment` | ta-export/1.0 bundle (CI/CD gate) |
 | 13 | `governance_check` | Fast MMD scan, 50ms, no LLM |
+| 14 | `query_ta_brain` | Query Brain patterns (infer/gaps/patterns) |
+| 15 | `record_brain_feedback` | Record confirmed/wrong/partial feedback → TACO loop |
+| 16 | `generate_synthetic_architectures` | Generate synthetic MMDs from Brain meta-layer gaps |

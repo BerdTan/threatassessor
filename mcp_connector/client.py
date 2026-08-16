@@ -1,5 +1,5 @@
 """
-MCPClient — typed Python wrapper for all 13 ThreatAssessor MCP tools.
+MCPClient — typed Python wrapper for all 16 ThreatAssessor MCP tools.
 
 Calls the ThreatAssessor REST API directly (same endpoints as the MCP server
 job_client.py), so no running MCP subprocess is required. Suitable for use
@@ -240,4 +240,91 @@ class MCPClient:
         return self._post("/api/v1/governance/check", {
             "mmd_content": mmd_content,
             "arch_name": arch_name,
+        })
+
+    # ── Tool 14: query_ta_brain ───────────────────────────────────────────────
+
+    def query_ta_brain(
+        self,
+        mode: str = "infer",
+        arch_name: str = "",
+        topology_signature: str = "",
+        arch_type: str = "",
+        arch_type_filter: str = "",
+    ) -> Dict:
+        """Query TA Brain patterns (infer | gaps | patterns).
+
+        Args:
+            mode:               "infer" | "gaps" | "patterns"
+            arch_name:          Corpus arch name — resolves topology_signature + arch_type.
+            topology_signature: Direct 16-char topology hash (for new archs not in corpus).
+            arch_type:          Architecture type hint used with topology_signature.
+            arch_type_filter:   Filter patterns by arch_type (patterns mode only).
+
+        Returns:
+            In infer mode: had_match, confidence, techniques, missing_controls,
+            detect_rules, aivss_floor, evidence trace.
+        """
+        return self._post("/api/v1/brain/query", {
+            "mode": mode,
+            "arch_name": arch_name,
+            "topology_signature": topology_signature,
+            "arch_type": arch_type,
+            "arch_type_filter": arch_type_filter,
+        })
+
+    # ── Tool 15: record_brain_feedback ───────────────────────────────────────
+
+    def record_brain_feedback(
+        self,
+        feedback: str,
+        arch_name: str = "",
+        topology_signature: str = "",
+        arch_type: str = "",
+        mode: str = "infer",
+        reference_ts: str = "",
+    ) -> Dict:
+        """Record confirmed/wrong/partial feedback on a Brain prediction.
+
+        Args:
+            feedback:           "confirmed" | "wrong" | "partial"
+            arch_name:          Corpus arch name (resolves topology_sig + arch_type).
+            topology_signature: Direct topology hash (if arch_name not provided).
+            arch_type:          Architecture type (used with topology_signature).
+            mode:               Query mode the feedback applies to (default "infer").
+            reference_ts:       ISO timestamp of the original query (optional link).
+
+        Returns:
+            {"recorded", "cache_updated", "feedback", "topology_sig", "ts"}
+        """
+        return self._post("/api/v1/brain/feedback", {
+            "feedback": feedback,
+            "arch_name": arch_name,
+            "topology_signature": topology_signature,
+            "arch_type": arch_type,
+            "mode": mode,
+            "reference_ts": reference_ts,
+        })
+
+    # ── Tool 16: generate_synthetic_architectures ─────────────────────────────
+
+    def generate_synthetic_architectures(
+        self,
+        gap_ids: str = "",
+        max_per_run: int = 3,
+    ) -> Dict:
+        """Generate synthetic Mermaid diagrams from TA Brain meta-layer gaps.
+
+        Args:
+            gap_ids:     Comma-separated gap IDs (e.g. "GAP-001,GAP-003").
+                         Leave empty to auto-select by priority.
+            max_per_run: Maximum diagrams to generate (default: 3).
+
+        Returns:
+            {"staged": [...], "queue_summary": {...}}
+        """
+        parsed_ids = [g.strip() for g in gap_ids.split(",") if g.strip()] if gap_ids else []
+        return self._post("/api/v1/brain/generate-mmds", {
+            "gap_ids": parsed_ids,
+            "max_per_run": max_per_run,
         })

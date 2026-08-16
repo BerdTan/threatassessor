@@ -1,5 +1,5 @@
 """
-LangChain bridge — BaseTool wrappers for all 13 ThreatAssessor MCP tools.
+LangChain bridge — BaseTool wrappers for all 16 ThreatAssessor MCP tools.
 
 Usage::
 
@@ -80,6 +80,25 @@ class TatbInput(BaseModel):
 class ExportInput(BaseModel):
     arch_name: str  = Field(description="Architecture directory name.")
     save:      bool = Field(False, description="Write ta_export.json to report dir.")
+
+class QueryBrainInput(BaseModel):
+    mode:               str = Field("infer", description="infer | gaps | patterns")
+    arch_name:          str = Field("", description="Corpus architecture name.")
+    topology_signature: str = Field("", description="Direct 16-char topology hash.")
+    arch_type:          str = Field("", description="Architecture type hint.")
+    arch_type_filter:   str = Field("", description="Filter patterns by arch_type.")
+
+class BrainFeedbackInput(BaseModel):
+    feedback:           str = Field(description="confirmed | wrong | partial")
+    arch_name:          str = Field("", description="Corpus architecture name.")
+    topology_signature: str = Field("", description="Direct topology hash.")
+    arch_type:          str = Field("", description="Architecture type.")
+    mode:               str = Field("infer", description="Query mode feedback applies to.")
+    reference_ts:       str = Field("", description="ISO timestamp of the original query.")
+
+class GenerateSyntheticInput(BaseModel):
+    gap_ids:     str = Field("", description="Comma-separated gap IDs. Empty = auto-select.")
+    max_per_run: int = Field(3, description="Maximum diagrams to generate.")
 
 
 # ── Tool classes ──────────────────────────────────────────────────────────────
@@ -256,10 +275,85 @@ class GetTatbScoresTool(BaseTool):
         raise NotImplementedError
 
 
+class QueryTaBrainTool(BaseTool):
+    name: str = "query_ta_brain"
+    description: str = (
+        "Query TA Brain patterns. Mode 'infer': predict threats and missing controls. "
+        "Mode 'gaps': list under-sampled topology regions. "
+        "Mode 'patterns': list all learned patterns."
+    )
+    args_schema: Type[BaseModel] = QueryBrainInput
+    client: Any
+
+    def _run(
+        self,
+        mode: str = "infer",
+        arch_name: str = "",
+        topology_signature: str = "",
+        arch_type: str = "",
+        arch_type_filter: str = "",
+    ) -> str:
+        return json.dumps(
+            self.client.query_ta_brain(mode, arch_name, topology_signature, arch_type, arch_type_filter),
+            indent=2,
+        )
+
+    async def _arun(self, *args: Any, **kwargs: Any) -> str:
+        raise NotImplementedError
+
+
+class RecordBrainFeedbackTool(BaseTool):
+    name: str = "record_brain_feedback"
+    description: str = (
+        "Record confirmed/wrong/partial feedback on a TA Brain prediction. "
+        "Closes the TACO learning loop — wrong decays confidence, confirmed strengthens it."
+    )
+    args_schema: Type[BaseModel] = BrainFeedbackInput
+    client: Any
+
+    def _run(
+        self,
+        feedback: str,
+        arch_name: str = "",
+        topology_signature: str = "",
+        arch_type: str = "",
+        mode: str = "infer",
+        reference_ts: str = "",
+    ) -> str:
+        return json.dumps(
+            self.client.record_brain_feedback(
+                feedback, arch_name, topology_signature, arch_type, mode, reference_ts
+            ),
+            indent=2,
+        )
+
+    async def _arun(self, *args: Any, **kwargs: Any) -> str:
+        raise NotImplementedError
+
+
+class GenerateSyntheticArchitecturesTool(BaseTool):
+    name: str = "generate_synthetic_architectures"
+    description: str = (
+        "Generate synthetic Mermaid diagrams from TA Brain meta-layer gaps. "
+        "Stages diagrams for approval before harness submission."
+    )
+    args_schema: Type[BaseModel] = GenerateSyntheticInput
+    client: Any
+
+    def _run(self, gap_ids: str = "", max_per_run: int = 3) -> str:
+        return json.dumps(
+            self.client.generate_synthetic_architectures(gap_ids, max_per_run),
+            indent=2,
+        )
+
+    async def _arun(self, *args: Any, **kwargs: Any) -> str:
+        raise NotImplementedError
+
+
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 def langchain_tools(client: Any) -> List[BaseTool]:
-    """Return LangChain BaseTool instances for all 13 ThreatAssessor tools.
+    """Return LangChain BaseTool instances for all 16 ThreatAssessor tools.
 
     Args:
         client: MCPClient instance.
@@ -281,4 +375,7 @@ def langchain_tools(client: Any) -> List[BaseTool]:
         RunExpertReviewTool(client=client),
         GetJobStatusTool(client=client),
         GetTatbScoresTool(client=client),
+        QueryTaBrainTool(client=client),
+        RecordBrainFeedbackTool(client=client),
+        GenerateSyntheticArchitecturesTool(client=client),
     ]

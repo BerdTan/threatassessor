@@ -254,7 +254,26 @@ def query_brain(
             resolved_sig = inst["topology_signature"]
             resolved_type = inst.get("arch_type", arch_type)
         else:
-            return {"error": f"Architecture '{arch_name}' not found in instance layer"}
+            # Arch not in brain yet — try to get arch_type from ground_truth.json
+            # so we can still attempt a type-level pattern match.
+            gt_path = REPORT_DIR / arch_name / "ground_truth.json"
+            if gt_path.exists():
+                try:
+                    gt_meta = json.loads(gt_path.read_text()).get("metadata", {})
+                    resolved_type = resolved_type or gt_meta.get("architecture_type") or gt_meta.get("arch_type") or ""
+                    resolved_sig = gt_meta.get("topology_signature") or ""
+                except Exception:
+                    pass
+            # If still nothing, return a clean no-match rather than an error
+            if not resolved_sig and not resolved_type:
+                return {
+                    "had_match": False,
+                    "confidence": 0.0,
+                    "patterns_fired": [],
+                    "arch_type": "",
+                    "reason": "arch_not_in_brain",
+                    "message": f"'{arch_name}' has not been ingested into the brain yet. Run /brain-ingest or /brain-grow to add it.",
+                }
 
     # ── infer mode ────────────────────────────────────────────────────────────
     if mode == "infer":

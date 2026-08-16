@@ -2,14 +2,14 @@
 OpenAI bridge — two integration paths:
 
 1. openai_tools(client)
-   Returns a list of OpenAI function-calling tool definitions for all 13
+   Returns a list of OpenAI function-calling tool definitions for all 16
    ThreatAssessor tools. Use with the Chat Completions API (function calling)
    or the Responses API (tools=[...]).
 
 2. openai_mcp_tool(server_url, api_key)
    Returns a single {"type": "mcp"} tool definition that points at a running
    ThreatAssessor MCP server (streamable-http transport). Use with the OpenAI
-   Responses API — OpenAI proxies all 13 tools automatically.
+   Responses API — OpenAI proxies all 16 tools automatically.
 
 Usage — function calling (Chat Completions)::
 
@@ -308,13 +308,114 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_ta_brain",
+            "description": (
+                "Query TA Brain — the persistent knowledge graph distilled from the corpus. "
+                "Mode 'infer': predict threats, missing controls, and DETECT rules for an arch. "
+                "Mode 'gaps': list under-sampled topology regions. "
+                "Mode 'patterns': list all learned patterns."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "enum": ["infer", "gaps", "patterns"],
+                        "description": "Query mode. Default: infer.",
+                    },
+                    "arch_name": {
+                        "type": "string",
+                        "description": "Corpus architecture name (resolves topology + arch_type automatically).",
+                    },
+                    "topology_signature": {
+                        "type": "string",
+                        "description": "Direct 16-char topology hash for architectures not in corpus.",
+                    },
+                    "arch_type": {
+                        "type": "string",
+                        "description": "Architecture type hint when using topology_signature directly.",
+                    },
+                    "arch_type_filter": {
+                        "type": "string",
+                        "description": "Filter patterns by arch_type (patterns mode only).",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "record_brain_feedback",
+            "description": (
+                "Record feedback on a TA Brain prediction to close the TACO learning loop. "
+                "'confirmed' strengthens the pattern; 'wrong' decays confidence and evicts cache; "
+                "'partial' logs without changing confidence."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "feedback": {
+                        "type": "string",
+                        "enum": ["confirmed", "wrong", "partial"],
+                        "description": "Verdict on the Brain prediction.",
+                    },
+                    "arch_name": {
+                        "type": "string",
+                        "description": "Corpus architecture name.",
+                    },
+                    "topology_signature": {
+                        "type": "string",
+                        "description": "Direct topology hash (if arch_name not provided).",
+                    },
+                    "arch_type": {"type": "string"},
+                    "mode": {
+                        "type": "string",
+                        "description": "Query mode the feedback applies to. Default: infer.",
+                    },
+                    "reference_ts": {
+                        "type": "string",
+                        "description": "ISO timestamp of the original query (optional link).",
+                    },
+                },
+                "required": ["feedback"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_synthetic_architectures",
+            "description": (
+                "Generate synthetic Mermaid architecture diagrams from TA Brain meta-layer gaps. "
+                "Stages diagrams for human approval before harness submission. "
+                "Use to close the self-growing Brain loop."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "gap_ids": {
+                        "type": "string",
+                        "description": "Comma-separated gap IDs (e.g. 'GAP-001,GAP-003'). Empty = auto-select.",
+                    },
+                    "max_per_run": {
+                        "type": "integer",
+                        "description": "Maximum diagrams to generate. Default: 3.",
+                    },
+                },
+            },
+        },
+    },
 ]
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def openai_tools(client: Optional[Any] = None) -> List[Dict[str, Any]]:
-    """Return OpenAI Chat Completions function-calling tool definitions for all 13 tools.
+    """Return OpenAI Chat Completions function-calling tool definitions for all 16 tools.
 
     The returned list is passed directly to client.chat.completions.create(tools=...).
     Pass the MCPClient instance if you want tool calls auto-dispatched (future use).
@@ -339,13 +440,13 @@ def openai_mcp_tool(
     The ThreatAssessor MCP server must be running with streamable-http transport:
         python -m mcp_server.server --transport streamable-http --port 8001
 
-    OpenAI will proxy all 13 tools automatically — no individual function definitions needed.
+    OpenAI will proxy all 16 tools automatically — no individual function definitions needed.
 
     Args:
         server_url:       Full URL of the MCP server, e.g. 'https://your-host:8001/mcp'.
         api_key:          TM-API-KEY value (passed as Authorization header to the MCP server).
         require_approval: 'never' (default) or a dict of {never: {tool_names: [...]}} for granular control.
-        allowed_tools:    Subset of tool names to expose. None = all 13 tools.
+        allowed_tools:    Subset of tool names to expose. None = all 16 tools.
 
     Returns:
         OpenAI Responses API tool dict with type='mcp'.

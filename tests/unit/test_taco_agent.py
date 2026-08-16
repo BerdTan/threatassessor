@@ -14,6 +14,7 @@ from chatbot.modules.taco_agent import (
     TACOContext,
     TACOmini,
     TACOminiBrain,
+    TACOminiCritic,
     TACOminiHarness,
 )
 
@@ -230,3 +231,100 @@ def test_run_mini_raises_on_unknown_name():
     agent = TACOAgent()
     with pytest.raises(KeyError):
         agent._run_mini("nonexistent", TACOContext(query="test"))
+
+
+# ---------------------------------------------------------------------------
+# TACOminiCritic — Phase 4 (human-gated MoE hop)
+# ---------------------------------------------------------------------------
+
+def test_critic_not_in_default_agent():
+    """Gate 1: critic_enabled defaults to false → not registered."""
+    agent = TACOAgent()
+    assert "critic" not in agent.minis
+
+
+def test_critic_registered_when_injected():
+    """Critic can be injected directly (bypasses settings gate for testing)."""
+    critic = TACOminiCritic()
+    agent = TACOAgent(minis={
+        "brain":   _mock_mini(_hop("brain", 0.70)),
+        "harness": _mock_mini(_hop("harness", 0.80)),
+        "critic":  critic,
+    })
+    assert "critic" in agent.minis
+
+
+def test_critic_not_run_without_force_flag():
+    """Gate 2: even when registered, critic skips unless force_critic=True."""
+    critic_mock = _mock_mini(_hop("critic", 0.90))
+    agent = TACOAgent(minis={
+        "brain":   _mock_mini(_hop("brain", 0.70)),
+        "harness": _mock_mini(_hop("harness", 0.80)),
+        "critic":  critic_mock,
+    })
+    chain = agent.run("what are the risks?", force_critic=False)
+    critic_mock.run.assert_not_called()
+    assert chain.routed_to_critics is False
+
+
+def test_critic_runs_when_force_flag_set():
+    """Gate 2 open: force_critic=True runs the critic and sets routed_to_critics."""
+    critic_mock = _mock_mini(_hop("critic", 0.85))
+    agent = TACOAgent(minis={
+        "brain":   _mock_mini(_hop("brain", 0.70)),
+        "harness": _mock_mini(_hop("harness", 0.80)),
+        "critic":  critic_mock,
+    })
+    chain = agent.run("what are the risks?", force_critic=True)
+    critic_mock.run.assert_called_once()
+    assert chain.routed_to_critics is True
+    assert chain.hops[-1].hop_type == "critic"
+
+
+def test_critic_no_arch_returns_zero_confidence():
+    """Critic with no arch_name degrades cleanly."""
+    critic = TACOminiCritic()
+    hop = critic.run(TACOContext(query="test", arch_name=None))
+    assert hop.confidence == 0.0
+    assert hop.hop_type == "critic"
+    assert hop.metadata.get("had_moe") is False
+
+
+def test_critic_missing_moe_file(tmp_path):
+    """Critic returns had_moe=False when report dir has no MoE file."""
+    critic = TACOminiCritic(report_dir=tmp_path)
+    arch_dir = tmp_path / "my_arch"
+    arch_dir.mkdir()
+    hop = critic.run(TACOContext(query="test", arch_name="my_arch"))
+    assert hop.confidence == 0.0
+    assert hop.metadata["reason"] == "no_moe_file"
+
+
+def test_critic_reads_moe_file(tmp_path):
+    """Critic extracts confidence and signals from 07_moe_orchestrator.json."""
+    import json as _json
+    arch_dir = tmp_path / "my_arch"
+    arch_dir.mkdir()
+    moe_data = {
+        "confidence": {
+            "final": 72.0,
+            "interpretation": "SOLID",
+        },
+        "expert_validations": {
+            "architect": {"validation_status": "APPROVED"},
+            "red_team":  {"validation_status": "NEEDS_REVISION"},
+        },
+        "scrum_master": {
+            "final_confidence": 68.0,
+            "redesign_signal": False,
+        },
+    }
+    (arch_dir / "07_moe_orchestrator.json").write_text(_json.dumps(moe_data))
+    critic = TACOminiCritic(report_dir=tmp_path)
+    hop = critic.run(TACOContext(query="test", arch_name="my_arch"))
+    assert hop.hop_type == "critic"
+    assert hop.metadata["had_moe"] is True
+    assert abs(hop.confidence - 0.72) < 0.001
+    assert hop.metadata["redesign_signal"] is False
+    assert hop.metadata["critics_count"] == 2
+    assert "MoE conf=0.72" in hop.response_summary

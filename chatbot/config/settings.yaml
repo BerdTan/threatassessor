@@ -89,6 +89,9 @@ taco:
   confidence_threshold: 0.65
   aivss_drop_alert_threshold: 0.15
   rag_enabled: true
+  # critic_enabled gates TACOminiCritic registration.
+  # Even when true, the critic only runs when force_critic=true in the request.
+  critic_enabled: false
   # Per-mini model overrides resolved from env vars at startup.
   # brain, harness, rag are deterministic (no LLM calls) — model vars reserved.
   # critic (Phase 4) is the first non-deterministic mini; defaults to free tier.

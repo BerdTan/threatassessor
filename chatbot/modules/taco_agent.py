@@ -165,11 +165,36 @@ class TACOminiBrain(TACOmini):
             return self._base_hop(
                 context,
                 query_summary=(context.query or "")[:120],
-                response_summary=f"error: {str(result['error'])[:80]}",
+                response_summary=f"brain error: {str(result['error'])[:80]}",
                 confidence=0.0,
                 duration_ms=duration_ms,
                 timestamp=ts,
                 metadata={"had_match": False, "error": str(result["error"])},
+            )
+
+        # Clean no-match (arch not in brain, not an error)
+        if result.get("reason") == "arch_not_in_brain":
+            return self._base_hop(
+                context,
+                query_summary=(context.query or "")[:120],
+                response_summary="not in brain yet — run /brain-ingest to add this arch",
+                confidence=0.0,
+                duration_ms=duration_ms,
+                timestamp=ts,
+                metadata={
+                    "had_match": False,
+                    "patterns_fired": [],
+                    "arch_type": "",
+                    "cache_route": "miss",
+                    "predictions": {
+                        "techniques": [],
+                        "detect_rules": [],
+                        "aivss_floor": 0.0,
+                        "aivss_mean": 0.0,
+                        "missing_controls": [],
+                    },
+                    "reason": "arch_not_in_brain",
+                },
             )
 
         had_match = bool(result.get("had_match", False))
@@ -432,6 +457,137 @@ class TACOminiRAG(TACOmini):
 
 
 # ---------------------------------------------------------------------------
+# TACOminiCritic — reads existing MoE results (Phase 4)
+# ---------------------------------------------------------------------------
+
+class TACOminiCritic(TACOmini):
+    """Read existing MoE expert review results for an architecture.
+
+    Gate design: this mini is NEVER invoked automatically by the confidence
+    threshold.  It only runs when the caller explicitly sets force_critic=True
+    in TACOAgent.run() — which requires the human to set that flag in the
+    API request.  A second gate (critic_enabled in settings.yaml) controls
+    whether the mini is even registered.
+
+    Fast path (default): reads 07_moe_orchestrator.json from report/{arch}/
+    and extracts consensus confidence + key signals.  No LLM calls, <5 ms.
+
+    Slow path (future): if no MoE file exists and fresh_review=True, triggers
+    an async jobs/expert-review run.  Not implemented in Phase 4 initial drop.
+    """
+
+    hop_type = "critic"
+    component = "TACritic"
+    is_deterministic = False  # LLM-backed in principle; fast path reads JSON
+
+    _MOE_FILE = "07_moe_orchestrator.json"
+
+    def __init__(
+        self,
+        model: Optional[str] = None,
+        report_dir: Optional[Path] = None,
+    ) -> None:
+        super().__init__(model=model)
+        self._report_dir = report_dir  # injectable for testing
+
+    def _get_report_dir(self) -> Path:
+        if self._report_dir is not None:
+            return self._report_dir
+        try:
+            from chatbot.config import get_settings  # noqa: PLC0415
+            rd = get_settings().system.report_dir
+            return Path(rd) if Path(rd).is_absolute() else ROOT / rd
+        except Exception:
+            return ROOT / "report"
+
+    def run(self, context: TACOContext) -> HopRecord:
+        t0 = time.monotonic()
+        ts = datetime.now(timezone.utc).isoformat()
+        arch_name = context.arch_name or ""
+
+        if not arch_name:
+            return self._base_hop(
+                context,
+                query_summary=(context.query or "")[:120],
+                response_summary="no arch_name — critic requires a known architecture",
+                confidence=0.0,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                timestamp=ts,
+                metadata={"had_moe": False, "reason": "no_arch_name"},
+            )
+
+        moe_path = self._get_report_dir() / arch_name / self._MOE_FILE
+        if not moe_path.exists():
+            return self._base_hop(
+                context,
+                query_summary=arch_name[:120],
+                response_summary="no MoE data — run expert review first",
+                confidence=0.0,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                timestamp=ts,
+                metadata={"had_moe": False, "reason": "no_moe_file", "arch_name": arch_name},
+            )
+
+        try:
+            import json  # noqa: PLC0415
+            raw = json.loads(moe_path.read_text())
+        except Exception as exc:
+            return self._base_hop(
+                context,
+                query_summary=arch_name[:120],
+                response_summary=f"MoE parse error: {str(exc)[:60]}",
+                confidence=0.0,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                timestamp=ts,
+                metadata={"had_moe": False, "reason": "parse_error", "arch_name": arch_name},
+            )
+
+        # Extract consensus confidence (0–100 scale → 0–1)
+        conf_block = raw.get("confidence") or {}
+        final_conf_raw = conf_block.get("final")
+        moe_confidence = float(final_conf_raw) / 100.0 if isinstance(final_conf_raw, (int, float)) else 0.0
+        moe_confidence = min(max(moe_confidence, 0.0), 1.0)
+
+        # Scrum master signals
+        sm = raw.get("scrum_master") or {}
+        sm_confidence = sm.get("final_confidence")
+        redesign_signal = bool(sm.get("redesign_signal", False))
+
+        # Per-critic adjustments
+        evs = raw.get("expert_validations") or {}
+        critic_verdicts: Dict[str, str] = {
+            name: str(ev.get("validation_status") or "")
+            for name, ev in evs.items()
+        }
+
+        interpretation = str(conf_block.get("interpretation") or "")
+        response_summary = (
+            f"MoE conf={moe_confidence:.2f} · "
+            f"{'REDESIGN' if redesign_signal else 'OK'} · "
+            f"{len(evs)} critic(s)"
+        )
+
+        return self._base_hop(
+            context,
+            query_summary=arch_name[:120],
+            response_summary=response_summary,
+            confidence=moe_confidence,
+            duration_ms=int((time.monotonic() - t0) * 1000),
+            timestamp=ts,
+            metadata={
+                "had_moe": True,
+                "arch_name": arch_name,
+                "moe_confidence": moe_confidence,
+                "sm_confidence": float(sm_confidence) if isinstance(sm_confidence, (int, float)) else None,
+                "redesign_signal": redesign_signal,
+                "interpretation": interpretation,
+                "critic_verdicts": critic_verdicts,
+                "critics_count": len(evs),
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
 # TACOAgent — master router + assembler
 # ---------------------------------------------------------------------------
 
@@ -472,9 +628,12 @@ class TACOAgent:
         self.threshold = threshold if threshold is not None else cfg_threshold
 
         cfg_rag_enabled = True
+        cfg_critic_enabled = False
         try:
             from chatbot.config import get_settings  # noqa: PLC0415
-            cfg_rag_enabled = getattr(get_settings().taco, "rag_enabled", True)
+            taco_cfg2 = get_settings().taco
+            cfg_rag_enabled = getattr(taco_cfg2, "rag_enabled", True)
+            cfg_critic_enabled = getattr(taco_cfg2, "critic_enabled", False)
         except Exception:
             pass
 
@@ -487,6 +646,8 @@ class TACOAgent:
             }
             if cfg_rag_enabled:
                 self.minis["rag"] = TACOminiRAG(model=cfg_mini_models.get("rag"))
+            if cfg_critic_enabled:
+                self.minis["critic"] = TACOminiCritic(model=cfg_mini_models.get("critic"))
 
     # ── public surface ──────────────────────────────────────────────────────
 
@@ -495,8 +656,15 @@ class TACOAgent:
         query: str,
         arch_name: Optional[str] = None,
         arch_mmd: Optional[str] = None,
+        force_critic: bool = False,
     ) -> HopChain:
-        """Execute the routing chain and return a complete HopChain."""
+        """Execute the routing chain and return a complete HopChain.
+
+        Args:
+            force_critic: When True and "critic" mini is registered, append a
+                          TACOminiCritic hop after all other hops.  This is the
+                          human-trigger gate — the critic never runs automatically.
+        """
         ctx = TACOContext(query=query, arch_name=arch_name, arch_mmd=arch_mmd)
         hops: list[HopRecord] = []
 
@@ -523,6 +691,14 @@ class TACOAgent:
             harness_hop.routed = True
             hops.append(harness_hop)
 
+        # Critic hop — human-triggered only; never part of automatic routing
+        ran_critic = False
+        if force_critic and "critic" in self.minis:
+            critic_hop = self._run_mini("critic", ctx)
+            critic_hop.routed = True
+            hops.append(critic_hop)
+            ran_critic = True
+
         return HopChain(
             chain_id=str(uuid.uuid4()),
             query=query,
@@ -533,7 +709,7 @@ class TACOAgent:
             total_duration_ms=sum(h.duration_ms for h in hops),
             routed_to_harness=should_escalate,
             routed_to_rag=ran_rag,
-            routed_to_critics=False,
+            routed_to_critics=ran_critic,
             created_at=datetime.now(timezone.utc).isoformat(),
         )
 

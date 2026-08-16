@@ -6,7 +6,7 @@ Exposes ThreatAssessor to Claude Desktop and external agents via the Model Conte
 
 ```
 mcp_server/
-  server.py       — FastMCP app, 10 tool definitions
+  server.py       — FastMCP app, 16 tool definitions
   job_client.py   — thin HTTP wrapper (all REST calls go through here)
   client_sim.py   — integration persona simulator (testing + onboarding)
   README.md       — this file

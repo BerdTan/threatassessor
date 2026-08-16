@@ -4,6 +4,12 @@ TACO agent REST endpoints.
 POST /api/v1/taco/run       — SSE stream; emits hop events as they complete
 POST /api/v1/taco/run-sync  — blocking JSON response (MCP tool / non-SSE callers)
 GET  /api/v1/taco/schema    — publish HopChain JSON Schema for external consumers
+GET  /api/v1/taco/benchmark/{arch_name} — 7-dimension TACO benchmark for one arch
+GET  /api/v1/taco/benchmark             — 7-dimension benchmark over all HOLD_OUT_ARCHS
+
+force_critic flag (Phase 4):
+  Set force_critic=true in the request body to append a TACOminiCritic hop.
+  Requires critic_enabled=true in settings.yaml.  Never triggered automatically.
 """
 
 from __future__ import annotations
@@ -32,7 +38,8 @@ class TACORunRequest(BaseModel):
     query: str
     arch_name: Optional[str] = None
     mmd_content: Optional[str] = None
-    sim_mode: bool = False   # True → always walk Brain → Harness regardless of confidence
+    sim_mode: bool = False      # True → always walk Brain → Harness regardless of confidence
+    force_critic: bool = False  # True → append TACOminiCritic hop (human-triggered only)
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +133,26 @@ async def _taco_stream(req: TACORunRequest) -> AsyncGenerator[str, None]:
             yield _sse("hop_complete", hop_dict)
             await asyncio.sleep(0.05)
 
+        # ── Hop 3: TACritic (human-triggered only) ──────────────────────────
+        ran_critic = False
+        if req.force_critic and "critic" in agent.minis:
+            critic_mini = agent.minis["critic"]
+            step = len(hops)
+            yield _sse("hop_start", {
+                "hop_type": critic_mini.hop_type,
+                "component": critic_mini.component,
+                "is_deterministic": critic_mini.is_deterministic,
+                "step": step,
+            })
+            critic_hop: HopRecord = await asyncio.to_thread(agent._run_mini, "critic", ctx)
+            critic_hop.routed = True
+            hops.append(critic_hop)
+            hop_dict = critic_hop.model_dump()
+            hop_dict["step"] = step
+            yield _sse("hop_complete", hop_dict)
+            ran_critic = True
+            await asyncio.sleep(0.05)
+
         # ── Build and emit chain ─────────────────────────────────────────────
         chain = HopChain(
             chain_id=chain_id,
@@ -137,7 +164,7 @@ async def _taco_stream(req: TACORunRequest) -> AsyncGenerator[str, None]:
             total_duration_ms=sum(h.duration_ms for h in hops),
             routed_to_harness=bool(should_escalate),
             routed_to_rag=ran_rag,
-            routed_to_critics=False,
+            routed_to_critics=ran_critic,
             created_at=datetime.now(timezone.utc).isoformat(),
         )
         yield _sse("taco_complete", chain.model_dump())
@@ -168,7 +195,7 @@ async def taco_run_sync(req: TACORunRequest) -> JSONResponse:
     agent = TACOAgent()
     try:
         chain = await asyncio.to_thread(
-            agent.run, req.query, req.arch_name, req.mmd_content
+            agent.run, req.query, req.arch_name, req.mmd_content, req.force_critic
         )
         return JSONResponse(content=chain.model_dump())
     except Exception as exc:

@@ -668,6 +668,13 @@ class TACOSettings(BaseModel):
                     "after brain on every query that has a known arch_name. "
                     "Set False to revert to Phase 2 Brain→Harness routing.",
     )
+    critic_enabled: bool = Field(
+        default=False,
+        description="Register TACOminiCritic in the mini registry. "
+                    "Even when True, the critic only runs when force_critic=True is set "
+                    "on the individual request — it is never triggered automatically. "
+                    "Set True to allow human-triggered MoE expert review hops.",
+    )
     mini_models: Dict[str, str] = Field(
         default_factory=dict,
         description="Per-mini model overrides. Keys: 'brain', 'harness', 'rag', 'critic'. "

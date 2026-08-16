@@ -4,6 +4,160 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 45 — 2026-08-16
+
+### 79. TACO Agent Phase 4 — complete session (2026-08-16)
+
+**Summary of all changes landed this session:**
+
+**MCP Connector (Decision #75):**
+- `mcp_connector/` updated to 16 tools — Brain tools 14–16 (`query_ta_brain`, `record_brain_feedback`, `generate_synthetic_architectures`) added to `MCPClient`, OpenAI `TOOL_DEFINITIONS`, and LangChain `BaseTool` classes. All counts updated 13→16.
+
+**TACOminiCritic (Decision #77):**
+- New `TACOminiCritic` class — reads `07_moe_orchestrator.json`, extracts MoE consensus confidence (0–100→0–1), SM signals, redesign flag, per-critic verdicts. `is_deterministic=False`.
+- Two gates: `settings.yaml → taco.critic_enabled: false` (Gate 1) + `force_critic: bool = False` in request (Gate 2). Never runs automatically.
+- Settings tab card + dashboard `critic` checkbox (purple) + `force_critic` wired into SSE stream and run-sync.
+- 7 new unit tests in `test_taco_agent.py`. `taco-check` updated with activation walkthrough.
+
+**Brain vs Workspace comparison panel (Decision #78):**
+- After every TACO chain completes, a collapsible panel renders below the trace log showing Brain predictions vs Workspace findings side by side.
+- Shared techniques (both sources agree) highlighted green. Brain-only blue, Workspace-only teal.
+- Source explainers ("predicts from corpus memory" / "reads the diagram"), confidence badges, missing controls.
+- Data-driven narrative (5 cases: full agreement / partial / zero overlap / no brain match / no RAG hit).
+- Combined footer: "Both sources together identified N MITRE ATT&CK attack techniques".
+- Auto-scroll: `requestAnimationFrame(() => log.scrollTop = log.scrollHeight)` after append.
+
+**Brain not-found graceful fallback:**
+- `ta_brain_query.py`: when arch not in instance layer, falls back to `architecture_type` from `ground_truth.json`. If nothing found, returns clean `{had_match: False, reason: "arch_not_in_brain"}` instead of error.
+- `TACOminiBrain.run()`: handles `reason=arch_not_in_brain` with friendly response summary instead of "error:" prefix.
+
+**D3 topology redesign — chain layout + resize + clear:**
+- **Chain layout**: star replaced with directed chain. Query node → Brain → Workspace → (Harness) → (Critic) in step order. Arrowheads show routing direction; dashed links = routed hops.
+- **Rich hover tooltips**: query node shows full question + fan-out count. Agent nodes show search-space findings — Brain: techniques + DETECT rules + match status; Workspace: techniques + missing controls + graph hit; Harness: AIVSS + rules fired; Critic: MoE confidence + redesign signal.
+- **Metadata stored per hop**: `_tacoTopologyCompleteMini` now stores full `metadata` from hop_complete events.
+- **Vertical resize handle**: drag bottom edge of topology canvas to resize (60–600px). Double-click collapses/restores. Size persisted in `localStorage('taco_topology_h')`. `overflow:hidden` added — fixes SVG overflow that was blocking the textarea and sim checkbox.
+- **Clear button**: top-right overlay on topology canvas. Resets `_tacoSessions`, clears trace log, re-renders empty state.
+
+**Files changed:** `taco_agent.py`, `ta_brain_query.py`, `routes/taco.py`, `config/settings.py`, `config/settings.yaml`, `index.html`, `dashboard.js`, `test_taco_agent.py`, `taco-check.py`, `mcp_connector/*`, `mcp_server/server.py` + `README.md`.
+
+---
+
+### 78. TACO Agent — Brain vs Workspace side-by-side comparison panel
+
+**What:** After every TACO chain completes, a collapsible "Brain vs Workspace" panel renders below the hop trace in the TACO Agent tab. No new API calls — data is already in the `hop_complete` payloads.
+
+**Layout:**
+
+```
+▼ Brain vs Workspace   10 brain · 20 workspace · 4 shared
+─────────────────────────────────────────────────────────
+✓ 4 shared techniques: T1041  T1078  T1110  T1190
+
+┌── TABrain ──────────────────┐  ┌── TAWorkspace ──────────────────┐
+│ Techniques (6 unique+4sh.)  │  │ Techniques (16 unique+4sh.)     │
+│ T1213  T1059  ...           │  │ T1005  T1018  T1021  ...        │
+│ DETECT rules                │  │ graph hit · no graph hit        │
+│ DETECT-014  DETECT-028      │  │ Missing controls                │
+│ AIVSS floor: 0.00           │  │ • api gateway  • audit log  ... │
+└─────────────────────────────┘  └─────────────────────────────────┘
+```
+
+**Colour coding:** shared = green banner, brain-only = blue tags, workspace-only = teal tags, DETECT rules = indigo.
+
+**Why deferred until now:** the hop metadata fields (`predictions.techniques`, `predictions.detect_rules`, `metadata.techniques`, `metadata.missing_controls`) were only confirmed populated with real data once Phase 3 RAG was live and testable.
+
+**Files changed:** `dashboard.js` — `_tacoHandleEvent` (taco_complete appends panel), `_tacoRenderComparison()` (new method).
+
+---
+
+### 77. TACOminiCritic (Phase 4) — human-gated MoE expert review hop
+
+**What:** `TACOminiCritic` added to `taco_agent.py`. Reads `07_moe_orchestrator.json` from `report/{arch}/` and extracts MoE consensus confidence (0–100 → 0–1), scrum_master signals, per-critic verdicts, and redesign flag. `is_deterministic=False`. Fast path reads JSON, <5ms. No LLM calls in current implementation.
+
+**Two gates — critic never runs automatically:**
+
+| Gate | Where | Default | How to open |
+|---|---|---|---|
+| 1 — registration | `chatbot/config/settings.yaml` → `taco.critic_enabled` | `false` | set `true` + restart API |
+| 2 — per-request | `POST /api/v1/taco/run` body → `force_critic` | `false` | set `true` in request |
+
+Both gates must be open. Default `TACOAgent()` has `minis = {brain, rag, harness}` — no critic key. Even when registered, critic only appends as final hop when `force_critic=true`.
+
+**Activation sequence:**
+1. `settings.yaml`: set `taco.critic_enabled: true`
+2. `./scripts/api/api_restart.sh`
+3. Dashboard → Brain → TACO Agent → check **critic** checkbox + Run TACO, OR send `force_critic: true` in request body
+
+**Test steps (run after any change to TACOminiCritic):**
+```
+python3 .claude/skills/taco-check/scripts/taco-check.py
+```
+Covers: gate-1 off by default, gate-2 blocks without flag, gate-2 runs with flag, no-arch degrades, missing MoE degrades, real MoE JSON extraction, benchmark sanity (all 7 critic tests + Phase 3 suite).
+
+**Files changed:** `taco_agent.py`, `routes/taco.py`, `config/settings.py`, `config/settings.yaml`, `static/index.html` (critic checkbox), `dashboard.js` (form + Settings card), `tests/unit/test_taco_agent.py` (+7 tests), `.claude/skills/taco-check/scripts/taco-check.py` (critic sim walkthrough).
+
+---
+
+### 76. TACO Agent Phase 3 — verified complete
+
+**Status:** All Phase 3 deliverables confirmed present and live.
+
+| Deliverable | File | Status |
+|---|---|---|
+| `TACOminiRAG` (deterministic Workspace graph search) | `taco_agent.py:328` | ✓ |
+| `TACOBenchmark` (7-dimension scorer) | `taco_benchmark.py:236` | ✓ |
+| `GET /api/v1/taco/benchmark/{arch_name}` | `routes/taco.py:185` | ✓ live, HTTP 200 |
+| `GET /api/v1/taco/benchmark` (hold-out corpus) | `routes/taco.py:199` | ✓ |
+| Radar chart in Assessment tab | `dashboard.js:14408` (`_renderTacoRadar`) | ✓ |
+| `taco-check` regression gate | `.claude/skills/taco-check/` | ✓ passes |
+| `taco-benchmark` skill | `.claude/skills/taco-benchmark/` | ✓ passes |
+| `taco-infer` skill | `.claude/skills/taco-infer/` | ✓ |
+| `taco-run` skill | `.claude/skills/taco-run/` | ✓ |
+
+**Benchmark scores (hold-out avg):** workspace 92, taco_brain 45, taco_rag 81. Brain-only is weak on risk_defensible/plan_actionable (requires SM JSON which hold-out archs lack); RAG recovers to 81 overall.
+
+**Phase 4 is next:** `TACOminiCritic` (LLM-backed, `is_deterministic=False`), AIVSS drop advisory, feedback write-back, MCP tool #17.
+
+---
+
+### 75. mcp_connector updated to 16 tools — Brain tools added
+
+**What:** `mcp_connector/` package brought in sync with `mcp_server/server.py`. Three Brain tools that existed only in the MCP server (tools 14–16) are now fully implemented in the connector package:
+
+| # | Tool | `MCPClient` method | OpenAI def | LangChain tool |
+|---|---|---|---|---|
+| 14 | `query_ta_brain` | `query_ta_brain()` | ✓ | `QueryTaBrainTool` |
+| 15 | `record_brain_feedback` | `record_brain_feedback()` | ✓ | `RecordBrainFeedbackTool` |
+| 16 | `generate_synthetic_architectures` | `generate_synthetic_architectures()` | ✓ | `GenerateSyntheticArchitecturesTool` |
+
+All three map to existing REST endpoints (`/api/v1/brain/query`, `/api/v1/brain/feedback`, `/api/v1/brain/generate-mmds`) already in `job_client.py`. No new API routes needed.
+
+**Why deferred until now:** The connector was written when the server had 13 tools. Tools 14–16 were added incrementally during TA Brain Stages 2, 3, and 8, each session updating `server.py` + `job_client.py` but not `mcp_connector/`. Now that the Brain is stable (Phase 3 baseline), closing the gap makes the connector the single integration point for all Brain capabilities from OpenAI/LangChain agents.
+
+**Files changed:** `mcp_connector/client.py`, `openai_bridge.py`, `langchain_bridge.py`, `__init__.py`, `README.md` — all counts updated 13 → 16. `mcp_server/server.py` + `README.md` header count corrected 15 → 16.
+
+---
+
+## Session 45 — 2026-08-15
+
+### 74. TACO Phase 3 testing protocol
+
+**What:** Five-tier testing sequence for validating TACO Phase 3 (TACOminiRAG + TACOBenchmark + radar chart). Recorded so future sessions don't re-derive it.
+
+| Tier | Command | Needs API | Time | What it validates |
+|---|---|---|---|---|
+| 1 | `python3 .claude/skills/taco-check/scripts/taco-check.py` | No | ~5s | 33 unit tests + benchmark sanity (all dims float or None, overall in [0,100]) |
+| 2 | `python3 .claude/skills/taco-benchmark/scripts/taco-benchmark.py` | No | ~30s | 7-dimension scores across all 8 HOLD_OUT_ARCHS for workspace / taco_brain / taco_rag |
+| 3 | `python3 .claude/skills/taco-infer/scripts/taco-infer.py` | No | ~10s | Brain-only technique + control precision/recall via TACOAgent interface (not raw query_brain) |
+| 4 | `python3 .claude/skills/taco-run/scripts/taco-run.py "what are the main threats?" --arch 03_aws_3tier` | Yes | ~2s | Live hop chain: brain → rag (both ~0.80 conf on known arch, no harness escalation) |
+| 5 | Dashboard Assessment tab → select arch → scroll past TATB scorecard | Yes | — | Visual: TACO Quality Radar renders with 3 series (Workspace / TACO Brain / TACO RAG) |
+
+**Regression gate (Tier 1) is the minimum before committing any Phase 3+ TACO change.** Tiers 2–3 are the quality signal; Tiers 4–5 are the integration / visual check.
+
+**Start with Tier 2** — fastest way to see real scores against ground truth without any API setup.
+
+---
+
 ## Session 44 — 2026-08-15
 
 ### 73. TACO skills — taco-check + taco-run + taco-benchmark built as part of Phase 3

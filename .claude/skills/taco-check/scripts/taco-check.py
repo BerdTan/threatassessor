@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TACO Agent Phase 3 regression gate."""
+"""TACO Agent regression gate (Phase 3 + Phase 4 critic)."""
 import subprocess
 import sys
 import time
@@ -55,6 +55,44 @@ print(f'OK: sanity passed for {{arch}}')
     return ok, elapsed, proc.stdout + proc.stderr
 
 
+_CRITIC_SIM = """
+┌─────────────────────────────────────────────────────────────────┐
+│  TACOminiCritic — manual activation walkthrough                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  STEP 1 — Enable in settings.yaml (Gate 1)                      │
+│    Edit chatbot/config/settings.yaml:                           │
+│      taco:                                                       │
+│        critic_enabled: true   # was: false                      │
+│    Then restart the API:  ./scripts/api/api_restart.sh          │
+│                                                                  │
+│  STEP 2 — Trigger from the dashboard (Gate 2)                   │
+│    Open: http://localhost:8000/dashboard                         │
+│    → Brain tab → TACO Agent sub-tab                             │
+│    → Select an architecture with existing Expert Review data    │
+│    → Check the "critic" checkbox (purple label)                 │
+│    → Enter a query and click Run TACO                           │
+│    → Expect a purple TACritic hop in the trace                  │
+│                                                                  │
+│  STEP 3 — Trigger via API (Gate 2)                              │
+│    POST /api/v1/taco/run-sync                                    │
+│    {                                                             │
+│      "query": "what are the top risks?",                        │
+│      "arch_name": "<arch_with_moe_data>",                       │
+│      "force_critic": true                                        │
+│    }                                                             │
+│    → HopChain.routed_to_critics == true                         │
+│    → Last hop: hop_type="critic", had_moe=true                  │
+│                                                                  │
+│  Without critic_enabled: true, the critic hop is never run       │
+│  even if force_critic=true is sent in the request.              │
+│                                                                  │
+│  Architectures with MoE data (07_moe_orchestrator.json):        │
+│    ls report/*/07_moe_orchestrator.json                         │
+└─────────────────────────────────────────────────────────────────┘
+"""
+
+
 def main():
     phases = []
 
@@ -71,7 +109,7 @@ def main():
     phases.append(("Benchmark sanity", ok2, t2, out2))
 
     print("\n┌─────────────────────────────────────────┐")
-    print("│ taco-check Phase 3 regression gate      │")
+    print("│ taco-check regression gate (Ph3 + Ph4)  │")
     print("├─────────────────────────────────────────┤")
     for name, ok, elapsed, _ in phases:
         status = "✓ PASS" if ok else "✗ FAIL"
@@ -87,6 +125,7 @@ def main():
         sys.exit(1)
 
     print("\nAll checks passed.")
+    print(_CRITIC_SIM)
 
 
 if __name__ == "__main__":

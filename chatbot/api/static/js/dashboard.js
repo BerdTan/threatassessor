@@ -17021,8 +17021,17 @@ class Dashboard {
                   {v:'0.20', label:'0.20 — Alert only on large drops'},
                   {v:'0.30', label:'0.30 — Suppress minor drops'},
                 ],
-                desc:'When the Harness AIVSS composite score is lower than the Brain\'s predicted AIVSS floor by more than this delta, TACO emits an advisory note in the HopChain. Phase 3: also triggers TACOminiCritic escalation.',
+                desc:'When the Harness AIVSS composite score is lower than the Brain\'s predicted AIVSS floor by more than this delta, TACO emits an advisory note in the HopChain.',
                 effects: ef('Lower = earlier warning','Surfaces risk regressions','Moderate','None') },
+
+              { section:'taco', field:'critic_enabled', label:'Enable TACOminiCritic (Phase 4)',
+                vtype:'select',
+                options:[
+                  {v:'false', label:'false — Critic disabled / not registered (default)', rec:true},
+                  {v:'true',  label:'true — Register critic mini; runs only when force_critic=true'},
+                ],
+                desc:'Gate 1 of 2 for TACOminiCritic. When true, the critic mini is registered in TACOAgent. It still only runs when force_critic is checked in the TACO Agent tab — never automatically. Requires API restart after change.',
+                effects: ef('No routing change','Enables human-triggered MoE hop','Adds ~5ms when triggered','None') },
             ]
           },
         ];
@@ -19302,12 +19311,17 @@ class Dashboard {
         const query = (document.getElementById('taco-query-input') || {}).value || '';
         const archName = (document.getElementById('taco-arch-select') || {}).value || '';
         const simMode = (document.getElementById('taco-sim-mode') || {}).checked || false;
+        const forceCritic = (document.getElementById('taco-force-critic') || {}).checked || false;
 
         if (!query.trim()) { log.innerHTML = '<div style="color:var(--text-tertiary);padding:0.3rem 0;">Enter a query to run TACO.</div>'; return; }
 
         log.innerHTML = '';
         btn.disabled = true;
         btn.textContent = 'Running…';
+
+        if (forceCritic) {
+            log.innerHTML += `<div style="font-size:0.68rem;color:#8b5cf6;margin-bottom:0.4rem;">⚑ critic hop enabled — reads existing MoE results for <strong>${this._esc(archName || 'selected arch')}</strong></div>`;
+        }
 
         const apiKey = localStorage.getItem('tm_api_key') || '';
         const hopColors = { brain: '#3b82f6', harness: '#f59e0b', critic: '#8b5cf6', rag: '#10b981' };
@@ -19319,7 +19333,7 @@ class Dashboard {
             const resp = await fetch('/api/v1/taco/run', {
                 method: 'POST',
                 headers: { 'TM-API-KEY': apiKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query, arch_name: archName || null, sim_mode: simMode }),
+                body: JSON.stringify({ query, arch_name: archName || null, sim_mode: simMode, force_critic: forceCritic }),
             });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
@@ -19394,17 +19408,29 @@ class Dashboard {
                         <pre style="font-size:0.62rem;background:var(--card-bg);padding:0.4rem;border-radius:2px;overflow-x:auto;margin:0.2rem 0 0;">${this._esc(payload)}</pre>
                     </details>
                 </div>`;
-            // Update mini state in topology
+            // Update mini state in topology — pass full metadata for rich hover
             if (this._currentTacoChainId)
                 this._tacoTopologyCompleteMini(this._currentTacoChainId, data.hop_type,
-                    data.confidence, data.duration_ms);
+                    data.confidence, data.duration_ms, data.metadata);
         } else if (event === 'taco_complete') {
             const n = (data.hops || []).length;
             const ms = data.total_duration_ms || 0;
             const conf = ((data.final_confidence || 0) * 100).toFixed(0);
             const harness = data.routed_to_harness ? ' · escalated→harness' : '';
             const rag = data.routed_to_rag ? ' · rag' : '';
-            log.innerHTML += `<div style="margin-top:0.4rem;font-size:0.68rem;color:var(--text-tertiary);border-top:1px solid var(--border-color);padding-top:0.35rem;">${n} hop${n!==1?'s':''} · ${ms}ms · conf ${conf}%${harness}${rag}</div>`;
+            const critic = data.routed_to_critics ? ' · critic' : '';
+            log.innerHTML += `<div style="margin-top:0.4rem;font-size:0.68rem;color:var(--text-tertiary);border-top:1px solid var(--border-color);padding-top:0.35rem;">${n} hop${n!==1?'s':''} · ${ms}ms · conf ${conf}%${harness}${rag}${critic}</div>`;
+            // Side-by-side comparison panel (brain vs workspace)
+            try {
+                const cmp = this._tacoRenderComparison(data.hops || []);
+                if (cmp) {
+                    log.appendChild(cmp);
+                    // Scroll the panel into view — it's tall and lands below the fold
+                    requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; });
+                }
+            } catch (e) {
+                console.error('[TACO] comparison panel error:', e);
+            }
             // mark session completed in topology
             if (this._tacoSessions && data.chain_id) {
                 const sess = this._tacoSessions[data.chain_id];
@@ -19413,6 +19439,170 @@ class Dashboard {
         } else if (event === 'taco_error') {
             log.innerHTML += `<div style="color:#ef4444;padding:0.3rem 0;font-size:0.72rem;">error: ${this._esc(data.message||'unknown')}</div>`;
         }
+    }
+
+    // ── TACO clear ──────────────────────────────────────────────────────────
+
+    _tacoClear() {
+        // Reset session state
+        this._tacoSessions = {};
+        this._currentTacoChainId = null;
+        if (this._tacoSim) {
+            try { this._tacoSim.stop(); } catch (_) {}
+            this._tacoSim = null;
+        }
+        // Clear trace log
+        const log = document.getElementById('taco-trace-log');
+        if (log) log.innerHTML = '';
+        // Re-render empty topology
+        this._tacoTopologyRender();
+    }
+
+    // ── TACO side-by-side comparison panel ─────────────────────────────────
+
+    _tacoRenderComparison(hops) {
+        const brainHop = hops.find(h => h.hop_type === 'brain');
+        const ragHop   = hops.find(h => h.hop_type === 'rag');
+        if (!brainHop && !ragHop) return null;
+
+        const brainPreds   = (brainHop && brainHop.metadata && brainHop.metadata.predictions) || {};
+        const brainTechs   = new Set(brainPreds.techniques     || []);
+        const brainMissing = brainPreds.missing_controls       || [];
+        const brainDetect  = brainPreds.detect_rules           || [];
+        const aivssFloor   = brainPreds.aivss_floor;
+        const brainConf    = brainHop  ? (brainHop.confidence  || 0) : 0;
+        const brainMatch   = brainHop  && brainHop.metadata && brainHop.metadata.had_match;
+
+        const ragMeta    = (ragHop && ragHop.metadata) || {};
+        const ragTechs   = new Set(ragMeta.techniques  || []);
+        const ragMissing = ragMeta.missing_controls    || [];
+        const ragHit     = ragMeta.had_hit;
+        const ragConf    = ragHop ? (ragHop.confidence || 0) : 0;
+
+        if (!brainTechs.size && !ragTechs.size && !brainMissing.length && !ragMissing.length) return null;
+
+        const shared    = [...brainTechs].filter(t => ragTechs.has(t));
+        const brainOnly = [...brainTechs].filter(t => !ragTechs.has(t));
+        const ragOnly   = [...ragTechs  ].filter(t => !brainTechs.has(t));
+        const allUnique = new Set([...brainTechs, ...ragTechs]);
+        const allMissing = [...new Set([...brainMissing, ...ragMissing])];
+        const total = brainTechs.size + ragTechs.size;
+        const overlapPct = total > 0 ? shared.length / Math.max(brainTechs.size, ragTechs.size) : 0;
+
+        // ── Narrative (data-driven, plain English) ────────────────────────
+        let narrative, narrativeColor;
+        if (!brainHop || !brainMatch) {
+            narrative = 'Brain had no pattern match for this architecture — its predictions are low-confidence estimates. Workspace findings are the primary signal this run.';
+            narrativeColor = '#f59e0b';
+        } else if (!ragHop || !ragHit) {
+            narrative = 'Workspace found no structural match in the diagram graph. Brain pattern predictions are the primary signal this run.';
+            narrativeColor = '#f59e0b';
+        } else if (overlapPct >= 0.5) {
+            narrative = `Brain and Workspace broadly agree — ${shared.length} of the same attack technique${shared.length !== 1 ? 's' : ''} appear in both. These are your highest-confidence findings because two independent methods reached the same conclusion.`;
+            narrativeColor = '#10b981';
+        } else if (shared.length > 0) {
+            narrative = `Partial agreement: ${shared.length} shared technique${shared.length !== 1 ? 's' : ''} are high-confidence findings. The remaining ${brainOnly.length + ragOnly.length} technique${brainOnly.length + ragOnly.length !== 1 ? 's' : ''} come from only one source — worth investigating but treat with moderate confidence.`;
+            narrativeColor = '#3b82f6';
+        } else {
+            narrative = `Brain and Workspace found completely different threats — this is expected and valuable. Brain recognised patterns from similar architectures; Workspace found what is structurally exposed in this specific diagram. Together they cover ${allUnique.size} distinct attack technique${allUnique.size !== 1 ? 's' : ''} that neither would have found alone.`;
+            narrativeColor = '#8b5cf6';
+        }
+
+        // ── Helpers ───────────────────────────────────────────────────────
+        const tag = (bg) =>
+            `display:inline-block;padding:0.1rem 0.35rem;border-radius:2px;font-size:0.62rem;font-family:monospace;margin:0.1rem 0.1rem 0 0;background:${bg};color:#fff;`;
+
+        const techList = (arr, bg) => arr.length
+            ? arr.map(t => `<span style="${tag(bg)}">${this._esc(t)}</span>`).join('')
+            : `<span style="font-size:0.65rem;color:var(--text-tertiary);">none</span>`;
+
+        const controlList = (arr, color) => arr.length
+            ? arr.map(c => `<div style="font-size:0.65rem;color:${color};line-height:1.6;">• ${this._esc(c)}</div>`).join('')
+            : `<span style="font-size:0.65rem;color:var(--text-tertiary);">none identified</span>`;
+
+        // ── Source explainer labels ───────────────────────────────────────
+        const sourceDesc = (text) =>
+            `<div style="font-size:0.63rem;color:var(--text-tertiary);line-height:1.5;margin-bottom:0.5rem;font-style:italic;">${text}</div>`;
+
+        const sectionLabel = (text) =>
+            `<div style="font-size:0.63rem;font-weight:600;color:var(--text-secondary);margin:0.4rem 0 0.15rem;text-transform:uppercase;letter-spacing:0.04em;">${text}</div>`;
+
+        const confBadge = (c, label) =>
+            `<span style="font-size:0.62rem;padding:0.1rem 0.35rem;border-radius:2px;background:${c >= 0.65 ? '#10b981' : c >= 0.4 ? '#f59e0b' : '#6b7280'};color:#fff;margin-left:0.35rem;">${label} ${(c * 100).toFixed(0)}%</span>`;
+
+        // ── Column bodies ─────────────────────────────────────────────────
+        const brainBody = `
+            ${sourceDesc('Predicts threats from learned patterns. Looked up similar architectures in the corpus and matched their known attack techniques to this one. No diagram parsing — answers from memory.')}
+            <div style="margin-bottom:0.2rem;font-size:0.65rem;color:var(--text-secondary);">
+                ${brainMatch ? '✓ Pattern match found' : '✗ No pattern match'} ${confBadge(brainConf, 'conf')}
+            </div>
+            ${sectionLabel('Attack techniques (' + brainOnly.length + ' unique' + (shared.length ? ' + ' + shared.length + ' shared' : '') + ')')}
+            <div style="margin-bottom:0.4rem;">${techList(brainOnly, '#3b82f6')}</div>
+            ${brainDetect.length ? sectionLabel('SOC DETECT rules predicted') + `<div style="margin-bottom:0.4rem;">${brainDetect.map(r => `<span style="${tag('#6366f1')}">${this._esc(r)}</span>`).join('')}</div>` : ''}
+            ${aivssFloor ? `<div style="font-size:0.65rem;color:var(--text-secondary);">Risk floor (AIVSS): <strong style="color:#3b82f6;">${aivssFloor.toFixed(2)}</strong> — architectures like this typically score at least this risky.</div>` : ''}
+            ${brainMissing.length ? sectionLabel('Controls typically missing') + controlList(brainMissing, '#3b82f6') : ''}`;
+
+        const ragBody = `
+            ${sourceDesc('Finds threats by reading the diagram. Traverses the architecture\'s nodes and edges to identify exposed attack paths and missing defences. Deterministic — same diagram always gives the same result.')}
+            <div style="margin-bottom:0.2rem;font-size:0.65rem;color:var(--text-secondary);">
+                ${ragHit ? '✓ Graph traversal hit' : '✗ No direct graph match — fell back to structural scan'} ${confBadge(ragConf, 'conf')}
+            </div>
+            ${sectionLabel('Attack techniques (' + ragOnly.length + ' unique' + (shared.length ? ' + ' + shared.length + ' shared' : '') + ')')}
+            <div style="margin-bottom:0.4rem;">${techList(ragOnly, '#10b981')}</div>
+            ${ragMissing.length ? sectionLabel('Defences missing from this diagram') + controlList(ragMissing, '#10b981') : ''}`;
+
+        // ── Shared banner ─────────────────────────────────────────────────
+        const sharedBanner = shared.length
+            ? `<div style="font-size:0.65rem;background:#10b98114;border:1px solid #10b98133;border-radius:2px;padding:0.35rem 0.6rem;margin-bottom:0.5rem;">
+                <strong style="color:#10b981;">✓ ${shared.length} confirmed by both:</strong>
+                <span style="margin-left:0.25rem;">${shared.map(t => `<span style="${tag('#10b981')}">${this._esc(t)}</span>`).join('')}</span>
+                <span style="font-size:0.62rem;color:var(--text-tertiary);margin-left:0.4rem;">Two independent methods agree — treat these as your highest-priority threats.</span>
+               </div>`
+            : '';
+
+        // ── Combined footer ───────────────────────────────────────────────
+        const footer = `
+            <div style="margin-top:0.6rem;padding:0.4rem 0.6rem;border-top:1px solid var(--border-color);font-size:0.65rem;color:var(--text-tertiary);display:flex;gap:1.2rem;flex-wrap:wrap;">
+                <span>Both sources together identified <strong style="color:var(--text-secondary);">${allUnique.size} distinct MITRE ATT&amp;CK attack technique${allUnique.size !== 1 ? 's' : ''}</strong> for this architecture</span>
+                ${allMissing.length ? `<span>· <strong style="color:var(--text-secondary);">${allMissing.length} security control${allMissing.length !== 1 ? 's' : ''}</strong> missing or not yet implemented</span>` : ''}
+                <div style="width:100%;margin-top:0.2rem;color:${narrativeColor};">${this._esc(narrative)}</div>
+            </div>`;
+
+        // ── Assemble ──────────────────────────────────────────────────────
+        const wrapper = document.createElement('details');
+        wrapper.style.cssText = 'margin-top:0.6rem;';
+        wrapper.open = true;
+        wrapper.innerHTML = `
+            <summary style="font-size:0.68rem;font-weight:600;color:var(--text-secondary);cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.4rem;padding:0.3rem 0;user-select:none;">
+                <span style="font-size:0.6rem;color:var(--text-tertiary);">▼</span>
+                Brain vs Workspace
+                <span style="font-size:0.62rem;font-weight:400;color:var(--text-tertiary);">
+                    <span style="color:#3b82f6;">${brainTechs.size} attack technique${brainTechs.size !== 1 ? 's' : ''} predicted by Brain</span>
+                    &nbsp;·&nbsp;
+                    <span style="color:#10b981;">${ragTechs.size} found by Workspace</span>
+                    &nbsp;·&nbsp;
+                    <span style="color:#10b981;">${shared.length} in common</span>
+                    &nbsp;·&nbsp;
+                    ${allUnique.size} unique total
+                </span>
+            </summary>
+            <div style="margin-top:0.4rem;padding:0.5rem 0.6rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:2px;">
+                ${sharedBanner}
+                <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+                    ${(brainTechs.size || brainMissing.length || brainHop)
+                        ? `<div style="flex:1;min-width:200px;padding:0.5rem 0.7rem;border:1px solid #3b82f644;border-radius:2px;background:#3b82f608;">
+                            <div style="font-size:0.68rem;font-weight:700;color:#3b82f6;margin-bottom:0.3rem;">TABrain — Pattern KG</div>
+                            ${brainBody}
+                           </div>` : ''}
+                    ${(ragTechs.size || ragMissing.length || ragHop)
+                        ? `<div style="flex:1;min-width:200px;padding:0.5rem 0.7rem;border:1px solid #10b98144;border-radius:2px;background:#10b98108;">
+                            <div style="font-size:0.68rem;font-weight:700;color:#10b981;margin-bottom:0.3rem;">TAWorkspace — Graph Search</div>
+                            ${ragBody}
+                           </div>` : ''}
+                </div>
+                ${footer}
+            </div>`;
+        return wrapper;
     }
 
     // ── TACO D3 topology ────────────────────────────────────────────────────
@@ -19436,6 +19626,62 @@ class Dashboard {
         const wrap = document.getElementById('taco-topology-wrap');
         if (!wrap) return;
 
+        // ── Restore saved height ──────────────────────────────────────────
+        const STORE_KEY = 'taco_topology_h';
+        const MIN_H = 60, MAX_H = 600, DEFAULT_H = 260;
+        const savedH = parseInt(localStorage.getItem(STORE_KEY) || DEFAULT_H);
+        wrap.style.flex = `0 0 ${Math.min(MAX_H, Math.max(MIN_H, savedH))}px`;
+
+        // ── Resize handle drag ────────────────────────────────────────────
+        const handle = document.getElementById('taco-topology-resize-handle');
+        if (handle) {
+            let dragging = false, startY = 0, startH = 0, collapsed = false, preCollapseH = DEFAULT_H;
+
+            handle.addEventListener('mouseenter', () => {
+                if (!dragging) handle.style.background = 'var(--primary-color)';
+            });
+            handle.addEventListener('mouseleave', () => {
+                if (!dragging) handle.style.background = 'transparent';
+            });
+
+            // Drag to resize
+            handle.addEventListener('mousedown', (e) => {
+                dragging = true;
+                startY = e.clientY;
+                startH = wrap.getBoundingClientRect().height;
+                handle.style.background = 'var(--primary-color)';
+                e.preventDefault();
+            });
+            document.addEventListener('mousemove', (e) => {
+                if (!dragging) return;
+                const newH = Math.min(MAX_H, Math.max(MIN_H, startH + (e.clientY - startY)));
+                wrap.style.flex = `0 0 ${newH}px`;
+                if (newH > MIN_H) { collapsed = false; preCollapseH = newH; }
+            });
+            document.addEventListener('mouseup', () => {
+                if (!dragging) return;
+                dragging = false;
+                handle.style.background = 'transparent';
+                const h = wrap.getBoundingClientRect().height;
+                localStorage.setItem(STORE_KEY, h);
+                this._tacoTopologyRender();
+            });
+
+            // Double-click to collapse / restore
+            handle.addEventListener('dblclick', () => {
+                if (collapsed) {
+                    wrap.style.flex = `0 0 ${preCollapseH}px`;
+                    collapsed = false;
+                } else {
+                    preCollapseH = wrap.getBoundingClientRect().height;
+                    wrap.style.flex = `0 0 ${MIN_H}px`;
+                    collapsed = true;
+                }
+                localStorage.setItem(STORE_KEY, wrap.getBoundingClientRect().height);
+                this._tacoTopologyRender();
+            });
+        }
+
         // ResizeObserver: re-render on size change (same pattern as SOC KG)
         this._tacoResizeObs = new ResizeObserver(() => this._tacoTopologyRender());
         this._tacoResizeObs.observe(wrap);
@@ -19457,15 +19703,24 @@ class Dashboard {
         const H = wrap.getBoundingClientRect().height || 260;
         if (W < 10 || H < 10) return;
 
-        // Build node + link arrays
+        // Build node + link arrays as directed chain: Session → Brain → Workspace → Harness → Critic
         const nodes = [], links = [];
+        const HOP_LABELS = { brain: 'TABrain', rag: 'Workspace', harness: 'Harness', critic: 'Critic', agent: 'TACO' };
         sessions.forEach((sess, si) => {
-            nodes.push({ id: sess.id, type: 'agent', label: 'TACO', state: sess.state,
-                         cluster: sess.id, clusterIdx: si, r: 18, fx: null, fy: null });
-            (sess.minis || []).forEach(mini => {
-                nodes.push({ id: mini.id, type: mini.type, label: mini.label,
-                              state: mini.state, cluster: sess.id, clusterIdx: si, r: 11 });
-                links.push({ source: sess.id, target: mini.id });
+            // Session (query) node — entry point of the chain
+            const qLabel = sess.query ? sess.query.slice(0, 22) + (sess.query.length > 22 ? '…' : '') : 'query';
+            nodes.push({ id: sess.id, type: 'agent', label: qLabel, state: sess.state,
+                         cluster: sess.id, clusterIdx: si, r: 14, fx: null, fy: null });
+            // Sort minis by step order to build the routing chain
+            const ordered = [...(sess.minis || [])].sort((a, b) => (a.step ?? 99) - (b.step ?? 99));
+            let prev = sess.id;
+            ordered.forEach(mini => {
+                nodes.push({ id: mini.id, type: mini.type,
+                              label: HOP_LABELS[mini.type] || mini.label,
+                              state: mini.state, cluster: sess.id, clusterIdx: si, r: 13,
+                              confidence: mini.confidence, durationMs: mini.durationMs });
+                links.push({ source: prev, target: mini.id, routed: prev !== sess.id });
+                prev = mini.id;
             });
         });
 
@@ -19480,6 +19735,15 @@ class Dashboard {
         }
 
         svg.selectAll('*').remove();
+
+        // Arrowhead marker
+        const defs = svg.append('defs');
+        defs.append('marker').attr('id', 'taco-arrow').attr('viewBox', '0 -4 8 8')
+            .attr('refX', 14).attr('refY', 0)
+            .attr('markerWidth', 5).attr('markerHeight', 5)
+            .attr('orient', 'auto')
+            .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', '#4b4b47');
+
         const g = svg.append('g');
 
         // Zoom + pan
@@ -19513,9 +19777,13 @@ class Dashboard {
         const linkG = g.append('g').attr('class', 'taco-links');
         const nodeG = g.append('g').attr('class', 'taco-nodes');
 
-        // Link elements
+        // Link elements — directed arrows
         const linkEls = linkG.selectAll('line').data(links).join('line')
-            .attr('stroke', '#383835').attr('stroke-width', 1.2).attr('stroke-opacity', 0.7);
+            .attr('stroke', d => d.routed ? '#6b6b67' : '#4b4b47')
+            .attr('stroke-width', 1.4)
+            .attr('stroke-opacity', 0.8)
+            .attr('marker-end', 'url(#taco-arrow)')
+            .attr('stroke-dasharray', d => d.routed ? '4,2' : null);
 
         // Node groups
         const nodeEls = nodeG.selectAll('g').data(nodes, d => d.id).join('g')
@@ -19564,15 +19832,17 @@ class Dashboard {
             .attr('font-family', 'system-ui, -apple-system, "Segoe UI", sans-serif')
             .attr('fill', d => this._tacoStateColor(d.state) ? '#ffffff' : '#898781')
             .attr('pointer-events', 'none')
-            .text(d => ({ agent: 'TACO', brain: 'B', harness: 'H', critic: 'C', rag: 'R' }[d.type] || '?'));
+            .text(d => ({ agent: '?', brain: 'KB', harness: 'RUN', critic: 'MOE', rag: 'WS' }[d.type] || '?'));
 
-        // Label: below node
+        // Label: full name below node
         nodeEls.append('text')
-            .attr('text-anchor', 'middle').attr('y', d => d.r + 10)
-            .attr('font-size', '8px')
+            .attr('text-anchor', 'middle').attr('y', d => d.r + 11)
+            .attr('font-size', '7.5px')
             .attr('font-family', 'system-ui, -apple-system, "Segoe UI", sans-serif')
             .attr('fill', '#898781').attr('pointer-events', 'none')
-            .text(d => d.type !== 'agent' ? d.label : '');
+            .text(d => d.type === 'agent'
+                ? d.label   // truncated query text
+                : d.label); // TABrain / Workspace / Harness / Critic
 
         // Tooltip
         const tooltip = d3.select(wrap).selectAll('.taco-tip').data([null]).join('div')
@@ -19584,15 +19854,65 @@ class Dashboard {
             .style('opacity', 0).style('z-index', 10).style('max-width', '200px');
 
         nodeEls.on('mouseover', (ev, d) => {
-            const stateStr = d.state || 'unstarted';
-            const confStr = d.confidence != null ? ` · conf ${(d.confidence*100).toFixed(0)}%` : '';
-            const durStr = d.durationMs != null ? ` · ${d.durationMs}ms` : '';
-            tooltip.html(`<strong>${d.type === 'agent' ? 'TACOAgent' : d.label}</strong><br>${stateStr}${confStr}${durStr}`)
-                .style('opacity', 1)
-                .style('left', (ev.offsetX + 12) + 'px')
-                .style('top', (ev.offsetY - 8) + 'px');
+            let html = '';
+            const confBadge = d.confidence != null
+                ? `<span style="display:inline-block;padding:0.05rem 0.3rem;border-radius:2px;font-size:10px;background:${d.confidence >= 0.65 ? '#199e70' : d.confidence >= 0.4 ? '#c47f0a' : '#6b6b67'};color:#fff;margin-left:4px;">${(d.confidence*100).toFixed(0)}%</span>`
+                : '';
+            const dur = d.durationMs != null ? `<span style="color:#6b6b67;font-size:10px;margin-left:4px;">${d.durationMs}ms</span>` : '';
+
+            if (d.type === 'agent') {
+                // Query node — show full question
+                const sess = Object.values(this._tacoSessions || {}).find(s => s.id === d.id);
+                const fullQ = sess ? sess.query : d.label;
+                const arch  = sess && sess.archName ? `<br><span style="color:#6b6b67;font-size:10px;">arch: ${sess.archName}</span>` : '';
+                html = `<strong style="font-size:11px;">Query</strong>${arch}<br>
+                    <span style="color:#c3c2b7;font-size:10px;line-height:1.5;">"${fullQ}"</span><br>
+                    <span style="color:#6b6b67;font-size:10px;">Fans out to ${(sess && sess.minis ? sess.minis.length : 0)} agent${(sess && sess.minis && sess.minis.length !== 1) ? 's' : ''} →</span>`;
+            } else {
+                const m = d.metadata || {};
+                const TYPE_DESC = {
+                    brain:   'Pattern KG — predicts from corpus memory',
+                    rag:     'Workspace search — reads the diagram graph',
+                    harness: 'Full pipeline — fresh deterministic run',
+                    critic:  'MoE expert review — reads existing critique',
+                };
+                html = `<strong style="font-size:11px;">${d.label}</strong>${confBadge}${dur}
+                    <br><span style="color:#6b6b67;font-size:10px;">${TYPE_DESC[d.type] || ''}</span>`;
+
+                if (d.type === 'brain') {
+                    const preds = m.predictions || {};
+                    const techs = (preds.techniques || []).slice(0, 5);
+                    const rules = preds.detect_rules || [];
+                    const match = m.had_match;
+                    html += `<br><span style="color:${match ? '#199e70' : '#6b6b67'};font-size:10px;">${match ? '✓ pattern match' : '✗ no match'}</span>`;
+                    if (techs.length) html += `<br><span style="color:#6b6b67;font-size:10px;">techniques: </span><span style="font-size:10px;font-family:monospace;">${techs.join(', ')}${preds.techniques && preds.techniques.length > 5 ? ` +${preds.techniques.length - 5}` : ''}</span>`;
+                    if (rules.length) html += `<br><span style="color:#6b6b67;font-size:10px;">DETECT: </span><span style="font-size:10px;">${rules.join(', ')}</span>`;
+                    if (m.reason === 'arch_not_in_brain') html += `<br><span style="color:#c47f0a;font-size:10px;">↳ arch not in brain — matched by type</span>`;
+                } else if (d.type === 'rag') {
+                    const techs = (m.techniques || []).slice(0, 5);
+                    const missing = (m.missing_controls || []).slice(0, 3);
+                    html += `<br><span style="color:${m.had_hit ? '#199e70' : '#6b6b67'};font-size:10px;">${m.had_hit ? '✓ graph hit' : '✗ no direct match — structural scan'}</span>`;
+                    if (techs.length) html += `<br><span style="color:#6b6b67;font-size:10px;">techniques: </span><span style="font-size:10px;font-family:monospace;">${techs.join(', ')}${m.techniques && m.techniques.length > 5 ? ` +${m.techniques.length - 5}` : ''}</span>`;
+                    if (missing.length) html += `<br><span style="color:#6b6b67;font-size:10px;">missing controls: ${missing.join(', ')}${m.missing_controls && m.missing_controls.length > 3 ? ` +${m.missing_controls.length - 3}` : ''}</span>`;
+                } else if (d.type === 'harness') {
+                    const gov = (m.governance_summary || {});
+                    const det = (m.detect_summary || {});
+                    html += `<br><span style="color:${m.success ? '#199e70' : '#e06666'};font-size:10px;">${m.success ? '✓ pipeline ok' : '✗ pipeline error'}</span>`;
+                    if (gov.aivss_overall != null) html += `<br><span style="color:#6b6b67;font-size:10px;">AIVSS: ${gov.aivss_overall.toFixed(2)} ${gov.aivss_severity || ''}</span>`;
+                    if (det.total_fired) html += `<br><span style="color:#6b6b67;font-size:10px;">${det.total_fired} DETECT rule${det.total_fired !== 1 ? 's' : ''} fired</span>`;
+                } else if (d.type === 'critic') {
+                    html += `<br><span style="color:${m.had_moe ? '#199e70' : '#6b6b67'};font-size:10px;">${m.had_moe ? '✓ MoE data found' : '✗ no MoE data'}</span>`;
+                    if (m.had_moe) {
+                        html += `<br><span style="color:#6b6b67;font-size:10px;">${m.critics_count} critic${m.critics_count !== 1 ? 's' : ''} · ${m.redesign_signal ? '⚠ redesign signal' : 'no redesign'}</span>`;
+                        if (m.interpretation) html += `<br><span style="color:#6b6b67;font-size:10px;">${m.interpretation}</span>`;
+                    }
+                }
+            }
+            tooltip.html(html).style('opacity', 1)
+                .style('left', (ev.offsetX + 14) + 'px')
+                .style('top',  (ev.offsetY - 10) + 'px');
         }).on('mousemove', ev => {
-            tooltip.style('left', (ev.offsetX + 12) + 'px').style('top', (ev.offsetY - 8) + 'px');
+            tooltip.style('left', (ev.offsetX + 14) + 'px').style('top', (ev.offsetY - 10) + 'px');
         }).on('mouseout', () => tooltip.style('opacity', 0));
 
         // Hull drawing function
@@ -19623,10 +19943,10 @@ class Dashboard {
 
         // D3 force simulation
         const sim = d3.forceSimulation(nodes)
-            .force('link', d3.forceLink(links).id(d => d.id).distance(55).strength(0.85))
-            .force('charge', d3.forceManyBody().strength(-160))
-            .force('center', d3.forceCenter(W / 2, H / 2).strength(0.06))
-            .force('collide', d3.forceCollide(d => d.r + 10))
+            .force('link', d3.forceLink(links).id(d => d.id).distance(70).strength(0.9))
+            .force('charge', d3.forceManyBody().strength(-180))
+            .force('center', d3.forceCenter(W / 2, H / 2).strength(0.05))
+            .force('collide', d3.forceCollide(d => d.r + 14))
             .force('cluster', clusterForce)
             .on('tick', () => {
                 linkEls
@@ -19657,17 +19977,23 @@ class Dashboard {
         const miniId = `${chainId}:${hopType}`;
         if (!sess.minis.find(m => m.id === miniId)) {
             sess.minis.push({ id: miniId, type: hopType, label: component,
+                              step: step ?? sess.minis.length,
                               state: 'running', confidence: null, durationMs: null,
                               isDeterministic: isDeterministic !== false });
         }
         this._tacoTopologyRender();
     }
 
-    _tacoTopologyCompleteMini(chainId, hopType, confidence, durationMs) {
+    _tacoTopologyCompleteMini(chainId, hopType, confidence, durationMs, metadata) {
         const sess = (this._tacoSessions || {})[chainId];
         if (!sess) return;
         const mini = sess.minis.find(m => m.type === hopType);
-        if (mini) { mini.state = 'completed'; mini.confidence = confidence; mini.durationMs = durationMs; }
+        if (mini) {
+            mini.state = 'completed';
+            mini.confidence = confidence;
+            mini.durationMs = durationMs;
+            mini.metadata = metadata || {};
+        }
         this._tacoTopologyRender();
     }
 
