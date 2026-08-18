@@ -62,11 +62,9 @@ AIVSS drop advisory, feedback write-back, MCP tool #17.
 | Model | Type | Active params | Context |
 |---|---|---|---|
 | `Qwen/Qwen3.6-35B-A3B-FP8` | MoE | 3B active | 262k |
-| `DeepSeek-V4-Flash-0731` | MoE | 13B active | 512k |
-| `GLM-5.2-NVFP4` | MoE | 40B active | 512k |
-| `Kimi-K2.7-Code` | MoE | 32B active | 262k |
+| `Qwen3.8-27B` | Dense | 27B | — |
 
-**Default:** `Qwen/Qwen3.6-35B-A3B-FP8` (fastest, 3B active). **High quality:** `DeepSeek-V4-Flash-0731`.
+**Default:** `Qwen/Qwen3.6-35B-A3B-FP8` (fastest, 3B active). **High quality:** `Qwen3.8-27B`.
 
 **Key constraint — all models are thinking models:** They use tokens for internal reasoning before writing `content`. Need `max_tokens ≥ 500` or content is None (tokens exhausted on thinking). TA's default `max_tokens: 1000` is sufficient.
 

@@ -161,10 +161,10 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
         "extra_headers": {},
         "litellm_kwargs": {},
         "models": {
-            # Qwen3.6-35B: smallest active params (3B), fast, multimodal — default/fast
-            # DeepSeek-V4-Flash: 13B active, 512k context — high quality reasoning
+            # Qwen3.6-35B: smallest active params (3B), fast — default/fast
+            # Qwen3.8-27B: 27B dense, higher quality reasoning
             "default":      "openai/Qwen/Qwen3.6-35B-A3B-FP8",
-            "high_quality": "openai/DeepSeek-V4-Flash-0731",
+            "high_quality": "openai/Qwen3.8-27B",
             "fast":         "openai/Qwen/Qwen3.6-35B-A3B-FP8",
         },
         "cost_per_1k": None,
@@ -172,7 +172,7 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
         "env_example": (
             "# Hetzner Inference — https://experiments.hetzner.com/docs/inference\n"
             "HETZNER_API_KEY=your-key-here\n"
-            "# Models: Qwen/Qwen3.6-35B-A3B-FP8 | DeepSeek-V4-Flash-0731 | GLM-5.2-NVFP4 | Kimi-K2.7-Code\n"
+            "# Models: Qwen/Qwen3.6-35B-A3B-FP8 | Qwen3.8-27B\n"
         ),
     },
 
