@@ -1023,12 +1023,14 @@ class MoEOrchestrator:
     def _attach_perf(vr: ValidationResult, critique: "CritiqueScore") -> ValidationResult:
         """Copy CritiqueScore performance telemetry into the ValidationResult.perf dict."""
         vr.perf = {
-            "llm_calls":     getattr(critique, "llm_calls",     0),
-            "llm_tokens":    getattr(critique, "llm_tokens",    0),
-            "llm_cost_usd":  getattr(critique, "llm_cost_usd",  0.0),
-            "llm_latency_s": getattr(critique, "llm_latency_s", 0.0),
-            "llm_model":     getattr(critique, "llm_model",     ""),
-            "wall_clock_s":  getattr(critique, "wall_clock_s",  0.0),
+            "llm_calls":             getattr(critique, "llm_calls",             0),
+            "llm_tokens":            getattr(critique, "llm_tokens",            0),
+            "llm_prompt_tokens":     getattr(critique, "llm_prompt_tokens",     0),
+            "llm_completion_tokens": getattr(critique, "llm_completion_tokens", 0),
+            "llm_cost_usd":          getattr(critique, "llm_cost_usd",          0.0),
+            "llm_latency_s":         getattr(critique, "llm_latency_s",         0.0),
+            "llm_model":             getattr(critique, "llm_model",             ""),
+            "wall_clock_s":          getattr(critique, "wall_clock_s",          0.0),
         }
         return vr
 

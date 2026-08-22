@@ -153,6 +153,7 @@
                         <button class="nav-tab" id="harness-nav-tab" data-tab="harness">Harness</button>
                         <button class="nav-tab" id="config-nav-tab" data-tab="config" style="display:none;">Configuration</button>
                         <button class="nav-tab" id="traces-nav-tab" data-tab="traces">Traces</button>
+                        <button class="nav-tab" id="bench-nav-tab" data-tab="bench" title="Model Benchmark — visual radar diff across critic models">Benchmarks</button>
                     </div>
                 </div>
             </nav>
@@ -563,6 +564,22 @@
                 </div>
             </div>
 
+            <!-- Benchmarks Tab — run picker + iframe embed -->
+            <div id="bench-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:hidden; background:var(--main-bg);">
+                <div id="bench-header" style="display:flex; align-items:center; gap:0.75rem; padding:0.85rem 1.25rem; border-bottom:1px solid var(--border-color); flex-shrink:0;">
+                    <span style="font-size:0.8rem; font-weight:600; color:var(--text-secondary); white-space:nowrap;">Run</span>
+                    <select id="bench-run-select" style="flex:1; max-width:420px; font-size:0.78rem; padding:0.25rem 0.5rem; border:1px solid var(--border-color); border-radius:5px; background:#161b27; color:#e2e8f0;">
+                        <option value="" style="color:#8899b0;background:#161b27;">— loading runs… —</option>
+                    </select>
+                    <button id="bench-refresh-btn" title="Refresh run list" style="font-size:0.75rem; padding:0.25rem 0.6rem; border:1px solid var(--border-color); border-radius:5px; background:transparent; color:var(--text-secondary); cursor:pointer;">↺</button>
+                    <span id="bench-run-meta" style="font-size:0.72rem; color:var(--text-tertiary);"></span>
+                </div>
+                <div id="bench-iframe-wrap" style="flex:1; overflow:hidden; position:relative;">
+                    <p id="bench-placeholder" style="padding:2rem; font-size:0.85rem; color:var(--text-tertiary);">Run <code>/bench-loop</code> to generate a benchmark report, then select it above.</p>
+                    <iframe id="bench-iframe" style="display:none; width:100%; height:100%; border:none;" sandbox="allow-scripts allow-same-origin"></iframe>
+                </div>
+            </div>
+
             <!-- SOC Detection KG — full main-pane takeover -->
             <div id="soc-kg-pane-wrapper" style="display:none;flex-direction:column;flex:1;overflow:hidden;background:var(--main-bg);">
                 <!-- Header -->
@@ -696,8 +713,7 @@
                     <div style="flex-shrink:0;padding:0.75rem 1.5rem 0.6rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
                         <textarea id="taco-query-input" rows="2"
                             placeholder="Ask a threat question… e.g. 'What are the top risks for a public API gateway?'"
-                            style="width:100%;font-size:0.78rem;padding:0.4rem 0.6rem;border:1px solid var(--border-color);border-radius:2px;background:var(--main-bg);color:var(--text-primary);resize:vertical;margin-bottom:0.45rem;box-sizing:border-box;font-family:inherit;line-height:1.45;">
-                        </textarea>
+                            style="width:100%;font-size:0.78rem;padding:0.4rem 0.6rem;border:1px solid var(--border-color);border-radius:2px;background:var(--main-bg);color:var(--text-primary);resize:vertical;margin-bottom:0.45rem;box-sizing:border-box;font-family:inherit;line-height:1.45;"></textarea>
                         <div style="display:flex;gap:0.5rem;align-items:center;">
                             <select id="taco-arch-select"
                                 style="flex:1;font-size:0.78rem;padding:0.32rem 0.5rem;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);">
@@ -716,44 +732,41 @@
                         </div>
                     </div>
 
-                    <!-- D3 topology canvas + state legend -->
-                    <div id="taco-topology-wrap" style="flex:0 0 260px;position:relative;overflow:hidden;border-bottom:1px solid var(--border-color);background:var(--main-bg);">
-                        <svg id="taco-topology-svg" style="width:100%;height:100%;display:block;"></svg>
-                        <!-- Vertical resize handle -->
-                        <div id="taco-topology-resize-handle"
-                             style="position:absolute;bottom:0;left:0;right:0;height:6px;cursor:ns-resize;z-index:10;background:transparent;transition:background 0.15s;"
-                             title="Drag to resize · Double-click to collapse/expand"></div>
-                        <!-- Clear button (top-right overlay) -->
-                        <button onclick="window.dashboard && window.dashboard._tacoClear()"
-                            style="position:absolute;top:6px;right:8px;font-size:0.62rem;padding:0.15rem 0.5rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:2px;color:var(--text-tertiary);cursor:pointer;z-index:5;opacity:0.75;"
-                            title="Clear topology canvas and trace log"
-                            onmouseenter="this.style.opacity='1';this.style.color='var(--text-primary)'"
-                            onmouseleave="this.style.opacity='0.75';this.style.color='var(--text-tertiary)'">
-                            Clear
-                        </button>
-                        <!-- State legend (bottom-left overlay) -->
-                        <div id="taco-legend" style="position:absolute;bottom:8px;left:12px;display:flex;gap:10px;align-items:center;font-size:0.65rem;color:var(--text-secondary);pointer-events:none;">
-                            <span style="display:flex;align-items:center;gap:4px;">
-                                <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="none" stroke="#898781" stroke-width="1.5" stroke-dasharray="2,1.5"/></svg>unstarted
-                            </span>
-                            <span style="display:flex;align-items:center;gap:4px;">
-                                <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#3987e5"/></svg>running
-                            </span>
-                            <span style="display:flex;align-items:center;gap:4px;">
-                                <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#199e70"/></svg>completed
-                            </span>
-                            <span style="display:flex;align-items:center;gap:4px;">
-                                <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#d95926"/></svg>rested
-                            </span>
-                        </div>
-                        <!-- Empty state hint -->
-                        <div id="taco-topology-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:var(--text-tertiary);pointer-events:none;">
-                            Run a TACO query to see the agent topology
+                    <!-- Body: trace log (left) + D3 topology panel (right) -->
+                    <div style="flex:1;display:flex;flex-direction:row;overflow:hidden;">
+
+                        <!-- Trace log -->
+                        <div id="taco-trace-log" style="flex:1;overflow-y:auto;padding:0.9rem 1.5rem;font-size:0.78rem;"></div>
+
+                        <!-- D3 topology — right column panel -->
+                        <div id="taco-topology-wrap" style="flex:0 0 240px;position:relative;overflow:hidden;border-left:1px solid var(--border-color);background:var(--main-bg);">
+                            <svg id="taco-topology-svg" style="width:100%;height:100%;display:block;"></svg>
+                            <!-- Clear button (top-right overlay) -->
+                            <button onclick="window.dashboard && window.dashboard._tacoClear()"
+                                style="position:absolute;top:6px;right:6px;font-size:0.62rem;padding:0.15rem 0.5rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:2px;color:var(--text-tertiary);cursor:pointer;z-index:5;opacity:0.75;"
+                                title="Clear topology canvas and trace log"
+                                onmouseenter="this.style.opacity='1';this.style.color='var(--text-primary)'"
+                                onmouseleave="this.style.opacity='0.75';this.style.color='var(--text-tertiary)'">
+                                Clear
+                            </button>
+                            <!-- State legend (bottom overlay) -->
+                            <div id="taco-legend" style="position:absolute;bottom:6px;left:6px;right:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:0.6rem;color:var(--text-secondary);pointer-events:none;">
+                                <span style="display:flex;align-items:center;gap:3px;">
+                                    <svg width="9" height="9"><circle cx="4.5" cy="4.5" r="3.5" fill="none" stroke="#898781" stroke-width="1.5" stroke-dasharray="2,1.5"/></svg>unstarted
+                                </span>
+                                <span style="display:flex;align-items:center;gap:3px;">
+                                    <svg width="9" height="9"><circle cx="4.5" cy="4.5" r="3.5" fill="#3987e5"/></svg>running
+                                </span>
+                                <span style="display:flex;align-items:center;gap:3px;">
+                                    <svg width="9" height="9"><circle cx="4.5" cy="4.5" r="3.5" fill="#199e70"/></svg>done
+                                </span>
+                            </div>
+                            <!-- Empty state hint -->
+                            <div id="taco-topology-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:var(--text-tertiary);pointer-events:none;text-align:center;padding:0.5rem;">
+                                Run a query to see the agent chain
+                            </div>
                         </div>
                     </div>
-
-                    <!-- Trace log -->
-                    <div id="taco-trace-log" style="flex:1;overflow-y:auto;padding:0.9rem 1.5rem;font-size:0.78rem;"></div>
                 </div>
 
                 <style>

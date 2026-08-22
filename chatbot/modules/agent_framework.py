@@ -67,6 +67,8 @@ class CritiqueScore:
     # llm_calls: number of LLM round-trips (1 normally; >1 if tool-use or retries)
     llm_calls: int = 0
     llm_tokens: int = 0          # total tokens (prompt + completion)
+    llm_prompt_tokens: int = 0   # input tokens only
+    llm_completion_tokens: int = 0  # output tokens only
     llm_cost_usd: float = 0.0   # estimated cost
     llm_latency_s: float = 0.0  # wall-clock seconds for all LLM calls combined
     llm_model: str = ""          # exact model string used
@@ -148,6 +150,8 @@ class CriticAgent(BaseAgent):
 
         # 3. Call LLM without tools (MVP1 simplification) — retry up to 2 times on parse failure
         _llm_tokens = 0
+        _llm_prompt_tokens = 0
+        _llm_completion_tokens = 0
         _llm_cost   = 0.0
         _llm_latency = 0.0
         _llm_model  = self.model or ""
@@ -169,13 +173,15 @@ class CriticAgent(BaseAgent):
                     model=self.model,  # None = use .env config
                     # tools=tool_schemas,  # Disabled for MVP1
                     temperature=0.3,  # Lower for consistent scoring
-                    max_tokens=4000
+                    max_tokens=8000  # Hetzner thinking models use ~4k on reasoning + need 4k for JSON
                 )
-                _llm_calls   += 1
-                _llm_tokens  += getattr(response, 'tokens_used', 0) or 0
-                _llm_cost    += getattr(response, 'cost_usd', 0.0) or 0.0
-                _llm_latency += getattr(response, 'latency_seconds', 0.0) or 0.0
-                _llm_model    = getattr(response, 'model', self.model or "") or _llm_model
+                _llm_calls             += 1
+                _llm_tokens            += getattr(response, 'tokens_used',       0)   or 0
+                _llm_prompt_tokens     += getattr(response, 'prompt_tokens',      0)   or 0
+                _llm_completion_tokens += getattr(response, 'completion_tokens',  0)   or 0
+                _llm_cost              += getattr(response, 'cost_usd',           0.0) or 0.0
+                _llm_latency           += getattr(response, 'latency_seconds',    0.0) or 0.0
+                _llm_model              = getattr(response, 'model', self.model or "") or _llm_model
             except Exception as e:
                 logger.error(f"{self.role}: LLM call failed (attempt {_attempt+1}): {e}")
                 if _attempt == _MAX_RETRIES:
@@ -222,6 +228,8 @@ class CriticAgent(BaseAgent):
             reasoning=critique_data.get("reasoning", ""),
             llm_calls=_llm_calls,
             llm_tokens=_llm_tokens,
+            llm_prompt_tokens=_llm_prompt_tokens,
+            llm_completion_tokens=_llm_completion_tokens,
             llm_cost_usd=round(_llm_cost, 6),
             llm_latency_s=round(_llm_latency, 3),
             llm_model=_llm_model,

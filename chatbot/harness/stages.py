@@ -143,13 +143,18 @@ class CriticStage(PipelineStage):
             ["architect", "tester", "red_team", "purple_team", "blackhat", "moe_orchestrator"]
         ) if guardian else {}
 
+        # MoE orchestrator calls progress_callback(stage, result) — 2 args.
+        # Harness callbacks expect (stage, pct, msg) — 3 args. Wrap to adapt.
+        _harness_cb = kw.get("progress_callback")
+        _moe_cb = (lambda s, r: _harness_cb(s, 75, str(r)[:80] if r else s)) if _harness_cb else None
+
         ctx["moe_result"] = run_moe_pipeline(
             str(ctx["report_dir"]),
             base_confidence=ctx.get("confidence"),
             critic_mode=ctx.get("critic_mode", "partial_parallel"),
             run_blackhat=ctx.get("run_blackhat"),
             blocked_agents=ctx.get("blocked_agents", []),
-            progress_callback=kw.get("progress_callback"),
+            progress_callback=_moe_cb,
             agent_models=agent_models or None,
         )
 

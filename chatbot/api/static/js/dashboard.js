@@ -414,6 +414,7 @@ class Dashboard {
         const isSocKg      = tabName === 'soc-kg';
         const isMcp        = tabName === 'mcp';
         const isBrain      = tabName === 'brain';
+        const isBench      = tabName === 'bench';
         const uploadContainer    = document.getElementById('upload-form-container');
         const tabContent         = document.getElementById('tab-content');
         const configWrapper      = document.getElementById('config-pane-wrapper');
@@ -423,6 +424,7 @@ class Dashboard {
         const socKgWrapper       = document.getElementById('soc-kg-pane-wrapper');
         const mcpWrapper         = document.getElementById('mcp-pane-wrapper');
         const brainWrapper       = document.getElementById('brain-pane-wrapper');
+        const benchWrapper       = document.getElementById('bench-pane-wrapper');
 
         // Hide all full-pane wrappers first, then show the right one
         if (configWrapper)    configWrapper.style.display    = 'none';
@@ -432,6 +434,7 @@ class Dashboard {
         if (socKgWrapper)     socKgWrapper.style.display     = 'none';
         if (mcpWrapper)       mcpWrapper.style.display       = 'none';
         if (brainWrapper)     brainWrapper.style.display     = 'none';
+        if (benchWrapper)     benchWrapper.style.display     = 'none';
         // Restore main-pane defaults (may have been modified by SOC KG tab)
         const _mp = document.querySelector('.main-pane');
         if (_mp) { _mp.style.display = ''; _mp.style.flexDirection = '';
@@ -477,6 +480,14 @@ class Dashboard {
                       mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
             if (brainWrapper) { brainWrapper.style.display = 'flex'; brainWrapper.style.flexDirection = 'column'; }
             this._brainInit();
+        } else if (isBench) {
+            if (uploadContainer) uploadContainer.style.display = 'none';
+            if (tabContent)      tabContent.style.display      = 'none';
+            const mp = document.querySelector('.main-pane');
+            if (mp) { mp.style.display = 'flex'; mp.style.flexDirection = 'column';
+                      mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
+            if (benchWrapper) { benchWrapper.style.display = 'flex'; benchWrapper.style.flexDirection = 'column'; }
+            this._benchInit();
         } else {
             if (this.analysisData) {
                 if (uploadContainer) uploadContainer.style.display = 'none';
@@ -506,6 +517,7 @@ class Dashboard {
             'config': 'Configuration',
             'workspace': 'Workspace',
             'traces': 'EventBroker Traces',
+            'bench':  'Benchmarks',
         };
         this.updateStatusMessage(`📂 Viewing ${tabNames[tabName] || tabName}`);
 
@@ -19324,7 +19336,7 @@ class Dashboard {
         }
 
         const apiKey = localStorage.getItem('tm_api_key') || '';
-        const hopColors = { brain: '#3b82f6', harness: '#f59e0b', critic: '#8b5cf6', rag: '#10b981' };
+        const hopColors = { brain: '#3b82f6', harness: '#f59e0b', critic: '#8b5cf6', rag: '#14b8a6' };
         const confColor = c => c >= 0.65 ? '#10b981' : c >= 0.4 ? '#f59e0b' : '#ef4444';
 
         const pending = {};  // step → placeholder div
@@ -19488,6 +19500,8 @@ class Dashboard {
         const allMissing = [...new Set([...brainMissing, ...ragMissing])];
         const total = brainTechs.size + ragTechs.size;
         const overlapPct = total > 0 ? shared.length / Math.max(brainTechs.size, ragTechs.size) : 0;
+        const divergencePct = Math.round((1 - overlapPct) * 100);
+        const divergenceColor = divergencePct >= 70 ? '#8b5cf6' : divergencePct >= 40 ? '#f59e0b' : '#10b981';
 
         // ── Narrative (data-driven, plain English) ────────────────────────
         let narrative, narrativeColor;
@@ -19548,7 +19562,7 @@ class Dashboard {
                 ${ragHit ? '✓ Graph traversal hit' : '✗ No direct graph match — fell back to structural scan'} ${confBadge(ragConf, 'conf')}
             </div>
             ${sectionLabel('Attack techniques (' + ragOnly.length + ' unique' + (shared.length ? ' + ' + shared.length + ' shared' : '') + ')')}
-            <div style="margin-bottom:0.4rem;">${techList(ragOnly, '#10b981')}</div>
+            <div style="margin-bottom:0.4rem;">${techList(ragOnly, '#14b8a6')}</div>
             ${ragMissing.length ? sectionLabel('Defences missing from this diagram') + controlList(ragMissing, '#10b981') : ''}`;
 
         // ── Shared banner ─────────────────────────────────────────────────
@@ -19576,10 +19590,11 @@ class Dashboard {
             <summary style="font-size:0.68rem;font-weight:600;color:var(--text-secondary);cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.4rem;padding:0.3rem 0;user-select:none;">
                 <span style="font-size:0.6rem;color:var(--text-tertiary);">▼</span>
                 Brain vs Workspace
+                <span style="padding:0.1rem 0.45rem;border-radius:2px;font-size:0.65rem;font-weight:700;background:${divergenceColor}18;border:1px solid ${divergenceColor}44;color:${divergenceColor};" title="How unusual this architecture is relative to everything the system has learned. High divergence means pay attention.">${divergencePct}% divergence</span>
                 <span style="font-size:0.62rem;font-weight:400;color:var(--text-tertiary);">
                     <span style="color:#3b82f6;">${brainTechs.size} attack technique${brainTechs.size !== 1 ? 's' : ''} predicted by Brain</span>
                     &nbsp;·&nbsp;
-                    <span style="color:#10b981;">${ragTechs.size} found by Workspace</span>
+                    <span style="color:#14b8a6;">${ragTechs.size} found by Workspace</span>
                     &nbsp;·&nbsp;
                     <span style="color:#10b981;">${shared.length} in common</span>
                     &nbsp;·&nbsp;
@@ -19625,62 +19640,6 @@ class Dashboard {
 
         const wrap = document.getElementById('taco-topology-wrap');
         if (!wrap) return;
-
-        // ── Restore saved height ──────────────────────────────────────────
-        const STORE_KEY = 'taco_topology_h';
-        const MIN_H = 60, MAX_H = 600, DEFAULT_H = 260;
-        const savedH = parseInt(localStorage.getItem(STORE_KEY) || DEFAULT_H);
-        wrap.style.flex = `0 0 ${Math.min(MAX_H, Math.max(MIN_H, savedH))}px`;
-
-        // ── Resize handle drag ────────────────────────────────────────────
-        const handle = document.getElementById('taco-topology-resize-handle');
-        if (handle) {
-            let dragging = false, startY = 0, startH = 0, collapsed = false, preCollapseH = DEFAULT_H;
-
-            handle.addEventListener('mouseenter', () => {
-                if (!dragging) handle.style.background = 'var(--primary-color)';
-            });
-            handle.addEventListener('mouseleave', () => {
-                if (!dragging) handle.style.background = 'transparent';
-            });
-
-            // Drag to resize
-            handle.addEventListener('mousedown', (e) => {
-                dragging = true;
-                startY = e.clientY;
-                startH = wrap.getBoundingClientRect().height;
-                handle.style.background = 'var(--primary-color)';
-                e.preventDefault();
-            });
-            document.addEventListener('mousemove', (e) => {
-                if (!dragging) return;
-                const newH = Math.min(MAX_H, Math.max(MIN_H, startH + (e.clientY - startY)));
-                wrap.style.flex = `0 0 ${newH}px`;
-                if (newH > MIN_H) { collapsed = false; preCollapseH = newH; }
-            });
-            document.addEventListener('mouseup', () => {
-                if (!dragging) return;
-                dragging = false;
-                handle.style.background = 'transparent';
-                const h = wrap.getBoundingClientRect().height;
-                localStorage.setItem(STORE_KEY, h);
-                this._tacoTopologyRender();
-            });
-
-            // Double-click to collapse / restore
-            handle.addEventListener('dblclick', () => {
-                if (collapsed) {
-                    wrap.style.flex = `0 0 ${preCollapseH}px`;
-                    collapsed = false;
-                } else {
-                    preCollapseH = wrap.getBoundingClientRect().height;
-                    wrap.style.flex = `0 0 ${MIN_H}px`;
-                    collapsed = true;
-                }
-                localStorage.setItem(STORE_KEY, wrap.getBoundingClientRect().height);
-                this._tacoTopologyRender();
-            });
-        }
 
         // ResizeObserver: re-render on size change (same pattern as SOC KG)
         this._tacoResizeObs = new ResizeObserver(() => this._tacoTopologyRender());
@@ -20046,6 +20005,80 @@ class Dashboard {
     }
 
     // ── end TA Brain ──────────────────────────────────────────────────────────
+
+    // ── Benchmarks ────────────────────────────────────────────────────────────
+
+    _benchInit() {
+        if (this._benchInitDone) return;
+        this._benchInitDone = true;
+        this._benchLoadRuns();
+        document.getElementById('bench-run-select')?.addEventListener('change', e => this._benchSelectRun(e.target.value));
+        document.getElementById('bench-refresh-btn')?.addEventListener('click', () => this._benchLoadRuns());
+    }
+
+    async _benchLoadRuns() {
+        const sel = document.getElementById('bench-run-select');
+        if (!sel) return;
+        try {
+            const res = await fetch('/api/v1/bench/runs', { headers: { 'TM-API-KEY': this.apiKey } });
+            if (!res.ok) return;
+            const { runs } = await res.json();
+            // Only show complete runs (at least one non-zero depth score + has HTML report)
+            const complete = runs.filter(r => r.has_report && r.is_complete);
+            const current = sel.value;
+            sel.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = complete.length
+                ? '— select a bench run —'
+                : '— no complete runs yet (run /bench-loop) —';
+            placeholder.style.cssText = 'color:#475569;background:#1e2535;';
+            sel.appendChild(placeholder);
+            for (const r of complete) {
+                const ts = r.ts ? r.ts.slice(0, 16).replace('T', ' ') : r.run_id;
+                const models = r.models?.join(' vs ') || 'current';
+                const archs  = r.arch_count ? `${r.arch_count} arch${r.arch_count > 1 ? 's' : ''}` : '';
+                const depth  = r.avg_depth != null ? `avg ${r.avg_depth}/12` : '';
+                const label  = [ts, models, archs, depth].filter(Boolean).join(' · ');
+                const opt = document.createElement('option');
+                opt.value = r.run_id;
+                opt.textContent = label;
+                opt.style.cssText = 'color:#e2e8f0;background:#161b27;';
+                sel.appendChild(opt);
+            }
+            if (current && complete.some(r => r.run_id === current)) {
+                sel.value = current;
+            } else if (complete.length) {
+                sel.value = complete[0].run_id;
+                this._benchSelectRun(complete[0].run_id, complete[0]);
+            }
+        } catch (_) {}
+    }
+
+    _benchSelectRun(runId, meta) {
+        const iframe    = document.getElementById('bench-iframe');
+        const ph        = document.getElementById('bench-placeholder');
+        const metaSpan  = document.getElementById('bench-run-meta');
+        if (!runId) {
+            if (iframe) iframe.style.display = 'none';
+            if (ph)     ph.style.display     = '';
+            if (metaSpan) metaSpan.textContent = '';
+            return;
+        }
+        if (ph)     ph.style.display     = 'none';
+        if (iframe) {
+            iframe.style.display = 'block';
+            iframe.src = `/api/v1/bench/report/${encodeURIComponent(runId)}`;
+        }
+        if (metaSpan && meta) {
+            metaSpan.textContent = [
+                meta.ts ? meta.ts.slice(0, 16).replace('T', ' ') : '',
+                meta.winner ? `⭐ ${meta.winner}` : '',
+            ].filter(Boolean).join(' · ');
+        }
+    }
+
+    // ── end Benchmarks ────────────────────────────────────────────────────────
 
 }
 

@@ -97,8 +97,6 @@ ACTIONABILITY REQUIREMENT — every recommendation and roadmap item must name:
   BAD:  "Improve logging and monitoring on storage nodes."
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from collections import defaultdict

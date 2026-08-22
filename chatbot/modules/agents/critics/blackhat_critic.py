@@ -92,8 +92,6 @@ ACTIONABILITY REQUIREMENT — every recommendation and roadmap item must name:
   BAD:  "Improve monitoring on shared nodes."
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from collections import defaultdict

@@ -210,8 +210,8 @@ class MoESettings(BaseModel):
 class LLMSettings(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0,
         description="Default LLM sampling temperature (lower = more deterministic)")
-    max_tokens: int = Field(default=1000, ge=100, le=8000,
-        description="Default max tokens per LLM response (higher = more complete)")
+    max_tokens: int = Field(default=4000, ge=100, le=16000,
+        description="Default max tokens per LLM response (higher = more complete; thinking models need ≥4000)")
 
 
 class SystemSettings(BaseModel):

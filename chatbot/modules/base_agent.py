@@ -151,8 +151,8 @@ class BaseAgent(ABC):
 
         except Exception as e:
             logger.error(f"{self.role}: Failed to parse LLM response: {e}")
-            if hasattr(response, 'content'):
-                logger.debug(f"{self.role}: Response preview: {response.content[:500]}")
+            if hasattr(response, 'content') and response.content:
+                logger.warning(f"{self.role}: Response preview (first 800 chars): {response.content[:800]}")
             return {}
 
     def _validate_dict_fields(self, data: Dict, required_fields: List[str]) -> bool:

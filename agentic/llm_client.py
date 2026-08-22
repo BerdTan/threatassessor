@@ -137,6 +137,8 @@ class LLMResponse:
     tokens_used: int
     cost_usd: float
     latency_seconds: float
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -371,13 +373,25 @@ class LLMClient:
                     # Extract response
                     content = response.choices[0].message.content
 
-                    # Handle None content (Nemotron edge case)
+                    # Thinking models (Qwen3, DeepSeek-R1, etc.) put their answer in
+                    # `reasoning_content` or `reasoning` when the response budget is
+                    # exhausted before generating a content block. Fall back to those
+                    # fields so the caller gets something useful instead of a hard error.
+                    if content is None:
+                        _msg = response.choices[0].message
+                        content = (
+                            getattr(_msg, 'reasoning_content', None)
+                            or getattr(_msg, 'reasoning', None)
+                        )
                     if content is None:
                         logger.warning(f"Model {attempt_model} returned None content, trying next...")
                         raise RuntimeError("LLM returned None content")
 
                     # Calculate cost
-                    tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+                    _usage = response.usage if hasattr(response, 'usage') else None
+                    tokens_used       = _usage.total_tokens      if _usage else 0
+                    prompt_tokens     = getattr(_usage, 'prompt_tokens',     0) if _usage else 0
+                    completion_tokens = getattr(_usage, 'completion_tokens', 0) if _usage else 0
                     cost_usd = self._calculate_cost(tokens_used, attempt_config)
 
                     # Track usage
@@ -392,6 +406,8 @@ class LLMClient:
                         provider=attempt_provider,
                         model=attempt_model,
                         tokens_used=tokens_used,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
                         cost_usd=cost_usd,
                         latency_seconds=latency,
                         metadata={"response": response}

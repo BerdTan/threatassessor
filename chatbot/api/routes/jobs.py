@@ -26,8 +26,10 @@ VALID_CRITIC_MODES = {"partial_parallel", "sequential", "parallel", "auto"}
 
 
 class ExpertReviewRequest(BaseModel):
-    arch_name:   str
-    critic_mode: str = "partial_parallel"
+    arch_name:    str
+    critic_mode:  str = "partial_parallel"
+    run_blackhat: bool = True
+    critic_model: str | None = None  # broadcast model override for all critics
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +86,7 @@ async def submit_expert_review(body: ExpertReviewRequest):
         mmd_path=str(mmd_path),
         report_dir=str(report_dir),
         critic_mode=body.critic_mode,
+        critic_model=body.critic_model,
     ))
 
     return {
@@ -141,6 +144,7 @@ async def _run_expert_review(
     mmd_path: str,
     report_dir: str,
     critic_mode: str,
+    critic_model: str | None = None,
 ) -> None:
     store = get_job_store()
     store.update(job_id, status="running", progress=5, message="Starting expert review")
@@ -171,6 +175,10 @@ async def _run_expert_review(
             BlockedPipelineError,
         )
 
+        # Broadcast a single model to all critics when override is set
+        _critic_names = ["architect", "tester", "red_team", "purple_team", "blackhat", "scrum_master"]
+        _agent_models = {c: critic_model for c in _critic_names} if critic_model else None
+
         request = PipelineRequest(
             architecture_path=mmd_path,
             report_dir=report_dir,
@@ -180,6 +188,7 @@ async def _run_expert_review(
             enable_scrum_master=True,
             critic_mode=critic_mode,
             architecture_name=arch_name,
+            agent_models=_agent_models,
         )
 
         harness = AsyncThreatAssessorHarness(scenario=ScenarioConfig.FULL_MOE)

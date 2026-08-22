@@ -4,6 +4,143 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 47 — 2026-08-22
+
+**Session summary:** Bench framework debugging and report layout overhaul. Root-caused tester/purple_team/blackhat low scores to Hetzner thinking-model max_tokens starvation (4000 → 8000 fix). Implemented two-model bench infrastructure (critic_model broadcast via API). Bench report redesigned: 3×2 critic card grid (no horizontal scroll), collapsible arch sections, per-critic improvement hints keyed to score band. Cleaned up 9 incomplete bench runs; bench_results/ added to .gitignore. Entries 88–91 below.
+
+**What's next (ordered):**
+1. Run two-model bench: `python3 scripts/bench_critics.py --models openrouter hetzner --archs 22_generic_ai_nodes`
+2. Corpus rerun overnight (`rerun-moe --all`) with max_tokens=8000 fix applied corpus-wide
+3. DETECT-015 upgrade: cosine collusion (needs live MoE runs in Langfuse)
+
+### 88. max_tokens raised 4000→8000 in agent_framework.py (2026-08-22)
+
+Hetzner Qwen3.6-35B-A3B-FP8 is a thinking model — it consumes the entire `max_tokens` budget on chain-of-thought reasoning before producing the JSON response. With `max_tokens=4000`, all 3 retries exhaust the budget (3 × 4000 = 12k completion tokens, JSON parse fails → score=0). Raising to 8000 gives ~4k for reasoning + ~4k for output. Confirmed fix: tester went from 0.0 → 9.0/12 in a single attempt (7799 completion tokens).
+
+**Affected critics:** tester (was 0.0), purple_team (was 6.0), blackhat (was 6.0). Root cause same for all — cached critique files confirmed `tok=0`.
+
+**Rejected:** increasing retries only — doesn't help when the budget itself is too small.
+
+### 89. Two-model bench infrastructure: critic_model broadcast (2026-08-22)
+
+`ExpertReviewRequest` got `critic_model: str | None` field. When set, `_run_expert_review` builds `agent_models` dict broadcasting the override to all 5 critics via `PipelineRequest.agent_models`. `bench_critics.py` resolves `MODEL_ALIASES` (`"hetzner"` → `"openai/Qwen/Qwen3.6-35B-A3B-FP8"`, `"openrouter"` → `"openrouter/openrouter/free"`) and clears cached critique JSON files before each model run (otherwise the MoE resume mechanism loads the prior model's stale critiques). Timeout raised 600→900s.
+
+**Rationale:** same arch × two models gives a clean apples-to-apples comparison without confounding arch variation.
+
+### 90. Bench report: 3×2 critic card layout + improvement hints (2026-08-22)
+
+Old layout: horizontal 6-column grid (panel + 5 critics side-by-side) → required horizontal scroll at normal viewport widths. New layout: 2-column grid (`220px 1fr`) — panel radar+stats left, 3×2 critic sub-grid right. Critics arranged: architect/tester/red_team (top row), purple_team/blackhat (bottom row, left-aligned). No per-critic radar SVGs — just depth score (colored by band), model name, tok/lat.
+
+Each critic card now shows a "↑ to improve" hint derived from score band × critic role (e.g. red_team <10 → "Extend post-exploit scenarios + multi-hop chains"). Arch sections replaced tab navigation with `<details>`/`<summary>` collapsible elements; depth avg shown in summary line for at-a-glance scan without opening.
+
+### 91. bench_results/ gitignored; 9 incomplete runs deleted (2026-08-22)
+
+`bench_results/` was untracked but not gitignored — added alongside `report/` in `.gitignore`. Deleted all 9 incomplete runs (those where all critic depth scores = 0, caused by model/token failures during debugging). Two complete runs kept: `20260822_121446` (hetzner debug, confirmed fix) and `20260822_163006` (final run with 3×2 report).
+
+---
+
+## Session 46 — 2026-08-22
+
+**Session summary:** Blog Part 22 published. UI polish for TACO Agent tab (D3 topology → right column panel, workspace teal `#14b8a6`, divergence % badge). Full model evaluation framework built: `bench_critics.py` (critics + brain modes), `bench_report.py` (radar visual diff), `/qualify-corpus` skill, `/bench-loop` skill. Token split (prompt/completion) threaded end-to-end through LLM client → CritiqueScore → pipeline_perf. Entries 84–87 below.
+
+**What's next (ordered):**
+1. Run `/bench-loop` — qualify corpus, benchmark current vs openrouter_free, open visual report
+2. Address any critic gaps found → `/critic-gym`
+3. Corpus rerun overnight (`rerun-moe --all`) with winning model
+4. Brain rebuild + `bench_critics --mode brain` to verify brain improved
+5. DETECT-015 upgrade: cosine collusion (needs live MoE runs in Langfuse)
+
+### 84. Blog Part 22 published — "Two Maps in the Jungle" (2026-08-22)
+
+Published: https://medium.com/@breadtan/two-maps-in-the-jungle-6a26e2c24f20
+
+Core narrative: TACO Agent as a dual-map system — Brain (pattern memory) vs Workspace (diagram structure). Divergence % introduced as the readout of how unusual an architecture is relative to the corpus. High divergence = signal to pay attention, not a failure.
+
+UI changes shipped this session to support the blog:
+- D3 topology moved from full-width horizontal band to 240px right column panel (less view-space consumption)
+- Workspace-only (RAG) color changed to teal `#14b8a6` — now visually distinct from shared-green `#10b981` and brain-blue `#3b82f6`
+- Divergence % badge added to "Brain vs Workspace" comparison panel header (purple ≥70%, amber 40–69%, green <40%)
+- TACO query textarea whitespace bug fixed (no longer shows blank lines on first load)
+- Hold-out arch `21_agentic_ai_system` confirmed as the right screenshot subject (brain has no trained pattern → maximum teal)
+
+**What's next:**
+- Model benchmark: compare Hetzner vs OpenRouter free on critic depth (accuracy), critic breadth (coverage), and full TA panel — token-efficient design TBD (see entry 85 below)
+- Corpus rerun overnight (rerun-moe --all) once benchmark model decision is made
+- DETECT-015 upgrade: cosine collusion (needs live MoE runs in Langfuse first)
+
+### 87. bench-loop skill + bench_report.py visual diff (2026-08-22)
+
+**`/bench-loop` skill** — full orchestration: qualify → benchmark → interpret visual diff → address gaps → promote model → rerun-moe → brain-ingest → verify. Human gates at each step (corpus confirm, model winner, gap sign-off before promote).
+
+**`scripts/bench_report.py`** — generates self-contained HTML radar diff report from `bench_summary.json`. Auto-called at end of every `bench_critics.py` critics run.
+
+Visual design: dark technical palette, JetBrains Mono for all data, Inter for labels.
+- **Panel summary radar** (5 axes: TATB, breadth, defensibility, token efficiency, avg depth) — overlaid polygons, model A=blue, model B=teal, reference=gray dashed. Shape area = quality signal.
+- **Per-critic radars** (5 small, one per critic: depth, unique TTPs, tok efficiency, latency, contribution) — shrinkage on any axis = regression on that dimension.
+- **Gap report** — sorted by severity, red/amber rows, direct `/critic-gym` hint.
+
+Reference polygon is "good enough" (not theoretical max) — calibrated targets per axis so a solid current model already fills most of it. A new model that shrinks visibly below the reference fails the bar.
+
+Usage: `python3 scripts/bench_report.py bench_results/<run_id>/bench_summary.json [--open]`
+
+### 86. qualify-corpus skill (2026-08-22)
+
+New skill: `/qualify-corpus [critics|brain]`
+
+Selects a representative, budget-bounded benchmark corpus from `report/` without running any analysis. Groups by `architecture_type`, picks median-complexity arch per type, enforces 600k token cap per model, always includes AI hold-outs. Thin wrapper over `bench_critics.py --qualify --mode <mode>`.
+
+Selection rules: exclude `syn_*`/`99_*`/`test_*`/versioned duplicates → group by arch_type → pick median node_count → always add AI hold-outs → cap at 8 archs → drop lowest-TTP non-hold-outs until under token budget.
+
+Token estimate: reads `pipeline_perf.total_llm_tokens` from existing MoE runs if available, else estimates from `node_count × 18,748` (calibrated on `01_minimal_vulnerable` baseline 74,990 tokens / 4 nodes).
+
+**Use before any bench_critics run to avoid over-spending on redundant or low-value archs.**
+
+### 85. Model benchmark — bench_critics.py (2026-08-22)
+
+**Shipped:** `scripts/bench_critics.py`
+
+Full metric set per critic × per model: depth (0–12), breadth (TTP union), token usage
+(total + prompt/completion split), latency, TATB ttp/plan/overall, defensibility (AIVSS composite).
+
+Token-saving design: Analysis stage never re-runs — uses existing `ground_truth.json` on disk.
+Triggers MoE-only via `POST /jobs/expert-review`. Env vars `AGENT_MODEL_*` overridden per model,
+restored between runs.
+
+Model aliases: `current` (baseline), `hetzner` (from .env as-is), `openrouter_free`
+(`openrouter/openrouter/free`), `openrouter_auto`.
+
+Gap trigger: critic depth drop ≥ 2 pts between models → flagged + `critic-gym` hint printed.
+
+Token split (prompt vs completion) threaded end-to-end:
+- `llm_client.py` → `LLMResponse.prompt_tokens` / `completion_tokens`
+- `agent_framework.py` → `CritiqueScore.llm_prompt_tokens` / `llm_completion_tokens`
+- `moe_orchestrator.py` → `ValidationResult.perf` + `pipeline_perf.critics.*`
+
+**Brain mode** (`--mode brain`): deterministic, no model override, no API call. Runs `query_brain(mode="infer")` against hold-out archs, compares predictions to actual harness TTPs. Outputs prediction_recall, divergence_pct, Brier proxy per arch. Run after `rerun-moe --all` + `brain-ingest` to verify brain improved.
+
+**Corpus qualification** built-in: `--qualify` prints the selection table and exits. Also exposed as `/qualify-corpus` skill.
+
+**The full benchmark loop:**
+```
+/qualify-corpus                          # pick corpus
+bench_critics --models current m2        # find best model
+rerun-moe --all (with best model)        # apply to corpus
+brain-ingest                             # rebuild brain
+bench_critics --mode brain               # verify brain improved
+if gaps → critic-gym → loop
+```
+
+**Usage:**
+```
+python3 scripts/bench_critics.py --qualify
+python3 scripts/bench_critics.py --models current openrouter_free
+python3 scripts/bench_critics.py --mode brain
+```
+
+Output: `bench_results/<run_id>/bench_summary.json` + per-arch/model JSON + diff table.
+
+---
+
 ## Session 45 — 2026-08-16
 
 ### 82. TACO Phase 4 — closed remaining items (2026-08-16)

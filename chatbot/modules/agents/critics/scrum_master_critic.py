@@ -94,8 +94,6 @@ ACTIONABILITY REQUIREMENT — each action_plan item must be expressible as a spr
   BAD:  "Assign owner and add to backlog"
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import time as _time
