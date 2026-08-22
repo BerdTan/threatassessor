@@ -28,7 +28,7 @@ flowchart TD
 
     subgraph Outputs
         rep_o["report/ directory"]
-        det_o["30 DETECT rules"]
+        det_o["31 DETECT rules"]
         brn_o["TA Brain"]
     end
 
@@ -56,7 +56,8 @@ flowchart TD
 | **Harness v2** | Pipeline controller: stages, circuit breaker, event broker | `chatbot/harness/` |
 | **Analysis engine** | Deterministic threat mapping — RAPIDS + MITRE ATT&CK embeddings | `chatbot/modules/ground_truth_generator.py` |
 | **MoE critics** | 5-critic panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster | `chatbot/modules/agents/critics/` |
-| **SOC detection layer** | 30 DETECT rules → OCSF DetectionFinding 2004 events per run | `policies/soc_detection_rules.yaml` |
+| **SOC detection layer** | 31 DETECT rules → OCSF DetectionFinding 2004 events per run | `policies/soc_detection_rules.yaml` |
+| **Model benchmark** | Two-model side-by-side critic evaluation; 3×2 HTML radar report with per-critic improvement hints | `scripts/bench_critics.py`, `scripts/bench_report.py` |
 | **TA Brain** | Persistent knowledge graph distilled from corpus; Stages 1–8 (Gap→MMD closes the self-growing loop); TACO query surface + CLI skills | `chatbot/modules/ta_brain_*.py` |
 | **AIVSS v4** | Three-flow safety scoring: inbound / internal / outbound | `chatbot/harness/stages.py` |
 | **MCP server** | 16 tools exposing TA capabilities to Claude Desktop and external agents | `mcp_server/` |
@@ -73,7 +74,7 @@ A `.mmd` file submitted to `POST /api/v1/analyze` passes through Harness v2 in o
 5. **CriticStage × 5** (FULL_MOE only) — runs in `partial_parallel` mode by default; each critic receives user-journey context relevant to its rubric.
 6. **ScrumMasterStage** (FULL_MOE only) — synthesises critic findings into sprint-ready impediments and an 8-week action plan.
 7. **AIVSSStage** — produces inbound / internal / outbound safety scores and appends to `governance_signals_history.jsonl`.
-8. **RuleEvaluator** — evaluates all 30 DETECT rules against the governance signals and emits OCSF DetectionFinding events.
+8. **RuleEvaluator** — evaluates all 31 DETECT rules against the governance signals and emits OCSF DetectionFinding events.
 
 For `POST /api/v1/analyze-stream`, the same pipeline runs with SSE progress events for the dashboard.
 
@@ -196,7 +197,7 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 **MCP transport** — stdio transport (default) has no network exposure. Network transport (`--transport sse` / `--transport streamable-http`) requires `TM_MCP_KEY`; the server refuses to start without it.
 
-**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` exploitation signals before any critic or output stage runs. The 30 DETECT rules emit OCSF events for SOC consumption.
+**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` exploitation signals before any critic or output stage runs. The 31 DETECT rules emit OCSF events for SOC consumption.
 
 ## Design decisions
 
@@ -240,13 +241,15 @@ DEV-TEST/
 │   ├── config/             Settings loader, user_config.json, agent model config
 │   └── services.py         ThreatAnalysisService — single callable surface
 ├── mcp_server/             MCP server: 16 tools, job client, access logger, sim personas
-├── policies/               soc_detection_rules.yaml (30 rules), agent_governance.yaml
+├── policies/               soc_detection_rules.yaml (31 rules), agent_governance.yaml
 ├── tests/
 │   ├── data/architectures/ 33 sample .mmd files
 │   └── unit/               Unit tests (233 for TA Brain alone)
 ├── scripts/
 │   ├── api/                api_start.sh  api_stop.sh  api_status.sh  api_restart.sh
-│   └── ci/                 ta_pr_review.py (GitHub Actions PR reviewer)
+│   ├── ci/                 ta_pr_review.py (GitHub Actions PR reviewer)
+│   ├── bench_critics.py    Two-model MoE benchmark (--models openrouter hetzner --archs ...)
+│   └── bench_report.py     Self-contained HTML radar report from bench_summary.json
 ├── .github/workflows/      ta-review.yml — triggers on *.mmd PR changes
 ├── .env.example            All environment variable names with defaults
 ├── Makefile                Developer shortcuts: install / setup / start / stop / test
@@ -255,7 +258,7 @@ DEV-TEST/
 
 ## Build story
 
-The full build story is on Medium — 21 published parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, the self-assessment that found a Critical in its own codebase, why a self-growing knowledge graph had the right answers all along, and why new capabilities always introduce new attack surface:
+The full build story is on Medium — 22 published parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, the self-assessment that found a Critical in its own codebase, why a self-growing knowledge graph had the right answers all along, why new capabilities always introduce new attack surface, and how divergence between the Brain and live analysis reveals genuinely novel architectures:
 
 | # | Title | What it covers |
 |---|---|---|
@@ -280,3 +283,4 @@ The full build story is on Medium — 21 published parts covering the pipeline, 
 | 19 | [Always Verify, Never Trust — Even Yourself: ThreatAssessor's Self-Assessment](https://medium.com/@breadtan/always-verify-never-trust-even-yourself-threatassessors-self-assessment-47aea99e229b) | Running /harden-audit on TA itself — 1 Critical confirmed, 7 findings fixed, 2 new DETECT rules grounded in own findings |
 | 20 | [The Wrong Ruler](https://medium.com/@breadtan/the-wrong-ruler-9b73117dbbbf) | Self-growing loop closed (Stage 8); brain-infer reveals 94% precision vs 0.09 calibration — the metric was measuring the wrong thing; 0.09→0.80 after fix |
 | 21 | [Capability Is Attack Surface](https://medium.com/@breadtan/capability-is-attack-surface-57476a1f8ae2) | Every new capability introduces new surface — 3 findings all in same-session code; fix becomes detection rule (DETECT-031); 31 rules, 6 Critical |
+| 22 | [Two Maps in the Jungle](https://medium.com/@breadtan/two-maps-in-the-jungle-6a26e2c24f20) | Divergence % between Brain predictions and live analysis as a novelty signal; teal = Workspace-only; what to do when the maps disagree |
