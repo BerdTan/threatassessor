@@ -245,22 +245,36 @@ def _breadth(moe: dict) -> dict:
 
 def _depth(moe: dict) -> dict:
     ev = moe.get("expert_validations", {})
-    return {name: round(ev.get(name, {}).get("original_score", 0) / 100 * 12, 1)
-            if ev.get(name, {}).get("original_score") is not None else None
-            for name in CRITIC_NAMES}
+    result = {name: round(ev.get(name, {}).get("original_score", 0) / 100 * 12, 1)
+              if ev.get(name, {}).get("original_score") is not None else None
+              for name in CRITIC_NAMES}
+    # ScrumMaster stores final_confidence (0-100) instead of expert_validations
+    sm_conf = (moe.get("scrum_master") or {}).get("final_confidence")
+    result["scrum_master"] = round(sm_conf / 100 * 12, 1) if sm_conf is not None else None
+    return result
 
 def _tokens(moe: dict) -> dict:
     pp = moe.get("pipeline_perf", {})
     cp = pp.get("critics", {})
+    per_critic = {name: {
+        "total":      cp.get(name, {}).get("llm_tokens", 0),
+        "prompt":     cp.get(name, {}).get("llm_prompt_tokens", 0),
+        "completion": cp.get(name, {}).get("llm_completion_tokens", 0),
+        "latency_s":  cp.get(name, {}).get("llm_latency_s", 0.0),
+        "model":      cp.get(name, {}).get("llm_model", ""),
+    } for name in CRITIC_NAMES}
+    # ScrumMaster token usage is stored under 'orchestrator' in pipeline_perf
+    orch = cp.get("orchestrator", {})
+    per_critic["scrum_master"] = {
+        "total":      orch.get("llm_tokens", 0),
+        "prompt":     orch.get("llm_prompt_tokens", 0),
+        "completion": orch.get("llm_completion_tokens", 0),
+        "latency_s":  orch.get("llm_latency_s", 0.0),
+        "model":      orch.get("llm_model", ""),
+    }
     return {
         "total_panel": pp.get("total_llm_tokens", 0),
-        "per_critic": {name: {
-            "total":      cp.get(name, {}).get("llm_tokens", 0),
-            "prompt":     cp.get(name, {}).get("llm_prompt_tokens", 0),
-            "completion": cp.get(name, {}).get("llm_completion_tokens", 0),
-            "latency_s":  cp.get(name, {}).get("llm_latency_s", 0.0),
-            "model":      cp.get(name, {}).get("llm_model", ""),
-        } for name in CRITIC_NAMES},
+        "per_critic": per_critic,
     }
 
 def _defensibility(dest_dir: Path) -> Optional[float]:

@@ -37,7 +37,7 @@ PANEL_AXES = [
     {"key": "depth_avg", "label": "Avg Depth",    "max": 12.0,  "ref": 10.0, "higher": True},
 ]
 
-CRITIC_NAMES = ["architect", "tester", "red_team", "purple_team", "blackhat"]
+CRITIC_NAMES = ["architect", "tester", "red_team", "purple_team", "blackhat", "scrum_master"]
 MAX_TOK_PER_CRITIC = 20_000
 MAX_TOK_PANEL      = 150_000
 MAX_LAT_S          = 200.0
@@ -383,12 +383,9 @@ body {
   border-left: 1px solid var(--border);
 }
 .critics-grid .critic-col:nth-child(4),
-.critics-grid .critic-col:nth-child(5) {
+.critics-grid .critic-col:nth-child(5),
+.critics-grid .critic-col:nth-child(6) {
   border-top: 1px solid var(--border);
-}
-/* 5th card: span 1, leave 6th cell empty but keep border clean */
-.critics-grid .critic-col:last-child:nth-child(5) {
-  border-right: none;
 }
 
 /* Panel column */
@@ -822,6 +819,7 @@ const CRITIC_ROLES = {
   red_team:     'Adversarial attack paths',
   purple_team:  'Defence-attack parity',
   blackhat:     'Novel exploitation vectors',
+  scrum_master: 'Synthesises critics → sprint plan',
 };
 
 // ── Improvement hints per critic × score band ─────────────────────────────────
@@ -853,6 +851,11 @@ function _improveHint(critic, score) {
       [8,  'Explore supply chain + insider threat scenarios'],
       [0,  'Novel vectors missing — add unconventional attack paths'],
     ],
+    scrum_master: [
+      [10, 'Tighten sprint ordering + add acceptance criteria per item'],
+      [8,  'Raise high-priority action item ratio + sharpen timelines'],
+      [0,  'Plan lacks prioritisation — add impact-effort ranking'],
+    ],
   };
   const bands = hints[critic] || [];
   for (const [threshold, msg] of bands) {
@@ -866,7 +869,7 @@ function computeVerdict() {
   const models = DATA.models;
   const archs  = DATA.archs;
   const m0 = models[0], m1 = models[1];
-  const CRITICS = ['architect','tester','red_team','purple_team','blackhat'];
+  const CRITICS = ['architect','tester','red_team','purple_team','blackhat','scrum_master'];
   const REF_DEPTH = 11.0;
 
   // Aggregate panel scores across all archs
@@ -989,7 +992,7 @@ function toggleGlossary() {
 const models  = DATA.models;
 const archs   = DATA.archs;
 const m0 = models[0], m1 = models[1];
-const CRITIC_NAMES = ['architect','tester','red_team','purple_team','blackhat'];
+const CRITIC_NAMES = ['architect','tester','red_team','purple_team','blackhat','scrum_master'];
 
 // Header meta pills
 const metaCont = document.getElementById('header-meta');
