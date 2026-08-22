@@ -4,6 +4,54 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 49 — 2026-08-22
+
+**Session summary:** Bughunt + harden-audit across core pipeline files. 8 logic bugs fixed, 3 security findings patched. Entries 97–103 below.
+
+**Entry 97 — bench_critics.py: _set_model_env defined**
+`_set_model_env(model_alias)` was called but never defined — NameError crashed every multi-model bench run. Now implemented: no-op for `current` (keep .env), overrides all `AGENT_MODEL_*` vars for other aliases using `MODEL_ALIASES` map.
+
+**Entry 98 — bench_critics.py: unique_per_critic formula corrected**
+`ttps - (all_ttps - ttps)` is algebraically identical to `ttps` (the right-hand side is disjoint from `ttps`). Fixed to `ttps - union(per[o] for o != c)` — correctly counts techniques not found by any other critic.
+
+**Entry 99 — ta_brain_taco_processor.py: priority_score weighting restored**
+`(hit_count / max(hit_count, 1)) * (1 - bc)` always produced `(1 - bc)` regardless of demand. Changed to `hit_count * (1 - bc)` so high-demand + low-calibration patterns sort higher. Dead `samples` variable also removed from `apply_confirmation_boost`.
+
+**Entry 100 — ta_brain_taco_processor.py: gap IDs assigned after sort**
+IDs were assigned before `all_gaps.sort(...)`, so GAP-001 did not correspond to the highest-priority gap. Moved ID assignment after the sort.
+
+**Entry 101 — ta_brain_benchmarks.py: intra-loop dedup and counter fixed**
+Two bugs in `run_calibration`: (1) `existing_regions` only checked `brain.get("gaps", [])` — two patterns with the same arch_type both created forced gaps in the same pass. Fixed to union with `new_forced_gaps` being accumulated. (2) `forced_gaps_added` counted all matching forced gaps in updated_brain (pre-existing + new). Fixed to compute delta: count before `run_calibration` minus count after.
+
+**Entry 102 — rule_evaluator.py: no_critical returns True when field absent**
+`no_critical` operator returned `bool(value)` (the YAML threshold value) when `val` was not a list. This caused false positives or negatives depending on the threshold. Correct semantics: if the field is absent or not a list, there are no critical entries — return `True`.
+
+**Entry 103 — RT-01/02/03 security fixes in workspaces route**
+RT-01: `list_workspaces` was unauthenticated, exposing AIVSS scores and TTP lists to any caller. Added `Depends(verify_api_key)`. RT-02: `_validate_archs` and `_arch_metrics` joined `report_dir / arch_name` without sanitization; added `_sanitize_arch_name()` (Path.name + ".." check) matching the existing pattern in reports.py. RT-03: added `slowapi` rate limiter — 10/min on `/analyze-stream`, 3/min on `/jobs/expert-review`; shared instance in `chatbot/api/rate_limit.py`. RT-04 (injection pre-LLM) deferred — requires inverting governance-check/LLM-call order.
+
+---
+
+## Session 48 — 2026-08-22
+
+**Session summary:** Bench report and SM critic improvements; critic self-improvement loop skill. Entries 92–96 below.
+
+**Entry 92 — README sync**
+Synced README to session 47 state: 30 → 31 DETECT rules (5 places), bench framework added to component table and repo layout, Part 22 added to blog table, "21 published parts" → 22.
+
+**Entry 93 — ScrumMaster as 6th critic in bench grid**
+Added SM to the 3×2 bench report grid (fills bottom-right slot). `_depth()` maps SM via `final_confidence`; `_tokens()` maps SM via `pipeline_perf.critics.orchestrator`. CSS nth-child rules updated for 6-card grid with no empty cell.
+
+**Entry 94 — SM bench score: quality composite**
+Replaced SM score (inherited MoE `final_confidence`) with a quality composite: coverage (50%) + tier-breadth (25%) + first_step completeness (25%), all on /12 scale. `_sm_quality_score()` reads `08_scrum_master.json`. Score on existing data: 6.0 → 7.8/12.
+
+**Entry 95 — SM harmony-failure fix**
+On harmony check failure, SM now calls `_formulate_proposals()` on resolvable impediments before exiting, then passes them into `_build_action_plan()` which appends them as immediate-tier actions alongside the structural redesign recs. Previously 14 of 20 impediments were silently dropped.
+
+**Entry 96 — critic-improve-loop skill**
+New skill: `.claude/skills/critic-improve-loop/`. Orchestrates the critic self-improvement flywheel: score all 6 critics → prioritise by gap → critic-gym for prompt lever → re-bench with keep/revert gate (≥0.5/12) → brain-ingest. SM branches on lever type: `code⚠` when coverage < 0.6 (harmony issue, not a prompt fix), `prompt` when completeness/breadth is the gap. Driver: `critic_improve_loop.py --score-only / --compare / --sm-lever`.
+
+---
+
 ## Session 47 — 2026-08-22
 
 **Session summary:** Bench framework debugging and report layout overhaul. Root-caused tester/purple_team/blackhat low scores to Hetzner thinking-model max_tokens starvation (4000 → 8000 fix). Implemented two-model bench infrastructure (critic_model broadcast via API). Bench report redesigned: 3×2 critic card grid (no horizontal scroll), collapsible arch sections, per-critic improvement hints keyed to score band. Cleaned up 9 incomplete bench runs; bench_results/ added to .gitignore. Entries 88–91 below.
