@@ -30,3 +30,6 @@ langfuse>=3.0.0  # optional — LangfuseSink no-op if not installed
 
 # MCP server (Claude Desktop + external agent transport)
 mcp>=1.0.0
+
+# Rate limiting
+slowapi>=0.1.9

@@ -126,9 +126,6 @@ def apply_confirmation_boost(
 
     # Find calibration entry for this pattern
     pid = pattern["id"]
-    brier_entry = benchmarks.get("brier_scores", {}).get(pid, {})
-    samples = brier_entry.get("samples_used", 0)
-
     current_bc = pattern.get("benchmark_confidence", 1.0)
 
     # Boost proportional to confirmation count, diminishing returns
@@ -184,9 +181,7 @@ def compute_calibration_priority(
             if bc < CALIB_PRIORITY_CONF_THRESHOLD:
                 reasons.append(f"benchmark_confidence={bc:.2f} < {CALIB_PRIORITY_CONF_THRESHOLD}")
 
-            priority_score = round(
-                (hit_count / max(hit_count, 1)) * (1.0 - bc), 4
-            )
+            priority_score = round(hit_count * (1.0 - bc), 4)
             priorities.append({
                 "pattern_id": pid,
                 "arch_type": arch_type,
@@ -278,9 +273,9 @@ def run_taco_processor(
 
     # Re-ID to avoid collisions
     all_gaps = fresh_gaps + forced_existing
+    all_gaps.sort(key=lambda g: (not g.get("forced_gap", False), -g["priority"]))
     for i, g in enumerate(all_gaps, start=1):
         g["id"] = f"GAP-{i:03d}"
-    all_gaps.sort(key=lambda g: (not g.get("forced_gap", False), -g["priority"]))
     brain_decayed["gaps"] = all_gaps
 
     # ── Step 5: Calibration priority heatmap ──────────────────────────────────

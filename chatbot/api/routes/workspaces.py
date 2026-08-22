@@ -51,8 +51,18 @@ def _save(workspaces: List[Dict]) -> None:
     p.write_text(json.dumps(workspaces, indent=2), encoding="utf-8")
 
 
+def _sanitize_arch_name(n: str) -> str:
+    """Raise 400 if arch name contains path traversal characters."""
+    safe = Path(n).name
+    if safe != n or ".." in n:
+        raise HTTPException(status_code=400, detail=f"Invalid architecture name: {n!r}")
+    return n
+
+
 def _validate_archs(names: List[str]) -> None:
-    """Raise 400 if any architecture name does not exist as a report directory."""
+    """Raise 400 if any architecture name is invalid or does not exist as a report directory."""
+    for n in names:
+        _sanitize_arch_name(n)
     report_dir = _get_report_dir()
     unknown = [n for n in names if not (report_dir / n).is_dir()]
     if unknown:
@@ -64,6 +74,7 @@ def _validate_archs(names: List[str]) -> None:
 
 def _arch_metrics(arch_name: str) -> Dict[str, Any]:
     """Return lightweight metrics for one architecture (fast path — minimal reads)."""
+    _sanitize_arch_name(arch_name)
     report_dir = _get_report_dir()
     gt_path  = report_dir / arch_name / "ground_truth.json"
     gov_path = report_dir / arch_name / "governance_signals.json"
@@ -147,11 +158,10 @@ def _aggregate(member_metrics: List[Dict]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 @router.get("")
-async def list_workspaces() -> Dict:
-    """List all workspaces with per-member metrics and aggregate heat scores.
-
-    No auth required — read-only, no secrets exposed.
-    """
+async def list_workspaces(
+    _: str = Depends(verify_api_key),
+) -> Dict:
+    """List all workspaces with per-member metrics and aggregate heat scores."""
     workspaces = _load()
     result = []
     for ws in workspaces:

@@ -10,7 +10,8 @@ import tempfile
 import asyncio
 import concurrent.futures
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status, Query
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Request, status, Query
+from chatbot.api.rate_limit import limiter
 from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator, Optional
 
@@ -342,7 +343,9 @@ async def analyze_with_progress(
 
 
 @router.post("/analyze-stream")
+@limiter.limit("10/minute")
 async def analyze_architecture_stream(
+    request: Request,
     architecture_file: Optional[UploadFile] = File(
         None,
         description="Mermaid diagram file (.mmd format, max 10MB)"

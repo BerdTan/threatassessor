@@ -132,7 +132,7 @@ def _eval_condition(signals: Dict, condition: Dict) -> bool:
         # no_critical: per_threat list has no entry with severity CRITICAL
         if op == "no_critical":
             if not isinstance(val, list):
-                return bool(value)  # empty list → no critical → true
+                return True  # field absent or wrong type → no list → no critical entries
             has_critical = any(
                 (t.get("severity") or "").upper() == "CRITICAL"
                 for t in val

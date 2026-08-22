@@ -95,6 +95,18 @@ MODEL_ALIASES = {
     "hetzner":         "openai/Qwen/Qwen3.6-35B-A3B-FP8",
 }
 
+# ── Model env override ────────────────────────────────────────────────────────
+
+def _set_model_env(model_alias: str) -> None:
+    """Override all AGENT_MODEL_* env vars for the given alias. No-op for 'current'."""
+    model_value = MODEL_ALIASES.get(model_alias)
+    if model_value is None:
+        return  # "current" — keep .env defaults unchanged
+    for key in list(os.environ.keys()):
+        if key.startswith("AGENT_MODEL_"):
+            os.environ[key] = model_value
+
+
 # ── Corpus qualification ───────────────────────────────────────────────────────
 
 def _load_arch_meta(report_base: Path) -> list[dict]:
@@ -238,7 +250,10 @@ def _breadth(moe: dict) -> dict:
         for c in info.get("critics", []):
             per[c].add(tid)
     all_ttps = set(ts.keys())
-    unique_per = {c: len(ttps - (all_ttps - ttps)) for c, ttps in per.items()}
+    unique_per = {}
+    for c, ttps in per.items():
+        others = set().union(*(per[o] for o in per if o != c))
+        unique_per[c] = len(ttps - others)
     return {"total_union": len(all_ttps),
             "per_critic": {c: len(v) for c, v in per.items()},
             "unique_per_critic": unique_per}

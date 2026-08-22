@@ -11,10 +11,11 @@ import tempfile
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from chatbot.api.dependencies import verify_api_key
+from chatbot.api.rate_limit import limiter
 from chatbot.api.job_store import get_job_store
 from chatbot.config import get_settings
 
@@ -37,7 +38,8 @@ class ExpertReviewRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.post("/jobs/expert-review", dependencies=[Depends(verify_api_key)])
-async def submit_expert_review(body: ExpertReviewRequest):
+@limiter.limit("3/minute")
+async def submit_expert_review(request: Request, body: ExpertReviewRequest):
     """Queue a FULL_MOE expert review for an existing architecture.
 
     Returns immediately with a job_id. Poll GET /api/v1/jobs/{job_id}/status

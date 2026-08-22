@@ -334,8 +334,11 @@ def run_calibration(
             }
             divergences.append(divergence)
 
-            # Create forced gap if not already in brain.gaps
-            existing_regions = {g["region"] for g in brain.get("gaps", [])}
+            # Create forced gap if not already in brain.gaps or accumulated this run
+            existing_regions = (
+                {g["region"] for g in brain.get("gaps", [])}
+                | {g["region"] for g in new_forced_gaps}
+            )
             region = f"arch_type:{arch_type}"
             if region not in existing_regions:
                 # Prefer framework gaps; fall back to pattern's common_missing_controls
@@ -469,6 +472,11 @@ def save_calibration(
         except Exception:
             pass
 
+    forced_gaps_before = len([
+        g for g in brain.get("gaps", [])
+        if g.get("forced_gap") and g.get("type") == "benchmark_divergence"
+    ])
+
     updated_brain, benchmarks = run_calibration(
         brain, hold_out_instances, report_dir, existing
     )
@@ -497,8 +505,10 @@ def save_calibration(
         "patterns_uncalibrated": len(updated_brain["patterns"]) - patterns_calibrated,
         "avg_brier_combined": avg_brier,
         "divergences": len(benchmarks["divergences"]),
-        "forced_gaps_added": len([g for g in updated_brain.get("gaps", [])
-                                  if g.get("forced_gap") and g.get("type") == "benchmark_divergence"]),
+        "forced_gaps_added": len([
+            g for g in updated_brain.get("gaps", [])
+            if g.get("forced_gap") and g.get("type") == "benchmark_divergence"
+        ]) - forced_gaps_before,
         "hold_out_instances": len(hold_out_instances),
         "calibrated_ts": benchmarks["calibrated_ts"],
     }

@@ -141,6 +141,13 @@ API key required via `TM-API-KEY` header.
         allow_headers=["TM-API-KEY", "Content-Type"],
     )
 
+    # Rate limiting — mount shared limiter on app state so slowapi can track counts
+    from slowapi import _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from chatbot.api.rate_limit import limiter
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
     # Health check endpoint (no authentication required)
     @app.get(
         "/health",
