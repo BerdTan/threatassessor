@@ -243,14 +243,40 @@ def _breadth(moe: dict) -> dict:
             "per_critic": {c: len(v) for c, v in per.items()},
             "unique_per_critic": unique_per}
 
-def _depth(moe: dict) -> dict:
+def _sm_quality_score(sm_report: dict) -> Optional[float]:
+    """Quality composite for ScrumMaster on /12 scale.
+
+    Measures actual plan output rather than inherited MoE confidence:
+      - Coverage  (50%): action items as fraction of impediments found
+      - Breadth   (25%): structural + immediate tiers both present
+      - Completeness (25%): fraction of items with first_step filled in
+    """
+    ap   = sm_report.get("action_plan", [])
+    imps = sm_report.get("impediments_found", [])
+    if not ap:
+        return 0.0
+    n_imp = max(1, len(imps))
+    coverage     = min(1.0, len(ap) / n_imp)
+    tiers        = {(a.get("tier") or "").lower() for a in ap}
+    breadth      = 1.0 if ("structural" in tiers and "immediate" in tiers) else 0.5
+    first_steps  = sum(1 for a in ap if a.get("first_step", "").strip())
+    completeness = first_steps / len(ap)
+    raw = (coverage * 0.50 + breadth * 0.25 + completeness * 0.25) * 12
+    return round(raw, 1)
+
+
+def _depth(moe: dict, sm_report: Optional[dict] = None) -> dict:
     ev = moe.get("expert_validations", {})
     result = {name: round(ev.get(name, {}).get("original_score", 0) / 100 * 12, 1)
               if ev.get(name, {}).get("original_score") is not None else None
               for name in CRITIC_NAMES}
-    # ScrumMaster stores final_confidence (0-100) instead of expert_validations
-    sm_conf = (moe.get("scrum_master") or {}).get("final_confidence")
-    result["scrum_master"] = round(sm_conf / 100 * 12, 1) if sm_conf is not None else None
+    # ScrumMaster: use quality composite when the full SM report is available;
+    # fall back to inherited final_confidence for backwards compatibility.
+    if sm_report:
+        result["scrum_master"] = _sm_quality_score(sm_report)
+    else:
+        sm_conf = (moe.get("scrum_master") or {}).get("final_confidence")
+        result["scrum_master"] = round(sm_conf / 100 * 12, 1) if sm_conf is not None else None
     return result
 
 def _tokens(moe: dict) -> dict:
@@ -470,12 +496,15 @@ def run_single(api_url: str, arch: str, model_alias: str,
     gt_path = report_base / arch / "ground_truth.json"
     gt = json.loads(gt_path.read_text()) if gt_path.exists() else {}
 
+    sm_path = report_base / arch / "08_scrum_master.json"
+    sm_report = json.loads(sm_path.read_text()) if sm_path.exists() else None
+
     ttp  = _score_ttp(moe)
     plan = _score_plan(moe)
     result = {
         "arch": arch, "model": model_alias,
         "elapsed_s": round(elapsed, 1),
-        "depth":       _depth(moe),
+        "depth":       _depth(moe, sm_report),
         "breadth":     _breadth(moe),
         "tokens":      _tokens(moe),
         "tatb":        {"ttp": ttp, "plan": plan, "overall": _score_overall(ttp, plan)},

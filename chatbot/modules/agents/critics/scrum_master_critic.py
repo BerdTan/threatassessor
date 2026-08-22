@@ -300,7 +300,10 @@ class ScrumMasterCritic:
         if not harmony_ok:
             logger.info("ScrumMaster: harmony check failed — redesign_signal=True")
             baseline_fb = self._build_baseline_feedback(current_result, ground_truth, impediments, report_dir)
-            action_plan = self._build_action_plan(current_result, [], redesign_signal=True, ground_truth=ground_truth)
+            # Still formulate proposals for resolvable impediments — redesign doesn't mean abandon them
+            impediments = self._formulate_proposals(impediments, ground_truth)
+            resolved_on_redesign = [i for i in impediments if i.resolvable and i.proposed_resolution]
+            action_plan = self._build_action_plan(current_result, resolved_on_redesign, redesign_signal=True, ground_truth=ground_truth)
             self._perf_acc["wall_clock_s"] = round(_time.time() - _run_start, 3)
             return ScrumMasterResult(
                 architecture_name=arch_name,
@@ -310,7 +313,7 @@ class ScrumMasterCritic:
                 iterations_run=0,
                 redesign_signal=True,
                 impediments_found=all_impediments,
-                impediments_resolved=[],
+                impediments_resolved=resolved_on_redesign,
                 action_plan=action_plan,
                 blindspots_surfaced=self._extract_blindspots(current_result),
                 critics_retriggered=[],
@@ -756,6 +759,20 @@ class ScrumMasterCritic:
                         })
                 _PRIO_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
                 recs.sort(key=lambda x: _PRIO_ORDER.get((x.get("priority") or "low").lower(), 3))
+            # Also surface resolvable impediments as immediate actions alongside structural redesign items
+            for imp in resolved_impediments:
+                if imp.proposed_resolution:
+                    recs.append({
+                        "action": imp.proposed_resolution,
+                        "rationale": f"Resolvable while redesign is underway: {imp.description}",
+                        "first_step": f"Apply immediately — does not require architectural redesign.",
+                        "priority": imp.severity.lower() if imp.severity else "medium",
+                        "effort": "days",
+                        "risk_reduction_estimate": "medium",
+                        "tier": "immediate",
+                        "confidence_gain": 1.0,
+                        "is_antipattern": False,
+                    })
             return recs
 
         # ── Source material ───────────────────────────────────────────────────

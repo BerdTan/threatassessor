@@ -852,9 +852,9 @@ function _improveHint(critic, score) {
       [0,  'Novel vectors missing — add unconventional attack paths'],
     ],
     scrum_master: [
-      [10, 'Tighten sprint ordering + add acceptance criteria per item'],
-      [8,  'Raise high-priority action item ratio + sharpen timelines'],
-      [0,  'Plan lacks prioritisation — add impact-effort ranking'],
+      [10, 'Tighten first_step specificity + add acceptance criteria'],
+      [8,  'Ensure both structural + immediate tiers are present in the plan'],
+      [0,  'Action plan coverage low — more impediments need plan items'],
     ],
   };
   const bands = hints[critic] || [];
