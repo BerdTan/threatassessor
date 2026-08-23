@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
-**Version:** 2.6  
-**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (31 rules) + Harness v2 + MCP server (16 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (233 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised.  
+**Version:** 2.7  
+**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (31 rules) + Harness v2 + MCP server (16 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (233 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised + N-model bench (up to 3) + /no_think tester fix + foreign-provider config bypass fixed.  
 **Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 31 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG
 
 ---
@@ -169,7 +169,7 @@ tail -f logs/api.log            # logs
 /aivss-gate
 
 # ── SOC detection ────────────────────────────────────────────────────────────
-# Regression suite (28 rules, 29 scenarios, 289 tests)
+# Regression suite (31 rules, 32 scenarios, 355 tests)
 python3 .claude/skills/check-detect/scripts/check-detect.py
 python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 
@@ -240,4 +240,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-08-15
+**Last Updated:** 2026-08-23
