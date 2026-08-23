@@ -378,7 +378,7 @@ class PurpleTeamerCritic(CriticAgent):
             system_message=self.system_prompt,
             model=self.model,
             temperature=0.3,
-            max_tokens=3500,
+            max_tokens=8000,  # thinking models (Qwen3) use ~4k on reasoning before JSON
         )
         _wall_elapsed = _t.time() - _wall_start
 

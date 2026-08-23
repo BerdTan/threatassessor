@@ -58,6 +58,7 @@ class PipelineRequest:
     architecture_name:    str  = ""
     run_id:               str  = ""   # auto-generated if empty
     metadata:             dict = field(default_factory=dict)
+    agent_models:         Optional[Dict[str, str]] = None  # per-critic model overrides
 
 
 @dataclass
@@ -583,6 +584,11 @@ class ThreatAssessorHarness:
 
         # Instantiate the model guardian — single owner of all per-agent ModelRouters
         guardian = HarnessModelGuardian()
+        # Apply per-job model overrides (e.g. from two-model bench runs)
+        _model_overrides: Dict[str, str] = ctx.get("agent_models") or {}
+        for _agent, _model in _model_overrides.items():
+            if _agent in guardian._routers:
+                guardian._routers[_agent] = ModelRouter(primary=_model, agent_name=_agent)
         ctx["_model_guardian"] = guardian
         ctx.setdefault("model_fallbacks", [])
 
@@ -661,7 +667,6 @@ class ThreatAssessorHarness:
                         if guardian and decision.model_overrides:
                             for agent, model in decision.model_overrides.items():
                                 if hasattr(guardian, "_routers") and agent in guardian._routers:
-                                    from chatbot.harness.controller import ModelRouter
                                     guardian._routers[agent] = ModelRouter(
                                         model, [], agent_name=agent
                                     )
@@ -790,6 +795,7 @@ class ThreatAssessorHarness:
             critic_mode         = request.critic_mode,
             run_blackhat        = request.run_blackhat,
             architecture_name   = request.architecture_name or "",
+            agent_models        = request.agent_models or {},
             **(request.metadata or {}),
         )
 

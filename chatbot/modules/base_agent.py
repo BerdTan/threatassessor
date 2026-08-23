@@ -119,33 +119,49 @@ class BaseAgent(ABC):
                 content = str(response)
                 logger.debug(f"{self.role}: Converted response to string (length: {len(content)})")
 
-            # Find JSON block (markdown first, then raw)
+            # Find and parse JSON block. Try strategies in order; fall through on parse failure.
+            # Thinking models (e.g. Qwen3) prepend reasoning prose that may contain backticks
+            # or stray braces — so code-block detection is tried first but is not authoritative.
+            parsed = None
+
             if '```json' in content:
-                # Markdown code block: ```json { ... } ```
-                json_str = content.split('```json')[1].split('```')[0].strip()
-                logger.debug(f"{self.role}: Found ```json block (length: {len(json_str)})")
-            elif '```' in content and '{' in content:
-                # Generic code block: ``` { ... } ```
+                try:
+                    json_str = content.split('```json')[1].split('```')[0].strip()
+                    parsed = json.loads(json_str)
+                    logger.debug(f"{self.role}: Parsed via ```json block")
+                except (json.JSONDecodeError, ValueError):
+                    pass  # fall through to raw scan
+
+            if parsed is None and '```' in content and '{' in content:
                 parts = content.split('```')
                 for part in parts:
                     if '{' in part and '}' in part:
-                        json_str = part.strip()
-                        logger.debug(f"{self.role}: Found generic ``` block (length: {len(json_str)})")
-                        break
-                else:
-                    raise ValueError("No JSON in code blocks")
-            elif '{' in content and '}' in content:
-                # Raw JSON (no code block)
-                start = content.index('{')
+                        try:
+                            parsed = json.loads(part.strip())
+                            logger.debug(f"{self.role}: Parsed via generic ``` block")
+                            break
+                        except (json.JSONDecodeError, ValueError):
+                            continue
+
+            if parsed is None and '{' in content and '}' in content:
+                # Scan all '{' positions left-to-right against the last '}' (outermost end).
+                # Thinking-model preambles may contain stray '{' before the actual JSON object;
+                # those candidates fail to parse and we advance to the next '{' until we hit
+                # the real JSON start. Left-to-right preserves the outermost-object preference
+                # (a nested '{' parsed right-to-left would miss surrounding structure).
                 end = content.rindex('}') + 1
-                json_str = content[start:end]
-                logger.debug(f"{self.role}: Found raw JSON (length: {len(json_str)})")
-            else:
-                logger.warning(f"{self.role}: No JSON found in response")
+                for start in (i for i, c in enumerate(content[:end]) if c == '{'):
+                    try:
+                        parsed = json.loads(content[start:end])
+                        logger.debug(f"{self.role}: Parsed raw JSON at offset {start}")
+                        break
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+
+            if parsed is None:
+                logger.warning(f"{self.role}: No valid JSON found in response")
                 return {}
 
-            # Parse JSON
-            parsed = json.loads(json_str)
             logger.info(f"{self.role}: Successfully parsed JSON with keys: {list(parsed.keys())}")
             return parsed
 
