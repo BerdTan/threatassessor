@@ -57,7 +57,7 @@ flowchart TD
 | **Analysis engine** | Deterministic threat mapping — RAPIDS + MITRE ATT&CK embeddings | `chatbot/modules/ground_truth_generator.py` |
 | **MoE critics** | 5-critic panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster | `chatbot/modules/agents/critics/` |
 | **SOC detection layer** | 31 DETECT rules → OCSF DetectionFinding 2004 events per run | `policies/soc_detection_rules.yaml` |
-| **Model benchmark** | Two-model side-by-side critic evaluation; 3×2 HTML radar report with per-critic improvement hints | `scripts/bench_critics.py`, `scripts/bench_report.py` |
+| **Model benchmark** | N-model (up to 3) side-by-side critic evaluation; colour-coded HTML radar report with per-critic improvement hints and cross-model gap detection | `scripts/bench_critics.py`, `scripts/bench_report.py` |
 | **TA Brain** | Persistent knowledge graph distilled from corpus; Stages 1–8 (Gap→MMD closes the self-growing loop); TACO query surface + CLI skills | `chatbot/modules/ta_brain_*.py` |
 | **AIVSS v4** | Three-flow safety scoring: inbound / internal / outbound | `chatbot/harness/stages.py` |
 | **MCP server** | 16 tools exposing TA capabilities to Claude Desktop and external agents | `mcp_server/` |
