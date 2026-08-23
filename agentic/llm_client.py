@@ -312,6 +312,55 @@ class LLMClient:
         else:
             config = self._get_config(provider)
 
+        # When the caller passes an explicit model whose prefix belongs to a different
+        # provider (e.g. "gemini/..." while primary is hetzner), bypass the primary
+        # provider config so its api_base/api_key don't leak into the call.
+        # Prefix list is derived from PROVIDER_MANIFEST so adding a new provider here
+        # only requires editing agentic/providers.py.
+        from agentic.providers import PROVIDER_MANIFEST as _PM2, infer_provider_from_model
+        _primary_prefix = _PM2.get(provider.value, {}).get("model_prefix", "")
+        _foreign_prefixes = [
+            m["model_prefix"] for m in _PM2.values()
+            if m.get("model_prefix") and m["model_prefix"] != _primary_prefix
+        ]
+        if model and any(model.startswith(p) for p in _foreign_prefixes):
+            # Load the correct provider config for this foreign model so its api_base/api_key
+            # are used instead of the primary provider's (which would override LiteLLM routing).
+            _foreign_prov_str = infer_provider_from_model(model)
+            try:
+                _foreign_lp = LLMProvider(_foreign_prov_str) if _foreign_prov_str else None
+            except ValueError:
+                _foreign_lp = None
+            _foreign_config = (
+                ProviderConfig.from_env(_foreign_lp)
+                if _foreign_lp and _foreign_lp != provider
+                else ProviderConfig(provider=provider)
+            )
+            start_time = time.time()
+            _raw = self._call_litellm(messages=[
+                *([{"role": "system", "content": system_message}] if system_message else []),
+                {"role": "user", "content": prompt},
+            ], model=model, config=_foreign_config,
+               temperature=temperature, max_tokens=max_tokens)
+            latency = time.time() - start_time
+            _content = _raw.choices[0].message.content
+            if _content is None:
+                _msg = _raw.choices[0].message
+                _content = getattr(_msg, 'reasoning_content', None) or getattr(_msg, 'reasoning', None) or ""
+            _usage = _raw.usage if hasattr(_raw, 'usage') else None
+            _tokens = _usage.total_tokens if _usage else 0
+            return LLMResponse(
+                content=_content,
+                provider=provider,
+                model=model,
+                tokens_used=_tokens,
+                prompt_tokens=getattr(_usage, 'prompt_tokens', 0) if _usage else 0,
+                completion_tokens=getattr(_usage, 'completion_tokens', 0) if _usage else 0,
+                cost_usd=0.0,
+                latency_seconds=latency,
+                metadata={"response": _raw},
+            )
+
         # Determine model(s) to try
         # Special case: OpenRouter free tier has model-level fallback
         if provider == LLMProvider.OPENROUTER and model is None:

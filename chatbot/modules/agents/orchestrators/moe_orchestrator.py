@@ -1716,6 +1716,7 @@ RULES:
                 system_message=_ORCHESTRATOR_SYSTEM,
                 temperature=_synth_cfg.temperature_synthesis,
                 max_tokens=_synth_cfg.max_tokens_synthesis,
+                model=self.model or None,
             )
 
             # Accumulate perf for this synthesis call
@@ -1913,6 +1914,7 @@ Reply with only the JSON array, no other text.
                 system_message="You are a rigorous security assessment quality reviewer. Return only valid JSON.",
                 temperature=_refl_temp,
                 max_tokens=2000,
+                model=self.model or None,
             )
 
             # Accumulate perf for this reflection call

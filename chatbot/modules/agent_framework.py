@@ -106,12 +106,14 @@ class CriticAgent(BaseAgent):
         rubric: Dict,
         system_prompt: str,
         tools: Optional[List[AgentTool]] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        no_think: bool = False,
     ):
         super().__init__(role=role, model=model)
         self.rubric = rubric
         self.system_prompt = system_prompt
         self.tools = tools or []
+        self.no_think = no_think  # append /no_think for Qwen when critic needs no reasoning
 
         logger.info(f"Initialized {role} critic agent with {len(self.tools)} tools")
 
@@ -167,13 +169,25 @@ class CriticAgent(BaseAgent):
             )
             try:
                 logger.info(f"{self.role}: Calling LLM (attempt {_attempt+1}/{_MAX_RETRIES+1}, model={self.model})")
+                # no_think=True critics (tester) suppress reasoning to avoid budget starvation.
+                # Qwen3: /no_think instruction; other thinking models: tighter max_tokens cap.
+                _model_lower = (self.model or "").lower()
+                _is_qwen = "qwen" in _model_lower
+                _sys = (
+                    self.system_prompt + "\n/no_think"
+                    if self.no_think and _is_qwen
+                    else self.system_prompt
+                )
+                # For non-Qwen thinking models with no_think, cap tokens so reasoning + JSON fits.
+                # 4000 leaves ~2k for thinking + 2k for JSON output on lightning/nemotron.
+                _max_tok = 4000 if (self.no_think and not _is_qwen) else 8000
                 response = self.llm_client.generate(
                     prompt=_retry_prefix + prompt,
-                    system_message=self.system_prompt,
+                    system_message=_sys,
                     model=self.model,  # None = use .env config
                     # tools=tool_schemas,  # Disabled for MVP1
                     temperature=0.3,  # Lower for consistent scoring
-                    max_tokens=8000  # Hetzner thinking models use ~4k on reasoning + need 4k for JSON
+                    max_tokens=_max_tok,
                 )
                 _llm_calls             += 1
                 _llm_tokens            += getattr(response, 'tokens_used',       0)   or 0

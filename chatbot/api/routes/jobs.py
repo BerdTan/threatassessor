@@ -177,8 +177,11 @@ async def _run_expert_review(
             BlockedPipelineError,
         )
 
-        # Broadcast a single model to all critics when override is set
-        _critic_names = ["architect", "tester", "red_team", "purple_team", "blackhat", "scrum_master"]
+        # Broadcast a single model to all critics + orchestrator synthesis when override is set
+        _critic_names = [
+            "architect", "tester", "red_team", "purple_team", "blackhat",
+            "scrum_master", "moe_orchestrator",
+        ]
         _agent_models = {c: critic_model for c in _critic_names} if critic_model else None
 
         request = PipelineRequest(

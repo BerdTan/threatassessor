@@ -1,57 +1,13 @@
 # ThreatAssessor — operator settings
 #
-# This file is committed to the repo and documents the current provider and
-# embedding configuration. It is loaded between the Python defaults and
-# user_config.json (which is gitignored and holds personal overrides).
+# Load order: Python defaults → this file → user_config.json (gitignored, personal overrides)
 #
-# Load order: AppSettings Python defaults → settings.yaml (this file) → user_config.json
-#
-# To activate a new provider, uncomment its block and set the corresponding
-# environment variable. No Python code changes required.
+# LLM provider and model selection is driven by agentic/providers.py (PROVIDER_MANIFEST).
+# Set LLM_PROVIDER in .env to switch all agents between providers in one place.
+# ${VAR} placeholders are resolved from environment at startup; unset vars become "".
 
 # ---------------------------------------------------------------------------
-# LLM provider registry
-# ---------------------------------------------------------------------------
-providers:
-  providers:
-    openrouter:
-      base_url: "https://openrouter.ai/api/v1"
-      api_key_env: "OPENROUTER_API_KEY"
-      auth_type: "bearer"
-
-    bedrock:
-      base_url: ""
-      api_key_env: null
-      auth_type: "sigv4"
-
-    # ── Uncomment to activate ────────────────────────────────────────────────
-    # doubleword:
-    #   base_url: "https://api.doubleword.ai/v1"
-    #   api_key_env: "DOUBLEWORD_API_KEY"
-    #   auth_type: "bearer"
-
-    # sakana:
-    #   base_url: "https://api.sakana.ai/v1"
-    #   api_key_env: "SAKANA_API_KEY"
-    #   auth_type: "bearer"
-
-    # ollama:
-    #   base_url: "http://localhost:11434/v1"
-    #   api_key_env: null
-    #   auth_type: "none"
-
-    # vllm_local:
-    #   base_url: "http://localhost:8000/v1"
-    #   api_key_env: null
-    #   auth_type: "none"
-
-    # vllm_cloud:
-    #   base_url: "https://your-vllm-endpoint/v1"
-    #   api_key_env: "VLLM_API_KEY"
-    #   auth_type: "bearer"
-
-# ---------------------------------------------------------------------------
-# Embedding model (used by MITRE technique similarity search)
+# Embedding model (MITRE technique similarity search)
 # ---------------------------------------------------------------------------
 embedding:
   provider: "openrouter"
@@ -59,15 +15,12 @@ embedding:
   dimensions: 2048
 
 # ---------------------------------------------------------------------------
-# Per-agent model assignments (HarnessModelGuardian is the sole broker)
+# Per-agent model overrides (HarnessModelGuardian is the sole broker)
 #
-# Model strings are resolved from env vars at startup — no secrets here.
-# If an env var is unset the slot is empty and Guardian falls through to the
-# primary provider default (LLM_PROVIDER + BEDROCK_MODEL from .env).
-#
-# Example .env entries:
-#   AGENT_MODEL_ARCHITECT=bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
-#   AGENT_MODEL_TA_WIZ=bedrock/us.anthropic.claude-haiku-4-20250514-v1:0
+# Default (env var unset): agent inherits LLM_PROVIDER's manifest default.
+# Override per-agent by setting the env var — useful for mixed-model experiments
+# (e.g. architect on hetzner, blackhat on gemini) or cross-model benchmarking.
+# All agents in a bench batch use the same model via PipelineRequest.agent_models.
 # ---------------------------------------------------------------------------
 agent_models:
   architect:        {model: "${AGENT_MODEL_ARCHITECT}"}
@@ -78,9 +31,9 @@ agent_models:
   scrum_master:     {model: "${AGENT_MODEL_SCRUM_MASTER}"}
   moe_orchestrator: {model: "${AGENT_MODEL_MOE}"}
   threat_analyst:   {model: "${AGENT_MODEL_THREAT_ANALYST}"}
-  tatb_labeller:    {model: "${AGENT_MODEL_TATB_LABELLER}", fallbacks: ["${AGENT_MODEL_TATB_LABELLER_FALLBACK}"]}
   ta_wiz:           {model: "${AGENT_MODEL_TA_WIZ}"}
-
+  event_detector:   {model: "${AGENT_MODEL_EVENT_DETECTOR}"}
+  tatb_labeller:    {model: "${AGENT_MODEL_TATB_LABELLER}", fallbacks: ["${AGENT_MODEL_TATB_LABELLER_FALLBACK}"]}
 
 # ---------------------------------------------------------------------------
 # TACO companion agent
@@ -92,11 +45,7 @@ taco:
   # critic_enabled gates TACOminiCritic registration.
   # Even when true, the critic only runs when force_critic=true in the request.
   critic_enabled: false
-  # Per-mini model overrides resolved from env vars at startup.
-  # brain, harness, rag are deterministic (no LLM calls) — model vars reserved.
-  # critic (Phase 4) is the first non-deterministic mini; defaults to free tier.
+  # critic is the only TACO mini that calls an LLM; set AGENT_MODEL_TACO_CRITIC to override.
+  # brain/harness/rag are deterministic — their model slots are reserved for future use.
   mini_models:
-    brain:   "${AGENT_MODEL_TACO_BRAIN}"
-    harness: "${AGENT_MODEL_TACO_HARNESS}"
-    rag:     "${AGENT_MODEL_TACO_RAG}"
-    critic:  "${AGENT_MODEL_TACO_CRITIC}"
+    critic: "${AGENT_MODEL_TACO_CRITIC}"

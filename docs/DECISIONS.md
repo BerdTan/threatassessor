@@ -4,6 +4,77 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 52 — 2026-08-23
+
+**Session summary:** TATB labeller → nemotron-3.5-lightning + ultra fallback. /no_think tester fix for Qwen3. Foreign-provider config bypass fixed (was leaking hetzner api_base to OR calls). OR free-tier daily limit hit (50 req/day). Bench settled on 2-model (gemini + hetzner). Bench cleanup.
+
+**Entry 112 — 2026-08-23: TATB labeller switched to nemotron-3.5-lightning:free**
+Decision: Replace `openrouter/google/gemini-flash-1.5:free` with `openrouter/nvidia/nemotron-3.5-lightning:free` as primary TATB labeller; fallback changed to `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`. Both confirmed free tier (0 cost), 1M context, clean JSON output.
+Reason: Keep TATB labeller on a different model family from pipeline (Qwen3) to avoid shared blind spots. Nvidia Nemotron family is independent from both Qwen (Hetzner pipeline) and Gemini (bench reference). Ultra (550B) as fallback gives depth when lightning rate-limits.
+Alternatives rejected: gemini-flash-1.5:free — OR free tier daily limit is shared, exhausts during bench runs.
+
+**Entry 113 — 2026-08-23: /no_think for Qwen3 tester critic**
+Decision: Add `no_think: bool = False` flag to `CriticAgent.__init__`. When `True` and model is Qwen3, append `\n/no_think` to system message. For non-Qwen thinking models, cap `max_tokens=4000` instead. Set `no_think=True` only on `TesterCritic` (validation-only — no reasoning needed).
+Reason: Qwen3's chain-of-thought fills the 8000-token completion budget before writing JSON, yielding 0.0 tester scores. `/no_think` suppresses the thinking pass entirely, recovering tester 0.0→10.8. Analysis critics (red_team, blackhat etc.) keep full reasoning for depth.
+Alternatives rejected: Global `/no_think` for all critics — tested and dropped red_team 10.2→6.0. Per-critic flag is the right scope.
+
+**Entry 114 — 2026-08-23: Foreign-provider config bypass fix in llm_client.py**
+Decision: When the foreign-prefix bypass fires (model prefix ≠ primary provider), infer the correct provider via `infer_provider_from_model()` and load its `ProviderConfig` instead of passing primary's config. Convert string → `LLMProvider` enum with try/except.
+Reason: `openrouter/nvidia/...` model was routing to Hetzner's endpoint because `config=ProviderConfig(provider=hetzner)` was passed, injecting Hetzner's `api_base` into LiteLLM's call and overriding OR routing. Bench showed same Qwen model regardless of `critic_model` override.
+
+**Entry 115 — 2026-08-23: OR free-tier thinking models not suitable for bench**
+Decision: Do not use OR free-tier thinking models (lightning, nano, GLM-5.2) as bench targets. Use non-thinking models only (Gemma-4, Llama-3.3-70B-instruct) if a 3rd column is needed.
+Reason: OpenRouter free thinking models: (a) `max_tokens` only caps non-thinking output, thinking budget is uncapped → tester always starves; (b) per-model slot limits (16/16 workers for nano) → parallel bench jobs exhaust instantly; (c) daily free-tier cap is 50 requests shared across all models → exhausted after 2 sequential benches.
+
+**Entry 116 — 2026-08-23: bench_critics.py --critic-mode flag added**
+Decision: Add `--critic-mode {partial_parallel,sequential,parallel,auto}` CLI flag (default: `partial_parallel`). Wire through `run_single()` → `_trigger_expert_review()` → `ExpertReviewRequest.critic_mode`.
+Reason: Rate-limited OR models need sequential mode to avoid exhausting per-model worker slots. Was previously hardcoded to `partial_parallel`.
+
+---
+
+## Session 51 — 2026-08-23
+
+**Session summary:** Provider registry unification + N-model bench report. Gemini wired as stable bench target; foreign-prefix detection moved to providers.py manifest; agent model defaults flow from LLM_PROVIDER instead of hardcoded env vars; bench report extended to N models with combine mode.
+
+**Entry 108 — 2026-08-23: Gemini added to PROVIDER_MANIFEST**
+Decision: Add `gemini` entry to `agentic/providers.py` with `model_prefix: "gemini/"`, `api_key_env: "GEMINI_API_KEY"`, default `gemini/gemini-3.6-flash`, `active: False` (bench-only, not a pipeline primary).
+Reason: Google AI Studio gives a stable, free-tier model for benchmarking — unlike `openrouter/openrouter/free` which routes to a different model daily (today: content-safety model that returns `content: None`). Gemini is deterministic and fast (no thinking-mode token burn).
+
+**Entry 109 — 2026-08-23: Foreign-prefix detection moved to providers.py registry**
+Decision: Replace hardcoded `_foreign_prefixes = ("gemini/", "vertex_ai/", ...)` tuple in `llm_client.py` with a manifest-derived set: all `model_prefix` values from `PROVIDER_MANIFEST` that differ from the primary provider's prefix. Also fixed the early-return path to wrap the raw `ModelResponse` in `LLMResponse` with proper `.content`, `.tokens_used`, `.latency_seconds` fields.
+Reason: User requirement — single source of truth for provider prefixes. Hardcoded list diverges from the manifest every time a provider is added. Now adding a provider to `providers.py` automatically makes its prefix a bypass candidate.
+
+**Entry 110 — 2026-08-23: Agent model defaults unified through LLM_PROVIDER**
+Decision: Fix `_interpolate_env` in `settings.py` to return `""` (not the literal `${VAR}` placeholder) for unset vars. Keep all `AGENT_MODEL_*` entries in `settings.yaml` (needed for per-agent override wiring), but remove the hardcoded `openrouter/openrouter/free` values from `.env` for all generic agents. Only `AGENT_MODEL_TATB_LABELLER` keeps an explicit value (different LLM family). Align `providers.py` openrouter `default` to `openrouter/openrouter/free`.
+Reason: `LLM_PROVIDER=hetzner` should make all critics use hetzner automatically — no per-agent env var duplication. Previously, critics used OR-free regardless of `LLM_PROVIDER` because all `AGENT_MODEL_*` were pinned in `.env`. Per-agent override still works: set `AGENT_MODEL_ARCHITECT=gemini/...` and it takes effect. Unset = manifest default flows through.
+Alternatives rejected: Removing settings.yaml entries entirely would break per-agent override wiring (env var has nowhere to land in AgentSwarmConfig).
+
+**Entry 111 — 2026-08-23: Bench report extended to N models + combine mode**
+Decision: Extend `bench_report.py` to handle N≤3 models with a 3-colour palette (blue/teal/amber). Add `merge_summaries()` and `generate_combined()` functions. Add `--combine N SUMMARY...` flag to both `bench_report.py` and `bench_critics.py`. Remove dead `_set_model_env` (env override was never used — model reaches API via `critic_model` in request body). Gap detection extended to all model pairs. Verdict section ranks all models by avg depth.
+Reason: Each model run takes 30-90 min independently; running them together in one `--models a b c` call risks partial failures (hetzner timed out mid-run). Separate runs + combine is more robust. Bench result shows `hetzner openai/Qwen/Qwen3.6-35B-A3B-FP8` inline in header pills so model strings are traceable.
+
+---
+
+## Session 50 — 2026-08-23
+
+**Session summary:** Bench unblocking run — 4 fixes across 4 files. Blackhat +5.0 pts, tester +2.8 pts from resolving Qwen3.6 thinking-model issues.
+
+**Entry 104 — 2026-08-23: base_agent fallthrough JSON parser**
+Decision: Replace single-strategy JSON extraction with a three-strategy fallthrough: (1) `` ```json `` block, (2) generic `` ``` `` block (all sections tried), (3) left-to-right `{`-scan against last `}`. Each strategy is wrapped in try/except so a failed `` ``` ``-block parse (from thinking-mode prose containing backticks) falls through to the raw scan.
+Reason: Qwen3.6 in thinking mode outputs reasoning prose that may contain backticks and stray braces before the actual JSON, breaking the original single-strategy parser. Right-to-left scanning was tried first but broke tester (rightmost `{` is inside nested objects). Left-to-right against last `}` is correct — stray `{` in thinking prose fails to parse; actual JSON `{` succeeds.
+
+**Entry 105 — 2026-08-23: max_tokens 3000/3500 → 8000 for purple_team and blackhat**
+Decision: Raise `max_tokens` in `purple_teamer_critic.py` and `blackhat_critic.py` to 8000, matching the `agent_framework.py` fix from session 47.
+Reason: Those two critics call `llm_client.generate()` directly, bypassing the agent_framework path where 8000 was already set. Qwen3.6 thinking mode burns ~4k tokens on the reasoning chain, leaving nothing for JSON output — score defaulted to 50 every run. Blackhat: 6.0 → 11.0/12 after fix.
+
+**Entry 106 — 2026-08-23: PipelineRequest.agent_models + guardian override**
+Decision: Add `agent_models: Optional[Dict[str,str]] = None` to `PipelineRequest`; in `run()`, patch `guardian._routers[agent]` for each override before stages run. Remove self-referential `from chatbot.harness.controller import ModelRouter` local import (caused `UnboundLocalError`).
+Reason: Two-model bench (session 47) wired `agent_models` into the jobs route but never added the field to `PipelineRequest`. Local import shadow made `ModelRouter` appear unbound when the override loop ran before it.
+
+**Entry 107 — 2026-08-23: OpenRouter free vs Hetzner two-model bench**
+Decision: Keep Hetzner (Qwen3.6) as primary for most critics; note that blackhat scores 9.6 on OpenRouter free vs 11.0 on Hetzner after max_tokens fix. Tester collapses to 0.0 on OpenRouter free (whatever model is routed there doesn't follow the tester schema). No per-critic model split implemented — adds routing complexity for marginal gain.
+Reason: After fixing max_tokens starvation, Hetzner outperforms OpenRouter free overall (5 of 5 critics ≥ OpenRouter, except architect where OR-free wins by 1.0). OpenRouter free routing is non-deterministic (varies by day), making it unreliable for consistent benchmarking.
+
 ## Session 49 — 2026-08-22
 
 **Session summary:** Bughunt + harden-audit across core pipeline files. 8 logic bugs fixed, 3 security findings patched. Entries 97–103 below.

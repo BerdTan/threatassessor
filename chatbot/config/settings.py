@@ -778,11 +778,11 @@ def load_settings() -> AppSettings:
                 yaml_overrides = yaml.safe_load(raw) or {}
 
                 def _interpolate_env(obj):
-                    """Replace ${VAR_NAME} with os.environ[VAR_NAME]; leave literal if unset."""
+                    """Replace ${VAR_NAME} with os.environ[VAR_NAME]; empty string if unset."""
                     if isinstance(obj, str):
                         return re.sub(
                             r'\$\{([^}]+)\}',
-                            lambda m: os.environ.get(m.group(1), m.group(0)),
+                            lambda m: os.environ.get(m.group(1), ""),
                             obj,
                         )
                     if isinstance(obj, dict):

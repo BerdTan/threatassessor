@@ -98,10 +98,11 @@ def build_chart_data(summary: dict) -> dict:
     archs   = summary.get("archs", [])
 
     chart = {
-        "run_id":  summary.get("run_id", ""),
-        "mode":    summary.get("mode", "critics"),
-        "archs":   archs,
-        "models":  models,
+        "run_id":       summary.get("run_id", ""),
+        "mode":         summary.get("mode", "critics"),
+        "archs":        archs,
+        "models":       models,
+        "model_strings": summary.get("model_strings", {}),
         "critics": {},
         "panel":   {},
         "gaps":    [],
@@ -127,23 +128,27 @@ def build_chart_data(summary: dict) -> dict:
             }
             chart["panel"][arch][model] = _normalise_panel(mr)
 
-    # Gap detection (model[0] vs model[1])
-    if len(models) >= 2:
-        m0, m1 = models[0], models[1]
-        for arch in archs:
-            for critic in CRITIC_NAMES:
-                c0 = chart["critics"][arch].get(m0, {}).get(critic, {})
-                c1 = chart["critics"][arch].get(m1, {}).get(critic, {})
-                d0 = c0.get("raw_depth")
-                d1 = c1.get("raw_depth")
-                if d0 is not None and d1 is not None and (d0 - d1) >= 2:
-                    chart["gaps"].append({
-                        "arch": arch, "critic": critic,
-                        "score_a": d0, "score_b": d1,
-                        "drop": round(d0 - d1, 1),
-                        "model_a": m0, "model_b": m1,
-                    })
-        chart["gaps"].sort(key=lambda x: -x["drop"])
+    # Gap detection — all pairs (model_a has higher score, model_b regressed)
+    seen_gaps = set()
+    for i, ma in enumerate(models):
+        for mb in models[i+1:]:
+            for arch in archs:
+                for critic in CRITIC_NAMES:
+                    da = chart["critics"][arch].get(ma, {}).get(critic, {}).get("raw_depth")
+                    db = chart["critics"][arch].get(mb, {}).get(critic, {}).get("raw_depth")
+                    if da is None or db is None:
+                        continue
+                    drop = round(da - db, 1)
+                    if drop >= 2:
+                        key = (arch, critic, ma, mb)
+                        if key not in seen_gaps:
+                            seen_gaps.add(key)
+                            chart["gaps"].append({
+                                "arch": arch, "critic": critic,
+                                "score_a": da, "score_b": db,
+                                "drop": drop, "model_a": ma, "model_b": mb,
+                            })
+    chart["gaps"].sort(key=lambda x: -x["drop"])
 
     return chart
 
@@ -165,6 +170,7 @@ HTML_TEMPLATE = r"""
   --text3:     #4d607a;
   --model-a:   #3b82f6;
   --model-b:   #14b8a6;
+  --model-c:   #f59e0b;
   --ref:       #2d3748;
   --good:      #10b981;
   --warn:      #f59e0b;
@@ -245,6 +251,7 @@ body {
 }
 .pill.a { border-color: var(--model-a); color: var(--model-a); background: color-mix(in srgb, var(--model-a) 10%, transparent); }
 .pill.b { border-color: var(--model-b); color: var(--model-b); background: color-mix(in srgb, var(--model-b) 10%, transparent); }
+.pill.c { border-color: var(--model-c); color: var(--model-c); background: color-mix(in srgb, var(--model-c) 10%, transparent); }
 
 /* ── Legend ── */
 .legend {
@@ -429,6 +436,7 @@ body {
 .stat-vals { display: flex; gap: 0.4rem; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-variant-numeric: tabular-nums; }
 .val-a { color: var(--model-a); font-weight: 600; }
 .val-b { color: var(--model-b); font-weight: 600; }
+.val-c { color: var(--model-c); font-weight: 600; }
 .val-delta { color: var(--text3); font-size: 0.62rem; }
 .val-delta.up { color: var(--good); }
 .val-delta.dn { color: var(--danger); }
@@ -866,13 +874,9 @@ function _improveHint(critic, score) {
 
 // ── Verdict computation ───────────────────────────────────────────────────────
 function computeVerdict() {
-  const models = DATA.models;
-  const archs  = DATA.archs;
-  const m0 = models[0], m1 = models[1];
   const CRITICS = ['architect','tester','red_team','purple_team','blackhat','scrum_master'];
   const REF_DEPTH = 11.0;
 
-  // Aggregate panel scores across all archs
   function aggPanel(model) {
     let tatb=0, depth=0, breadth=0, defens=0, tok=0, n=0;
     for (const a of archs) {
@@ -889,7 +893,6 @@ function computeVerdict() {
     return { tatb: tatb/n, depth: depth/n, breadth: breadth/n, defens: defens/n, tok: tok/n };
   }
 
-  // Count critics meeting reference depth (≥11) per model across all archs
   function refMet(model) {
     let met=0, total=0;
     for (const a of archs) {
@@ -904,70 +907,61 @@ function computeVerdict() {
     return { met, total };
   }
 
-  const pa = aggPanel(m0);
-  if (!pa) { document.getElementById('verdict-headline').textContent = 'No data'; return; }
-
+  const panels = models.map(m => ({ model: m, panel: aggPanel(m) })).filter(x => x.panel);
   const verdict = document.getElementById('verdict-banner');
   const chip    = document.getElementById('verdict-chip');
   const headline= document.getElementById('verdict-headline');
   const detail  = document.getElementById('verdict-detail');
   const action  = document.getElementById('verdict-action');
 
-  if (!m1) {
-    // Single model baseline
-    const ref0 = refMet(m0);
+  if (!panels.length) { headline.textContent = 'No data'; return; }
+
+  if (panels.length === 1) {
+    const { model, panel: pa } = panels[0];
+    const ref0 = refMet(model);
     const refPct = ref0.total > 0 ? Math.round(ref0.met / ref0.total * 100) : 0;
-    const avgD = pa.depth;
-    const status = avgD >= 10 ? 'good' : avgD >= 7 ? 'warn' : 'danger';
-    const statusLabel = avgD >= 10 ? 'Strong' : avgD >= 7 ? 'Acceptable' : 'Needs Work';
-    chip.textContent = statusLabel;
+    const status = pa.depth >= 10 ? 'good' : pa.depth >= 7 ? 'warn' : 'danger';
+    chip.textContent = pa.depth >= 10 ? 'Strong' : pa.depth >= 7 ? 'Acceptable' : 'Needs Work';
     chip.className   = 'verdict-chip ' + status;
-    headline.textContent = `${m0} baseline — avg depth ${avgD.toFixed(1)}/12, TATB ${Math.round(pa.tatb)}/100`;
+    headline.textContent = `${model} baseline — avg depth ${pa.depth.toFixed(1)}/12, TATB ${Math.round(pa.tatb)}/100`;
     detail.innerHTML = [
-      `${ref0.met} of ${ref0.total} critic×arch combinations meet the reference depth of 11/12 (${refPct}%).`,
-      pa.breadth > 0 ? `Panel found ${Math.round(pa.breadth)} unique MITRE TTPs on average.` : '',
+      `${ref0.met}/${ref0.total} critic×arch pairs meet ref depth 11/12 (${refPct}%).`,
+      pa.breadth > 0 ? `${Math.round(pa.breadth)} unique TTPs avg.` : '',
       pa.defens  > 0 ? `Defensibility ${pa.defens.toFixed(2)}/10.` : '',
     ].filter(Boolean).join(' ');
-
-    // Find weakest critic across archs
     let worst = null, worstD = 99;
-    for (const a of archs) {
-      const cd = DATA.critics[a] || {};
-      for (const c of CRITICS) {
-        const d = ((cd[m0] || {})[c] || {}).raw_depth;
-        if (d != null && d < worstD) { worstD = d; worst = c; }
-      }
+    for (const a of archs) for (const c of CRITICS) {
+      const d = ((DATA.critics[a] || {})[model] || {})[c]?.raw_depth;
+      if (d != null && d < worstD) { worstD = d; worst = c; }
     }
-    if (worst && worstD < 10) {
-      action.textContent = `Lowest scorer: ${worst.replace('_',' ')} (${worstD.toFixed(1)}/12) — consider: /critic-gym ${worst}`;
-    } else {
-      action.textContent = 'All critics at or near reference. Ready for corpus-wide rerun.';
-    }
+    action.textContent = worst && worstD < 10
+      ? `Lowest scorer: ${worst.replace('_',' ')} (${worstD.toFixed(1)}/12) — consider: /critic-gym ${worst}`
+      : 'All critics at or near reference. Ready for corpus-wide rerun.';
     verdict.style.borderLeftColor = status === 'good' ? 'var(--good)' : status === 'warn' ? 'var(--warn)' : 'var(--danger)';
 
   } else {
-    // Two-model comparison
-    const pb = aggPanel(m1);
-    const depthDiff = pa && pb ? pb.depth - pa.depth : null;
-    const tatbDiff  = pa && pb ? pb.tatb  - pa.tatb  : null;
-    const winner    = depthDiff != null ? (depthDiff >= 0 ? m1 : m0) : m0;
-    const loser     = winner === m0 ? m1 : m0;
-    const isB       = winner === m1;
-    const status    = Math.abs(depthDiff) >= 1.0 ? (isB ? 'good' : 'danger') : 'warn';
-
-    chip.textContent  = depthDiff != null && Math.abs(depthDiff) < 0.5 ? 'Tied' : `Winner: ${winner}`;
-    chip.className    = 'verdict-chip ' + (status === 'good' ? 'good' : status === 'warn' ? 'warn' : 'danger');
-    headline.textContent = `${winner} outperforms on avg depth (${(isB ? pb : pa).depth.toFixed(1)}/12 vs ${(isB ? pa : pb).depth.toFixed(1)}/12)`;
-
+    // Multi-model comparison — rank by avg depth, pick winner
+    const ranked = [...panels].sort((a, b) => b.panel.depth - a.panel.depth);
+    const winner = ranked[0];
     const gapCount = DATA.gaps ? DATA.gaps.length : 0;
+    const depthSpread = winner.panel.depth - ranked[ranked.length-1].panel.depth;
+    const status = depthSpread >= 1.0 ? 'good' : depthSpread >= 0.3 ? 'warn' : 'warn';
+
+    chip.textContent = `Winner: ${winner.model}`;
+    chip.className   = 'verdict-chip ' + status;
+
+    const rankStr = ranked.map((r, i) => `${i+1}. ${r.model} ${r.panel.depth.toFixed(1)}/12`).join(' · ');
+    headline.textContent = `Depth ranking — ${rankStr}`;
+
+    const tatbStr = panels.map(({model: m, panel: p}) => `${m} ${Math.round(p.tatb)}`).join(' → ');
     detail.innerHTML = [
-      tatbDiff != null ? `TATB delta: ${tatbDiff > 0 ? '+' : ''}${tatbDiff.toFixed(0)} pts (${m0} ${Math.round(pa.tatb)} → ${m1} ${Math.round(pb.tatb)}).` : '',
-      gapCount > 0 ? `${gapCount} critic regression${gapCount > 1 ? 's' : ''} detected where ${loser} drops ≥2 depth pts below ${winner} — see Gap Report below.` : 'No depth regressions detected.',
+      `TATB: ${tatbStr}.`,
+      gapCount > 0 ? `${gapCount} depth regression${gapCount>1?'s':''} detected — see Gap Report below.` : 'No depth regressions detected.',
     ].filter(Boolean).join(' ');
     action.textContent = gapCount > 0
-      ? `Next: /critic-gym ${DATA.gaps[0].critic} --model ${loser} to address the largest gap.`
-      : `No regressions. Consider promoting ${winner} to production and running rerun-moe --all.`;
-    verdict.style.borderLeftColor = status === 'good' ? 'var(--good)' : status === 'warn' ? 'var(--warn)' : 'var(--danger)';
+      ? `Next: /critic-gym ${DATA.gaps[0].critic} --model ${DATA.gaps[0].model_b} to address the largest gap.`
+      : `No regressions. Consider promoting ${winner.model} to production and running rerun-moe --all.`;
+    verdict.style.borderLeftColor = status === 'good' ? 'var(--good)' : 'var(--warn)';
   }
 }
 
@@ -991,15 +985,22 @@ function toggleGlossary() {
 // ── Render ────────────────────────────────────────────────────────────────────
 const models  = DATA.models;
 const archs   = DATA.archs;
-const m0 = models[0], m1 = models[1];
+const m0 = models[0], m1 = models[1], m2 = models[2];
 const CRITIC_NAMES = ['architect','tester','red_team','purple_team','blackhat','scrum_master'];
+const MODEL_CLASSES = ['a','b','c'];
+const MODEL_CSS_VARS = ['var(--model-a)','var(--model-b)','var(--model-c)'];
 
-// Header meta pills
+// Header meta pills — show alias + actual model string
 const metaCont = document.getElementById('header-meta');
+const modelStrings = DATA.model_strings || {};
 models.forEach((m, i) => {
   const p = document.createElement('div');
-  p.className = 'pill ' + (i === 0 ? 'a' : 'b');
-  p.textContent = m;
+  p.className = 'pill ' + (MODEL_CLASSES[i] || 'b');
+  const actual = modelStrings[m];
+  p.innerHTML = actual && actual !== m
+    ? `<strong>${m}</strong> <span style="opacity:0.7;font-size:0.78em">${actual}</span>`
+    : m;
+  if (actual) p.title = actual;
   metaCont.appendChild(p);
 });
 [
@@ -1014,11 +1015,10 @@ models.forEach((m, i) => {
 
 // Legend
 const legendModels = document.getElementById('legend-models');
-const colors = [['var(--model-a)','a'], ['var(--model-b)','b']];
 models.forEach((m, i) => {
   const item = document.createElement('div');
   item.className = 'legend-item';
-  item.innerHTML = `<div class="legend-dot" style="background:${colors[i][0]}"></div><span>${m}</span>`;
+  item.innerHTML = `<div class="legend-dot" style="background:${MODEL_CSS_VARS[i]||MODEL_CSS_VARS[1]}"></div><span>${m}</span>`;
   legendModels.appendChild(item);
 });
 const refItem = document.createElement('div');
@@ -1035,17 +1035,17 @@ const panesCont = document.getElementById('arch-panes');
 archs.forEach((arch, ai) => {
   const panelData = DATA.panel[arch] || {};
   const panelAxes = DATA.panel_axes;
-  const panelValsA = panelAxes.map(ax => (panelData[m0] || {})[ax.key] ?? null);
-  const panelValsB = m1 ? panelAxes.map(ax => (panelData[m1] || {})[ax.key] ?? null) : null;
-  const pa = panelData[m0] || {};
-  const pb = panelData[m1] || {};
+  // Per-model panel objects and radar datasets
+  const panelObjs = models.map(m => panelData[m] || {});
+  const radarDatasets = models.map(m => panelAxes.map(ax => (panelData[m] || {})[ax.key] ?? null));
+  const pa = panelObjs[0], pb = panelObjs[1] || {}, pc = panelObjs[2] || {};
 
   const criticData = DATA.critics[arch] || {};
 
   // Quick depth summary for the summary line
-  const avgA = pa.raw_depth_avg != null ? pa.raw_depth_avg.toFixed(1) : '—';
-  const avgB = pb.raw_depth_avg != null ? pb.raw_depth_avg.toFixed(1) : null;
-  const depthSummary = avgB != null ? `avg depth ${avgA} → ${avgB}/12` : `avg depth ${avgA}/12`;
+  const depthAvgs = panelObjs.map(p => p.raw_depth_avg);
+  const depthParts = depthAvgs.map((d, i) => d != null ? `${models[i]} ${d.toFixed(1)}` : null).filter(Boolean);
+  const depthSummary = depthParts.length ? `avg depth ${depthParts.join(' → ')}/12` : 'avg depth —/12';
 
   const section = document.createElement('details');
   section.className = 'arch-section';
@@ -1055,7 +1055,7 @@ archs.forEach((arch, ai) => {
   summary.innerHTML = `
     <span class="arch-name-large">${arch}</span>
     <div class="arch-meta-pills">
-      ${models.map((m,i) => `<span class="pill ${i===0?'a':'b'}">${m}</span>`).join('')}
+      ${models.map((m,i) => { const s = modelStrings[m]; return `<span class="pill ${i===0?'a':'b'}" title="${s||m}">${m}</span>`; }).join('')}
       ${DATA.run_id ? `<span class="pill">${DATA.run_id.replace(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/, '$1-$2-$3 $4:$5')}</span>` : ''}
     </div>
     <span class="arch-summary-scores">${depthSummary}</span>
@@ -1074,19 +1074,22 @@ archs.forEach((arch, ai) => {
     <div class="panel-radar-wrap"><svg id="panel-radar-${ai}"></svg></div>
     <div class="panel-stats">
       ${[
-        ['TATB', pa.raw_tatb != null ? pa.raw_tatb : '—', pb.raw_tatb ?? null, pa.raw_tatb, pb.raw_tatb, false, '/100'],
-        ['Breadth', pa.raw_breadth ?? '—', pb.raw_breadth ?? null, pa.raw_breadth, pb.raw_breadth, false, ' TTPs'],
-        ['Defens.', pa.raw_defens != null ? pa.raw_defens.toFixed(1) : '—', pb.raw_defens != null ? pb.raw_defens.toFixed(1) : null, pa.raw_defens, pb.raw_defens, false, '/10'],
-        ['Tok ↓', pa.raw_tok ? Math.round(pa.raw_tok/1000)+'k' : '—', pb.raw_tok ? Math.round(pb.raw_tok/1000)+'k' : null, pa.raw_tok, pb.raw_tok, true, ''],
-        ['Avg dep.', pa.raw_depth_avg != null ? pa.raw_depth_avg : '—', pb.raw_depth_avg ?? null, pa.raw_depth_avg, pb.raw_depth_avg, false, '/12'],
-      ].map(([lbl, va, vb, na, nb, invertDelta, unit]) => `
-        <div class="stat-row">
-          <span class="stat-label">${lbl}</span>
-          <span class="stat-vals">
-            <span class="val-a">${va}${unit && va !== '—' ? unit : ''}</span>
-            ${m1 && vb != null ? `<span class="val-b">${vb}${unit && vb !== '—' ? unit : ''}</span>${_delta(na, nb, !invertDelta)}` : ''}
-          </span>
-        </div>`).join('')}
+        ['TATB',     p => p.raw_tatb != null ? p.raw_tatb : null,           false, '/100'],
+        ['Breadth',  p => p.raw_breadth ?? null,                             false, ' TTPs'],
+        ['Defens.',  p => p.raw_defens != null ? p.raw_defens : null,        false, '/10'],
+        ['Tok ↓',   p => p.raw_tok ? Math.round(p.raw_tok/1000) : null,     true,  'k'],
+        ['Avg dep.', p => p.raw_depth_avg ?? null,                           false, '/12'],
+      ].map(([lbl, getter, invert, unit]) => {
+        const vals = panelObjs.map(getter);
+        const best = invert ? Math.min(...vals.filter(v=>v!=null)) : Math.max(...vals.filter(v=>v!=null));
+        const spans = vals.map((v, i) => {
+          if (v == null) return '';
+          const isBest = vals.filter(x=>x!=null).length > 1 && v === best;
+          const disp = (unit === '/10' ? v.toFixed(1) : v) + (v !== '—' ? unit : '');
+          return `<span class="val-${MODEL_CLASSES[i]||'b'}"${isBest?' style="text-decoration:underline"':''}>${disp}</span>`;
+        }).join(' ');
+        return `<div class="stat-row"><span class="stat-label">${lbl}</span><span class="stat-vals">${spans||'—'}</span></div>`;
+      }).join('')}
     </div>
   `;
   grid.appendChild(panelCol);
@@ -1096,17 +1099,20 @@ archs.forEach((arch, ai) => {
   criticsGrid.className = 'critics-grid';
 
   CRITIC_NAMES.forEach(critic => {
-    const ca = (criticData[m0] || {})[critic] || {};
-    const cb = m1 ? (criticData[m1] || {})[critic] || {} : null;
-    const da = ca.raw_depth != null ? ca.raw_depth : null;
-    const db = cb && cb.raw_depth != null ? cb.raw_depth : null;
-    const colorA = _depthColor(da);
-    const colorB = db != null ? _depthColor(db) : null;
+    const criticObjs = models.map(m => (criticData[m] || {})[critic] || {});
+    const depths = criticObjs.map(c => c.raw_depth != null ? c.raw_depth : null);
 
+    const ca = criticObjs[0];
     const modelRaw = ca.model || '';
     const modelShort = modelRaw.replace(/^openrouter\/openrouter\//, 'or/').replace(/^openai\//, 'hetzner/').replace(/^openrouter\//, '');
+    const hint = _improveHint(critic, depths[0]);
 
-    const hint = _improveHint(critic, da);
+    const depthBadges = depths.map((d, i) => {
+      const clr = _depthColor(d);
+      const disp = d != null ? d.toFixed(1) : '—';
+      const sep = i > 0 ? '<span class="depth-arrow">·</span>' : '';
+      return `${sep}<span style="color:${clr};font-weight:600;font-family:\'JetBrains Mono\',monospace;font-size:${i===0?'1.1rem':'0.85rem'}">${disp}</span>`;
+    }).join('');
 
     const col = document.createElement('div');
     col.className = 'critic-col';
@@ -1114,14 +1120,12 @@ archs.forEach((arch, ai) => {
       <div class="critic-name">${critic.replace(/_/g,' ')}</div>
       <div class="critic-role">${CRITIC_ROLES[critic] || ''}</div>
       <div style="margin-top:0.3rem;display:flex;align-items:baseline;gap:0.2rem;flex-wrap:wrap;">
-        <span class="depth-badge" style="color:${colorA};">${da != null ? da.toFixed(1) : '—'}</span>
+        ${depthBadges}
         <span class="depth-scale">/12</span>
-        ${db != null ? `<span class="depth-arrow">→</span><span class="depth-b" style="color:${colorB};">${db.toFixed(1)}</span><span class="depth-scale">/12</span>` : ''}
       </div>
       <div class="critic-detail">
         <span class="critic-model" title="${modelRaw}">${modelShort || '—'}</span>
         <span>tok ${ca.raw_tok ? Math.round(ca.raw_tok/1000)+'k' : '—'}${ca.raw_lat ? ' · '+ca.raw_lat.toFixed(0)+'s' : ''}</span>
-        ${db != null && cb && cb.raw_tok ? `<span>B tok ${Math.round(cb.raw_tok/1000)}k${cb.raw_lat ? ' · '+cb.raw_lat.toFixed(0)+'s' : ''}</span>` : ''}
         ${ca.raw_uniq ? `<span>${ca.raw_uniq} uniq TTPs</span>` : ''}
       </div>
       ${hint ? `<div class="critic-improve"><div class="critic-improve-label">↑ to improve</div>${hint}</div>` : ''}
@@ -1135,7 +1139,7 @@ archs.forEach((arch, ai) => {
 
   // Panel radar only (no per-critic radars)
   const panelSvg = document.getElementById(`panel-radar-${ai}`);
-  buildRadar(panelSvg, panelAxes, [panelValsA, panelValsB], 200);
+  buildRadar(panelSvg, panelAxes, radarDatasets, 200);
 });
 
 // Gap report
@@ -1163,17 +1167,49 @@ if (DATA.gaps && DATA.gaps.length > 0) {
     `;
     gapList.appendChild(row);
   });
-} else if (m1) {
+} else if (models.length >= 2) {
   gapNote.textContent = 'no depth regressions detected';
   gapList.innerHTML = '<div class="no-gaps">✓ All critics within 2 pts across models — no regressions.</div>';
 } else {
-  gapNote.textContent = 'gap detection requires two models';
-  gapList.innerHTML = `<div style="font-size:0.72rem;color:var(--text3);font-family:'JetBrains Mono',monospace;">Run with two models (e.g. <code>--models current candidate</code>) to see regression gaps.</div>`;
+  gapNote.textContent = 'gap detection requires two or more models';
+  gapList.innerHTML = `<div style="font-size:0.72rem;color:var(--text3);font-family:'JetBrains Mono',monospace;">Run with two or more models (e.g. <code>--models hetzner gemini_flash</code>) to see regression gaps.</div>`;
 }
 
 // single arch — section auto-opens, nothing to hide
 </script>
 """.strip()
+
+
+def merge_summaries(paths: list) -> dict:
+    """Merge N bench_summary.json files (each with different models) into one summary dict.
+    Archs are intersected — only archs present in ALL runs appear in the merged report.
+    """
+    merged_models = []
+    merged_model_strings = {}
+    merged_archs = None
+    merged_results = {}
+    run_ids = []
+
+    for path in paths:
+        s = json.loads(Path(path).read_text())
+        run_ids.append(s.get("run_id", ""))
+        for m in s.get("models", []):
+            if m not in merged_models:
+                merged_models.append(m)
+        merged_model_strings.update(s.get("model_strings", {}))
+        archs = s.get("archs", [])
+        merged_archs = archs if merged_archs is None else [a for a in merged_archs if a in archs]
+        for arch, model_results in s.get("results", {}).items():
+            merged_results.setdefault(arch, {}).update(model_results)
+
+    return {
+        "run_id":       "+".join(run_ids),
+        "mode":         "critics",
+        "archs":        merged_archs or [],
+        "models":       merged_models,
+        "model_strings": merged_model_strings,
+        "results":      merged_results,
+    }
 
 
 def generate(summary_path: Path) -> Path:
@@ -1188,20 +1224,43 @@ def generate(summary_path: Path) -> Path:
     return out_path
 
 
+def generate_combined(paths: list, out_dir: Path) -> Path:
+    """Merge N summary JSONs and write a combined report to out_dir."""
+    merged = merge_summaries(paths)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = out_dir / "bench_summary.json"
+    summary_path.write_text(json.dumps(merged, indent=2))
+    return generate(summary_path)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("summary", help="Path to bench_summary.json")
+    ap.add_argument("summary", nargs="?", help="Path to bench_summary.json")
+    ap.add_argument("--combine", nargs="+", metavar="SUMMARY",
+                    help="Merge N bench_summary.json files into one combined report")
+    ap.add_argument("--out-dir", default=None,
+                    help="Output directory for combined report (default: bench_results/combined_<timestamp>)")
     ap.add_argument("--open", action="store_true", help="Open report in browser after generating")
     args = ap.parse_args()
 
-    summary_path = Path(args.summary)
-    if not summary_path.exists():
-        print(f"ERROR: {summary_path} not found", file=sys.stderr)
+    if args.combine:
+        import datetime
+        out_dir = Path(args.out_dir) if args.out_dir else (
+            Path("bench_results") / f"combined_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+        out = generate_combined(args.combine, out_dir)
+        print(f"Combined report: {out}")
+    elif args.summary:
+        summary_path = Path(args.summary)
+        if not summary_path.exists():
+            print(f"ERROR: {summary_path} not found", file=sys.stderr)
+            sys.exit(1)
+        out = generate(summary_path)
+        print(f"Report: {out}")
+    else:
+        ap.print_help()
         sys.exit(1)
-
-    out = generate(summary_path)
-    print(f"Report: {out}")
 
     if args.open:
         import webbrowser

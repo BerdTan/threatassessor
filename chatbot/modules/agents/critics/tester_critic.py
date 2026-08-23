@@ -818,7 +818,8 @@ def create_tester_agent(model: Optional[str] = None) -> CriticAgent:
         rubric=TESTER_RUBRIC,
         system_prompt=TESTER_SYSTEM_PROMPT,
         tools=[],  # No tools - prompt-based approach
-        model=model
+        model=model,
+        no_think=True,  # Tester validates only — no reasoning needed; prevents Qwen budget starvation
     )
 
     logger.info("Created Tester critic agent (prompt-based, no tools)")

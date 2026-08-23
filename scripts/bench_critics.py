@@ -26,22 +26,22 @@ Usage:
     # Qualify corpus first
     python3 scripts/bench_critics.py --qualify
 
-    # Critic benchmark — auto-selected corpus, two models
-    python3 scripts/bench_critics.py --models current openrouter_free
+    # Critic benchmark — two models side-by-side
+    python3 scripts/bench_critics.py --models hetzner gemini_flash
 
     # Explicit archs
     python3 scripts/bench_critics.py \\
         --archs 21_agentic_ai_system 10_complex_enterprise 13_iot_architecture \\
-        --models current openrouter_free
+        --models hetzner gemini_flash
 
     # Brain quality check (after rerun-moe)
     python3 scripts/bench_critics.py --mode brain
 
 Model aliases:
     current         whatever is in .env right now (baseline)
-    hetzner         .env as-is (hetzner primary)
-    openrouter_free openrouter/openrouter/free
-    openrouter_auto openrouter/openrouter/auto
+    hetzner         Hetzner Qwen3.6-35B-A3B-FP8 (primary)
+    gemini_flash    Google AI Studio gemini-3.6-flash (stable free tier, needs GEMINI_API_KEY)
+    openrouter_free nvidia/nemotron-3.5-lightning:free (OR free model; thinking model, 1M ctx)
 
 Gap trigger (critics mode): critic depth drop ≥ 2 pts → flagged for critic-gym.
 """
@@ -89,22 +89,11 @@ MAX_BENCH_TOKENS = 600_000  # per model
 MODEL_ALIASES = {
     # label → critic_model value sent in ExpertReviewRequest.
     # None = no override, uses .env defaults (whatever the API is configured with).
-    "current":         None,
-    "openrouter":      "openrouter/openrouter/free",
-    "openrouter_free": "openrouter/openrouter/free",
-    "hetzner":         "openai/Qwen/Qwen3.6-35B-A3B-FP8",
+    "current":          None,
+    "hetzner":          "openai/Qwen/Qwen3.6-35B-A3B-FP8",
+    "gemini_flash":     "gemini/gemini-3.6-flash",   # Google AI Studio — stable, free tier
+    "openrouter_free":  "openrouter/nvidia/nemotron-3.5-lightning:free",
 }
-
-# ── Model env override ────────────────────────────────────────────────────────
-
-def _set_model_env(model_alias: str) -> None:
-    """Override all AGENT_MODEL_* env vars for the given alias. No-op for 'current'."""
-    model_value = MODEL_ALIASES.get(model_alias)
-    if model_value is None:
-        return  # "current" — keep .env defaults unchanged
-    for key in list(os.environ.keys()):
-        if key.startswith("AGENT_MODEL_"):
-            os.environ[key] = model_value
 
 
 # ── Corpus qualification ───────────────────────────────────────────────────────
@@ -459,9 +448,10 @@ def _clear_critiques(arch: str, report_base: Path) -> None:
 def _trigger_expert_review(
     api_url: str, arch: str, api_key: str, timeout: int,
     critic_model: str | None = None,
+    critic_mode: str = "partial_parallel",
 ) -> None:
     headers = {"TM-API-KEY": api_key, "Content-Type": "application/json"}
-    body: dict = {"arch_name": arch, "critic_mode": "partial_parallel", "run_blackhat": True}
+    body: dict = {"arch_name": arch, "critic_mode": critic_mode, "run_blackhat": True}
     if critic_model:
         body["critic_model"] = critic_model
     r = requests.post(f"{api_url}/api/v1/jobs/expert-review",
@@ -482,14 +472,16 @@ def _trigger_expert_review(
 # ── Critics mode — single arch × model run ────────────────────────────────────
 
 def run_single(api_url: str, arch: str, model_alias: str,
-               report_base: Path, run_dir: Path, api_key: str, timeout: int) -> dict:
+               report_base: Path, run_dir: Path, api_key: str, timeout: int,
+               critic_mode: str = "partial_parallel") -> dict:
     print(f"  → {_c(arch, CYAN)} × {_c(model_alias, BLUE)}")
     critic_model = MODEL_ALIASES.get(model_alias)  # None = use .env defaults
     # Clear cached critiques so the job re-runs all critics with the requested model
     _clear_critiques(arch, report_base)
     t0 = time.time()
     try:
-        _trigger_expert_review(api_url, arch, api_key, timeout, critic_model=critic_model)
+        _trigger_expert_review(api_url, arch, api_key, timeout, critic_model=critic_model,
+                               critic_mode=critic_mode)
     except Exception as e:
         print(f"    {_c('ERROR', RED)}: {e}")
         return {"error": str(e)}
@@ -626,14 +618,39 @@ def main():
     ap.add_argument("--archs",    nargs="*", default=None,
                     help="Arch names to benchmark. Omit to auto-select (uses qualify logic).")
     ap.add_argument("--models",   nargs="+", default=["current"],
-                    help="Model aliases: current hetzner openrouter_free openrouter_auto")
+                    help="Model aliases: current hetzner gemini_flash openrouter_free (nemotron-nano)")
+    ap.add_argument("--critic-mode", default="partial_parallel",
+                    choices=["partial_parallel", "sequential", "parallel", "auto"],
+                    help="MoE critic execution mode (default: partial_parallel). Use sequential for rate-limited providers.")
     ap.add_argument("--qualify",  action="store_true",
                     help="Show corpus qualification table and exit (no runs)")
+    ap.add_argument("--combine",  nargs="+", metavar="SUMMARY",
+                    help="Merge N bench_summary.json files from separate runs into one report")
+    ap.add_argument("--out-dir",  default=None,
+                    help="Output directory for --combine report")
     ap.add_argument("--api-url",  default="http://localhost:8000")
     ap.add_argument("--output",   default="bench_results")
     ap.add_argument("--timeout",  type=int, default=900)
     ap.add_argument("--report-dir", default=None)
     args = ap.parse_args()
+
+    # --combine: merge existing summaries and exit
+    if args.combine:
+        try:
+            from scripts.bench_report import generate_combined as _gc
+        except ImportError:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "bench_report", ROOT / "scripts" / "bench_report.py")
+            mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+            _gc = mod.generate_combined
+        import datetime
+        out_dir = Path(args.out_dir) if args.out_dir else (
+            ROOT / "bench_results" / f"combined_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+        rp = _gc(args.combine, out_dir)
+        print(f"Combined report: {rp}")
+        return
 
     from dotenv import load_dotenv
     load_dotenv(ROOT / ".env")
@@ -686,23 +703,17 @@ def main():
     print(f"Est. tokens: ~{est_tok*len(args.models)//1000}k total  "
           f"Est. time: ~{est_min}m\n")
 
-    original_env = {k: v for k, v in os.environ.items() if k.startswith("AGENT_MODEL_")}
     results = {}
 
     for arch in archs:
         results[arch] = {}
         for model_alias in args.models:
-            for k, v in original_env.items():
-                os.environ[k] = v
-            _set_model_env(model_alias)
             results[arch][model_alias] = run_single(
                 api_url=args.api_url, arch=arch, model_alias=model_alias,
                 report_base=report_base, run_dir=run_dir,
                 api_key=api_key, timeout=args.timeout,
+                critic_mode=args.critic_mode,
             )
-
-    for k, v in original_env.items():
-        os.environ[k] = v
 
     print_diff_table(results, args.models)
 
@@ -719,8 +730,12 @@ def main():
         else:
             print(f"\n{_c('No depth gaps detected (all critics within 2 pts).', GREEN)}")
 
+    model_strings = {
+        alias: (MODEL_ALIASES[alias] or "(provider default)") if alias in MODEL_ALIASES else alias
+        for alias in args.models
+    }
     summary = {"run_id": run_id, "mode": "critics", "archs": archs,
-               "models": args.models, "results": results}
+               "models": args.models, "model_strings": model_strings, "results": results}
     sp = run_dir / "bench_summary.json"
     sp.write_text(json.dumps(summary, indent=2))
     print(f"\nResults: {sp}")

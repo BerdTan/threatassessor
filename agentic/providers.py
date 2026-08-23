@@ -46,9 +46,9 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
         },
         "litellm_kwargs": {},
         "models": {
-            "default":      "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            "default":      "openrouter/openrouter/free",
             "high_quality": "openrouter/anthropic/claude-sonnet-4",
-            "fast":         "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            "fast":         "openrouter/openrouter/free",
         },
         "cost_per_1k": None,   # varies by model
         "active": True,
@@ -173,6 +173,27 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
             "# Hetzner Inference — https://experiments.hetzner.com/docs/inference\n"
             "HETZNER_API_KEY=your-key-here\n"
             "# Models: Qwen/Qwen3.6-35B-A3B-FP8 | Qwen3.8-27B\n"
+        ),
+    },
+
+    "gemini": {
+        "model_prefix":  "gemini/",
+        "api_key_env":   "GEMINI_API_KEY",   # Google AI Studio key
+        "base_url":      None,               # LiteLLM handles natively; no base_url override
+        "base_url_env":  None,
+        "region_env":    None,
+        "extra_headers": {},
+        "litellm_kwargs": {},
+        "models": {
+            "default":      "gemini/gemini-3.6-flash",
+            "high_quality": "gemini/gemini-3.6-flash",
+            "fast":         "gemini/gemini-3.6-flash",
+        },
+        "cost_per_1k": None,
+        "active": False,   # benchmarking use only; not primary provider
+        "env_example": (
+            "# Google AI Studio — https://aistudio.google.com\n"
+            "GEMINI_API_KEY=AIzaSy...\n"
         ),
     },
 
