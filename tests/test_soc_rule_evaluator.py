@@ -116,7 +116,7 @@ class TestYAMLLoading:
 
     def test_loads_twentyeight_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 31
+        assert len(ev) == 33
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -1837,3 +1837,76 @@ class TestDetect027DownstreamAgentInjection:
         )
         sig = adapter.check_input(mmd, "agent_inject_test")
         assert "agent_targeting_injection" in sig.exploitation.get("injection_categories", {})
+
+
+class TestDetect033ArchNamePathTraversal:
+    def _trigger(self, blocked: bool = True):
+        s = _clean()
+        s.setdefault("arch_metadata", {})["path_traversal_blocked"] = blocked
+        return s
+
+    def test_fires_when_blocked(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(True), arch_name="a", run_id="r")]
+        assert "DETECT-033" in ids
+
+    def test_does_not_fire_when_not_blocked(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(False), arch_name="a", run_id="r")]
+        assert "DETECT-033" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-033" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-033")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_initial_access(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-033")
+        assert f["finding"]["kill_chain_stage"] == "initial_access"
+
+
+class TestDetect032RestRateLimitAbuse:
+    def _trigger(self, count: int = 15):
+        s = _clean()
+        s["rest_api"] = {"rate_limited_count": count}
+        return s
+
+    def test_fires_at_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(10), arch_name="a", run_id="r")]
+        assert "DETECT-032" in ids
+
+    def test_fires_above_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(50), arch_name="a", run_id="r")]
+        assert "DETECT-032" in ids
+
+    def test_does_not_fire_below_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(9), arch_name="a", run_id="r")]
+        assert "DETECT-032" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-032" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-032")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_impact(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-032")
+        assert f["finding"]["kill_chain_stage"] == "impact"

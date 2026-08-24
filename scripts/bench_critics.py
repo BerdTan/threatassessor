@@ -93,6 +93,7 @@ MODEL_ALIASES = {
     "hetzner":          "openai/Qwen/Qwen3.6-35B-A3B-FP8",
     "gemini_flash":     "gemini/gemini-3.6-flash",   # Google AI Studio — stable, free tier
     "openrouter_free":  "openrouter/nvidia/nemotron-3.5-lightning:free",
+    "ox_alpha":         "openrouter/stealth/ox-alpha:free",  # 1M ctx, reasoning — use sequential + watch tester tokens
 }
 
 
@@ -618,7 +619,7 @@ def main():
     ap.add_argument("--archs",    nargs="*", default=None,
                     help="Arch names to benchmark. Omit to auto-select (uses qualify logic).")
     ap.add_argument("--models",   nargs="+", default=["current"],
-                    help="Model aliases: current hetzner gemini_flash openrouter_free (nemotron-nano)")
+                    help="Model aliases: current hetzner gemini_flash openrouter_free ox_alpha")
     ap.add_argument("--critic-mode", default="partial_parallel",
                     choices=["partial_parallel", "sequential", "parallel", "auto"],
                     help="MoE critic execution mode (default: partial_parallel). Use sequential for rate-limited providers.")

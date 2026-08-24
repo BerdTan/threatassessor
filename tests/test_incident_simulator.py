@@ -157,6 +157,16 @@ class TestScenariosFire:
         fired = _fired_ids(fn())
         assert {"DETECT-019"} <= fired
 
+    def test_rest_rate_limit_abuse(self):
+        fn, _ = SCENARIOS["rest_rate_limit_abuse"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-032"} <= fired
+
+    def test_arch_name_path_traversal(self):
+        fn, _ = SCENARIOS["arch_name_path_traversal"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-033"} <= fired
+
     def test_all_expected_rules_match_documented(self):
         """Every scenario fires at least its documented expected set."""
         for name, (fn, _) in SCENARIOS.items():

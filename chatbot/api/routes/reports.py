@@ -37,6 +37,17 @@ def get_report_dir() -> Path:
 
 _SM_RE = re.compile(r'^(.+?)_sm(\d+)$')
 
+# Patterns that indicate path traversal in arch_name.
+# Covers literal ../, URL-encoded %2F variants, and absolute path prefixes.
+_ARCH_TRAVERSAL_RE = re.compile(
+    r'\.\.|%2[eE]%2[fF]|%2[eE]\.|\.%2[fF]|^/'
+)
+
+
+def is_arch_name_traversal(arch_name: str) -> bool:
+    """Return True if arch_name contains path traversal sequences."""
+    return bool(_ARCH_TRAVERSAL_RE.search(arch_name))
+
 
 def resolve_arch_dir(architecture_name: str) -> Path:
     """Resolve an architecture name to its report directory.
@@ -45,6 +56,8 @@ def resolve_arch_dir(architecture_name: str) -> Path:
     and SM worktree names (aivss_test_arch_sm1 → report/aivss_test_arch/sm1/).
     Falls back to the flat path so callers get a consistent Path (may not exist).
     """
+    if is_arch_name_traversal(architecture_name):
+        raise HTTPException(status_code=400, detail="Invalid architecture_name: path traversal detected")
     base = get_report_dir()
     flat = base / architecture_name
     if flat.exists():
@@ -2332,6 +2345,15 @@ async def governance_check(
         sig.architecture_name = arch_name
 
         signals = sig.to_dict()
+
+        # Inject live REST rate-limit abuse signal
+        from chatbot.api.rate_limit import rate_limit_counter
+        signals["rest_api"] = {"rate_limited_count": rate_limit_counter.get()}
+
+        # Inject arch_name path traversal signal
+        if "arch_metadata" not in signals:
+            signals["arch_metadata"] = {}
+        signals["arch_metadata"]["path_traversal_blocked"] = is_arch_name_traversal(arch_name)
 
         # Evaluate DETECT rules against these signals
         evaluator = RuleEvaluator()

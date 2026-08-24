@@ -945,6 +945,48 @@ def scenario_brain_training_poisoning() -> Dict[str, Any]:
     return sig
 
 
+def scenario_arch_name_path_traversal() -> Dict[str, Any]:
+    """
+    DETECT-033 (High)
+
+    Based on: OWASP Top 10 A01 — Broken Access Control / path traversal.
+
+    An attacker submits POST /governance/check with arch_name set to
+    "../../etc/passwd" attempting to escape the report/ directory boundary.
+    The is_arch_name_traversal() guard detects the traversal sequences and
+    sets arch_metadata.path_traversal_blocked=True before any filesystem
+    access occurs. The request returns 400; DETECT-033 fires on the signal.
+    Realistic context: automated scanner or API key abuse probing for
+    report directory escape. Grounded in TA harden-audit 2026-08-22.
+    """
+    sig = _base()
+    if "arch_metadata" not in sig:
+        sig["arch_metadata"] = {}
+    sig["arch_metadata"]["path_traversal_blocked"] = True
+    return sig
+
+
+def scenario_rest_rate_limit_abuse() -> Dict[str, Any]:
+    """
+    DETECT-032 (High)
+
+    Based on: OWASP Agentic Top 10 A09 — Excessive Agency / resource exhaustion.
+
+    An automated script submits analysis requests to the REST API without
+    honouring 429 responses. After 15 rate-limited rejections the counter
+    exceeds the threshold of 10, firing DETECT-032. The caller is a CI plugin
+    with a broken retry loop — it catches HTTP errors generically and resubmits
+    immediately rather than backing off. Realistic context: a misconfigured
+    code-agent integration or deliberate DoS probe from a stolen API key.
+    Grounded in TA harden-audit 2026-08-22 DETECT backlog.
+    """
+    sig = _base()
+    sig["rest_api"] = {
+        "rate_limited_count": 15,
+    }
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-005 (Critical) + DETECT-002 (Critical) — adversarial input + divergence suppression"),
@@ -1010,6 +1052,10 @@ SCENARIOS = {
         "DETECT-030 (High) — agentic arch with MCP tool calls + zero auth failures = unauthenticated tool exposure"),
     "brain_training_poisoning":      (scenario_brain_training_poisoning,
         "DETECT-031 (High) — evasion_attempts + injection_categories = targeted brain training data poisoning"),
+    "rest_rate_limit_abuse":         (scenario_rest_rate_limit_abuse,
+        "DETECT-032 (High) — rest_api.rate_limited_count >= 10 = automated API flooding ignoring 429s"),
+    "arch_name_path_traversal":      (scenario_arch_name_path_traversal,
+        "DETECT-033 (High) — arch_metadata.path_traversal_blocked = arch_name contains ../ = directory escape probe"),
 }
 
 EXPECTED_RULES = {
@@ -1046,6 +1092,8 @@ EXPECTED_RULES = {
     "mmd_injection":                 {"DETECT-029"},
     "mcp_unauth_exposure":           {"DETECT-030"},
     "brain_training_poisoning":      {"DETECT-031"},
+    "rest_rate_limit_abuse":         {"DETECT-032"},
+    "arch_name_path_traversal":      {"DETECT-033"},
 }
 
 

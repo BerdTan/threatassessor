@@ -1675,6 +1675,103 @@ rules:
       - type: quarantine_trace
       - type: page_soc
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-032: REST Rate-Limit Abuse (Resource Exhaustion via HTTP 429 Flood)
+  #
+  # A caller accumulates ≥10 HTTP 429 responses against the REST API in the
+  # current process lifetime. Legitimate clients back off after 1–2 rejections;
+  # a script or agent hammering the API ignores 429s and keeps submitting.
+  # Threshold of 10 is well above incidental retry noise (1–2) but catches
+  # deliberate flooding before it degrades the pipeline for other callers.
+  # Signal is cumulative (not windowed) — it resets only on API restart.
+  #
+  # Knowledge graph chain:
+  #   HTTP[429 responses × N]
+  #     └─ Counter[rate_limit_counter.get() >= 10]
+  #          └─ Signal[rest_api.rate_limited_count >= 10]
+  #               └─ Rule[DETECT-032]
+  #
+  # Provenance: TA harden-audit 2026-08-22 DETECT backlog — REST rate-limit
+  # abuse attack path identified via slowapi exception handler gap.
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-032
+    name: rest_rate_limit_abuse
+    description: >
+      REST API has returned ≥10 HTTP 429 responses in the current session.
+      Legitimate callers back off after 1–2 rejections. Continued submission
+      despite repeated rate-limit responses indicates an automated client
+      deliberately flooding the API — either to exhaust pipeline resources
+      or to probe for endpoints that bypass rate limiting.
+    incident_refs:
+      - ta-harden-audit-2026-08-22-detect-backlog
+    owasp: [A09]
+    atlas_tactic: AML.TA0010
+    kill_chain_stage: impact
+    ocsf_class: 2004
+    ocsf_type_uid: 200409
+    severity: High
+    conditions:
+      - field: rest_api.rate_limited_count
+        op: ">="
+        value: 10
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+      - type: page_soc
+    tuning_note: >
+      Threshold of 10 is cumulative since last API restart. Raise to 25 if
+      CI pipelines with aggressive retry logic cause false positives. Consider
+      switching to a 5-minute sliding window if the API gains per-IP rate
+      tracking from slowapi state.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-033: arch_name Path Traversal Probe
+  #
+  # A caller passes an arch_name containing path traversal sequences (../, ..%2F,
+  # or an absolute path prefix) to the /governance/check endpoint. The API blocks
+  # the traversal attempt and emits arch_metadata.path_traversal_blocked=True.
+  # This distinguishes deliberate probing (DETECT-033) from accidental bad input:
+  # legitimate callers never include directory separators in arch names.
+  #
+  # Knowledge graph chain:
+  #   HTTP[POST /governance/check {arch_name: "../../etc/passwd"}]
+  #     └─ Guard[is_arch_name_traversal(arch_name) = True]
+  #          └─ Signal[arch_metadata.path_traversal_blocked = True]
+  #               └─ Rule[DETECT-033]
+  #
+  # Provenance: TA harden-audit 2026-08-22 DETECT backlog — arch_name path
+  # traversal gap identified in resolve_arch_dir (no traversal guard).
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-033
+    name: arch_name_path_traversal_probe
+    description: >
+      A caller submitted an arch_name containing path traversal sequences
+      (../, ..%2F, or an absolute path prefix) to the governance check endpoint.
+      The API blocked the attempt. Legitimate callers never include directory
+      separators in architecture names — this is deliberate probing to escape the
+      report directory boundary and access arbitrary filesystem paths.
+    incident_refs:
+      - ta-harden-audit-2026-08-22-detect-backlog
+    owasp: [A01]
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200406
+    severity: High
+    conditions:
+      - field: arch_metadata.path_traversal_blocked
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+      - type: page_soc
+    tuning_note: >
+      No tuning expected — legitimate arch names never contain ../ or absolute
+      paths. Any firing is a true positive by construction.
+
 # ─────────────────────────────────────────────────────────────────────────────
 playbooks:
 
@@ -2003,6 +2100,32 @@ playbooks:
       - "RAG architecture with named, trusted external knowledge source (e.g. 'Wikipedia API') — verify node label is specific, not generic 'ExternalAPI'"
       - "Architecture under active redesign — egress edges may be placeholder nodes pending control assignment"
       - "aivss.outbound.composite elevated due to data residency signals (ZDR), not tool-use egress — check aivss.outbound.metrics breakdown"
+
+  rest_rate_limit_abuse:
+    alert: DETECT-032
+    analyst_steps:
+      - "Check API logs for the source IP accumulating 429s: grep '429' logs/api.log | awk '{print $1}' | sort | uniq -c | sort -rn"
+      - "Identify which endpoint is being flooded — analyze the URL pattern in 429 log lines"
+      - "Confirm the caller is not a legitimate retry loop: check User-Agent and call intervals"
+      - "If automated: block the source IP at the WAF or load balancer level"
+      - "If from an internal CI pipeline: coordinate with the team to add exponential backoff"
+    escalation_threshold: "rate_limited_count >= 50 within 5 minutes → escalate to CRITICAL, block IP at infrastructure level"
+    false_positive_indicators:
+      - "CI pipeline with aggressive retry-on-failure logic — add exponential backoff and raise threshold to 25"
+      - "API restart resets the counter — high count post-restart is impossible"
+      - "Development environment with rapid test iteration — consider excluding dev IPs from this rule"
+
+  arch_name_path_traversal_probe:
+    alert: DETECT-033
+    analyst_steps:
+      - "Extract the raw arch_name from the 400 response body or API logs to confirm the traversal payload"
+      - "Check the caller IP and API key — this is always a deliberate probe, not accidental"
+      - "Rotate the API key if compromised; block the source IP at WAF level"
+      - "Review other requests from the same session for DETECT-020 (recon) or DETECT-010 (MMD-level traversal)"
+      - "Check that resolve_arch_dir blocked the attempt and no files were accessed outside report/"
+    escalation_threshold: "Any single firing → escalate immediately; no legitimate use case exists for ../  in arch_name"
+    false_positive_indicators:
+      - "None expected — arch names never legitimately contain path separators"
 
 # TATB integration note
 #

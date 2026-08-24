@@ -4,6 +4,25 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 53 — 2026-08-24
+
+**Session summary:** ox-alpha bench kicked off (3-model: hetzner + gemini_flash + ox_alpha, sequential mode, 3 archs). DETECT-032 (REST rate-limit abuse) and DETECT-033 (arch_name path traversal) built from backlog — both now fully wired with signals, rules, playbooks, incident simulator scenarios, and tests. 33 rules, 368 tests passing.
+
+**Entry 117 — 2026-08-24: ox-alpha added as bench alias**
+Decision: Add `"ox_alpha": "openrouter/stealth/ox-alpha:free"` to `MODEL_ALIASES` in `bench_critics.py`. Run with `--critic-mode sequential` as it is a reasoning model with potential uncapped thinking tokens. Probe run: 3 archs, watch tester critic first.
+Reason: ox-alpha (1M ctx, reasoning) is the next candidate for the 3rd bench column after OR thinking models proved unsuitable (uncapped thinking tokens). Sequential mode prevents rate-limit pile-up.
+Alternatives rejected: Parallel mode — hits OR per-model slot limits instantly for free-tier reasoning models.
+
+**Entry 118 — 2026-08-24: DETECT-032 — REST rate-limit abuse**
+Decision: Add thread-safe `_RateLimitCounter` singleton to `rate_limit.py`. Intercept `RateLimitExceeded` in `app.py` via `_counting_rate_limit_handler` before passing to slowapi. Inject `rest_api.rate_limited_count` into governance signals at `/governance/check`. DETECT-032 fires when count ≥ 10.
+Reason: Attacker can flood REST API with requests ignoring 429 responses. Slowapi blocks at the HTTP layer but the signal was never emitted to the governance/SOC detection layer. Threshold of 10 is above retry noise (1–2) but catches deliberate flooding.
+Alternatives rejected: Per-IP windowed counter — requires slowapi state introspection which has no stable public API; cumulative counter is simpler and resets on restart.
+
+**Entry 119 — 2026-08-24: DETECT-033 — arch_name path traversal**
+Decision: Add `is_arch_name_traversal()` helper with `_ARCH_TRAVERSAL_RE` (covers `../`, `..%2F`, URL-encoded variants, absolute path prefix). Wire guard into `resolve_arch_dir` (raises 400). Inject `arch_metadata.path_traversal_blocked` at `/governance/check`. DETECT-033 fires when `True`.
+Reason: `resolve_arch_dir` did `base / architecture_name` with no traversal check — a crafted arch_name like `../../etc/passwd` would escape the report directory. The guard closes the filesystem gap; the signal closes the SOC detection gap. DETECT-033 severity = High (any firing is a true positive — no false positive case exists).
+Alternatives rejected: Relying only on individual endpoint guards (`Path(name).name != name`) — `resolve_arch_dir` was unguarded and is called by many endpoints.
+
 ## Session 52 — 2026-08-23
 
 **Session summary:** TATB labeller → nemotron-3.5-lightning + ultra fallback. /no_think tester fix for Qwen3. Foreign-provider config bypass fixed (was leaking hetzner api_base to OR calls). OR free-tier daily limit hit (50 req/day). Bench settled on 2-model (gemini + hetzner). Bench cleanup.
