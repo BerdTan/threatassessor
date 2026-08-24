@@ -90,10 +90,13 @@ MODEL_ALIASES = {
     # label → critic_model value sent in ExpertReviewRequest.
     # None = no override, uses .env defaults (whatever the API is configured with).
     "current":          None,
-    "hetzner":          "openai/Qwen/Qwen3.6-35B-A3B-FP8",
-    "gemini_flash":     "gemini/gemini-3.6-flash",   # Google AI Studio — stable, free tier
+    "hetzner":          "openai/Qwen/Qwen3.6-35B-A3B-FP8",   # Hetzner 35B MoE (primary)
+    "hetzner_27b":      "openai/Qwen3.8-27B",                  # Hetzner 27B dense — faster, smaller
+    "gemini_flash":     "gemini/gemini-3.6-flash",              # Google AI Studio — stable, free tier
     "openrouter_free":  "openrouter/nvidia/nemotron-3.5-lightning:free",
-    "ox_alpha":         "openrouter/stealth/ox-alpha:free",  # 1M ctx, reasoning — use sequential + watch tester tokens
+    "cohere":           "openrouter/cohere/north-mini-code:free",  # non-thinking sparse MoE, agentic coding focus
+    "glm":              "openrouter/z-ai/glm-5.2:free",            # reasoning model — use sequential + watch tester tokens
+    # ox_alpha removed — stealth/ox-alpha:free no longer available; paid only as of 2026-08-24
 }
 
 
@@ -619,7 +622,7 @@ def main():
     ap.add_argument("--archs",    nargs="*", default=None,
                     help="Arch names to benchmark. Omit to auto-select (uses qualify logic).")
     ap.add_argument("--models",   nargs="+", default=["current"],
-                    help="Model aliases: current hetzner gemini_flash openrouter_free ox_alpha")
+                    help="Model aliases: current hetzner hetzner_27b gemini_flash openrouter_free cohere glm")
     ap.add_argument("--critic-mode", default="partial_parallel",
                     choices=["partial_parallel", "sequential", "parallel", "auto"],
                     help="MoE critic execution mode (default: partial_parallel). Use sequential for rate-limited providers.")
