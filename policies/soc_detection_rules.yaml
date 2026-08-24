@@ -43,7 +43,20 @@ metadata:
   version: "1.0"
   ocsf_version: "1.1"
   product: "ThreatAssessor"
-  last_updated: "2026-07-31"
+  last_updated: "2026-08-24"
+
+# Domain index — each rule carries a `domain:` tag for grouping and future renumbering.
+# Domains are intentionally coarse: a rule belongs to its primary attack surface.
+#
+#   QC  — Quality & Confidence Manipulation   (001,002,007,008,015,024,026)
+#   INJ — Input Injection & Evasion           (005,010,017,018,019,027,029,033)
+#   EXF — Exfiltration & Leakage              (004,009,011,013,023,025)
+#   MCP — MCP & API Abuse                     (020,021,022,030,032)
+#   SCT — Supply Chain & Tampering            (016,028,031)
+#   RES — Resource & Coverage                 (003,006,012,014)
+#
+# Migration path: when sequential IDs are replaced with domain-scoped IDs
+# (e.g. DETECT-MCP-001), old IDs become aliases in the `legacy_id:` field.
   forensic_model_note: >
     When analysing real incident payloads, prefer an on-prem open-weight model
     (e.g. zai-org/GLM-5.2 or equivalent). Commercial API safety filters may block
@@ -72,6 +85,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-001
     name: swing_without_reversal
+    domain: QC
     description: >
       Critic confidence swung above threshold but synthesis completed without reversal.
       Model may have recognised a boundary violation and rationalised continuing.
@@ -118,6 +132,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-002
     name: divergence_suppressed
+    domain: QC
     description: >
       Critics diverged above threshold but synthesis quality is FULL — divergence was
       not reflected in the output. Pattern: model constructed justifications to override
@@ -163,6 +178,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-003
     name: token_spike_single_critic
+    domain: RES
     description: >
       One critic consumed tokens at N× the mean of its peers. Indicates inference
       hyperfocus on a narrow subtask — pattern matches pre-breach behaviour in
@@ -208,6 +224,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-004
     name: covert_c2_channel
+    domain: EXF
     description: >
       Leakage detected combined with sovereignty boundary exit — suggests data leaving
       through a covert channel to an external receiver. Matches DeepSeek/Hermes pattern:
@@ -253,6 +270,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-005
     name: adversarial_input_via_pipeline
+    domain: INJ
     description: >
       Exploitation severity is CRITICAL AND injection patterns are present in the
       architecture input. The .mmd file itself is the attack vector — purpose-built
@@ -302,6 +320,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-006
     name: distributed_agentic_sweep
+    domain: RES
     description: >
       All critics running elevated tokens (distributed not spiked), high AIVSS coverage
       across the architecture, but no per-threat entry reaching CRITICAL severity.
@@ -360,6 +379,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-007
     name: synthesised_confidence_inflation
+    domain: QC
     description: >
       Synthesis confidence shifted (confidence_swing > 0) but no critic divergence
       was recorded (divergence_score == 0, divergence_detected == false) and
@@ -421,6 +441,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-008
     name: selection_pressure_reward_hacking
+    domain: QC
     description: >
       ScrumMaster acceptance rate for critics dropped below threshold in a single
       synthesis pass. Low acceptance rate signals that critics are being repeatedly
@@ -475,6 +496,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-009
     name: credential_exposure_in_artifact
+    domain: EXF
     description: >
       Ground truth artifact contains credential or secret patterns (api_key, password,
       token, secret). Any analysis produced from this run is contaminated — the
@@ -526,6 +548,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-010
     name: path_traversal_in_input
+    domain: INJ
     description: >
       Architecture input contains path traversal sequences (../../, /etc/, %2e%2e%2f
       etc.). The .mmd file is being used as a file system probe against the analysis
@@ -574,6 +597,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-011
     name: llm_external_egress_without_zdr
+    domain: EXF
     description: >
       Architecture diagram routes LLM inference output to an external service
       (Slack, Telegram, webhook, third-party API) without a Zero Data Retention
@@ -625,6 +649,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-012
     name: stale_threat_intelligence_feed
+    domain: RES
     description: >
       MITRE ATT&CK or embedding data files are older than the declared freshness
       threshold (90 days). Threat assessment output is based on stale technique
@@ -673,6 +698,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-013
     name: high_outbound_threat_surface
+    domain: EXF
     description: >
       AIVSS outbound composite score reached or exceeded 6.0 — the architecture
       presents a significant exfiltration-capable surface. PII exposure, data
@@ -724,6 +750,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-014
     name: low_technique_validation_coverage
+    domain: RES
     description: >
       Technique validation pass rate (val_pct) dropped below 75% with at least 3
       invalid technique mappings. The engine mapped a significant number of irrelevant
@@ -784,6 +811,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-015
     name: critic_gap_convergence
+    domain: QC
     description: >
       Critic gap text Jaccard similarity exceeded collusion threshold — critics
       are producing convergent rather than independent outputs. This is a proxy
@@ -838,6 +866,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-016
     name: critic_module_tampering
+    domain: SCT
     description: >
       One or more critic module files differ from their committed git object hash —
       post-install tampering or supply-chain injection is indicated. Any analysis
@@ -889,6 +918,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-017
     name: external_url_in_architecture_input
+    domain: INJ
     description: >
       Architecture input contains http(s):// URLs in node labels or edge annotations.
       These are mutable remote references that cannot be hash-pinned — the content
@@ -943,6 +973,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-018
     name: evasion_attempt_encoding_or_homoglyph
+    domain: INJ
     description: >
       Architecture input contains unicode homoglyph characters (Cyrillic/Greek/fullwidth
       confusables) or consecutive URL-percent-encoded sequences before normalisation.
@@ -1000,6 +1031,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-019
     name: high_severity_injection_category
+    domain: INJ
     description: >
       Architecture input matched a HIGH-severity injection category (direct_override,
       system_override, dan_jailbreak, safety_bypass, prompt_extraction, or
@@ -1051,6 +1083,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-020
     name: mcp_recon_sequence
+    domain: MCP
     description: >
       MCP client enumerated architectures via list_architectures() then pulled
       governance signals for ≥3 unique architectures within 60 seconds.
@@ -1100,6 +1133,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-021
     name: mcp_job_flooding
+    domain: MCP
     description: >
       MCP client submitted ≥3 expert review jobs in 120 seconds with a
       poll/submit ratio below 0.5 — more submissions than polls indicates
@@ -1148,6 +1182,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-022
     name: mcp_auth_probing
+    domain: MCP
     description: >
       ≥5 MCP tool calls returned 401 Unauthorized within 300 seconds.
       Indicates automated credential probing or API key rotation attack
@@ -1204,6 +1239,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-024
     name: assessment_quality_regression
+    domain: QC
     description: >
       AIVSS overall composite score dropped ≥ 2.0 points vs the previous pipeline
       run. This indicates the architecture regressed — new attack surface, removed
@@ -1265,6 +1301,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-025
     name: c2_beacon_architecture
+    domain: EXF
     description: >
       The architecture diagram contains a polling or scheduler node connected to
       an external receiver (C2 server, OAST endpoint, callback handler). This
@@ -1329,6 +1366,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-028
     name: skill_instruction_tamper
+    domain: SCT
     description: >
       One or more skill instruction files (.claude/skills/*/SKILL.md or scripts/*.py)
       have diverged from their git HEAD hash. Skills are the internal operator layer
@@ -1390,6 +1428,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-026
     name: critic_consensus_collapse
+    domain: QC
     description: >
       ScrumMaster rejected the majority of critic findings (acceptance_rate < 0.4),
       flagged a redesign signal, and critics diverged. This triple condition indicates
@@ -1458,6 +1497,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-027
     name: downstream_agent_prompt_injection
+    domain: INJ
     description: >
       The architecture diagram contains hidden instructions targeting downstream AI
       coding agents (Claude Code, Codex, Cursor, Copilot) — typically embedded as
@@ -1518,6 +1558,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-023
     name: agentic_tool_exfil_vector
+    domain: EXF
     description: >
       An AI/agentic architecture has cross-boundary outbound paths AND an elevated
       AIVSS outbound composite score (≥ 3.0). This structural combination — agent
@@ -1576,6 +1617,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-029
     name: llm_generated_mmd_injection
+    domain: INJ
     description: >
       An LLM-generated architecture diagram contains prompt injection markers or agent-targeting instructions. Indicates the generate-mmd endpoint was used to produce a malicious diagram that could poison the TA pipeline or downstream AI coding agents. Grounded in TA harden-audit 2026-08-09 RT-02: unsanitised 'extra' field allowed full LLM instruction override.
     incident_refs:
@@ -1610,6 +1652,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-030
     name: unauthenticated_mcp_tool_exposure
+    domain: MCP
     description: >
       An agentic architecture exposes MCP-compatible tool APIs over a network transport with no authentication layer. All tools are callable without credentials — any caller can trigger analysis jobs, read reports, and access governance signals. Extends DETECT-020/021/022 (MCP recon/flood/auth-probe) with a structural pre-condition check. Grounded in TA harden-audit 2026-08-09 RT-06: MCP server accepted network transport with no auth gate.
     incident_refs:
@@ -1650,6 +1693,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-031
     name: brain_training_data_poisoning
+    domain: SCT
     description: >
       An architecture submitted to the analysis pipeline shows both evasion attempts and injection categories — the combined signature of a targeted attempt to smuggle malicious content through validation into the TA Brain's training data. Unlike DETECT-029 (any injection) this specifically requires evasion_attempts > 0, indicating the attacker anticipated detection and tried to circumvent it. Grounded in TA harden-audit 2026-08-14 RT-01 (gen_id path traversal), RT-02 (max_per_run abuse), RT-03 (Mermaid XSS via generated MMDs). Attack path: craft adversarial synthetic MMD → trigger generate-mmds → pass approval → poison brain instance layer → corrupt pattern predictions.
     incident_refs:
@@ -1696,6 +1740,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-032
     name: rest_rate_limit_abuse
+    domain: MCP
     description: >
       REST API has returned ≥10 HTTP 429 responses in the current session.
       Legitimate callers back off after 1–2 rejections. Continued submission
@@ -1745,6 +1790,7 @@ rules:
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-033
     name: arch_name_path_traversal_probe
+    domain: INJ
     description: >
       A caller submitted an arch_name containing path traversal sequences
       (../, ..%2F, or an absolute path prefix) to the governance check endpoint.
