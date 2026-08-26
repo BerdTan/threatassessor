@@ -441,6 +441,8 @@ _CRITIC_CACHE_FILES = [
     "06_red_team_critique.json",
     "06b_purple_team_critique.json",
     "06c_blackhat_critique.json",
+    "07_moe_orchestrator.json",   # also clear synthesis so stale file isn't read on CriticStage failure
+    "08_scrum_master.json",
 ]
 
 def _clear_critiques(arch: str, report_base: Path) -> None:
