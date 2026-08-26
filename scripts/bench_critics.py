@@ -96,7 +96,8 @@ MODEL_ALIASES = {
     "openrouter_free":  "openrouter/nvidia/nemotron-3.5-lightning:free",
     "cohere":           "openrouter/cohere/north-mini-code:free",  # non-thinking sparse MoE, agentic coding focus
     "glm":              "openrouter/z-ai/glm-5.2:free",            # reasoning model — use sequential + watch tester tokens
-    # ox_alpha removed — stealth/ox-alpha:free no longer available; paid only as of 2026-08-24
+    "ox_alpha":         "openrouter/stealth/ox-alpha",              # free preview — going away 2026-08-26
+    "dots3":            "openrouter/dots-studio/dots-3-note-preview:free",  # 512K ctx, deprecates 2026-09-30
 }
 
 
@@ -622,7 +623,7 @@ def main():
     ap.add_argument("--archs",    nargs="*", default=None,
                     help="Arch names to benchmark. Omit to auto-select (uses qualify logic).")
     ap.add_argument("--models",   nargs="+", default=["current"],
-                    help="Model aliases: current hetzner hetzner_27b gemini_flash openrouter_free cohere glm")
+                    help="Model aliases: current hetzner hetzner_27b gemini_flash openrouter_free cohere glm ox_alpha dots3")
     ap.add_argument("--critic-mode", default="partial_parallel",
                     choices=["partial_parallel", "sequential", "parallel", "auto"],
                     help="MoE critic execution mode (default: partial_parallel). Use sequential for rate-limited providers.")
