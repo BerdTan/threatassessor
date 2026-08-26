@@ -96,11 +96,11 @@ MODEL_ALIASES = {
     "openrouter_free":  "openrouter/nvidia/nemotron-3.5-lightning:free",
     "cohere":           "openrouter/cohere/north-mini-code:free",  # non-thinking sparse MoE, agentic coding focus
     "glm":              "openrouter/z-ai/glm-5.2:free",            # reasoning model — use sequential + watch tester tokens
-    "ox_alpha":         "openrouter/stealth/ox-alpha",              # free preview — going away 2026-08-26
+    "ox_alpha":         "openrouter/stealth/ox-alpha",              # was GLM-5.3 Flash (revealed on retirement 2026-08-26); gone
     "dots3":            "openrouter/dots-studio/dots-3-note-preview:free",  # 512K ctx, deprecates 2026-09-30
     "minimax":          "openrouter/minimax/minimax-m3:free",               # MiniMax M3 free
     "gemma":            "openrouter/google/gemma-4-31b-it:free",            # Gemma 4 31B free, 262K ctx
-    "inkling":          "openrouter/thinkingmachines/inkling:free",         # 975B/41B active MoE, agentic harness, 1M ctx
+    "inkling":          "openrouter/thinkingmachines/inkling:free",         # GATED: OR restricts to approved agentic apps only (403 via direct API)
     "nemotron_nano":    "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  # 30B/3B active, reasoning, 49 tok/s
 }
 
