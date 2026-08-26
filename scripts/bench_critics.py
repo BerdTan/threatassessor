@@ -634,7 +634,7 @@ def main():
                     help="Output directory for --combine report")
     ap.add_argument("--api-url",  default="http://localhost:8000")
     ap.add_argument("--output",   default="bench_results")
-    ap.add_argument("--timeout",  type=int, default=900)
+    ap.add_argument("--timeout",  type=int, default=1500)
     ap.add_argument("--report-dir", default=None)
     args = ap.parse_args()
 

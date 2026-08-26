@@ -73,7 +73,6 @@ echo -e "${GREEN}   Log:  $LOG_FILE${NC}"
 nohup .venv/bin/python -m uvicorn chatbot.api.app:app \
     --host "$API_HOST" \
     --port "$API_PORT" \
-    --reload \
     --log-level info \
     > "$LOG_FILE" 2>&1 &
 
