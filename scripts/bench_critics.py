@@ -102,6 +102,7 @@ MODEL_ALIASES = {
     "gemma":            "openrouter/google/gemma-4-31b-it:free",            # Gemma 4 31B free, 262K ctx
     "inkling":          "openrouter/thinkingmachines/inkling:free",         # GATED: OR restricts to approved agentic apps only (403 via direct API)
     "nemotron_nano":    "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  # 30B/3B active, reasoning, 49 tok/s
+    "nemotron_super":   "openrouter/nvidia/nemotron-3-super-120b-a12b:free",              # 120B/12B active MoE, 50 tok/s, 99.7% uptime
 }
 
 
@@ -629,7 +630,7 @@ def main():
     ap.add_argument("--archs",    nargs="*", default=None,
                     help="Arch names to benchmark. Omit to auto-select (uses qualify logic).")
     ap.add_argument("--models",   nargs="+", default=["current"],
-                    help="Model aliases: current hetzner hetzner_27b gemini_flash openrouter_free cohere glm ox_alpha dots3 minimax gemma inkling nemotron_nano")
+                    help="Model aliases: current hetzner hetzner_27b gemini_flash openrouter_free cohere glm ox_alpha dots3 minimax gemma inkling nemotron_nano nemotron_super")
     ap.add_argument("--critic-mode", default="partial_parallel",
                     choices=["partial_parallel", "sequential", "parallel", "auto"],
                     help="MoE critic execution mode (default: partial_parallel). Use sequential for rate-limited providers.")
