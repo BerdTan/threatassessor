@@ -171,6 +171,10 @@ HTML_TEMPLATE = r"""
   --model-a:   #3b82f6;
   --model-b:   #14b8a6;
   --model-c:   #f59e0b;
+  --model-d:   #8b5cf6;
+  --model-e:   #ef4444;
+  --model-f:   #ec4899;
+  --model-g:   #84cc16;
   --ref:       #2d3748;
   --good:      #10b981;
   --warn:      #f59e0b;
@@ -252,6 +256,10 @@ body {
 .pill.a { border-color: var(--model-a); color: var(--model-a); background: color-mix(in srgb, var(--model-a) 10%, transparent); }
 .pill.b { border-color: var(--model-b); color: var(--model-b); background: color-mix(in srgb, var(--model-b) 10%, transparent); }
 .pill.c { border-color: var(--model-c); color: var(--model-c); background: color-mix(in srgb, var(--model-c) 10%, transparent); }
+.pill.d { border-color: var(--model-d); color: var(--model-d); background: color-mix(in srgb, var(--model-d) 10%, transparent); }
+.pill.e { border-color: var(--model-e); color: var(--model-e); background: color-mix(in srgb, var(--model-e) 10%, transparent); }
+.pill.f { border-color: var(--model-f); color: var(--model-f); background: color-mix(in srgb, var(--model-f) 10%, transparent); }
+.pill.g { border-color: var(--model-g); color: var(--model-g); background: color-mix(in srgb, var(--model-g) 10%, transparent); }
 
 /* ── Legend ── */
 .legend {
@@ -506,6 +514,27 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+}
+
+/* Mini bar chart for critic depth scores */
+.crit-bars { display: flex; flex-direction: column; gap: 3px; margin-top: 0.4rem; }
+.crit-bar-row { display: flex; align-items: center; gap: 4px; height: 14px; }
+.crit-bar-dot {
+  width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
+}
+.crit-bar-abbr {
+  font-family: 'JetBrains Mono', monospace; font-size: 0.48rem; font-weight: 700;
+  color: var(--text3); width: 22px; flex-shrink: 0; text-align: right;
+  letter-spacing: 0.03em;
+}
+.crit-bar-track {
+  flex: 1; background: var(--border); border-radius: 2px; height: 5px;
+  overflow: hidden; min-width: 0;
+}
+.crit-bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease; }
+.crit-bar-val {
+  font-family: 'JetBrains Mono', monospace; font-size: 0.48rem; font-weight: 600;
+  width: 22px; text-align: right; flex-shrink: 0;
 }
 
 /* ── Gap report ── */
@@ -987,8 +1016,13 @@ const models  = DATA.models;
 const archs   = DATA.archs;
 const m0 = models[0], m1 = models[1], m2 = models[2];
 const CRITIC_NAMES = ['architect','tester','red_team','purple_team','blackhat','scrum_master'];
-const MODEL_CLASSES = ['a','b','c'];
-const MODEL_CSS_VARS = ['var(--model-a)','var(--model-b)','var(--model-c)'];
+const MODEL_CLASSES = ['a','b','c','d','e','f','g'];
+const MODEL_CSS_VARS = ['var(--model-a)','var(--model-b)','var(--model-c)','var(--model-d)','var(--model-e)','var(--model-f)','var(--model-g)'];
+const MODEL_ABBR = {
+  hetzner:'HTZ', gemini_flash:'GMI', hetzner_27b:'H27', minimax:'MMX',
+  ox_alpha:'OXA', glm:'GLM', nemotron_nano:'NNO', nemotron_super:'NSU',
+};
+function modelAbbr(id) { return MODEL_ABBR[id] || id.slice(0,3).toUpperCase(); }
 
 // Header meta pills — show alias + actual model string
 const metaCont = document.getElementById('header-meta');
@@ -1107,11 +1141,21 @@ archs.forEach((arch, ai) => {
     const modelShort = modelRaw.replace(/^openrouter\/openrouter\//, 'or/').replace(/^openai\//, 'hetzner/').replace(/^openrouter\//, '');
     const hint = _improveHint(critic, depths[0]);
 
-    const depthBadges = depths.map((d, i) => {
-      const clr = _depthColor(d);
+    // Mini bar chart — one row per model, no overflow
+    const barRows = depths.map((d, i) => {
+      const clr = MODEL_CSS_VARS[i] || MODEL_CSS_VARS[MODEL_CSS_VARS.length - 1];
+      const pct = d != null ? Math.round((d / 12) * 100) : 0;
       const disp = d != null ? d.toFixed(1) : '—';
-      const sep = i > 0 ? '<span class="depth-arrow">·</span>' : '';
-      return `${sep}<span style="color:${clr};font-weight:600;font-family:\'JetBrains Mono\',monospace;font-size:${i===0?'1.1rem':'0.85rem'}">${disp}</span>`;
+      const valClr = d != null ? _depthColor(d) : 'var(--text3)';
+      return `
+        <div class="crit-bar-row">
+          <span class="crit-bar-dot" style="background:${clr}"></span>
+          <span class="crit-bar-abbr" style="color:${clr}">${modelAbbr(models[i])}</span>
+          <div class="crit-bar-track">
+            <div class="crit-bar-fill" style="width:${pct}%;background:${clr}"></div>
+          </div>
+          <span class="crit-bar-val" style="color:${valClr}">${disp}</span>
+        </div>`;
     }).join('');
 
     const col = document.createElement('div');
@@ -1119,15 +1163,7 @@ archs.forEach((arch, ai) => {
     col.innerHTML = `
       <div class="critic-name">${critic.replace(/_/g,' ')}</div>
       <div class="critic-role">${CRITIC_ROLES[critic] || ''}</div>
-      <div style="margin-top:0.3rem;display:flex;align-items:baseline;gap:0.2rem;flex-wrap:wrap;">
-        ${depthBadges}
-        <span class="depth-scale">/12</span>
-      </div>
-      <div class="critic-detail">
-        <span class="critic-model" title="${modelRaw}">${modelShort || '—'}</span>
-        <span>tok ${ca.raw_tok ? Math.round(ca.raw_tok/1000)+'k' : '—'}${ca.raw_lat ? ' · '+ca.raw_lat.toFixed(0)+'s' : ''}</span>
-        ${ca.raw_uniq ? `<span>${ca.raw_uniq} uniq TTPs</span>` : ''}
-      </div>
+      <div class="crit-bars">${barRows}</div>
       ${hint ? `<div class="critic-improve"><div class="critic-improve-label">↑ to improve</div>${hint}</div>` : ''}
     `;
     criticsGrid.appendChild(col);
