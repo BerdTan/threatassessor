@@ -339,8 +339,21 @@ class LLMClient:
                 # Provider not in LLMProvider enum (e.g. 'gemini') but in PROVIDER_MANIFEST.
                 # litellm.api_key is a process-global; a previous Hetzner/OR call may have
                 # set it. Pass api_key per-call so LiteLLM uses the correct key regardless.
+                # Only inject if the key is non-empty — an empty string causes LiteLLM to
+                # skip AI Studio and fall back to ambient GCP credentials (Vertex AI).
                 from agentic.providers import resolve_api_key as _rak
-                _foreign_extra["api_key"] = _rak(_foreign_prov_str) or ""
+                _resolved_key = _rak(_foreign_prov_str)
+                if _resolved_key:
+                    _foreign_extra["api_key"] = _resolved_key
+                else:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "No API key found for provider '%s' (model=%s). "
+                        "LiteLLM may fall back to ambient GCP credentials (Vertex AI). "
+                        "Set the %s env var to force AI Studio routing.",
+                        _foreign_prov_str, model,
+                        f"{_foreign_prov_str.upper()}_API_KEY",
+                    )
                 _foreign_config = ProviderConfig(provider=provider)
                 _foreign_config.api_key = None   # do NOT overwrite litellm.api_key global
                 _foreign_config.endpoint = None
@@ -565,6 +578,11 @@ Be critical but constructive."""
 
         if config.api_key:
             litellm.api_key = config.api_key
+        elif "api_key" in kwargs:
+            # Caller is injecting a per-call key (e.g. GEMINI_API_KEY for a provider not in the
+            # LLMProvider enum). Clear the global so LiteLLM uses the per-call kwarg rather than
+            # whatever a prior Hetzner/OR call left in the global.
+            litellm.api_key = None
 
         m = get_manifest(config.provider.value) or {}
         extra_kwargs: dict = {}
