@@ -95,11 +95,13 @@ MODEL_ALIASES = {
     "gemini_flash":     "gemini/gemini-3.6-flash",              # Google AI Studio — stable, free tier
     "openrouter_free":  "openrouter/nvidia/nemotron-3.5-lightning:free",
     "cohere":           "openrouter/cohere/north-mini-code:free",  # non-thinking sparse MoE, agentic coding focus
-    "glm":              "openrouter/z-ai/glm-5.2:free",            # reasoning model — use sequential + watch tester tokens
+    "glm":              "openrouter/z-ai/glm-5.2",                 # paid variant — bypasses Decart shared-pool 429
+    "glm_free":         "openrouter/z-ai/glm-5.2:free",            # free variant (shared pool — rate-limited under parallel load)
     "ox_alpha":         "openrouter/stealth/ox-alpha",              # was GLM-5.3 Flash (revealed on retirement 2026-08-26); gone
     "dots3":            "openrouter/dots-studio/dots-3-note-preview:free",  # 512K ctx, deprecates 2026-09-30
     "minimax":          "openrouter/minimax/minimax-m3:free",               # MiniMax M3 free
-    "gemma":            "openrouter/google/gemma-4-31b-it:free",            # Gemma 4 31B free, 262K ctx
+    "gemma":            "openrouter/google/gemma-4-31b-it",                 # paid variant — bypasses Google AI Studio shared-pool 429
+    "gemma_free":       "openrouter/google/gemma-4-31b-it:free",            # free variant (shared pool — rate-limited under parallel load)
     "inkling":          "openrouter/thinkingmachines/inkling:free",         # GATED: OR restricts to approved agentic apps only (403 via direct API)
     "nemotron_nano":    "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  # 30B/3B active, reasoning, 49 tok/s
     "nemotron_super":   "openrouter/nvidia/nemotron-3-super-120b-a12b:free",              # 120B/12B active MoE, 50 tok/s, 99.7% uptime
@@ -466,8 +468,10 @@ def _trigger_expert_review(
     body: dict = {"arch_name": arch, "critic_mode": critic_mode, "run_blackhat": True}
     if critic_model:
         body["critic_model"] = critic_model
+    # 90 s gives the API event loop room to respond even when a prior job's
+    # LLM thread is slow (e.g. Hetzner 504 delays); 30 s was too tight.
     r = requests.post(f"{api_url}/api/v1/jobs/expert-review",
-                      json=body, headers=headers, timeout=30)
+                      json=body, headers=headers, timeout=90)
     r.raise_for_status()
     job_id = r.json()["job_id"]
     deadline = time.time() + timeout
@@ -630,7 +634,7 @@ def main():
     ap.add_argument("--archs",    nargs="*", default=None,
                     help="Arch names to benchmark. Omit to auto-select (uses qualify logic).")
     ap.add_argument("--models",   nargs="+", default=["current"],
-                    help="Model aliases: current hetzner hetzner_27b gemini_flash openrouter_free cohere glm ox_alpha dots3 minimax gemma inkling nemotron_nano nemotron_super")
+                    help="Model aliases: current hetzner hetzner_27b gemini_flash openrouter_free cohere glm glm_free ox_alpha dots3 minimax gemma gemma_free inkling nemotron_nano nemotron_super")
     ap.add_argument("--critic-mode", default="partial_parallel",
                     choices=["partial_parallel", "sequential", "parallel", "auto"],
                     help="MoE critic execution mode (default: partial_parallel). Use sequential for rate-limited providers.")
@@ -703,6 +707,13 @@ def main():
     run_id  = time.strftime("%Y%m%d_%H%M%S")
     run_dir = output_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+
+    if len(args.models) > 2:
+        print(_c(
+            f"WARNING: diff table and gap report only compare {args.models[0]} vs {args.models[1]}. "
+            f"Extra models ({', '.join(args.models[2:])}) are benchmarked but not shown in comparisons.",
+            YELLOW,
+        ))
 
     # Estimate time/cost upfront
     rows     = _load_arch_meta(report_base)

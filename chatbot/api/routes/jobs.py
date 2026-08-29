@@ -157,7 +157,8 @@ async def _run_expert_review(
     if gt_path.exists():
         try:
             import json
-            gt = json.loads(gt_path.read_text(encoding="utf-8"))
+            _gt_text = await asyncio.to_thread(gt_path.read_text, encoding="utf-8")
+            gt = json.loads(_gt_text)
             ssp_profile = (
                 gt.get("ssp_profile")
                 or gt.get("metadata", {}).get("ssp_profile")
