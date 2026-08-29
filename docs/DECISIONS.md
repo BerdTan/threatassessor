@@ -4,6 +4,114 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 56–57 — 2026-08-28/29
+
+**Decision 120 — Bench leaderboard embedded in dashboard (Reports → ⚡ Bench subtab)**
+Critic model leaderboard moved from standalone `report/critic_leaderboard.html` into the TA dashboard as a subtab under Reporting → Reports. IIFE-scoped JS with `window._bpInit` guard; all CSS prefixed `#bench-pane .bp-*` to avoid conflicts. Default landing pane for Reports tab. Alternatives rejected: separate page (requires separate navigation), sidebar top-level tab (adds nav clutter).
+
+**Decision 121 — Benchmarks nav moved from Settings → Reporting group**
+`data-tab="bench"` (run picker + iframe) was under Settings which was semantically wrong. Moved to Reporting nav group alongside Reports and Raw Data. No JS changes — just nav button relocation. Alternatives rejected: merge into Reports subtab (caused redirect race condition with `loadReportsTab`'s `_switchReportsSubtab` call).
+
+**Decision 122 — Reports tab subtab persistence via `_activeReportsSubtab`**
+`loadReportsTab()` previously reset to ⚡ Bench on every Reports nav click, blocking 📄 Reports and 🏛 CISO Brief subtab persistence. Fixed by tracking `this._activeReportsSubtab` in `_switchReportsSubtab()` and restoring it in `loadReportsTab()`. Defaults to `bench-pane` on first visit only.
+
+**Decision 123 — Leaderboard card layout: flex-wrap replaces fixed 3-column grid**
+Cards switched from `display:grid; grid-template-columns:22px 1fr auto` to `display:flex; flex-wrap:wrap`. Critic bars changed from `repeat(5,1fr)` to `repeat(auto-fill, minmax(48px, 1fr))` so bars wrap to new rows at narrow widths rather than squashing below readability. Score column made a flex child with `flex:0 0 auto`.
+
+**Bench state at end of session 56 (2026-08-28):**
+
+| Model | 22_ai_nodes | 21_agentic | 12_micro | 07_gcp | Notes |
+|---|---|---|---|---|---|
+| hetzner | ✅ | ✅ | ✅ | — | reference |
+| hetzner_27b | ✅ | ✅ | ✅ | — | tester=0.0 on microservices |
+| minimax | ✅ | ✅ (bh missing) | ✅ | — | strongest free model |
+| gemini_flash | ✅ | ✅ | ✅ | — | paid; tester weak ~4-5 |
+| nemotron_nano | ✅ partial | ❌ timeout | ❌ timeout | ✅ | arch=11.6 strong on gcp |
+| nemotron_super | ✅ partial | ❌ timeout | ✅ partial | ✅ | arch=0.8 regression on gcp |
+| glm | ❌ 429 | — | — | ❌ 429 | retry off-peak |
+| gemma | ❌ 429 | — | — | ❌ 429 | retry off-peak |
+
+---
+
+## Session 55 — 2026-08-27
+
+**Session summary:** Nemotron Nano + Super results confirmed (partial). Leaderboard UI built (`report/critic_leaderboard.html`). GLM/Gemma still pending. Plan for next session: retry timeout models against a simpler architecture.
+
+**Bench state at end of session (2026-08-27):**
+
+| Model | 22_ai_nodes | 21_agentic | 12_microservices | Notes |
+|---|---|---|---|---|
+| hetzner | ✅ | ✅ | ✅ | canonical reference |
+| gemini_flash | ✅ | ✅ | ✅ | paid credits |
+| hetzner_27b | ✅ | ✅ | ✅ | tester=0.0 on 12_microservices |
+| minimax | ✅ | ✅ (bh missing) | ✅ | strongest free model |
+| ox_alpha | ✅ | ❌ retired | ❌ retired | GLM-5.3 Flash; gone |
+| nemotron_nano | ✅ (partial) | ❌ timeout | ❌ timeout | purple missing; try simpler arch |
+| nemotron_super | ✅ (partial) | ❌ timeout | ✅ (partial) | arch+tester=0.0 on micro; token blowout |
+| glm | ❌ 429 | — | — | retry off-peak |
+| gemma | ❌ 429 | — | — | retry off-peak |
+
+**Key scores — 22_generic_ai_nodes (depth):**
+- hetzner: arch=11.6 test=10.8 rt=11.4 purple=9.4 bh=10.8
+- gemini_flash: arch=9.8 test=9.8 rt=10.8 purple=9.0 bh=10.2
+- hetzner_27b: arch=9.0 test=10.8 rt=9.0 purple=6.4 bh=10.0
+- ox_alpha: arch=10.6 test=2.4 rt=6.0 purple=7.2 bh=10.9
+- minimax: arch=7.0 test=7.0 rt=10.4 purple=6.2 bh=10.6
+- nemotron_nano: arch=10.4 test=8.6 rt=9.6 purple=— bh=9.0
+- nemotron_super: arch=8.6 test=0.0 rt=6.6 purple=9.0 bh=9.6
+
+**Entry 123 — 2026-08-27: simpler arch for timeout/token-blowout models**
+Decision: For models that timeout at 1500s on 21_agentic or 12_microservices (nemotron_nano, nemotron_super) and models not yet tested (GLM, Gemma), try a lighter-weight architecture with fewer nodes as a fallback bench target.
+Reason: Nemotron Nano timed out on both 21_agentic (~356k est. tokens) and 12_microservices (~206k est. tokens). Nemotron Super showed token blowout (15–24k output per critic on architect/tester), collapsing scores to 0.0 on larger archs. A simpler arch (< ~80k est. tokens) would let us gather at least partial per-critic signal for these models.
+Alternatives rejected: Increasing timeout further beyond 1500s — architect already generates 24k output tokens; the bottleneck is output volume, not latency; more time won't fix it. Reducing max_tokens on the prompt — would affect score quality for all models.
+
+**Entry 124 — 2026-08-27: leaderboard UI built as local HTML; subsequently to be embedded in TA dashboard**
+Decision: Critic model leaderboard first built as standalone `report/critic_leaderboard.html`. Subsequently integrate into the TA dashboard UI (`chatbot/api/static/`) as a new Bench tab or sub-tab under Reporting.
+Reason: The standalone file serves as a working prototype for blog Part 23. The dashboard integration makes it a live, always-up-to-date view that updates as new bench runs complete — consistent with how governance signals, TATB scores, and DETECT trends are already surfaced in the UI.
+
+---
+
+## Session 54 — 2026-08-26
+
+**Session summary:** Free-model benchmarking campaign across 3 archs (22_generic_ai_nodes, 21_agentic_ai_system, 12_microservices). ox-alpha confirmed gone today (revealed as GLM-5.3 Flash on retirement). Stale-file bench bug fixed (Entry 120). hetzner + hetzner_27b + minimax + gemini_flash (paid) + ox_alpha all benched on 22_generic_ai_nodes. hetzner + hetzner_27b + minimax + gemini_flash completed all 3 archs. inkling gated (OR approved-apps only). nemotron_nano in-flight on 22_generic_ai_nodes when session ended. GLM + Gemma still rate-limited. Resume tomorrow: wait for nemotron_nano result, retry GLM/Gemma off-peak, then build leaderboard UI for Part 23.
+
+**Bench state at end of session (2026-08-26):**
+
+| Model | 22_ai_nodes | 21_agentic | 12_microservices | Notes |
+|---|---|---|---|---|
+| hetzner | ✅ | ✅ | ✅ | canonical reference |
+| hetzner_27b | ✅ | ✅ | ✅ | tester=0.0 on 12_microservices ⚠ |
+| minimax | ✅ | ✅ (blackhat missing) | ✅ | strongest free model so far |
+| ox_alpha | ✅ | ❌ gone | ❌ gone | retired 2026-08-26 |
+| gemini_flash | ✅ | ✅ | ✅ | paid credits; tester weak (~4-5) |
+| ox_alpha | ✅ | ❌ gone | ❌ gone | was GLM-5.3 Flash; retired 2026-08-26 |
+| nemotron_nano | in-flight | pending | pending | resume tomorrow |
+| glm | ❌ 429 | — | — | retry off-peak |
+| gemma | ❌ 429 | — | — | retry off-peak |
+| inkling | ❌ gated | — | — | OR restricts to approved apps; skip |
+
+**Key scores — 22_generic_ai_nodes (depth):**
+- hetzner: arch=11.6 test=10.8 rt=11.4 purple=9.4 bh=10.8
+- gemini_flash: arch=9.8 test=9.8 rt=10.8 purple=9.0 bh=10.2
+- hetzner_27b: arch=9.0 test=10.8 rt=9.0 purple=6.4 bh=10.0
+- ox_alpha: arch=10.6 test=2.4 rt=6.0 purple=7.2 bh=10.9
+- minimax: arch=7.0 test=7.0 rt=10.4 purple=6.2 bh=10.6
+
+**Entry 120 — 2026-08-26: bench stale-file bug fix**
+Decision: Add `07_moe_orchestrator.json` and `08_scrum_master.json` to `_CRITIC_CACHE_FILES` so they are deleted before each bench run.
+Reason: `CriticStage.required=False` — when a model hits upstream 429, the stage fails silently, the pipeline completes without writing a new orchestrator file, and the bench reads the stale file from the previous model's run producing phantom identical scores. Adding these files to the clear list means a failed run surfaces as `07_moe_orchestrator.json not found` (a correct error) rather than silent data corruption.
+Alternatives rejected: Making CriticStage required=True — would break the entire pipeline on any critic failure rather than just failing the bench cleanly.
+
+**Entry 121 — 2026-08-26: multi-model free bench campaign + 3-arch design for Part 23**
+Decision: Bench 3 archs (22_generic_ai_nodes, 21_agentic_ai_system, 12_microservices) across all viable free models on OR. Target: critic leaderboard UI + blog Part 23. Arch selection rationale: one AI-system arch (22), one agentic arch (21), one classic non-AI arch (12_microservices) to show consistency across architecture types.
+Reason: Single-arch data is too thin for a blog claim. Three archs demonstrates results generalise and surfaces arch-sensitivity in critic scores (e.g. hetzner tester = 2.4 on AI archs, 11.8 on microservices — a finding worth writing about).
+Alternatives rejected: 10_complex_enterprise (token-expensive), 08_dmz (too narrow/perimeter-only).
+
+**Entry 122 — 2026-08-26: inkling + nemotron_nano added as next bench candidates**
+Decision: Add `inkling` (thinkingmachines/inkling:free, 975B/41B active, 1M ctx, 54 tok/s) and `nemotron_nano` (nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free, 30B/3B active, 49 tok/s, reasoning mode) as bench aliases.
+Reason: GLM and Gemma repeatedly rate-limited on OR shared pools. Inkling has 99.6% uptime and is explicitly designed for agentic harnesses. Nemotron-nano is a complementary data point — smallest active-param model with reasoning, tests whether reasoning compensates for size. nemotron-ultra-550b rejected (4 tok/s = timeout guaranteed at 1500s limit).
+Alternatives rejected: nemotron-ultra (too slow), dots3 (deprecating 2026-09-30, low priority).
+
 ## Session 53 — 2026-08-24
 
 **Session summary:** ox-alpha bench kicked off (3-model: hetzner + gemini_flash + ox_alpha, sequential mode, 3 archs). DETECT-032 (REST rate-limit abuse) and DETECT-033 (arch_name path traversal) built from backlog — both now fully wired with signals, rules, playbooks, incident simulator scenarios, and tests. 33 rules, 368 tests passing.

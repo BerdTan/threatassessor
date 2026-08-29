@@ -321,7 +321,7 @@ class Dashboard {
 
     // Tabs that require a completed analysis to be meaningful
     _contentTabs() {
-        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'reports', 'raw-data', 'insights', 'benchmark'];
+        return ['attacks', 'controls', 'hardening', 'expert-review', 'threat-model', 'raw-data', 'insights', 'benchmark'];
     }
 
     _setOverviewDetailVisible(visible) {
@@ -411,6 +411,7 @@ class Dashboard {
         const isHarness    = tabName === 'harness';
         const isWorkspace  = tabName === 'workspace';
         const isTraces     = tabName === 'traces';
+        const isReports    = tabName === 'reports';
         const isSocKg      = tabName === 'soc-kg';
         const isMcp        = tabName === 'mcp';
         const isBrain      = tabName === 'brain';
@@ -489,7 +490,7 @@ class Dashboard {
             if (benchWrapper) { benchWrapper.style.display = 'flex'; benchWrapper.style.flexDirection = 'column'; }
             this._benchInit();
         } else {
-            if (this.analysisData) {
+            if (this.analysisData || isReports) {
                 if (uploadContainer) uploadContainer.style.display = 'none';
                 if (tabContent) tabContent.style.display = 'block';
                 document.querySelectorAll('.tab-pane').forEach(pane => {
@@ -6593,11 +6594,36 @@ class Dashboard {
         return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
+    _switchReportsSubtab(target) {
+        this._activeReportsSubtab = target;
+        document.querySelectorAll('.reports-subtab').forEach(b => {
+            const active = b.dataset.reportsSubtab === target;
+            b.style.background  = active ? 'var(--card-bg)' : 'transparent';
+            b.style.color       = active ? 'var(--primary-color)' : 'var(--text-tertiary)';
+            b.style.borderColor = active ? 'var(--border-color)' : 'transparent';
+        });
+        document.querySelectorAll('.reports-subtab-content').forEach(pane => {
+            pane.style.display = pane.id === target ? 'block' : 'none';
+        });
+        if (target === 'ciso-view-pane') this._loadCisoView();
+    }
+
     async loadReportsTab() {
         const listContainer = document.getElementById('reports-list');
 
+        // Wire subtab nav buttons (idempotent via flag)
+        if (!this._reportsSubtabWired) {
+            this._reportsSubtabWired = true;
+            document.querySelectorAll('.reports-subtab').forEach(btn => {
+                btn.addEventListener('click', () => this._switchReportsSubtab(btn.dataset.reportsSubtab));
+            });
+        }
+
+        // Restore last active subtab, defaulting to ⚡ Bench on first visit
+        this._switchReportsSubtab(this._activeReportsSubtab || 'bench-pane');
+
         if (!this.analysisData) {
-            listContainer.innerHTML = '<p class="placeholder">No analysis data available</p>';
+            listContainer.innerHTML = '<p class="placeholder">No reports yet — run an analysis first.</p>';
             return;
         }
 
@@ -6639,22 +6665,6 @@ class Dashboard {
             `;
         }
 
-        // Wire Reports subtab nav (Reports list ↔ CISO View)
-        document.querySelectorAll('.reports-subtab').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const target = btn.dataset.reportsSubtab;
-                document.querySelectorAll('.reports-subtab').forEach(b => {
-                    const active = b.dataset.reportsSubtab === target;
-                    b.style.background    = active ? 'var(--card-bg)' : 'transparent';
-                    b.style.color         = active ? 'var(--primary-color)' : 'var(--text-tertiary)';
-                    b.style.borderColor   = active ? 'var(--border-color)' : 'transparent';
-                });
-                document.querySelectorAll('.reports-subtab-content').forEach(pane => {
-                    pane.style.display = pane.id === target ? 'block' : 'none';
-                });
-                if (target === 'ciso-view-pane') this._loadCisoView();
-            });
-        });
     }
 
     async _loadCisoView() {

@@ -129,7 +129,8 @@
                         <span class="nav-group-chevron">▾</span>
                     </button>
                     <div class="nav-group-items">
-                        <button class="nav-tab disabled" data-tab="reports">Reports</button>
+                        <button class="nav-tab" data-tab="reports">Reports</button>
+                        <button class="nav-tab" id="bench-nav-tab" data-tab="bench" title="Model Benchmark — visual radar diff across critic models">Benchmarks</button>
                         <button class="nav-tab disabled" data-tab="raw-data">Raw Data</button>
                     </div>
                 </div>
@@ -153,7 +154,6 @@
                         <button class="nav-tab" id="harness-nav-tab" data-tab="harness">Harness</button>
                         <button class="nav-tab" id="config-nav-tab" data-tab="config" style="display:none;">Configuration</button>
                         <button class="nav-tab" id="traces-nav-tab" data-tab="traces">Traces</button>
-                        <button class="nav-tab" id="bench-nav-tab" data-tab="bench" title="Model Benchmark — visual radar diff across critic models">Benchmarks</button>
                     </div>
                 </div>
             </nav>
@@ -405,17 +405,21 @@
                 <div class="tab-pane" data-tab="reports">
                     <!-- Subtab nav -->
                     <div id="reports-subtab-nav" style="display:flex; gap:0.35rem; padding:0.75rem 1.25rem 0; border-bottom:1px solid var(--border-color); background:var(--nav-hover-bg);">
-                        <button class="reports-subtab active" data-reports-subtab="reports-list-pane"
-                            style="padding:0.3rem 0.85rem; border-radius:6px 6px 0 0; border:1px solid transparent; border-bottom:none; font-size:0.8125rem; font-weight:600; cursor:pointer; background:var(--card-bg); color:var(--primary-color);">
+                        <button class="reports-subtab" data-reports-subtab="reports-list-pane"
+                            style="padding:0.3rem 0.85rem; border-radius:6px 6px 0 0; border:1px solid transparent; border-bottom:none; font-size:0.8125rem; font-weight:600; cursor:pointer; background:transparent; color:var(--text-tertiary);">
                             📄 Reports
                         </button>
                         <button class="reports-subtab" data-reports-subtab="ciso-view-pane"
                             style="padding:0.3rem 0.85rem; border-radius:6px 6px 0 0; border:1px solid transparent; border-bottom:none; font-size:0.8125rem; font-weight:600; cursor:pointer; background:transparent; color:var(--text-tertiary);">
                             🏛 CISO Brief
                         </button>
+                        <button class="reports-subtab active" data-reports-subtab="bench-pane"
+                            style="padding:0.3rem 0.85rem; border-radius:6px 6px 0 0; border:1px solid transparent; border-bottom:none; font-size:0.8125rem; font-weight:600; cursor:pointer; background:var(--card-bg); color:var(--primary-color);">
+                            ⚡ Bench
+                        </button>
                     </div>
                     <!-- Reports subtab -->
-                    <div id="reports-list-pane" class="reports-subtab-content" style="display:block;">
+                    <div id="reports-list-pane" class="reports-subtab-content" style="display:none;">
                         <div class="split-view">
                             <div class="split-left">
                                 <div id="reports-list" class="list-container">
@@ -429,6 +433,387 @@
                         <div id="ciso-view-content">
                             <p class="placeholder">Loading CISO brief...</p>
                         </div>
+                    </div>
+                    <!-- Bench subtab (critic leaderboard) -->
+                    <div id="bench-pane" class="reports-subtab-content" style="display:block; overflow-y:auto; overflow-x:hidden; padding:1.25rem 1.25rem 2.5rem; box-sizing:border-box; width:100%;">
+<style>
+/* ── Bench pane scoped tokens ── */
+#bench-pane {
+  --bp-text:        var(--text-primary);
+  --bp-text-muted:  var(--text-secondary);
+  --bp-text-dim:    var(--text-tertiary);
+  --bp-card:        var(--card-bg);
+  --bp-border:      var(--border-color);
+  --bp-accent:      var(--primary-color);
+  --bp-violet:      #7C3AED;
+  --bp-violet-bg:   #EDE9FE;
+  --bp-bar-track:   var(--hover-bg);
+  --bp-null-bg:     var(--hover-bg);
+  --bp-null-fg:     var(--text-tertiary);
+  --bp-red-bg:      #FEE2E2; --bp-red-fg:    #991B1B;
+  --bp-amber-bg:    #FEF3C7; --bp-amber-fg:  #92400E;
+  --bp-teal-bg:     #CCFBF1; --bp-teal-fg:   #0F766E;
+  --bp-cyan-bg:     #DBEAFE; --bp-cyan-fg:   #1D4ED8;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #bench-pane {
+  --bp-violet:    #A78BFA;
+  --bp-violet-bg: #1E1535;
+  --bp-red-bg:    #3B0A0A; --bp-red-fg:    #FCA5A5;
+  --bp-amber-bg:  #3A1A00; --bp-amber-fg:  #FCD34D;
+  --bp-teal-bg:   #032A28; --bp-teal-fg:   #5EEAD4;
+  --bp-cyan-bg:   #0C2340; --bp-cyan-fg:   #7DD3FC;
+}}
+[data-theme="dark"] #bench-pane {
+  --bp-violet:    #A78BFA;
+  --bp-violet-bg: #1E1535;
+  --bp-red-bg:    #3B0A0A; --bp-red-fg:    #FCA5A5;
+  --bp-amber-bg:  #3A1A00; --bp-amber-fg:  #FCD34D;
+  --bp-teal-bg:   #032A28; --bp-teal-fg:   #5EEAD4;
+  --bp-cyan-bg:   #0C2340; --bp-cyan-fg:   #7DD3FC;
+}
+#bench-pane .bp-eyebrow {
+  font-size:0.68rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase;
+  color:var(--bp-accent); margin-bottom:0.5rem;
+}
+#bench-pane .bp-h1 {
+  font-size:1.35rem; font-weight:700; color:var(--bp-text); margin-bottom:0.35rem;
+}
+#bench-pane .bp-sub {
+  font-size:0.83rem; color:var(--bp-text-muted); margin-bottom:1.25rem; max-width:72ch; line-height:1.6;
+}
+#bench-pane .bp-meta {
+  display:flex; gap:1.75rem; flex-wrap:wrap; margin-bottom:1.75rem;
+}
+#bench-pane .bp-meta-item { display:flex; flex-direction:column; gap:2px; }
+#bench-pane .bp-meta-label {
+  font-size:0.62rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--bp-text-dim);
+  font-family: monospace;
+}
+#bench-pane .bp-meta-value { font-size:1.15rem; font-weight:700; color:var(--bp-text); }
+#bench-pane .bp-section-label {
+  font-size:0.65rem; font-weight:600; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--bp-text-dim); margin-bottom:0.35rem; font-family:monospace;
+}
+#bench-pane .bp-section-title {
+  font-size:1.05rem; font-weight:700; color:var(--bp-text); margin-bottom:1rem;
+}
+#bench-pane .bp-tabs {
+  display:flex; gap:4px; background:var(--bp-bar-track);
+  border-radius:8px; padding:4px; width:fit-content; margin-bottom:1.25rem; flex-wrap:wrap;
+}
+#bench-pane .bp-tab {
+  font-size:0.8rem; font-weight:500; padding:4px 13px; border-radius:5px;
+  border:none; background:none; color:var(--bp-text-muted); cursor:pointer;
+  transition:background 0.15s, color 0.15s;
+}
+#bench-pane .bp-tab.active {
+  background:var(--bp-card); color:var(--bp-text); box-shadow:0 1px 3px rgba(0,0,0,0.12);
+}
+#bench-pane .bp-heatmap-wrap { overflow-x:auto; margin-bottom:2rem; }
+#bench-pane .bp-heatmap {
+  border-collapse:collapse; width:100%; min-width:580px; font-variant-numeric:tabular-nums;
+}
+#bench-pane .bp-heatmap th {
+  font-size:0.65rem; font-weight:600; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--bp-text-dim); padding:0 8px 8px; text-align:center; font-family:monospace;
+}
+#bench-pane .bp-heatmap th.bp-model-col { text-align:left; padding-left:0; }
+#bench-pane .bp-heatmap td { padding:5px 8px; border-top:1px solid var(--bp-border); }
+#bench-pane .bp-model-name { font-size:0.85rem; font-weight:600; color:var(--bp-text); }
+#bench-pane .bp-model-tag {
+  display:inline-block; font-size:0.58rem; font-weight:500; padding:1px 5px; border-radius:3px;
+  margin-left:5px; vertical-align:middle; background:var(--bp-violet-bg); color:var(--bp-violet);
+  font-family:monospace;
+}
+#bench-pane .bp-score-cell {
+  border-radius:4px; text-align:center; font-family:monospace;
+  font-size:0.85rem; font-weight:600; min-width:55px;
+}
+#bench-pane .bp-heatmap td.bp-model-col-cell { position:sticky; left:0; background:var(--card-bg); z-index:2; min-width:150px; }
+#bench-pane .bp-heatmap th.bp-model-col { position:sticky; left:0; background:var(--card-bg); z-index:3; }
+#bench-pane .bp-divider { border:none; border-top:1px solid var(--bp-border); margin:1.5rem 0; }
+#bench-pane .bp-leaderboard {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));
+  gap:9px; margin-bottom:2rem;
+}
+#bench-pane .bp-lb-card {
+  background:var(--bp-card); border:1px solid var(--bp-border); border-radius:9px;
+  padding:0.75rem 0.9rem;
+  display:flex; flex-wrap:wrap; gap:0.4rem 0.65rem; align-items:flex-start;
+}
+#bench-pane .bp-lb-card.partial { border-style:dashed; opacity:0.78; }
+#bench-pane .bp-lb-rank { flex:0 0 22px; font-family:monospace; font-size:0.72rem; font-weight:600; color:var(--bp-text-dim); padding-top:3px; }
+#bench-pane .bp-lb-rank.gold   { color:#F59E0B; }
+#bench-pane .bp-lb-rank.silver { color:#94A3B8; }
+#bench-pane .bp-lb-rank.bronze { color:#B45309; }
+#bench-pane .bp-lb-body { flex:1 1 120px; display:flex; flex-direction:column; gap:5px; min-width:0; }
+#bench-pane .bp-lb-score-col { flex:0 0 auto; display:flex; flex-direction:column; align-items:flex-end; }
+#bench-pane .bp-lb-name { font-size:0.9rem; font-weight:600; color:var(--bp-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#bench-pane .bp-lb-bars { display:grid; grid-template-columns:repeat(auto-fill,minmax(48px,1fr)); gap:4px; width:100%; }
+#bench-pane .bp-bar-wrap { display:flex; flex-direction:column; gap:2px; min-width:0; }
+#bench-pane .bp-bar-label {
+  font-family:monospace; font-size:0.56rem; letter-spacing:0.07em; text-transform:uppercase;
+  color:var(--bp-text-dim);
+}
+#bench-pane .bp-bar-track { height:4px; background:var(--bp-bar-track); border-radius:3px; overflow:hidden; }
+#bench-pane .bp-bar-fill { height:100%; border-radius:3px; background:var(--bp-accent); transition:width 0.5s cubic-bezier(0.25,1,0.5,1); }
+#bench-pane .bp-lb-score {
+  font-family:monospace; font-size:1.2rem; font-weight:700; color:var(--bp-accent);
+  letter-spacing:-0.02em; line-height:1; text-align:right; white-space:nowrap;
+}
+#bench-pane .bp-lb-score-label { font-family:monospace; font-size:0.58rem; color:var(--bp-text-dim); text-align:right; margin-top:1px; }
+#bench-pane .bp-insights { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; margin-bottom:1.5rem; }
+#bench-pane .bp-insight-card {
+  background:var(--bp-card); border:1px solid var(--bp-border); border-radius:9px; padding:1rem 1.1rem;
+}
+#bench-pane .bp-insight-icon { font-size:1.2rem; margin-bottom:0.4rem; }
+#bench-pane .bp-insight-title { font-size:0.88rem; font-weight:700; color:var(--bp-text); margin-bottom:0.3rem; }
+#bench-pane .bp-insight-body { font-size:0.8rem; color:var(--bp-text-muted); line-height:1.6; }
+#bench-pane .bp-insight-body strong { color:var(--bp-text); font-weight:600; }
+#bench-pane .bp-footnotes {
+  font-size:0.75rem; color:var(--bp-text-dim); line-height:1.7;
+  border-top:1px solid var(--bp-border); padding-top:1rem;
+}
+#bench-pane .bp-footnotes p + p { margin-top:0.35rem; }
+#bench-pane .bp-fn-mark { color:var(--bp-violet); }
+</style>
+
+<!-- hero -->
+<p class="bp-eyebrow">Model Evaluation · Same harness, same prompts</p>
+<h2 class="bp-h1">Critic Model Leaderboard</h2>
+<p class="bp-sub">Seven models. Five critic roles. Up to four architecture types. Every model ran through the identical pipeline — same system prompts, same harness, same rubric. Only the LLM changed.</p>
+<div class="bp-meta">
+  <div class="bp-meta-item"><span class="bp-meta-label">Models benched</span><span class="bp-meta-value" id="bp-count-models">7</span></div>
+  <div class="bp-meta-item"><span class="bp-meta-label">Critic roles</span><span class="bp-meta-value">5</span></div>
+  <div class="bp-meta-item"><span class="bp-meta-label">Architecture types</span><span class="bp-meta-value" id="bp-count-archs">4</span></div>
+  <div class="bp-meta-item"><span class="bp-meta-label">Max score / critic</span><span class="bp-meta-value">12</span></div>
+</div>
+
+<hr class="bp-divider">
+
+<!-- heatmap -->
+<p class="bp-section-label">01 — Score grid</p>
+<h3 class="bp-section-title">All critics × All models</h3>
+<div class="bp-tabs" id="bp-arch-tabs">
+  <button class="bp-tab active" onclick="bpSetArch('avg',this)">All models</button>
+  <button class="bp-tab" onclick="bpSetArch('22_generic_ai_nodes',this)">AI Nodes</button>
+  <button class="bp-tab" onclick="bpSetArch('21_agentic_ai_system',this)">Agentic AI</button>
+  <button class="bp-tab" onclick="bpSetArch('12_microservices',this)">Microservices</button>
+  <button class="bp-tab" onclick="bpSetArch('07_gcp_serverless',this)">GCP Serverless</button>
+</div>
+<div class="bp-heatmap-wrap">
+  <table class="bp-heatmap"><thead id="bp-hm-head"></thead><tbody id="bp-hm-body"></tbody></table>
+</div>
+
+<hr class="bp-divider">
+
+<!-- leaderboard -->
+<p class="bp-section-label">02 — Rankings</p>
+<h3 class="bp-section-title">Overall composite score</h3>
+<p style="font-size:0.8rem;color:var(--bp-text-muted);margin-bottom:1rem;">Average depth score across all available critic roles and architectures (nulls excluded). Dashed cards = partial data.</p>
+<div class="bp-leaderboard" id="bp-leaderboard"></div>
+
+<hr class="bp-divider">
+
+<!-- insights -->
+<p class="bp-section-label">03 — Findings</p>
+<h3 class="bp-section-title">What the data says</h3>
+<div class="bp-insights">
+  <div class="bp-insight-card">
+    <div class="bp-insight-icon">⚡</div>
+    <div class="bp-insight-title">Tester is the hardest role</div>
+    <div class="bp-insight-body">The tester critic shows the widest variance of any role — from <strong>0.0</strong> (multiple models) to <strong>11.8</strong> (Qwen3.6 on microservices). Models that over-generate tokens in reasoning mode exhaust their budget before producing valid JSON, collapsing to zero.</div>
+  </div>
+  <div class="bp-insight-card">
+    <div class="bp-insight-icon">🏛</div>
+    <div class="bp-insight-title">Architecture sensitivity</div>
+    <div class="bp-insight-body">Qwen3.6's tester scores <strong>2.4</strong> on AI-system archs but <strong>11.8</strong> on microservices — same model, same prompt, 5× difference. Blackhat and architect are far more stable across arch types.</div>
+  </div>
+  <div class="bp-insight-card">
+    <div class="bp-insight-icon">🧩</div>
+    <div class="bp-insight-title">MiniMax: the consistent free model</div>
+    <div class="bp-insight-body">MiniMax M3 delivers the most <strong>consistent scores across all three deep archs</strong> of the free-tier models. Tester (7.0–10.6), blackhat (10.6–11.0), and red_team (9.0–10.4) stay competitive.</div>
+  </div>
+  <div class="bp-insight-card">
+    <div class="bp-insight-icon">🔍</div>
+    <div class="bp-insight-title">The mystery model reveal</div>
+    <div class="bp-insight-body"><strong>ox-alpha</strong> — listed as a stealth preview — was revealed on retirement to be <strong>Z.AI's GLM-5.3 Flash</strong>. Its blackhat score of <strong>10.9</strong> is the highest single-critic score in the entire dataset.</div>
+  </div>
+  <div class="bp-insight-card">
+    <div class="bp-insight-icon">🚀</div>
+    <div class="bp-insight-title">Nemotron Nano surprises</div>
+    <div class="bp-insight-body">Nemotron Nano 30B/3A scores <strong>11.6 architect</strong> on GCP Serverless — matching the reference Qwen3.6 model. Tester collapses to 0 (token budget), but blackhat (11.4) and red_team (10.8) are strong across both tested archs.</div>
+  </div>
+  <div class="bp-insight-card">
+    <div class="bp-insight-icon">📐</div>
+    <div class="bp-insight-title">Blackhat is the great equaliser</div>
+    <div class="bp-insight-body">Blackhat scores cluster between <strong>9.0–10.9</strong> across all models and archs — the tightest spread of any role. Even models that collapse on tester perform well here, suggesting adversarial framing elicits reliable reasoning across model families.</div>
+  </div>
+</div>
+
+<div class="bp-footnotes">
+  <p><span class="bp-fn-mark">†</span> <strong>GLM-5.3 Flash</strong> (ox-alpha): AI Nodes arch only — retired 2026-08-26. Now paid ($0.075/$0.25 per 1M).</p>
+  <p><span class="bp-fn-mark">‡</span> <strong>Nemotron Nano</strong>: AI Nodes + GCP Serverless — purple_team missing on AI Nodes (reasoning blowout). Times out on larger archs at 1500s.</p>
+  <p><span class="bp-fn-mark">§</span> <strong>Nemotron Super 120B</strong>: AI Nodes + GCP Serverless + Microservices (Agentic AI timed out). Architect/tester 0.0 on Microservices — 15–24k token over-generation exhausts output budget.</p>
+  <p style="margin-top:0.6rem;">Scores are depth scores from ThreatAssessor critic rubric (max 12 per critic). Each model ran FULL_MOE pipeline — same harness, same system prompts, same arch inputs.</p>
+  <p>Generated 2026-08-28 · ThreatAssessor bench v2</p>
+</div>
+
+<script>
+(function() {
+  if (window._bpInit) return;
+  window._bpInit = true;
+
+  const BP_MODELS = [
+    { id:'hetzner',        name:'Qwen3.6-35B-A3B-FP8', provider:'Hetzner',    partial:false },
+    { id:'gemini_flash',   name:'Gemini Flash',         provider:'Google',     partial:false },
+    { id:'hetzner_27b',    name:'Qwen3.8-27B',          provider:'Hetzner',    partial:false },
+    { id:'minimax',        name:'MiniMax M3',            provider:'OpenRouter', partial:false },
+    { id:'ox_alpha',       name:'GLM-5.3 Flash',         provider:'Z.AI',      partial:true, tag:'†' },
+    { id:'nemotron_nano',  name:'Nemotron Nano 30B',     provider:'NVIDIA',    partial:true, tag:'‡' },
+    { id:'nemotron_super', name:'Nemotron Super 120B',   provider:'NVIDIA',    partial:true, tag:'§' },
+  ];
+
+  const BP_CRITICS = [
+    { id:'architect',   label:'Architect' },
+    { id:'tester',      label:'Tester' },
+    { id:'red_team',    label:'Red Team' },
+    { id:'purple_team', label:'Purple' },
+    { id:'blackhat',    label:'Blackhat' },
+  ];
+
+  const BP_DATA = {
+    hetzner: {
+      '22_generic_ai_nodes':  { architect:11.6, tester:10.8, red_team:11.4, purple_team:9.4,  blackhat:10.8 },
+      '21_agentic_ai_system': { architect:10.4, tester:2.4,  red_team:6.0,  purple_team:6.2,  blackhat:9.6 },
+      '12_microservices':     { architect:10.3, tester:11.8, red_team:9.0,  purple_team:12.0, blackhat:10.6 },
+    },
+    gemini_flash: {
+      '22_generic_ai_nodes':  { architect:9.8,  tester:9.8,  red_team:10.8, purple_team:9.0,  blackhat:10.2 },
+      '21_agentic_ai_system': { architect:9.8,  tester:4.6,  red_team:8.6,  purple_team:8.8,  blackhat:10.9 },
+      '12_microservices':     { architect:10.0, tester:4.4,  red_team:9.4,  purple_team:12.0, blackhat:10.2 },
+    },
+    hetzner_27b: {
+      '22_generic_ai_nodes':  { architect:9.0,  tester:10.8, red_team:9.0,  purple_team:6.4,  blackhat:10.0 },
+      '21_agentic_ai_system': { architect:10.6, tester:10.2, red_team:6.0,  purple_team:6.6,  blackhat:9.5 },
+      '12_microservices':     { architect:10.2, tester:0.0,  red_team:9.6,  purple_team:12.0, blackhat:9.6 },
+    },
+    minimax: {
+      '22_generic_ai_nodes':  { architect:7.0, tester:7.0,  red_team:10.4, purple_team:6.2,  blackhat:10.6 },
+      '21_agentic_ai_system': { architect:5.8, tester:7.7,  red_team:9.0,  purple_team:5.8,  blackhat:null },
+      '12_microservices':     { architect:8.9, tester:10.6, red_team:10.0, purple_team:10.6, blackhat:11.0 },
+    },
+    ox_alpha: {
+      '22_generic_ai_nodes':  { architect:10.6, tester:2.4, red_team:6.0, purple_team:7.2, blackhat:10.9 },
+    },
+    nemotron_nano: {
+      '22_generic_ai_nodes':  { architect:10.4, tester:8.6,  red_team:9.6,  purple_team:null, blackhat:9.0 },
+      '07_gcp_serverless':    { architect:11.6, tester:0.0,  red_team:10.8, purple_team:12.0, blackhat:11.4 },
+    },
+    nemotron_super: {
+      '22_generic_ai_nodes':  { architect:8.6, tester:0.0, red_team:6.6, purple_team:9.0,  blackhat:9.6 },
+      '07_gcp_serverless':    { architect:0.8, tester:0.0, red_team:6.6, purple_team:12.0, blackhat:9.4 },
+      '12_microservices':     { architect:0.0, tester:0.0, red_team:5.2, purple_team:null,  blackhat:9.2 },
+    },
+  };
+
+  const BP_ARCHS = ['22_generic_ai_nodes','21_agentic_ai_system','12_microservices','07_gcp_serverless'];
+
+  function bpScoreClass(v) {
+    if (v === null || v === undefined) return { bg:'var(--bp-null-bg)', fg:'var(--bp-null-fg)' };
+    if (v < 4)  return { bg:'var(--bp-red-bg)',   fg:'var(--bp-red-fg)' };
+    if (v < 7)  return { bg:'var(--bp-amber-bg)', fg:'var(--bp-amber-fg)' };
+    if (v < 9)  return { bg:'var(--bp-teal-bg)',  fg:'var(--bp-teal-fg)' };
+    return               { bg:'var(--bp-cyan-bg)', fg:'var(--bp-cyan-fg)' };
+  }
+  function bpFmt(v) { return (v === null || v === undefined) ? '—' : v.toFixed(1); }
+
+  function bpAvgScores(id, arch) {
+    const archs = arch === 'avg' ? BP_ARCHS : [arch];
+    const vals = [];
+    for (const a of archs) {
+      const d = BP_DATA[id]?.[a]; if (!d) continue;
+      for (const c of BP_CRITICS) { const v = d[c.id]; if (v !== null && v !== undefined) vals.push(v); }
+    }
+    return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+  }
+  function bpCriticAvg(id, cid) {
+    const vals = [];
+    for (const a of BP_ARCHS) { const v = BP_DATA[id]?.[a]?.[cid]; if (v !== null && v !== undefined) vals.push(v); }
+    return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+  }
+
+  window.bpSetArch = function(arch, btn) {
+    document.querySelectorAll('#bp-arch-tabs .bp-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    bpRenderHeatmap(arch);
+  };
+
+  function bpRenderHeatmap(arch) {
+    const head = document.getElementById('bp-hm-head');
+    const body = document.getElementById('bp-hm-body');
+    head.innerHTML = `<tr>
+      <th class="bp-model-col" style="min-width:160px">Model</th>
+      ${BP_CRITICS.map(c=>`<th>${c.label}</th>`).join('')}
+      <th>Avg</th>
+    </tr>`;
+    body.innerHTML = BP_MODELS.map(m => {
+      const archs = arch === 'avg' ? BP_ARCHS : [arch];
+      const hasSomeData = archs.some(a => BP_DATA[m.id]?.[a]);
+      const modelCell = `<td class="bp-model-col-cell"><span class="bp-model-name">${m.name}</span>${m.tag?`<span class="bp-model-tag">${m.tag}</span>`:''}<div style="font-size:0.65rem;color:var(--bp-text-dim);font-family:monospace;margin-top:1px">${m.provider}</div></td>`;
+      if (!hasSomeData) {
+        return `<tr>
+          ${modelCell}
+          ${BP_CRITICS.map(()=>`<td class="bp-score-cell" style="background:var(--bp-null-bg);color:var(--bp-null-fg)">—</td>`).join('')}
+          <td class="bp-score-cell" style="background:var(--bp-null-bg);color:var(--bp-null-fg)">—</td>
+        </tr>`;
+      }
+      const criticCells = BP_CRITICS.map(c => {
+        const val = arch === 'avg' ? bpCriticAvg(m.id, c.id) : (BP_DATA[m.id]?.[arch]?.[c.id] ?? null);
+        const sc = bpScoreClass(val);
+        return `<td class="bp-score-cell" style="background:${sc.bg};color:${sc.fg}">${bpFmt(val)}</td>`;
+      }).join('');
+      const avg = bpAvgScores(m.id, arch);
+      const sc = bpScoreClass(avg);
+      return `<tr>
+        ${modelCell}
+        ${criticCells}
+        <td class="bp-score-cell" style="background:${sc.bg};color:${sc.fg};font-weight:700">${bpFmt(avg)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function bpRenderLeaderboard() {
+    const scores = BP_MODELS.map(m => ({...m, score: bpAvgScores(m.id,'avg')}))
+      .filter(m => m.score !== null).sort((a,b) => b.score - a.score);
+    const rankCls = ['gold','silver','bronze'];
+    document.getElementById('bp-leaderboard').innerHTML = scores.map((m,i) => {
+      const bars = BP_CRITICS.map(c => {
+        const avg = bpCriticAvg(m.id, c.id);
+        const pct = avg !== null ? (avg/12*100).toFixed(1) : 0;
+        return `<div class="bp-bar-wrap">
+          <div class="bp-bar-label">${c.label}</div>
+          <div class="bp-bar-track"><div class="bp-bar-fill" style="width:${pct}%"></div></div>
+        </div>`;
+      }).join('');
+      return `<div class="bp-lb-card${m.partial?' partial':''}">
+        <div class="bp-lb-rank ${rankCls[i]||''}">#${i+1}</div>
+        <div class="bp-lb-body">
+          <div class="bp-lb-name">${m.name}${m.tag?` <span class="bp-model-tag">${m.tag}</span>`:''} <span style="font-size:0.72rem;color:var(--bp-text-dim);font-weight:400">${m.provider}</span></div>
+          <div class="bp-lb-bars">${bars}</div>
+        </div>
+        <div class="bp-lb-score-col">
+          <div class="bp-lb-score">${m.score.toFixed(1)}</div>
+          <div class="bp-lb-score-label">/ 12.0</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  bpRenderHeatmap('avg');
+  bpRenderLeaderboard();
+})();
+</script>
                     </div>
                 </div>
 
@@ -564,17 +949,17 @@
                 </div>
             </div>
 
-            <!-- Benchmarks Tab — run picker + iframe embed -->
+            <!-- Benchmarks Tab — run picker + iframe embed (nav moved to Reporting group) -->
             <div id="bench-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:hidden; background:var(--main-bg);">
                 <div id="bench-header" style="display:flex; align-items:center; gap:0.75rem; padding:0.85rem 1.25rem; border-bottom:1px solid var(--border-color); flex-shrink:0;">
                     <span style="font-size:0.8rem; font-weight:600; color:var(--text-secondary); white-space:nowrap;">Run</span>
-                    <select id="bench-run-select" style="flex:1; max-width:420px; font-size:0.78rem; padding:0.25rem 0.5rem; border:1px solid var(--border-color); border-radius:5px; background:#161b27; color:#e2e8f0;">
-                        <option value="" style="color:#8899b0;background:#161b27;">— loading runs… —</option>
+                    <select id="bench-run-select" style="flex:1; max-width:420px; font-size:0.78rem; padding:0.25rem 0.5rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:var(--text-primary);">
+                        <option value="">— loading runs… —</option>
                     </select>
                     <button id="bench-refresh-btn" title="Refresh run list" style="font-size:0.75rem; padding:0.25rem 0.6rem; border:1px solid var(--border-color); border-radius:5px; background:transparent; color:var(--text-secondary); cursor:pointer;">↺</button>
                     <span id="bench-run-meta" style="font-size:0.72rem; color:var(--text-tertiary);"></span>
                 </div>
-                <div id="bench-iframe-wrap" style="flex:1; overflow:hidden; position:relative;">
+                <div id="bench-iframe-wrap" style="flex:1; overflow:auto; position:relative;">
                     <p id="bench-placeholder" style="padding:2rem; font-size:0.85rem; color:var(--text-tertiary);">Run <code>/bench-loop</code> to generate a benchmark report, then select it above.</p>
                     <iframe id="bench-iframe" style="display:none; width:100%; height:100%; border:none;" sandbox="allow-scripts allow-same-origin"></iframe>
                 </div>
