@@ -1181,12 +1181,13 @@ if (DATA.gaps && DATA.gaps.length > 0) {
 
 
 def merge_summaries(paths: list) -> dict:
-    """Merge N bench_summary.json files (each with different models) into one summary dict.
-    Archs are intersected — only archs present in ALL runs appear in the merged report.
+    """Merge N bench_summary.json files into one summary dict.
+
+    Archs are unioned — every arch that has at least one result appears.
+    For duplicate arch×model entries, later paths win (pass in chronological order).
     """
     merged_models = []
     merged_model_strings = {}
-    merged_archs = None
     merged_results = {}
     run_ids = []
 
@@ -1197,15 +1198,20 @@ def merge_summaries(paths: list) -> dict:
             if m not in merged_models:
                 merged_models.append(m)
         merged_model_strings.update(s.get("model_strings", {}))
-        archs = s.get("archs", [])
-        merged_archs = archs if merged_archs is None else [a for a in merged_archs if a in archs]
         for arch, model_results in s.get("results", {}).items():
             merged_results.setdefault(arch, {}).update(model_results)
+
+    # Archs: union of all archs that have at least one valid (non-error) result
+    merged_archs = [
+        a for a in merged_results
+        if any("error" not in v for v in merged_results[a].values()
+               if isinstance(v, dict))
+    ]
 
     return {
         "run_id":       "+".join(run_ids),
         "mode":         "critics",
-        "archs":        merged_archs or [],
+        "archs":        merged_archs,
         "models":       merged_models,
         "model_strings": merged_model_strings,
         "results":      merged_results,
