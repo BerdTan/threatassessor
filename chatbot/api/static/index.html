@@ -666,7 +666,7 @@
 
   const BP_MODELS = [
     { id:'hetzner',        name:'Qwen3.6-35B-A3B-FP8', provider:'Hetzner',    partial:false },
-    { id:'gemini_flash',   name:'Gemini Flash',         provider:'Google',     partial:false },
+    { id:'gemini_flash',   name:'Gemini 3.6 Flash',     provider:'Google',     partial:false },
     { id:'hetzner_27b',    name:'Qwen3.8-27B',          provider:'Hetzner',    partial:false },
     { id:'minimax',        name:'MiniMax M3',            provider:'OpenRouter', partial:false },
     { id:'ox_alpha',       name:'GLM-5.3 Flash',         provider:'Z.AI',      partial:true, tag:'†' },
@@ -692,6 +692,7 @@
       '22_generic_ai_nodes':  { architect:9.8,  tester:9.8,  red_team:10.8, purple_team:9.0,  blackhat:10.2 },
       '21_agentic_ai_system': { architect:9.8,  tester:4.6,  red_team:8.6,  purple_team:8.8,  blackhat:10.9 },
       '12_microservices':     { architect:10.0, tester:4.4,  red_team:9.4,  purple_team:12.0, blackhat:10.2 },
+      '07_gcp_serverless':    { architect:9.2,  tester:10.2, red_team:9.8,  purple_team:12.0, blackhat:10.2 },
     },
     hetzner_27b: {
       '22_generic_ai_nodes':  { architect:9.0,  tester:10.8, red_team:9.0,  purple_team:6.4,  blackhat:10.0 },
@@ -702,9 +703,11 @@
       '22_generic_ai_nodes':  { architect:7.0, tester:7.0,  red_team:10.4, purple_team:6.2,  blackhat:10.6 },
       '21_agentic_ai_system': { architect:5.8, tester:7.7,  red_team:9.0,  purple_team:5.8,  blackhat:null },
       '12_microservices':     { architect:8.9, tester:10.6, red_team:10.0, purple_team:10.6, blackhat:11.0 },
+      '07_gcp_serverless':    { architect:7.4, tester:8.6,  red_team:9.8,  purple_team:8.6,  blackhat:9.4 },
     },
     ox_alpha: {
-      '22_generic_ai_nodes':  { architect:10.6, tester:2.4, red_team:6.0, purple_team:7.2, blackhat:10.9 },
+      '22_generic_ai_nodes':  { architect:10.6, tester:2.4, red_team:6.0,  purple_team:7.2,  blackhat:10.9 },
+      '07_gcp_serverless':    { architect:10.0, tester:0.0, red_team:9.4,  purple_team:9.6,  blackhat:10.2 },
     },
     nemotron_nano: {
       '22_generic_ai_nodes':  { architect:10.4, tester:8.6,  red_team:9.6,  purple_team:null, blackhat:9.0 },
