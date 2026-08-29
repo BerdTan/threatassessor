@@ -422,22 +422,23 @@ body {
   color: var(--text3);
   text-align: center;
 }
-.panel-stats { display: flex; flex-direction: column; gap: 0; }
-.stat-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
+.panel-stats { display: flex; flex-direction: column; gap: 0.55rem; }
+.panel-metric { display: flex; flex-direction: column; gap: 2px; }
+.panel-metric-label {
+  font-size: 0.52rem; font-family: 'JetBrains Mono', monospace;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text3); padding-bottom: 1px;
   border-bottom: 1px solid var(--border);
-  padding: 0.35rem 0;
+}
+/* reuse crit-bar-* classes for panel metric bars */
+
+/* keep stat-row/val classes for any other callers */
+.stat-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 0.5rem; border-bottom: 1px solid var(--border); padding: 0.35rem 0;
 }
 .stat-row:last-child { border-bottom: none; }
-.stat-label {
-  font-size: 0.65rem;
-  color: var(--text2);
-  font-family: 'JetBrains Mono', monospace;
-  white-space: nowrap;
-}
+.stat-label { font-size: 0.65rem; color: var(--text2); font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
 .dir { font-size: 0.55rem; }
 .dir.up { color: var(--good); }
 .dir.dn { color: var(--danger); }
@@ -445,6 +446,10 @@ body {
 .val-a { color: var(--model-a); font-weight: 600; }
 .val-b { color: var(--model-b); font-weight: 600; }
 .val-c { color: var(--model-c); font-weight: 600; }
+.val-d { color: var(--model-d); font-weight: 600; }
+.val-e { color: var(--model-e); font-weight: 600; }
+.val-f { color: var(--model-f); font-weight: 600; }
+.val-g { color: var(--model-g); font-weight: 600; }
 .val-delta { color: var(--text3); font-size: 0.62rem; }
 .val-delta.up { color: var(--good); }
 .val-delta.dn { color: var(--danger); }
@@ -1108,21 +1113,30 @@ archs.forEach((arch, ai) => {
     <div class="panel-radar-wrap"><svg id="panel-radar-${ai}"></svg></div>
     <div class="panel-stats">
       ${[
-        ['TATB',     p => p.raw_tatb != null ? p.raw_tatb : null,           false, '/100'],
-        ['Breadth',  p => p.raw_breadth ?? null,                             false, ' TTPs'],
-        ['Defens.',  p => p.raw_defens != null ? p.raw_defens : null,        false, '/10'],
-        ['Tok ↓',   p => p.raw_tok ? Math.round(p.raw_tok/1000) : null,     true,  'k'],
-        ['Avg dep.', p => p.raw_depth_avg ?? null,                           false, '/12'],
-      ].map(([lbl, getter, invert, unit]) => {
+        ['TATB',     p => p.raw_tatb != null ? p.raw_tatb : null,                      100,   false, v => Math.round(v)+''],
+        ['Breadth',  p => p.raw_breadth ?? null,                                        30,    false, v => v+' TTPs'],
+        ['Defens.',  p => p.raw_defens != null ? p.raw_defens : null,                   10,    false, v => v.toFixed(1)],
+        ['Depth',    p => p.raw_depth_avg ?? null,                                      12,    false, v => v.toFixed(1)],
+        ['Tok ↓',   p => p.raw_tok ? Math.round(p.raw_tok/1000) : null,                null,  true,  v => v+'k'],
+      ].map(([lbl, getter, maxVal, invert, fmt]) => {
         const vals = panelObjs.map(getter);
-        const best = invert ? Math.min(...vals.filter(v=>v!=null)) : Math.max(...vals.filter(v=>v!=null));
-        const spans = vals.map((v, i) => {
+        const nonNull = vals.filter(v => v != null);
+        if (!nonNull.length) return '';
+        const dynMax = maxVal != null ? maxVal : (invert ? Math.min(...nonNull) : Math.max(...nonNull));
+        const best = invert ? Math.min(...nonNull) : Math.max(...nonNull);
+        const bars = vals.map((v, i) => {
           if (v == null) return '';
-          const isBest = vals.filter(x=>x!=null).length > 1 && v === best;
-          const disp = (unit === '/10' ? v.toFixed(1) : v) + (v !== '—' ? unit : '');
-          return `<span class="val-${MODEL_CLASSES[i]||'b'}"${isBest?' style="text-decoration:underline"':''}>${disp}</span>`;
-        }).join(' ');
-        return `<div class="stat-row"><span class="stat-label">${lbl}</span><span class="stat-vals">${spans||'—'}</span></div>`;
+          const clr = MODEL_CSS_VARS[i] || MODEL_CSS_VARS[MODEL_CSS_VARS.length-1];
+          const pct = dynMax > 0 ? Math.round((invert ? (1 - (v - Math.min(...nonNull)) / (dynMax - Math.min(...nonNull) || 1)) : v / dynMax) * 100) : 0;
+          const valClr = v === best ? 'var(--good)' : clr;
+          return `<div class="crit-bar-row">
+            <span class="crit-bar-dot" style="background:${clr}"></span>
+            <span class="crit-bar-abbr" style="color:${clr}">${modelAbbr(models[i])}</span>
+            <div class="crit-bar-track"><div class="crit-bar-fill" style="width:${pct}%;background:${clr}"></div></div>
+            <span class="crit-bar-val" style="color:${valClr};width:36px">${fmt(v)}</span>
+          </div>`;
+        }).join('');
+        return `<div class="panel-metric"><div class="panel-metric-label">${lbl}</div>${bars}</div>`;
       }).join('')}
     </div>
   `;
