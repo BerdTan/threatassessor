@@ -56,6 +56,7 @@ class LLMProvider(str, Enum):
     ANTHROPIC  = "anthropic"
     AZURE      = "azure"
     VERTEX     = "vertex"
+    GEMINI     = "gemini"
 
 
 from agentic.providers import PROVIDER_MANIFEST as _PM

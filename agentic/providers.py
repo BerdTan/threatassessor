@@ -190,7 +190,7 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
             "fast":         "gemini/gemini-3.6-flash",
         },
         "cost_per_1k": None,
-        "active": False,   # benchmarking use only; not primary provider
+        "active": True,    # corpus rerun 2026-08-29; set False after rerun
         "env_example": (
             "# Google AI Studio — https://aistudio.google.com\n"
             "GEMINI_API_KEY=AIzaSy...\n"
@@ -276,7 +276,7 @@ def base_url_for(provider_name: str) -> str:
     override_env = m.get("base_url_env")
     if override_env and os.getenv(override_env):
         return os.getenv(override_env).rstrip("/")
-    return m.get("base_url", "").rstrip("/")
+    return (m.get("base_url") or "").rstrip("/")
 
 
 def resolve_api_key(provider_name: str) -> Optional[str]:
