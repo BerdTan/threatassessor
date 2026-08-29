@@ -422,15 +422,19 @@ body {
   color: var(--text3);
   text-align: center;
 }
-.panel-stats { display: flex; flex-direction: column; gap: 0.55rem; }
+.panel-stats { display: flex; flex-direction: column; gap: 0.45rem; }
+.panel-legend { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-bottom: 0.3rem; }
+.panel-legend-item { display: flex; align-items: center; gap: 2px; font-family: 'JetBrains Mono', monospace; font-size: 0.46rem; font-weight: 700; color: var(--text2); }
+.panel-legend-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .panel-metric { display: flex; flex-direction: column; gap: 2px; }
 .panel-metric-label {
-  font-size: 0.52rem; font-family: 'JetBrains Mono', monospace;
-  font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
-  color: var(--text3); padding-bottom: 1px;
-  border-bottom: 1px solid var(--border);
+  font-size: 0.50rem; font-family: 'JetBrains Mono', monospace;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text3);
 }
-/* reuse crit-bar-* classes for panel metric bars */
+.panel-seg-bar { display: flex; height: 8px; border-radius: 2px; overflow: hidden; gap: 1px; }
+.panel-seg-slot { flex: 1; background: var(--border); position: relative; border-radius: 1px; overflow: hidden; }
+.panel-seg-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 1px; transition: width 0.3s ease; }
 
 /* keep stat-row/val classes for any other callers */
 .stat-row {
@@ -1112,31 +1116,30 @@ archs.forEach((arch, ai) => {
     <div class="panel-col-label">Panel · all critics</div>
     <div class="panel-radar-wrap"><svg id="panel-radar-${ai}"></svg></div>
     <div class="panel-stats">
+      <div class="panel-legend">${models.map((m, i) => {
+        const clr = MODEL_CSS_VARS[i] || MODEL_CSS_VARS[MODEL_CSS_VARS.length-1];
+        return `<span class="panel-legend-item"><span class="panel-legend-dot" style="background:${clr}"></span>${modelAbbr(m)}</span>`;
+      }).join('')}</div>
       ${[
-        ['TATB',     p => p.raw_tatb != null ? p.raw_tatb : null,                      100,   false, v => Math.round(v)+''],
-        ['Breadth',  p => p.raw_breadth ?? null,                                        30,    false, v => v+' TTPs'],
-        ['Defens.',  p => p.raw_defens != null ? p.raw_defens : null,                   10,    false, v => v.toFixed(1)],
-        ['Depth',    p => p.raw_depth_avg ?? null,                                      12,    false, v => v.toFixed(1)],
-        ['Tok ↓',   p => p.raw_tok ? Math.round(p.raw_tok/1000) : null,                null,  true,  v => v+'k'],
+        ['TATB',    p => p.raw_tatb != null ? p.raw_tatb : null,               100,  false, v => Math.round(v)+''],
+        ['Breadth', p => p.raw_breadth ?? null,                                 30,   false, v => v+' TTPs'],
+        ['Defens.', p => p.raw_defens != null ? p.raw_defens : null,            10,   false, v => v.toFixed(1)],
+        ['Depth',   p => p.raw_depth_avg ?? null,                               12,   false, v => v.toFixed(1)],
+        ['Tok ↓',  p => p.raw_tok ? Math.round(p.raw_tok/1000) : null,         null, true,  v => v+'k'],
       ].map(([lbl, getter, maxVal, invert, fmt]) => {
         const vals = panelObjs.map(getter);
         const nonNull = vals.filter(v => v != null);
         if (!nonNull.length) return '';
         const dynMax = maxVal != null ? maxVal : (invert ? Math.min(...nonNull) : Math.max(...nonNull));
-        const best = invert ? Math.min(...nonNull) : Math.max(...nonNull);
-        const bars = vals.map((v, i) => {
-          if (v == null) return '';
+        const slots = vals.map((v, i) => {
           const clr = MODEL_CSS_VARS[i] || MODEL_CSS_VARS[MODEL_CSS_VARS.length-1];
-          const pct = dynMax > 0 ? Math.round((invert ? (1 - (v - Math.min(...nonNull)) / (dynMax - Math.min(...nonNull) || 1)) : v / dynMax) * 100) : 0;
-          const valClr = v === best ? 'var(--good)' : clr;
-          return `<div class="crit-bar-row">
-            <span class="crit-bar-dot" style="background:${clr}"></span>
-            <span class="crit-bar-abbr" style="color:${clr}">${modelAbbr(models[i])}</span>
-            <div class="crit-bar-track"><div class="crit-bar-fill" style="width:${pct}%;background:${clr}"></div></div>
-            <span class="crit-bar-val" style="color:${valClr};width:36px">${fmt(v)}</span>
-          </div>`;
+          const pct = v != null && dynMax > 0 ? Math.round((invert
+            ? (1 - (v - Math.min(...nonNull)) / ((Math.max(...nonNull) - Math.min(...nonNull)) || 1))
+            : v / dynMax) * 100) : 0;
+          const tip = v != null ? `${modelAbbr(models[i])}: ${fmt(v)}` : `${modelAbbr(models[i])}: —`;
+          return `<div class="panel-seg-slot" title="${tip}"><div class="panel-seg-fill" style="width:${pct}%;background:${clr}"></div></div>`;
         }).join('');
-        return `<div class="panel-metric"><div class="panel-metric-label">${lbl}</div>${bars}</div>`;
+        return `<div class="panel-metric"><div class="panel-metric-label">${lbl}</div><div class="panel-seg-bar">${slots}</div></div>`;
       }).join('')}
     </div>
   `;
