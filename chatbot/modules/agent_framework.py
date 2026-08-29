@@ -173,14 +173,19 @@ class CriticAgent(BaseAgent):
                 # Qwen3: /no_think instruction; other thinking models: tighter max_tokens cap.
                 _model_lower = (self.model or "").lower()
                 _is_qwen = "qwen" in _model_lower
+                # Thinking models that burn a hidden reasoning budget before emitting JSON.
+                # Only these get the 4k cap; non-thinking models get the full 8k window.
+                _is_thinking = _is_qwen or any(
+                    t in _model_lower for t in ("nemotron", "deepseek-r1", "r1", "reasoning")
+                )
                 _sys = (
                     self.system_prompt + "\n/no_think"
                     if self.no_think and _is_qwen
                     else self.system_prompt
                 )
-                # For non-Qwen thinking models with no_think, cap tokens so reasoning + JSON fits.
-                # 4000 leaves ~2k for thinking + 2k for JSON output on lightning/nemotron.
-                _max_tok = 4000 if (self.no_think and not _is_qwen) else 8000
+                # Cap tokens for thinking models only: reasoning tokens eat the budget first,
+                # so 4k keeps reasoning ~2k + JSON ~2k. Non-thinking models get full 8k.
+                _max_tok = 4000 if (self.no_think and _is_thinking) else 8000
                 response = self.llm_client.generate(
                     prompt=_retry_prefix + prompt,
                     system_message=_sys,

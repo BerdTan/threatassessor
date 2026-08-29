@@ -4,6 +4,40 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 59 — 2026-08-29
+
+**Decision 126 — tester=0.0 root cause: no_think token cap applied to non-thinking models**
+`agent_framework.py` computed `_max_tok = 4000 if (self.no_think and not _is_qwen) else 8000` — this capped ALL non-Qwen models to 4k whenever `no_think=True`, including non-thinking models (GLM, Gemma, minimax). Tester JSON was truncated mid-output → parse failure → score=0. Fix: added `_is_thinking` check (`qwen`, `nemotron`, `deepseek-r1`, `r1`, `reasoning`); only thinking models get 4k cap. Non-thinking models get full 8k window. Also clarified `/no_think` suffix is Qwen3-only — non-Qwen non-thinking models get neither the cap reduction nor the suffix.
+
+**Decision 127 — gemini_flash VertexAIException: LLMProvider enum missing 'gemini' + litellm.api_key global race**
+Two-part fix in `llm_client.py`. (1) `infer_provider_from_model('gemini/gemini-3.6-flash')` returns `'gemini'` but `LLMProvider('gemini')` throws `ValueError` (enum only has hetzner/openrouter/bedrock/anthropic/azure/vertex). Except-caught → `_foreign_lp = None` → fallback to primary (Hetzner) config → Hetzner `api_key` written to `litellm.api_key` global → LiteLLM ignores `GEMINI_API_KEY`. (2) Even after clearing api_key override, the `litellm.api_key` process-global set by a prior Hetzner call persists across critic invocations; later critics (blackhat, SM) get the stale Hetzner key. Fix: when `_foreign_lp is None`, use `resolve_api_key(_foreign_prov_str)` to look up the key from the manifest (e.g. GEMINI_API_KEY) and pass it as `api_key=` kwarg directly to `_call_litellm` / `litellm.completion` — per-call, not global. Also set `config.api_key = None` to avoid the global assignment. Note: remaining "VertexAIException" after the fix is a Google AI Studio 503 (high demand) not a routing error — routing is now confirmed correct. Retry when load subsides. Alternatives rejected: add `gemini` to `LLMProvider` enum (larger refactor).
+
+**Decision 128 — GLM tester=0.0 is a model capability limitation, not a code bug**
+After applying the token-cap fix (D-126), GLM-5.2 tester still scores 0.0. Root cause: 3 retry attempts × 8k max_tokens = 24k total completion tokens accumulated; each attempt produces prose-wrapped output that fails the strict JSON schema validator (Missing required fields: score/rating/breakdown/gaps). Same failure mode as Gemma. GLM is viable for other critics (arch=10, red_team=10, purple=11, blackhat=10) but cannot reliably produce tester-schema JSON. Noted in leaderboard; no code fix needed.
+
+**Bench state at end of session 59 (2026-08-29):**
+
+| Model | 22_ai_nodes | 21_agentic | 12_micro | 07_gcp | Notes |
+|---|---|---|---|---|---|
+| hetzner | ✅ | ✅ | ✅ | — | reference; skipped 07_gcp (timeout) |
+| hetzner_27b | ✅ | ✅ | ✅ | — | tester=0.0 on microservices |
+| minimax | ✅ | ✅ (bh missing) | ✅ | ✅ | tester=8.6 confirms D-126 fix |
+| gemini_flash | ✅ | ✅ | ✅ | 🔄 running | D-127 fix applied; re-running |
+| nemotron_nano | ✅ partial | ❌ timeout | ❌ timeout | ✅ | arch=11.6 strong |
+| nemotron_super | ✅ partial | ❌ timeout | ✅ partial | ✅ | arch=0.0 regression on gcp |
+| glm | ❌ 429 | — | — | ✅ (tester=0) | non-tester critics good; tester=model cap |
+| gemma | ❌ excluded | — | — | ❌ excluded | JSON schema capability failure |
+
+---
+
+## Session 58 — 2026-08-29
+
+**Decision 124 — Bughunt: three fixes applied to bench_critics.py + jobs.py**
+BH-01: `bench_critics.py:472` POST timeout raised 30 s → 90 s — 30 s was too tight when the API event loop is under contention from a prior job's LLM thread (Hetzner 504 delays caused ReadTimeout, silently zeroing all bench scores). BH-02: warning emitted when `--models` receives >2 args since diff table and gap report silently ignore models[2+] (they were benchmarked but never shown). BH-04: `jobs.py:161` synchronous `Path.read_text()` replaced with `await asyncio.to_thread()` to avoid blocking the event loop during ground_truth.json reads. BH-03 (suspected race in `list_mcp_jobs`) was a false alarm — `_evict()` acquires its own lock internally.
+
+**Decision 125 — GLM/Gemma free + sequential critic mode to avoid shared-pool 429**
+Root cause of 429 on free-tier GLM/Gemma: `partial_parallel` mode bursts all 5 critic requests simultaneously, exceeding the upstream shared pool's per-minute rate limit. Fix: use `--critic-mode sequential` for rate-limited free-tier providers. Paid variants (`glm`, `gemma` aliases) were also tried but timed out because the prior event-loop issue (BH-01) blocked the POST. Aliases retained for future use when API is idle.
+
 ## Session 56–57 — 2026-08-28/29
 
 **Decision 120 — Bench leaderboard embedded in dashboard (Reports → ⚡ Bench subtab)**

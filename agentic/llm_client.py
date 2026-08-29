@@ -331,17 +331,28 @@ class LLMClient:
                 _foreign_lp = LLMProvider(_foreign_prov_str) if _foreign_prov_str else None
             except ValueError:
                 _foreign_lp = None
-            _foreign_config = (
-                ProviderConfig.from_env(_foreign_lp)
-                if _foreign_lp and _foreign_lp != provider
-                else ProviderConfig(provider=provider)
-            )
+            # Extra per-call kwargs — used to inject api_key for providers not in the enum
+            _foreign_extra: dict = {}
+            if _foreign_lp and _foreign_lp != provider:
+                _foreign_config = ProviderConfig.from_env(_foreign_lp)
+            elif _foreign_lp is None:
+                # Provider not in LLMProvider enum (e.g. 'gemini') but in PROVIDER_MANIFEST.
+                # litellm.api_key is a process-global; a previous Hetzner/OR call may have
+                # set it. Pass api_key per-call so LiteLLM uses the correct key regardless.
+                from agentic.providers import resolve_api_key as _rak
+                _foreign_extra["api_key"] = _rak(_foreign_prov_str) or ""
+                _foreign_config = ProviderConfig(provider=provider)
+                _foreign_config.api_key = None   # do NOT overwrite litellm.api_key global
+                _foreign_config.endpoint = None
+                _foreign_config.extra_headers = None
+            else:
+                _foreign_config = ProviderConfig(provider=provider)
             start_time = time.time()
             _raw = self._call_litellm(messages=[
                 *([{"role": "system", "content": system_message}] if system_message else []),
                 {"role": "user", "content": prompt},
             ], model=model, config=_foreign_config,
-               temperature=temperature, max_tokens=max_tokens)
+               temperature=temperature, max_tokens=max_tokens, **_foreign_extra)
             latency = time.time() - start_time
             _content = _raw.choices[0].message.content
             if _content is None:
