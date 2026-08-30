@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
-**Version:** 2.7  
-**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (31 rules) + Harness v2 + MCP server (16 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (233 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised + N-model bench (up to 3) + /no_think tester fix + foreign-provider config bypass fixed.  
+**Version:** 2.8  
+**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (33 rules) + Harness v2 + MCP server (17 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (248 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised + N-model bench (7 models) + /no_think tester fix + foreign-provider config bypass fixed + full corpus rerun (gemini_flash, 52 archs).  
 **Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 31 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG
 
 ---
@@ -52,7 +52,7 @@ tail -f logs/api.log            # logs
 
 **Analysis pipeline:**
 - `chatbot/modules/ground_truth_generator.py` — main engine
-- `chatbot/modules/threat_analyst.py` — RAPIDS + AI/ML
+- `chatbot/modules/agents/analysts/threat_analyst.py` — RAPIDS + AI/ML
 - `chatbot/modules/threat_report.py` — report generation
 - `chatbot/modules/exhaustive_mitigation_mapper.py` — controls (100% coverage)
 - `chatbot/modules/self_validation.py` — MITRE technique validation
@@ -85,7 +85,7 @@ tail -f logs/api.log            # logs
 - `chatbot/api/static/` — dashboard (index.html + JS; nav: Overview/Assessment/Simulation/Reporting/Workspace/Settings)
 
 **MCP server:**
-- `mcp_server/server.py` — FastMCP app, 16 tools (stdio transport); all tools log to `MCPAccessLogger`
+- `mcp_server/server.py` — FastMCP app, 17 tools (stdio transport); all tools log to `MCPAccessLogger`
 - `mcp_server/job_client.py` — HTTP wrapper for all REST calls
 - `mcp_server/access_logger.py` — `MCPAccessLogger` rolling-window singleton; produces `mcp_access` signals for DETECT-020/021/022
 - `mcp_server/client_sim.py` — 6-persona integration simulator (chatbot, code-agent, ciso, soc, copilot, chatgpt)
@@ -150,6 +150,7 @@ tail -f logs/api.log            # logs
 | `query_ta_brain` | Query TA Brain (infer/gaps/patterns/explain modes) |
 | `record_brain_feedback` | Record confirmed/wrong feedback for a brain prediction |
 | `generate_synthetic_architectures` | Generate synthetic MMDs from brain meta-layer gaps; stage for approval |
+| `run_taco_agent` | Run TACO agent on a brain prediction — infer, validate, and write feedback |
 
 **Transport:** stdio (Claude Desktop standard). See `mcp_server/README.md` for setup + all client types.
 
@@ -169,7 +170,7 @@ tail -f logs/api.log            # logs
 /aivss-gate
 
 # ── SOC detection ────────────────────────────────────────────────────────────
-# Regression suite (31 rules, 32 scenarios, 355 tests)
+# Regression suite (33 rules, 34 scenarios, 368 tests)
 python3 .claude/skills/check-detect/scripts/check-detect.py
 python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 
@@ -205,6 +206,7 @@ python3 .claude/skills/check-connector/scripts/check-connector.py --static # no 
 ## Occasional checks
 
 ```bash
+/session-cleanup      # master housekeeping: docs-health + repo-organise in one pass
 /check-deprecation    # broken imports + anti-patterns — run after heavy refactoring
 /skill-stress-test    # red-team a skill before finalising — pass skill name as arg
 /langfuse-to-ocsf     # pipeline traces → OCSF events — requires LANGFUSE_* env vars
@@ -240,4 +242,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-08-23
+**Last Updated:** 2026-08-30

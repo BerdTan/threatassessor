@@ -4,6 +4,19 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 60–61 — 2026-08-29/30
+
+**Decision 129 — Corpus rerun with gemini_flash: 52/53 archs, 836.8 min**
+Full corpus rerun using `LLM_PROVIDER=gemini` (Gemini 3.6 Flash via Google AI Studio BYOK). 52/53 archs completed; `brain` skipped (no `.mmd` — expected). Confidence distribution: 25 archs at 95.0% (deterministic short designs), 26 archs at 73–81% (richer designs with fallback warnings). `23_bookservices` outlier at 57.1% — rerun triggered separately (see D-130). Slowest arch: `01_minimal_vulnerable_2` at 32,185s (Gemini capacity spike early in run); median settled to 150–280s per arch once capacity stabilised. Post-rerun: `.env` restored to `LLM_PROVIDER=hetzner`, `providers.py` gemini `active→False`. Rationale for gemini as corpus model: best purple_team (12.0) and consistent cross-arch scores (P23 benchmark campaign); BYOK avoids OR credit burn.
+
+**Decision 130 — 23_bookservices rerun: 57.1% confidence is below acceptable threshold for brain ingest**
+`23_bookservices` scored 57.1% confidence in the corpus rerun — ~20 points below the next-lowest arch (73.1%). Low confidence in `ground_truth.json` means inconsistent MITRE technique mapping and mitigation coverage; ingesting this into the brain builder introduces noise into pattern weights, particularly for document-store / S3-style threat paths. Threshold for rerun: any arch more than 15 points below the corpus median (median ~78%). Single-arch rerun triggered with gemini_flash. Alternatives rejected: accept the low-confidence instance as-is (risk of polluting brain patterns); rerun all <75% archs (over-engineering — only bookservices is a clear outlier).
+
+**Decision 131 — Bench alias cleanup: 6 retired aliases dropped from bench_critics.py**
+Removed: `ox_alpha` (GLM-5.3 Flash, retired/gone from OR), `inkling` (gated 403 — requires allowlist approval), `gemma`/`gemma_free` (JSON schema capability failure — same as GLM tester), `glm_free` (429 shared-pool saturation), `dots3` (never benched, model deprecating 2026-09-30). Retained 9 aliases: `current`, `hetzner`, `hetzner_27b`, `gemini_flash`, `minimax`, `nemotron_nano`, `nemotron_super`, `glm`, `openrouter_free`, `cohere`. Rationale: stale aliases create false confidence that a model is available to bench; cleaner list reflects actual tested + viable candidates.
+
+---
+
 ## Session 59 — 2026-08-29
 
 **Decision 126 — tester=0.0 root cause: no_think token cap applied to non-thinking models**
