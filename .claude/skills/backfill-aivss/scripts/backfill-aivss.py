@@ -22,6 +22,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT))
 
+os.environ.setdefault("LANGFUSE_SKIP", "1")  # protect free-tier quota; override with LANGFUSE_SKIP=0
+
 
 def _col(text, code):
     return f"\033[{code}m{text}\033[0m"

@@ -201,11 +201,11 @@ event_broker:
       enabled: true
       events: ["governance", "aivss"]
     langfuse:
-      enabled: false
-      host: "http://localhost:3000"
+      enabled: true
+      host: ""
       public_key: ""
       secret_key: ""
-      events: ["stage_trace", "governance", "aivss"]
+      events: ["run_start", "run_complete", "critic_trace", "governance", "aivss"]
     webhook:
       enabled: false
       url: ""

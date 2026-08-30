@@ -64,6 +64,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
+os.environ.setdefault("LANGFUSE_SKIP", "1")  # protect free-tier quota; override with LANGFUSE_SKIP=0
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 

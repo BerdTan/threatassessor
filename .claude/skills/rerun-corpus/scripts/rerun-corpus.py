@@ -11,10 +11,13 @@ Usage:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+os.environ.setdefault("LANGFUSE_SKIP", "1")  # protect free-tier quota; override with LANGFUSE_SKIP=0
 
 # ── Engine-fix reference dates ────────────────────────────────────────────────
 # Archs with run_ts before these dates need re-running to pick up the fix.

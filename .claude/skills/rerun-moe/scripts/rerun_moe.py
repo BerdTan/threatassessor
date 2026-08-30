@@ -18,6 +18,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 
+import os
+os.environ.setdefault("LANGFUSE_SKIP", "1")  # protect free-tier quota; override with LANGFUSE_SKIP=0
+
 # Load .env before any harness imports so ${AGENT_MODEL_*} vars are in os.environ
 try:
     from dotenv import load_dotenv

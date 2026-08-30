@@ -189,6 +189,10 @@ class LangfuseSink(BaseSink):
         try:
             from langfuse import Langfuse  # type: ignore[import]
             import os
+            # LANGFUSE_SKIP=1 lets bench/rerun jobs suppress tracing to protect free-tier quota
+            if os.getenv("LANGFUSE_SKIP", "").strip() in ("1", "true", "yes"):
+                logger.info("LangfuseSink: LANGFUSE_SKIP set — tracing disabled for this run")
+                return
             host = (config.get("host") or
                     os.getenv("LANGFUSE_BASE_URL") or
                     "http://localhost:3000")

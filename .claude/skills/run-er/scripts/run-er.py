@@ -23,6 +23,8 @@ import sys
 import time
 from pathlib import Path
 
+os.environ.setdefault("LANGFUSE_SKIP", "1")  # protect free-tier quota; override with LANGFUSE_SKIP=0
+
 try:
     import requests
 except ImportError:

@@ -8,6 +8,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
+import os
+os.environ.setdefault("LANGFUSE_SKIP", "1")  # protect free-tier quota; override with LANGFUSE_SKIP=0
+
 from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
