@@ -4,6 +4,19 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 62 — 2026-08-30
+
+**Decision 132 — /check-skills skill: corpus-wide supply-chain and phishing audit for .claude/skills/**
+New skill covering the gap where DETECT-028 (runtime git-hash tamper check) cannot catch committed-but-malicious content or URL-based phishing links. Five phases: (1) git diff to surface uncommitted skill changes; (2) URL classification (TRUSTED/REVIEW/SUSPICIOUS/PLACEHOLDER) across all skill .md files; (3) `allowed-tools` completeness — 19/61 skills lack it, flagged as Medium; (4) script supply-chain patterns (curl|bash, mutable branch refs, pip install unversioned); (5) social engineering phrase detection. Read-only; outputs findings table, awaits user approval. Integrated into `/session-cleanup` as Phase 1d, and annotated in `harden-audit` dependency scope. Alternatives rejected: extend harden-audit (scope confusion, breaks gate model); extend skill-stress-test (per-skill, not corpus-wide).
+
+**Decision 133 — DETECT-034: suspicious_skill_url (High) + governance.py URL classifier**
+Extended `_check_skill_integrity()` in `governance.py` to also scan skill instruction files for external URLs and classify them against a taxonomy: TRUSTED (github.com/mitre, medium.com/@breadtan, localhost), REVIEW (other github.com, docs sites), SUSPICIOUS (URL-shorteners, uncommon TLDs, raw IPs), PLACEHOLDER (template patterns). SUSPICIOUS URLs stored in `identity.skill_url_suspicious`; DETECT-034 fires on `length_gt 0`. Complementary to DETECT-028: DETECT-028 catches hash divergence from git HEAD; DETECT-034 catches suspicious URLs regardless of commit state (i.e. a poisoned commit bypasses DETECT-028 but not DETECT-034). 374 tests passing; incident simulator scenario `suspicious_skill_url` added. Signal split: `skill_url_findings` (all non-trusted) vs `skill_url_suspicious` (SUSPICIOUS-only) keeps the rule condition simple and avoids needing a `filter` operator in `rule_evaluator.py`.
+
+**Decision 134 — 23_bookservices confidence floor: 57.1% is intrinsic, not model quality**
+Rerun with hetzner (Qwen3.6-35B) after corpus rerun with gemini produced 57.1% confidence. Hetzner rerun also produced 57.1% (1722s, 1 passed). Root cause: `before.mmd` is 2.7K — a very sparse architecture with few MITRE-mappable nodes. The self-validation engine has limited technique coverage to validate against, producing a structural confidence ceiling. Not a model quality issue; not worth re-running again. Accepted as the floor for this arch. Brain ingest will treat it as a low-confidence instance.
+
+---
+
 ## Session 60–61 — 2026-08-29/30
 
 **Decision 129 — Corpus rerun with gemini_flash: 52/53 archs, 836.8 min**
