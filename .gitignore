@@ -76,7 +76,6 @@ docs/blog/
 # Security assessment output (local only — contains evidence and findings)
 security-assessment/
 
-# user_config.json — personal model overrides, gitignored per-developer
-chatbot/config/user_config.json
+# user_config.json — tracked; model values use ${ENV_VAR} references, no secrets
 .claude/codemap/
 .readme-forge/

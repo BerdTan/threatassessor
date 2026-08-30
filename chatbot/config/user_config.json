@@ -1,0 +1,60 @@
+{
+  "engine": {
+    "criticality_critical": 0.7,
+    "criticality_high": 0.5,
+    "criticality_medium": 0.3,
+    "rapids_category_weights": {
+      "ransomware": 0.5,
+      "application_vulns": 0.5,
+      "phishing": 0.5,
+      "insider_threat": 0.5,
+      "dos": 0.5,
+      "supply_chain": 0.5
+    }
+  },
+  "confidence": {
+    "edge_penalty_factor": 0.05
+  },
+  "residual_risk": {
+    "min_failure_probability": 0.05
+  },
+  "moe": {
+    "max_tokens_synthesis": 16000
+  },
+  "scrum_master": {
+    "enabled": true
+  },
+  "event_broker": {
+    "enabled": true
+  },
+  "agent_models": {
+    "architect": {
+      "model": "${AGENT_MODEL_ARCHITECT}",
+      "fallbacks": []
+    },
+    "tester": {
+      "model": "${AGENT_MODEL_TESTER}",
+      "fallbacks": []
+    },
+    "red_team": {
+      "model": "${AGENT_MODEL_RED_TEAM}",
+      "fallbacks": []
+    },
+    "scrum_master": {
+      "model": "${AGENT_MODEL_SCRUM_MASTER}",
+      "fallbacks": []
+    },
+    "moe_orchestrator": {
+      "model": "${AGENT_MODEL_MOE}",
+      "fallbacks": []
+    },
+    "threat_analyst": {
+      "model": "${AGENT_MODEL_THREAT_ANALYST}",
+      "fallbacks": []
+    },
+    "ta_wiz": {
+      "model": "${AGENT_MODEL_TA_WIZ}",
+      "fallbacks": []
+    }
+  }
+}
