@@ -534,7 +534,8 @@ if __name__ == "__main__":
 
         reset_singleton()
         brain_data = json.loads(Path(result["brain_path"]).read_text())
-        instances_path = brain_dir / "ta_brain_instances.jsonl"
+        _brain_dir = report_dir / "brain"
+        instances_path = _brain_dir / "ta_brain_instances.jsonl"
         instances = []
         if instances_path.exists():
             for line in instances_path.read_text().strip().splitlines():
@@ -544,7 +545,7 @@ if __name__ == "__main__":
                     except Exception:
                         pass
 
-        cache = CacheManager(brain_dir / "ta_brain_cache.json")
+        cache = CacheManager(_brain_dir / "ta_brain_cache.json")
         evicted = cache.evict_stale(brain_data.get("pattern_version", 0))
         written = cache.pre_warm(instances, brain_data, _run_infer, report_dir)
         print(f"\nCache pre-warm complete")
