@@ -46,9 +46,9 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
         },
         "litellm_kwargs": {},
         "models": {
-            "default":      "openrouter/openrouter/free",
+            "default":      "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
             "high_quality": "openrouter/anthropic/claude-sonnet-4",
-            "fast":         "openrouter/openrouter/free",
+            "fast":         "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
         },
         "cost_per_1k": None,   # varies by model
         "active": True,
@@ -186,14 +186,14 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
         "litellm_kwargs": {},
         "models": {
             "default":      "gemini/gemini-3.6-flash",
-            "high_quality": "gemini/gemini-3.6-flash",
-            "fast":         "gemini/gemini-3.6-flash",
+            "high_quality": "gemini/gemini-3.7-flash",
+            "fast":         "gemini/gemini-3.5-flash",
         },
         "cost_per_1k": None,
-        "active": True,    # corpus rerun 2026-08-29; set False after rerun
+        "active": False,   # benchmarking use only; not primary provider
         "env_example": (
             "# Google AI Studio — https://aistudio.google.com\n"
-            "GEMINI_API_KEY=AIzaSy...\n"
+            "GEMINI_API_KEY=your-key-here\n"
         ),
     },
 
@@ -276,7 +276,7 @@ def base_url_for(provider_name: str) -> str:
     override_env = m.get("base_url_env")
     if override_env and os.getenv(override_env):
         return os.getenv(override_env).rstrip("/")
-    return (m.get("base_url") or "").rstrip("/")
+    return m.get("base_url", "").rstrip("/")
 
 
 def resolve_api_key(provider_name: str) -> Optional[str]:

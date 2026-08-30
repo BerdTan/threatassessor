@@ -37,11 +37,17 @@ Usage:
     # Brain quality check (after rerun-moe)
     python3 scripts/bench_critics.py --mode brain
 
-Model aliases:
+Model aliases (benched 2026-08-29):
     current         whatever is in .env right now (baseline)
     hetzner         Hetzner Qwen3.6-35B-A3B-FP8 (primary)
-    gemini_flash    Google AI Studio gemini-3.6-flash (stable free tier, needs GEMINI_API_KEY)
-    openrouter_free nvidia/nemotron-3.5-lightning:free (OR free model; thinking model, 1M ctx)
+    hetzner_27b     Hetzner Qwen3.8-27B (27B dense)
+    gemini_flash    Google AI Studio gemini-3.6-flash (best purple team; needs GEMINI_API_KEY)
+    minimax         MiniMax M3 free
+    nemotron_nano   nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+    nemotron_super  nvidia/nemotron-3-super-120b-a12b:free
+    glm             z-ai/glm-5.2 paid (tester=model cap)
+    openrouter_free nvidia/nemotron-3.5-lightning:free (untested)
+    cohere          cohere/north-mini-code:free (untested)
 
 Gap trigger (critics mode): critic depth drop ≥ 2 pts → flagged for critic-gym.
 """
@@ -90,21 +96,15 @@ MODEL_ALIASES = {
     # label → critic_model value sent in ExpertReviewRequest.
     # None = no override, uses .env defaults (whatever the API is configured with).
     "current":          None,
-    "hetzner":          "openai/Qwen/Qwen3.6-35B-A3B-FP8",   # Hetzner 35B MoE (primary)
-    "hetzner_27b":      "openai/Qwen3.8-27B",                  # Hetzner 27B dense — faster, smaller
-    "gemini_flash":     "gemini/gemini-3.6-flash",              # Google AI Studio — stable, free tier
-    "openrouter_free":  "openrouter/nvidia/nemotron-3.5-lightning:free",
-    "cohere":           "openrouter/cohere/north-mini-code:free",  # non-thinking sparse MoE, agentic coding focus
-    "glm":              "openrouter/z-ai/glm-5.2",                 # paid variant — bypasses Decart shared-pool 429
-    "glm_free":         "openrouter/z-ai/glm-5.2:free",            # free variant (shared pool — rate-limited under parallel load)
-    "ox_alpha":         "openrouter/stealth/ox-alpha",              # was GLM-5.3 Flash (revealed on retirement 2026-08-26); gone
-    "dots3":            "openrouter/dots-studio/dots-3-note-preview:free",  # 512K ctx, deprecates 2026-09-30
-    "minimax":          "openrouter/minimax/minimax-m3:free",               # MiniMax M3 free
-    "gemma":            "openrouter/google/gemma-4-31b-it",                 # paid variant — bypasses Google AI Studio shared-pool 429
-    "gemma_free":       "openrouter/google/gemma-4-31b-it:free",            # free variant (shared pool — rate-limited under parallel load)
-    "inkling":          "openrouter/thinkingmachines/inkling:free",         # GATED: OR restricts to approved agentic apps only (403 via direct API)
-    "nemotron_nano":    "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  # 30B/3B active, reasoning, 49 tok/s
-    "nemotron_super":   "openrouter/nvidia/nemotron-3-super-120b-a12b:free",              # 120B/12B active MoE, 50 tok/s, 99.7% uptime
+    "hetzner":          "openai/Qwen/Qwen3.6-35B-A3B-FP8",   # Hetzner 35B MoE (primary); benched 2026-08-29
+    "hetzner_27b":      "openai/Qwen3.8-27B",                  # Hetzner 27B dense; benched 2026-08-29
+    "gemini_flash":     "gemini/gemini-3.6-flash",              # Google AI Studio; benched 2026-08-29, best purple team
+    "minimax":          "openrouter/minimax/minimax-m3:free",   # MiniMax M3 free; benched 2026-08-29
+    "nemotron_nano":    "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",  # 30B/3B active, reasoning; benched 2026-08-29
+    "nemotron_super":   "openrouter/nvidia/nemotron-3-super-120b-a12b:free",              # 120B/12B active MoE; benched 2026-08-29
+    "glm":              "openrouter/z-ai/glm-5.2",              # paid; tester=model cap (prose-wraps JSON); benched 2026-08-29
+    "openrouter_free":  "openrouter/nvidia/nemotron-3.5-lightning:free",  # untested
+    "cohere":           "openrouter/cohere/north-mini-code:free",          # untested; non-thinking sparse MoE
 }
 
 
@@ -634,7 +634,7 @@ def main():
     ap.add_argument("--archs",    nargs="*", default=None,
                     help="Arch names to benchmark. Omit to auto-select (uses qualify logic).")
     ap.add_argument("--models",   nargs="+", default=["current"],
-                    help="Model aliases: current hetzner hetzner_27b gemini_flash openrouter_free cohere glm glm_free ox_alpha dots3 minimax gemma gemma_free inkling nemotron_nano nemotron_super")
+                    help="Model aliases: current hetzner hetzner_27b gemini_flash minimax nemotron_nano nemotron_super glm openrouter_free cohere")
     ap.add_argument("--critic-mode", default="partial_parallel",
                     choices=["partial_parallel", "sequential", "parallel", "auto"],
                     help="MoE critic execution mode (default: partial_parallel). Use sequential for rate-limited providers.")

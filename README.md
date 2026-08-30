@@ -258,7 +258,7 @@ DEV-TEST/
 
 ## Build story
 
-The full build story is on Medium — 22 published parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, the self-assessment that found a Critical in its own codebase, why a self-growing knowledge graph had the right answers all along, why new capabilities always introduce new attack surface, and how divergence between the Brain and live analysis reveals genuinely novel architectures:
+The full build story is on Medium — 23 published parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, the self-assessment that found a Critical in its own codebase, why a self-growing knowledge graph had the right answers all along, why new capabilities always introduce new attack surface, how divergence between the Brain and live analysis reveals genuinely novel architectures, and why a generic leaderboard score is the wrong starting point for multi-agent model selection:
 
 | # | Title | What it covers |
 |---|---|---|
@@ -284,3 +284,4 @@ The full build story is on Medium — 22 published parts covering the pipeline, 
 | 20 | [The Wrong Ruler](https://medium.com/@breadtan/the-wrong-ruler-9b73117dbbbf) | Self-growing loop closed (Stage 8); brain-infer reveals 94% precision vs 0.09 calibration — the metric was measuring the wrong thing; 0.09→0.80 after fix |
 | 21 | [Capability Is Attack Surface](https://medium.com/@breadtan/capability-is-attack-surface-57476a1f8ae2) | Every new capability introduces new surface — 3 findings all in same-session code; fix becomes detection rule (DETECT-031); 31 rules, 6 Critical |
 | 22 | [Two Maps in the Jungle](https://medium.com/@breadtan/two-maps-in-the-jungle-6a26e2c24f20) | Divergence % between Brain predictions and live analysis as a novelty signal; teal = Workspace-only; what to do when the maps disagree |
+| 23 | [The Leaderboard Lied](https://medium.com/@breadtan/the-leaderboard-lied-256ce70a7a1b) | 7-model benchmark campaign — pipeline bugs masquerading as model failures, cross-architecture variance, and why production model selection is a routing problem not a ranking contest |
