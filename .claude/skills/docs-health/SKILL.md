@@ -54,13 +54,39 @@ ls \~/.claude/projects/<project>/memory/
 
 Read each memory file. For any line referencing a module path, commit hash, or script path — verify it still exists. Flag entries with broken references or advice that contradicts the current codebase.
 
+## Check 4 — Current Priorities
+
+Read `~/.claude/projects/<project>/memory/MEMORY.md` and extract the **Current priorities** section.
+
+Print a clean numbered list, prefixed with status:
+- ✅ for completed items (struck-through in memory)
+- 🔄 for in-progress (started this session or explicitly flagged)
+- ⬜ for not started
+
+After the list, add a one-line **Next up:** pointing at the first ⬜ item with a concrete first step.
+
+If any priority is now unblocked by work done this session, call that out explicitly.
+
 ## Output Format
+
+```
+## Docs Health
 
 | File | Status | Issue | Proposed Fix |
 |------|--------|-------|-------------|
 | CLAUDE.md | ⚠ | "Last Updated: 2026-05-24" | Update to today's date |
-| CLAUDE.md | ⚠ | "99.5% base" confidence claim | Update to reflect `confidence_breakdown` field |
-| DECISIONS.md | ✅ | Last entry 2026-05-30, HEAD is 2026-05-30 | — |
+| DECISIONS.md | ✅ | Last entry matches HEAD | — |
 | memory/project_roadmap.md | ✅ | All paths valid | — |
+
+## Priorities
+
+1. ✅ Corpus rerun
+2. ✅ Brain re-ingest
+3. ⬜ Brain Infer UI panel — calls /api/v1/brain/query, new Brain tab sub-tab
+4. ⬜ Fill partial bench runs — nemotron_super + glm
+...
+
+Next up: Brain Infer UI panel — start with the sub-tab scaffold in dashboard.js
+```
 
 Then ask: "Apply any of these edits?"
