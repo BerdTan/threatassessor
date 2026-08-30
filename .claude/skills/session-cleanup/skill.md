@@ -72,6 +72,14 @@ grep -oE '[a-z_/]+\.py' "$MDIR/project_ta_brain.md" "$MDIR/project_engine_improv
 
 ---
 
+## Phase 1d — Skill supply-chain integrity
+
+Run `/check-skills` inline — it performs git integrity, URL audit, `allowed-tools` gaps, script supply-chain patterns, and phishing phrase detection across the full `.claude/skills/` corpus. Findings are added to the unified table in Phase 3.
+
+If `/check-skills` surfaces Critical or High findings, resolve them before proceeding with the rest of the cleanup.
+
+---
+
 ## Phase 2 — Repo Organisation
 
 ### 2a — /docs staleness

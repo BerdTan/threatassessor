@@ -167,6 +167,11 @@ class TestScenariosFire:
         fired = _fired_ids(fn())
         assert {"DETECT-033"} <= fired
 
+    def test_suspicious_skill_url(self):
+        fn, _ = SCENARIOS["suspicious_skill_url"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-034"} <= fired
+
     def test_all_expected_rules_match_documented(self):
         """Every scenario fires at least its documented expected set."""
         for name, (fn, _) in SCENARIOS.items():

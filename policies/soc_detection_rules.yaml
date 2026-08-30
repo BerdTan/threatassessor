@@ -1818,6 +1818,61 @@ rules:
       No tuning expected — legitimate arch names never contain ../ or absolute
       paths. Any firing is a true positive by construction.
 
+  # DETECT-034: Suspicious URL in Skill File (Supply-Chain / Phishing Link Injection)
+  #
+  # Trigger: A skill instruction file (.claude/skills/*/SKILL.md or skill.md) contains
+  # an external URL classified as SUSPICIOUS by the URL classifier in governance.py
+  # (_classify_skill_url). Suspicious patterns include: URL-shorteners (bit.ly, t.co,
+  # tinyurl.com), uncommon TLDs (.xyz, .tk, .ru, .cn), and raw IPv4 addresses.
+  #
+  # Attack scenario: An adversary with write access to the skill directory (supply-chain
+  # compromise, developer workstation breach, or malicious PR) embeds a phishing URL or
+  # C2 callback link in a skill instruction file. When the skill runs, Claude Code may
+  # fetch that URL (e.g. via WebFetch/Bash curl), follow its redirect, or present it to
+  # the operator as a legitimate reference link — enabling credential harvest, drive-by
+  # download, or C2 beaconing.
+  #
+  # Complement to DETECT-028 (skill_instruction_tamper): DETECT-028 fires on any git
+  # hash mismatch; DETECT-034 fires on URL content regardless of git state — catching
+  # malicious URLs that were committed to git (bypassing DETECT-028) or that were always
+  # present but never reviewed.
+  #
+  # Signal path: governance.py._check_skill_integrity() → identity.skill_url_findings
+  #              └─ Rule[DETECT-034]
+  #
+  - id: DETECT-034
+    name: suspicious_skill_url
+    domain: SC
+    description: >
+      A skill instruction file (.claude/skills/) contains an external URL matching a
+      suspicious pattern: URL-shortener, uncommon TLD (.xyz, .tk, .ru, .cn), or raw
+      IPv4 address. Possible supply-chain compromise or phishing link injection via
+      skill file modification. Complement to DETECT-028 (hash-based tamper detection)
+      — this fires on URL content regardless of git commit state.
+    incident_refs:
+      - supply-chain-skill-url-2026-08-30
+    owasp: [A08]
+    atlas_tactic: AML.TA0001
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200406
+    severity: High
+    conditions:
+      - field: identity.skill_url_suspicious
+        op: "length_gt"
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: forensic_capture
+      - type: block_deployment
+    tuning_note: >
+      False positive rate is low: URL-shorteners and raw IPs are never legitimate in
+      skill instruction files. Uncommon-TLD false positives are possible if a skill
+      references documentation on an unconventional domain — add to _SKILL_URL_TRUSTED
+      in governance.py if the domain is verified. REVIEW-classified URLs (other
+      github.com refs) do not trigger this rule; only SUSPICIOUS ones do.
+
 # ─────────────────────────────────────────────────────────────────────────────
 playbooks:
 
@@ -2172,6 +2227,20 @@ playbooks:
     escalation_threshold: "Any single firing → escalate immediately; no legitimate use case exists for ../  in arch_name"
     false_positive_indicators:
       - "None expected — arch names never legitimately contain path separators"
+
+  suspicious_skill_url:
+    alert: DETECT-034
+    analyst_steps:
+      - "Run: git log --follow -p .claude/skills/<skill>/SKILL.md  — who committed the URL and when"
+      - "Check committer identity against known contributors; flag if unfamiliar"
+      - "Resolve the URL in a sandboxed browser — check for phishing page, redirect chain, or payload download"
+      - "If URL-shortener: expand it with a URL expander service before visiting"
+      - "If confirmed malicious: remove the URL from the skill file, rotate any credentials the operator may have followed the link with, and file a supply-chain incident"
+      - "If confirmed benign (e.g. unusual TLD for a legitimate docs site): add to _SKILL_URL_TRUSTED in governance.py and create a suppression note here"
+    escalation_threshold: "SUSPICIOUS + git history shows external committer → treat as active supply-chain compromise; page SOC lead"
+    false_positive_indicators:
+      - "Legitimate documentation or reference site with an unconventional TLD — verify domain ownership, add to trusted list"
+      - "Test skill file containing intentional phishing URL as a detection fixture — should not be in .claude/skills/"
 
 # TATB integration note
 #

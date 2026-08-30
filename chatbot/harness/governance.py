@@ -687,6 +687,8 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
                 "overreach_signals": [],
                 "supply_chain_modified_modules": [],
                 "modified_skill_files": [],
+                "skill_url_findings": [],
+                "skill_url_suspicious": [],
                 "arc_categories": ["ACC", "FAIR"],
                 "atlas_tactics": ["AML.TA0006"],
                 "kill_chain_stage": "llm_layer",
@@ -722,7 +724,13 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         sig.identity["supply_chain_modified_modules"] = self._check_module_integrity()
 
         # Skill integrity: check .claude/skills/ instruction + script files
-        sig.identity["modified_skill_files"] = self._check_skill_integrity()
+        modified_skills, skill_url_findings = self._check_skill_integrity()
+        sig.identity["modified_skill_files"] = modified_skills
+        sig.identity["skill_url_findings"] = skill_url_findings
+        # Separate list of SUSPICIOUS-only findings drives DETECT-034
+        sig.identity["skill_url_suspicious"] = [
+            f for f in skill_url_findings if f.get("classification") == "SUSPICIOUS"
+        ]
 
         # Attach tool errors captured so far
         sig.identity["tool_errors"] = [e.to_dict() for e in self._tool_errors]
@@ -836,35 +844,83 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         "aivss-gate", "check-mcp", "check-eventbroker", "tatb-loop",
     })
 
-    def _check_skill_integrity(self) -> List[str]:
+    # Trusted URL prefixes for skill files — all others are classified REVIEW or SUSPICIOUS.
+    _SKILL_URL_TRUSTED = (
+        "https://github.com/mitre/",
+        "https://github.com/mitre-atlas/",
+        "https://github.com/govtech-responsibleai/",
+        "https://medium.com/@breadtan/",
+        "http://localhost",
+        "https://localhost",
+        "http://127.0.0.1",
+        "https://127.0.0.1",
+        "http://0.0.0.0",
+        "http://host:",
+    )
+    _SKILL_URL_REVIEW = (
+        "https://github.com/",
+        "https://docs.",
+        "https://pypi.org/",
+        "https://anthropic.com/",
+        "https://aistudio.google.com/",
+    )
+    # URL-shorteners and unconventional TLDs that have no place in skill instructions.
+    _SKILL_URL_SUSPICIOUS_PATTERNS = re.compile(
+        r"https?://(bit\.ly|t\.co|tinyurl\.com|ow\.ly|goo\.gl|rb\.gy|is\.gd|cutt\.ly)"
+        r"|https?://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?"  # raw IPv4
+        r"|https?://[^/]+\.(xyz|tk|ru|cn|ml|ga|cf|gq|top|pw|work|date|review|stream|download)([\?/#]|$)",
+        re.IGNORECASE,
+    )
+    # Placeholder patterns — not malicious, but dangerous in curl/wget/exec context.
+    _SKILL_URL_PLACEHOLDER = re.compile(
+        r"OWNER/REPO|example\.com|YOUR_HOST|<host>|<url>|\$\{?[A-Z_]+URL\}?",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _classify_skill_url(cls, url: str) -> str:
+        if cls._SKILL_URL_SUSPICIOUS_PATTERNS.search(url):
+            return "SUSPICIOUS"
+        if cls._SKILL_URL_PLACEHOLDER.search(url):
+            return "PLACEHOLDER"
+        if any(url.startswith(p) for p in cls._SKILL_URL_TRUSTED):
+            return "TRUSTED"
+        if any(url.startswith(p) for p in cls._SKILL_URL_REVIEW):
+            return "REVIEW"
+        return "SUSPICIOUS"
+
+    def _check_skill_integrity(self) -> tuple:
         """
-        Compare .claude/skills/ SKILL.md and scripts/*.py file hashes against git.
-        Returns list of modified skill file paths. Falls back to [] if .git absent.
+        Compare .claude/skills/ SKILL.md and scripts/ file hashes against git.
+        Also scans skill files for external URLs and classifies them.
+        Returns (modified_files: List[str], url_findings: List[dict]).
+        Falls back to ([], []) if .git absent.
         Marks core pipeline skills with a [CRITICAL] prefix.
         """
-        modified = []
+        modified: List[str] = []
+        url_findings: List[dict] = []
         try:
             import subprocess
             skills_dir = Path(".claude/skills")
             if not skills_dir.exists() or not Path(".git").exists():
-                return []
+                return [], []
             result = subprocess.run(
                 ["git", "ls-files", "-s", str(skills_dir)],
                 capture_output=True, text=True, timeout=5,
             )
             if result.returncode != 0:
-                return []
+                return [], []
             for line in result.stdout.strip().splitlines():
                 parts = line.split()
                 if len(parts) < 4:
                     continue
                 git_hash = parts[1]
                 file_path = parts[3]
-                # Only check SKILL.md and scripts/ Python files
                 p = Path(file_path)
-                if p.name != "SKILL.md" and not (
-                    "scripts" in p.parts and p.suffix == ".py"
-                ):
+                # Integrity check: SKILL.md, skill.md, and scripts/ Python/shell files
+                is_skill_doc = p.name in ("SKILL.md", "skill.md")
+                is_script = "scripts" in p.parts and p.suffix in (".py", ".sh")
+                if not (is_skill_doc or is_script):
                     continue
                 if not p.exists():
                     continue
@@ -875,9 +931,20 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
                     skill_name = p.parts[2] if len(p.parts) > 2 else p.name
                     prefix = "[CRITICAL] " if skill_name in self._CORE_SKILLS else ""
                     modified.append(f"{prefix}{file_path}")
+                # URL scan: skill doc files only (not scripts — too noisy)
+                if is_skill_doc:
+                    text = content.decode("utf-8", errors="replace")
+                    for url in _RE_EXTERNAL_URL.findall(text):
+                        classification = self._classify_skill_url(url)
+                        if classification != "TRUSTED":
+                            url_findings.append({
+                                "path": file_path,
+                                "url": url[:200],
+                                "classification": classification,
+                            })
         except Exception as exc:
             logger.debug(f"Skill integrity check skipped: {exc}")
-        return modified
+        return modified, url_findings
 
     def _summarise_capability_log(self) -> dict:
         summary: dict = {}

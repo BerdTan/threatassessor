@@ -64,6 +64,8 @@ def _base() -> Dict[str, Any]:
         "identity": {
             "supply_chain_modified_modules": [],
             "modified_skill_files": [],
+            "skill_url_findings": [],
+            "skill_url_suspicious": [],
             "tool_errors": [],
         },
         "aivss": {
@@ -987,6 +989,32 @@ def scenario_rest_rate_limit_abuse() -> Dict[str, Any]:
     return sig
 
 
+def scenario_suspicious_skill_url() -> Dict[str, Any]:
+    """
+    DETECT-034 (High)
+
+    Based on: supply-chain compromise of the .claude/skills/ directory.
+
+    An adversary with write access to the developer workstation (or via a
+    malicious PR merged without review) embeds a bit.ly URL-shortener link
+    in a skill instruction file (gen-blog/SKILL.md). The link expands to a
+    credential-harvest phishing page. When the governance engine scans the
+    skill corpus during check_artifact(), it classifies the URL as SUSPICIOUS
+    (URL-shortener domain) and populates identity.skill_url_suspicious.
+    DETECT-034 fires, triggering audit_log, forensic_capture, and
+    block_deployment. Grounded in supply-chain-skill-url-2026-08-30.
+    """
+    sig = _base()
+    sig["identity"]["skill_url_suspicious"] = [
+        {
+            "path": ".claude/skills/gen-blog/SKILL.md",
+            "url": "https://bit.ly/3xYzAbc",
+            "classification": "SUSPICIOUS",
+        }
+    ]
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-005 (Critical) + DETECT-002 (Critical) — adversarial input + divergence suppression"),
@@ -1056,6 +1084,8 @@ SCENARIOS = {
         "DETECT-032 (High) — rest_api.rate_limited_count >= 10 = automated API flooding ignoring 429s"),
     "arch_name_path_traversal":      (scenario_arch_name_path_traversal,
         "DETECT-033 (High) — arch_metadata.path_traversal_blocked = arch_name contains ../ = directory escape probe"),
+    "suspicious_skill_url":          (scenario_suspicious_skill_url,
+        "DETECT-034 (High) — identity.skill_url_suspicious non-empty = phishing/shortener URL embedded in skill file"),
 }
 
 EXPECTED_RULES = {
@@ -1094,6 +1124,7 @@ EXPECTED_RULES = {
     "brain_training_poisoning":      {"DETECT-031"},
     "rest_rate_limit_abuse":         {"DETECT-032"},
     "arch_name_path_traversal":      {"DETECT-033"},
+    "suspicious_skill_url":          {"DETECT-034"},
 }
 
 

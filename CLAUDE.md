@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
 **Version:** 2.8  
-**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (33 rules) + Harness v2 + MCP server (17 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (248 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised + N-model bench (7 models) + /no_think tester fix + foreign-provider config bypass fixed + full corpus rerun (gemini_flash, 52 archs).  
+**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (34 rules) + Harness v2 + MCP server (17 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (248 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised + N-model bench (7 models) + /no_think tester fix + foreign-provider config bypass fixed + full corpus rerun (gemini_flash, 52 archs).  
 **Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 31 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG
 
 ---
@@ -170,7 +170,7 @@ tail -f logs/api.log            # logs
 /aivss-gate
 
 # ── SOC detection ────────────────────────────────────────────────────────────
-# Regression suite (33 rules, 34 scenarios, 368 tests)
+# Regression suite (34 rules, 34 scenarios, 373 tests)
 python3 .claude/skills/check-detect/scripts/check-detect.py
 python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 
@@ -207,6 +207,7 @@ python3 .claude/skills/check-connector/scripts/check-connector.py --static # no 
 
 ```bash
 /session-cleanup      # master housekeeping: docs-health + repo-organise in one pass
+/check-skills         # supply-chain + phishing audit of .claude/skills/ corpus
 /check-deprecation    # broken imports + anti-patterns — run after heavy refactoring
 /skill-stress-test    # red-team a skill before finalising — pass skill name as arg
 /langfuse-to-ocsf     # pipeline traces → OCSF events — requires LANGFUSE_* env vars

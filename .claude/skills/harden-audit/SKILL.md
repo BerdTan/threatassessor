@@ -75,7 +75,7 @@ Think like someone with real intent to break, deface, or take down this system �
 - **Injection & untrusted input** — SQL/NoSQL/command/template/LDAP injection, path traversal, SSRF, deserialization, XXE, prototype pollution.
 - **Auth & session** — broken authn, weak/missing authz (IDOR, privilege escalation), session fixation, JWT flaws, default/hardcoded credentials.
 - **Secrets** — keys/tokens in code, config, or **git history**; secrets logged; weak crypto.
-- **Dependencies & supply chain** — known-CVE packages, unpinned/abandoned deps, malicious or install-script packages, typosquat-shaped names.
+- **Dependencies & supply chain** — known-CVE packages, unpinned/abandoned deps, malicious or install-script packages, typosquat-shaped names. Skill supply-chain (`.claude/skills/`): run `/check-skills` for automated scan; review flagged URLs and `allowed-tools` gaps manually.
 - **Infra / CI/CD / containers** — exposed ports, over-privileged workflow tokens, secrets in CI, container running as root, mounted host paths.
 - **Business logic & abuse** — rate-limit and quota gaps, cost-drain / resource-exhaustion paths, race conditions, workflow steps skippable out of order, multi-tenant isolation breaks.
 - **Client-side (if web)** — XSS (stored/reflected/DOM), CSRF, clickjacking, insecure CORS, missing security headers.

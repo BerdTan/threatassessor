@@ -76,6 +76,8 @@ def _clean() -> Dict[str, Any]:
         "identity": {
             "supply_chain_modified_modules": [],
             "modified_skill_files": [],
+            "skill_url_findings": [],
+            "skill_url_suspicious": [],
             "tool_errors": [],
         },
         "aivss": {
@@ -116,7 +118,7 @@ class TestYAMLLoading:
 
     def test_loads_twentyeight_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 33
+        assert len(ev) == 34
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -1723,6 +1725,51 @@ class TestDetect028SkillInstructionTamper:
         core = [f for f in s["identity"]["modified_skill_files"] if f.startswith("[CRITICAL]")]
         assert len(core) == 1
         assert "check-detect" in core[0]
+
+
+class TestDetect034SuspiciousSkillUrl:
+    def _trigger_suspicious(self):
+        s = _clean()
+        s["identity"]["skill_url_suspicious"] = [
+            {
+                "path": ".claude/skills/gen-blog/SKILL.md",
+                "url": "https://bit.ly/3xYzAbc",
+                "classification": "SUSPICIOUS",
+            }
+        ]
+        return s
+
+    def test_fires_on_suspicious_url(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger_suspicious(), arch_name="a", run_id="r")]
+        assert "DETECT-034" in ids
+
+    def test_does_not_fire_on_trusted_url_only(self):
+        # TRUSTED URLs are never written to skill_url_suspicious — only REVIEW/SUSPICIOUS are in skill_url_findings
+        ev = RuleEvaluator()
+        s = _clean()
+        s["identity"]["skill_url_suspicious"] = []  # trusted URL filtered out by governance
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-034" not in ids
+
+    def test_does_not_fire_on_review_only(self):
+        # REVIEW URLs are in skill_url_findings but not in skill_url_suspicious
+        ev = RuleEvaluator()
+        s = _clean()
+        s["identity"]["skill_url_suspicious"] = []
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-034" not in ids
+
+    def test_does_not_fire_on_empty_findings(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-034" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger_suspicious(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-034")
+        assert f["severity"].upper() == "HIGH"
 
 
 class TestDetect026CriticConsensusCollapse:

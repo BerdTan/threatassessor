@@ -1,6 +1,6 @@
 ---
 name: incident-simulator
-description: Synthesise realistic governance_signals.json payloads for named incident scenarios, run aivss-to-findings, and assert the expected DETECT rules fire. 34 scenarios cover all 33 DETECT rules (DETECT-001 through DETECT-033), including AST02/05/08-grounded scenarios. Optionally generates a storycaster narrative contextualised to a specific architecture. Pass a scenario name, or omit to list all. Use --story to generate a narrative. Use --write to persist the simulated governance_signals to a report directory.
+description: Synthesise realistic governance_signals.json payloads for named incident scenarios, run aivss-to-findings, and assert the expected DETECT rules fire. 35 scenarios cover all 34 DETECT rules (DETECT-001 through DETECT-034), including AST02/05/08-grounded scenarios. Optionally generates a storycaster narrative contextualised to a specific architecture. Pass a scenario name, or omit to list all. Use --story to generate a narrative. Use --write to persist the simulated governance_signals to a report directory.
 allowed-tools: Bash(python3:*) Bash(source:*)
 ---
 
