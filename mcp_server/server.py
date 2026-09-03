@@ -643,6 +643,63 @@ def run_taco_agent(
 
 
 # ---------------------------------------------------------------------------
+# Tool 19: run_taclaw — autonomous security assessment agent
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def run_taclaw(
+    target: str,
+    arch_name: str = "",
+    target_type: str = "directory",
+    ssp_profile: str = "low_risk_cloud",
+    enrich_from_github: bool = False,
+    github_repo: str = "",
+) -> str:
+    """Autonomous security assessment: crawl a repo or directory, discover architecture artifacts,
+    analyze, and produce a unified threat report.
+
+    TAclaw walks the target, auto-detects Terraform, CloudFormation, OpenAPI, or prose files,
+    merges them into a composite architecture graph, and runs the full TA threat-modeling pipeline.
+
+    Args:
+        target:              Local directory path or git URL (https://github.com/...).
+        arch_name:           Name for the assessment (defaults to target basename).
+        target_type:         "directory" | "git_url" (default: "directory").
+        ssp_profile:         SSP profile for TA analysis (default: "low_risk_cloud").
+        enrich_from_github:  Cross-reference GitHub Code Scanning alerts (requires github_repo).
+        github_repo:         "owner/repo" string for GitHub enrichment.
+
+    Returns:
+        JSON with job_id and poll_url. Poll with get_job_status(job_id) until status == "completed".
+        The result includes gate (PASS/BLOCK), artifacts_found, graphs_merged, and the full export bundle.
+
+    Example::
+        result = run_taclaw("/path/to/my-infra-repo", arch_name="my_infra")
+        job = json.loads(result)
+        # poll:
+        status = get_job_status(job["job_id"], wait_for_completion=True)
+    """
+    try:
+        payload = {
+            "target": target,
+            "target_type": target_type,
+            "ssp_profile": ssp_profile,
+            "enrich_from_github": enrich_from_github,
+        }
+        if arch_name:
+            payload["arch_name"] = arch_name
+        if github_repo:
+            payload["github_repo"] = github_repo
+        result = api._post("/api/v1/taclaw/run", payload)
+        _access_log.record_tool_call("run_taclaw", arch_name=arch_name or target)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        auth_failed = "401" in str(e) or "Unauthorized" in str(e)
+        _access_log.record_tool_call("run_taclaw", success=False, auth_failed=auth_failed)
+        return json.dumps({"error": str(e)})
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

@@ -17,5 +17,6 @@ from chatbot.api.routes.taco import router as taco_router
 from chatbot.api.routes.bench import router as bench_router
 from chatbot.api.routes.enrich import router as enrich_router
 from chatbot.api.routes.artifact import router as artifact_router
+from chatbot.api.routes.taclaw import router as taclaw_router
 
 __all__ = ["streaming_router", "reports_router", "config_router", "workspaces_router", "ta_wiz_router", "graph_search_router", "jobs_router", "mcp_sim_router", "brain_router", "taco_router", "bench_router"]
