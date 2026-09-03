@@ -11,6 +11,16 @@ Provides:
 from mcp_connector.client import MCPClient
 from mcp_connector.openai_bridge import openai_tools, openai_mcp_tool
 from mcp_connector.langchain_bridge import langchain_tools
+from mcp_connector.models import (
+    TAExportBundle, GateResult, AttackPath, AssessmentSection,
+    TATBSection, GovernanceSection, OTMSection, MoEConsensus,
+    ComponentContext,
+)
 
-__all__ = ["MCPClient", "openai_tools", "openai_mcp_tool", "langchain_tools"]
-__version__ = "1.0.0"
+__all__ = [
+    "MCPClient", "openai_tools", "openai_mcp_tool", "langchain_tools",
+    "TAExportBundle", "GateResult", "AttackPath", "AssessmentSection",
+    "TATBSection", "GovernanceSection", "OTMSection", "MoEConsensus",
+    "ComponentContext",
+]
+__version__ = "1.1.0"

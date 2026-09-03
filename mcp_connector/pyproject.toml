@@ -4,18 +4,21 @@ build-backend = "hatchling.build"
 
 [project]
 name = "threatassessor-mcp"
-version = "1.0.0"
+version = "1.1.0"
 description = "Python connector for ThreatAssessor MCP — typed client, OpenAI tool defs, LangChain tools"
 requires-python = ">=3.10"
-dependencies = ["requests>=2.28"]
+dependencies = ["requests>=2.28", "pydantic>=2.0"]
+license = {text = "MIT"}
+readme = "mcp_connector/README.md"
 
 [project.optional-dependencies]
 openai     = ["openai>=1.0"]
-langchain  = ["langchain>=0.2", "langchain-openai>=0.1", "pydantic>=2.0"]
-all        = ["openai>=1.0", "langchain>=0.2", "langchain-openai>=0.1", "pydantic>=2.0"]
+langchain  = ["langchain>=0.2", "langchain-openai>=0.1"]
+all        = ["openai>=1.0", "langchain>=0.2", "langchain-openai>=0.1"]
 
 [project.urls]
-Homepage = "http://localhost:8000/dashboard"
+Homepage = "https://github.com/breadtan88/threatassessor"
+Repository = "https://github.com/breadtan88/threatassessor"
 
 [tool.hatch.build.targets.wheel]
 packages = ["mcp_connector"]
