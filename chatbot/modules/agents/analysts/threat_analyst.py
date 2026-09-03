@@ -142,9 +142,24 @@ class ThreatAnalyst(AnalystAgent):
         # Validate context
         validated_context = self._validate_context(context)
         architecture_path = validated_context.get("architecture_path")
+        _cleanup_tmp = False
 
+        # Accept architecture_content (MMD string) as an alternative to a file path
         if not architecture_path:
-            raise ValueError("ThreatAnalyst requires 'architecture_path' in context")
+            architecture_content = validated_context.get("architecture_content")
+            if architecture_content:
+                import tempfile as _tempfile
+                _tmp = _tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".mmd", delete=False, encoding="utf-8"
+                )
+                _tmp.write(architecture_content)
+                _tmp.close()
+                architecture_path = _tmp.name
+                _cleanup_tmp = True
+            else:
+                raise ValueError(
+                    "ThreatAnalyst requires 'architecture_path' or 'architecture_content' in context"
+                )
 
         architecture_name = self._extract_architecture_name(validated_context)
 
@@ -410,6 +425,13 @@ class ThreatAnalyst(AnalystAgent):
             f"{len(techniques)} techniques, {len(control_recommendations)} controls, "
             f"patterns={pattern_sources}, confidence={confidence:.1%}"
         )
+
+        if _cleanup_tmp:
+            import os as _os
+            try:
+                _os.unlink(architecture_path)
+            except OSError:
+                pass
 
         return result
 
