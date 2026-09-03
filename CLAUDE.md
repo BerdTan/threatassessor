@@ -1,8 +1,8 @@
 # ThreatAssessor — Developer Quick Reference
 
 **Version:** 2.8  
-**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (34 rules) + Harness v2 + MCP server (17 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (248 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised + N-model bench (7 models) + /no_think tester fix + foreign-provider config bypass fixed + full corpus rerun (gemini_flash, 52 archs).  
-**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 34 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG
+**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (34 rules) + Harness v2 + MCP server (18 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (248 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised + N-model bench (7 models) + /no_think tester fix + foreign-provider config bypass fixed + full corpus rerun (gemini_flash, 52 archs) + TA-SIP external platform (adapters/TAclaw/enrichment API/taclaw CLI).  
+**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 34 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG + TA-SIP (TF/CF/OAI/Prose/MMD adapters → ArchitectureGraph → pipeline)
 
 ---
 
@@ -81,11 +81,21 @@ tail -f logs/api.log            # logs
 - `chatbot/api/routes/streaming.py` — SSE analysis stream
 - `chatbot/api/routes/jobs.py` — `POST /jobs/expert-review` + `GET /jobs/{id}/status` (async job layer for MCP)
 - `chatbot/api/routes/mcp_sim.py` — SSE sim stream + personas endpoint + access-signals + jobs snapshot
-- `chatbot/api/job_store.py` — in-memory job store, 1-hr TTL, `get_job_store()` singleton
-- `chatbot/api/static/` — dashboard (index.html + JS; nav: Overview/Assessment/Simulation/Reporting/Workspace/Settings)
+- `chatbot/api/job_store.py` — in-memory job store, 1-hr TTL, `get_job_store()` singleton; `list_all()` for SIP jobs panel
+- `chatbot/api/static/` — dashboard (index.html + JS; nav: Overview/Assessment/Simulation/Platform/Reporting/Workspace/Settings)
+
+**TA-SIP (Security Intelligence Platform):**
+- `chatbot/adapters/` — `ArchitectureGraph` + adapters: TF/CF/OAI/Prose/MMD; `RepoCrawler` (MAX_FILES=200, dedup 0.85)
+- `chatbot/api/routes/enrich.py` — `POST /api/v1/enrich`: fuzzy component→attack paths (<50ms, no LLM)
+- `chatbot/api/routes/artifact.py` — `POST /api/v1/analyze/artifact`: file upload → adapter → SSE stream
+- `chatbot/api/routes/taclaw.py` — `POST /api/v1/taclaw/run` + `GET /api/v1/taclaw/jobs` (async crawl+assess)
+- `chatbot/api/routes/platform.py` — `GET /api/v1/adapters` + `GET /api/v1/sip/health`
+- `chatbot/schemas/ta_export_v1.json` — JSON Schema for ta-export/1.0; served at `GET /api/v1/schemas/ta-export`
+- `mcp_connector/` — `threatassessor-mcp` v1.1.0; typed `TAExportBundle`, `ComponentContext`; `enrich_finding()`
+- `taclaw_cli/` — `ta`/`taclaw` CLI; `ta gate` exits 1 on BLOCK (CI); publish on `taclaw-v*` tags
 
 **MCP server:**
-- `mcp_server/server.py` — FastMCP app, 17 tools (stdio transport); all tools log to `MCPAccessLogger`
+- `mcp_server/server.py` — FastMCP app, 18 tools (stdio transport); all tools log to `MCPAccessLogger`
 - `mcp_server/job_client.py` — HTTP wrapper for all REST calls
 - `mcp_server/access_logger.py` — `MCPAccessLogger` rolling-window singleton; produces `mcp_access` signals for DETECT-020/021/022
 - `mcp_server/client_sim.py` — 6-persona integration simulator (chatbot, code-agent, ciso, soc, copilot, chatgpt)
@@ -130,7 +140,7 @@ tail -f logs/api.log            # logs
 
 ---
 
-## MCP server — 17 tools
+## MCP server — 18 tools
 
 | Tool | What it does |
 |------|-------------|
@@ -151,6 +161,7 @@ tail -f logs/api.log            # logs
 | `record_brain_feedback` | Record confirmed/wrong feedback for a brain prediction |
 | `generate_synthetic_architectures` | Generate synthetic MMDs from brain meta-layer gaps; stage for approval |
 | `run_taco_agent` | Run TACO agent on a brain prediction — infer, validate, and write feedback |
+| `run_taclaw` | Autonomous repo assessment: crawl dir/git URL → adapt → merge → TA pipeline → export |
 
 **Transport:** stdio (Claude Desktop standard). See `mcp_server/README.md` for setup + all client types.
 
@@ -199,6 +210,11 @@ python3 mcp_server/client_sim.py --persona soc --arch <arch>
 # Connector layer (mcp_connector package + openapi.yaml + transport flag)
 python3 .claude/skills/check-connector/scripts/check-connector.py          # static + live
 python3 .claude/skills/check-connector/scripts/check-connector.py --static # no API needed
+
+# ── SIP platform ──────────────────────────────────────────────────────────────
+# Adapter registry, endpoints, TAclaw, CLI (15 static + 7 live)
+python3 .claude/skills/check-sip/scripts/check-sip.py
+python3 .claude/skills/check-sip/scripts/check-sip.py --live  # + REST API checks
 ```
 
 ---
@@ -243,4 +259,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-08-30
+**Last Updated:** 2026-09-03
