@@ -2382,3 +2382,12 @@ async def governance_check(
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Governance check failed: {exc}")
+
+
+@router.get("/schemas/ta-export", tags=["schemas"])
+async def get_ta_export_schema():
+    """Return the JSON Schema for ta-export/1.0 bundles."""
+    schema_path = Path(__file__).parents[3] / "chatbot" / "schemas" / "ta_export_v1.json"
+    if not schema_path.exists():
+        raise HTTPException(status_code=404, detail="Schema file not found")
+    return JSONResponse(json.loads(schema_path.read_text()))

@@ -24,9 +24,11 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import requests
+
+from mcp_connector.models import TAExportBundle, ComponentContext
 
 
 class MCPClient:
@@ -196,7 +198,12 @@ class MCPClient:
 
     # ── Tool 12: export_assessment ────────────────────────────────────────────
 
-    def export_assessment(self, arch_name: str, save: bool = False) -> Dict:
+    def export_assessment(
+        self,
+        arch_name: str,
+        save: bool = False,
+        raw: bool = False,
+    ) -> Union[TAExportBundle, Dict]:
         """Export unified TA assessment bundle (schema ta-export/1.0).
 
         Bundle sections: gate (PASS|BLOCK), assessment, tatb, governance,
@@ -210,11 +217,24 @@ class MCPClient:
         CI/CD gate example::
 
             bundle = client.export_assessment("my_arch")
+            if bundle.gate.result == "BLOCK":
+                raise SystemExit(1)
+
+            # Raw dict (legacy):
+            bundle = client.export_assessment("my_arch", raw=True)
             if bundle["gate"]["result"] == "BLOCK":
                 raise SystemExit(1)
+
+        Args:
+            arch_name: Architecture directory name.
+            save:      If True, also writes ta_export.json to the report directory.
+            raw:       If True, return raw dict instead of TAExportBundle.
         """
-        return self._get(f"/api/v1/reports/{arch_name}/export",
+        data = self._get(f"/api/v1/reports/{arch_name}/export",
                          params={"save": str(save).lower()})
+        if raw:
+            return data
+        return TAExportBundle.from_dict(data)
 
     # ── Tool 13: governance_check ─────────────────────────────────────────────
 
@@ -352,3 +372,78 @@ class MCPClient:
             "gap_ids": parsed_ids,
             "max_per_run": max_per_run,
         })
+
+    # ── Enrichment: VAPT / SAST integration ──────────────────────────────────
+
+    def enrich_finding(
+        self,
+        arch_name: str,
+        component: str,
+        finding_type: str = "other",
+        finding_id: str = "",
+        severity: str = "",
+        description: str = "",
+        include_attack_paths: bool = True,
+        include_controls: bool = True,
+        raw: bool = False,
+    ) -> Union[ComponentContext, Dict]:
+        """Return TA threat context for a specific component from an existing analysis.
+
+        Fast (<50ms), read-only — no re-analysis. Requires analysis to have been run
+        for arch_name first (raises HTTPError 404 otherwise).
+
+        Args:
+            arch_name:            Architecture directory name.
+            component:            Component label from your SAST/VAPT tool.
+            finding_type:         "cve" | "technique" | "control_gap" | "vulnerability" | "other"
+            finding_id:           Finding identifier (CVE-2024-XXXX, T1190, etc.)
+            severity:             "CRITICAL" | "HIGH" | "MEDIUM" | "LOW"
+            description:          Optional human-readable finding description.
+            include_attack_paths: Include attack paths touching this component.
+            include_controls:     Include recommended controls.
+            raw:                  If True, return raw dict instead of ComponentContext.
+
+        Returns:
+            ComponentContext with matched nodes, attack paths, techniques, and controls.
+            Call .as_markdown() for a human-readable annotation block.
+
+        Example::
+
+            ctx = client.enrich_finding("my_arch", "API Gateway",
+                                        finding_type="technique", finding_id="T1190")
+            print(ctx.as_markdown())
+        """
+        data = self._post("/api/v1/enrich", {
+            "arch_name": arch_name,
+            "component": component,
+            "finding": {
+                "type": finding_type,
+                "id": finding_id or component,
+                "severity": severity or None,
+                "description": description or None,
+            },
+            "include_attack_paths": include_attack_paths,
+            "include_controls": include_controls,
+        })
+        if raw:
+            return data
+        from mcp_connector.models import AttackPath
+        return ComponentContext(
+            component_label=data.get("matched_nodes", [{}])[0].get("node_label", component)
+                            if data.get("matched_nodes") else component,
+            attack_paths=[
+                AttackPath(
+                    id=ap.get("id"),
+                    entry=ap.get("entry", ""),
+                    target=ap.get("target", ""),
+                    criticality=ap.get("criticality"),
+                    techniques=ap.get("techniques", []),
+                )
+                for ap in data.get("attack_paths_touching", [])
+            ],
+            techniques=data.get("techniques_mapped", []),
+            risk_level=data.get("ta_export_gate") or "UNKNOWN",
+            controls_recommended=data.get("controls_recommended", []),
+            match_confidence=data.get("matched_nodes", [{}])[0].get("match_confidence", 0.0)
+                             if data.get("matched_nodes") else 0.0,
+        )

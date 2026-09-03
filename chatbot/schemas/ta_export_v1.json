@@ -1,0 +1,670 @@
+{
+  "$defs": {
+    "AssessmentSection": {
+      "properties": {
+        "risk_score_before": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk Score Before"
+        },
+        "risk_score_after": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk Score After"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "val_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Val Pct"
+        },
+        "attack_paths": {
+          "items": {
+            "$ref": "#/$defs/AttackPath"
+          },
+          "title": "Attack Paths",
+          "type": "array"
+        },
+        "mitre_techniques": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mitre Techniques",
+          "type": "array"
+        },
+        "controls_recommended": {
+          "items": {
+            "$ref": "#/$defs/ControlRecommendation"
+          },
+          "title": "Controls Recommended",
+          "type": "array"
+        }
+      },
+      "title": "AssessmentSection",
+      "type": "object"
+    },
+    "AttackPath": {
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "entry": {
+          "title": "Entry",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "criticality": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Criticality"
+        },
+        "techniques": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Techniques",
+          "type": "array"
+        },
+        "hop_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hop Count"
+        }
+      },
+      "required": [
+        "entry",
+        "target"
+      ],
+      "title": "AttackPath",
+      "type": "object"
+    },
+    "ControlRecommendation": {
+      "properties": {
+        "control": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Control"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Priority"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        }
+      },
+      "title": "ControlRecommendation",
+      "type": "object"
+    },
+    "CriticSummary": {
+      "properties": {
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "top_gap": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top Gap"
+        }
+      },
+      "title": "CriticSummary",
+      "type": "object"
+    },
+    "GateResult": {
+      "properties": {
+        "result": {
+          "enum": [
+            "PASS",
+            "BLOCK"
+          ],
+          "title": "Result",
+          "type": "string"
+        },
+        "risk_level": {
+          "title": "Risk Level",
+          "type": "string"
+        },
+        "blocking_signals": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blocking Signals",
+          "type": "array"
+        }
+      },
+      "required": [
+        "result",
+        "risk_level"
+      ],
+      "title": "GateResult",
+      "type": "object"
+    },
+    "GovernanceSection": {
+      "properties": {
+        "aivss_composite": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aivss Composite"
+        },
+        "outbound_composite": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outbound Composite"
+        },
+        "risk_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk Level"
+        },
+        "signals": {
+          "$ref": "#/$defs/GovernanceSignals"
+        }
+      },
+      "title": "GovernanceSection",
+      "type": "object"
+    },
+    "GovernanceSignals": {
+      "properties": {
+        "exploitation_severity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exploitation Severity"
+        },
+        "manipulation_severity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manipulation Severity"
+        },
+        "leakage_flagged": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Leakage Flagged"
+        },
+        "sovereignty_flagged": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sovereignty Flagged"
+        },
+        "cross_boundary_nodes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cross Boundary Nodes",
+          "type": "array"
+        }
+      },
+      "title": "GovernanceSignals",
+      "type": "object"
+    },
+    "MoEConsensus": {
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "redesign_required": {
+          "default": false,
+          "title": "Redesign Required",
+          "type": "boolean"
+        },
+        "critics": {
+          "additionalProperties": {
+            "$ref": "#/$defs/CriticSummary"
+          },
+          "title": "Critics",
+          "type": "object"
+        }
+      },
+      "title": "MoEConsensus",
+      "type": "object"
+    },
+    "OTMAsset": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type"
+      ],
+      "title": "OTMAsset",
+      "type": "object"
+    },
+    "OTMMitigation": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Priority"
+        },
+        "mitre_mitigations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mitre Mitigations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "OTMMitigation",
+      "type": "object"
+    },
+    "OTMSection": {
+      "properties": {
+        "otm_version": {
+          "default": "0.2.0",
+          "title": "Otm Version",
+          "type": "string"
+        },
+        "project": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Project",
+          "type": "object"
+        },
+        "assets": {
+          "items": {
+            "$ref": "#/$defs/OTMAsset"
+          },
+          "title": "Assets",
+          "type": "array"
+        },
+        "threats": {
+          "items": {
+            "$ref": "#/$defs/OTMThreat"
+          },
+          "title": "Threats",
+          "type": "array"
+        },
+        "mitigations": {
+          "items": {
+            "$ref": "#/$defs/OTMMitigation"
+          },
+          "title": "Mitigations",
+          "type": "array"
+        }
+      },
+      "title": "OTMSection",
+      "type": "object"
+    },
+    "OTMThreat": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "risk": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk"
+        },
+        "mitre_techniques": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mitre Techniques",
+          "type": "array"
+        },
+        "affected_assets": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Affected Assets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "OTMThreat",
+      "type": "object"
+    },
+    "TATBSection": {
+      "properties": {
+        "threat": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threat"
+        },
+        "ttp": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ttp"
+        },
+        "risk": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan"
+        },
+        "overall": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overall"
+        }
+      },
+      "title": "TATBSection",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema": {
+      "default": "ta-export/1.0",
+      "title": "Schema",
+      "type": "string"
+    },
+    "exported_at": {
+      "default": "",
+      "title": "Exported At",
+      "type": "string"
+    },
+    "architecture": {
+      "additionalProperties": true,
+      "title": "Architecture",
+      "type": "object"
+    },
+    "gate": {
+      "$ref": "#/$defs/GateResult"
+    },
+    "assessment": {
+      "$ref": "#/$defs/AssessmentSection"
+    },
+    "tatb": {
+      "$ref": "#/$defs/TATBSection"
+    },
+    "governance": {
+      "$ref": "#/$defs/GovernanceSection"
+    },
+    "moe_consensus": {
+      "$ref": "#/$defs/MoEConsensus"
+    },
+    "detect_findings": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Detect Findings",
+      "type": "array"
+    },
+    "security_findings": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Security Findings",
+      "type": "array"
+    },
+    "otm": {
+      "$ref": "#/$defs/OTMSection"
+    }
+  },
+  "required": [
+    "gate"
+  ],
+  "title": "TAExportBundle",
+  "type": "object",
+  "$id": "https://threatassessor.local/schemas/ta-export/1.0",
+  "$schema": "https://json-schema.org/draft/2020-12"
+}
