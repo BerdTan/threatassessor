@@ -257,3 +257,59 @@ async def brain_status():
         except Exception:
             pass
     return JSONResponse(content=status)
+
+
+# ── Brain match — external tool access to Brain patterns ─────────────────────
+
+class BrainMatchRequest(BaseModel):
+    topology_signature: str = ""
+    arch_type: str = ""
+    component_labels: list = []   # optional: specific node labels for tighter matching
+
+
+@router.post("/match", dependencies=[Depends(verify_api_key)])
+async def brain_match(req: BrainMatchRequest):
+    """
+    Match an architecture topology against the Brain pattern library — no full analysis required.
+
+    External tools (SAST, code review agents, CI scripts) can call this with just a topology
+    description to get inferred threat patterns, coverage gaps, and AIVSS floor estimates.
+
+    Useful when you have partial information (e.g. a component list from a code scan) and want
+    TA's threat intelligence without running a full MMD analysis.
+    """
+    # Build topology_signature from component_labels if not provided directly
+    topo_sig = req.topology_signature
+    if not topo_sig and req.component_labels:
+        topo_sig = " + ".join(req.component_labels[:10])
+
+    result = query_brain(
+        mode="infer",
+        arch_name="",
+        topology_signature=topo_sig,
+        arch_type=req.arch_type or "",
+        caller_type="rest",
+        arch_type_filter="",
+    )
+
+    if "error" in result:
+        return JSONResponse(status_code=400, content=result)
+
+    # Also fetch gaps if the brain has a match
+    gaps_result = {}
+    if result.get("had_match"):
+        gaps_result = query_brain(
+            mode="gaps",
+            arch_name="",
+            topology_signature=topo_sig,
+            arch_type=req.arch_type or "",
+            caller_type="rest",
+            arch_type_filter="",
+        )
+
+    return JSONResponse(content={
+        "topology_signature": topo_sig,
+        "arch_type": req.arch_type,
+        "matched_patterns": result,
+        "coverage_gaps": gaps_result,
+    })
