@@ -296,6 +296,34 @@ async def taclaw_run(body: TAClawRequest):
     }
 
 
+@router.get("/taclaw/jobs", dependencies=[Depends(verify_api_key)])
+async def taclaw_jobs_list():
+    """List all active TAclaw jobs (queued, running, completed, failed) within TTL window."""
+    store = get_job_store()
+    jobs = store.list_all()
+    return {
+        "jobs": [
+            {
+                "job_id": j.job_id,
+                "status": j.status,
+                "progress": j.progress,
+                "message": j.message,
+                "error": j.error,
+                "arch_name": (j.result or {}).get("arch_name") if j.result else None,
+                "artifacts_found": (j.result or {}).get("artifacts_found") if j.result else None,
+                "graphs_merged": (j.result or {}).get("graphs_merged") if j.result else None,
+                "composite_nodes": (j.result or {}).get("composite_nodes") if j.result else None,
+                "gate": (j.result or {}).get("gate") if j.result else None,
+                "source_formats": (j.result or {}).get("source_formats", []) if j.result else [],
+                "created_at": j.created_at,
+                "updated_at": j.updated_at,
+            }
+            for j in sorted(jobs, key=lambda x: x.created_at, reverse=True)
+        ],
+        "total": len(jobs),
+    }
+
+
 @router.get("/taclaw/jobs/{job_id}", dependencies=[Depends(verify_api_key)])
 async def taclaw_job_status(job_id: str) -> TAClawJobStatus:
     """Poll TAclaw job status. status ∈ {queued, running, completed, failed}."""

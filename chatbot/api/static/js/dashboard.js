@@ -416,6 +416,7 @@ class Dashboard {
         const isMcp        = tabName === 'mcp';
         const isBrain      = tabName === 'brain';
         const isBench      = tabName === 'bench';
+        const isPlatform   = tabName === 'platform';
         const uploadContainer    = document.getElementById('upload-form-container');
         const tabContent         = document.getElementById('tab-content');
         const configWrapper      = document.getElementById('config-pane-wrapper');
@@ -426,6 +427,7 @@ class Dashboard {
         const mcpWrapper         = document.getElementById('mcp-pane-wrapper');
         const brainWrapper       = document.getElementById('brain-pane-wrapper');
         const benchWrapper       = document.getElementById('bench-pane-wrapper');
+        const platformWrapper    = document.getElementById('platform-pane-wrapper');
 
         // Hide all full-pane wrappers first, then show the right one
         if (configWrapper)    configWrapper.style.display    = 'none';
@@ -436,6 +438,7 @@ class Dashboard {
         if (mcpWrapper)       mcpWrapper.style.display       = 'none';
         if (brainWrapper)     brainWrapper.style.display     = 'none';
         if (benchWrapper)     benchWrapper.style.display     = 'none';
+        if (platformWrapper)  platformWrapper.style.display  = 'none';
         // Restore main-pane defaults (may have been modified by SOC KG tab)
         const _mp = document.querySelector('.main-pane');
         if (_mp) { _mp.style.display = ''; _mp.style.flexDirection = '';
@@ -489,6 +492,14 @@ class Dashboard {
                       mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
             if (benchWrapper) { benchWrapper.style.display = 'flex'; benchWrapper.style.flexDirection = 'column'; }
             this._benchInit();
+        } else if (isPlatform) {
+            if (uploadContainer) uploadContainer.style.display = 'none';
+            if (tabContent)      tabContent.style.display      = 'none';
+            const mp = document.querySelector('.main-pane');
+            if (mp) { mp.style.display = 'flex'; mp.style.flexDirection = 'column';
+                      mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
+            if (platformWrapper) { platformWrapper.style.display = 'flex'; platformWrapper.style.flexDirection = 'column'; }
+            this._platformInit();
         } else {
             if (this.analysisData || isReports) {
                 if (uploadContainer) uploadContainer.style.display = 'none';
@@ -20089,6 +20100,287 @@ class Dashboard {
     }
 
     // ── end Benchmarks ────────────────────────────────────────────────────────
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ── Platform / SIP tab ───────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    _platformInit() {
+        if (this._sipInited) return;
+        this._sipInited = true;
+        this._sipJobsTimer = null;
+        this._sipSubTab('adapters');
+        this._sipCheckHealth();
+    }
+
+    _sipRefresh() {
+        const active = this._sipActiveSubTab || 'adapters';
+        if (active === 'adapters') this._sipLoadAdapters();
+        else if (active === 'jobs') this._sipLoadJobs();
+        this._sipCheckHealth();
+    }
+
+    async _sipCheckHealth() {
+        const badge = document.getElementById('sip-health-badge');
+        if (!badge) return;
+        try {
+            const data = await this._apiGet('/api/v1/sip/health');
+            badge.textContent = data.ok ? '● SIP ok' : '● SIP degraded';
+            badge.style.color = data.ok ? '#22c55e' : '#ef4444';
+        } catch {
+            badge.textContent = '● API offline';
+            badge.style.color = '#6b7280';
+        }
+    }
+
+    _sipSubTab(name) {
+        this._sipActiveSubTab = name;
+        ['adapters', 'jobs', 'enrich', 'artifact'].forEach(n => {
+            const btn  = document.getElementById(`sip-subtab-${n}`);
+            const pane = document.getElementById(`sip-sub-${n}`);
+            const active = n === name;
+            if (btn)  { btn.style.borderBottomColor = active ? '#f59e0b' : 'transparent';
+                        btn.style.color = active ? '#f59e0b' : 'var(--text-secondary)';
+                        btn.style.fontWeight = active ? '600' : '400'; }
+            if (pane) { pane.style.display = active ? (n === 'jobs' ? 'flex' : 'block') : 'none'; }
+        });
+        if (name === 'adapters') this._sipLoadAdapters();
+        if (name === 'jobs')     this._sipLoadJobs();
+    }
+
+    async _sipLoadAdapters() {
+        const el = document.getElementById('sip-adapters-table');
+        if (!el) return;
+        try {
+            const data = await this._apiGet('/api/v1/adapters');
+            const adapters = data.adapters || [];
+            if (!adapters.length) { el.textContent = 'No adapters registered.'; return; }
+            const rows = adapters.map(a => `
+                <tr>
+                    <td style="padding:0.5rem 0.75rem;font-weight:600;color:#f59e0b;">${this._esc(a.name)}</td>
+                    <td style="padding:0.5rem 0.75rem;">${(a.formats||[]).map(f=>`<code style="background:var(--card-bg);padding:0.1rem 0.3rem;border-radius:3px;font-size:0.72rem;">${this._esc(f)}</code>`).join(' ')}</td>
+                    <td style="padding:0.5rem 0.75rem;color:var(--text-secondary);">${this._esc(a.description||'')}</td>
+                    <td style="padding:0.5rem 0.75rem;"><span style="color:#22c55e;font-size:0.7rem;">● active</span></td>
+                </tr>`).join('');
+            el.innerHTML = `<table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="border-bottom:1px solid var(--border-color);">
+                    <th style="padding:0.35rem 0.75rem;text-align:left;color:var(--text-tertiary);font-size:0.72rem;font-weight:600;">Adapter</th>
+                    <th style="padding:0.35rem 0.75rem;text-align:left;color:var(--text-tertiary);font-size:0.72rem;font-weight:600;">Formats</th>
+                    <th style="padding:0.35rem 0.75rem;text-align:left;color:var(--text-tertiary);font-size:0.72rem;font-weight:600;">Description</th>
+                    <th style="padding:0.35rem 0.75rem;text-align:left;color:var(--text-tertiary);font-size:0.72rem;font-weight:600;">Status</th>
+                </tr></thead>
+                <tbody>${rows}</tbody></table>
+            <div style="margin-top:0.75rem;font-size:0.7rem;color:var(--text-tertiary);">
+                ${adapters.length} adapter(s) registered · detection order: first matching adapter wins
+            </div>`;
+        } catch (err) {
+            el.innerHTML = `<span style="color:var(--text-tertiary);">Could not load adapters — is the API running? (${err.message})</span>`;
+        }
+    }
+
+    async _sipLoadJobs() {
+        const el = document.getElementById('sip-jobs-table');
+        if (!el) return;
+        try {
+            const data = await this._apiGet('/api/v1/taclaw/jobs');
+            const jobs = data.jobs || [];
+            if (!jobs.length) { el.innerHTML = '<span style="color:var(--text-tertiary);">No jobs yet — submit a TAclaw job above.</span>'; return; }
+            const gateBadge = g => g === 'PASS'
+                ? '<span style="color:#22c55e;font-weight:600;">PASS</span>'
+                : g === 'BLOCK'
+                ? '<span style="color:#ef4444;font-weight:600;">BLOCK</span>'
+                : '<span style="color:var(--text-tertiary);">—</span>';
+            const statusDot = s => ({
+                queued: '🟡', running: '🔵', completed: '🟢', failed: '🔴'
+            }[s] || '⚪');
+            const rows = jobs.map(j => `
+                <tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:0.45rem 0.6rem;font-family:monospace;font-size:0.7rem;">${this._esc(j.job_id.slice(0,8))}…</td>
+                    <td style="padding:0.45rem 0.6rem;">${statusDot(j.status)} ${this._esc(j.status)}</td>
+                    <td style="padding:0.45rem 0.6rem;">
+                        <div style="width:80px;height:6px;background:var(--border-color);border-radius:3px;">
+                            <div style="width:${j.progress||0}%;height:100%;background:#f59e0b;border-radius:3px;"></div>
+                        </div>
+                    </td>
+                    <td style="padding:0.45rem 0.6rem;">${this._esc(j.arch_name||'—')}</td>
+                    <td style="padding:0.45rem 0.6rem;">${j.artifacts_found??'—'}</td>
+                    <td style="padding:0.45rem 0.6rem;">${j.composite_nodes??'—'}</td>
+                    <td style="padding:0.45rem 0.6rem;">${gateBadge(j.gate)}</td>
+                    <td style="padding:0.45rem 0.6rem;color:var(--text-tertiary);font-size:0.7rem;">${this._esc((j.message||'').slice(0,50))}</td>
+                </tr>`).join('');
+            el.innerHTML = `<table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="border-bottom:2px solid var(--border-color);">
+                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Job ID</th>
+                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Status</th>
+                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Progress</th>
+                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Arch</th>
+                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Artifacts</th>
+                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Nodes</th>
+                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Gate</th>
+                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Message</th>
+                </tr></thead>
+                <tbody>${rows}</tbody></table>`;
+        } catch (err) {
+            el.innerHTML = `<span style="color:var(--text-tertiary);">Could not load jobs (${err.message})</span>`;
+        }
+    }
+
+    _sipJobsAutoRefresh(enabled) {
+        if (this._sipJobsTimer) { clearInterval(this._sipJobsTimer); this._sipJobsTimer = null; }
+        if (enabled) this._sipJobsTimer = setInterval(() => this._sipLoadJobs(), 3000);
+    }
+
+    async _sipRunTaclaw() {
+        const target = document.getElementById('sip-job-target')?.value?.trim();
+        const type   = document.getElementById('sip-job-type')?.value || 'directory';
+        const arch   = document.getElementById('sip-job-arch')?.value?.trim() || '';
+        const status = document.getElementById('sip-job-status');
+        if (!target) { if (status) status.textContent = 'Enter a target path or URL.'; return; }
+        if (status) status.textContent = 'Submitting…';
+        try {
+            const data = await fetch(`${this.apiBaseUrl}/api/v1/taclaw/run`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-API-Key': this.apiKey},
+                body: JSON.stringify({target_type: type, target, arch_name: arch || undefined}),
+            }).then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail || JSON.stringify(e)); }));
+            if (status) status.innerHTML = `Job <code>${data.job_id.slice(0,8)}…</code> queued for arch <strong>${this._esc(data.arch_name)}</strong>`;
+            this._sipLoadJobs();
+            // Auto-switch to jobs sub-tab
+            this._sipSubTab('jobs');
+        } catch (err) {
+            if (status) status.innerHTML = `<span style="color:#ef4444;">Error: ${this._esc(err.message)}</span>`;
+        }
+    }
+
+    async _sipEnrich() {
+        const arch      = document.getElementById('sip-enrich-arch')?.value?.trim();
+        const component = document.getElementById('sip-enrich-component')?.value?.trim();
+        const ftype     = document.getElementById('sip-enrich-type')?.value || 'other';
+        const fid       = document.getElementById('sip-enrich-id')?.value?.trim() || 'unknown';
+        const result    = document.getElementById('sip-enrich-result');
+        if (!arch || !component) { if (result) result.innerHTML = '<span style="color:#f59e0b;">Enter architecture name and component label.</span>'; return; }
+        if (result) result.innerHTML = '<span style="color:var(--text-tertiary);">Enriching…</span>';
+        try {
+            const data = await fetch(`${this.apiBaseUrl}/api/v1/enrich`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-API-Key': this.apiKey},
+                body: JSON.stringify({arch_name: arch, component, finding: {type: ftype, id: fid}}),
+            }).then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail || JSON.stringify(e)); }));
+            const gateColor = data.ta_export_gate === 'BLOCK' ? '#ef4444' : '#22c55e';
+            result.innerHTML = `
+                <div style="border:1px solid var(--border-color);border-radius:6px;padding:1rem;background:var(--card-bg);">
+                    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+                        <span style="font-weight:600;">${this._esc(component)}</span>
+                        ${data.component_found
+                            ? '<span style="color:#22c55e;font-size:0.7rem;">● matched</span>'
+                            : '<span style="color:#f59e0b;font-size:0.7rem;">⚠ no match</span>'}
+                        ${data.ta_export_gate ? `<span style="margin-left:auto;font-weight:700;color:${gateColor};">${data.ta_export_gate}</span>` : ''}
+                    </div>
+                    <p style="color:var(--text-secondary);margin:0 0 0.75rem;">${this._esc(data.risk_narrative)}</p>
+                    ${data.matched_nodes.length ? `<div style="margin-bottom:0.5rem;font-size:0.72rem;">
+                        <strong>Matched nodes:</strong> ${data.matched_nodes.map(n=>`${this._esc(n.node_label)} <span style="color:var(--text-tertiary);">(${(n.match_confidence*100).toFixed(0)}%)</span>`).join(' · ')}
+                    </div>` : ''}
+                    ${data.attack_paths_touching.length ? `<div style="margin-bottom:0.5rem;">
+                        <strong style="font-size:0.72rem;">Attack paths (${data.attack_paths_touching.length}):</strong>
+                        <ul style="margin:0.25rem 0 0;padding-left:1.2rem;">
+                        ${data.attack_paths_touching.slice(0,5).map(ap=>`<li style="margin-bottom:0.2rem;">${this._esc(ap.entry)} → ${this._esc(ap.target)} ${ap.criticality ? `<span style="color:var(--text-tertiary);">[${ap.criticality}]</span>` : ''}</li>`).join('')}
+                        </ul>
+                    </div>` : ''}
+                    ${data.techniques_mapped.length ? `<div style="font-size:0.72rem;margin-bottom:0.5rem;">
+                        <strong>Techniques:</strong> ${data.techniques_mapped.slice(0,8).map(t=>`<code style="background:var(--sidebar-bg);padding:0.1rem 0.3rem;border-radius:3px;">${this._esc(t)}</code>`).join(' ')}
+                    </div>` : ''}
+                    ${data.controls_recommended.length ? `<div style="font-size:0.72rem;">
+                        <strong>Controls:</strong> ${data.controls_recommended.slice(0,5).map(c=>`<span style="color:var(--text-secondary);">${this._esc(c)}</span>`).join(' · ')}
+                    </div>` : ''}
+                </div>`;
+        } catch (err) {
+            result.innerHTML = `<span style="color:#ef4444;">${this._esc(err.message)}</span>`;
+        }
+    }
+
+    _sipHandleDrop(event) {
+        const file = event.dataTransfer?.files?.[0];
+        if (file) this._sipUploadArtifact(file);
+    }
+
+    async _sipUploadArtifact(file) {
+        if (!file) return;
+        const status = document.getElementById('sip-artifact-status');
+        const result = document.getElementById('sip-artifact-result');
+        if (status) status.textContent = `Uploading ${file.name} (${(file.size/1024).toFixed(1)} KB)…`;
+        if (result) result.innerHTML = '';
+
+        const form = new FormData();
+        form.append('artifact_file', file, file.name);
+
+        try {
+            const resp = await fetch(`${this.apiBaseUrl}/api/v1/analyze/artifact`, {
+                method: 'POST',
+                headers: {'X-API-Key': this.apiKey},
+                body: form,
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({detail: resp.statusText}));
+                throw new Error(err.detail || JSON.stringify(err));
+            }
+
+            // Read SSE stream
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let adapterMeta = null;
+            let gateResult = null;
+
+            if (status) status.textContent = `Analyzing ${file.name}…`;
+
+            while (true) {
+                const {value, done} = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, {stream: true});
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                    if (!line.startsWith('data:')) continue;
+                    try {
+                        const ev = JSON.parse(line.slice(5).trim());
+                        if (ev.type === 'progress' && status) {
+                            status.textContent = `${file.name} — ${ev.stage || ''} ${ev.progress ? `(${ev.progress}%)` : ''}`;
+                        } else if (ev.type === 'complete') {
+                            adapterMeta = ev.adapter_metadata;
+                            gateResult  = ev.gate || ev.data?.gate;
+                            if (status) status.textContent = `Analysis complete — ${file.name}`;
+                        } else if (ev.type === 'error') {
+                            throw new Error(ev.message || 'Analysis error');
+                        }
+                    } catch { /* skip parse errors */ }
+                }
+            }
+
+            const gateColor = gateResult?.result === 'BLOCK' ? '#ef4444' : '#22c55e';
+            result.innerHTML = `
+                <div style="border:1px solid var(--border-color);border-radius:6px;padding:1rem;background:var(--card-bg);">
+                    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.75rem;">
+                        <span style="font-weight:600;">${this._esc(file.name)}</span>
+                        ${adapterMeta?.adapter ? `<span style="font-size:0.7rem;color:#f59e0b;">via ${this._esc(adapterMeta.adapter)}</span>` : ''}
+                        ${gateResult?.result ? `<span style="margin-left:auto;font-weight:700;color:${gateColor};">${gateResult.result}</span>` : ''}
+                    </div>
+                    ${adapterMeta ? `<div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:0.5rem;">
+                        ${adapterMeta.node_count !== undefined ? `${adapterMeta.node_count} nodes · ${adapterMeta.edge_count||0} edges` : ''}
+                        ${adapterMeta.source_format ? ` · format: ${adapterMeta.source_format}` : ''}
+                    </div>` : ''}
+                    ${gateResult?.risk_level ? `<div style="font-size:0.78rem;">Risk: <strong>${this._esc(gateResult.risk_level)}</strong></div>` : ''}
+                    ${gateResult?.blocking_signals?.length ? `<div style="font-size:0.72rem;color:#ef4444;margin-top:0.35rem;">
+                        Blocking: ${gateResult.blocking_signals.slice(0,5).map(s=>this._esc(s)).join(', ')}
+                    </div>` : ''}
+                </div>`;
+        } catch (err) {
+            if (status) status.textContent = '';
+            if (result) result.innerHTML = `<span style="color:#ef4444;">Error: ${this._esc(err.message)}</span>`;
+        }
+    }
+
+    // ── end Platform / SIP ────────────────────────────────────────────────────
 
 }
 

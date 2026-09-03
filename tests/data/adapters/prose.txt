@@ -1,0 +1,21 @@
+Architecture Description: TA-SIP Threat Assessment Platform
+
+The ThreatAssessor Security Intelligence Platform (TA-SIP) consists of the following components:
+
+1. API Gateway — public entry point for all external requests; enforces rate limiting and API key authentication before routing to backend services.
+
+2. Analysis Service — core threat-modeling engine; receives architecture diagrams and produces MITRE ATT&CK threat models, attack paths, and governance signals.
+
+3. Brain Service — self-growing knowledge graph that stores and retrieves architectural patterns for calibration and inference.
+
+4. MCP Server — external-facing MCP tool server allowing AI agents and IDE plugins to invoke threat analysis via standardized stdio transport.
+
+5. PostgreSQL Database — stores analysis results, governance signal history, and AIVSS scoring data; accessed only by the Analysis Service.
+
+6. Redis Cache — stores session tokens and short-lived job status; shared between Analysis Service and MCP Server.
+
+7. Object Storage (S3) — stores large report bundles, architecture diagrams, and export artifacts; accessed by the Analysis Service for read and write.
+
+8. External SIEM — receives OCSF DetectionFinding events via webhook from the EventBroker sink; located outside the trust boundary.
+
+Data flows: External tools → API Gateway → Analysis Service → PostgreSQL; Analysis Service → Object Storage; Analysis Service → EventBroker → External SIEM; MCP Server → Analysis Service.

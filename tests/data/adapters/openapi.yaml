@@ -1,0 +1,60 @@
+openapi: "3.1.0"
+info:
+  title: TA-SIP Test API
+  version: "1.0.0"
+
+servers:
+  - url: https://api.example.com/v1
+  - url: https://auth.example.com
+
+paths:
+  /threats/analyze:
+    post:
+      summary: Submit architecture for analysis
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeRequest"
+      responses:
+        "200":
+          description: Analysis result
+
+  /threats/{arch}/report:
+    get:
+      summary: Get threat report
+      parameters:
+        - name: arch
+          in: path
+          required: true
+          schema: {type: string}
+
+  /findings/enrich:
+    post:
+      summary: Enrich a SAST finding with TA context
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrichRequest"
+
+components:
+  schemas:
+    AnalyzeRequest:
+      type: object
+      properties:
+        arch_name: {type: string}
+        mmd_content: {type: string}
+
+    EnrichRequest:
+      type: object
+      properties:
+        arch_name: {type: string}
+        component: {type: string}
+        finding_id: {type: string}
+
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key

@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: TA-SIP test CloudFormation template
+
+Resources:
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: ta-sip-api
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ta-sip-handler
+      Runtime: python3.11
+      Handler: main.handler
+      Role:
+        Fn::GetAtt: [LambdaExecRole, Arn]
+
+  LambdaExecRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ta-sip-lambda-exec
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: ta-sip-db
+      Engine: postgres
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: "20"
+    DependsOn: LambdaFunction
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: ta-sip-artifacts

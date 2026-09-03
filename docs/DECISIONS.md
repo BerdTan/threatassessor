@@ -4,6 +4,20 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 64 — 2026-09-03
+
+**Decision 137 — TA as a Security Intelligence Platform: adapter layer + enrichment API + TAclaw + taclaw CLI**
+Opened TA as an external-facing security intelligence platform across five implementation phases, all committed. Core choices:
+(1) **ArchitectureGraph canonical intermediate** (`chatbot/adapters/base.py`): all input adapters (Terraform, CloudFormation, OpenAPI, Prose, Mermaid) emit a single typed graph; `to_mmd()` routes to the existing pipeline with zero changes to ThreatAnalyst — zero-risk path via tempfile bridge.
+(2) **Adapter self-registration pattern**: adapters import → `register()` at module load; `detect_adapter()` first-wins. MermaidAdapter registered first (extension check, O(1)) before content-based adapters.
+(3) **Enrichment API** (`POST /api/v1/enrich`): read-only, <50ms, fuzzy component matching via `difflib.get_close_matches(cutoff=0.6)`. Primary integration surface for VAPT/SAST tools — they POST their finding + component name, get attack paths + techniques + controls back without re-running analysis.
+(4) **TAclaw** (`POST /api/v1/taclaw/run`): autonomous agent that accepts a local directory or git URL, runs `RepoCrawler` (MAX_FILES=200, skip binary/large files, dedup by label similarity cutoff=0.85), merges all `ArchitectureGraph`s into one composite, then runs the full `ThreatAssessorHarness` pipeline. Uses existing `job_store.py` async job pattern (1-hr TTL). MCP tool 19 added.
+(5) **taclaw CLI** (`taclaw_cli/`): `ta analyze` auto-routes single file→artifact endpoint, directory/URL→TAclaw job; `ta gate` exits 1 on BLOCK (CI-friendly); `ta enrich` surfaces ComponentContext as Markdown; `typer`+`rich`+`httpx` stack, no TA server dependency for the binary. PyPI publish via OIDC Trusted Publisher on `taclaw-v*` / `mcp-connector-v*` tags.
+(6) **mcp_connector 1.1.0**: typed Pydantic models (`TAExportBundle`, `ComponentContext`, etc.) moved pydantic to core deps; `enrich_finding()` added to `MCPClient`. JSON Schema for `ta-export/1.0` served at `GET /api/v1/schemas/ta-export`.
+Alternatives rejected: adding a new LLM path for enrichment (deterministic fuzzy match is faster and reproducible); rewriting `ThreatAnalyst` to accept `ArchitectureGraph` directly (avoids touching critical pipeline code; tempfile bridge is equivalent cost); TAclaw as a blocking endpoint (async job pattern keeps API non-blocking for 30s+ crawl+analyze runs).
+
+---
+
 ## Session 63 — 2026-08-30
 
 **Decision 136 — Langfuse tracing activated (cloud, free-tier quota-safe)**

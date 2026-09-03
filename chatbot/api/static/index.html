@@ -122,6 +122,17 @@
                         <button class="nav-tab" id="brain-nav-tab" data-tab="brain" title="TA Brain — self-growing knowledge graph + synthetic generation">Brain</button>
                     </div>
                 </div>
+                <!-- Group: Platform (SIP) -->
+                <div class="nav-group" data-group="platform">
+                    <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('platform')">
+                        <span class="nav-group-label">Platform</span>
+                        <span class="nav-group-chevron">▾</span>
+                    </button>
+                    <div class="nav-group-items">
+                        <button class="nav-tab" id="sip-nav-tab" data-tab="platform" title="TA Security Intelligence Platform — adapters, TAclaw jobs, enrichment, artifact analysis">SIP</button>
+                    </div>
+                </div>
+
                 <!-- Group: Reporting -->
                 <div class="nav-group" data-group="reporting">
                     <button class="nav-group-header" onclick="window.dashboard && window.dashboard._toggleNavGroup('reporting')">
@@ -1166,6 +1177,137 @@
                 }
                 .taco-pulse-ring { animation: taco-pulse 1.6s ease-out infinite; }
                 </style>
+            </div>
+
+            <!-- ══ Platform / SIP Pane ════════════════════════════════════════════ -->
+            <div id="platform-pane-wrapper" style="display:none;flex-direction:column;flex:1;overflow:hidden;background:var(--main-bg);">
+                <!-- Header bar -->
+                <div style="flex-shrink:0;display:flex;align-items:center;gap:1rem;padding:0.6rem 1.25rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
+                    <span style="font-weight:700;font-size:0.95rem;color:#f59e0b;">⬡ SIP</span>
+                    <span style="font-size:0.78rem;color:var(--text-tertiary);">Security Intelligence Platform — adapters · jobs · enrichment · artifact analysis</span>
+                    <div style="margin-left:auto;display:flex;gap:0.6rem;">
+                        <span id="sip-health-badge" style="font-size:0.7rem;padding:0.15rem 0.55rem;border-radius:3px;border:1px solid var(--border-color);background:var(--card-bg);color:var(--text-secondary);">checking…</span>
+                        <button onclick="window.dashboard&&window.dashboard._sipRefresh()" style="font-size:0.72rem;padding:0.2rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-secondary);cursor:pointer;">↺ Refresh</button>
+                    </div>
+                </div>
+                <!-- Sub-tab strip -->
+                <div id="sip-sub-tab-strip" style="flex-shrink:0;display:flex;gap:0;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
+                    <button id="sip-subtab-adapters"  onclick="window.dashboard&&window.dashboard._sipSubTab('adapters')"
+                        style="padding:0.45rem 1rem;border:none;border-bottom:2px solid #f59e0b;background:transparent;color:#f59e0b;cursor:pointer;font-size:0.78rem;font-weight:600;">Adapters</button>
+                    <button id="sip-subtab-jobs"      onclick="window.dashboard&&window.dashboard._sipSubTab('jobs')"
+                        style="padding:0.45rem 1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:0.78rem;">TAclaw Jobs</button>
+                    <button id="sip-subtab-enrich"    onclick="window.dashboard&&window.dashboard._sipSubTab('enrich')"
+                        style="padding:0.45rem 1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:0.78rem;">Enrichment</button>
+                    <button id="sip-subtab-artifact"  onclick="window.dashboard&&window.dashboard._sipSubTab('artifact')"
+                        style="padding:0.45rem 1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:0.78rem;">Artifact Analysis</button>
+                </div>
+
+                <!-- Sub-panel: Adapters -->
+                <div id="sip-sub-adapters" style="flex:1;overflow-y:auto;padding:1.25rem 1.5rem;">
+                    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+                        <span style="font-weight:600;font-size:0.88rem;">Registered Input Adapters</span>
+                        <span style="font-size:0.72rem;color:var(--text-tertiary);">Adapter self-registers at import time — first matching adapter wins</span>
+                    </div>
+                    <div id="sip-adapters-table" style="font-size:0.78rem;">Loading…</div>
+                </div>
+
+                <!-- Sub-panel: TAclaw Jobs -->
+                <div id="sip-sub-jobs" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+                    <!-- New job form -->
+                    <div style="flex-shrink:0;padding:1rem 1.5rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
+                        <div style="font-weight:600;font-size:0.85rem;margin-bottom:0.6rem;">New TAclaw Job</div>
+                        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;">
+                            <div style="display:flex;flex-direction:column;gap:0.2rem;">
+                                <label style="font-size:0.7rem;color:var(--text-tertiary);">Type</label>
+                                <select id="sip-job-type" style="padding:0.3rem 0.5rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.78rem;">
+                                    <option value="directory">Local directory</option>
+                                    <option value="git_url">Git URL</option>
+                                </select>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:0.2rem;flex:1;min-width:240px;">
+                                <label style="font-size:0.7rem;color:var(--text-tertiary);">Target path / URL</label>
+                                <input id="sip-job-target" type="text" placeholder="/path/to/repo or https://github.com/…"
+                                    style="padding:0.3rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.78rem;width:100%;">
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:0.2rem;">
+                                <label style="font-size:0.7rem;color:var(--text-tertiary);">Arch name</label>
+                                <input id="sip-job-arch" type="text" placeholder="my_assessment"
+                                    style="padding:0.3rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.78rem;width:140px;">
+                            </div>
+                            <button onclick="window.dashboard&&window.dashboard._sipRunTaclaw()"
+                                style="padding:0.35rem 1rem;border:none;border-radius:4px;background:#f59e0b;color:#000;cursor:pointer;font-size:0.78rem;font-weight:600;white-space:nowrap;">⬡ Run TAclaw</button>
+                        </div>
+                        <div id="sip-job-status" style="margin-top:0.5rem;font-size:0.72rem;color:var(--text-tertiary);min-height:1rem;"></div>
+                    </div>
+                    <!-- Jobs list -->
+                    <div style="flex:1;overflow-y:auto;padding:1rem 1.5rem;">
+                        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+                            <span style="font-weight:600;font-size:0.85rem;">Recent Jobs</span>
+                            <label style="font-size:0.72rem;color:var(--text-tertiary);display:flex;align-items:center;gap:0.35rem;cursor:pointer;">
+                                <input type="checkbox" id="sip-jobs-autorefresh" onchange="window.dashboard&&window.dashboard._sipJobsAutoRefresh(this.checked)">
+                                auto-refresh
+                            </label>
+                        </div>
+                        <div id="sip-jobs-table" style="font-size:0.78rem;">Loading…</div>
+                    </div>
+                </div>
+
+                <!-- Sub-panel: Enrichment -->
+                <div id="sip-sub-enrich" style="display:none;flex:1;overflow-y:auto;padding:1.25rem 1.5rem;">
+                    <div style="font-weight:600;font-size:0.88rem;margin-bottom:1rem;">VAPT/SAST Enrichment Explorer</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1rem;">
+                        <div style="display:flex;flex-direction:column;gap:0.2rem;">
+                            <label style="font-size:0.7rem;color:var(--text-tertiary);">Architecture name</label>
+                            <input id="sip-enrich-arch" type="text" placeholder="e.g. 22_generic_ai_nodes"
+                                style="padding:0.35rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.8rem;">
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:0.2rem;">
+                            <label style="font-size:0.7rem;color:var(--text-tertiary);">Component label</label>
+                            <input id="sip-enrich-component" type="text" placeholder="e.g. API Gateway"
+                                style="padding:0.35rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.8rem;">
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:0.2rem;">
+                            <label style="font-size:0.7rem;color:var(--text-tertiary);">Finding type</label>
+                            <select id="sip-enrich-type" style="padding:0.35rem 0.5rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.8rem;">
+                                <option value="technique">MITRE Technique</option>
+                                <option value="cve">CVE</option>
+                                <option value="control_gap">Control Gap</option>
+                                <option value="vulnerability">Vulnerability</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:0.2rem;">
+                            <label style="font-size:0.7rem;color:var(--text-tertiary);">Finding ID</label>
+                            <input id="sip-enrich-id" type="text" placeholder="e.g. T1190 or CVE-2024-1234"
+                                style="padding:0.35rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.8rem;">
+                        </div>
+                    </div>
+                    <button onclick="window.dashboard&&window.dashboard._sipEnrich()"
+                        style="padding:0.4rem 1.2rem;border:none;border-radius:4px;background:#f59e0b;color:#000;cursor:pointer;font-size:0.8rem;font-weight:600;margin-bottom:1rem;">⬡ Enrich Finding</button>
+                    <div id="sip-enrich-result" style="font-size:0.78rem;"></div>
+                </div>
+
+                <!-- Sub-panel: Artifact Analysis -->
+                <div id="sip-sub-artifact" style="display:none;flex:1;overflow-y:auto;padding:1.25rem 1.5rem;">
+                    <div style="font-weight:600;font-size:0.88rem;margin-bottom:1rem;">Artifact Analysis — Drop Any Architecture File</div>
+                    <!-- Drop zone -->
+                    <div id="sip-artifact-drop"
+                        style="border:2px dashed var(--border-color);border-radius:8px;padding:2rem;text-align:center;cursor:pointer;margin-bottom:1rem;transition:border-color 0.2s;"
+                        onclick="document.getElementById('sip-artifact-input').click()"
+                        ondragover="event.preventDefault();this.style.borderColor='#f59e0b';"
+                        ondragleave="this.style.borderColor='';"
+                        ondrop="event.preventDefault();this.style.borderColor='';window.dashboard&&window.dashboard._sipHandleDrop(event);">
+                        <div style="font-size:1.5rem;margin-bottom:0.5rem;">⬡</div>
+                        <div style="font-size:0.85rem;color:var(--text-secondary);">Drop a file here or click to browse</div>
+                        <div style="font-size:0.72rem;color:var(--text-tertiary);margin-top:0.3rem;">.tf · .yaml · .json (CloudFormation / OpenAPI) · .md · .txt · .mmd</div>
+                    </div>
+                    <input id="sip-artifact-input" type="file" style="display:none;"
+                        accept=".tf,.yaml,.yml,.json,.md,.txt,.mmd"
+                        onchange="window.dashboard&&window.dashboard._sipUploadArtifact(this.files[0])">
+                    <!-- Progress + result -->
+                    <div id="sip-artifact-status" style="font-size:0.78rem;color:var(--text-tertiary);margin-bottom:0.75rem;min-height:1rem;"></div>
+                    <div id="sip-artifact-result" style="font-size:0.78rem;"></div>
+                </div>
             </div>
 
             <div id="config-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:hidden; background:var(--main-bg);">

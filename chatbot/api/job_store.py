@@ -52,6 +52,11 @@ class JobStore:
                 setattr(job, k, v)
             job.updated_at = time.time()
 
+    def list_all(self) -> list:
+        self._evict()
+        with self._lock:
+            return list(self._jobs.values())
+
     def _evict(self) -> None:
         cutoff = time.time() - JOB_TTL_SECONDS
         with self._lock:

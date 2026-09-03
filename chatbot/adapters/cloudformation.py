@@ -161,12 +161,22 @@ class CloudFormationAdapter(BaseAdapter):
             or '"Resources"' in text and '"Type"' in text and '"AWS::' in text
         )
 
+    @staticmethod
+    def _make_loader():
+        """SafeLoader extended to ignore CloudFormation-specific YAML tags (!Ref, !Sub, !GetAtt…)."""
+        loader = yaml.SafeLoader
+        for tag in ("!Ref", "!Sub", "!GetAtt", "!If", "!Select", "!Split",
+                    "!Join", "!Base64", "!FindInMap", "!ImportValue",
+                    "!Condition", "!Not", "!And", "!Or", "!Equals", "!Transform"):
+            yaml.add_constructor(tag, lambda ldr, node: ldr.construct_scalar(node), Loader=loader)
+        return loader
+
     def extract(self, content: str | bytes, filename: str = "") -> ArchitectureGraph:
         if isinstance(content, bytes):
             content = content.decode("utf-8", errors="replace")
 
         try:
-            data = yaml.safe_load(content)
+            data = yaml.load(content, Loader=self._make_loader())  # noqa: S506 — custom loader, not arbitrary code
         except yaml.YAMLError:
             try:
                 data = json.loads(content)
