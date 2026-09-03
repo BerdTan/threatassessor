@@ -1,0 +1,31 @@
+name: Publish taclaw CLI to PyPI
+
+on:
+  push:
+    tags:
+      - "taclaw-v*"
+
+permissions:
+  id-token: write  # OIDC Trusted Publisher
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: pip install hatchling build twine
+
+      - name: Build wheel + sdist
+        run: python -m build taclaw_cli/
+        working-directory: ${{ github.workspace }}
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: taclaw_cli/dist/
