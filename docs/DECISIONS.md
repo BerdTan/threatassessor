@@ -4,6 +4,16 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 65 — 2026-09-03
+
+**Decision 138 — Platform "SIP" tab + /check-sip testbench**
+Added systematic testability and a dashboard surface for the TA-SIP layer built in Session 64. Key decisions:
+(1) **`/check-sip` testbench pattern**: follows the existing `check-mcp` / `check-detect` script pattern — standalone Python, `--static` / `--live` / `--all` modes, no pytest dependency, exits 1 on failure for CI use. 15 static checks across adapter registry routing, `extract()` + `to_mmd()` correctness, JSON schema validity, and mcp_connector model contracts. 7 live REST checks (health, adapters list, schema endpoint, TAclaw jobs list, enrich 404, taclaw 400, brain match). 2 CLI smoke checks.
+(2) **Test fixtures in `tests/data/adapters/`**: 4 canonical files — `sample.tf` (Terraform: 6 resources), `template.yaml` (CloudFormation: 5 resources, Fn::GetAtt long form), `openapi.yaml` (OpenAPI 3.1: 3 paths + 2 schemas), `prose.txt` (8-component architecture description). Template uses `Fn::GetAtt` instead of `!GetAtt` shorthand specifically because `yaml.safe_load` cannot handle CF YAML tags — real-world usage is covered by the adapter fix.
+(3) **CloudFormationAdapter YAML tag fix**: the adapter silently returned 0 nodes for any real-world CF template using `!Ref`/`!GetAtt`/`!Sub` shorthand tags (yaml.ConstructorError was caught by the bare `except yaml.YAMLError` block, falling through to `data = {}`). Fixed by a custom `SafeLoader` subclass via `yaml.add_constructor()` for all 14 CF intrinsic function tags — each constructor returns the node as a plain string, preserving logical structure while skipping tag evaluation. Alternatives rejected: `cfn-lint` parser (new dep); regex pre-processing (fragile); keeping the fixture in `Fn::` long form only (doesn't fix production use).
+(4) **Platform "SIP" tab in dashboard**: amber (#f59e0b) accent colour — primary blue and teal (#14b8a6) already taken by existing tabs. Follows the `*-pane-wrapper` + sub-tab strip pattern from Brain tab. New backend endpoints: `GET /api/v1/adapters` (adapter registry), `GET /api/v1/sip/health` (static health check), `GET /api/v1/taclaw/jobs` (list all jobs via new `job_store.list_all()`). Enrichment and Artifact Analysis sub-tabs wire directly to existing `/api/v1/enrich` and `/api/v1/analyze/artifact` endpoints — no new backend code.
+(5) **Artifact upload SSE pattern**: the artifact analysis sub-tab uses `fetch()` + `ReadableStream` (not `EventSource`) because `EventSource` doesn't support `POST` with a body. SSE events parsed manually from the chunked body; `complete` event extracts `adapter_metadata` and gate result for the result card. Consistent with how the existing streaming renderer handles the analyze-stream endpoint.
+
 ## Session 64 — 2026-09-03
 
 **Decision 137 — TA as a Security Intelligence Platform: adapter layer + enrichment API + TAclaw + taclaw CLI**
