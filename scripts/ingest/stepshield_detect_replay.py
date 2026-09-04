@@ -46,7 +46,7 @@ EXPECTED_RULES = {
     "INV": ["DETECT-023", "DETECT-011"],
     "SEC": ["DETECT-022", "DETECT-009"],
     "RES": ["DETECT-032", "DETECT-021"],
-    "TST": ["DETECT-028", "DETECT-034"],
+    "TST": ["DETECT-028"],                       # test tampering; DETECT-034 belongs to UFO not TST
     "DEC": ["DETECT-019", "DETECT-005"],
     "UFO": ["DETECT-025", "DETECT-004"],
 }

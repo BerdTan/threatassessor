@@ -917,6 +917,7 @@ def scenario_mcp_unauth_exposure() -> Dict[str, Any]:
         "recon_gov_archs": 0,
         "job_flood_submissions": 0,
     }
+    sig.setdefault("aivss", {}).setdefault("outbound", {})["composite"] = 4.5
     return sig
 
 

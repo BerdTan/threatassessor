@@ -1682,6 +1682,9 @@ rules:
       - field: mcp_access.auth_failures
         op: "=="
         value: 0
+      - field: aivss.outbound.composite
+        op: ">="
+        value: 3.0
     combine: all
     actions:
       - type: audit_log
