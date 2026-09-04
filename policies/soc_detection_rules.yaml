@@ -766,6 +766,9 @@ rules:
     ocsf_type_uid: 200408
     severity: Medium
     conditions:
+      - field: arch_metadata.is_agentic
+        op: "!="
+        value: true
       - field: validation.val_pct
         op: "<"
         value: 75
@@ -783,6 +786,9 @@ rules:
       In practice, well-calibrated architectures run 90–97% val_pct. If baseline
       corpus shows many architectures below 75%, tighten self_validation heuristics
       first (see docs/DECISIONS.md Item 2 from Session 26).
+      is_agentic != true guard added 2026-09-04: this rule measures TA pipeline
+      technique-validation quality, which has no meaning for agentic trajectory
+      inputs where MITRE mapping is not performed by TA.
 
   # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-015: Critic Gap Convergence (Multi-Agent Collusion Proxy)
@@ -829,6 +835,9 @@ rules:
     ocsf_type_uid: 200408
     severity: High
     conditions:
+      - field: arch_metadata.is_agentic
+        op: "!="
+        value: true
       - field: manipulation.gap_similarity_avg
         op: ">"
         value: 0.4
@@ -1516,8 +1525,8 @@ rules:
     severity: Critical
     conditions:
       - field: exploitation.injection_categories.agent_targeting_injection
-        op: "!="
-        value: null
+        op: "length_gt"
+        value: 0
     combine: all
     actions:
       - type: audit_log
@@ -1669,7 +1678,7 @@ rules:
         value: true
       - field: mcp_access.tool_calls_total
         op: ">"
-        value: 0
+        value: 5
       - field: mcp_access.auth_failures
         op: "=="
         value: 0
@@ -1708,8 +1717,8 @@ rules:
     severity: High
     conditions:
       - field: exploitation.evasion_attempts
-        op: ">"
-        value: 0
+        op: ">="
+        value: 2
       - field: exploitation.injection_categories
         op: "length_gt"
         value: 0

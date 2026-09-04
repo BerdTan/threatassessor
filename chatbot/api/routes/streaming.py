@@ -325,13 +325,18 @@ async def analyze_with_progress(
             if service_result:
                 _complete_dict = service_result.to_dict()
                 _complete_dict["governance_signals"] = gov_signals
+                _complete_dict["architecture_name"] = clean_arch_name
                 yield await SSEStream.send_complete(_complete_dict)
             else:
                 result_data["governance_signals"] = gov_signals
+                result_data["architecture_name"] = clean_arch_name
                 yield await SSEStream.send_complete(result_data)
         elif service_result:
-            yield await SSEStream.send_complete(service_result.to_dict())
+            _sr_dict = service_result.to_dict()
+            _sr_dict["architecture_name"] = clean_arch_name
+            yield await SSEStream.send_complete(_sr_dict)
         else:
+            result_data["architecture_name"] = clean_arch_name
             yield await SSEStream.send_complete(result_data)
 
     except Exception as e:

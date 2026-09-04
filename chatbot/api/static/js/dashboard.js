@@ -19107,22 +19107,25 @@ class Dashboard {
     }
 
     _brainSubTab(name) {
-        const views = ['knowledge', 'taco'];
+        const views = ['knowledge', 'infer', 'taco'];
         views.forEach(v => {
             const el = document.getElementById(`brain-sub-${v}`);
             const btn = document.getElementById(`brain-subtab-${v}`);
             if (!el || !btn) return;
             const active = v === name;
-            el.style.display = active ? (v === 'knowledge' ? 'flex' : 'flex') : 'none';
+            el.style.display = active ? 'flex' : 'none';
             el.style.flexDirection = 'column';
             btn.style.borderBottomColor = active ? 'var(--primary-color)' : 'transparent';
             btn.style.color = active ? 'var(--primary-color)' : 'var(--text-secondary)';
             btn.style.fontWeight = active ? '600' : '400';
         });
-        // Lazy-init TACO arch selector on first open
+        // Lazy-init on first open
         if (name === 'taco') {
             if (!this._tacoInitDone) { this._tacoInit(); this._tacoInitDone = true; }
             this._tacoTopologyInit();
+        }
+        if (name === 'infer') {
+            if (!this._inferInitDone) { this._brainInferInit(); this._inferInitDone = true; }
         }
     }
 
@@ -19311,6 +19314,192 @@ class Dashboard {
         } catch (_) {}
         if (btn) btn.disabled = false;
         this.loadBrainTab();
+    }
+
+    // ── Brain Infer panel ──────────────────────────────────────────────────────
+
+    async _brainInferInit() {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            const r = await fetch('/api/v1/insights/all', { headers: { 'TM-API-KEY': apiKey } });
+            if (!r.ok) return;
+            const data = await r.json();
+            const archs = Array.isArray(data) ? data : (data.architectures || []);
+            const sel = document.getElementById('infer-arch-select');
+            if (!sel) return;
+            archs.forEach(a => {
+                const name = typeof a === 'string' ? a : (a.arch_name || a.name || '');
+                if (!name) return;
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                sel.appendChild(opt);
+            });
+        } catch (_) {}
+    }
+
+    async _brainInferRun() {
+        const btn = document.getElementById('infer-run-btn');
+        const status = document.getElementById('infer-status');
+        const resultArea = document.getElementById('infer-result-area');
+        if (!btn || !resultArea) return;
+
+        const archName  = (document.getElementById('infer-arch-select')   || {}).value || '';
+        const topoInput = (document.getElementById('infer-topo-input')     || {}).value || '';
+        const archType  = (document.getElementById('infer-archtype-input') || {}).value || '';
+
+        if (!archName && !topoInput) {
+            if (status) status.textContent = 'Select an architecture or enter a topology signature.';
+            return;
+        }
+
+        btn.disabled = true;
+        if (status) status.textContent = 'Running…';
+        resultArea.innerHTML = '<div style="color:var(--text-tertiary);font-size:0.78rem;">Querying brain…</div>';
+
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const body = { mode: 'infer', arch_name: archName, topology_signature: topoInput, arch_type: archType };
+
+        try {
+            const r = await fetch('/api/v1/brain/query', {
+                method: 'POST',
+                headers: { 'TM-API-KEY': apiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = r.ok ? await r.json() : null;
+            if (!data) {
+                resultArea.innerHTML = '<div style="color:#ef4444;font-size:0.78rem;">Request failed — check API key and server.</div>';
+                if (status) status.textContent = '';
+            } else {
+                this._brainInferRender(data, archName || topoInput);
+                if (status) status.textContent = '';
+            }
+        } catch (e) {
+            resultArea.innerHTML = `<div style="color:#ef4444;font-size:0.78rem;">Error: ${this._esc(String(e))}</div>`;
+            if (status) status.textContent = '';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    _brainInferRender(data, label) {
+        const el = document.getElementById('infer-result-area');
+        if (!el) return;
+
+        if (!data.had_match) {
+            el.innerHTML = `<div style="padding:1.5rem;text-align:center;color:var(--text-tertiary);font-size:0.82rem;">
+                No patterns matched for <strong>${this._esc(label)}</strong>.<br>
+                <span style="font-size:0.72rem;">Try a broader arch_type or run brain-ingest with more instances.</span>
+            </div>`;
+            return;
+        }
+
+        const conf = data.confidence ?? 0;
+        const confColor = conf >= 0.7 ? '#10b981' : conf >= 0.4 ? '#f59e0b' : '#ef4444';
+        const preds = data.predictions || {};
+        const evidence = data.evidence || {};
+
+        const chip = (text, color) =>
+            `<span style="display:inline-block;font-size:0.68rem;padding:0.1rem 0.4rem;margin:0.15rem 0.2rem 0.15rem 0;border-radius:3px;background:${color}20;color:${color};border:1px solid ${color}40;">${this._esc(text)}</span>`;
+
+        // Top techniques table
+        const techRows = (preds.technique_top || []).map(t =>
+            `<tr style="border-bottom:1px solid var(--border-color);">
+                <td style="padding:0.2rem 0.5rem;font-family:monospace;font-size:0.72rem;color:var(--primary-color);">${this._esc(t.id)}</td>
+                <td style="padding:0.2rem 0.5rem;font-size:0.72rem;">
+                    <div style="width:${Math.min(100,Math.round(t.frequency*100))}%;height:4px;background:var(--primary-color);border-radius:2px;"></div>
+                </td>
+                <td style="padding:0.2rem 0.5rem;font-size:0.72rem;color:var(--text-secondary);">${(t.frequency*100).toFixed(0)}%</td>
+            </tr>`
+        ).join('');
+
+        const detectChips = (preds.detect_rules || []).map(r => chip(r, '#8b5cf6')).join('');
+        const controlChips = (preds.control_priorities || []).map(c => chip(c.control, '#f59e0b')).join('');
+        const patternChips = (data.patterns_fired || []).map(p =>
+            chip(p, (data.suspect_patterns || []).includes(p) ? '#ef4444' : '#3b82f6')
+        ).join('');
+        const sourceChips = (evidence.source_archs || []).map(a => chip(a, '#6b7280')).join('');
+
+        const aivssFloor = preds.aivss_floor != null ? preds.aivss_floor.toFixed(3) : '—';
+        const aivissMean = preds.aivss_mean  != null ? preds.aivss_mean.toFixed(3)  : '—';
+
+        el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
+            <div>
+                <span style="font-size:0.72rem;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Confidence</span>
+                <div style="font-size:1.6rem;font-weight:700;color:${confColor};line-height:1.1;">${(conf*100).toFixed(0)}<span style="font-size:0.9rem;">%</span></div>
+            </div>
+            <div style="flex:1;min-width:200px;">
+                <div style="font-size:0.72rem;color:var(--text-tertiary);margin-bottom:0.3rem;">Matched for <strong>${this._esc(label)}</strong></div>
+                <div style="font-size:0.72rem;color:var(--text-secondary);">AIVSS floor <strong>${aivssFloor}</strong> · mean <strong>${aivissMean}</strong></div>
+                ${(data.suspect_patterns||[]).length ? `<div style="font-size:0.7rem;color:#ef4444;margin-top:0.2rem;">⚠ Suspect patterns — verify manually before trusting</div>` : ''}
+            </div>
+        </div>
+
+        <div style="margin-bottom:1rem;">
+            <div style="font-size:0.72rem;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;">Patterns fired</div>
+            ${patternChips || '<span style="font-size:0.72rem;color:var(--text-tertiary);">—</span>'}
+        </div>
+
+        ${techRows ? `<div style="margin-bottom:1rem;">
+            <div style="font-size:0.72rem;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;">Top techniques</div>
+            <table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="border-bottom:2px solid var(--border-color);">
+                    <th style="padding:0.2rem 0.5rem;text-align:left;font-size:0.68rem;color:var(--text-tertiary);">ID</th>
+                    <th style="padding:0.2rem 0.5rem;text-align:left;font-size:0.68rem;color:var(--text-tertiary);">Frequency</th>
+                    <th style="padding:0.2rem 0.5rem;text-align:left;font-size:0.68rem;color:var(--text-tertiary);">%</th>
+                </tr></thead>
+                <tbody>${techRows}</tbody>
+            </table>
+        </div>` : ''}
+
+        ${detectChips ? `<div style="margin-bottom:1rem;">
+            <div style="font-size:0.72rem;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;">DETECT rules likely to fire</div>
+            ${detectChips}
+        </div>` : ''}
+
+        ${controlChips ? `<div style="margin-bottom:1rem;">
+            <div style="font-size:0.72rem;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;">Missing controls</div>
+            ${controlChips}
+        </div>` : ''}
+
+        ${sourceChips ? `<div style="margin-bottom:1rem;">
+            <div style="font-size:0.72rem;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;">Evidence source archs</div>
+            ${sourceChips}
+        </div>` : ''}
+
+        <div style="margin-top:1.5rem;padding-top:0.75rem;border-top:1px solid var(--border-color);">
+            <div style="font-size:0.72rem;color:var(--text-tertiary);margin-bottom:0.4rem;">Was this prediction useful?</div>
+            <div style="display:flex;gap:0.5rem;">
+                <button onclick="window.dashboard._brainInferFeedback('confirmed')"
+                    style="font-size:0.72rem;padding:0.2rem 0.7rem;border:1px solid #10b981;border-radius:3px;background:transparent;color:#10b981;cursor:pointer;">✓ Confirmed</button>
+                <button onclick="window.dashboard._brainInferFeedback('wrong')"
+                    style="font-size:0.72rem;padding:0.2rem 0.7rem;border:1px solid #ef4444;border-radius:3px;background:transparent;color:#ef4444;cursor:pointer;">✕ Wrong</button>
+                <button onclick="window.dashboard._brainInferFeedback('partial')"
+                    style="font-size:0.72rem;padding:0.2rem 0.7rem;border:1px solid #f59e0b;border-radius:3px;background:transparent;color:#f59e0b;cursor:pointer;">~ Partial</button>
+            </div>
+            <div id="infer-feedback-status" style="font-size:0.7rem;color:var(--text-tertiary);margin-top:0.3rem;min-height:1rem;"></div>
+        </div>`;
+
+        // Store last result context for feedback
+        this._lastInferResult = { arch_name: label, data };
+    }
+
+    async _brainInferFeedback(verdict) {
+        const ctx = this._lastInferResult;
+        if (!ctx) return;
+        const fbStatus = document.getElementById('infer-feedback-status');
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        try {
+            const r = await fetch('/api/v1/brain/feedback', {
+                method: 'POST',
+                headers: { 'TM-API-KEY': apiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ arch_name: ctx.arch_name, mode: 'infer', feedback: verdict }),
+            });
+            if (fbStatus) fbStatus.textContent = r.ok ? `Feedback recorded: ${verdict}` : 'Feedback failed.';
+        } catch (_) {
+            if (fbStatus) fbStatus.textContent = 'Feedback request failed.';
+        }
     }
 
     // ── TACO Agent Trace ────────────────────────────────────────────────────
@@ -20105,6 +20294,13 @@ class Dashboard {
     // ── Platform / SIP tab ───────────────────────────────────────────────────
     // ═══════════════════════════════════════════════════════════════════════════
 
+    async _apiGet(path) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const r = await fetch(path, { headers: { 'TM-API-KEY': apiKey } });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+    }
+
     _platformInit() {
         if (this._sipInited) return;
         this._sipInited = true;
@@ -20184,6 +20380,9 @@ class Dashboard {
         try {
             const data = await this._apiGet('/api/v1/taclaw/jobs');
             const jobs = data.jobs || [];
+            // Stop polling when all jobs are terminal
+            const anyActive = jobs.some(j => j.status === 'queued' || j.status === 'running');
+            if (!anyActive) this._sipJobsAutoRefresh(false);
             if (!jobs.length) { el.innerHTML = '<span style="color:var(--text-tertiary);">No jobs yet — submit a TAclaw job above.</span>'; return; }
             const gateBadge = g => g === 'PASS'
                 ? '<span style="color:#22c55e;font-weight:600;">PASS</span>'
@@ -20193,6 +20392,13 @@ class Dashboard {
             const statusDot = s => ({
                 queued: '🟡', running: '🔵', completed: '🟢', failed: '🔴'
             }[s] || '⚪');
+            const brainBadge = bi => {
+                if (!bi || !bi.had_match) return '<span style="color:var(--text-tertiary);font-size:0.68rem;">—</span>';
+                const c = bi.confidence || 0;
+                const col = c >= 0.7 ? '#10b981' : c >= 0.4 ? '#f59e0b' : '#ef4444';
+                const techs = (bi.top_techniques || []).join(', ') || '—';
+                return `<span title="Top: ${techs}" style="font-size:0.68rem;padding:0.1rem 0.4rem;border-radius:3px;background:${col}20;color:${col};border:1px solid ${col}40;cursor:default;">${(c*100).toFixed(0)}%</span>`;
+            };
             const rows = jobs.map(j => `
                 <tr style="border-bottom:1px solid var(--border-color);">
                     <td style="padding:0.45rem 0.6rem;font-family:monospace;font-size:0.7rem;">${this._esc(j.job_id.slice(0,8))}…</td>
@@ -20206,6 +20412,7 @@ class Dashboard {
                     <td style="padding:0.45rem 0.6rem;">${j.artifacts_found??'—'}</td>
                     <td style="padding:0.45rem 0.6rem;">${j.composite_nodes??'—'}</td>
                     <td style="padding:0.45rem 0.6rem;">${gateBadge(j.gate)}</td>
+                    <td style="padding:0.45rem 0.6rem;">${brainBadge(j.brain_insight)}</td>
                     <td style="padding:0.45rem 0.6rem;color:var(--text-tertiary);font-size:0.7rem;">${this._esc((j.message||'').slice(0,50))}</td>
                 </tr>`).join('');
             el.innerHTML = `<table style="width:100%;border-collapse:collapse;">
@@ -20217,6 +20424,7 @@ class Dashboard {
                     <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Artifacts</th>
                     <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Nodes</th>
                     <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Gate</th>
+                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);" title="Brain inference confidence after ingest — hover for top techniques">Brain</th>
                     <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Message</th>
                 </tr></thead>
                 <tbody>${rows}</tbody></table>`;
@@ -20238,12 +20446,13 @@ class Dashboard {
         if (!target) { if (status) status.textContent = 'Enter a target path or URL.'; return; }
         if (status) status.textContent = 'Submitting…';
         try {
-            const data = await fetch(`${this.apiBaseUrl}/api/v1/taclaw/run`, {
+            const data = await fetch('/api/v1/taclaw/run', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-API-Key': this.apiKey},
+                headers: {'Content-Type': 'application/json', 'TM-API-KEY': localStorage.getItem('tm_api_key') || ''},
                 body: JSON.stringify({target_type: type, target, arch_name: arch || undefined}),
             }).then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail || JSON.stringify(e)); }));
             if (status) status.innerHTML = `Job <code>${data.job_id.slice(0,8)}…</code> queued for arch <strong>${this._esc(data.arch_name)}</strong>`;
+            this._sipJobsAutoRefresh(true);
             this._sipLoadJobs();
             // Auto-switch to jobs sub-tab
             this._sipSubTab('jobs');
@@ -20261,9 +20470,9 @@ class Dashboard {
         if (!arch || !component) { if (result) result.innerHTML = '<span style="color:#f59e0b;">Enter architecture name and component label.</span>'; return; }
         if (result) result.innerHTML = '<span style="color:var(--text-tertiary);">Enriching…</span>';
         try {
-            const data = await fetch(`${this.apiBaseUrl}/api/v1/enrich`, {
+            const data = await fetch('/api/v1/enrich', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-API-Key': this.apiKey},
+                headers: {'Content-Type': 'application/json', 'TM-API-KEY': localStorage.getItem('tm_api_key') || ''},
                 body: JSON.stringify({arch_name: arch, component, finding: {type: ftype, id: fid}}),
             }).then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail || JSON.stringify(e)); }));
             const gateColor = data.ta_export_gate === 'BLOCK' ? '#ef4444' : '#22c55e';
@@ -20314,9 +20523,9 @@ class Dashboard {
         form.append('artifact_file', file, file.name);
 
         try {
-            const resp = await fetch(`${this.apiBaseUrl}/api/v1/analyze/artifact`, {
+            const resp = await fetch('/api/v1/analyze/artifact', {
                 method: 'POST',
-                headers: {'X-API-Key': this.apiKey},
+                headers: {'TM-API-KEY': localStorage.getItem('tm_api_key') || ''},
                 body: form,
             });
 
@@ -20334,6 +20543,8 @@ class Dashboard {
 
             if (status) status.textContent = `Analyzing ${file.name}…`;
 
+            let lastEventType = null;
+            let archName = null;
             while (true) {
                 const {value, done} = await reader.read();
                 if (done) break;
@@ -20341,16 +20552,23 @@ class Dashboard {
                 const lines = buffer.split('\n');
                 buffer = lines.pop() || '';
                 for (const line of lines) {
+                    if (line.startsWith('event:')) {
+                        lastEventType = line.slice(6).trim();
+                        continue;
+                    }
                     if (!line.startsWith('data:')) continue;
                     try {
                         const ev = JSON.parse(line.slice(5).trim());
-                        if (ev.type === 'progress' && status) {
+                        const evType = lastEventType;
+                        lastEventType = null;
+                        if (evType === 'progress' && status) {
                             status.textContent = `${file.name} — ${ev.stage || ''} ${ev.progress ? `(${ev.progress}%)` : ''}`;
-                        } else if (ev.type === 'complete') {
+                        } else if (evType === 'complete') {
                             adapterMeta = ev.adapter_metadata;
                             gateResult  = ev.gate || ev.data?.gate;
+                            archName    = ev.architecture_name || adapterMeta?.arch_name || null;
                             if (status) status.textContent = `Analysis complete — ${file.name}`;
-                        } else if (ev.type === 'error') {
+                        } else if (evType === 'error') {
                             throw new Error(ev.message || 'Analysis error');
                         }
                     } catch { /* skip parse errors */ }
@@ -20372,6 +20590,9 @@ class Dashboard {
                     ${gateResult?.risk_level ? `<div style="font-size:0.78rem;">Risk: <strong>${this._esc(gateResult.risk_level)}</strong></div>` : ''}
                     ${gateResult?.blocking_signals?.length ? `<div style="font-size:0.72rem;color:#ef4444;margin-top:0.35rem;">
                         Blocking: ${gateResult.blocking_signals.slice(0,5).map(s=>this._esc(s)).join(', ')}
+                    </div>` : ''}
+                    ${archName ? `<div style="margin-top:0.75rem;">
+                        <button onclick="window.dashboard._loadArchFromReports('${this._esc(archName)}')" style="padding:0.4rem 0.9rem;background:var(--primary-color);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:600;">View Assessment →</button>
                     </div>` : ''}
                 </div>`;
         } catch (err) {

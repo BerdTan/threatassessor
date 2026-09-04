@@ -4,6 +4,38 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 66 (continued) — 2026-09-04
+
+**Decision 140 — StepShield dataset integration: Brain ingest + DETECT tightening**
+Integrated the StepShield agentic trajectory dataset (glo26/stepshield, 9,429 step-level annotated trajectories) across two layers:
+
+(1) **Brain ingest** (`scripts/ingest/stepshield_to_brain.py`): 127 incident catalog entries (ATT&CK T1005–T1588, 6 violation categories: INV/SEC/RES/TST/DEC/UFO) appended to `ta_brain_instances.jsonl` as `arch_type=agentic` instances with `source=stepshield/v1`. Brain rebuilt at pattern version 25. The `agentic` arch-type cluster went from 0 → 127 instances — first time Brain has real incident-grounded patterns for agentic architectures. Alternatives rejected: synthetic generation (Brain already has that path; real labeled incidents are better ground truth).
+
+(2) **DETECT replay + rule tightening** (`scripts/ingest/stepshield_detect_replay.py`): replayed 5 rogue + 5 clean trajectories per category through `RuleEvaluator`, synthesising governance_signals from step content. Found 3 over-broad rules firing on all categories and applied surgical tightenings to `soc_detection_rules.yaml`:
+- DETECT-014/015: added `is_agentic != true` guard — these are TA pipeline-quality rules (technique validation, critic gap similarity) with no meaning for agentic trajectory inputs.
+- DETECT-027: `!= null` → `length_gt: 0` — the `!= null` operator fired on `False` values; non-empty dict is the intended signal.
+- DETECT-030: `tool_calls_total > 0` → `> 5` — trajectory step count ≠ MCP tool call count; raised threshold.
+- DETECT-031: `evasion_attempts > 0` → `>= 2` — single evasion attempt was too broad; deliberate repeated evasion is the intended signal.
+
+Final category coverage: SEC/RES/DEC/UFO fully covered (2/2 expected rules each). INV partially covered (DETECT-023 fires; DETECT-011 is architectural ZDR signal with no trajectory-level equivalent — accepted gap). TST partially covered (DETECT-028 fires; DETECT-034 belongs to UFO, not TST). All 374 DETECT tests pass.
+
+---
+
+## Session 66 — 2026-09-04
+
+**Decision 139 — Brain Infer UI panel + TAclaw self-learning loop + `ta brain query` CLI**
+Three connected pieces that close the SIP→Brain feedback loop:
+
+(1) **Brain Infer sub-tab in dashboard**: added "Infer" as a third sub-tab in the Brain tab (between Knowledge and TACO Agent). Input accepts arch name (corpus dropdown, lazy-loaded from `/api/v1/insights/all`) or raw topology signature + arch type. Renders confidence badge (colour-coded: green ≥70%, amber ≥40%, red <40%), patterns fired (chips, red = suspect), top techniques table with frequency bars, DETECT rules likely to fire, missing controls, and evidence source archs. Feedback buttons (Confirmed/Wrong/Partial) call `/api/v1/brain/feedback` inline — closes the test loop in-browser without opening a separate Claude session.
+
+(2) **TAclaw self-learning loop**: every successful TAclaw job now auto-runs two post-completion steps: (a) `build_brain(incremental=True)` — ingests the new arch into the corpus (idempotent; skips if already recorded); (b) `query_brain(mode='infer', caller_type='taclaw')` — immediately infers from the updated brain and attaches `brain_insight` to the job result. The TAclaw Jobs table surfaces a "Brain" column showing the confidence badge with a tooltip of top 3 techniques. Both steps are non-fatal — failures log a warning and the job still completes. This makes TAclaw self-learning: every repo crawl grows the corpus and immediately reflects what Brain now knows about that architecture type. Alternatives rejected: manual brain-ingest only (breaks the loop for CI/CLI users); running distiller on every job (expensive — `incremental=True` means only new archs trigger a distiller pass).
+
+(3) **`ta brain query` CLI command** (`taclaw_cli/cli.py`): new `brain_app.command("query")` alongside the existing `match`. Accepts `--arch` (corpus arch name), `--sig` (topology signature), `--type` (arch type hint), and `--feedback` (record confirmed/wrong/partial in one call). Renders a Rich panel with confidence, techniques table, DETECT rules, missing controls, and source archs. The `match` command (hits `/api/v1/brain/match`, lightweight) is preserved alongside `query` (hits `/api/v1/brain/query`, full infer output). Use `ta brain query` for advisory questions during a pentest or architecture review; use `ta brain match` for programmatic topology lookups.
+
+(4) **Why this matters for non-MMD SIP users**: the adapter path (TF/CF/OAI/Prose → ArchitectureGraph → pipeline) previously had no path back to Brain — analysis results landed in `report/` but Brain stayed static. Now any TAclaw job on a real repo automatically joins the corpus. Over time Brain accumulates patterns from adapter-origin architectures, making Infer progressively more precise for real-world CI/CD targets rather than only hand-drawn diagrams.
+
+---
+
 ## Session 65 — 2026-09-03
 
 **Decision 138 — Platform "SIP" tab + /check-sip testbench**

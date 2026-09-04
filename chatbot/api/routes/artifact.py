@@ -105,11 +105,15 @@ async def analyze_artifact(
         tmp_path = tmp.name
 
     # 3. Stream analysis with adapter metadata injected into the final 'complete' event
+    # arch_name approximates clean_arch_name from analyze_with_progress (counter suffix omitted
+    # but matches in the common case of a first-time upload).
+    _derived_arch = effective_name.replace(".mmd", "").replace(".", "_").replace(" ", "_")
     adapter_meta = {
         "source_format": graph.source_format,
         "filename": filename,
         "node_count": len(graph.nodes),
         "edge_count": len(graph.edges),
+        "arch_name": _derived_arch,
         **graph.adapter_metadata,
     }
 
