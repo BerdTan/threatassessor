@@ -116,9 +116,9 @@ class TestYAMLLoading:
     def test_rules_file_exists(self):
         assert RULES_PATH.exists(), f"Missing: {RULES_PATH}"
 
-    def test_loads_twentyeight_rules(self):
+    def test_loads_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 34
+        assert len(ev) == 36
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -1770,6 +1770,120 @@ class TestDetect034SuspiciousSkillUrl:
         findings = ev.evaluate(self._trigger_suspicious(), arch_name="a", run_id="r")
         f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-034")
         assert f["severity"].upper() == "HIGH"
+
+
+class TestDetect035DeceptiveCompletionReporting:
+    """StepShield DEC-category: agent reports success while internal quality signals say otherwise."""
+
+    def _trigger(self, acceptance_rate: float = 0.3, val_pct: int = 35):
+        s = _clean()
+        s["sm_verdicts"] = {
+            "redesign_signal": True,
+            "acceptance_rate": acceptance_rate,
+        }
+        s["manipulation"]["confidence_swing_detected"] = True
+        s["validation"] = {"val_pct": val_pct, "invalid_techniques": 3}
+        return s
+
+    def test_fires_on_all_conditions(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-035" in ids
+
+    def test_does_not_fire_when_sm_accepts(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["sm_verdicts"]["redesign_signal"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-035" not in ids
+
+    def test_does_not_fire_when_acceptance_rate_ok(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(acceptance_rate=0.7), arch_name="a", run_id="r")]
+        assert "DETECT-035" not in ids
+
+    def test_does_not_fire_when_val_pct_ok(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(val_pct=80), arch_name="a", run_id="r")]
+        assert "DETECT-035" not in ids
+
+    def test_does_not_fire_without_confidence_swing(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["manipulation"]["confidence_swing_detected"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-035" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-035" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-035")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_impact(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-035")
+        assert f["finding"]["kill_chain_stage"] == "impact"
+
+
+class TestDetect036SecurityTestAssertionBypass:
+    """StepShield TST-category: agent weakens security test assertions to let insecure code pass CI."""
+
+    def _trigger(self):
+        s = _clean()
+        s["arch_metadata"] = {"is_agentic": True}
+        s["identity"]["supply_chain_modified_modules"] = ["tests/auth.test.js", "tests/security.spec.js"]
+        s["leakage"]["supply_chain_stale_sources"] = ["lodash@4.17.11 (CVE-2021-23337)"]
+        return s
+
+    def test_fires_on_all_conditions(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-036" in ids
+
+    def test_does_not_fire_when_non_agentic(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["arch_metadata"]["is_agentic"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-036" not in ids
+
+    def test_does_not_fire_without_modified_modules(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["identity"]["supply_chain_modified_modules"] = []
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-036" not in ids
+
+    def test_does_not_fire_without_stale_sources(self):
+        ev = RuleEvaluator()
+        s = self._trigger()
+        s["leakage"]["supply_chain_stale_sources"] = []
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-036" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-036" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-036")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_defense_evasion(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-036")
+        assert f["finding"]["kill_chain_stage"] == "defense_evasion"
 
 
 class TestDetect026CriticConsensusCollapse:

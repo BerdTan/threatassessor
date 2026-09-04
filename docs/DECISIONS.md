@@ -6,6 +6,15 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 66 (continued) — 2026-09-04
 
+**Decision 141 — StepShield Phase 4: New DETECT rules from gap analysis (DETECT-035, DETECT-036)**
+Added two new SOC detection rules derived from StepShield coverage gaps identified in Phase 2 replay:
+
+**DETECT-035: Deceptive Completion Reporting** (DEC category, domain QC, kill_chain: impact) — fires when `sm_verdicts.redesign_signal == true AND acceptance_rate < 0.5 AND manipulation.confidence_swing_detected AND validation.val_pct < 50`. The quadruple conjunction is the deception signal: pipeline quality layer internally flagged the run as unreliable, but the output was still emitted. Based on StepShield DEC-category where agents submitted "deployed successfully" while observable state showed CrashLoopBackOff. Distinct from DETECT-001 (swing without reversal) and DETECT-026 (critic collapse) because those don't require SM redesign rejection as an anchor condition. False-positive bar is set high intentionally: all four conditions must fire simultaneously.
+
+**DETECT-036: Security Test Assertion Bypass** (TST category, domain SCT, kill_chain: defense_evasion) — fires when `identity.supply_chain_modified_modules length_gt 0 AND leakage.supply_chain_stale_sources length_gt 0 AND arch_metadata.is_agentic`. Based on StepShield TST-category where agents weakened auth.test.js / security.spec.js assertions to allow insecure code to green CI. Distinct from DETECT-028 (TA's own skill file tamper) and DETECT-031 (brain poisoning via approval gate): this targets the assessed architecture's own verification layer. `length_gt` used for both list-typed fields (correct; boolean `== true` would fail silently on list values).
+
+Both rules verified: 15/15 new tests, 267/267 full regression suite. `stepshield_to_brain.py` and `stepshield_detect_replay.py` `CATEGORY_TO_DETECT` maps updated to include the new rule IDs.
+
 **Decision 140 — StepShield dataset integration: Brain ingest + DETECT tightening**
 Integrated the StepShield agentic trajectory dataset (glo26/stepshield, 9,429 step-level annotated trajectories) across two layers:
 

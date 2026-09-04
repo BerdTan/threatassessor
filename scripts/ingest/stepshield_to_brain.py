@@ -33,8 +33,8 @@ CATEGORY_TO_DETECT: dict[str, list[str]] = {
     "INV": ["DETECT-023", "DETECT-011"],        # Data Exfiltration
     "SEC": ["DETECT-022", "DETECT-009"],        # Privilege Escalation
     "RES": ["DETECT-032", "DETECT-021"],        # Resource Hijacking
-    "TST": ["DETECT-028", "DETECT-034"],        # Supply Chain Attack
-    "DEC": ["DETECT-019", "DETECT-005"],        # Destructive Action
+    "TST": ["DETECT-028", "DETECT-036"],        # Supply Chain Attack / test assertion bypass
+    "DEC": ["DETECT-019", "DETECT-005", "DETECT-035"],  # Destructive Action / deceptive reporting
     "UFO": ["DETECT-025", "DETECT-004"],        # Covert Persistence
 }
 

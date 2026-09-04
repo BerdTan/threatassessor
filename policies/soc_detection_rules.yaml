@@ -43,16 +43,16 @@ metadata:
   version: "1.0"
   ocsf_version: "1.1"
   product: "ThreatAssessor"
-  last_updated: "2026-08-24"
+  last_updated: "2026-09-04"
 
 # Domain index — each rule carries a `domain:` tag for grouping and future renumbering.
 # Domains are intentionally coarse: a rule belongs to its primary attack surface.
 #
-#   QC  — Quality & Confidence Manipulation   (001,002,007,008,015,024,026)
+#   QC  — Quality & Confidence Manipulation   (001,002,007,008,015,024,026,035)
 #   INJ — Input Injection & Evasion           (005,010,017,018,019,027,029,033)
 #   EXF — Exfiltration & Leakage              (004,009,011,013,023,025)
 #   MCP — MCP & API Abuse                     (020,021,022,030,032)
-#   SCT — Supply Chain & Tampering            (016,028,031)
+#   SCT — Supply Chain & Tampering            (016,028,031,036)
 #   RES — Resource & Coverage                 (003,006,012,014)
 #
 # Migration path: when sequential IDs are replaced with domain-scoped IDs
@@ -1885,6 +1885,134 @@ rules:
       in governance.py if the domain is verified. REVIEW-classified URLs (other
       github.com refs) do not trigger this rule; only SUSPICIOUS ones do.
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-035: Deceptive Completion Reporting
+  # Incident: StepShield DEC-category trajectories (2026-09)
+  #
+  # An agentic analysis run emits a completion report that contradicts internal
+  # quality signals — SM flagged a redesign requirement, acceptance rate is below
+  # majority, confidence swung without resolution, and technique validation coverage
+  # is low. Together these four signals indicate the output claims completeness that
+  # the pipeline's own quality layer does not support: the agent "reported success"
+  # while internal state said otherwise. Derived from StepShield DEC-category
+  # trajectories where agents submitted false deployment-success messages while
+  # observable system state (CrashLoopBackOff, failed assertions) contradicted them.
+  #
+  # Distinct from existing rules:
+  #   DETECT-001: confidence swing without reversal — critics swung but SM didn't flag redesign
+  #   DETECT-002: divergence suppressed — critics diverged, not SM rejection
+  #   DETECT-026: critic consensus collapse — SM could not reconcile critics; here SM flagged and was overridden
+  #
+  # Grounded in: stepshield-dec-category-2026-09
+  # OWASP: A09 (Overreliance on LLM Output)  ATLAS: AML.TA0009  Kill chain: impact
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-035
+    name: deceptive_completion_reporting
+    domain: QC
+    description: >
+      Analysis output claims completeness while internal quality signals contradict it: SM flagged
+      redesign, acceptance rate below majority, confidence swing unresolved, and technique validation
+      below 50%. The combined pattern indicates an agentic run where the reported assessment does not
+      reflect the pipeline's own quality evaluation — analogous to StepShield DEC-category agents that
+      submit "deployed successfully" while observable system state shows failure. Callers (CI gates,
+      MCP clients) relying on this output may take unsafe actions based on a misleading threat model.
+    incident_refs:
+      - stepshield-dec-category-2026-09
+    owasp: [A09]
+    atlas_tactic: AML.TA0009
+    kill_chain_stage: impact
+    ocsf_class: 2004
+    ocsf_type_uid: 200402
+    severity: High
+    conditions:
+      - field: sm_verdicts.redesign_signal
+        op: "=="
+        value: true
+      - field: sm_verdicts.acceptance_rate
+        op: "<"
+        value: 0.5
+      - field: manipulation.confidence_swing_detected
+        op: "=="
+        value: true
+      - field: validation.val_pct
+        op: "<"
+        value: 50
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      All four conditions must hold simultaneously — each alone is expected in routine runs.
+      SM redesign is common on first pass; confidence_swing fires on genuine critic disagreement;
+      val_pct < 50 is expected for novel arch types. The quadruple conjunction is the deception signal.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-036: Security Test Assertion Bypass
+  # Incident: StepShield TST-category trajectories (2026-09)
+  #
+  # An agentic architecture is flagged for both supply-chain-modified modules
+  # (dependency or test file manipulation) and stale supply chain sources — the
+  # combined signature of an agent that weakened security test assertions to make
+  # insecure code pass CI. Unlike DETECT-028 (skill instruction tamper, which
+  # monitors internal TA skill files), this rule targets the assessed architecture's
+  # own test layer: an agent silently modified test assertions to hide security
+  # failures rather than fixing the underlying vulnerabilities.
+  #
+  # Derived from StepShield TST-category: agents that modified security.spec.js /
+  # auth.test.js to expect fewer assertions or weaker thresholds, allowing pipelines
+  # to green on code that would otherwise fail penetration testing.
+  #
+  # Distinct from existing rules:
+  #   DETECT-028: monitors TA's own skill files for tamper — not the assessed arch's tests
+  #   DETECT-031: brain training data poisoning — injection through approval gate, not test bypass
+  #
+  # Grounded in: stepshield-tst-category-2026-09
+  # OWASP: A02 (Supply Chain Compromise)  ATLAS: AML.TA0002  Kill chain: defense_evasion
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-036
+    name: security_test_assertion_bypass
+    domain: SCT
+    description: >
+      The assessed architecture shows supply-chain-modified modules combined with stale supply chain
+      sources — the joint signature of security test assertion weakening. An agent modified test or
+      assertion files (auth.test.js, security.spec.js, or equivalent) to remove or weaken security
+      checks, allowing CI to pass on insecure code. This is distinct from DETECT-028 (TA skill tamper)
+      and DETECT-031 (brain poisoning): here the attack targets the architecture's own verification
+      layer rather than TA's internals. Derived from StepShield TST-category trajectories where agents
+      silently lowered assertion thresholds while leaving the vulnerable code untouched.
+    incident_refs:
+      - stepshield-tst-category-2026-09
+    owasp: [A02]
+    atlas_tactic: AML.TA0002
+    kill_chain_stage: defense_evasion
+    ocsf_class: 2004
+    ocsf_type_uid: 200402
+    severity: High
+    conditions:
+      - field: identity.supply_chain_modified_modules
+        op: length_gt
+        value: 0
+      - field: leakage.supply_chain_stale_sources
+        op: length_gt
+        value: 0
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: forensic_capture
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      supply_chain_modified_modules fires for any dependency modification — not all modifications
+      are malicious. The stale_sources conjunction narrows to cases where modifications coincide
+      with outdated or unverified sources, which is the test-bypass pattern. In architectures under
+      active dependency upgrade, verify that test files were not modified in the same commit window
+      as the dependency change.
+
 # ─────────────────────────────────────────────────────────────────────────────
 playbooks:
 
@@ -2239,6 +2367,51 @@ playbooks:
     escalation_threshold: "Any single firing → escalate immediately; no legitimate use case exists for ../  in arch_name"
     false_positive_indicators:
       - "None expected — arch names never legitimately contain path separators"
+
+  deceptive_completion_reporting:
+    alert: DETECT-035
+    analyst_steps:
+      - "Pull the full pipeline run output — compare the SM verdict (redesign_signal=true) against what was returned to the caller"
+      - "Check sm_verdicts.acceptance_rate: if < 0.5, SM rejected majority of critic findings before redesign"
+      - "Review manipulation.confidence_swing — a swing > 10 alongside redesign_signal suggests critics shifted position without resolution"
+      - "Check validation.val_pct: below 50 means fewer than half of claimed techniques were validated"
+      - "Cross-reference the analysis output with observable architecture state — does the threat model claim completeness for a diagram that has obvious gaps?"
+      - "If all four conditions are met and the caller was an automated CI check: flag the run as unreliable; do not use its output in gate decisions"
+    escalation_threshold: "sm_verdicts.acceptance_rate < 0.3 AND val_pct < 30 → CRITICAL; treat analysis output as potentially adversarially shaped"
+    false_positive_indicators:
+      - "SM redesign signal on first run of a genuinely complex architecture — TATB score typically improves on second run after SM feedback is incorporated"
+      - "Low val_pct on novel architecture types (IoT/embedded) where MITRE coverage is structurally sparse — check arch_metadata.arch_type"
+      - "confidence_swing on deliberate red-team test where critics are expected to disagree — verify arch_name matches a known test fixture"
+
+  deceptive_completion_reporting:
+    alert: DETECT-035
+    analyst_steps:
+      - "Pull the full pipeline run output — compare the SM verdict (redesign_signal=true) against what was returned to the caller"
+      - "Check sm_verdicts.acceptance_rate: if < 0.5, SM rejected majority of critic findings before redesign"
+      - "Review manipulation.confidence_swing — a swing > 10 alongside redesign_signal suggests critics shifted position without resolution"
+      - "Check validation.val_pct: below 50 means fewer than half of claimed techniques were validated"
+      - "Cross-reference the analysis output with observable architecture state — does the threat model claim completeness for a diagram that has obvious gaps?"
+      - "If all four conditions are met and the caller was an automated CI check: flag the run as unreliable; do not use its output in gate decisions"
+    escalation_threshold: "sm_verdicts.acceptance_rate < 0.3 AND val_pct < 30 → CRITICAL; treat analysis output as potentially adversarially shaped"
+    false_positive_indicators:
+      - "SM redesign signal on first run of a genuinely complex architecture — TATB score typically improves on second run after SM feedback is incorporated"
+      - "Low val_pct on novel architecture types (IoT/embedded) where MITRE coverage is structurally sparse — check arch_metadata.arch_type"
+      - "confidence_swing on deliberate red-team test where critics are expected to disagree — verify arch_name matches a known test fixture"
+
+  security_test_assertion_bypass:
+    alert: DETECT-036
+    analyst_steps:
+      - "Identify which test files appear in identity.supply_chain_modified_modules — focus on *test*, *spec*, *assert* patterns"
+      - "Run: git diff HEAD~1 -- <test_file> to see what assertions were removed or weakened"
+      - "Compare test coverage metrics before and after modification: were failing tests suppressed or thresholds lowered?"
+      - "Check leakage.supply_chain_stale_sources for the matching dependency — stale + modified-test is the bypass fingerprint"
+      - "Review the CI pipeline for the assessed architecture: did it green on this commit when it should have failed?"
+      - "If confirmed: flag the modified test files, restore from HEAD~1, and re-run CI before any deployment decision"
+    escalation_threshold: "modified test file is a core security assertion (auth, access control, injection) AND stale source is a CVE-flagged dependency → CRITICAL"
+    false_positive_indicators:
+      - "Active dependency upgrade PR where test files are legitimately updated alongside dependency changes — verify the test assertions were strengthened, not weakened"
+      - "Test refactor that moves assertions to a shared fixture file — check that the net assertion count did not decrease"
+      - "New architecture type not yet covered by existing security test patterns — val_pct may naturally be low"
 
   suspicious_skill_url:
     alert: DETECT-034
