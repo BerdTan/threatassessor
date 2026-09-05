@@ -6,8 +6,8 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 66 (continued) — 2026-09-05
 
-**Decision 144 — P25 published + gen-blog scorer upgraded to 9/9**
-"The Brain Grew Up" published at https://medium.com/@breadtan/the-brain-grew-up-4e929965e533. gen-blog scorer gained a 9th criterion (repo closer — checks for github.com/BerdTan/threatassessor in post body); repo closer paragraph auto-generated in draft scaffold; total score now out of 9. LinkedIn phase reframed from "practical lesson was this:" labelled structure to honest practitioner reflection voice (open with the puzzle, resolve with the counter-intuitive finding, land the insight). Combined P24+P25 LinkedIn hook written as one narrative anchored on shared theme: accumulated evidence tells the system something the designer hadn't designed it to know. README updated to 25 parts.
+**Decision 144 — P25 published**
+"The Brain Grew Up" published at https://medium.com/@breadtan/the-brain-grew-up-4e929965e533. Covers Engine Item 5 (confidence-weighted distiller), JSONL dedup fix, 57% bookservices complexity floor, Brain Infer panel + CLI, and how closing the feedback loop turns a pattern store into an inference layer. README updated to 25 parts.
 
 ---
 
