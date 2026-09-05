@@ -4,6 +4,33 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 66 (continued) — 2026-09-05
+
+**Decision 144 — P25 published + gen-blog scorer upgraded to 9/9**
+"The Brain Grew Up" published at https://medium.com/@breadtan/the-brain-grew-up-4e929965e533. gen-blog scorer gained a 9th criterion (repo closer — checks for github.com/BerdTan/threatassessor in post body); repo closer paragraph auto-generated in draft scaffold; total score now out of 9. LinkedIn phase reframed from "practical lesson was this:" labelled structure to honest practitioner reflection voice (open with the puzzle, resolve with the counter-intuitive finding, land the insight). Combined P24+P25 LinkedIn hook written as one narrative anchored on shared theme: accumulated evidence tells the system something the designer hadn't designed it to know. README updated to 25 parts.
+
+---
+
+**Decision 143 — Engine Item 5: Confidence-weighted brain distiller + JSONL dedup**
+Two changes to `ta_brain_builder.py`:
+
+(1) **Confidence-weighted pattern extraction** (`_distill_weight()` + `run_distiller()`): previously every instance contributed a flat +1 to technique/control/rule co-occurrence counters, meaning a low-confidence architecture (AIVSS 1.0) influenced pattern frequencies identically to a high-confidence one (AIVSS 8.0). Now each instance contributes proportionally to its `_distill_weight`: real instances use `max(0.1, aivss_composite / 10.0)`; StepShield incidents use 0.3 (labeled trajectories, not full pipeline runs); synthetic instances use 0.5. The `min_evidence` instance-count gate is preserved using raw counters alongside the weighted counters, so sparse-but-confident architectures cannot bypass the floor. `corpus_confidence` and all stored technique/control frequencies now reflect weighted contributions. Pattern metadata gains `weight_stats` (weighted_n, mean, min, max) for observability. Brain rebuilt at v28, 187 instances, 6 patterns.
+
+(2) **JSONL deduplication** (always-on at load time): non-incremental `build_brain()` calls previously re-appended all corpus instances without checking for existing entries, accumulating duplicates across sessions. Fixed: the JSONL is deduplicated on every load (last write wins per arch_id) and rewritten if any duplicates are detected. Found and cleaned 351 → 187 entries (60 corpus archs had been appended 4× each). Alternative rejected: dedup-on-write only — load-time dedup also cleans historical accumulations.
+
+---
+
+**Decision 142 — Brain Infer panel: TAclaw auto-ingest + UI sub-tab + CLI command**
+Three related additions closing the Brain Infer loop end-to-end:
+
+(1) **TAclaw auto brain-ingest** (`chatbot/api/routes/taclaw.py`): after a TAclaw job completes and the report is written, step 7 runs `build_brain(incremental=True)` followed by `query_brain(mode="infer")`. The brain insight is attached to the job result and surfaced in `GET /api/v1/taclaw/jobs` via a `_brain_summary` helper (top 3 techniques, top 3 DETECT rules, AIVSS floor). Non-fatal: exceptions are logged at WARNING and the job still completes. Alternative rejected: separate endpoint for ingest-after-crawl — TAclaw already owns the lifecycle; coupling is intentional so callers get predictions automatically.
+
+(2) **Brain Infer sub-tab** (`chatbot/api/static/index.html`): new "Infer" button inserted between Knowledge and TACO Agent in the Brain sub-tab strip. Input bar has architecture selector (corpus dropdown), topology signature override, and arch type field. Calls `/api/v1/brain/query` with `mode=infer`. Result area renders confidence, matched patterns, top techniques, DETECT rules likely to fire, and missing controls. Debug console gate added: `console.log`/`warn` suppressed unless `?debug` or `localStorage.ta_debug=1` — reduces dashboard noise in production without touching code.
+
+(3) **`ta brain query` CLI command** (`taclaw_cli/cli.py`): `ta brain query --arch <name>` or `--sig <topology>` hits `/api/v1/brain/query`, prints a Rich panel with confidence, patterns fired, AIVSS floor/mean, top techniques table, DETECT rules, and missing controls. Optional `--feedback confirmed|wrong|partial` posts to `/api/v1/brain/feedback` in the same call. Tip surfaced on `arch_not_in_brain` reason: run TAclaw first to auto-ingest. Closes Priority #5 from the current backlog.
+
+---
+
 ## Session 66 (continued) — 2026-09-04
 
 **Decision 141 — StepShield Phase 4: New DETECT rules from gap analysis (DETECT-035, DETECT-036)**
