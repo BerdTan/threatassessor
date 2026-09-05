@@ -20317,15 +20317,19 @@ class Dashboard {
         const sel = document.getElementById('boxing-arch-select');
         if (!sel) return;
         try {
-            const res = await fetch('/api/v1/architectures', { headers: { 'TM-API-KEY': this.apiKey } });
+            const res = await fetch('/api/v1/reports', { headers: { 'TM-API-KEY': this.apiKey } });
             if (!res.ok) return;
             const data = await res.json();
-            const archs = data.architectures || [];
+            // Only show architectures with a real analysis (ground_truth.json present)
+            const archs = (data.architectures || []).filter(a =>
+                a.files && a.files.includes('ground_truth.json')
+            );
             sel.innerHTML = '<option value="">— select architecture —</option>';
             for (const a of archs) {
                 const opt = document.createElement('option');
-                opt.value = a.name || a;
-                opt.textContent = a.name || a;
+                opt.value = a.name;
+                const ts = a.analysed_at ? new Date(a.analysed_at * 1000).toISOString().slice(0, 10) : '';
+                opt.textContent = ts ? `${a.name}  (${ts})` : a.name;
                 sel.appendChild(opt);
             }
         } catch (_) {}
@@ -20334,7 +20338,9 @@ class Dashboard {
     _boxingFillMmdPath(archName) {
         const inp = document.getElementById('boxing-mmd-path');
         if (!inp || !archName) return;
-        inp.placeholder = `tests/data/architectures/${archName}.mmd`;
+        // Pre-fill with the corpus MMD path if it matches a known arch file
+        inp.value = inp.value || '';
+        inp.placeholder = `/mnt/c/BACKUP/DEV-TEST/tests/data/architectures/${archName}.mmd`;
     }
 
     async _boxingRun() {
