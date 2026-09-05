@@ -142,6 +142,7 @@
                     <div class="nav-group-items">
                         <button class="nav-tab" data-tab="reports">Reports</button>
                         <button class="nav-tab" id="bench-nav-tab" data-tab="bench" title="Model Benchmark — visual radar diff across critic models">Benchmarks</button>
+                        <button class="nav-tab" id="boxing-nav-tab" data-tab="boxing" title="TA Boxing — Brain vs Bot evaluation: 4 dimensions + efficiency">Boxing</button>
                         <button class="nav-tab disabled" data-tab="raw-data">Raw Data</button>
                     </div>
                 </div>
@@ -976,6 +977,26 @@
                 <div id="bench-iframe-wrap" style="flex:1; overflow:auto; position:relative;">
                     <p id="bench-placeholder" style="padding:2rem; font-size:0.85rem; color:var(--text-tertiary);">Run <code>/bench-loop</code> to generate a benchmark report, then select it above.</p>
                     <iframe id="bench-iframe" style="display:none; width:100%; height:100%; border:none;" sandbox="allow-scripts allow-same-origin"></iframe>
+                </div>
+            </div>
+
+            <!-- Boxing Pane -->
+            <div id="boxing-pane-wrapper" style="display:none; flex-direction:column; flex:1; overflow:hidden; background:var(--main-bg);">
+                <div style="flex-shrink:0; display:flex; align-items:center; gap:0.75rem; padding:0.85rem 1.25rem; border-bottom:1px solid var(--border-color);">
+                    <span style="font-size:0.85rem; font-weight:700; color:#f59e0b;">&#x1F94A; TA Boxing</span>
+                    <span style="font-size:0.75rem; color:var(--text-tertiary);">Brain vs Bot — 4 quality dimensions + efficiency</span>
+                    <div style="margin-left:auto; display:flex; gap:0.5rem; align-items:center;">
+                        <select id="boxing-arch-select" style="font-size:0.78rem; padding:0.25rem 0.5rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:var(--text-primary); max-width:280px;">
+                            <option value="">— select architecture —</option>
+                        </select>
+                        <input id="boxing-mmd-path" type="text" placeholder="/path/to/arch.mmd" style="font-size:0.76rem; padding:0.25rem 0.5rem; border:1px solid var(--border-color); border-radius:5px; background:var(--card-bg); color:var(--text-primary); width:260px;" />
+                        <button id="boxing-run-btn" style="font-size:0.78rem; padding:0.3rem 0.9rem; background:#f59e0b; color:#000; border:none; border-radius:5px; cursor:pointer; font-weight:600;">Run Match</button>
+                        <button id="boxing-history-btn" style="font-size:0.76rem; padding:0.3rem 0.7rem; border:1px solid var(--border-color); border-radius:5px; background:transparent; color:var(--text-secondary); cursor:pointer;">History</button>
+                    </div>
+                </div>
+                <div id="boxing-status" style="padding:0.5rem 1.25rem; font-size:0.78rem; color:var(--text-tertiary); flex-shrink:0; display:none;"></div>
+                <div id="boxing-content" style="flex:1; overflow-y:auto; padding:1.25rem;">
+                    <p style="color:var(--text-tertiary); font-size:0.85rem;">Select an architecture and MMD path, then click <strong>Run Match</strong> to start the boxing evaluation.</p>
                 </div>
             </div>
 

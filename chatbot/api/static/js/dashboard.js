@@ -416,6 +416,7 @@ class Dashboard {
         const isMcp        = tabName === 'mcp';
         const isBrain      = tabName === 'brain';
         const isBench      = tabName === 'bench';
+        const isBoxing     = tabName === 'boxing';
         const isPlatform   = tabName === 'platform';
         const uploadContainer    = document.getElementById('upload-form-container');
         const tabContent         = document.getElementById('tab-content');
@@ -427,6 +428,7 @@ class Dashboard {
         const mcpWrapper         = document.getElementById('mcp-pane-wrapper');
         const brainWrapper       = document.getElementById('brain-pane-wrapper');
         const benchWrapper       = document.getElementById('bench-pane-wrapper');
+        const boxingWrapper      = document.getElementById('boxing-pane-wrapper');
         const platformWrapper    = document.getElementById('platform-pane-wrapper');
 
         // Hide all full-pane wrappers first, then show the right one
@@ -438,6 +440,7 @@ class Dashboard {
         if (mcpWrapper)       mcpWrapper.style.display       = 'none';
         if (brainWrapper)     brainWrapper.style.display     = 'none';
         if (benchWrapper)     benchWrapper.style.display     = 'none';
+        if (boxingWrapper)    boxingWrapper.style.display    = 'none';
         if (platformWrapper)  platformWrapper.style.display  = 'none';
         // Restore main-pane defaults (may have been modified by SOC KG tab)
         const _mp = document.querySelector('.main-pane');
@@ -492,6 +495,14 @@ class Dashboard {
                       mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
             if (benchWrapper) { benchWrapper.style.display = 'flex'; benchWrapper.style.flexDirection = 'column'; }
             this._benchInit();
+        } else if (isBoxing) {
+            if (uploadContainer) uploadContainer.style.display = 'none';
+            if (tabContent)      tabContent.style.display      = 'none';
+            const mp = document.querySelector('.main-pane');
+            if (mp) { mp.style.display = 'flex'; mp.style.flexDirection = 'column';
+                      mp.style.padding = '0'; mp.style.overflow = 'hidden'; }
+            if (boxingWrapper) { boxingWrapper.style.display = 'flex'; boxingWrapper.style.flexDirection = 'column'; }
+            this._boxingInit();
         } else if (isPlatform) {
             if (uploadContainer) uploadContainer.style.display = 'none';
             if (tabContent)      tabContent.style.display      = 'none';
@@ -20289,6 +20300,226 @@ class Dashboard {
     }
 
     // ── end Benchmarks ────────────────────────────────────────────────────────
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ── TA Boxing tab ────────────────────────────────────────────────────────
+
+    _boxingInit() {
+        if (this._boxingInitDone) return;
+        this._boxingInitDone = true;
+        this._boxingLoadArchs();
+        document.getElementById('boxing-run-btn')?.addEventListener('click', () => this._boxingRun());
+        document.getElementById('boxing-history-btn')?.addEventListener('click', () => this._boxingLoadHistory());
+        document.getElementById('boxing-arch-select')?.addEventListener('change', e => this._boxingFillMmdPath(e.target.value));
+    }
+
+    async _boxingLoadArchs() {
+        const sel = document.getElementById('boxing-arch-select');
+        if (!sel) return;
+        try {
+            const res = await fetch('/api/v1/architectures', { headers: { 'TM-API-KEY': this.apiKey } });
+            if (!res.ok) return;
+            const data = await res.json();
+            const archs = data.architectures || [];
+            sel.innerHTML = '<option value="">— select architecture —</option>';
+            for (const a of archs) {
+                const opt = document.createElement('option');
+                opt.value = a.name || a;
+                opt.textContent = a.name || a;
+                sel.appendChild(opt);
+            }
+        } catch (_) {}
+    }
+
+    _boxingFillMmdPath(archName) {
+        const inp = document.getElementById('boxing-mmd-path');
+        if (!inp || !archName) return;
+        inp.placeholder = `tests/data/architectures/${archName}.mmd`;
+    }
+
+    async _boxingRun() {
+        const archName = document.getElementById('boxing-arch-select')?.value;
+        const mmdPath  = document.getElementById('boxing-mmd-path')?.value?.trim();
+        if (!archName || !mmdPath) {
+            this._boxingStatus('Select an architecture and enter the MMD path.', 'warn');
+            return;
+        }
+        const btn = document.getElementById('boxing-run-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+        this._boxingStatus('Submitting boxing match…', 'info');
+        try {
+            const res = await fetch('/api/v1/boxing/run', {
+                method: 'POST',
+                headers: { 'TM-API-KEY': this.apiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ arch_name: archName, mmd_path: mmdPath }),
+            });
+            if (!res.ok) { const e = await res.json(); throw new Error(e.detail || res.status); }
+            const { job_id } = await res.json();
+            this._boxingStatus(`Match queued — job ${job_id}. Bot pipeline running (~30s)…`, 'info');
+            this._boxingPoll(job_id);
+        } catch (err) {
+            this._boxingStatus(`Error: ${err.message}`, 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Run Match'; }
+        }
+    }
+
+    async _boxingPoll(jobId) {
+        const btn = document.getElementById('boxing-run-btn');
+        for (let i = 0; i < 90; i++) {
+            await new Promise(r => setTimeout(r, 3000));
+            try {
+                const res = await fetch(`/api/v1/boxing/jobs/${jobId}`, { headers: { 'TM-API-KEY': this.apiKey } });
+                if (!res.ok) continue;
+                const job = await res.json();
+                this._boxingStatus(`${job.message} (${job.progress}%)`, 'info');
+                if (job.status === 'completed') {
+                    this._boxingRenderScorecard(job.result);
+                    if (btn) { btn.disabled = false; btn.textContent = 'Run Match'; }
+                    return;
+                }
+                if (job.status === 'failed') {
+                    this._boxingStatus(`Match failed: ${job.error}`, 'error');
+                    if (btn) { btn.disabled = false; btn.textContent = 'Run Match'; }
+                    return;
+                }
+            } catch (_) {}
+        }
+        this._boxingStatus('Timeout waiting for match result.', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Run Match'; }
+    }
+
+    _boxingStatus(msg, level) {
+        const el = document.getElementById('boxing-status');
+        if (!el) return;
+        const colors = { info: 'var(--text-secondary)', warn: '#f59e0b', error: '#ef4444' };
+        el.style.color = colors[level] || 'var(--text-secondary)';
+        el.textContent = msg;
+        el.style.display = 'block';
+    }
+
+    _boxingRenderScorecard(result) {
+        const el = document.getElementById('boxing-content');
+        if (!el || !result) return;
+
+        const contenders = result.contenders || {};
+        const verdict    = result.verdict || {};
+        const winner     = verdict.winner || '';
+
+        const DIM_LABELS = {
+            threat_completeness:  'D1 Threat Completeness',
+            threat_accuracy:      'D2 Threat Accuracy',
+            mitigation_relevance: 'D3 Mitigation Relevance',
+            actionability:        'D4 Actionability',
+            composite:            'Composite Score',
+        };
+
+        const pct = v => v != null ? `${(v * 100).toFixed(1)}%` : '—';
+        const badge = name => name === winner
+            ? `<span style="background:#f59e0b;color:#000;padding:1px 6px;border-radius:3px;font-size:0.7rem;font-weight:700;margin-left:4px;">WINNER</span>`
+            : '';
+
+        const headerCells = ['<th style="text-align:left;padding:6px 10px;font-size:0.75rem;color:var(--text-tertiary);">Dimension</th>'];
+        for (const [key, c] of Object.entries(contenders)) {
+            headerCells.push(`<th style="text-align:center;padding:6px 10px;font-size:0.75rem;color:var(--text-tertiary);">${c.label}${badge(key)}</th>`);
+        }
+
+        const rows = [];
+        for (const [dim, label] of Object.entries(DIM_LABELS)) {
+            const isComposite = dim === 'composite';
+            const style = isComposite ? 'font-weight:700;border-top:1px solid var(--border-color);' : '';
+            let cells = `<td style="padding:5px 10px;font-size:0.78rem;${style}">${label}</td>`;
+            for (const [key, c] of Object.entries(contenders)) {
+                const score = (c.scores || {})[dim];
+                const best = Math.max(...Object.values(contenders).map(x => (x.scores || {})[dim] || 0));
+                const isBest = score != null && score === best;
+                const color = isComposite ? (key === winner ? '#f59e0b' : 'var(--text-primary)') : (isBest ? '#34d399' : 'var(--text-primary)');
+                cells += `<td style="text-align:center;padding:5px 10px;font-size:0.78rem;${style}color:${color};">${pct(score)}</td>`;
+            }
+            rows.push(`<tr>${cells}</tr>`);
+        }
+
+        // Efficiency row
+        let effCells = `<td style="padding:5px 10px;font-size:0.78rem;color:var(--text-tertiary);">Latency</td>`;
+        for (const c of Object.values(contenders)) {
+            effCells += `<td style="text-align:center;padding:5px 10px;font-size:0.75rem;color:var(--text-tertiary);">${c.latency_s != null ? c.latency_s + 's' : '—'}</td>`;
+        }
+        rows.push(`<tr>${effCells}</tr>`);
+
+        let tokenCells = `<td style="padding:5px 10px;font-size:0.78rem;color:var(--text-tertiary);">Token Cost</td>`;
+        for (const c of Object.values(contenders)) {
+            const t = c.token_cost;
+            tokenCells += `<td style="text-align:center;padding:5px 10px;font-size:0.75rem;color:var(--text-tertiary);">${t ? t.toLocaleString() : '0'}</td>`;
+        }
+        rows.push(`<tr>${tokenCells}</tr>`);
+
+        const refCount = result.ref_technique_count || '?';
+        const runAt = result.run_at ? result.run_at.slice(0, 16).replace('T', ' ') + ' UTC' : '';
+        const qvsCost = verdict.quality_vs_cost || {};
+
+        el.innerHTML = `
+          <div style="margin-bottom:1rem;">
+            <span style="font-size:0.9rem;font-weight:700;color:#f59e0b;">Match Result</span>
+            <span style="font-size:0.76rem;color:var(--text-tertiary);margin-left:0.75rem;">${result.arch_name} · ${runAt} · ref techniques: ${refCount}</span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;background:var(--card-bg);border-radius:8px;overflow:hidden;">
+              <thead style="background:var(--sidebar-bg);"><tr>${headerCells.join('')}</tr></thead>
+              <tbody>${rows.join('')}</tbody>
+            </table>
+          </div>
+          <div style="margin-top:1rem;font-size:0.76rem;color:var(--text-tertiary);display:flex;gap:2rem;flex-wrap:wrap;">
+            <span>Brain vs Bot quality delta: <strong>${qvsCost.brain_vs_bot_quality_delta != null ? (qvsCost.brain_vs_bot_quality_delta > 0 ? '+' : '') + (qvsCost.brain_vs_bot_quality_delta * 100).toFixed(1) + '%' : '—'}</strong></span>
+            <span>Brain speedup: <strong>${qvsCost.brain_latency_speedup != null ? qvsCost.brain_latency_speedup + '×' : '—'}</strong></span>
+            <span>Brain-mini speedup: <strong>${qvsCost.brain_mini_latency_speedup != null ? qvsCost.brain_mini_latency_speedup + '×' : '—'}</strong></span>
+          </div>`;
+        this._boxingStatus('', 'info');
+        document.getElementById('boxing-status').style.display = 'none';
+    }
+
+    async _boxingLoadHistory() {
+        const el = document.getElementById('boxing-content');
+        if (!el) return;
+        this._boxingStatus('Loading history…', 'info');
+        try {
+            const res = await fetch('/api/v1/boxing/results', { headers: { 'TM-API-KEY': this.apiKey } });
+            if (!res.ok) throw new Error(res.status);
+            const { results } = await res.json();
+            if (!results.length) {
+                el.innerHTML = '<p style="color:var(--text-tertiary);font-size:0.85rem;">No past boxing results found. Run a match first.</p>';
+                document.getElementById('boxing-status').style.display = 'none';
+                return;
+            }
+            const rows = results.map(r => {
+                const scores = r.scores || {};
+                const scoreStr = Object.entries(scores).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(' · ');
+                return `<tr>
+                  <td style="padding:5px 10px;font-size:0.78rem;">${r.arch_name}</td>
+                  <td style="padding:5px 10px;font-size:0.76rem;color:var(--text-tertiary);">${r.run_at ? r.run_at.slice(0, 16).replace('T', ' ') : ''}</td>
+                  <td style="padding:5px 10px;font-size:0.78rem;color:#f59e0b;font-weight:600;">${r.winner || '—'}</td>
+                  <td style="padding:5px 10px;font-size:0.72rem;color:var(--text-tertiary);">${scoreStr}</td>
+                </tr>`;
+            }).join('');
+            el.innerHTML = `
+              <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;background:var(--card-bg);border-radius:8px;overflow:hidden;">
+                  <thead style="background:var(--sidebar-bg);">
+                    <tr>
+                      <th style="padding:6px 10px;font-size:0.75rem;color:var(--text-tertiary);text-align:left;">Architecture</th>
+                      <th style="padding:6px 10px;font-size:0.75rem;color:var(--text-tertiary);text-align:left;">Run At</th>
+                      <th style="padding:6px 10px;font-size:0.75rem;color:var(--text-tertiary);text-align:left;">Winner</th>
+                      <th style="padding:6px 10px;font-size:0.75rem;color:var(--text-tertiary);text-align:left;">Composite Scores</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rows}</tbody>
+                </table>
+              </div>`;
+            document.getElementById('boxing-status').style.display = 'none';
+        } catch (err) {
+            this._boxingStatus(`Failed to load history: ${err.message}`, 'error');
+        }
+    }
+
+    // ── end TA Boxing ─────────────────────────────────────────────────────────
 
     // ═══════════════════════════════════════════════════════════════════════════
     // ── Platform / SIP tab ───────────────────────────────────────────────────

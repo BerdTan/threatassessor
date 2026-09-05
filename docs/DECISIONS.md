@@ -6,6 +6,35 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 66 (continued) — 2026-09-05
 
+### Entry 139 — TA Boxing: three-contender evaluation framework
+
+**What:** Built `ta-boxing` — a deterministic evaluation framework matching three contenders (bot, brain, brain_mini) on four quality dimensions + efficiency metrics. Referee class (`BoxingReferee`) is fully deterministic with no LLM in the scoring path.
+
+**Contenders:**
+- `bot` — full LLM pipeline via ThreatAssessorHarness; `LANGFUSE_SKIP=1` baked in
+- `brain` — TA Brain pattern inference; D2 corpus-derived from `evidence_arch_ids` history
+- `brain_mini` — same brain inference; D2 via synthetic single-node path construction against target MMD
+
+**Referee dimensions:**
+- D1 Threat Completeness: technique recall vs union reference set (both contenders' techniques)
+- D2 Threat Accuracy: topology applicability (method varies per contender — see above)
+- D3 Mitigation Relevance: % techniques with ≥1 ATT&CK M-mitigation (detection-only excluded from denominator)
+- D4 Actionability: remediation quality — severity + named control + rationale (per-rec for bot; pattern-level for brain/brain_mini)
+
+**Efficiency:** wall-clock latency + token cost per contender. Brain/brain_mini = 0 tokens by definition.
+
+**Surfaces:** `chatbot/modules/ta_boxing.py` (referee + runners), `chatbot/api/routes/boxing.py` (async job API), `.claude/skills/ta-boxing/` (CLI + SKILL.md), dashboard Reporting → Boxing tab.
+
+**Result store:** `report/<arch>/boxing_results.json`.
+
+**Why three contenders instead of two:** brain vs brain_mini isolates how much arch-specific topology validation changes D2 score vs corpus-average. The delta is a free diagnostic of pattern generalizability.
+
+**Alternatives rejected:**
+- D2 bot via static platform check (instead of `run_self_validation`) — too coarse; bot has full path context so should use it
+- Equal D4 scoring for brain and bot — brain produces pattern-level remediation, not per-finding ranking; separate scorer methods reflect the actual richness difference honestly
+- LLM in referee path — rejected; reproducibility requires determinism
+
+
 **Decision 144 — P25 published**
 "The Brain Grew Up" published at https://medium.com/@breadtan/the-brain-grew-up-4e929965e533. Covers Engine Item 5 (confidence-weighted distiller), JSONL dedup fix, 57% bookservices complexity floor, Brain Infer panel + CLI, and how closing the feedback loop turns a pattern store into an inference layer. README updated to 25 parts.
 
