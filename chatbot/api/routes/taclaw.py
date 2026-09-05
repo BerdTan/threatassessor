@@ -214,6 +214,27 @@ async def _run_taclaw_job(
         if gate == "BLOCK":
             export_data.setdefault("gate", {})["result"] = "BLOCK"
 
+        # 7. Auto brain-ingest (incremental — skips if arch already in corpus)
+        store.update(job.job_id, progress=90, message="Ingesting into TA Brain")
+        brain_insight: dict = {}
+        try:
+            from chatbot.modules.ta_brain_builder import build_brain
+            from chatbot.modules.ta_brain_query import query_brain
+
+            root_report_dir = Path(get_settings().system.report_dir)
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: build_brain(report_dir=root_report_dir, incremental=True),
+            )
+
+            # 8. Infer from newly-learned patterns
+            brain_insight = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: query_brain(mode="infer", arch_name=arch_name, caller_type="taclaw"),
+            )
+        except Exception as exc:
+            logger.warning("TAclaw: brain ingest/infer failed (non-fatal): %s", exc)
+
         store.update(
             job.job_id,
             status="completed",
@@ -229,6 +250,7 @@ async def _run_taclaw_job(
                 "source_formats": merged.adapter_metadata.get("source_formats", []),
                 "export": export_data,
                 "adapter_metadata": merged.adapter_metadata,
+                "brain_insight": brain_insight,
             },
         )
 
@@ -301,6 +323,19 @@ async def taclaw_jobs_list():
     """List all active TAclaw jobs (queued, running, completed, failed) within TTL window."""
     store = get_job_store()
     jobs = store.list_all()
+    def _brain_summary(result: dict) -> dict:
+        bi = result.get("brain_insight", {})
+        if not bi or not bi.get("had_match"):
+            return {}
+        preds = bi.get("predictions", {})
+        return {
+            "had_match": True,
+            "confidence": bi.get("confidence", 0.0),
+            "top_techniques": [t["id"] for t in preds.get("technique_top", [])[:3]],
+            "detect_rules": preds.get("detect_rules", [])[:3],
+            "aivss_floor": preds.get("aivss_floor"),
+        }
+
     return {
         "jobs": [
             {
@@ -315,6 +350,7 @@ async def taclaw_jobs_list():
                 "composite_nodes": (j.result or {}).get("composite_nodes") if j.result else None,
                 "gate": (j.result or {}).get("gate") if j.result else None,
                 "source_formats": (j.result or {}).get("source_formats", []) if j.result else [],
+                "brain_insight": _brain_summary(j.result or {}) if j.result else {},
                 "created_at": j.created_at,
                 "updated_at": j.updated_at,
             }

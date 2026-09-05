@@ -411,6 +411,90 @@ def analyze(
 
 # ── brain match ───────────────────────────────────────────────────────────────
 
+@brain_app.command("query")
+def brain_query(
+    arch: Optional[str] = typer.Option(None, "--arch", "-a", help="Known corpus arch name (e.g. 22_generic_ai_nodes)"),
+    sig: str = typer.Option("", "--sig", "-s", help="Topology signature override (comma-separated component labels)"),
+    arch_type: str = typer.Option("", "--type", "-t", help="Architecture type hint (cloud, web_app, ai_system, iot, generic)"),
+    feedback: Optional[str] = typer.Option(None, "--feedback", "-f", help="Record feedback: confirmed | wrong | partial"),
+):
+    """
+    Query the TA Brain for predicted threats, controls, and DETECT rules.
+
+    Examples:
+      ta brain query --arch 22_generic_ai_nodes
+      ta brain query --sig "api_gateway,lambda,rds" --type cloud
+      ta brain query --arch my_repo --feedback confirmed
+    """
+    cfg = _load_config()
+    payload = {
+        "mode": "infer",
+        "arch_name": arch or "",
+        "topology_signature": sig,
+        "arch_type": arch_type,
+    }
+    with _client(cfg) as c:
+        r = c.post("/api/v1/brain/query", json=payload)
+    r.raise_for_status()
+    data = r.json()
+
+    if not data.get("had_match"):
+        reason = data.get("reason", "")
+        msg = data.get("message", "No patterns matched.")
+        rprint(f"[yellow]No match[/yellow] — {msg}")
+        if reason == "arch_not_in_brain":
+            rprint("[dim]Tip: run a TAclaw job on this repo first — it auto-ingests into Brain.[/dim]")
+        raise typer.Exit(0)
+
+    conf = data.get("confidence", 0.0)
+    preds = data.get("predictions", {})
+    evidence = data.get("evidence", {})
+    conf_color = "green" if conf >= 0.7 else "yellow" if conf >= 0.4 else "red"
+
+    console = Console()
+
+    # Summary panel
+    suspect_warn = " [red]⚠ suspect patterns — verify manually[/red]" if data.get("suspect_patterns") else ""
+    console.print(Panel(
+        f"Confidence: [{conf_color}]{conf*100:.0f}%[/{conf_color}]{suspect_warn}\n"
+        f"Patterns: {', '.join(data.get('patterns_fired', []))}\n"
+        f"AIVSS floor: {preds.get('aivss_floor', '—')}  mean: {preds.get('aivss_mean', '—')}\n"
+        f"Source archs: {', '.join((evidence.get('source_archs') or [])[:5])}",
+        title=f"Brain Infer — {arch or sig or 'query'}",
+        border_style=conf_color,
+    ))
+
+    # Top techniques table
+    tech_top = preds.get("technique_top", [])
+    if tech_top:
+        t = Table(title="Top Techniques", show_header=True, header_style="bold cyan", box=None)
+        t.add_column("ID", style="cyan", no_wrap=True)
+        t.add_column("Frequency", justify="right")
+        for row in tech_top[:10]:
+            t.add_row(row["id"], f"{row['frequency']*100:.0f}%")
+        console.print(t)
+
+    # DETECT rules
+    rules = preds.get("detect_rules", [])
+    if rules:
+        console.print(f"\n[bold]DETECT rules likely to fire:[/bold] {', '.join(rules)}")
+
+    # Missing controls
+    controls = [c["control"] for c in preds.get("control_priorities", [])]
+    if controls:
+        console.print(f"[bold]Missing controls:[/bold] {', '.join(controls[:8])}")
+
+    # Record feedback if requested
+    if feedback:
+        fb_payload = {"arch_name": arch or "", "topology_signature": sig, "arch_type": arch_type, "mode": "infer", "feedback": feedback}
+        with _client(cfg) as c:
+            fb_r = c.post("/api/v1/brain/feedback", json=fb_payload)
+        if fb_r.is_success:
+            rprint(f"\n[green]Feedback recorded:[/green] {feedback}")
+        else:
+            rprint(f"\n[red]Feedback failed:[/red] {fb_r.status_code}")
+
+
 @brain_app.command("match")
 def brain_match(
     sig: str = typer.Option("", "--sig", "-s", help="Topology signature (free text)"),
