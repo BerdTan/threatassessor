@@ -97,39 +97,56 @@ async def list_architectures():
     if not report_dir.exists():
         return {"architectures": [], "total": 0}
 
+    # Directories inside report/ that are not user-facing architectures.
+    # Includes system dirs, test fixtures, and ad-hoc TAclaw runs on internal paths.
+    # Add any new internal dir here rather than relying on naming conventions.
+    _SYSTEM_DIRS = frozenset({
+        "brain", "stepshield", "synthetic_queue",
+        "adapters", "sample", "openapi", "DEV-TEST",
+    })
+
     architectures = []
     for arch_dir in report_dir.iterdir():
-        if arch_dir.is_dir() and not arch_dir.name.startswith('.'):
-            files = []
-            for file in arch_dir.iterdir():
-                if file.is_file() and (file.suffix in ['.md', '.json', '.txt']):
-                    files.append(file.name)
+        name = arch_dir.name
+        # Skip hidden dirs, known system dirs, and boxing temp dirs
+        if (
+            not arch_dir.is_dir()
+            or name.startswith('.')
+            or name in _SYSTEM_DIRS
+            or '_boxing_bot' in name
+        ):
+            continue
 
-            if files:  # Only include if has report files
-                # Read ssp_profile from ground_truth metadata
-                ssp_profile = None
-                gt_path = arch_dir / "ground_truth.json"
-                if gt_path.exists():
-                    try:
-                        gt = json.loads(gt_path.read_text())
-                        ssp_profile = (gt.get("metadata") or {}).get("ssp_profile")
-                    except Exception:
-                        pass
-                # Count SM reruns (subdirs named sm\d+)
-                sm_runs = sorted(
-                    int(p.name[2:]) for p in arch_dir.iterdir()
-                    if p.is_dir() and p.name.startswith("sm") and p.name[2:].isdigit()
-                )
-                architectures.append({
-                    "name": arch_dir.name,
-                    "report_count": len(files),
-                    "files": sorted(files),
-                    "analysed_at": int(arch_dir.stat().st_mtime),
-                    "ssp_profile": ssp_profile,
-                    "has_scrum_master": (arch_dir / "08_scrum_master.json").exists(),
-                    "sm_run_count": len(sm_runs),
-                    "sm_runs": sm_runs,
-                })
+        files = []
+        for file in arch_dir.iterdir():
+            if file.is_file() and (file.suffix in ['.md', '.json', '.txt']):
+                files.append(file.name)
+
+        if files:  # Only include if has report files
+            # Read ssp_profile from ground_truth metadata
+            ssp_profile = None
+            gt_path = arch_dir / "ground_truth.json"
+            if gt_path.exists():
+                try:
+                    gt = json.loads(gt_path.read_text())
+                    ssp_profile = (gt.get("metadata") or {}).get("ssp_profile")
+                except Exception:
+                    pass
+            # Count SM reruns (subdirs named sm\d+)
+            sm_runs = sorted(
+                int(p.name[2:]) for p in arch_dir.iterdir()
+                if p.is_dir() and p.name.startswith("sm") and p.name[2:].isdigit()
+            )
+            architectures.append({
+                "name": arch_dir.name,
+                "report_count": len(files),
+                "files": sorted(files),
+                "analysed_at": int(arch_dir.stat().st_mtime),
+                "ssp_profile": ssp_profile,
+                "has_scrum_master": (arch_dir / "08_scrum_master.json").exists(),
+                "sm_run_count": len(sm_runs),
+                "sm_runs": sm_runs,
+            })
 
     # Sort newest first
     architectures.sort(key=lambda x: x['analysed_at'], reverse=True)
