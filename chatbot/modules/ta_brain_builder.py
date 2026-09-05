@@ -170,17 +170,40 @@ def extract_instance(arch_dir: Path, rule_evaluator=None) -> Optional[dict]:
 
 # ── Distiller ─────────────────────────────────────────────────────────────────
 
+def _distill_weight(inst: dict) -> float:
+    """
+    Per-instance weight for confidence-weighted pattern extraction.
+
+    Real instances: AIVSS composite / 10, floored at 0.1 so zero-scoring
+    architectures still contribute a small signal.
+    StepShield instances: 0.3 — labeled trajectory incidents, not full pipeline runs.
+    Synthetic instances: 0.5 — generated, not observed.
+    """
+    source = inst.get("source", "real")
+    aivss = float(inst.get("aivss_composite", 0.0))
+    if source and source.startswith("stepshield"):
+        return 0.3
+    if source == "synthetic":
+        return 0.5
+    return max(0.1, min(1.0, aivss / 10.0))
+
+
 def run_distiller(instances: list, min_evidence: int = MIN_EVIDENCE) -> list:
     """
     Co-occurrence pattern extraction — pure frequency analysis, no LLM.
 
     Produces one pattern per arch_type cluster. Each pattern records:
-    - which techniques co-appear with their frequency
+    - which techniques co-appear with their weighted frequency
     - which controls are commonly missing
     - which DETECT rules fire
     - AIVSS floor + mean across the cluster
-    - corpus_confidence = top-technique frequency within the cluster
+    - corpus_confidence = confidence-weighted top-technique frequency
     - benchmark_confidence = 1.0 (uncalibrated until Stage 6)
+
+    Confidence weighting: each instance contributes proportionally to its
+    _distill_weight() rather than a flat +1. The min_evidence gate uses raw
+    instance counts (not weights) so sparse-but-confident archs don't bypass
+    the evidence floor.
 
     Only real-source instances are used; synthetic instances (added in Stage 8)
     participate but never serve as sole evidence (MIN_EVIDENCE must include ≥1 real).
@@ -198,25 +221,42 @@ def run_distiller(instances: list, min_evidence: int = MIN_EVIDENCE) -> list:
         if n < 1:
             continue
 
+        weights = [_distill_weight(inst) for inst in group]
+        weighted_n = sum(weights)
+
+        # Weighted counters for frequency calculation.
+        # Raw counters used only for the min_evidence instance-count gate.
         tech_counter: Counter = Counter()
         control_counter: Counter = Counter()
         rule_counter: Counter = Counter()
+        tech_raw: Counter = Counter()
+        control_raw: Counter = Counter()
+        rule_raw: Counter = Counter()
 
-        for inst in group:
+        for inst, w in zip(group, weights):
             for t in inst.get("techniques", []):
-                tech_counter[t] += 1
+                tech_counter[t] += w
+                tech_raw[t] += 1
             for c in inst.get("controls_missing", []):
-                control_counter[c] += 1
+                control_counter[c] += w
+                control_raw[c] += 1
             for r in inst.get("fired_detect_rules", []):
-                rule_counter[r] += 1
+                rule_counter[r] += w
+                rule_raw[r] += 1
 
         aivss_values = [inst["aivss_composite"] for inst in group]
         aivss_floor = round(min(aivss_values), 3) if aivss_values else 0.0
         aivss_mean = round(sum(aivss_values) / len(aivss_values), 3) if aivss_values else 0.0
 
-        primary_techniques = [t for t, c in tech_counter.most_common() if c >= min_evidence]
-        primary_controls = [ctrl for ctrl, c in control_counter.most_common(10) if c >= min_evidence]
-        primary_rules = [r for r, c in rule_counter.most_common() if c >= min_evidence]
+        primary_techniques = [
+            t for t, c in tech_counter.most_common() if tech_raw[t] >= min_evidence
+        ]
+        primary_controls = [
+            ctrl for ctrl, c in control_counter.most_common(10) if control_raw[ctrl] >= min_evidence
+        ]
+        primary_rules = [
+            r for r, c in rule_counter.most_common() if rule_raw[r] >= min_evidence
+        ]
 
         # Fall back to top-5 if nothing clears MIN_EVIDENCE (sparse group)
         if not primary_techniques:
@@ -224,8 +264,8 @@ def run_distiller(instances: list, min_evidence: int = MIN_EVIDENCE) -> list:
         if not primary_controls:
             primary_controls = [c for c, _ in control_counter.most_common(5)]
 
-        top_tech_count = tech_counter.most_common(1)[0][1] if tech_counter else 0
-        corpus_conf = round(top_tech_count / n, 3) if n else 0.0
+        top_tech_weight = tech_counter.most_common(1)[0][1] if tech_counter else 0.0
+        corpus_conf = round(top_tech_weight / weighted_n, 3) if weighted_n else 0.0
 
         node_counts = [inst["node_count"] for inst in group]
 
@@ -239,14 +279,14 @@ def run_distiller(instances: list, min_evidence: int = MIN_EVIDENCE) -> list:
             "predicts": {
                 "techniques": primary_techniques[:20],
                 "technique_frequencies": {
-                    t: round(c / n, 3) for t, c in tech_counter.most_common(20)
+                    t: round(c / weighted_n, 3) for t, c in tech_counter.most_common(20)
                 },
                 "detect_rules": primary_rules,
                 "aivss_floor": aivss_floor,
                 "aivss_mean": aivss_mean,
                 "common_missing_controls": primary_controls,
                 "control_frequencies": {
-                    c: round(cnt / n, 3) for c, cnt in control_counter.most_common(10)
+                    c: round(cnt / weighted_n, 3) for c, cnt in control_counter.most_common(10)
                 },
             },
             "remediation_template": {
@@ -255,6 +295,12 @@ def run_distiller(instances: list, min_evidence: int = MIN_EVIDENCE) -> list:
                     f"# Recommended additions for {arch_type}: "
                     + ", ".join(primary_controls[:3])
                 ),
+            },
+            "weight_stats": {
+                "weighted_n": round(weighted_n, 3),
+                "mean_weight": round(weighted_n / n, 3) if n else 0.0,
+                "min_weight": round(min(weights), 3),
+                "max_weight": round(max(weights), 3),
             },
             "corpus_confidence": corpus_conf,
             "benchmark_confidence": 1.0,
@@ -341,20 +387,27 @@ def build_brain(
     instances_path = brain_dir / "ta_brain_instances.jsonl"
     brain_path = brain_dir / "ta_brain.json"
 
-    # Load existing instances for incremental mode
+    # Load existing instances; always deduplicate JSONL (last write wins per arch_id)
     existing_ids: set = set()
     existing_instances: list = []
-    if incremental and instances_path.exists():
-        for line in instances_path.read_text().strip().splitlines():
-            line = line.strip()
-            if not line:
-                continue
+    if instances_path.exists():
+        raw_lines = [l.strip() for l in instances_path.read_text().splitlines() if l.strip()]
+        seen: dict = {}
+        for line in raw_lines:
             try:
                 inst = json.loads(line)
-                existing_ids.add(inst["arch_id"])
-                existing_instances.append(inst)
+                seen[inst["arch_id"]] = (inst, line)
             except Exception:
                 pass
+        if len(seen) < len(raw_lines):
+            instances_path.write_text("\n".join(l for _, l in seen.values()) + "\n")
+            logger.info("Deduped brain JSONL: %d → %d entries", len(raw_lines), len(seen))
+        for inst, _ in seen.values():
+            existing_ids.add(inst["arch_id"])
+            existing_instances.append(inst)
+
+    if not incremental:
+        existing_instances = []
 
     try:
         rule_evaluator = _load_rule_evaluator()
