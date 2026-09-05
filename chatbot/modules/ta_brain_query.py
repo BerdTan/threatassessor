@@ -200,8 +200,8 @@ def _run_infer(
         "suspect_patterns": suspect_ids,
         "confidence": round(confidence, 4),
         "predictions": {
-            "techniques": [t for t, _ in tech_top[:20]],
-            "technique_top": [{"id": t, "frequency": f} for t, f in tech_top[:10]],
+            "techniques": [t for t, _ in tech_top[:50]],
+            "technique_top": [{"id": t, "frequency": f} for t, f in tech_top[:15]],
             "detect_rules": sorted(merged_rules),
             "aivss_floor": round(min(aivss_floors), 3) if aivss_floors else 0.0,
             "aivss_mean": round(best["predicts"].get("aivss_mean", 0.0), 3),

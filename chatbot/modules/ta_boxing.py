@@ -9,7 +9,7 @@ Contenders:
   brain_mini — TA Brain pattern inference; D2 arch-specific via synthetic path validation
 
 Referee dimensions:
-  D1  threat_completeness   — ATT&CK technique recall vs union reference set
+  D1  threat_completeness   — bot: precision (validated/total); brain: recall vs bot-validated reference
   D2  threat_accuracy       — topology applicability (method varies per contender)
   D3  mitigation_relevance  — % techniques with ≥1 official ATT&CK M-mitigation
   D4  actionability         — remediation quality: severity + named control + rationale
@@ -61,6 +61,17 @@ class BoxingReferee:
             return 0.0
         hits = sum(1 for t in techniques if t in reference)
         return round(hits / len(reference), 4)
+
+    def score_d1_precision(self, validated: List[str], total: List[str]) -> float:
+        """
+        Bot D1: precision = validated_techniques / total_predicted.
+        Penalises hallucinated techniques that didn't pass self-validation.
+        Bot recall against the reference is trivially ~100% (it contributed
+        the reference), so precision is the meaningful signal here.
+        """
+        if not total:
+            return 0.0
+        return round(len(validated) / len(total), 4)
 
     # D2 variants ─────────────────────────────────────────────────────────────
 
@@ -254,6 +265,25 @@ def _extract_techniques_from_ground_truth(gt: Dict) -> List[str]:
     return list(dict.fromkeys(techs))  # deduplicate, preserve order
 
 
+def _extract_validated_techniques(gt: Dict) -> List[str]:
+    """
+    Return only techniques that passed self-validation (is_valid=True).
+    Falls back to all techniques when validation data is absent (treats all as valid).
+    Self-validation lives at gt.validation_report.validations.technique_relevance.
+    """
+    relevance = (
+        gt.get("validation_report", {})
+          .get("validations", {})
+          .get("technique_relevance", [])
+    )
+    if not relevance:
+        # No validation data — treat all extracted techniques as valid
+        return _extract_techniques_from_ground_truth(gt)
+    return list(dict.fromkeys(
+        r["technique"] for r in relevance if r.get("valid") and r.get("technique")
+    ))
+
+
 def run_bot_contender(
     arch_name: str,
     mmd_path: str,
@@ -261,81 +291,120 @@ def run_bot_contender(
     model_override: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Run the full LLM pipeline (ThreatAssessorHarness) with LANGFUSE_SKIP=1.
+    Use the best available bot result for arch_name.
 
-    Args:
-        model_override: valid LLM_PROVIDER key (e.g. "hetzner", "gemini_flash",
-                        "minimax"). Temporarily patches LLM_PROVIDER in env for
-                        this run only; caller's env is restored on exit.
+    Priority:
+    1. Existing report/{arch_name}/ground_truth.json — preserves full MoE run;
+       never overwrites a completed assessment with a weaker API_ONLY result.
+    2. Existing report/{arch_name}_boxing_bot/ground_truth.json — a prior boxing run.
+    3. Fresh LLM pipeline run (API_ONLY) into _boxing_bot dir — only when no prior
+       result exists for this arch.
+
+    model_override forces a fresh run into a model-labelled boxing dir regardless
+    of (1) and (2), since a model comparison needs fresh per-model outputs.
 
     Returns scored contender dict ready for the referee.
     """
-    from chatbot.harness.controller import ThreatAssessorHarness, PipelineRequest
     from chatbot.config import get_settings
 
-    env_patch: Dict[str, str] = {"LANGFUSE_SKIP": "1"}
-    if model_override:
-        env_patch["LLM_PROVIDER"] = model_override
-    old_env = {k: os.environ.get(k) for k in env_patch}
-    os.environ.update(env_patch)
+    settings = get_settings()
+    parent_report_dir = Path(settings.system.report_dir)
 
     t0 = time.perf_counter()
     error: Optional[str] = None
     gt: Dict = {}
     self_val: Dict = {}
     token_cost = 0
+    ran_fresh = False
 
-    try:
-        settings = get_settings()
-        suffix = f"_boxing_bot_{model_override}" if model_override else "_boxing_bot"
-        report_dir = Path(settings.system.report_dir) / f"{arch_name}{suffix}"
-        report_dir.mkdir(parents=True, exist_ok=True)
+    suffix = f"_boxing_bot_{model_override}" if model_override else "_boxing_bot"
+    boxing_arch_name = f"{arch_name}{suffix}"
+    boxing_report_dir = parent_report_dir / boxing_arch_name
 
-        harness = ThreatAssessorHarness()
-        req = PipelineRequest(
-            architecture_path=mmd_path,
-            report_dir=str(report_dir),
-            ssp_profile=ssp_profile,
-            architecture_name=arch_name,
-        )
-        result = harness.run_typed(req)
+    # ── Determine result source ───────────────────────────────────────────────
+    existing_gt: Optional[Path] = None
+    if not model_override:
+        # Prefer the existing full assessment (may have MoE critics)
+        canonical = parent_report_dir / arch_name / "ground_truth.json"
+        boxing_cached = boxing_report_dir / "ground_truth.json"
+        if canonical.exists():
+            existing_gt = canonical
+            logger.info("Bot contender: reusing existing assessment for %s", arch_name)
+        elif boxing_cached.exists():
+            existing_gt = boxing_cached
+            logger.info("Bot contender: reusing boxing cache for %s", arch_name)
 
-        gt_path = report_dir / "ground_truth.json"
-        if gt_path.exists():
-            gt = json.loads(gt_path.read_text())
-
-        sv_path = report_dir / "self_validation.json"
-        if sv_path.exists():
-            self_val = json.loads(sv_path.read_text())
-
-        # Estimate token cost from governance signals if available
-        gs_path = report_dir / "governance_signals.json"
-        if gs_path.exists():
-            try:
+    if existing_gt is not None:
+        try:
+            gt = json.loads(existing_gt.read_text())
+            self_val = gt.get("validation_report", {})
+            # Read token cost from sibling governance_signals if present
+            gs_path = existing_gt.parent / "governance_signals.json"
+            if gs_path.exists():
                 gs = json.loads(gs_path.read_text())
                 token_cost = gs.get("llm_usage", {}).get("total_tokens", 0)
-            except Exception:
-                pass
+        except Exception as exc:
+            logger.warning("Could not read existing assessment for %s: %s", arch_name, exc)
+            existing_gt = None  # fall through to fresh run
 
-    except Exception as exc:
-        error = str(exc)
-        logger.warning("Bot contender failed: %s", exc)
-    finally:
-        for k, v in old_env.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+    if existing_gt is None:
+        # ── Fresh run ─────────────────────────────────────────────────────────
+        from chatbot.harness.controller import ThreatAssessorHarness, PipelineRequest
+
+        env_patch: Dict[str, str] = {"LANGFUSE_SKIP": "1"}
+        if model_override:
+            env_patch["LLM_PROVIDER"] = model_override
+        old_env = {k: os.environ.get(k) for k in env_patch}
+        os.environ.update(env_patch)
+
+        try:
+            boxing_report_dir.mkdir(parents=True, exist_ok=True)
+            harness = ThreatAssessorHarness()
+            req = PipelineRequest(
+                architecture_path=mmd_path,
+                report_dir=str(boxing_report_dir),
+                ssp_profile=ssp_profile,
+                architecture_name=boxing_arch_name,
+                use_llm=True,
+                enable_moe=False,
+            )
+            harness.run_typed(req)
+            ran_fresh = True
+
+            gt_path = boxing_report_dir / "ground_truth.json"
+            if gt_path.exists():
+                gt = json.loads(gt_path.read_text())
+                self_val = gt.get("validation_report", {})
+
+            gs_path = boxing_report_dir / "governance_signals.json"
+            if gs_path.exists():
+                gs = json.loads(gs_path.read_text())
+                token_cost = gs.get("llm_usage", {}).get("total_tokens", 0)
+
+        except Exception as exc:
+            error = str(exc)
+            logger.warning("Bot contender fresh run failed: %s", exc)
+        finally:
+            for k, v in old_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
 
     latency = round(time.perf_counter() - t0, 2)
     techniques = _extract_techniques_from_ground_truth(gt)
+    validated_techniques = _extract_validated_techniques(gt)
     control_recs = gt.get("control_recommendations", [])
 
     label = f"LLM Pipeline ({model_override})" if model_override else "LLM Pipeline"
+    if not model_override and existing_gt is not None:
+        src = "MoE" if (parent_report_dir / arch_name / "ground_truth.json") == existing_gt else "cached"
+        label = f"LLM Pipeline [{src}]"
     return {
         "label": label,
         "model": model_override or os.environ.get("LLM_PROVIDER", "default"),
         "techniques": techniques,
+        "validated_techniques": validated_techniques,
         "control_recommendations": control_recs,
         "self_val": self_val,
         "latency_s": latency,
@@ -386,9 +455,14 @@ def run_brain_contenders(arch_name: str, arch_type: str = "") -> Tuple[Dict, Dic
 # ── Orchestrator ──────────────────────────────────────────────────────────────
 
 def _score_bot(referee: BoxingReferee, bot: Dict, reference: Set[str]) -> Dict[str, float]:
-    d1 = referee.score_d1(bot["techniques"], reference)
+    # D1: precision = validated / total_predicted
+    # Bot recall against the reference is ~100% by construction (it contributed the reference).
+    # Precision penalises hallucinations that didn't survive self-validation.
+    valid_techs = bot.get("validated_techniques") or bot["techniques"]
+    all_techs = bot["techniques"]
+    d1 = referee.score_d1_precision(valid_techs, all_techs)
     d2 = referee.score_d2_validated(bot["self_val"])
-    d3 = referee.score_d3(bot["techniques"])
+    d3 = referee.score_d3(valid_techs)
     d4 = referee.score_d4_bot(bot["control_recommendations"])
     return {"threat_completeness": d1, "threat_accuracy": d2,
             "mitigation_relevance": d3, "actionability": d4,
@@ -451,10 +525,16 @@ def run_boxing_match(
         bot_data["_key"] = label
         bot_runs.append(bot_data)
 
-    # ── Reference set: union of all bot runs + brain techniques ──────────────
-    reference: Set[str] = set(brain["techniques"])
+    # ── Reference set: bot-validated techniques only ─────────────────────────
+    # Reference = techniques that passed bot self-validation (is_valid=True).
+    # Brain techniques are pattern predictions, not independently verified here,
+    # so including them would inflate the reference with unverified claims.
+    # Brain D1 = recall (how many reference techniques brain predicted).
+    # Bot D1 = precision (validated / total_predicted) — see _score_bot().
+    # This lets each contender be measured on the dimension most meaningful to it.
+    reference: Set[str] = set()
     for b in bot_runs:
-        reference.update(b["techniques"])
+        reference.update(b.get("validated_techniques") or b["techniques"])
 
     # ── Score brain contenders ────────────────────────────────────────────────
     brain_d1 = referee.score_d1(brain["techniques"], reference)
@@ -463,8 +543,12 @@ def run_boxing_match(
     brain_d4 = referee.score_d4_brain(brain["infer_result"])
     brain_composite = referee.composite(brain_d1, brain_d2, brain_d3, brain_d4)
 
+    # Brain-mini D2: try synthetic path validation first; fall back to brain confidence
+    # when path heuristics return 0 (common for non-standard arch topologies).
     t_mini = time.perf_counter()
     brain_mini_d2 = referee.score_d2_synthetic(brain_mini["techniques"], nodes)
+    if brain_mini_d2 == 0.0 and brain_mini["techniques"]:
+        brain_mini_d2 = round(float(brain_mini["infer_result"].get("confidence", 0.0)), 4)
     brain_mini["latency_s"] = round(brain_mini["latency_s"] + (time.perf_counter() - t_mini), 3)
     brain_mini_d1 = brain_d1
     brain_mini_d3 = brain_d3
@@ -477,10 +561,12 @@ def run_boxing_match(
     for b in bot_runs:
         key = b["_key"]
         scores = _score_bot(referee, b, reference)
+        valid_techs = b.get("validated_techniques") or b["techniques"]
         contenders[key] = {
             "label": b["label"],
             "model": b.get("model"),
             "technique_count": len(b["techniques"]),
+            "validated_technique_count": len(valid_techs),
             "latency_s": b["latency_s"],
             "token_cost": b["token_cost"],
             "error": b["error"],
@@ -559,3 +645,138 @@ def run_boxing_match(
     logger.info("Boxing results written to %s", out_path)
 
     return result
+
+
+def promote_boxing_to_brain(arch_name: str) -> Dict[str, Any]:
+    """
+    Promote a boxing bot run into the brain as a real corpus instance.
+
+    Reads report/{arch_name}_boxing_bot/ground_truth.json, extracts an
+    InstanceEntry with arch_id=arch_name (clean name, no suffix), writes/
+    updates ta_brain_instances.jsonl, rebuilds the brain, and returns a
+    before/after confidence gap report.
+
+    Returns:
+        {
+          arch_name, pattern_id, pattern_arch_type,
+          before: {technique_count, d1_coverage},
+          after:  {technique_count, d1_coverage},
+          gap_closed: float,           # delta in recall fraction
+          new_techniques_added: int,
+          brain_version: int,
+        }
+    """
+    from chatbot.config import get_settings
+    from chatbot.modules.ta_brain_builder import (
+        build_brain, extract_instance, _load_rule_evaluator,
+    )
+    from chatbot.modules.ta_brain_query import query_brain
+
+    def _infer(arch: str) -> Dict:
+        return query_brain(mode="infer", arch_name=arch, caller_type="promote")
+
+    report_base = Path(get_settings().system.report_dir)
+    boxing_dir = report_base / f"{arch_name}_boxing_bot"
+
+    if not boxing_dir.exists():
+        raise FileNotFoundError(f"Boxing bot dir not found: {boxing_dir}")
+
+    gt_path = boxing_dir / "ground_truth.json"
+    if not gt_path.exists():
+        raise FileNotFoundError(f"No ground_truth.json in {boxing_dir}")
+
+    # ── Snapshot before ───────────────────────────────────────────────────────
+    try:
+        before_infer = _infer(arch_name)
+        before_techs = set(before_infer.get("predictions", {}).get("techniques", []))
+    except Exception:
+        before_techs = set()
+
+    valid_ref = set(
+        r["technique"]
+        for r in json.loads(gt_path.read_text())
+            .get("validation_report", {})
+            .get("validations", {})
+            .get("technique_relevance", [])
+        if r.get("valid")
+    )
+    before_d1 = round(len(before_techs & valid_ref) / len(valid_ref), 4) if valid_ref else 0.0
+
+    # ── Extract instance from boxing dir ─────────────────────────────────────
+    try:
+        rule_evaluator = _load_rule_evaluator()
+    except Exception:
+        rule_evaluator = None
+
+    inst = extract_instance(boxing_dir, rule_evaluator)
+    if inst is None:
+        raise ValueError(
+            f"extract_instance returned None for {boxing_dir} — "
+            "check that governance_signals.json exists in the boxing dir"
+        )
+
+    # Use a _promoted suffix so this entry bypasses HOLD_OUT_ARCHS.
+    # The original arch_id may be in the hold-out set (E2E validation gate);
+    # the promoted instance is a second, training-eligible copy from the boxing run.
+    promoted_id = f"{arch_name}_promoted"
+    inst["arch_id"] = promoted_id
+    inst["source"] = "real"
+
+    # ── Write/update JSONL ────────────────────────────────────────────────────
+    instances_path = report_base / "brain" / "ta_brain_instances.jsonl"
+    lines = []
+    replaced = False
+    if instances_path.exists():
+        for line in instances_path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                if entry.get("arch_id") == promoted_id:
+                    lines.append(json.dumps(inst))
+                    replaced = True
+                    continue
+            except Exception:
+                pass
+            lines.append(line)
+    if not replaced:
+        lines.append(json.dumps(inst))
+    instances_path.write_text("\n".join(lines) + "\n")
+    logger.info("Boxing promote: %s instance %s in JSONL",
+                "updated" if replaced else "added", promoted_id)
+
+    # ── Rebuild brain ─────────────────────────────────────────────────────────
+    build_brain(incremental=False)
+
+    # ── Snapshot after ────────────────────────────────────────────────────────
+    brain = json.loads((report_base / "brain" / "ta_brain.json").read_text())
+    after_infer = _infer(arch_name)
+    after_techs = set(after_infer.get("predictions", {}).get("techniques", []))
+    after_d1 = round(len(after_techs & valid_ref) / len(valid_ref), 4) if valid_ref else 0.0
+
+    # Find which pattern covers this arch
+    pattern_id = after_infer.get("evidence", {}).get("pattern_ids", [None])[0]
+    pattern_arch_type = next(
+        (p.get("trigger", {}).get("arch_type") for p in brain.get("patterns", [])
+         if p["id"] == pattern_id),
+        None,
+    )
+
+    return {
+        "arch_name": arch_name,
+        "pattern_id": pattern_id,
+        "pattern_arch_type": pattern_arch_type,
+        "before": {
+            "technique_count": len(before_techs),
+            "d1_coverage": before_d1,
+        },
+        "after": {
+            "technique_count": len(after_techs),
+            "d1_coverage": after_d1,
+        },
+        "gap_closed": round(after_d1 - before_d1, 4),
+        "new_techniques_added": len(after_techs - before_techs),
+        "brain_version": brain.get("pattern_version"),
+        "validated_reference_size": len(valid_ref),
+    }

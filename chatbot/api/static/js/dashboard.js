@@ -8593,12 +8593,11 @@ class Dashboard {
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // Shared filter: only real TA pipeline analyses — excludes system dirs (brain/,
-    // stepshield/, adapters/), boxing temp dirs, and any entry without pipeline output.
+    // True when the entry is a real TA pipeline run (has ground_truth.json).
+    // System-dir exclusion (brain/, adapters/, DEV-TEST/, …) is done API-side
+    // via _SYSTEM_DIRS in reports.py; this guard is a belt-and-braces check only.
     _isRealArch(a) {
-        return a.ssp_profile != null
-            && Array.isArray(a.files) && a.files.includes('ground_truth.json')
-            && !/_boxing_bot/.test(a.name);
+        return Array.isArray(a.files) && a.files.includes('ground_truth.json');
     }
 
     async _taWizSend(workspaceName) {
@@ -20249,7 +20248,7 @@ class Dashboard {
         const sel = document.getElementById('bench-run-select');
         if (!sel) return;
         try {
-            const res = await fetch('/api/v1/bench/runs', { headers: { 'TM-API-KEY': this.apiKey } });
+            const res = await fetch('/api/v1/bench/runs', { headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
             if (!res.ok) return;
             const { runs } = await res.json();
             // Only show complete runs (at least one non-zero depth score + has HTML report)
@@ -20325,7 +20324,7 @@ class Dashboard {
         const sel = document.getElementById('boxing-arch-select');
         if (!sel) return;
         try {
-            const res = await fetch('/api/v1/reports', { headers: { 'TM-API-KEY': this.apiKey } });
+            const res = await fetch('/api/v1/reports', { headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
             if (!res.ok) return;
             const data = await res.json();
             const archs = (data.architectures || []).filter(a => this._isRealArch(a));
@@ -20343,17 +20342,26 @@ class Dashboard {
     _boxingFillMmdPath(archName) {
         const inp = document.getElementById('boxing-mmd-path');
         if (!inp || !archName) return;
-        // Pre-fill with the corpus MMD path if it matches a known arch file
-        inp.value = inp.value || '';
-        inp.placeholder = `/mnt/c/BACKUP/DEV-TEST/tests/data/architectures/${archName}.mmd`;
+        const autoPath = `/mnt/c/BACKUP/DEV-TEST/report/${archName}/before.mmd`;
+        inp.placeholder = autoPath;
+        // Auto-fill value so the user doesn't need to type — they can override if needed
+        if (!inp.value) inp.value = autoPath;
     }
 
     async _boxingRun() {
         const archName  = document.getElementById('boxing-arch-select')?.value;
         const mmdPath   = document.getElementById('boxing-mmd-path')?.value?.trim();
         const modelsRaw = document.getElementById('boxing-models')?.value?.trim();
-        if (!archName || !mmdPath) {
-            this._boxingStatus('Select an architecture and enter the MMD path.', 'warn');
+        if (!archName) {
+            this._boxingStatus('Select an architecture from the dropdown first.', 'warn');
+            return;
+        }
+        if (!mmdPath) {
+            // Auto-fill from the saved before.mmd in the report folder
+            const autoPath = `/mnt/c/BACKUP/DEV-TEST/report/${archName}/before.mmd`;
+            const inp = document.getElementById('boxing-mmd-path');
+            if (inp) inp.value = autoPath;
+            this._boxingRun();   // retry with auto-filled path
             return;
         }
         const models = modelsRaw ? modelsRaw.split(',').map(m => m.trim()).filter(Boolean) : null;
@@ -20366,7 +20374,7 @@ class Dashboard {
             if (models) body.models = models;
             const res = await fetch('/api/v1/boxing/run', {
                 method: 'POST',
-                headers: { 'TM-API-KEY': this.apiKey, 'Content-Type': 'application/json' },
+                headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '', 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
             if (!res.ok) { const e = await res.json(); throw new Error(e.detail || res.status); }
@@ -20384,7 +20392,7 @@ class Dashboard {
         for (let i = 0; i < 90; i++) {
             await new Promise(r => setTimeout(r, 3000));
             try {
-                const res = await fetch(`/api/v1/boxing/jobs/${jobId}`, { headers: { 'TM-API-KEY': this.apiKey } });
+                const res = await fetch(`/api/v1/boxing/jobs/${jobId}`, { headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
                 if (!res.ok) continue;
                 const job = await res.json();
                 this._boxingStatus(`${job.message} (${job.progress}%)`, 'info');
@@ -20487,9 +20495,80 @@ class Dashboard {
             <span>Brain vs Bot quality delta: <strong>${qvsCost.brain_vs_bot_quality_delta != null ? (qvsCost.brain_vs_bot_quality_delta > 0 ? '+' : '') + (qvsCost.brain_vs_bot_quality_delta * 100).toFixed(1) + '%' : '—'}</strong></span>
             <span>Brain speedup: <strong>${qvsCost.brain_latency_speedup != null ? qvsCost.brain_latency_speedup + '×' : '—'}</strong></span>
             <span>Brain-mini speedup: <strong>${qvsCost.brain_mini_latency_speedup != null ? qvsCost.brain_mini_latency_speedup + '×' : '—'}</strong></span>
-          </div>`;
+          </div>
+          <div style="margin-top:0.5rem;font-size:0.71rem;color:var(--text-tertiary);border-top:1px solid var(--border-color);padding-top:0.5rem;">
+            <strong>D1 note:</strong> Bot D1 = precision (validated/total predicted — penalises hallucinations).
+            Brain D1 = recall (predicted techniques found in bot-validated reference of ${refCount}).
+            Different measures — both fair to what each contender can verify independently.
+          </div>
+          <div style="margin-top:1rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <button id="boxing-promote-btn" onclick="window.dashboard._boxingPromote('${result.arch_name}')"
+              style="padding:0.4rem 1rem;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:0.8rem;font-weight:700;cursor:pointer;">
+              🧠 Promote → Brain
+            </button>
+            <span style="font-size:0.72rem;color:var(--text-tertiary);">
+              Ingest bot's validated findings as a real corpus instance and rebuild brain to close the D1 gap.
+            </span>
+          </div>
+          <div id="boxing-promote-result" style="margin-top:0.75rem;"></div>`;
         this._boxingStatus('', 'info');
         document.getElementById('boxing-status').style.display = 'none';
+    }
+
+    async _boxingPromote(archName) {
+        const btn = document.getElementById('boxing-promote-btn');
+        const out = document.getElementById('boxing-promote-result');
+        if (!archName) return;
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Promoting…'; }
+        if (out) out.innerHTML = '';
+        try {
+            const res = await fetch('/api/v1/boxing/promote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' },
+                body: JSON.stringify({ arch_name: archName }),
+            });
+            if (!res.ok) throw new Error((await res.json()).detail || res.status);
+            const { job_id } = await res.json();
+            // Poll until done
+            const poll = async () => {
+                const r2 = await fetch(`/api/v1/boxing/jobs/${job_id}`, { headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
+                const job = await r2.json();
+                if (job.status === 'completed' && job.result) {
+                    const d = job.result;
+                    const gapColor = d.gap_closed >= 0 ? '#34d399' : '#f87171';
+                    const gapSign = d.gap_closed >= 0 ? '+' : '';
+                    if (out) out.innerHTML = `
+                      <div style="padding:0.75rem 1rem;background:#7c3aed12;border:1px solid #7c3aed44;border-radius:8px;font-size:0.78rem;">
+                        <div style="font-weight:700;color:#a78bfa;margin-bottom:0.4rem;">🧠 Brain updated — v${d.brain_version}</div>
+                        <div style="display:flex;gap:2rem;flex-wrap:wrap;">
+                          <span>Pattern: <strong>${d.pattern_id || '—'}</strong> (${d.pattern_arch_type || '—'})</span>
+                          <span>Reference: <strong>${d.validated_reference_size}</strong> validated techniques</span>
+                          <span>New techniques added: <strong>${d.new_techniques_added}</strong></span>
+                        </div>
+                        <div style="margin-top:0.5rem;display:flex;gap:1.5rem;align-items:center;">
+                          <span>Before D1: <strong>${(d.before.d1_coverage * 100).toFixed(1)}%</strong> (${d.before.technique_count} techs)</span>
+                          <span style="font-size:1rem;">→</span>
+                          <span>After D1: <strong>${(d.after.d1_coverage * 100).toFixed(1)}%</strong> (${d.after.technique_count} techs)</span>
+                          <span style="color:${gapColor};font-weight:700;">Gap closed: ${gapSign}${(d.gap_closed * 100).toFixed(1)}%</span>
+                        </div>
+                        <div style="margin-top:0.5rem;font-size:0.71rem;color:var(--text-tertiary);">
+                          Re-run boxing to see updated brain scores.
+                        </div>
+                      </div>`;
+                    if (btn) { btn.textContent = '✅ Promoted'; btn.style.background = '#059669'; }
+                } else if (job.status === 'failed') {
+                    if (out) out.innerHTML = `<span style="color:#f87171;">Promote failed: ${job.error}</span>`;
+                    if (btn) { btn.disabled = false; btn.textContent = '🧠 Promote → Brain'; }
+                } else {
+                    if (out) out.innerHTML = `<span style="color:var(--text-tertiary);font-size:0.75rem;">${job.message || 'Running…'}</span>`;
+                    setTimeout(poll, 2000);
+                }
+            };
+            setTimeout(poll, 1500);
+        } catch (err) {
+            if (out) out.innerHTML = `<span style="color:#f87171;">Error: ${err.message}</span>`;
+            if (btn) { btn.disabled = false; btn.textContent = '🧠 Promote → Brain'; }
+        }
     }
 
     async _boxingLoadHistory() {
@@ -20497,7 +20576,7 @@ class Dashboard {
         if (!el) return;
         this._boxingStatus('Loading history…', 'info');
         try {
-            const res = await fetch('/api/v1/boxing/results', { headers: { 'TM-API-KEY': this.apiKey } });
+            const res = await fetch('/api/v1/boxing/results', { headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
             if (!res.ok) throw new Error(res.status);
             const { results } = await res.json();
             if (!results.length) {
@@ -20505,30 +20584,93 @@ class Dashboard {
                 document.getElementById('boxing-status').style.display = 'none';
                 return;
             }
-            const rows = results.map(r => {
-                const scores = r.scores || {};
-                const scoreStr = Object.entries(scores).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(' · ');
-                return `<tr>
-                  <td style="padding:5px 10px;font-size:0.78rem;">${r.arch_name}</td>
-                  <td style="padding:5px 10px;font-size:0.76rem;color:var(--text-tertiary);">${r.run_at ? r.run_at.slice(0, 16).replace('T', ' ') : ''}</td>
-                  <td style="padding:5px 10px;font-size:0.78rem;color:#f59e0b;font-weight:600;">${r.winner || '—'}</td>
-                  <td style="padding:5px 10px;font-size:0.72rem;color:var(--text-tertiary);">${scoreStr}</td>
-                </tr>`;
-            }).join('');
-            el.innerHTML = `
-              <div style="overflow-x:auto;">
-                <table style="width:100%;border-collapse:collapse;background:var(--card-bg);border-radius:8px;overflow:hidden;">
-                  <thead style="background:var(--sidebar-bg);">
-                    <tr>
-                      <th style="padding:6px 10px;font-size:0.75rem;color:var(--text-tertiary);text-align:left;">Architecture</th>
-                      <th style="padding:6px 10px;font-size:0.75rem;color:var(--text-tertiary);text-align:left;">Run At</th>
-                      <th style="padding:6px 10px;font-size:0.75rem;color:var(--text-tertiary);text-align:left;">Winner</th>
-                      <th style="padding:6px 10px;font-size:0.75rem;color:var(--text-tertiary);text-align:left;">Composite Scores</th>
-                    </tr>
-                  </thead>
-                  <tbody>${rows}</tbody>
-                </table>
-              </div>`;
+
+            // Group by arch name
+            const byArch = {};
+            results.forEach(r => {
+                if (!byArch[r.arch_name]) byArch[r.arch_name] = [];
+                byArch[r.arch_name].push(r);
+            });
+
+            const hdrStyle = `display:flex;align-items:center;gap:0.6rem;padding:0.55rem 0.9rem;
+                cursor:pointer;border-bottom:1px solid var(--border-color);
+                font-size:0.82rem;font-weight:600;user-select:none;
+                background:var(--sidebar-bg);transition:background 0.15s;`;
+            const bodyStyle = `display:none;padding:0.5rem 0.9rem 0.75rem;border-bottom:1px solid var(--border-color);`;
+
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'border:1px solid var(--border-color);border-radius:8px;overflow:hidden;';
+
+            Object.entries(byArch).forEach(([arch, runs]) => {
+                const latest = runs[0];
+                const winner = latest.winner || '—';
+                const winnerColor = winner === 'bot' ? '#60a5fa' : winner.startsWith('brain') ? '#10b981' : '#f59e0b';
+
+                const hdr = document.createElement('div');
+                hdr.style.cssText = hdrStyle;
+                hdr.innerHTML = `
+                  <span style="font-size:0.7rem;color:var(--text-tertiary);">▶</span>
+                  <span style="flex:1;">${arch}</span>
+                  <span style="font-size:0.72rem;color:var(--text-tertiary);">${runs.length} run${runs.length > 1 ? 's' : ''}</span>
+                  <span style="font-size:0.72rem;color:${winnerColor};font-weight:700;">Winner: ${winner}</span>`;
+
+                const body = document.createElement('div');
+                body.style.cssText = bodyStyle;
+                let open = false;
+                let built = false;
+
+                const buildBody = () => {
+                    body.innerHTML = '';
+                    runs.forEach((r, ri) => {
+                        const scores = r.scores || {};
+                        const ts = r.run_at ? r.run_at.slice(0, 16).replace('T', ' ') : '';
+                        const scoreStr = Object.entries(scores)
+                            .map(([k, v]) => `<span style="margin-right:0.75rem;">${k.replace('_',' ')}: <strong>${(v*100).toFixed(1)}%</strong></span>`)
+                            .join('');
+
+                        const row = document.createElement('div');
+                        row.style.cssText = `display:flex;align-items:center;gap:0.75rem;padding:0.4rem 0;
+                            border-bottom:${ri < runs.length-1 ? '1px solid var(--border-color)' : 'none'};
+                            font-size:0.76rem;`;
+                        row.innerHTML = `
+                          <span style="color:var(--text-tertiary);flex-shrink:0;">${ts}</span>
+                          <span style="color:#f59e0b;font-weight:700;flex-shrink:0;">★ ${r.winner || '—'}</span>
+                          <span style="flex:1;flex-wrap:wrap;display:flex;gap:0;color:var(--text-secondary);">${scoreStr}</span>
+                          <button style="flex-shrink:0;padding:2px 10px;font-size:0.72rem;background:#f59e0b22;border:1px solid #f59e0b55;
+                              border-radius:4px;color:#f59e0b;cursor:pointer;white-space:nowrap;">View scorecard</button>`;
+
+                        row.querySelector('button').addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const full = r.full_result;
+                            if (full) { this._boxingRenderScorecard(full); return; }
+                            try {
+                                const r2 = await fetch('/api/v1/boxing/results', { headers: { 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' } });
+                                if (r2.ok) {
+                                    const d2 = await r2.json();
+                                    const match = (d2.results || []).find(x => x.arch_name === r.arch_name);
+                                    if (match?.full_result) this._boxingRenderScorecard(match.full_result);
+                                }
+                            } catch (_) {}
+                        });
+                        body.appendChild(row);
+                    });
+                };
+
+                hdr.addEventListener('click', () => {
+                    open = !open;
+                    body.style.display = open ? 'block' : 'none';
+                    hdr.querySelector('span').textContent = open ? '▼' : '▶';
+                    if (open && !built) { built = true; buildBody(); }
+                });
+                hdr.addEventListener('mouseover', () => hdr.style.background = '#f59e0b11');
+                hdr.addEventListener('mouseout',  () => hdr.style.background = 'var(--sidebar-bg)');
+
+                wrap.appendChild(hdr);
+                wrap.appendChild(body);
+            });
+
+            el.innerHTML = '<p style="font-size:0.78rem;color:var(--text-tertiary);margin:0 0 0.75rem;">Click an architecture to expand its boxing runs.</p>';
+            el.appendChild(wrap);
             document.getElementById('boxing-status').style.display = 'none';
         } catch (err) {
             this._boxingStatus(`Failed to load history: ${err.message}`, 'error');

@@ -277,9 +277,9 @@ def run_distiller(instances: list, min_evidence: int = MIN_EVIDENCE) -> list:
                 "node_count_min": min(node_counts) if node_counts else 0,
             },
             "predicts": {
-                "techniques": primary_techniques[:20],
+                "techniques": primary_techniques[:50],
                 "technique_frequencies": {
-                    t: round(c / weighted_n, 3) for t, c in tech_counter.most_common(20)
+                    t: round(c / weighted_n, 3) for t, c in tech_counter.most_common(50)
                 },
                 "detect_rules": primary_rules,
                 "aivss_floor": aivss_floor,
@@ -406,8 +406,13 @@ def build_brain(
             existing_ids.add(inst["arch_id"])
             existing_instances.append(inst)
 
+    # Non-incremental: keep instances that have no report/ dir (e.g. StepShield ss_inc_*).
+    # These only exist as JSONL entries and must be preserved across full rebuilds.
+    # Instances that DO have dirs will be re-extracted below; JSONL entries for them
+    # are dropped so fresh extraction overwrites stale data.
     if not incremental:
-        existing_instances = []
+        dir_names = {d.name for d in report_dir.iterdir() if d.is_dir()}
+        existing_instances = [i for i in existing_instances if i["arch_id"] not in dir_names]
 
     try:
         rule_evaluator = _load_rule_evaluator()
@@ -415,12 +420,20 @@ def build_brain(
         logger.warning("RuleEvaluator unavailable (%s) — fired_detect_rules will be empty", exc)
         rule_evaluator = None
 
+    # Directories to skip: system dirs, boxing run dirs (not real corpus instances).
+    _SKIP_PREFIXES = (".",)
+    _SKIP_SUFFIXES = ("_boxing_bot",)
+    _SKIP_NAMES = frozenset({"brain", "stepshield", "synthetic_queue", "adapters", "sample", "openapi", "DEV-TEST"})
+
     new_instances: list = []
     skipped: list = []
 
     arch_dirs = sorted(
         d for d in report_dir.iterdir()
-        if d.is_dir() and not d.name.startswith(".")
+        if d.is_dir()
+        and not any(d.name.startswith(p) for p in _SKIP_PREFIXES)
+        and not any(d.name.endswith(s) for s in _SKIP_SUFFIXES)
+        and d.name not in _SKIP_NAMES
     )
 
     for arch_dir in arch_dirs:

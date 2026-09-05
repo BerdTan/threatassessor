@@ -104,6 +104,50 @@ async def boxing_job_status(job_id: str):
     }
 
 
+class PromoteRequest(BaseModel):
+    arch_name: str
+
+
+async def _run_promote_job(job: Job, arch_name: str) -> None:
+    store = get_job_store()
+    try:
+        store.update(job.job_id, status="running", progress=20, message=f"Promoting {arch_name} → brain")
+        from chatbot.modules.ta_boxing import promote_boxing_to_brain
+
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: promote_boxing_to_brain(arch_name)
+        )
+        gap = result.get("gap_closed", 0)
+        store.update(
+            job.job_id,
+            status="completed",
+            progress=100,
+            message=f"Promote complete — D1 gap closed: {gap:+.1%}",
+            result=result,
+        )
+    except Exception as exc:
+        logger.exception("Promote job %s failed", job.job_id)
+        store.update(job.job_id, status="failed", error=str(exc), progress=0)
+
+
+@router.post("/boxing/promote", dependencies=[Depends(verify_api_key)])
+async def boxing_promote(body: PromoteRequest):
+    """
+    Promote a completed boxing bot run into the brain as a real corpus instance,
+    rebuild the brain, and return a confidence gap report.
+    """
+    store = get_job_store()
+    job = store.create()
+    store.update(job.job_id, message=f"Promote queued for {body.arch_name}")
+    asyncio.create_task(_run_promote_job(job, body.arch_name))
+    return {
+        "job_id": job.job_id,
+        "status": "queued",
+        "arch_name": body.arch_name,
+        "poll_url": f"/api/v1/boxing/jobs/{job.job_id}",
+    }
+
+
 @router.get("/boxing/results", dependencies=[Depends(verify_api_key)])
 async def boxing_results_list():
     """List all saved boxing_results.json files in the report directory."""
@@ -118,7 +162,7 @@ async def boxing_results_list():
                 "run_at": data.get("run_at"),
                 "winner": data.get("verdict", {}).get("winner"),
                 "scores": data.get("verdict", {}).get("scores", {}),
-                "path": str(p),
+                "full_result": data,
             })
         except Exception:
             pass
