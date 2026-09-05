@@ -745,7 +745,7 @@ class Dashboard {
             if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             const archs = Array.isArray(data) ? data : (data.architectures || []);
-            this._recentArchs = archs.sort((a, b) => (b.analysed_at || 0) - (a.analysed_at || 0));
+            this._recentArchs = archs.filter(a => this._isRealArch(a)).sort((a, b) => (b.analysed_at || 0) - (a.analysed_at || 0));
             this._renderRecentList(this._recentArchs);
         } catch (e) {
             list.innerHTML = `<div style="padding:1rem; color:var(--text-tertiary); font-size:0.8125rem;">Could not load architectures</div>`;
@@ -3372,7 +3372,7 @@ class Dashboard {
             const resp = await fetch('/api/v1/reports');
             if (!resp.ok) return;
             const data = await resp.json();
-            const archs = data.architectures || [];
+            const archs = (data.architectures || []).filter(a => this._isRealArch(a));
 
             const wrap = document.getElementById('arch-history-wrap');
             const list = document.getElementById('arch-history-list');
@@ -8591,6 +8591,14 @@ class Dashboard {
 
     _escHtml(s) {
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Shared filter: only real TA pipeline analyses — excludes system dirs (brain/,
+    // stepshield/, adapters/), boxing temp dirs, and any entry without pipeline output.
+    _isRealArch(a) {
+        return a.ssp_profile != null
+            && Array.isArray(a.files) && a.files.includes('ground_truth.json')
+            && !/_boxing_bot/.test(a.name);
     }
 
     async _taWizSend(workspaceName) {
@@ -20320,10 +20328,7 @@ class Dashboard {
             const res = await fetch('/api/v1/reports', { headers: { 'TM-API-KEY': this.apiKey } });
             if (!res.ok) return;
             const data = await res.json();
-            // Only show architectures with a real analysis (ground_truth.json present)
-            const archs = (data.architectures || []).filter(a =>
-                a.files && a.files.includes('ground_truth.json')
-            );
+            const archs = (data.architectures || []).filter(a => this._isRealArch(a));
             sel.innerHTML = '<option value="">— select architecture —</option>';
             for (const a of archs) {
                 const opt = document.createElement('option');
