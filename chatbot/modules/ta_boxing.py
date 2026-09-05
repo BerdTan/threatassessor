@@ -1,22 +1,30 @@
 """
-TA Boxing — Brain vs Bot evaluation framework.
+TA Boxing — multi-contender evaluation framework.
 
-Three contenders, one deterministic referee, four quality dimensions + efficiency metrics.
+Five contenders, one deterministic referee, four quality dimensions + efficiency metrics.
 
-Contenders:
-  bot        — full LLM pipeline via ThreatAssessorHarness (LANGFUSE_SKIP=1)
-  brain      — TA Brain pattern inference; D2 corpus-derived from evidence arch history
-  brain_mini — TA Brain pattern inference; D2 arch-specific via synthetic path validation
+Contenders (default: det_moe_full + brain + brain_lexical):
+  det_moe_full   — reads canonical report/{arch}/ground_truth.json (full MoE if run)
+  llm_only       — fresh API_ONLY LLM run (no critics); opt-in
+  det_eng_only   — harness with use_llm=False (pure graph traversal); opt-in
+  brain          — TA Brain corpus pattern inference; D2 from evidence arch history
+  brain_lexical  — keyword→MITRE lookup on MMD node labels; pure lexical, no patterns
 
-Referee dimensions:
-  D1  threat_completeness   — bot: precision (validated/total); brain: recall vs bot-validated reference
+Referee dimensions (same criteria for all contenders):
+  D1  threat_completeness   — det_moe_full: precision (validated/total predicted)
+                              all others: recall vs det_moe_full validated reference
   D2  threat_accuracy       — topology applicability (method varies per contender)
   D3  mitigation_relevance  — % techniques with ≥1 official ATT&CK M-mitigation
   D4  actionability         — remediation quality: severity + named control + rationale
 
+Routing signal: boxing results over many archs drive model_routing.yaml —
+  brain D1 ≥ threshold → route to brain (fast, free)
+  llm_only D1 ≈ det_moe_full → MoE critics add little value for this arch_type
+  brain_lexical ≈ brain → patterns aren't adding value over keyword scanning
+
 Efficiency (alongside scores):
   latency_s   — wall-clock seconds
-  token_cost  — estimated tokens (bot only; 0 for brain/brain_mini)
+  token_cost  — estimated tokens (LLM contenders only; 0 for brain/lexical/det_eng)
 """
 
 from __future__ import annotations
@@ -284,24 +292,23 @@ def _extract_validated_techniques(gt: Dict) -> List[str]:
     ))
 
 
-def run_bot_contender(
+def run_det_moe_full_contender(
     arch_name: str,
     mmd_path: str,
     ssp_profile: str = "low_risk_cloud",
     model_override: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Use the best available bot result for arch_name.
+    Gold-standard contender: reads the best available existing assessment.
 
     Priority:
-    1. Existing report/{arch_name}/ground_truth.json — preserves full MoE run;
-       never overwrites a completed assessment with a weaker API_ONLY result.
-    2. Existing report/{arch_name}_boxing_bot/ground_truth.json — a prior boxing run.
-    3. Fresh LLM pipeline run (API_ONLY) into _boxing_bot dir — only when no prior
-       result exists for this arch.
+    1. report/{arch_name}/ground_truth.json — canonical assessment (full MoE if run).
+       Never overwritten; this is what all other contenders are compared against.
+    2. report/{arch_name}_boxing_bot/ground_truth.json — prior boxing cache.
+    3. Fresh API_ONLY LLM run into _boxing_bot dir — only when nothing exists.
 
-    model_override forces a fresh run into a model-labelled boxing dir regardless
-    of (1) and (2), since a model comparison needs fresh per-model outputs.
+    model_override forces a fresh run into a model-labelled dir; used when comparing
+    multiple LLM providers as separate det_moe_full variants.
 
     Returns scored contender dict ready for the referee.
     """
@@ -396,10 +403,14 @@ def run_bot_contender(
     validated_techniques = _extract_validated_techniques(gt)
     control_recs = gt.get("control_recommendations", [])
 
-    label = f"LLM Pipeline ({model_override})" if model_override else "LLM Pipeline"
-    if not model_override and existing_gt is not None:
-        src = "MoE" if (parent_report_dir / arch_name / "ground_truth.json") == existing_gt else "cached"
-        label = f"LLM Pipeline [{src}]"
+    if model_override:
+        label = f"Det/MoE ({model_override})"
+    elif existing_gt == (parent_report_dir / arch_name / "ground_truth.json"):
+        label = "Det/MoE Full [canonical]"
+    elif existing_gt is not None:
+        label = "Det/MoE Full [cached]"
+    else:
+        label = "Det/MoE Full [fresh API_ONLY]"
     return {
         "label": label,
         "model": model_override or os.environ.get("LLM_PROVIDER", "default"),
@@ -413,11 +424,197 @@ def run_bot_contender(
     }
 
 
-def run_brain_contenders(arch_name: str, arch_type: str = "") -> Tuple[Dict, Dict]:
+def run_llm_only_contender(
+    arch_name: str,
+    mmd_path: str,
+    ssp_profile: str = "low_risk_cloud",
+    model_override: Optional[str] = None,
+) -> Dict[str, Any]:
     """
-    Run the TA Brain inference once; return separate dicts for Brain and Brain-mini.
-    Both share the same technique predictions — only D2 source differs.
+    Fresh API_ONLY LLM run (Analysis + Report stages, no critics).
+    Writes to report/{arch}_boxing_llmonly/. Measures LLM value without MoE overhead.
     """
+    from chatbot.harness.controller import ThreatAssessorHarness, PipelineRequest
+    from chatbot.config import get_settings
+
+    suffix = f"_boxing_llmonly_{model_override}" if model_override else "_boxing_llmonly"
+    boxing_arch_name = f"{arch_name}{suffix}"
+    boxing_dir = Path(get_settings().system.report_dir) / boxing_arch_name
+    boxing_dir.mkdir(parents=True, exist_ok=True)
+
+    env_patch: Dict[str, str] = {"LANGFUSE_SKIP": "1"}
+    if model_override:
+        env_patch["LLM_PROVIDER"] = model_override
+    old_env = {k: os.environ.get(k) for k in env_patch}
+    os.environ.update(env_patch)
+
+    t0 = time.perf_counter()
+    gt: Dict = {}
+    self_val: Dict = {}
+    token_cost = 0
+    error: Optional[str] = None
+
+    try:
+        harness = ThreatAssessorHarness()
+        req = PipelineRequest(
+            architecture_path=mmd_path,
+            report_dir=str(boxing_dir),
+            ssp_profile=ssp_profile,
+            architecture_name=boxing_arch_name,
+            use_llm=True,
+            enable_moe=False,
+        )
+        harness.run_typed(req)
+        gt_path = boxing_dir / "ground_truth.json"
+        if gt_path.exists():
+            gt = json.loads(gt_path.read_text())
+            self_val = gt.get("validation_report", {})
+        gs_path = boxing_dir / "governance_signals.json"
+        if gs_path.exists():
+            gs = json.loads(gs_path.read_text())
+            token_cost = gs.get("llm_usage", {}).get("total_tokens", 0)
+    except Exception as exc:
+        error = str(exc)
+        logger.warning("LLM-only contender failed: %s", exc)
+    finally:
+        for k, v in old_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    latency = round(time.perf_counter() - t0, 2)
+    label = f"LLM-only ({model_override})" if model_override else "LLM-only"
+    return {
+        "label": label,
+        "model": model_override or os.environ.get("LLM_PROVIDER", "default"),
+        "techniques": _extract_techniques_from_ground_truth(gt),
+        "validated_techniques": _extract_validated_techniques(gt),
+        "control_recommendations": gt.get("control_recommendations", []),
+        "self_val": self_val,
+        "latency_s": latency,
+        "token_cost": token_cost,
+        "error": error,
+    }
+
+
+def run_det_eng_only_contender(
+    arch_name: str,
+    mmd_path: str,
+    ssp_profile: str = "low_risk_cloud",
+) -> Dict[str, Any]:
+    """
+    Deterministic graph-traversal only — harness with use_llm=False.
+    Writes to report/{arch}_boxing_deteng/. Baseline: what structure alone reveals.
+    """
+    from chatbot.harness.controller import ThreatAssessorHarness, PipelineRequest
+    from chatbot.config import get_settings
+
+    boxing_arch_name = f"{arch_name}_boxing_deteng"
+    boxing_dir = Path(get_settings().system.report_dir) / boxing_arch_name
+    boxing_dir.mkdir(parents=True, exist_ok=True)
+
+    t0 = time.perf_counter()
+    gt: Dict = {}
+    self_val: Dict = {}
+    error: Optional[str] = None
+
+    try:
+        os.environ["LANGFUSE_SKIP"] = "1"
+        harness = ThreatAssessorHarness()
+        req = PipelineRequest(
+            architecture_path=mmd_path,
+            report_dir=str(boxing_dir),
+            ssp_profile=ssp_profile,
+            architecture_name=boxing_arch_name,
+            use_llm=False,
+            enable_moe=False,
+        )
+        harness.run_typed(req)
+        gt_path = boxing_dir / "ground_truth.json"
+        if gt_path.exists():
+            gt = json.loads(gt_path.read_text())
+            self_val = gt.get("validation_report", {})
+    except Exception as exc:
+        error = str(exc)
+        logger.warning("Det-eng-only contender failed: %s", exc)
+
+    latency = round(time.perf_counter() - t0, 2)
+    return {
+        "label": "Det/Eng-only (graph traversal)",
+        "model": "deterministic",
+        "techniques": _extract_techniques_from_ground_truth(gt),
+        "validated_techniques": _extract_validated_techniques(gt),
+        "control_recommendations": gt.get("control_recommendations", []),
+        "self_val": self_val,
+        "latency_s": latency,
+        "token_cost": 0,
+        "error": error,
+    }
+
+
+# ── Keyword→MITRE technique map for lexical contender ─────────────────────────
+# Each entry: (keyword_tokens, [technique_ids])
+# Matched against lowercased node labels from the MMD graph.
+_LEXICAL_MAP: List[Tuple[List[str], List[str]]] = [
+    (["llm", "language model", "gpt", "claude", "gemini", "openai", "bedrock", "vertex ai"],
+     ["AML.T0025", "AML.T0051", "AML.T0051.000", "AML.T0051.001", "AML.T0040", "AML.T0054"]),
+    (["vector db", "embedding", "rag", "retrieval"],
+     ["AML.T0025", "T1213", "T1530"]),
+    (["api", "api gateway", "rest", "graphql", "endpoint"],
+     ["T1190", "T1133", "T1071", "T1059"]),
+    (["auth", "identity", "iam", "jwt", "oauth", "sso", "cognito", "entra", "okta"],
+     ["T1110", "T1078", "T1528", "T1550"]),
+    (["database", "db", "sql", "postgres", "mysql", "mongodb", "redis", "dynamodb"],
+     ["T1213", "T1190", "T1485", "T1486"]),
+    (["storage", "s3", "blob", "gcs", "object store", "bucket"],
+     ["T1530", "T1213", "T1567"]),
+    (["container", "docker", "kubernetes", "k8s", "pod", "eks", "aks", "gke"],
+     ["T1610", "T1552", "T1543", "T1059"]),
+    (["serverless", "lambda", "function", "cloud function", "cloud run"],
+     ["T1059", "T1190", "T1552"]),
+    (["network", "vpc", "subnet", "vnet", "firewall", "security group"],
+     ["T1040", "T1046", "T1090", "T1557"]),
+    (["web", "nginx", "apache", "cdn", "cloudfront", "load balancer"],
+     ["T1190", "T1071", "T1498", "T1499"]),
+    (["message queue", "kafka", "sqs", "pubsub", "event", "stream"],
+     ["T1059", "T1485", "T1041"]),
+    (["ci", "cd", "pipeline", "github actions", "jenkins", "deploy"],
+     ["T1195", "T1059", "T1552"]),
+    (["secret", "vault", "key management", "kms", "hsm"],
+     ["T1552", "T1555", "T1212"]),
+    (["monitoring", "logging", "siem", "cloudwatch", "datadog", "splunk"],
+     ["T1562", "T1070"]),
+    (["user", "client", "browser", "mobile", "frontend"],
+     ["T1059", "T1078", "T1204"]),
+    (["microservice", "service mesh", "istio", "envoy"],
+     ["T1040", "T1557", "T1090"]),
+]
+
+
+def _lexical_techniques_from_mmd(mmd_path: str) -> List[str]:
+    """
+    Extract MITRE techniques by keyword-matching MMD node labels.
+    Pure lexical — no patterns, no LLM. Fast baseline for any MMD file.
+    """
+    try:
+        from chatbot.adapters.mmd_adapter import MMDAdapter
+        mmd_text = Path(mmd_path).read_text()
+        graph = MMDAdapter().extract(mmd_text, mmd_path)
+        labels = " ".join(n.label.lower() for n in graph.nodes)
+    except Exception:
+        labels = Path(mmd_path).read_text().lower()
+
+    found: dict = {}
+    for keywords, techniques in _LEXICAL_MAP:
+        if any(kw in labels for kw in keywords):
+            for t in techniques:
+                found.setdefault(t, True)
+    return list(found.keys())
+
+
+def run_brain_contender(arch_name: str, arch_type: str = "") -> Dict[str, Any]:
+    """TA Brain corpus pattern inference. D2 from evidence arch history."""
     from chatbot.modules.ta_brain_query import query_brain
 
     t0 = time.perf_counter()
@@ -430,8 +627,7 @@ def run_brain_contenders(arch_name: str, arch_type: str = "") -> Tuple[Dict, Dic
 
     techniques = infer.get("predictions", {}).get("techniques", [])
     pattern_ids = infer.get("evidence", {}).get("pattern_ids", [])
-
-    brain_data = {
+    return {
         "label": "TA Brain (corpus inference)",
         "techniques": techniques,
         "infer_result": infer,
@@ -440,30 +636,76 @@ def run_brain_contenders(arch_name: str, arch_type: str = "") -> Tuple[Dict, Dic
         "token_cost": 0,
         "error": None if infer.get("had_match") else "no_pattern_match",
     }
-    brain_mini_data = {
-        "label": "TA Brain-mini (arch-specific)",
+
+
+def run_brain_lexical_contender(mmd_path: str) -> Dict[str, Any]:
+    """
+    Lexical keyword→MITRE lookup on MMD node labels.
+    No patterns, no LLM — pure text matching baseline.
+    D2: fraction of predicted techniques that are in the MITRE ATT&CK enterprise set
+    (a proxy for precision — lexical hits that are real techniques).
+    """
+    t0 = time.perf_counter()
+    error: Optional[str] = None
+    techniques: List[str] = []
+    try:
+        techniques = _lexical_techniques_from_mmd(mmd_path)
+    except Exception as exc:
+        error = str(exc)
+        logger.warning("Brain-lexical contender failed: %s", exc)
+    latency = round(time.perf_counter() - t0, 3)
+    return {
+        "label": "Brain-lexical (keyword scan)",
         "techniques": techniques,
-        "infer_result": infer,
-        "pattern_ids": pattern_ids,
-        "latency_s": latency,  # same inference; synthetic path adds marginal time
+        "infer_result": {"had_match": bool(techniques), "predictions": {"techniques": techniques}, "evidence": {}, "confidence": 0.0},
+        "pattern_ids": [],
+        "latency_s": latency,
         "token_cost": 0,
-        "error": None if infer.get("had_match") else "no_pattern_match",
+        "error": error,
     }
-    return brain_data, brain_mini_data
 
 
 # ── Orchestrator ──────────────────────────────────────────────────────────────
 
-def _score_bot(referee: BoxingReferee, bot: Dict, reference: Set[str]) -> Dict[str, float]:
-    # D1: precision = validated / total_predicted
-    # Bot recall against the reference is ~100% by construction (it contributed the reference).
-    # Precision penalises hallucinations that didn't survive self-validation.
-    valid_techs = bot.get("validated_techniques") or bot["techniques"]
-    all_techs = bot["techniques"]
+_ALL_CONTENDERS = ("det_moe_full", "llm_only", "det_eng_only", "brain", "brain_lexical")
+_DEFAULT_CONTENDERS = ("det_moe_full", "brain", "brain_lexical")
+
+
+def _score_lm_contender(referee: BoxingReferee, c: Dict, reference: Set[str]) -> Dict[str, float]:
+    """Score any LLM-based contender (det_moe_full / llm_only / det_eng_only)."""
+    valid_techs = c.get("validated_techniques") or c["techniques"]
+    all_techs = c["techniques"]
+    # D1: precision — penalises hallucinations; recall against reference is always ~100%
+    #     for the gold-standard contender that built the reference.
     d1 = referee.score_d1_precision(valid_techs, all_techs)
-    d2 = referee.score_d2_validated(bot["self_val"])
+    d2 = referee.score_d2_validated(c["self_val"])
     d3 = referee.score_d3(valid_techs)
-    d4 = referee.score_d4_bot(bot["control_recommendations"])
+    d4 = referee.score_d4_bot(c["control_recommendations"])
+    return {"threat_completeness": d1, "threat_accuracy": d2,
+            "mitigation_relevance": d3, "actionability": d4,
+            "composite": referee.composite(d1, d2, d3, d4)}
+
+
+def _score_brain_contender(referee: BoxingReferee, c: Dict, reference: Set[str]) -> Dict[str, float]:
+    """Score brain (corpus pattern inference). D1 = recall vs gold reference."""
+    techs = c["techniques"]
+    d1 = referee.score_d1(techs, reference)
+    d2 = referee.score_d2_corpus(c["pattern_ids"])
+    d3 = referee.score_d3(techs)
+    d4 = referee.score_d4_brain(c["infer_result"])
+    return {"threat_completeness": d1, "threat_accuracy": d2,
+            "mitigation_relevance": d3, "actionability": d4,
+            "composite": referee.composite(d1, d2, d3, d4)}
+
+
+def _score_lexical_contender(referee: BoxingReferee, c: Dict, reference: Set[str]) -> Dict[str, float]:
+    """Score brain-lexical. D1 = recall vs reference; D2 = fraction that are real MITRE IDs."""
+    techs = c["techniques"]
+    d1 = referee.score_d1(techs, reference)
+    # D2: how many lexical hits are real MITRE technique IDs (rough applicability proxy)
+    d2 = round(len([t for t in techs if t.startswith("T") or t.startswith("AML.")]) / max(len(techs), 1), 4)
+    d3 = referee.score_d3(techs)
+    d4 = 0.0  # lexical produces no control recommendations
     return {"threat_completeness": d1, "threat_accuracy": d2,
             "mitigation_relevance": d3, "actionability": d4,
             "composite": referee.composite(d1, d2, d3, d4)}
@@ -474,167 +716,136 @@ def run_boxing_match(
     mmd_path: str,
     ssp_profile: str = "low_risk_cloud",
     arch_type: str = "",
-    nodes: Optional[Dict[str, Dict]] = None,
     models: Optional[List[str]] = None,
+    contenders: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Run a full boxing match for arch_name and write boxing_results.json.
+    Run a boxing match for arch_name and write boxing_results.json.
 
     Args:
         arch_name:   architecture identifier
         mmd_path:    path to the .mmd file
-        ssp_profile: SSP profile for bot contender(s)
+        ssp_profile: SSP profile for LLM contenders
         arch_type:   optional arch_type hint for brain inference
-        nodes:       optional pre-parsed node dict for brain-mini synthetic paths
-        models:      list of LLM_PROVIDER keys to test as separate bot contenders
-                     (e.g. ["hetzner", "gemini_flash", "minimax"]).
-                     None or [] runs a single default bot contender.
+        models:      list of LLM_PROVIDER keys to run multiple det_moe_full variants
+        contenders:  which contenders to run; defaults to det_moe_full + brain + brain_lexical.
+                     Any of: det_moe_full, llm_only, det_eng_only, brain, brain_lexical
 
     Returns:
         Full scorecard dict (also written to report/<arch_name>/boxing_results.json).
     """
     from chatbot.config import get_settings
 
+    run_set = set(contenders or _DEFAULT_CONTENDERS)
     report_dir = Path(get_settings().system.report_dir) / arch_name
     report_dir.mkdir(parents=True, exist_ok=True)
-
     referee = BoxingReferee()
 
-    # ── Parse nodes for brain-mini D2 if not provided ────────────────────────
-    if nodes is None:
-        try:
-            from chatbot.adapters.mmd_adapter import MMDAdapter
-            mmd_text = Path(mmd_path).read_text()
-            graph = MMDAdapter().extract(mmd_text, mmd_path)
-            nodes = {n.id: {"label": n.label, "type": n.node_type} for n in graph.nodes}
-        except Exception as exc:
-            logger.warning("Could not parse MMD nodes for brain-mini D2: %s", exc)
-            nodes = {}
+    results_map: Dict[str, Dict] = {}  # key → raw contender data
 
-    # ── Run brain contenders once (shared across all bot runs) ────────────────
-    logger.info("Boxing: running brain contenders for %s", arch_name)
-    brain, brain_mini = run_brain_contenders(arch_name, arch_type)
+    # ── Det/MoE Full (gold standard, always run first — builds the reference) ─
+    if "det_moe_full" in run_set:
+        model_list: List[Optional[str]] = list(models) if models else [None]
+        for model in model_list:
+            key = f"det_moe_full_{model}" if model else "det_moe_full"
+            logger.info("Boxing: det_moe_full [%s] for %s", model or "default", arch_name)
+            results_map[key] = run_det_moe_full_contender(arch_name, mmd_path, ssp_profile, model_override=model)
 
-    # ── Run bot contenders (one per model, or single default) ─────────────────
-    model_list: List[Optional[str]] = list(models) if models else [None]
-    bot_runs: List[Dict] = []
-    for model in model_list:
-        label = f"bot_{model}" if model else "bot"
-        logger.info("Boxing: running bot contender [%s] for %s", label, arch_name)
-        bot_data = run_bot_contender(arch_name, mmd_path, ssp_profile, model_override=model)
-        bot_data["_key"] = label
-        bot_runs.append(bot_data)
-
-    # ── Reference set: bot-validated techniques only ─────────────────────────
-    # Reference = techniques that passed bot self-validation (is_valid=True).
-    # Brain techniques are pattern predictions, not independently verified here,
-    # so including them would inflate the reference with unverified claims.
-    # Brain D1 = recall (how many reference techniques brain predicted).
-    # Bot D1 = precision (validated / total_predicted) — see _score_bot().
-    # This lets each contender be measured on the dimension most meaningful to it.
+    # ── Reference = validated techniques from all det_moe_full runs ───────────
     reference: Set[str] = set()
-    for b in bot_runs:
-        reference.update(b.get("validated_techniques") or b["techniques"])
+    for key, data in results_map.items():
+        if key.startswith("det_moe_full"):
+            reference.update(data.get("validated_techniques") or data["techniques"])
 
-    # ── Score brain contenders ────────────────────────────────────────────────
-    brain_d1 = referee.score_d1(brain["techniques"], reference)
-    brain_d2 = referee.score_d2_corpus(brain["pattern_ids"])
-    brain_d3 = referee.score_d3(brain["techniques"])
-    brain_d4 = referee.score_d4_brain(brain["infer_result"])
-    brain_composite = referee.composite(brain_d1, brain_d2, brain_d3, brain_d4)
+    # ── LLM-only (opt-in) ─────────────────────────────────────────────────────
+    if "llm_only" in run_set:
+        llm_model_list: List[Optional[str]] = list(models) if models else [None]
+        for model in llm_model_list:
+            key = f"llm_only_{model}" if model else "llm_only"
+            logger.info("Boxing: llm_only [%s] for %s", model or "default", arch_name)
+            results_map[key] = run_llm_only_contender(arch_name, mmd_path, ssp_profile, model_override=model)
 
-    # Brain-mini D2: try synthetic path validation first; fall back to brain confidence
-    # when path heuristics return 0 (common for non-standard arch topologies).
-    t_mini = time.perf_counter()
-    brain_mini_d2 = referee.score_d2_synthetic(brain_mini["techniques"], nodes)
-    if brain_mini_d2 == 0.0 and brain_mini["techniques"]:
-        brain_mini_d2 = round(float(brain_mini["infer_result"].get("confidence", 0.0)), 4)
-    brain_mini["latency_s"] = round(brain_mini["latency_s"] + (time.perf_counter() - t_mini), 3)
-    brain_mini_d1 = brain_d1
-    brain_mini_d3 = brain_d3
-    brain_mini_d4 = brain_d4
-    brain_mini_composite = referee.composite(brain_mini_d1, brain_mini_d2, brain_mini_d3, brain_mini_d4)
+    # ── Det/Eng-only (opt-in) ─────────────────────────────────────────────────
+    if "det_eng_only" in run_set:
+        logger.info("Boxing: det_eng_only for %s", arch_name)
+        results_map["det_eng_only"] = run_det_eng_only_contender(arch_name, mmd_path, ssp_profile)
 
-    # ── Build contenders dict ─────────────────────────────────────────────────
-    contenders: Dict[str, Any] = {}
+    # ── Brain (corpus pattern) ────────────────────────────────────────────────
+    if "brain" in run_set:
+        logger.info("Boxing: brain for %s", arch_name)
+        results_map["brain"] = run_brain_contender(arch_name, arch_type)
 
-    for b in bot_runs:
-        key = b["_key"]
-        scores = _score_bot(referee, b, reference)
-        valid_techs = b.get("validated_techniques") or b["techniques"]
-        contenders[key] = {
-            "label": b["label"],
-            "model": b.get("model"),
-            "technique_count": len(b["techniques"]),
-            "validated_technique_count": len(valid_techs),
-            "latency_s": b["latency_s"],
-            "token_cost": b["token_cost"],
-            "error": b["error"],
-            "scores": scores,
-        }
+    # ── Brain-lexical (keyword scan) ──────────────────────────────────────────
+    if "brain_lexical" in run_set:
+        logger.info("Boxing: brain_lexical for %s", arch_name)
+        results_map["brain_lexical"] = run_brain_lexical_contender(mmd_path)
 
-    contenders["brain"] = {
-        "label": brain["label"],
-        "model": "brain",
-        "technique_count": len(brain["techniques"]),
-        "latency_s": brain["latency_s"],
-        "token_cost": 0,
-        "error": brain["error"],
-        "scores": {
-            "threat_completeness": brain_d1,
-            "threat_accuracy": brain_d2,
-            "mitigation_relevance": brain_d3,
-            "actionability": brain_d4,
-            "composite": brain_composite,
-        },
-    }
-
-    contenders["brain_mini"] = {
-        "label": brain_mini["label"],
-        "model": "brain_mini",
-        "technique_count": len(brain_mini["techniques"]),
-        "latency_s": brain_mini["latency_s"],
-        "token_cost": 0,
-        "error": brain_mini["error"],
-        "scores": {
-            "threat_completeness": brain_mini_d1,
-            "threat_accuracy": brain_mini_d2,
-            "mitigation_relevance": brain_mini_d3,
-            "actionability": brain_mini_d4,
-            "composite": brain_mini_composite,
-        },
-    }
+    # ── Score all contenders ──────────────────────────────────────────────────
+    scored: Dict[str, Any] = {}
+    for key, data in results_map.items():
+        if key.startswith("det_moe_full") or key.startswith("llm_only") or key == "det_eng_only":
+            scores = _score_lm_contender(referee, data, reference)
+            valid_techs = data.get("validated_techniques") or data["techniques"]
+            scored[key] = {
+                "label": data["label"],
+                "model": data.get("model"),
+                "technique_count": len(data["techniques"]),
+                "validated_technique_count": len(valid_techs),
+                "latency_s": data["latency_s"],
+                "token_cost": data["token_cost"],
+                "error": data["error"],
+                "scores": scores,
+            }
+        elif key == "brain":
+            scores = _score_brain_contender(referee, data, reference)
+            scored[key] = {
+                "label": data["label"],
+                "model": "brain",
+                "technique_count": len(data["techniques"]),
+                "latency_s": data["latency_s"],
+                "token_cost": 0,
+                "error": data["error"],
+                "scores": scores,
+            }
+        elif key == "brain_lexical":
+            scores = _score_lexical_contender(referee, data, reference)
+            scored[key] = {
+                "label": data["label"],
+                "model": "lexical",
+                "technique_count": len(data["techniques"]),
+                "latency_s": data["latency_s"],
+                "token_cost": 0,
+                "error": data["error"],
+                "scores": scores,
+            }
 
     # ── Verdict ───────────────────────────────────────────────────────────────
     ranking = sorted(
-        [(k, c["scores"]["composite"]) for k, c in contenders.items()],
-        key=lambda x: x[1],
-        reverse=True,
+        [(k, c["scores"]["composite"]) for k, c in scored.items()],
+        key=lambda x: x[1], reverse=True,
     )
 
-    # Quality-vs-cost: compare each bot against brain
-    ref_bot_latency = next((b["latency_s"] for b in bot_runs), 1.0) or 1.0
+    gold_latency = scored.get("det_moe_full", {}).get("latency_s", 1.0) or 1.0
+    brain_composite = scored.get("brain", {}).get("scores", {}).get("composite", 0)
+    gold_composite = scored.get("det_moe_full", {}).get("scores", {}).get("composite", 0)
     qvsc: Dict[str, Any] = {
-        "brain_vs_bot_quality_delta": round(
-            brain_composite - (contenders.get("bot") or contenders.get(bot_runs[0]["_key"], {}) or {}).get("scores", {}).get("composite", 0),
-            4,
+        "brain_vs_gold_delta": round(brain_composite - gold_composite, 4),
+        "brain_latency_speedup": round(gold_latency / max(scored.get("brain", {}).get("latency_s", 0.001), 0.001), 1),
+        "lexical_vs_brain_delta": round(
+            scored.get("brain_lexical", {}).get("scores", {}).get("composite", 0) - brain_composite, 4
         ),
-        "brain_latency_speedup": round(ref_bot_latency / max(brain["latency_s"], 0.001), 1),
-        "brain_mini_latency_speedup": round(ref_bot_latency / max(brain_mini["latency_s"], 0.001), 1),
     }
-    for b in bot_runs:
-        qvsc[f"{b['_key']}_token_cost"] = b["token_cost"]
 
     result: Dict[str, Any] = {
         "arch_name": arch_name,
         "run_at": datetime.now(timezone.utc).isoformat(),
         "mmd_path": mmd_path,
-        "models_tested": [b.get("model") or "default" for b in bot_runs],
+        "contenders_run": list(scored.keys()),
         "ref_technique_count": len(reference),
-        "contenders": contenders,
+        "contenders": scored,
         "verdict": {
             "ranking": [r[0] for r in ranking],
-            "winner": ranking[0][0],
+            "winner": ranking[0][0] if ranking else "none",
             "scores": {r[0]: r[1] for r in ranking},
             "quality_vs_cost": qvsc,
         },

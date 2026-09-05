@@ -20497,9 +20497,9 @@ class Dashboard {
             <span>Brain-mini speedup: <strong>${qvsCost.brain_mini_latency_speedup != null ? qvsCost.brain_mini_latency_speedup + '×' : '—'}</strong></span>
           </div>
           <div style="margin-top:0.5rem;font-size:0.71rem;color:var(--text-tertiary);border-top:1px solid var(--border-color);padding-top:0.5rem;">
-            <strong>D1 note:</strong> Bot D1 = precision (validated/total predicted — penalises hallucinations).
-            Brain D1 = recall (predicted techniques found in bot-validated reference of ${refCount}).
-            Different measures — both fair to what each contender can verify independently.
+            <strong>D1:</strong> det_moe_full/llm_only/det_eng_only = precision (validated/total — penalises hallucinations).
+            brain/brain_lexical = recall vs det_moe_full validated reference (${refCount} techniques).
+            Routing signal: brain D1 ≥ 85% → route to brain; lexical ≈ brain → patterns add little.
           </div>
           <div style="margin-top:1rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
             <button id="boxing-promote-btn" onclick="window.dashboard._boxingPromote('${result.arch_name}')"

@@ -30,7 +30,8 @@ class BoxingRequest(BaseModel):
     mmd_path: str                              # absolute path to .mmd file
     ssp_profile: str = "low_risk_cloud"
     arch_type: str = ""                        # hint for brain inference
-    models: Optional[List[str]] = None         # LLM_PROVIDER keys; None = single default bot
+    models: Optional[List[str]] = None         # LLM_PROVIDER keys for multi-model runs
+    contenders: Optional[List[str]] = None     # subset of: det_moe_full, llm_only, det_eng_only, brain, brain_lexical
 
 
 async def _run_boxing_job(job: Job, req: BoxingRequest) -> None:
@@ -47,11 +48,9 @@ async def _run_boxing_job(job: Job, req: BoxingRequest) -> None:
                 ssp_profile=req.ssp_profile,
                 arch_type=req.arch_type,
                 models=req.models or None,
+                contenders=req.contenders or None,
             )
 
-        store.update(job.job_id, progress=20, message="Bot contender running (~30s)")
-        models_label = f" [{', '.join(req.models)}]" if req.models else ""
-        store.update(job.job_id, progress=20, message=f"Bot contender{models_label} running (~30s each)…")
         result = await asyncio.get_event_loop().run_in_executor(None, _run)
 
         winner = result.get("verdict", {}).get("winner", "unknown")
