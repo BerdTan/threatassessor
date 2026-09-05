@@ -20338,20 +20338,25 @@ class Dashboard {
     }
 
     async _boxingRun() {
-        const archName = document.getElementById('boxing-arch-select')?.value;
-        const mmdPath  = document.getElementById('boxing-mmd-path')?.value?.trim();
+        const archName  = document.getElementById('boxing-arch-select')?.value;
+        const mmdPath   = document.getElementById('boxing-mmd-path')?.value?.trim();
+        const modelsRaw = document.getElementById('boxing-models')?.value?.trim();
         if (!archName || !mmdPath) {
             this._boxingStatus('Select an architecture and enter the MMD path.', 'warn');
             return;
         }
+        const models = modelsRaw ? modelsRaw.split(',').map(m => m.trim()).filter(Boolean) : null;
         const btn = document.getElementById('boxing-run-btn');
         if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
-        this._boxingStatus('Submitting boxing match…', 'info');
+        const modelsLabel = models ? ` [${models.join(', ')}]` : '';
+        this._boxingStatus(`Submitting boxing match${modelsLabel}…`, 'info');
         try {
+            const body = { arch_name: archName, mmd_path: mmdPath };
+            if (models) body.models = models;
             const res = await fetch('/api/v1/boxing/run', {
                 method: 'POST',
                 headers: { 'TM-API-KEY': this.apiKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ arch_name: archName, mmd_path: mmdPath }),
+                body: JSON.stringify(body),
             });
             if (!res.ok) { const e = await res.json(); throw new Error(e.detail || res.status); }
             const { job_id } = await res.json();

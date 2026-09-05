@@ -107,16 +107,21 @@ def render_scorecard(result: dict) -> None:
     print()
 
 
-def run_match(arch_name: str, mmd_path: str, ssp_profile: str, arch_type: str) -> dict:
+def run_match(arch_name: str, mmd_path: str, ssp_profile: str, arch_type: str,
+              models: list | None = None) -> dict:
     from chatbot.modules.ta_boxing import run_boxing_match
     print(f"  Running boxing match for {arch_name}…")
     print(f"  MMD: {mmd_path}")
-    print(f"  Bot pipeline starting (LANGFUSE_SKIP=1, ~30s)…")
+    if models:
+        print(f"  Bot contenders: {', '.join(models)} (LANGFUSE_SKIP=1, ~30s each)")
+    else:
+        print(f"  Bot pipeline starting (LANGFUSE_SKIP=1, ~30s)…")
     result = run_boxing_match(
         arch_name=arch_name,
         mmd_path=mmd_path,
         ssp_profile=ssp_profile,
         arch_type=arch_type,
+        models=models,
     )
     return result
 
@@ -172,6 +177,8 @@ def main() -> None:
     ap.add_argument("--mmd",       help="Path to .mmd file")
     ap.add_argument("--ssp-profile", default="low_risk_cloud")
     ap.add_argument("--arch-type", default="")
+    ap.add_argument("--model",     help="Single LLM_PROVIDER override for the bot contender (e.g. gemini_flash)")
+    ap.add_argument("--models",    help="Comma-separated LLM_PROVIDER keys for multi-model comparison (e.g. hetzner,gemini_flash,minimax)")
     ap.add_argument("--gate",      help="contender:dimension:threshold — exit 1 if below")
     ap.add_argument("--list",      action="store_true", help="List past boxing results")
     ap.add_argument("--show-last", action="store_true", help="Show last stored result for --arch")
@@ -197,8 +204,15 @@ def main() -> None:
         ap.print_help()
         sys.exit(1)
 
+    # Resolve model list
+    models = None
+    if args.models:
+        models = [m.strip() for m in args.models.split(",") if m.strip()]
+    elif args.model:
+        models = [args.model]
+
     mmd_abs = str(Path(args.mmd).resolve())
-    result = run_match(args.arch, mmd_abs, args.ssp_profile, args.arch_type)
+    result = run_match(args.arch, mmd_abs, args.ssp_profile, args.arch_type, models=models)
     render_scorecard(result)
 
     if args.gate:

@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -27,9 +27,10 @@ router = APIRouter(prefix="/api/v1", tags=["boxing"])
 
 class BoxingRequest(BaseModel):
     arch_name: str
-    mmd_path: str                         # absolute path to .mmd file
+    mmd_path: str                              # absolute path to .mmd file
     ssp_profile: str = "low_risk_cloud"
-    arch_type: str = ""                   # hint for brain inference
+    arch_type: str = ""                        # hint for brain inference
+    models: Optional[List[str]] = None         # LLM_PROVIDER keys; None = single default bot
 
 
 async def _run_boxing_job(job: Job, req: BoxingRequest) -> None:
@@ -45,9 +46,12 @@ async def _run_boxing_job(job: Job, req: BoxingRequest) -> None:
                 mmd_path=req.mmd_path,
                 ssp_profile=req.ssp_profile,
                 arch_type=req.arch_type,
+                models=req.models or None,
             )
 
         store.update(job.job_id, progress=20, message="Bot contender running (~30s)")
+        models_label = f" [{', '.join(req.models)}]" if req.models else ""
+        store.update(job.job_id, progress=20, message=f"Bot contender{models_label} running (~30s each)…")
         result = await asyncio.get_event_loop().run_in_executor(None, _run)
 
         winner = result.get("verdict", {}).get("winner", "unknown")

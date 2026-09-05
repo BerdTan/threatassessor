@@ -258,16 +258,24 @@ def run_bot_contender(
     arch_name: str,
     mmd_path: str,
     ssp_profile: str = "low_risk_cloud",
+    model_override: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Run the full LLM pipeline (ThreatAssessorHarness) with LANGFUSE_SKIP=1.
+
+    Args:
+        model_override: valid LLM_PROVIDER key (e.g. "hetzner", "gemini_flash",
+                        "minimax"). Temporarily patches LLM_PROVIDER in env for
+                        this run only; caller's env is restored on exit.
+
     Returns scored contender dict ready for the referee.
     """
-    import tempfile
     from chatbot.harness.controller import ThreatAssessorHarness, PipelineRequest
     from chatbot.config import get_settings
 
-    env_patch = {"LANGFUSE_SKIP": "1"}
+    env_patch: Dict[str, str] = {"LANGFUSE_SKIP": "1"}
+    if model_override:
+        env_patch["LLM_PROVIDER"] = model_override
     old_env = {k: os.environ.get(k) for k in env_patch}
     os.environ.update(env_patch)
 
@@ -279,7 +287,8 @@ def run_bot_contender(
 
     try:
         settings = get_settings()
-        report_dir = Path(settings.system.report_dir) / f"{arch_name}_boxing_bot"
+        suffix = f"_boxing_bot_{model_override}" if model_override else "_boxing_bot"
+        report_dir = Path(settings.system.report_dir) / f"{arch_name}{suffix}"
         report_dir.mkdir(parents=True, exist_ok=True)
 
         harness = ThreatAssessorHarness()
@@ -322,8 +331,10 @@ def run_bot_contender(
     techniques = _extract_techniques_from_ground_truth(gt)
     control_recs = gt.get("control_recommendations", [])
 
+    label = f"LLM Pipeline ({model_override})" if model_override else "LLM Pipeline"
     return {
-        "label": "LLM Pipeline",
+        "label": label,
+        "model": model_override or os.environ.get("LLM_PROVIDER", "default"),
         "techniques": techniques,
         "control_recommendations": control_recs,
         "self_val": self_val,
@@ -374,23 +385,36 @@ def run_brain_contenders(arch_name: str, arch_type: str = "") -> Tuple[Dict, Dic
 
 # ── Orchestrator ──────────────────────────────────────────────────────────────
 
+def _score_bot(referee: BoxingReferee, bot: Dict, reference: Set[str]) -> Dict[str, float]:
+    d1 = referee.score_d1(bot["techniques"], reference)
+    d2 = referee.score_d2_validated(bot["self_val"])
+    d3 = referee.score_d3(bot["techniques"])
+    d4 = referee.score_d4_bot(bot["control_recommendations"])
+    return {"threat_completeness": d1, "threat_accuracy": d2,
+            "mitigation_relevance": d3, "actionability": d4,
+            "composite": referee.composite(d1, d2, d3, d4)}
+
+
 def run_boxing_match(
     arch_name: str,
     mmd_path: str,
     ssp_profile: str = "low_risk_cloud",
     arch_type: str = "",
     nodes: Optional[Dict[str, Dict]] = None,
+    models: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Run a full boxing match for arch_name and write boxing_results.json.
 
     Args:
-        arch_name:  architecture identifier (also used to find the report dir)
-        mmd_path:   path to the .mmd file (used by bot contender + brain-mini D2)
-        ssp_profile: SSP profile for the bot contender pipeline
-        arch_type:  optional arch_type hint for brain inference
-        nodes:      optional pre-parsed node dict for brain-mini synthetic paths;
-                    if None the referee parses mmd_path via the MMD adapter
+        arch_name:   architecture identifier
+        mmd_path:    path to the .mmd file
+        ssp_profile: SSP profile for bot contender(s)
+        arch_type:   optional arch_type hint for brain inference
+        nodes:       optional pre-parsed node dict for brain-mini synthetic paths
+        models:      list of LLM_PROVIDER keys to test as separate bot contenders
+                     (e.g. ["hetzner", "gemini_flash", "minimax"]).
+                     None or [] runs a single default bot contender.
 
     Returns:
         Full scorecard dict (also written to report/<arch_name>/boxing_results.json).
@@ -413,109 +437,120 @@ def run_boxing_match(
             logger.warning("Could not parse MMD nodes for brain-mini D2: %s", exc)
             nodes = {}
 
-    # ── Run contenders ────────────────────────────────────────────────────────
-    logger.info("Boxing: running bot contender for %s", arch_name)
-    bot = run_bot_contender(arch_name, mmd_path, ssp_profile)
-
+    # ── Run brain contenders once (shared across all bot runs) ────────────────
     logger.info("Boxing: running brain contenders for %s", arch_name)
     brain, brain_mini = run_brain_contenders(arch_name, arch_type)
 
-    # ── Reference set (D1) ────────────────────────────────────────────────────
-    reference: Set[str] = (
-        set(bot["techniques"]) | set(brain["techniques"])
-    )
+    # ── Run bot contenders (one per model, or single default) ─────────────────
+    model_list: List[Optional[str]] = list(models) if models else [None]
+    bot_runs: List[Dict] = []
+    for model in model_list:
+        label = f"bot_{model}" if model else "bot"
+        logger.info("Boxing: running bot contender [%s] for %s", label, arch_name)
+        bot_data = run_bot_contender(arch_name, mmd_path, ssp_profile, model_override=model)
+        bot_data["_key"] = label
+        bot_runs.append(bot_data)
 
-    # ── Bot scores ────────────────────────────────────────────────────────────
-    bot_d1 = referee.score_d1(bot["techniques"], reference)
-    bot_d2 = referee.score_d2_validated(bot["self_val"])
-    bot_d3 = referee.score_d3(bot["techniques"])
-    bot_d4 = referee.score_d4_bot(bot["control_recommendations"])
-    bot_composite = referee.composite(bot_d1, bot_d2, bot_d3, bot_d4)
+    # ── Reference set: union of all bot runs + brain techniques ──────────────
+    reference: Set[str] = set(brain["techniques"])
+    for b in bot_runs:
+        reference.update(b["techniques"])
 
-    # ── Brain scores ─────────────────────────────────────────────────────────
+    # ── Score brain contenders ────────────────────────────────────────────────
     brain_d1 = referee.score_d1(brain["techniques"], reference)
     brain_d2 = referee.score_d2_corpus(brain["pattern_ids"])
     brain_d3 = referee.score_d3(brain["techniques"])
     brain_d4 = referee.score_d4_brain(brain["infer_result"])
     brain_composite = referee.composite(brain_d1, brain_d2, brain_d3, brain_d4)
 
-    # ── Brain-mini scores ─────────────────────────────────────────────────────
     t_mini = time.perf_counter()
     brain_mini_d2 = referee.score_d2_synthetic(brain_mini["techniques"], nodes)
     brain_mini["latency_s"] = round(brain_mini["latency_s"] + (time.perf_counter() - t_mini), 3)
-
-    brain_mini_d1 = brain_d1  # same techniques
+    brain_mini_d1 = brain_d1
     brain_mini_d3 = brain_d3
     brain_mini_d4 = brain_d4
     brain_mini_composite = referee.composite(brain_mini_d1, brain_mini_d2, brain_mini_d3, brain_mini_d4)
 
+    # ── Build contenders dict ─────────────────────────────────────────────────
+    contenders: Dict[str, Any] = {}
+
+    for b in bot_runs:
+        key = b["_key"]
+        scores = _score_bot(referee, b, reference)
+        contenders[key] = {
+            "label": b["label"],
+            "model": b.get("model"),
+            "technique_count": len(b["techniques"]),
+            "latency_s": b["latency_s"],
+            "token_cost": b["token_cost"],
+            "error": b["error"],
+            "scores": scores,
+        }
+
+    contenders["brain"] = {
+        "label": brain["label"],
+        "model": "brain",
+        "technique_count": len(brain["techniques"]),
+        "latency_s": brain["latency_s"],
+        "token_cost": 0,
+        "error": brain["error"],
+        "scores": {
+            "threat_completeness": brain_d1,
+            "threat_accuracy": brain_d2,
+            "mitigation_relevance": brain_d3,
+            "actionability": brain_d4,
+            "composite": brain_composite,
+        },
+    }
+
+    contenders["brain_mini"] = {
+        "label": brain_mini["label"],
+        "model": "brain_mini",
+        "technique_count": len(brain_mini["techniques"]),
+        "latency_s": brain_mini["latency_s"],
+        "token_cost": 0,
+        "error": brain_mini["error"],
+        "scores": {
+            "threat_completeness": brain_mini_d1,
+            "threat_accuracy": brain_mini_d2,
+            "mitigation_relevance": brain_mini_d3,
+            "actionability": brain_mini_d4,
+            "composite": brain_mini_composite,
+        },
+    }
+
     # ── Verdict ───────────────────────────────────────────────────────────────
     ranking = sorted(
-        [("bot", bot_composite), ("brain", brain_composite), ("brain_mini", brain_mini_composite)],
+        [(k, c["scores"]["composite"]) for k, c in contenders.items()],
         key=lambda x: x[1],
         reverse=True,
     )
+
+    # Quality-vs-cost: compare each bot against brain
+    ref_bot_latency = next((b["latency_s"] for b in bot_runs), 1.0) or 1.0
+    qvsc: Dict[str, Any] = {
+        "brain_vs_bot_quality_delta": round(
+            brain_composite - (contenders.get("bot") or contenders.get(bot_runs[0]["_key"], {}) or {}).get("scores", {}).get("composite", 0),
+            4,
+        ),
+        "brain_latency_speedup": round(ref_bot_latency / max(brain["latency_s"], 0.001), 1),
+        "brain_mini_latency_speedup": round(ref_bot_latency / max(brain_mini["latency_s"], 0.001), 1),
+    }
+    for b in bot_runs:
+        qvsc[f"{b['_key']}_token_cost"] = b["token_cost"]
 
     result: Dict[str, Any] = {
         "arch_name": arch_name,
         "run_at": datetime.now(timezone.utc).isoformat(),
         "mmd_path": mmd_path,
+        "models_tested": [b.get("model") or "default" for b in bot_runs],
         "ref_technique_count": len(reference),
-        "contenders": {
-            "bot": {
-                "label": bot["label"],
-                "technique_count": len(bot["techniques"]),
-                "latency_s": bot["latency_s"],
-                "token_cost": bot["token_cost"],
-                "error": bot["error"],
-                "scores": {
-                    "threat_completeness": bot_d1,
-                    "threat_accuracy": bot_d2,
-                    "mitigation_relevance": bot_d3,
-                    "actionability": bot_d4,
-                    "composite": bot_composite,
-                },
-            },
-            "brain": {
-                "label": brain["label"],
-                "technique_count": len(brain["techniques"]),
-                "latency_s": brain["latency_s"],
-                "token_cost": 0,
-                "error": brain["error"],
-                "scores": {
-                    "threat_completeness": brain_d1,
-                    "threat_accuracy": brain_d2,
-                    "mitigation_relevance": brain_d3,
-                    "actionability": brain_d4,
-                    "composite": brain_composite,
-                },
-            },
-            "brain_mini": {
-                "label": brain_mini["label"],
-                "technique_count": len(brain_mini["techniques"]),
-                "latency_s": brain_mini["latency_s"],
-                "token_cost": 0,
-                "error": brain_mini["error"],
-                "scores": {
-                    "threat_completeness": brain_mini_d1,
-                    "threat_accuracy": brain_mini_d2,
-                    "mitigation_relevance": brain_mini_d3,
-                    "actionability": brain_mini_d4,
-                    "composite": brain_mini_composite,
-                },
-            },
-        },
+        "contenders": contenders,
         "verdict": {
             "ranking": [r[0] for r in ranking],
             "winner": ranking[0][0],
             "scores": {r[0]: r[1] for r in ranking},
-            "quality_vs_cost": {
-                "brain_vs_bot_quality_delta": round(brain_composite - bot_composite, 4),
-                "brain_mini_vs_bot_quality_delta": round(brain_mini_composite - bot_composite, 4),
-                "brain_latency_speedup": round(bot["latency_s"] / max(brain["latency_s"], 0.001), 1),
-                "brain_mini_latency_speedup": round(bot["latency_s"] / max(brain_mini["latency_s"], 0.001), 1),
-                "bot_token_cost": bot["token_cost"],
-            },
+            "quality_vs_cost": qvsc,
         },
     }
 
