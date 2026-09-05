@@ -5,14 +5,18 @@ Five contenders, one deterministic referee, four quality dimensions + efficiency
 
 Contenders (default: det_moe_full + brain + brain_lexical):
   det_moe_full   — reads canonical report/{arch}/ground_truth.json (full MoE if run)
-  llm_only       — fresh API_ONLY LLM run (no critics); opt-in
+  llm_only       — pure LLM threat model: raw MMD → LLM → MITRE IDs (no RAPIDS, no harness); opt-in
   det_eng_only   — harness with use_llm=False (pure graph traversal); opt-in
   brain          — TA Brain corpus pattern inference; D2 from evidence arch history
   brain_lexical  — keyword→MITRE lookup on MMD node labels; pure lexical, no patterns
 
 Referee dimensions (same criteria for all contenders):
-  D1  threat_completeness   — det_moe_full: precision (validated/total predicted)
-                              all others: recall vs det_moe_full validated reference
+  D1  threat_completeness   — det_moe_full/det_eng_only: precision (validated/total predicted)
+                              llm_only: precision (valid MITRE IDs / total predicted)
+                              brain/brain_lexical: recall vs det_moe_full validated reference
+  D2  threat_accuracy       — det_moe_full: self-validation applicability rate
+                              llm_only: recall vs gold reference (how much of RAPIDS it found)
+                              brain: corpus evidence applicability rate
   D2  threat_accuracy       — topology applicability (method varies per contender)
   D3  mitigation_relevance  — % techniques with ≥1 official ATT&CK M-mitigation
   D4  actionability         — remediation quality: severity + named control + rationale
@@ -424,6 +428,30 @@ def run_det_moe_full_contender(
     }
 
 
+_LLM_ONLY_SYSTEM = (
+    "You are a senior threat modeler. Given an architecture diagram, identify every applicable "
+    "MITRE ATT&CK technique (Enterprise or ATLAS). Be thorough — include initial access, "
+    "lateral movement, data exfiltration, and AI/ML-specific techniques where relevant."
+)
+
+_LLM_ONLY_PROMPT = """Architecture diagram (Mermaid):
+```
+{mmd}
+```
+
+Return ONLY valid JSON — no prose, no markdown fences — in this exact schema:
+{{
+  "techniques": ["T1190", "AML.T0025", ...],
+  "controls": ["input validation", "network segmentation", ...]
+}}
+
+Rules:
+- techniques: MITRE ATT&CK IDs only (Txxxx, Txxxx.xxx, AML.Txxxx). No names, no descriptions.
+- controls: short named controls (1-5 words each). Max 10.
+- Do not include any key other than "techniques" and "controls".
+"""
+
+
 def run_llm_only_contender(
     arch_name: str,
     mmd_path: str,
@@ -431,16 +459,13 @@ def run_llm_only_contender(
     model_override: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Fresh API_ONLY LLM run (Analysis + Report stages, no critics).
-    Writes to report/{arch}_boxing_llmonly/. Measures LLM value without MoE overhead.
+    Pure LLM threat model — no RAPIDS, no harness, no deterministic engine.
+    Feeds the raw MMD to the LLM and asks for MITRE technique IDs directly.
+    validated_techniques = subset that exist in MITRE ATT&CK enterprise set.
+    D1 precision penalises hallucinated IDs.
     """
-    from chatbot.harness.controller import ThreatAssessorHarness, PipelineRequest
-    from chatbot.config import get_settings
-
-    suffix = f"_boxing_llmonly_{model_override}" if model_override else "_boxing_llmonly"
-    boxing_arch_name = f"{arch_name}{suffix}"
-    boxing_dir = Path(get_settings().system.report_dir) / boxing_arch_name
-    boxing_dir.mkdir(parents=True, exist_ok=True)
+    from agentic.llm_client import generate_response_with_system
+    from chatbot.modules.mitre import get_mitre_helper
 
     env_patch: Dict[str, str] = {"LANGFUSE_SKIP": "1"}
     if model_override:
@@ -449,30 +474,41 @@ def run_llm_only_contender(
     os.environ.update(env_patch)
 
     t0 = time.perf_counter()
-    gt: Dict = {}
-    self_val: Dict = {}
-    token_cost = 0
+    techniques: List[str] = []
+    validated: List[str] = []
+    controls: List[str] = []
     error: Optional[str] = None
 
     try:
-        harness = ThreatAssessorHarness()
-        req = PipelineRequest(
-            architecture_path=mmd_path,
-            report_dir=str(boxing_dir),
-            ssp_profile=ssp_profile,
-            architecture_name=boxing_arch_name,
-            use_llm=True,
-            enable_moe=False,
+        mmd_text = Path(mmd_path).read_text()
+        prompt = _LLM_ONLY_PROMPT.format(mmd=mmd_text)
+        raw = generate_response_with_system(
+            prompt, _LLM_ONLY_SYSTEM,
+            model=model_override or None,
+            temperature=0.2,
+            max_tokens=1500,
         )
-        harness.run_typed(req)
-        gt_path = boxing_dir / "ground_truth.json"
-        if gt_path.exists():
-            gt = json.loads(gt_path.read_text())
-            self_val = gt.get("validation_report", {})
-        gs_path = boxing_dir / "governance_signals.json"
-        if gs_path.exists():
-            gs = json.loads(gs_path.read_text())
-            token_cost = gs.get("llm_usage", {}).get("total_tokens", 0)
+        # Extract JSON — strip markdown fences if present
+        text = raw.strip()
+        if "```" in text:
+            for block in text.split("```"):
+                block = block.strip().lstrip("json").strip()
+                if block.startswith("{"):
+                    text = block
+                    break
+        parsed = json.loads(text)
+        techniques = [t.strip() for t in parsed.get("techniques", []) if isinstance(t, str)]
+        controls = [c.strip() for c in parsed.get("controls", []) if isinstance(c, str)]
+
+        # Validate technique IDs against MITRE ATT&CK
+        mitre = get_mitre_helper()
+        for tid in techniques:
+            try:
+                if mitre.get_technique(tid):
+                    validated.append(tid)
+            except Exception:
+                pass
+
     except Exception as exc:
         error = str(exc)
         logger.warning("LLM-only contender failed: %s", exc)
@@ -484,16 +520,27 @@ def run_llm_only_contender(
                 os.environ[k] = v
 
     latency = round(time.perf_counter() - t0, 2)
-    label = f"LLM-only ({model_override})" if model_override else "LLM-only"
+    active_model = model_override or os.environ.get("LLM_PROVIDER", "default")
+    label = f"LLM-only ({active_model})" if model_override else "LLM-only"
+
+    # Build a minimal self_val compatible with _score_lm_contender
+    self_val = {
+        "overall_valid": bool(validated),
+        "validations": {},
+        "confidence_adjustments": [],
+        "issues_found": len(techniques) - len(validated),
+    }
+    control_recs = [{"control": c, "priority": "medium", "rationale": ""} for c in controls]
+
     return {
         "label": label,
-        "model": model_override or os.environ.get("LLM_PROVIDER", "default"),
-        "techniques": _extract_techniques_from_ground_truth(gt),
-        "validated_techniques": _extract_validated_techniques(gt),
-        "control_recommendations": gt.get("control_recommendations", []),
+        "model": active_model,
+        "techniques": techniques,
+        "validated_techniques": validated,
+        "control_recommendations": control_recs,
         "self_val": self_val,
         "latency_s": latency,
-        "token_cost": token_cost,
+        "token_cost": 0,
         "error": error,
     }
 
@@ -686,6 +733,24 @@ def _score_lm_contender(referee: BoxingReferee, c: Dict, reference: Set[str]) ->
             "composite": referee.composite(d1, d2, d3, d4)}
 
 
+def _score_llm_only_contender(referee: BoxingReferee, c: Dict, reference: Set[str]) -> Dict[str, float]:
+    """
+    Score pure-LLM contender.
+    D1: precision (validated MITRE IDs / total predicted) — penalises hallucinated IDs.
+    D2: recall vs gold reference — measures how much of the reference the LLM independently found.
+    D3/D4: standard mitigation coverage + control actionability.
+    """
+    all_techs = c["techniques"]
+    valid_techs = c.get("validated_techniques") or all_techs
+    d1 = referee.score_d1_precision(valid_techs, all_techs)
+    d2 = referee.score_d1(valid_techs, reference)   # recall vs gold: did LLM find what RAPIDS found?
+    d3 = referee.score_d3(valid_techs)
+    d4 = referee.score_d4_bot(c["control_recommendations"])
+    return {"threat_completeness": d1, "threat_accuracy": d2,
+            "mitigation_relevance": d3, "actionability": d4,
+            "composite": referee.composite(d1, d2, d3, d4)}
+
+
 def _score_brain_contender(referee: BoxingReferee, c: Dict, reference: Set[str]) -> Dict[str, float]:
     """Score brain (corpus pattern inference). D1 = recall vs gold reference."""
     techs = c["techniques"]
@@ -783,7 +848,20 @@ def run_boxing_match(
     # ── Score all contenders ──────────────────────────────────────────────────
     scored: Dict[str, Any] = {}
     for key, data in results_map.items():
-        if key.startswith("det_moe_full") or key.startswith("llm_only") or key == "det_eng_only":
+        if key.startswith("llm_only"):
+            scores = _score_llm_only_contender(referee, data, reference)
+            valid_techs = data.get("validated_techniques") or data["techniques"]
+            scored[key] = {
+                "label": data["label"],
+                "model": data.get("model"),
+                "technique_count": len(data["techniques"]),
+                "validated_technique_count": len(valid_techs),
+                "latency_s": data["latency_s"],
+                "token_cost": data["token_cost"],
+                "error": data["error"],
+                "scores": scores,
+            }
+        elif key.startswith("det_moe_full") or key == "det_eng_only":
             scores = _score_lm_contender(referee, data, reference)
             valid_techs = data.get("validated_techniques") or data["techniques"]
             scored[key] = {
