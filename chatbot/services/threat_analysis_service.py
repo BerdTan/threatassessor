@@ -124,6 +124,7 @@ class ThreatAnalysisService(BaseService):
             analyst_context = {
                 "ssp_profile": ssp_profile,
                 "enable_ssp": enable_ssp,
+                "use_llm": kwargs.get("use_llm", False),
             }
 
             if architecture_path:

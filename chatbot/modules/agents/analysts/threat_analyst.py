@@ -170,7 +170,7 @@ class ThreatAnalyst(AnalystAgent):
             from chatbot.config import get_settings
             ssp_profile = validated_context.get("ssp_profile", "low_risk_cloud")
             enable_ssp  = validated_context.get("enable_ssp", True)
-            use_llm     = get_settings().story_caster.llm_enrichment
+            use_llm     = validated_context.get("use_llm", get_settings().story_caster.llm_enrichment)
             ground_truth = self.generator_module.generate_ground_truth(
                 architecture_path,
                 ssp_profile=ssp_profile,

@@ -55,6 +55,8 @@ class AnalysisStage(PipelineStage):
         safe_kw = {}
         if ctx.get("architecture_name"):
             safe_kw["architecture_name"] = ctx["architecture_name"]
+        if ctx.get("use_llm"):
+            safe_kw["use_llm"] = True
         result = service.safe_execute(
             architecture_path=ctx["architecture_path"],
             include_validation=ctx.get("include_validation", True),
