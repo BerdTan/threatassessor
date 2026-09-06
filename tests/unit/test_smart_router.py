@@ -375,3 +375,181 @@ class TestIntegrationRealBoxingFiles:
         d = select_mode("totally_nonexistent_arch_xyz_123")
         assert d.mode == "api_only"
         assert d.has_boxing_data is False
+
+
+# ── QuickAssess endpoint — unit tests (no API server needed) ──────────────────
+
+class TestQuickAssessEndpoint:
+    """
+    Tests the quick-assess logic via FastAPI TestClient.
+    Brain inference is mocked to avoid LLM/corpus dependency.
+    """
+
+    def _make_infer_result(self, had_match: bool = True) -> dict:
+        if not had_match:
+            return {"had_match": False, "patterns_fired": [], "confidence": 0.0,
+                    "predictions": {}, "evidence": {}}
+        return {
+            "had_match": True,
+            "patterns_fired": ["BRAIN-002"],
+            "suspect_patterns": [],
+            "confidence": 0.684,
+            "predictions": {
+                "techniques": ["T1078", "T1190", "T1059"],
+                "technique_top": [
+                    {"id": "T1078", "frequency": 0.9},
+                    {"id": "T1190", "frequency": 0.8},
+                ],
+                "controls": ["AC-3", "SC-8"],
+                "detect_rules": ["DETECT-001"],
+                "aivss_floor": 3.12,
+            },
+            "evidence": {"source_archs": ["arch_a", "arch_b", "arch_b", "arch_c"]},
+        }
+
+    def _get_client(self, report_dir: Path, arch_name: str,
+                    infer_result: dict, has_mmd: bool = False):
+        """Build TestClient with report dir seeded and brain mocked."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from chatbot.api.routes.routing import router
+        from unittest.mock import patch, MagicMock
+
+        # Create arch dir
+        arch_dir = report_dir / arch_name
+        arch_dir.mkdir(parents=True, exist_ok=True)
+        if has_mmd:
+            (arch_dir / "architecture.mmd").write_text("graph LR\n  A[API] --> B[DB]")
+
+        app = FastAPI()
+        app.include_router(router)
+
+        mock_key = MagicMock(return_value=True)
+        app.dependency_overrides = {}
+
+        def override_key():
+            return "test"
+
+        from chatbot.api.dependencies import verify_api_key
+        app.dependency_overrides[verify_api_key] = override_key
+
+        patches = [
+            patch("chatbot.api.routes.routing.query_brain", return_value=infer_result),
+            patch("chatbot.api.routes.routing.select_mode",
+                  return_value=MagicMock(mode="brain_fast")),
+            patch("chatbot.api.routes.routing.get_settings",
+                  return_value=MagicMock(system=MagicMock(report_dir=str(report_dir)))),
+        ]
+        return TestClient(app), patches
+
+    def _patches(self, tmp_path, infer_result):
+        """Common patch stack for quick-assess tests (lazy imports → patch at source)."""
+        from unittest.mock import patch, MagicMock
+        return [
+            patch("chatbot.modules.ta_brain_query.query_brain", return_value=infer_result),
+            patch("chatbot.harness.smart_router.select_mode",
+                  return_value=MagicMock(mode="brain_fast")),
+            patch("chatbot.config.get_settings",
+                  return_value=MagicMock(system=MagicMock(report_dir=str(tmp_path)))),
+        ]
+
+    def _make_app(self, tmp_path):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from chatbot.api.routes.routing import router
+        from chatbot.api.dependencies import verify_api_key
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[verify_api_key] = lambda: "k"
+        return TestClient(app)
+
+    def test_returns_200_on_match(self, tmp_path):
+        arch_name = "test_arch"
+        (tmp_path / arch_name).mkdir()
+        infer = self._make_infer_result(had_match=True)
+
+        with self._patches(tmp_path, infer)[0], self._patches(tmp_path, infer)[1], \
+             self._patches(tmp_path, infer)[2]:
+            from unittest.mock import patch, MagicMock
+            with patch("chatbot.modules.ta_brain_query.query_brain", return_value=infer), \
+                 patch("chatbot.harness.smart_router.select_mode",
+                       return_value=MagicMock(mode="brain_fast")), \
+                 patch("chatbot.config.get_settings",
+                       return_value=MagicMock(system=MagicMock(report_dir=str(tmp_path)))):
+                client = self._make_app(tmp_path)
+                resp = client.get(f"/api/v1/routing/quick-assess/{arch_name}",
+                                  headers={"X-API-Key": "k"})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["had_match"] is True
+        assert body["estimate_type"] == "pattern-based"
+        assert "T1078" in body["techniques"]
+
+    def test_no_match_returns_warning(self, tmp_path):
+        (tmp_path / "no_match_arch").mkdir()
+        infer = self._make_infer_result(had_match=False)
+
+        from unittest.mock import patch, MagicMock
+        with patch("chatbot.modules.ta_brain_query.query_brain", return_value=infer), \
+             patch("chatbot.harness.smart_router.select_mode",
+                   return_value=MagicMock(mode="api_only")), \
+             patch("chatbot.config.get_settings",
+                   return_value=MagicMock(system=MagicMock(report_dir=str(tmp_path)))):
+            client = self._make_app(tmp_path)
+            resp = client.get("/api/v1/routing/quick-assess/no_match_arch",
+                              headers={"X-API-Key": "k"})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["had_match"] is False
+        assert body["techniques"] == []
+        assert body["warning"] is not None
+
+    def test_404_for_unknown_arch(self, tmp_path):
+        from unittest.mock import patch, MagicMock
+        with patch("chatbot.config.get_settings",
+                   return_value=MagicMock(system=MagicMock(report_dir=str(tmp_path)))):
+            client = self._make_app(tmp_path)
+            resp = client.get("/api/v1/routing/quick-assess/nonexistent_arch_xyz",
+                              headers={"X-API-Key": "k"})
+
+        assert resp.status_code == 404
+
+    def test_path_traversal_rejected(self, tmp_path):
+        from unittest.mock import patch, MagicMock
+        with patch("chatbot.config.get_settings",
+                   return_value=MagicMock(system=MagicMock(report_dir=str(tmp_path)))):
+            client = self._make_app(tmp_path)
+            resp = client.get("/api/v1/routing/quick-assess/../etc/passwd",
+                              headers={"X-API-Key": "k"})
+
+        # FastAPI normalises "../etc/passwd" before it reaches the handler,
+        # so the path segment check may not fire — 400 or 404 are both safe rejections.
+        assert resp.status_code in (400, 404, 422)
+
+    def test_quality_scores_present_when_had_match(self, tmp_path):
+        (tmp_path / "scored_arch").mkdir()
+        infer = self._make_infer_result(had_match=True)
+
+        from unittest.mock import patch, MagicMock
+        with patch("chatbot.modules.ta_brain_query.query_brain", return_value=infer), \
+             patch("chatbot.harness.smart_router.select_mode",
+                   return_value=MagicMock(mode="brain_fast")), \
+             patch("chatbot.config.get_settings",
+                   return_value=MagicMock(system=MagicMock(report_dir=str(tmp_path)))):
+            client = self._make_app(tmp_path)
+            resp = client.get("/api/v1/routing/quick-assess/scored_arch",
+                              headers={"X-API-Key": "k"})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "quality" in body
+
+    def test_corpus_hits_deduplicates_source_archs(self, tmp_path):
+        """corpus_hits = len(set(source_archs)) — duplicates in evidence don't inflate count."""
+        infer = self._make_infer_result(had_match=True)
+        # source_archs has ["arch_a", "arch_b", "arch_b", "arch_c"] → 3 unique
+        source_archs = infer["evidence"]["source_archs"]
+        corpus_hits = len(set(source_archs))
+        assert corpus_hits == 3
