@@ -1,0 +1,45 @@
+# model_routing.yaml — Smart pipeline mode selection thresholds
+#
+# Consumed by chatbot/harness/smart_router.py.
+# Boxing data (report/<arch>/boxing_results.json) provides the signals.
+# Updated after each new arch type is boxed.
+#
+# Routing tiers (evaluated in order — first match wins):
+#   brain_fast  — call ta_brain_query directly, skip harness entirely
+#   api_only    — deterministic engine + report, no critics
+#   full_moe    — full pipeline (Analysis → Report → Critics → SM)
+#
+# Signal sources (from boxing_results.json .routing_signals):
+#   brain_vs_gold_delta  — brain composite minus det_moe_full composite (negative = brain is below gold)
+#   corpus_hits          — unique source arch IDs that drove the fired brain patterns
+#   ref_technique_count  — number of validated techniques in the gold reference set
+
+version: "1.0"
+updated: "2026-09-06"
+
+# ── Hard overrides (checked before threshold logic) ───────────────────────────
+overrides:
+  # High AIVSS risk — always full pipeline regardless of brain accuracy
+  aivss_composite_full_moe_threshold: 7.0
+  # Unknown arch (no boxing data) — default mode
+  no_boxing_data_default: "api_only"
+
+# ── Tier thresholds ───────────────────────────────────────────────────────────
+tiers:
+  brain_fast:
+    # Brain composite within 15% of gold AND enough corpus evidence
+    brain_vs_gold_delta_min: -0.15   # delta must be >= this (less than 15% below gold)
+    corpus_hits_min: 3               # at least 3 source archs drove the pattern
+
+  api_only:
+    # Brain exists but confidence is moderate — deterministic engine sufficient
+    brain_vs_gold_delta_min: -0.30   # delta must be >= this (less than 30% below gold)
+    corpus_hits_min: 1               # at least 1 corpus match
+
+  # full_moe: everything else (delta < -0.30, corpus_hits = 0, or AIVSS override)
+
+# ── Boxing data summary (reference — update after each new arch type boxed) ───
+# arch                    | ref_techs | delta   | corpus_hits | → tier
+# 22_generic_ai_nodes     |    43     | -0.128  |    7        | brain_fast
+# 21_agentic_ai_system    |    45     | -0.122  |    7        | brain_fast
+# 12_microservices        |    28     | +0.002  |    5        | brain_fast (brain wins)

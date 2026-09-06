@@ -4,7 +4,113 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
-## Session 66 (continued) — 2026-09-05
+## Session 68 — 2026-09-06
+
+### Entry 146 — Smart routing design: arch type is not the discriminator; reference set size + corpus hits are
+
+**What:** Ran boxing on 3 arch types to build routing signal distribution. Results forced a design revision.
+
+**Boxing results (3-arch distribution):**
+| Arch | Type | ref techniques | brain composite | delta |
+|---|---|---|---|---|
+| 22_generic_ai_nodes | generic/AI | 43 | 0.781 | −0.128 |
+| 21_agentic_ai_system | agentic | 45 | 0.764 | −0.122 |
+| 12_microservices | microservices | 28 | 0.958 | +0.002 |
+
+**Key finding:** Brain wins outright on microservices (delta=+0.002). The original hypothesis — "brain degrades on non-agentic arch types" — is wrong. The discriminator is **reference set size**: microservices has 28 techniques (small, well-covered by corpus patterns); agentic/generic have 43–45 (harder to fully match). Arch type alone is not a useful routing signal.
+
+**Revised routing signals (replacing arch_type threshold):**
+1. `ref_technique_count` — proxy for arch complexity; small sets (≤30) tend to be well-covered
+2. `corpus_hits` — number of brain corpus instances matched; more hits = more confident brain inference
+3. AIVSS composite — high-risk arches override routing regardless of brain score (always full MoE for AIVSS ≥ 7.0)
+
+**Routing tiers (revised):**
+- `brain_fast` — delta > −0.15 AND corpus_hits ≥ 3: skip harness, call ta_brain_query directly
+- `api_only` — delta −0.15 to −0.30 OR corpus_hits 1–2: deterministic engine, no critics
+- `full_moe` — delta < −0.30 OR corpus_hits = 0 OR AIVSS ≥ 7.0: full pipeline
+
+**Decision:** `model_routing.yaml` will use `brain_vs_gold_delta` + `corpus_hits` as primary signals. `arch_type` retained as metadata only — not used in threshold logic. AIVSS composite is a hard override (security trumps speed).
+
+**Alternatives rejected:**
+- Arch-type-based thresholds — data shows no consistent pattern across types
+- Single delta threshold — corpus_hits needed to catch "delta looks good but only 1 instance in corpus" (low confidence)
+
+### Entry 147 — Smart routing implementation: smart_router.py + model_routing.yaml + routing endpoint
+
+**What:** Built the smart routing layer end-to-end.
+
+**Files created:**
+- `chatbot/harness/smart_router.py` — `select_mode(arch_name, aivss_composite)` → `RoutingDecision`; reads boxing_results.json + model_routing.yaml; falls back to old result format (qvsc) for backward compat
+- `policies/model_routing.yaml` — thresholds config (version 1.0): brain_fast: delta ≥ −0.15 AND hits ≥ 3; api_only: delta ≥ −0.30 AND hits ≥ 1; full_moe: everything else + AIVSS ≥ 7.0 override
+- `chatbot/api/routes/routing.py` — `GET /api/v1/routing/suggest/{arch_name}` (registered in app.py + __init__.py)
+
+**Boxing module changes:**
+- `run_brain_contender` now computes `corpus_hits` = unique source arch IDs from `evidence.source_archs`
+- `run_boxing_match` populates `routing_signals` top-level dict: `brain_vs_gold_delta`, `corpus_hits`, `ref_technique_count`, `arch_type`, `brain_latency_speedup`
+- All 3 boxed arches re-run to populate routing_signals
+
+**Confirmed routing decisions (live):**
+| arch | mode | delta | corpus_hits |
+|---|---|---|---|
+| 22_generic_ai_nodes | brain_fast | −0.128 | 7 |
+| 21_agentic_ai_system | brain_fast | −0.122 | 7 |
+| 12_microservices | brain_fast | +0.002 | 5 |
+| 07_gcp_serverless (no boxing) | api_only (default) | — | — |
+
+**Not yet done:** brain_fast execution path (streaming.py wire-in) — smart_router selects the mode but the harness still runs API_ONLY for every call. Wire-in is the next step.
+
+---
+
+## Session 67 — 2026-09-05
+
+### Entry 145 — Boxing scorecard finalised: 5 contenders, clean brain v34, routing signal baseline
+
+**What:** Completed the boxing evaluation framework with a correct 5-contender design, genuine `llm_only` contender, asymmetric D1 scoring, and a clean brain corpus after removing noise.
+
+**Five contenders (final design):**
+- `det_moe_full` — reads canonical `report/<arch>/ground_truth.json` (full MoE if run, harness otherwise); D1=precision (validated/total); gold standard; reference set source
+- `llm_only` — pure LLM: raw MMD → LLM → MITRE IDs with no RAPIDS/harness at all; D1=precision (valid IDs/total predicted); D2=recall vs gold reference; opt-in
+- `det_eng_only` — harness `use_llm=False`, graph traversal only; opt-in
+- `brain` — TA Brain corpus pattern inference; D1=recall vs gold reference; D2=corpus applicability rate
+- `brain_lexical` — keyword→MITRE lookup on MMD node labels; D4=0 (no control recs); pure baseline
+
+**D1 asymmetry rationale:** `det_moe_full`/`llm_only`/`det_eng_only` use precision (penalises hallucinated techniques); `brain`/`brain_lexical` use recall (measures how much of the gold reference the corpus pattern finds). Reference = det_moe_full validated techniques only — never includes brain predictions (unverified).
+
+**use_llm wiring fix:** `AnalysisStage` previously ignored `PipelineRequest.use_llm` — it was set in ctx but never forwarded to `ThreatAnalysisService` or `ThreatAnalyst`. Fixed by threading it through: `stages.py` → `service.safe_execute(use_llm=...)` → `analyst_context["use_llm"]` → `threat_analyst.py` reads from context before falling back to `settings.story_caster.llm_enrichment`. Default path (use_llm absent) unchanged — existing MoE runs unaffected.
+
+**llm_only true baseline result (22_generic_ai_nodes, hetzner/Qwen3.6-35B via OpenRouter):**
+- 9 valid MITRE IDs predicted, 0 hallucinations (D1=1.0)
+- D2=0.093 — LLM recalled only 4 of 43 reference techniques independently
+- Composite=0.509 at 78s vs det_moe_full composite=0.909 at 0.02s (cached)
+- **Key routing insight: RAPIDS + pattern engine finds 10× more techniques than a raw LLM for this arch type — deterministic engine is non-negotiable, not optional**
+
+**Brain corpus cleanup:** Removed 71 JSONL entries (bad arch_ids + duplicates):
+- Accidental ingest: `DEV-TEST`, `adapters`, `openapi`, `sample`, `test_syn`
+- Boxing-bot pollution: `03_aws_3tier_boxing_bot`, `07_gcp_serverless_boxing_bot`, `22_generic_ai_nodes_boxing_bot` (were typed as `ai_system`, wrong)
+- Numbered syn reruns: `syn_*_1/2/3` (retry runs, base version sufficient)
+- Deleted 13 report dirs; kept boxing_bot dirs (have valid boxing results) but removed from brain JSONL
+- Brain rebuilt: v33 (247 noisy entries) → v34 (176 clean entries, 168 train + 8 hold-out)
+
+**Clean v34 scorecard (22_generic_ai_nodes):**
+| Contender | D1 | D2 | D3 | D4 | Composite | Latency |
+|---|---|---|---|---|---|---|
+| det_moe_full | 0.977 | 1.000 | 0.789 | 0.868 | 0.909 | 0.02s (cached) |
+| brain | 1.000 | 0.684 | 0.773 | 0.667 | 0.781 | 0.05s (warm) |
+| llm_only | 1.000 | 0.093 | 0.444 | 0.500 | 0.509 | 78s |
+| brain_lexical | 0.302 | 1.000 | 0.538 | 0.000 | 0.460 | 0.004s |
+
+**Routing signals (brain vs gold):**
+- `brain_vs_gold_delta = -0.128` — brain 12.8% below gold composite
+- `brain_latency_speedup = 600×` (warm cache)
+- `lexical_vs_brain_delta = -0.321` — patterns add 32% over keyword scanning
+
+**Routing implication:** For known arch types in corpus, brain at 0.05s is within 13% of gold. Threshold question for `model_routing.yaml`: at what delta is the quality gap acceptable in exchange for 600× speedup? Boxing data across multiple arch types will answer this.
+
+**Blog angle (P26 — unified):** TAclaw is the central actor, not the boxing game. Boxing is the internal evidence. TAclaw offers three modes: `brain` (0.05s, 12.8% below gold), `llm_only` (78s, D2=0.093 — CI triage only), `full` (gold standard). Smart routing picks the mode per arch type based on brain_vs_gold_delta. The post is one blog: TAclaw as orchestrator + routing + the llm_only D2 number as the surprise that justifies the engine. P27 absorbed into P26. Prerequisite: box 2–3 more arch types to have a delta distribution.
+
+**Commits:** `237e440` (use_llm wiring), `c5759a5` (pure LLM contender + scorer fix)
+
+---
 
 ### Entry 139 — TA Boxing: three-contender evaluation framework
 

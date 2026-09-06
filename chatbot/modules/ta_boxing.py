@@ -674,11 +674,14 @@ def run_brain_contender(arch_name: str, arch_type: str = "") -> Dict[str, Any]:
 
     techniques = infer.get("predictions", {}).get("techniques", [])
     pattern_ids = infer.get("evidence", {}).get("pattern_ids", [])
+    # corpus_hits = unique source arch IDs that drove the fired patterns
+    corpus_hits = len(set(infer.get("evidence", {}).get("source_archs", [])))
     return {
         "label": "TA Brain (corpus inference)",
         "techniques": techniques,
         "infer_result": infer,
         "pattern_ids": pattern_ids,
+        "corpus_hits": corpus_hits,
         "latency_s": latency,
         "token_cost": 0,
         "error": None if infer.get("had_match") else "no_pattern_match",
@@ -880,6 +883,7 @@ def run_boxing_match(
                 "label": data["label"],
                 "model": "brain",
                 "technique_count": len(data["techniques"]),
+                "corpus_hits": data.get("corpus_hits", 0),
                 "latency_s": data["latency_s"],
                 "token_cost": 0,
                 "error": data["error"],
@@ -914,6 +918,17 @@ def run_boxing_match(
         ),
     }
 
+    # Routing signals — consumed by smart_router.py to select pipeline mode
+    corpus_hits = scored.get("brain", {}).get("corpus_hits", 0)
+    brain_vs_gold_delta = qvsc.get("brain_vs_gold_delta", None)
+    routing_signals: Dict[str, Any] = {
+        "brain_vs_gold_delta": brain_vs_gold_delta,
+        "corpus_hits": corpus_hits,
+        "ref_technique_count": len(reference),
+        "arch_type": arch_type or "",
+        "brain_latency_speedup": qvsc.get("brain_latency_speedup"),
+    }
+
     result: Dict[str, Any] = {
         "arch_name": arch_name,
         "run_at": datetime.now(timezone.utc).isoformat(),
@@ -927,6 +942,7 @@ def run_boxing_match(
             "scores": {r[0]: r[1] for r in ranking},
             "quality_vs_cost": qvsc,
         },
+        "routing_signals": routing_signals,
     }
 
     out_path = report_dir / "boxing_results.json"

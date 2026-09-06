@@ -20,5 +20,6 @@ from chatbot.api.routes.artifact import router as artifact_router
 from chatbot.api.routes.taclaw import router as taclaw_router
 from chatbot.api.routes.platform import router as platform_router
 from chatbot.api.routes.boxing import router as boxing_router
+from chatbot.api.routes.routing import router as routing_router
 
 __all__ = ["streaming_router", "reports_router", "config_router", "workspaces_router", "ta_wiz_router", "graph_search_router", "jobs_router", "mcp_sim_router", "brain_router", "taco_router", "bench_router"]
