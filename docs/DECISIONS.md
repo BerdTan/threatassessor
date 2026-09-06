@@ -4,6 +4,60 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 69 — 2026-09-06 (continued)
+
+### Entry 152 — D5 backfill + 3 new arch types boxed; 13-arch routing table established
+
+**What:** Two actions:
+1. **D5 backfill** — no LLM needed. Re-queried brain predictions for 9 existing boxed arches, loaded attack_paths from ground_truth.json, computed `score_d5_critical_recall`, patched `boxing_results.json` routing_signals + brain scores in place.
+2. **Boxed 3 new arch types**: `06_azure_hub_spoke` (cloud), `13_iot_architecture` (iot), `23_bookservices` (web_app). All → brain_fast, D5=1.0.
+
+**Full 13-arch routing table:**
+| Arch | Type | Delta | Hits | D5 | Mode |
+|---|---|---|---|---|---|
+| 01_minimal_vulnerable | generic | −0.030 | 17 | 1.000 | brain_fast |
+| 03_aws_3tier | web_app | −0.049 | 9 | 1.000 | brain_fast |
+| 06_azure_hub_spoke | cloud | −0.049 | 3 | 1.000 | brain_fast |
+| 08_dmz_architecture | web_app | −0.060 | 9 | 1.000 | brain_fast |
+| 10_complex_enterprise | web_app | −0.048 | 9 | 0.920 | brain_fast |
+| 12_microservices | iot | −0.024 | 5 | 1.000 | brain_fast |
+| 13_iot_architecture | iot | −0.084 | 5 | 1.000 | brain_fast |
+| 14_container_orchestration | generic | −0.052 | 17 | 0.964 | brain_fast |
+| 22_generic_ai_nodes | ai_system | −0.017 | 7 | 1.000 | brain_fast |
+| 23_bookservices | web_app | +0.048 | 9 | 1.000 | brain_fast |
+| 20_data_pipeline | generic | −0.163 | 17 | 1.000 | api_only |
+| 07_gcp_serverless | iot | ? | 0 | — | api_only |
+| 21_agentic_ai_system | agentic | −0.348 | 127 | 0.154 | full_moe |
+
+**Key findings:** 10/13 → brain_fast. All brain_fast arches D5 ≥ 0.92 (gate threshold 0.85). `21_agentic_ai_system` D5=0.154 on 12 high-crit paths — already full_moe due to delta; D5 gate would catch it independently. `23_bookservices` delta=+0.048 — brain beats MoE composite on this arch.
+
+**Confidence level revised to ~90%** — 10 arches validated brain_fast routing across 5 distinct arch types (generic/web_app/cloud/iot/ai_system); D5 confirms critical technique coverage on all brain_fast selections.
+
+---
+
+## Session 69 — 2026-09-06
+
+### Entry 151 — D5 critical recall gate + two brain routing bug fixes
+
+**What:** Three changes in commit 836c564:
+1. **Bug 1 fix** (`ta_brain_query.py`): Pass 1 topology signature match now requires `pat_type == arch_type` before checking hash. `03_aws_3tier` (web_app) was matching BRAIN-002 (ai_system) via shared topology hash `0dbbc0b7895c55ba` with `22_generic_ai_nodes_promoted`. Now fires BRAIN-006 (web_app); T1566 (Phishing) restored.
+2. **Bug 2 fix** (`ta_brain_builder.py`): `ARCH_TYPE_OVERRIDES = {"21_agentic_ai_system": "agentic"}` corrects instance label before ingest. `_load_instances()` now deduplicates last-write-wins. `21_agentic_ai_system` fires BRAIN-001 but routes `full_moe` (D1=0.156, delta=-0.348 — agentic pattern is sparse).
+3. **D5 gate** (`BoxingReferee.score_d5_critical_recall`): `|brain ∩ high_crit_gold| / |high_crit_gold|` using attack_path criticality >= 0.7. Wired into `_score_brain_contender`, `routing_signals.d5_critical_recall`, and `select_mode()` — D5 < 0.85 → downgrade brain_fast to api_only. `03_aws_3tier` D5=1.0.
+
+**Why:** T1566 miss root cause was wrong pattern firing (signature collision + wrong arch_type label), not a coverage gap — BRAIN-006 already carries T1566 at freq=0.667. D5 gate provides explicit safety claim: critical-path techniques can't be silently dropped by brain_fast.
+
+**Alternatives rejected:** Rebuilding topology signature with arch_type included (would break all existing instances). Clearing the cache instead of fixing _load_instances (cache clear is transient; dedup fix is permanent).
+
+**Post-fix routing:**
+| Arch | delta | hits | D5 | mode |
+|---|---|---|---|---|
+| 03_aws_3tier | −0.049 | 9 | 1.000 | brain_fast |
+| 21_agentic_ai_system | −0.348 | 127 | — | full_moe |
+
+43/43 tests (5 new D5 gate tests).
+
+---
+
 ## Session 68 — 2026-09-06
 
 ### Entry 149 — Hold-out boxing: D1 generalization validated across 6 new arch types
