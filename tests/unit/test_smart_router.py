@@ -1,0 +1,377 @@
+"""
+Unit tests — smart_router.py pipeline mode selection.
+
+All tests are deterministic: no LLM calls, no network, no real report files.
+Boxing data is seeded via tmp_path fixtures.
+Policy is either injected directly or loaded from real model_routing.yaml.
+"""
+
+import json
+import pytest
+from pathlib import Path
+from unittest.mock import patch
+
+from chatbot.harness.smart_router import (
+    RoutingDecision,
+    _load_boxing_signals,
+    _load_policy,
+    select_mode,
+)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _make_boxing_result(
+    arch_name: str,
+    delta: float,
+    corpus_hits: int,
+    ref_technique_count: int = 40,
+    arch_type: str = "generic",
+) -> dict:
+    """Minimal boxing_results.json with routing_signals populated."""
+    return {
+        "arch_name": arch_name,
+        "run_at": "2026-09-06T00:00:00Z",
+        "ref_technique_count": ref_technique_count,
+        "contenders_run": ["det_moe_full", "brain", "brain_lexical"],
+        "contenders": {
+            "det_moe_full": {"scores": {"composite": 0.9}},
+            "brain": {"scores": {"composite": round(0.9 + delta, 4)}, "corpus_hits": corpus_hits},
+        },
+        "verdict": {
+            "ranking": ["det_moe_full", "brain"],
+            "winner": "det_moe_full",
+            "scores": {"det_moe_full": 0.9, "brain": round(0.9 + delta, 4)},
+            "quality_vs_cost": {
+                "brain_vs_gold_delta": delta,
+                "brain_latency_speedup": 600.0,
+            },
+        },
+        "routing_signals": {
+            "brain_vs_gold_delta": delta,
+            "corpus_hits": corpus_hits,
+            "ref_technique_count": ref_technique_count,
+            "arch_type": arch_type,
+            "brain_latency_speedup": 600.0,
+        },
+    }
+
+
+def _make_old_boxing_result(arch_name: str, delta: float) -> dict:
+    """Boxing result in old format — routing_signals is absent or empty dict."""
+    return {
+        "arch_name": arch_name,
+        "ref_technique_count": 40,
+        "verdict": {
+            "quality_vs_cost": {
+                "brain_vs_gold_delta": delta,
+                "brain_latency_speedup": 100.0,
+            },
+        },
+        "routing_signals": {},      # old format: empty
+    }
+
+
+def _write_boxing(tmp_path: Path, arch_name: str, data: dict) -> Path:
+    arch_dir = tmp_path / arch_name
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    p = arch_dir / "boxing_results.json"
+    p.write_text(json.dumps(data))
+    return p
+
+
+def _default_policy() -> dict:
+    """Minimal routing policy matching model_routing.yaml defaults."""
+    return {
+        "version": "1.0",
+        "overrides": {
+            "aivss_composite_full_moe_threshold": 7.0,
+            "no_boxing_data_default": "api_only",
+        },
+        "tiers": {
+            "brain_fast": {"brain_vs_gold_delta_min": -0.15, "corpus_hits_min": 3},
+            "api_only":   {"brain_vs_gold_delta_min": -0.30, "corpus_hits_min": 1},
+        },
+    }
+
+
+# ── _load_boxing_signals ──────────────────────────────────────────────────────
+
+class TestLoadBoxingSignals:
+
+    def test_returns_none_when_no_report_dir(self, tmp_path):
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg:
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            result = _load_boxing_signals("nonexistent_arch")
+        assert result is None
+
+    def test_returns_none_when_no_boxing_file(self, tmp_path):
+        (tmp_path / "my_arch").mkdir()
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg:
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            result = _load_boxing_signals("my_arch")
+        assert result is None
+
+    def test_reads_new_format_routing_signals(self, tmp_path):
+        data = _make_boxing_result("my_arch", delta=-0.12, corpus_hits=7)
+        _write_boxing(tmp_path, "my_arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg:
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            signals = _load_boxing_signals("my_arch")
+        assert signals is not None
+        assert signals["brain_vs_gold_delta"] == pytest.approx(-0.12)
+        assert signals["corpus_hits"] == 7
+
+    def test_falls_back_to_old_format_qvsc(self, tmp_path):
+        data = _make_old_boxing_result("old_arch", delta=-0.20)
+        _write_boxing(tmp_path, "old_arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg:
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            signals = _load_boxing_signals("old_arch")
+        assert signals is not None
+        assert signals["brain_vs_gold_delta"] == pytest.approx(-0.20)
+        assert signals["corpus_hits"] == 0       # unknown in old format
+
+    def test_returns_none_when_no_delta_in_either_format(self, tmp_path):
+        data = {"arch_name": "bad_arch", "verdict": {}, "routing_signals": {}}
+        _write_boxing(tmp_path, "bad_arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg:
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            result = _load_boxing_signals("bad_arch")
+        assert result is None
+
+
+# ── select_mode — no boxing data ──────────────────────────────────────────────
+
+class TestSelectModeNoData:
+
+    def _patch(self, tmp_path, arch_name="unknown_arch"):
+        """Patches so arch dir exists but no boxing_results.json."""
+        (tmp_path / arch_name).mkdir(parents=True, exist_ok=True)
+        return patch("chatbot.harness.smart_router.get_settings",
+                     return_value=type("S", (), {"system": type("R", (), {"report_dir": str(tmp_path)})()})())
+
+    def test_defaults_to_api_only_when_no_boxing_data(self, tmp_path):
+        with self._patch(tmp_path), \
+             patch("chatbot.harness.smart_router._load_policy", return_value=_default_policy()):
+            d = select_mode("unknown_arch")
+        assert d.mode == "api_only"
+        assert d.has_boxing_data is False
+
+    def test_no_data_default_respects_policy_config(self, tmp_path):
+        policy = _default_policy()
+        policy["overrides"]["no_boxing_data_default"] = "full_moe"
+        with self._patch(tmp_path), \
+             patch("chatbot.harness.smart_router._load_policy", return_value=policy):
+            d = select_mode("unknown_arch")
+        assert d.mode == "full_moe"
+
+
+# ── select_mode — AIVSS override ─────────────────────────────────────────────
+
+class TestSelectModeAivssOverride:
+
+    def test_aivss_override_forces_full_moe(self, tmp_path):
+        data = _make_boxing_result("safe_arch", delta=0.0, corpus_hits=10)
+        _write_boxing(tmp_path, "safe_arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=_default_policy()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            d = select_mode("safe_arch", aivss_composite=7.5)
+        assert d.mode == "full_moe"
+        assert d.aivss_override is True
+
+    def test_aivss_below_threshold_does_not_override(self, tmp_path):
+        data = _make_boxing_result("safe_arch", delta=-0.10, corpus_hits=5)
+        _write_boxing(tmp_path, "safe_arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=_default_policy()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            d = select_mode("safe_arch", aivss_composite=6.9)
+        assert d.mode == "brain_fast"
+        assert d.aivss_override is False
+
+    def test_aivss_exactly_at_threshold_overrides(self, tmp_path):
+        data = _make_boxing_result("arch", delta=0.0, corpus_hits=10)
+        _write_boxing(tmp_path, "arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=_default_policy()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            d = select_mode("arch", aivss_composite=7.0)
+        assert d.mode == "full_moe"
+
+
+# ── select_mode — brain_fast tier ────────────────────────────────────────────
+
+class TestSelectModeBrainFast:
+
+    def _run(self, tmp_path, arch_name, delta, corpus_hits, ref=40):
+        data = _make_boxing_result(arch_name, delta=delta, corpus_hits=corpus_hits, ref_technique_count=ref)
+        _write_boxing(tmp_path, arch_name, data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=_default_policy()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            return select_mode(arch_name)
+
+    def test_brain_fast_when_delta_and_hits_both_pass(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.10, corpus_hits=5)
+        assert d.mode == "brain_fast"
+        assert d.has_boxing_data is True
+
+    def test_brain_fast_when_brain_wins(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=0.002, corpus_hits=5)
+        assert d.mode == "brain_fast"
+
+    def test_brain_fast_at_exact_delta_boundary(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.15, corpus_hits=3)
+        assert d.mode == "brain_fast"
+
+    def test_not_brain_fast_when_hits_too_low(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.10, corpus_hits=2)
+        assert d.mode != "brain_fast"
+
+    def test_not_brain_fast_when_delta_too_low(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.16, corpus_hits=10)
+        assert d.mode != "brain_fast"
+
+    def test_brain_fast_carries_routing_fields(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.12, corpus_hits=7, ref=43)
+        assert d.brain_vs_gold_delta == pytest.approx(-0.12)
+        assert d.corpus_hits == 7
+        assert d.ref_technique_count == 43
+
+
+# ── select_mode — api_only tier ──────────────────────────────────────────────
+
+class TestSelectModeApiOnly:
+
+    def _run(self, tmp_path, arch_name, delta, corpus_hits):
+        data = _make_boxing_result(arch_name, delta=delta, corpus_hits=corpus_hits)
+        _write_boxing(tmp_path, arch_name, data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=_default_policy()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            return select_mode(arch_name)
+
+    def test_api_only_when_delta_ok_but_hits_below_brain_fast(self, tmp_path):
+        # hits=2 → below brain_fast (min=3) but >= api_only (min=1)
+        d = self._run(tmp_path, "arch", delta=-0.10, corpus_hits=2)
+        assert d.mode == "api_only"
+
+    def test_api_only_when_delta_in_middle_band(self, tmp_path):
+        # delta=-0.20 → below brain_fast (-0.15) but >= api_only (-0.30)
+        d = self._run(tmp_path, "arch", delta=-0.20, corpus_hits=5)
+        assert d.mode == "api_only"
+
+    def test_api_only_at_exact_lower_boundary(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.30, corpus_hits=1)
+        assert d.mode == "api_only"
+
+    def test_old_format_with_unknown_hits_routes_api_only(self, tmp_path):
+        data = _make_old_boxing_result("arch", delta=-0.12)
+        _write_boxing(tmp_path, "arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=_default_policy()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            d = select_mode("arch")
+        # corpus_hits=0 in old format → fails brain_fast (hits_min=3) but passes api_only (hits_min=1)? No:
+        # corpus_hits=0 also fails api_only (hits_min=1) → full_moe
+        assert d.mode == "full_moe"
+
+
+# ── select_mode — full_moe fallback ──────────────────────────────────────────
+
+class TestSelectModeFullMoe:
+
+    def _run(self, tmp_path, arch_name, delta, corpus_hits):
+        data = _make_boxing_result(arch_name, delta=delta, corpus_hits=corpus_hits)
+        _write_boxing(tmp_path, arch_name, data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=_default_policy()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            return select_mode(arch_name)
+
+    def test_full_moe_when_delta_below_api_only_threshold(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.31, corpus_hits=5)
+        assert d.mode == "full_moe"
+
+    def test_full_moe_when_zero_corpus_hits(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.10, corpus_hits=0)
+        assert d.mode == "full_moe"
+
+    def test_full_moe_when_delta_very_negative(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.90, corpus_hits=20)
+        assert d.mode == "full_moe"
+
+
+# ── _load_policy — real file ──────────────────────────────────────────────────
+
+class TestLoadPolicy:
+
+    def test_real_policy_file_loads(self):
+        policy = _load_policy()
+        assert "tiers" in policy
+        assert "overrides" in policy
+        assert "brain_fast" in policy["tiers"]
+        assert "api_only" in policy["tiers"]
+
+    def test_real_policy_brain_fast_threshold(self):
+        policy = _load_policy()
+        bf = policy["tiers"]["brain_fast"]
+        assert float(bf["brain_vs_gold_delta_min"]) == pytest.approx(-0.15)
+        assert int(bf["corpus_hits_min"]) == 3
+
+    def test_real_policy_api_only_threshold(self):
+        policy = _load_policy()
+        ao = policy["tiers"]["api_only"]
+        assert float(ao["brain_vs_gold_delta_min"]) == pytest.approx(-0.30)
+        assert int(ao["corpus_hits_min"]) == 1
+
+    def test_real_policy_aivss_override_threshold(self):
+        policy = _load_policy()
+        assert float(policy["overrides"]["aivss_composite_full_moe_threshold"]) == pytest.approx(7.0)
+
+    def test_policy_returns_empty_dict_on_missing_file(self, tmp_path):
+        fake_path = tmp_path / "nonexistent.yaml"
+        with patch("chatbot.harness.smart_router._POLICY_PATH", fake_path):
+            policy = _load_policy()
+        assert policy == {}
+
+
+# ── Integration — real boxing files ──────────────────────────────────────────
+
+class TestIntegrationRealBoxingFiles:
+    """
+    Reads the actual boxing_results.json files written during boxing runs.
+    Skipped if files don't exist (CI without report data).
+    """
+
+    KNOWN_ARCHES = [
+        ("22_generic_ai_nodes",  "brain_fast"),
+        ("21_agentic_ai_system", "brain_fast"),
+        ("12_microservices",     "brain_fast"),
+    ]
+
+    @pytest.mark.parametrize("arch_name,expected_mode", KNOWN_ARCHES)
+    def test_known_arch_routes_correctly(self, arch_name, expected_mode):
+        from pathlib import Path
+        try:
+            from chatbot.config import get_settings
+            report_dir = Path(get_settings().system.report_dir)
+        except Exception:
+            pytest.skip("Cannot load settings")
+
+        if not (report_dir / arch_name / "boxing_results.json").exists():
+            pytest.skip(f"No boxing_results.json for {arch_name}")
+
+        d = select_mode(arch_name)
+        assert d.mode == expected_mode, (
+            f"{arch_name}: expected {expected_mode}, got {d.mode} "
+            f"(delta={d.brain_vs_gold_delta}, hits={d.corpus_hits})"
+        )
+        assert d.has_boxing_data is True
+
+    def test_unknown_arch_returns_api_only(self):
+        d = select_mode("totally_nonexistent_arch_xyz_123")
+        assert d.mode == "api_only"
+        assert d.has_boxing_data is False

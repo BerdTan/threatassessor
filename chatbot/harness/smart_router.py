@@ -25,6 +25,8 @@ from typing import Optional
 
 import yaml
 
+from chatbot.config import get_settings
+
 _log = logging.getLogger(__name__)
 
 _POLICY_PATH = Path(__file__).resolve().parents[2] / "policies" / "model_routing.yaml"
@@ -58,7 +60,6 @@ def _load_boxing_signals(arch_name: str) -> Optional[dict]:
     results produced before routing_signals was added (corpus_hits=0 in that case).
     """
     try:
-        from chatbot.config import get_settings
         report_dir = Path(get_settings().system.report_dir)
         boxing_path = report_dir / arch_name / "boxing_results.json"
         if not boxing_path.exists():
