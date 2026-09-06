@@ -6,6 +6,33 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 68 — 2026-09-06
 
+### Entry 148 — Fix B: synthetic D2 replaces corpus D2 in brain contender scoring
+
+**What:** Wired `score_d2_synthetic` into `_score_brain_contender`. When an mmd_path is available, D2 now measures per-node technique applicability (deterministic, architecture-specific) instead of echoing the brain pattern's corpus applicability rate.
+
+**Changes:**
+- `_extract_nodes_from_mmd(mmd_path)` — extracts `{node_id: {label, node_type}}` from MMD via `MermaidAdapter`
+- `run_brain_contender` — accepts optional `mmd_path`, runs node extraction, stashes nodes in contender dict
+- `_score_brain_contender` — uses `score_d2_synthetic(techs, nodes)` when nodes present; falls back to `score_d2_corpus` otherwise
+- `run_boxing_match` — passes `mmd_path` to `run_brain_contender`; copies MMD to `report/<arch>/architecture.mmd` on first run (enables brain-only re-runs)
+- Fixed stale import: `chatbot.adapters.mmd_adapter.MMDAdapter` → `chatbot.adapters.mermaid.MermaidAdapter` (in both `_lexical_techniques_from_mmd` and `_extract_nodes_from_mmd`)
+
+**Results after Fix B (all 3 arches re-boxed):**
+| Arch | D2 before | D2 after | Composite before | Composite after | Delta before | Delta after |
+|---|---|---|---|---|---|---|
+| 22_generic_ai_nodes | 0.684 | 0.959 | 0.822 | 0.891 | −0.087 | **−0.017** |
+| 21_agentic_ai_system | 0.684 | 0.980 | 0.806 | 0.880 | −0.080 | **−0.006** |
+| 12_microservices | 0.684 | 0.895 | 0.958 | 0.932 | +0.002 | **−0.024** |
+
+All three arches now route to `brain_fast` with delta well inside the −0.15 threshold.
+
+**Why corpus D2 was bad:** `score_d2_corpus` queries `governance_signals.self_validation.applicability_rate` — 0/51 corpus arches have that field. It always fell back to `evidence.corpus_confidence` (a brain-side confidence score), making D2 echo corpus confidence rather than measure actual technique applicability.
+
+**Why synthetic D2 works:** Per-node `validate_technique_for_path` checks each predicted technique against single-node synthetic paths for every graph node. Technique passes if valid for at least one node. This is deterministic, architecture-specific, and tests the same applicability logic the full harness uses.
+
+**Alternative rejected:** Keep corpus D2 and calibrate threshold — rejected because corpus D2 is not architecture-specific (same score across all arches with same brain pattern) and can't improve with better brain data.
+
+
 ### Entry 146 — Smart routing design: arch type is not the discriminator; reference set size + corpus hits are
 
 **What:** Ran boxing on 3 arch types to build routing signal distribution. Results forced a design revision.

@@ -645,9 +645,9 @@ def _lexical_techniques_from_mmd(mmd_path: str) -> List[str]:
     Pure lexical — no patterns, no LLM. Fast baseline for any MMD file.
     """
     try:
-        from chatbot.adapters.mmd_adapter import MMDAdapter
+        from chatbot.adapters.mermaid import MermaidAdapter
         mmd_text = Path(mmd_path).read_text()
-        graph = MMDAdapter().extract(mmd_text, mmd_path)
+        graph = MermaidAdapter().extract(mmd_text, mmd_path)
         labels = " ".join(n.label.lower() for n in graph.nodes)
     except Exception:
         labels = Path(mmd_path).read_text().lower()
@@ -660,8 +660,24 @@ def _lexical_techniques_from_mmd(mmd_path: str) -> List[str]:
     return list(found.keys())
 
 
-def run_brain_contender(arch_name: str, arch_type: str = "") -> Dict[str, Any]:
-    """TA Brain corpus pattern inference. D2 from evidence arch history."""
+def _extract_nodes_from_mmd(mmd_path: str) -> Dict[str, Dict]:
+    """Return {node_id: {label, node_type}} from a .mmd file via MermaidAdapter."""
+    try:
+        from chatbot.adapters.mermaid import MermaidAdapter
+        graph = MermaidAdapter().extract(Path(mmd_path).read_text(), mmd_path)
+        return {n.id: {"label": n.label, "node_type": str(n.node_type)} for n in graph.nodes}
+    except Exception as exc:
+        logger.warning("Could not extract nodes from %s: %s", mmd_path, exc)
+        return {}
+
+
+def run_brain_contender(arch_name: str, arch_type: str = "", mmd_path: Optional[str] = None) -> Dict[str, Any]:
+    """
+    TA Brain corpus pattern inference.
+
+    D2: if mmd_path provided, uses synthetic per-node validation (architecture-specific,
+    deterministic). Falls back to corpus D2 (evidence applicability rate proxy) otherwise.
+    """
     from chatbot.modules.ta_brain_query import query_brain
 
     t0 = time.perf_counter()
@@ -674,14 +690,18 @@ def run_brain_contender(arch_name: str, arch_type: str = "") -> Dict[str, Any]:
 
     techniques = infer.get("predictions", {}).get("techniques", [])
     pattern_ids = infer.get("evidence", {}).get("pattern_ids", [])
-    # corpus_hits = unique source arch IDs that drove the fired patterns
     corpus_hits = len(set(infer.get("evidence", {}).get("source_archs", [])))
+
+    # Stash mmd_path and nodes for D2 scoring in run_boxing_match
+    nodes = _extract_nodes_from_mmd(mmd_path) if mmd_path else {}
+
     return {
         "label": "TA Brain (corpus inference)",
         "techniques": techniques,
         "infer_result": infer,
         "pattern_ids": pattern_ids,
         "corpus_hits": corpus_hits,
+        "nodes": nodes,               # used by _score_brain_contender for synthetic D2
         "latency_s": latency,
         "token_cost": 0,
         "error": None if infer.get("had_match") else "no_pattern_match",
@@ -755,10 +775,20 @@ def _score_llm_only_contender(referee: BoxingReferee, c: Dict, reference: Set[st
 
 
 def _score_brain_contender(referee: BoxingReferee, c: Dict, reference: Set[str]) -> Dict[str, float]:
-    """Score brain (corpus pattern inference). D1 = recall vs gold reference."""
+    """
+    Score brain (corpus pattern inference). D1 = recall vs gold reference.
+
+    D2: uses synthetic per-node validation when graph nodes are available (architecture-specific,
+    deterministic). Falls back to corpus applicability rate when nodes absent.
+    """
     techs = c["techniques"]
+    nodes = c.get("nodes", {})
     d1 = referee.score_d1(techs, reference)
-    d2 = referee.score_d2_corpus(c["pattern_ids"])
+    d2 = (
+        referee.score_d2_synthetic(techs, nodes)
+        if nodes
+        else referee.score_d2_corpus(c["pattern_ids"])
+    )
     d3 = referee.score_d3(techs)
     d4 = referee.score_d4_brain(c["infer_result"])
     return {"threat_completeness": d1, "threat_accuracy": d2,
@@ -804,10 +834,18 @@ def run_boxing_match(
     """
     from chatbot.config import get_settings
 
+    import shutil
+
     run_set = set(contenders or _DEFAULT_CONTENDERS)
     report_dir = Path(get_settings().system.report_dir) / arch_name
     report_dir.mkdir(parents=True, exist_ok=True)
     referee = BoxingReferee()
+
+    # Ensure architecture.mmd is present in report_dir for later brain-only re-runs
+    arch_mmd_copy = report_dir / "architecture.mmd"
+    src_mmd = Path(mmd_path)
+    if src_mmd.exists() and not arch_mmd_copy.exists():
+        shutil.copy2(src_mmd, arch_mmd_copy)
 
     results_map: Dict[str, Dict] = {}  # key → raw contender data
 
@@ -841,7 +879,7 @@ def run_boxing_match(
     # ── Brain (corpus pattern) ────────────────────────────────────────────────
     if "brain" in run_set:
         logger.info("Boxing: brain for %s", arch_name)
-        results_map["brain"] = run_brain_contender(arch_name, arch_type)
+        results_map["brain"] = run_brain_contender(arch_name, arch_type, mmd_path=mmd_path)
 
     # ── Brain-lexical (keyword scan) ──────────────────────────────────────────
     if "brain_lexical" in run_set:

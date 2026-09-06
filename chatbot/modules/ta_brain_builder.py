@@ -245,7 +245,8 @@ def run_distiller(instances: list, min_evidence: int = MIN_EVIDENCE) -> list:
                 rule_raw[r] += 1
 
         aivss_values = [inst["aivss_composite"] for inst in group]
-        aivss_floor = round(min(aivss_values), 3) if aivss_values else 0.0
+        nonzero_aivss = [v for v in aivss_values if v > 0]
+        aivss_floor = round(min(nonzero_aivss), 3) if nonzero_aivss else 0.0
         aivss_mean = round(sum(aivss_values) / len(aivss_values), 3) if aivss_values else 0.0
 
         primary_techniques = [
