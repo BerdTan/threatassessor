@@ -236,7 +236,9 @@ class TestQueryBrain:
                    brain_dir / "ta_brain_interactions.jsonl"), \
              patch("chatbot.modules.ta_brain_query._brain_version", -1):
             result = query_brain(mode="infer", arch_name="nonexistent_arch")
-        assert "error" in result
+        # Unknown arch: returns had_match=False + reason, not a hard error dict
+        assert result.get("had_match") is False
+        assert result.get("reason") == "arch_not_in_brain"
 
     def test_infer_resolves_arch_name_to_topology_sig(self, brain_dir):
         pat = _make_pattern("BRAIN-001", "web", ["T1078"], ["mfa"])

@@ -66,6 +66,8 @@ def calculate_f1(precision: float, recall: float) -> float:
     return 2 * (precision * recall) / (precision + recall)
 
 
+import pytest as _pytest
+@_pytest.mark.skip(reason="standalone script — run directly with mmd_file/gt_file args, not via pytest")
 def test_control_detection(mmd_file: str, gt_file: str) -> dict:
     """
     Test control detection against ground truth.

@@ -12,6 +12,7 @@ from pathlib import Path
 from chatbot.modules.ta_brain_builder import (
     HOLD_OUT_ARCHS,
     MIN_EVIDENCE,
+    BrainGuardian,
     build_brain,
     compute_hub_nodes,
     compute_topology_signature,
@@ -94,32 +95,42 @@ class TestComputeTopologySignature:
 
     def test_corpus_collision_resistance(self):
         """
-        Topology signatures across corpus: structurally identical archs SHOULD
-        share a signature (that's the point — same shape → same cache entry).
-        Verify the hash is discriminating enough that most archs get distinct sigs,
-        and that the signature never degenerates to a single hash for all archs.
+        Topology signatures across canonical corpus archs must be discriminating.
+
+        Excluded from the count (legitimately share topology by design):
+          - syn_*            synthetic archs generated from gaps
+          - ta_brain         brain artefacts dir
+          - *_boxing_bot     boxing re-runs of canonical archs (same MMD, new dir)
+          - *_N (re-runs)    repeated uploads of the same arch (01_minimal_vulnerable_1 etc.)
+          - brain_fast dirs  no parsed_nodes/edges — not graph arches
         """
+        import re as _re
+        _SKIP = _re.compile(r'^(syn_|ta_brain)|_boxing_bot$|_\d+$')
+
         report = Path(__file__).resolve().parents[2] / "report"
         if not report.exists():
             pytest.skip("report dir not available")
         sigs = []
         for arch_dir in sorted(report.iterdir()):
-            if arch_dir.name.startswith("syn_") or arch_dir.name.startswith("ta_brain"):
-                continue  # synthetic archs legitimately share signatures by design
+            if _SKIP.search(arch_dir.name):
+                continue
             gt_path = arch_dir / "ground_truth.json"
             if not gt_path.exists():
                 continue
             gt = json.loads(gt_path.read_text())
             meta = gt.get("metadata", {})
+            if meta.get("generated_by") == "brain_fast":
+                continue  # brain_fast outputs carry no graph structure
             nodes = meta.get("parsed_nodes", {})
             edges = meta.get("parsed_edges", [])
             sigs.append(compute_topology_signature(nodes, edges))
-        # At least 80% of corpus archs get distinct signatures
+        if not sigs:
+            pytest.skip("no canonical arch dirs found")
+        # Canonical archs: at least 80% get distinct signatures
         unique_ratio = len(set(sigs)) / len(sigs)
         assert unique_ratio >= 0.80, (
             f"Too many collisions: only {len(set(sigs))}/{len(sigs)} unique signatures"
         )
-        # Never a single hash for all archs (total degeneration)
         assert len(set(sigs)) > 1
 
 
@@ -453,3 +464,85 @@ class TestBuildBrain:
         result = build_brain(report_dir=tmp_path, hold_out=frozenset())
         assert "invalid_dir" in result["skipped"]
         assert result["ingested"] == 1
+
+
+# ── BrainGuardian ─────────────────────────────────────────────────────────────
+
+class TestBrainGuardianIngestGuard:
+    def setup_method(self):
+        self.guardian = BrainGuardian()
+
+    def test_passes_rapids_output(self):
+        gt = {"metadata": {"generated_by": "rapids+llm"}}
+        ok, reason = self.guardian.ingest_guard(gt)
+        assert ok is True
+        assert reason == "ok"
+
+    def test_passes_parser_only_output(self):
+        gt = {"metadata": {"generated_by": "parser"}}
+        ok, reason = self.guardian.ingest_guard(gt)
+        assert ok is True
+
+    def test_passes_missing_generated_by(self):
+        gt = {"metadata": {}}
+        ok, reason = self.guardian.ingest_guard(gt)
+        assert ok is True
+
+    def test_passes_no_metadata(self):
+        ok, reason = self.guardian.ingest_guard({})
+        assert ok is True
+
+    def test_blocks_brain_fast(self):
+        gt = {"metadata": {"generated_by": "brain_fast"}}
+        ok, reason = self.guardian.ingest_guard(gt)
+        assert ok is False
+        assert "brain_fast" in reason
+        assert "circular" in reason
+
+    def test_extract_instance_skips_brain_fast_output(self, tmp_path):
+        """extract_instance must return None for brain_fast-tagged ground_truth."""
+        arch_dir = tmp_path / "test_arch"
+        arch_dir.mkdir()
+        gt = {
+            "techniques": ["T1078"],
+            "metadata": {
+                "generated_by": "brain_fast",
+                "architecture_type": "web_app",
+                "parsed_nodes": {},
+                "parsed_edges": [],
+            },
+        }
+        gs = {"aivss": {"overall": {"composite": 5.0, "severity": "MEDIUM"}}}
+        (arch_dir / "ground_truth.json").write_text(json.dumps(gt))
+        (arch_dir / "governance_signals.json").write_text(json.dumps(gs))
+        result = extract_instance(arch_dir)
+        assert result is None, "brain_fast output must not be ingested into corpus"
+
+
+class TestBrainGuardianFlywheelHealth:
+    def setup_method(self):
+        self.guardian = BrainGuardian()
+
+    def test_returns_required_keys(self):
+        h = self.guardian.flywheel_health()
+        for key in ("pattern_version", "pattern_count", "total_instances",
+                    "last_rebuild_days_ago", "taco_feedback_last_30d",
+                    "stagnant", "health", "recommendation"):
+            assert key in h, f"Missing key: {key}"
+
+    def test_health_is_valid_enum(self):
+        h = self.guardian.flywheel_health()
+        assert h["health"] in ("healthy", "warning", "stagnant")
+
+    def test_stagnant_flag_consistent_with_health(self):
+        h = self.guardian.flywheel_health()
+        if h["stagnant"]:
+            assert h["health"] == "stagnant"
+
+    def test_healthy_brain_not_stagnant(self):
+        # The live brain (v37, rebuilt recently) should report healthy
+        h = self.guardian.flywheel_health()
+        assert h["last_rebuild_days_ago"] < 30 or h["taco_feedback_last_30d"] > 0, (
+            "Expected recent rebuild or recent TACO feedback"
+        )
+        assert h["total_instances"] > 0

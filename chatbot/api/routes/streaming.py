@@ -131,30 +131,10 @@ async def _brain_fast_stream(
         except Exception:
             pass
 
-    # Build brain_fast ground_truth — tagged so BrainGuardian blocks re-ingest
-    run_ts = _dt.now(_tz.utc).isoformat()
-    brain_gt = {
-        "techniques": techniques,
-        "mitigations": {c: {"source": "brain_pattern", "priority": f} for c, f in
-                        ((p["control"], p["frequency"]) for p in control_priorities)},
-        "controls_missing": controls,
-        "metadata": {
-            "arch_id": arch_name,
-            "architecture_type": arch_type,
-            "generated_by": "brain_fast",
-            "run_ts": run_ts,
-            "brain_patterns_fired": patterns_fired,
-            "brain_confidence": confidence,
-        },
-        "confidence_breakdown": {"final": confidence},
-        "attack_paths": [],
-    }
-
-    try:
-        report_dir.mkdir(parents=True, exist_ok=True)
-        (report_dir / "ground_truth.json").write_text(_json.dumps(brain_gt, indent=2))
-    except Exception as exc:
-        logger.warning("brain_fast: could not write ground_truth.json: %s", exc)
+    # brain_fast does NOT overwrite ground_truth.json — the existing RAPIDS-generated
+    # file is kept intact so API tabs and the brain builder ingest remain correct.
+    # BrainGuardian's ingest_guard() guards against any future path that does write
+    # a brain_fast-tagged ground_truth (defense-in-depth).
 
     yield await SSEStream.send_progress(
         stage="complete", progress=100,

@@ -440,6 +440,9 @@ class TestIntegrationRealBoxingFiles:
 
 # ── QuickAssess endpoint — unit tests (no API server needed) ──────────────────
 
+fastapi = pytest.importorskip("fastapi", reason="fastapi not installed — skipping endpoint tests")
+
+
 class TestQuickAssessEndpoint:
     """
     Tests the quick-assess logic via FastAPI TestClient.

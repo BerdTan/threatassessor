@@ -3288,6 +3288,19 @@ class Dashboard {
         // MoE pill — updated when MoE completes; hidden until then
         this._updateMoePill(moeConf);
 
+        // Brain-fast badge — shown when analysis was served from brain corpus patterns
+        const bfBadge = document.getElementById('brain-fast-badge');
+        if (bfBadge) {
+            const isBrainFast = this.analysisData.generated_by === 'brain_fast';
+            bfBadge.style.display = isBrainFast ? 'inline-flex' : 'none';
+            if (isBrainFast) {
+                const conf = this.analysisData.brain_confidence;
+                bfBadge.title = conf
+                    ? `Brain-fast: corpus pattern match (confidence ${(conf * 100).toFixed(0)}%)`
+                    : 'Brain-fast: served from corpus patterns — no LLM tokens used';
+            }
+        }
+
         // Show bar, hide placeholder
         bar.style.display = 'flex';
         if (placeholder) placeholder.style.display = 'none';
