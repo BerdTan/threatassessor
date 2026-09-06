@@ -95,6 +95,108 @@ def compute_hub_nodes(parsed_edges: list, parsed_nodes: dict, top_n: int = 3) ->
     return [shape_by_id.get(nid, "unknown") for nid, _ in out_degree.most_common(top_n)]
 
 
+# ── Brain Guardian ────────────────────────────────────────────────────────────
+
+class BrainGuardian:
+    """
+    Two-layer flywheel protector:
+      1. ingest_guard   — hard block on circular ingest (brain_fast → corpus)
+      2. flywheel_health — stagnation monitor for /check-brain skill
+    """
+
+    BLOCKED_SOURCES: frozenset = frozenset({"brain_fast"})
+
+    def ingest_guard(self, ground_truth: dict) -> tuple:
+        """Return (True, 'ok') or (False, reason) for an instance being ingested."""
+        source = ground_truth.get("metadata", {}).get("generated_by", "")
+        if source in self.BLOCKED_SOURCES:
+            return False, f"circular ingest blocked: generated_by={source}"
+        return True, "ok"
+
+    def flywheel_health(self) -> dict:
+        """
+        Report brain growth vitals. Stagnant = no new instances in 30d AND no TACO feedback.
+        Consumed by /check-brain skill.
+        """
+        import os
+        from datetime import datetime, timezone
+
+        report_dir = _report_dir()
+        brain_dir = report_dir / "brain"
+        brain_path = brain_dir / "ta_brain.json"
+        interactions_path = brain_dir / "ta_brain_interactions.jsonl"
+
+        now = datetime.now(timezone.utc)
+
+        def _days_since_mtime(p: Path) -> float:
+            try:
+                return (now.timestamp() - os.path.getmtime(p)) / 86400
+            except Exception:
+                return 999.0
+
+        # Brain pattern layer
+        brain: dict = {}
+        if brain_path.exists():
+            try:
+                brain = json.loads(brain_path.read_text())
+            except Exception:
+                pass
+
+        pattern_version = brain.get("pattern_version", 0)
+        pattern_count = len(brain.get("patterns", []))
+        last_rebuild_days = round(_days_since_mtime(brain_path), 1)
+
+        # Instance count from JSONL (last-write-wins dedup, same as query layer)
+        instances_path = brain_dir / "ta_brain_instances.jsonl"
+        instance_count = 0
+        if instances_path.exists():
+            seen: set = set()
+            for line in instances_path.read_text().strip().splitlines():
+                try:
+                    inst = json.loads(line)
+                    seen.add(inst.get("arch_id", ""))
+                except Exception:
+                    pass
+            instance_count = len(seen)
+
+        # TACO feedback in last 30d
+        feedback_30d = 0
+        if interactions_path.exists():
+            try:
+                for line in interactions_path.read_text().strip().splitlines():
+                    try:
+                        entry = json.loads(line)
+                        ts_str = entry.get("ts", "")
+                        if entry.get("feedback") and ts_str:
+                            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                            if ts.tzinfo is None:
+                                ts = ts.replace(tzinfo=timezone.utc)
+                            if (now - ts).total_seconds() <= 30 * 86400:
+                                feedback_30d += 1
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        stagnant = last_rebuild_days > 30 and feedback_30d == 0
+        health = "stagnant" if stagnant else ("warning" if last_rebuild_days > 14 else "healthy")
+
+        return {
+            "pattern_version": pattern_version,
+            "pattern_count": pattern_count,
+            "total_instances": instance_count,
+            "last_rebuild_days_ago": last_rebuild_days,
+            "taco_feedback_last_30d": feedback_30d,
+            "stagnant": stagnant,
+            "health": health,
+            "recommendation": (
+                "Run /brain-grow or /brain-ingest on a new arch to restart growth"
+                if stagnant
+                else "Flywheel healthy"
+            ),
+        }
+
+
 # ── Instance extraction ───────────────────────────────────────────────────────
 
 def _load_rule_evaluator():
@@ -120,6 +222,12 @@ def extract_instance(arch_dir: Path, rule_evaluator=None) -> Optional[dict]:
         gs = json.loads(gs_path.read_text())
     except Exception as exc:
         logger.warning("Skipping %s: %s", arch_dir.name, exc)
+        return None
+
+    # Block circular ingest: brain_fast outputs must never feed back into corpus
+    ok, reason = BrainGuardian().ingest_guard(gt)
+    if not ok:
+        logger.debug("Skipping %s: %s", arch_dir.name, reason)
         return None
 
     meta = gt.get("metadata", {})

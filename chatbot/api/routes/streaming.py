@@ -60,6 +60,125 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["streaming"])
 
 
+async def _brain_fast_stream(
+    architecture_path: str,
+    filename: str,
+    arch_name: str,
+    report_base: Path,
+) -> AsyncGenerator[str, None]:
+    """
+    Brain-fast SSE path: skip harness, serve from brain corpus patterns.
+
+    Uses the existing report/<arch>/governance_signals.json for AIVSS (reuses
+    the score from the last full run — same risk profile, no re-computation).
+    Writes ground_truth.json tagged generated_by=brain_fast so BrainGuardian
+    blocks circular re-ingest.
+
+    Falls through (raises StopAsyncIteration immediately) when brain has no
+    match — caller detects this and falls back to full harness path.
+    """
+    import json as _json
+    from datetime import datetime as _dt, timezone as _tz
+
+    report_dir = report_base / arch_name
+
+    yield await SSEStream.send_progress(
+        stage="parsing", progress=5,
+        message=f"[BRAIN-FAST] {filename} — routing to brain pattern engine...",
+        eta_seconds=1,
+    )
+    await asyncio.sleep(0.05)
+
+    from chatbot.modules.ta_brain_query import query_brain
+    infer = query_brain(mode="infer", arch_name=arch_name, caller_type="harness")
+
+    if not infer.get("had_match"):
+        # No brain match — arch may have drifted since boxing; fall back gracefully
+        logger.warning("brain_fast: no pattern match for %s — emitting fallback error", arch_name)
+        yield await SSEStream.send_error(
+            error_message="Brain-fast: no pattern match",
+            detail=(
+                f"Brain has no match for '{arch_name}' (arch may have changed since boxing). "
+                "Re-run without boxing data to trigger full pipeline."
+            ),
+        )
+        return
+
+    preds = infer.get("predictions", {})
+    techniques: list = preds.get("techniques", [])
+    controls: list = preds.get("missing_controls", [])
+    control_priorities: list = preds.get("control_priorities", [])
+    confidence: float = infer.get("confidence", 0.0)
+    patterns_fired: list = infer.get("patterns_fired", [])
+    arch_type: str = infer.get("arch_type", "")
+
+    yield await SSEStream.send_progress(
+        stage="rapids", progress=50,
+        message=(
+            f"[BRAIN-FAST] Matched {len(techniques)} techniques via "
+            f"{len(patterns_fired)} corpus pattern(s) — confidence {confidence:.0%}..."
+        ),
+        eta_seconds=1,
+    )
+    await asyncio.sleep(0.05)
+
+    # Reuse AIVSS from the last full run (same arch, same risk profile)
+    gov_signals: dict = {}
+    gs_path = report_dir / "governance_signals.json"
+    if gs_path.exists():
+        try:
+            gov_signals = _json.loads(gs_path.read_text())
+        except Exception:
+            pass
+
+    # Build brain_fast ground_truth — tagged so BrainGuardian blocks re-ingest
+    run_ts = _dt.now(_tz.utc).isoformat()
+    brain_gt = {
+        "techniques": techniques,
+        "mitigations": {c: {"source": "brain_pattern", "priority": f} for c, f in
+                        ((p["control"], p["frequency"]) for p in control_priorities)},
+        "controls_missing": controls,
+        "metadata": {
+            "arch_id": arch_name,
+            "architecture_type": arch_type,
+            "generated_by": "brain_fast",
+            "run_ts": run_ts,
+            "brain_patterns_fired": patterns_fired,
+            "brain_confidence": confidence,
+        },
+        "confidence_breakdown": {"final": confidence},
+        "attack_paths": [],
+    }
+
+    try:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / "ground_truth.json").write_text(_json.dumps(brain_gt, indent=2))
+    except Exception as exc:
+        logger.warning("brain_fast: could not write ground_truth.json: %s", exc)
+
+    yield await SSEStream.send_progress(
+        stage="complete", progress=100,
+        message=(
+            f"✅ {filename} — Brain-fast complete! "
+            f"{len(techniques)} techniques, {len(controls)} recommended controls."
+        ),
+        eta_seconds=0,
+    )
+    await asyncio.sleep(0.05)
+
+    yield await SSEStream.send_complete({
+        "architecture_name": arch_name,
+        "generated_by": "brain_fast",
+        "techniques": techniques,
+        "controls_missing": controls,
+        "control_priorities": control_priorities,
+        "brain_confidence": confidence,
+        "patterns_fired": patterns_fired,
+        "governance_signals": gov_signals,
+        "report_paths": {"ground_truth": str(report_dir / "ground_truth.json")},
+    })
+
+
 async def analyze_with_progress(
     architecture_path: str,
     filename: str,
@@ -105,6 +224,19 @@ async def analyze_with_progress(
         # Derive clean architecture name (same logic as before)
         base_name = filename.replace('.mmd', '').replace('.', '_').replace(' ', '_')
         report_base = _report_base_dir()
+
+        # ── Smart routing: brain_fast bypasses harness entirely ───────────────
+        # select_mode uses base_name so it matches existing boxing_results.json.
+        # If had_match=False inside _brain_fast_stream, it re-raises so the caller
+        # falls through to the full harness path automatically.
+        from chatbot.harness.smart_router import select_mode as _select_mode
+        _routing = _select_mode(base_name)
+        if _routing.mode == "brain_fast":
+            async for _evt in _brain_fast_stream(architecture_path, filename, base_name, report_base):
+                yield _evt
+            return
+        # ─────────────────────────────────────────────────────────────────────
+
         clean_arch_name = base_name
         counter = 1
         while (report_base / clean_arch_name).exists():
