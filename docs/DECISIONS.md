@@ -6,6 +6,34 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 68 — 2026-09-06
 
+### Entry 149 — Hold-out boxing: D1 generalization validated across 6 new arch types
+
+**What:** Boxed all 8 hold-out arches (6 previously unboxed). D1 on unseen arches is 0.919–1.0 — brain generalizes well. `20_data_pipeline` correctly demoted to api_only.
+
+**Full 9-arch routing distribution:**
+| Arch | Type | D1 | D2 | comp | delta | hits | routing |
+|---|---|---|---|---|---|---|---|
+| 22_generic_ai_nodes | ai_system | 1.0 | 0.959 | 0.891 | −0.017 | 7 | brain_fast |
+| 21_agentic_ai_system | agentic | 0.933 | 0.980 | 0.880 | −0.006 | 7 | brain_fast |
+| 12_microservices | microservices | 1.0 | 0.895 | 0.932 | −0.024 | 5 | brain_fast |
+| 03_aws_3tier | web_app | 0.969 | 0.939 | 0.878 | −0.103 | 7 | brain_fast |
+| 20_data_pipeline | generic | 1.0 | 0.500 | 0.833 | −0.163 | 17 | **api_only** |
+| 14_container_orchestration | generic | 0.960 | 0.763 | 0.889 | −0.052 | 17 | brain_fast |
+| 01_minimal_vulnerable | generic | 1.0 | 0.868 | 0.925 | −0.030 | 17 | brain_fast |
+| 10_complex_enterprise | web_app | 0.919 | 0.923 | 0.919 | −0.048 | 9 | brain_fast |
+| 08_dmz_architecture | web_app | 1.0 | 0.846 | 0.920 | −0.060 | 9 | brain_fast |
+
+**Key findings:**
+- D1 on hold-out arches: 0.919–1.0 (brain covers gold techniques reliably)
+- 8/9 arches route `brain_fast`; 1/9 (`20_data_pipeline`) correctly demoted to `api_only`
+- `20_data_pipeline` demotion is correct: generic pattern over-fires (38 predicted vs 15 gold); D2=0.500 pulls composite below threshold
+- The −0.15 threshold has natural headroom — closest to threshold is `03_aws_3tier` at −0.103
+
+**Why 20_data_pipeline is instructive:** brain predicts 38 techniques for a 7-node data pipeline (D1=1.0 recall but D2=0.5 precision). The `generic` pattern fires broadly on all 17 corpus hits but the arch graph can't validate half the techniques. This is exactly what api_only is for: brain knows the domain but can't confirm applicability precisely enough.
+
+**Confidence update:** D1 generalization confirmed on hold-out arches. Raises brain_fast confidence from ~75% to ~85% for arches the policy selects it for.
+
+
 ### Entry 148 — Fix B: synthetic D2 replaces corpus D2 in brain contender scoring
 
 **What:** Wired `score_d2_synthetic` into `_score_brain_contender`. When an mmd_path is available, D2 now measures per-node technique applicability (deterministic, architecture-specific) instead of echoing the brain pattern's corpus applicability rate.
