@@ -4,6 +4,42 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 70 — 2026-09-06
+
+### Entry 154 — brain_fast end-to-end verified; UI badge; 303/303 tests pass
+
+**What:** Four things:
+1. **brain_fast does NOT write ground_truth.json** — original RAPIDS data preserved. Brain_fast is a transient SSE response; report files from the last full run remain canonical. BrainGuardian guard stays in `extract_instance()` as defense-in-depth for any future path that does write a tagged file.
+2. **SSE complete payload shape fixed** — carries `architecture_name` + `governance_signals` (reused from last full run) so dashboard AIVSS badge and arch-name pill render correctly without any frontend changes to the tab data flow.
+3. **⚡ Brain-fast teal badge** in header status bar (`#brain-fast-badge`, `color:#14b8a6`). Shows when `analysisData.generated_by === 'brain_fast'`. Hover shows corpus confidence. Hidden for all other pipeline modes.
+4. **Test suite: 303 passed, 5 skipped, 0 failed.** Fixed: collision test (was counting re-run copies + boxing_bot dirs — excluded them), brain query unknown-arch test (returns `had_match=False` not `{"error":...}`), control_detection (standalone script marked skip), FastAPI endpoint class gated with `importorskip`.
+
+**Why:** brain_fast overwriting ground_truth.json would: (a) break the builder collision test, (b) lose full RAPIDS data that Assessment/Controls tabs read via API, (c) require the API tabs to detect and handle brain_fast format specially. Keeping it transient means zero downstream changes — tabs still load from the existing full-pipeline report files.
+
+**Commits:** `cf0f917` (brain_fast wiring + BrainGuardian + check-brain skill), `55152eb` (ground_truth fix + test fixes + UI badge)
+
+---
+
+### Entry 153 — brain_fast wiring + BrainGuardian flywheel protection
+
+**What:** Three components wired together:
+1. **`_brain_fast_stream()` in streaming.py** — new SSE generator called when `select_mode()` returns `brain_fast`. Calls `query_brain(infer)` directly, reuses existing `governance_signals.json` for AIVSS. Skips harness entirely. Falls through with SSE error if brain has no pattern match (arch drifted since boxing).
+2. **`BrainGuardian` in ta_brain_builder.py**:
+   - `ingest_guard(ground_truth)` — hard-blocks outputs tagged `generated_by: brain_fast` from re-entering corpus (circular growth prevention). Wired into `extract_instance()`.
+   - `flywheel_health()` — reads brain JSONL mtime + TACO interactions log → reports pattern version, instance count, rebuild age, TACO feedback rate, stagnant flag.
+3. **`/check-brain` skill** — calls `flywheel_health()`, prints health table, exits 1 when stagnant.
+
+**Why:**
+- Without the guard, brain could learn from its own predictions → amplify existing patterns without ground truth validation.
+- Flywheel growth preserved: novel arches → full pipeline → RAPIDS ground_truth → ingest → brain grows. brain_fast is a read path only.
+- TACO feedback remains the second growth path (user corrections adjust pattern weights regardless of routing mode).
+
+**Routing check placement:** `select_mode(base_name)` called BEFORE the counter loop in `analyze_with_progress`. brain_fast arches reuse the existing `report/<arch>/` dir; no new `_N` counter dir created.
+
+**Flywheel status at commit:** HEALTHY — v37, 6 patterns, 176 instances, rebuilt 0.2d ago, 13 TACO feedbacks in 30d.
+
+---
+
 ## Session 69 — 2026-09-06 (continued)
 
 ### Entry 152 — D5 backfill + 3 new arch types boxed; 13-arch routing table established
