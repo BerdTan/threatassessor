@@ -131,6 +131,7 @@ def select_mode(
     corpus_hits = int(signals.get("corpus_hits", 0))
     ref_count = int(signals.get("ref_technique_count", 0))
     arch_type = signals.get("arch_type", "")
+    d5 = signals.get("d5_critical_recall")  # None = no attack_paths scored yet
 
     base = dict(
         brain_vs_gold_delta=delta,
@@ -140,12 +141,26 @@ def select_mode(
         has_boxing_data=True,
     )
 
+    # ── D5 gate (checked before tier logic) ──────────────────────────────────
+    # If brain misses too many high-criticality techniques, downgrade to api_only.
+    d5_min = float(overrides.get("d5_critical_recall_min", 0.85))
+    d5_blocked = d5 is not None and d5 < d5_min
+
     # ── brain_fast tier ───────────────────────────────────────────────────────
     bf = tiers.get("brain_fast", {})
     bf_delta_min = float(bf.get("brain_vs_gold_delta_min", -0.15))
     bf_hits_min = int(bf.get("corpus_hits_min", 3))
 
     if delta >= bf_delta_min and corpus_hits >= bf_hits_min:
+        if d5_blocked:
+            return RoutingDecision(
+                mode="api_only",
+                rationale=(
+                    f"brain_fast threshold met but D5 critical recall={d5:.3f} < {d5_min} — "
+                    "downgraded to api_only (brain missing high-criticality techniques)"
+                ),
+                **base,
+            )
         return RoutingDecision(
             mode="brain_fast",
             rationale=(

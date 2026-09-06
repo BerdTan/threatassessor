@@ -337,6 +337,67 @@ class TestLoadPolicy:
             policy = _load_policy()
         assert policy == {}
 
+    def test_real_policy_d5_gate_threshold(self):
+        policy = _load_policy()
+        assert float(policy["overrides"]["d5_critical_recall_min"]) == pytest.approx(0.85)
+
+
+# ── D5 critical recall gate ───────────────────────────────────────────────────
+
+class TestD5Gate:
+    """D5 gate: brain_fast downgraded to api_only when critical recall < threshold."""
+
+    def _make_policy_with_d5(self, d5_min: float = 0.85) -> dict:
+        p = _default_policy()
+        p["overrides"]["d5_critical_recall_min"] = d5_min
+        return p
+
+    def _boxing_with_d5(self, arch_name: str, delta: float, hits: int, d5: float) -> dict:
+        result = _make_boxing_result(arch_name, delta=delta, corpus_hits=hits)
+        result["routing_signals"]["d5_critical_recall"] = d5
+        return result
+
+    def test_brain_fast_passes_when_d5_above_threshold(self, tmp_path):
+        data = self._boxing_with_d5("arch", delta=-0.10, hits=5, d5=0.95)
+        _write_boxing(tmp_path, "arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=self._make_policy_with_d5()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            d = select_mode("arch")
+        assert d.mode == "brain_fast"
+
+    def test_brain_fast_downgraded_to_api_only_when_d5_below_threshold(self, tmp_path):
+        data = self._boxing_with_d5("arch", delta=-0.10, hits=5, d5=0.70)
+        _write_boxing(tmp_path, "arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=self._make_policy_with_d5()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            d = select_mode("arch")
+        assert d.mode == "api_only"
+        assert "D5" in d.rationale or "critical recall" in d.rationale.lower()
+
+    def test_d5_none_does_not_block(self, tmp_path):
+        """When no D5 score exists (old boxing data), gate is bypassed."""
+        data = _make_boxing_result("arch", delta=-0.10, corpus_hits=5)
+        # d5_critical_recall absent from routing_signals
+        assert "d5_critical_recall" not in data["routing_signals"]
+        _write_boxing(tmp_path, "arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=self._make_policy_with_d5()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            d = select_mode("arch")
+        assert d.mode == "brain_fast"
+
+    def test_d5_exactly_at_threshold_passes(self, tmp_path):
+        """D5 == threshold is not blocked (gate is strictly less-than)."""
+        data = self._boxing_with_d5("arch", delta=-0.10, hits=5, d5=0.85)
+        _write_boxing(tmp_path, "arch", data)
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=self._make_policy_with_d5()):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            d = select_mode("arch")
+        assert d.mode == "brain_fast"
+
 
 # ── Integration — real boxing files ──────────────────────────────────────────
 
@@ -348,7 +409,7 @@ class TestIntegrationRealBoxingFiles:
 
     KNOWN_ARCHES = [
         ("22_generic_ai_nodes",  "brain_fast"),
-        ("21_agentic_ai_system", "brain_fast"),
+        ("21_agentic_ai_system", "full_moe"),   # delta=-0.348 after arch_type fix (agentic pattern weak on this arch)
         ("12_microservices",     "brain_fast"),
     ]
 

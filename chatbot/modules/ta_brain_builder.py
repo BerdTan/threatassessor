@@ -45,6 +45,14 @@ HOLD_OUT_ARCHS = frozenset({
     "03_aws_3tier", "10_complex_enterprise", "08_dmz_architecture",
 })
 
+# Explicit arch_type overrides for arches whose ground_truth metadata uses a
+# different label than the brain pattern cluster.
+# "21_agentic_ai_system" is labelled architecture_type="ai_system" by the engine
+# (because it has AI nodes) but belongs to the agentic pattern cluster.
+ARCH_TYPE_OVERRIDES: dict = {
+    "21_agentic_ai_system": "agentic",
+}
+
 # A technique or control must appear in at least this many instances of the
 # same arch_type to become part of a pattern.
 MIN_EVIDENCE = 2
@@ -115,7 +123,9 @@ def extract_instance(arch_dir: Path, rule_evaluator=None) -> Optional[dict]:
         return None
 
     meta = gt.get("metadata", {})
-    arch_type = meta.get("architecture_type", "unknown")
+    arch_type = ARCH_TYPE_OVERRIDES.get(
+        arch_dir.name, meta.get("architecture_type", "unknown")
+    )
     parsed_nodes = meta.get("parsed_nodes", {})
     parsed_edges = meta.get("parsed_edges", [])
     node_count = meta.get("node_count", len(parsed_nodes))

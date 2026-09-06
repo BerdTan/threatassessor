@@ -257,6 +257,33 @@ class BoxingReferee:
             pass
         return 0.0
 
+    # D5 — critical technique recall ──────────────────────────────────────────
+
+    _D5_CRITICALITY_THRESHOLD: float = 0.7
+
+    def score_d5_critical_recall(
+        self,
+        predicted_techniques: List[str],
+        attack_paths: List[Dict],
+    ) -> float:
+        """
+        D5 = |brain ∩ high_crit_gold| / |high_crit_gold|
+
+        High-criticality gold = techniques from attack_paths where
+        path.criticality >= 0.7.  Returns 1.0 if no high-crit paths exist
+        (no gate needed when the arch has no critical paths scored).
+        """
+        high_crit: set = set()
+        for path in attack_paths:
+            if path.get("criticality", 0.0) >= self._D5_CRITICALITY_THRESHOLD:
+                high_crit.update(path.get("techniques", []))
+
+        if not high_crit:
+            return 1.0
+
+        predicted_set = set(predicted_techniques)
+        return round(len(predicted_set & high_crit) / len(high_crit), 4)
+
     # Composite ───────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -774,15 +801,21 @@ def _score_llm_only_contender(referee: BoxingReferee, c: Dict, reference: Set[st
             "composite": referee.composite(d1, d2, d3, d4)}
 
 
-def _score_brain_contender(referee: BoxingReferee, c: Dict, reference: Set[str]) -> Dict[str, float]:
+def _score_brain_contender(
+    referee: BoxingReferee,
+    c: Dict,
+    reference: Set[str],
+) -> Dict[str, float]:
     """
     Score brain (corpus pattern inference). D1 = recall vs gold reference.
 
     D2: uses synthetic per-node validation when graph nodes are available (architecture-specific,
     deterministic). Falls back to corpus applicability rate when nodes absent.
+    D5: critical technique recall — fraction of high-criticality gold techniques predicted.
     """
     techs = c["techniques"]
     nodes = c.get("nodes", {})
+    attack_paths = c.get("attack_paths", [])
     d1 = referee.score_d1(techs, reference)
     d2 = (
         referee.score_d2_synthetic(techs, nodes)
@@ -791,9 +824,15 @@ def _score_brain_contender(referee: BoxingReferee, c: Dict, reference: Set[str])
     )
     d3 = referee.score_d3(techs)
     d4 = referee.score_d4_brain(c["infer_result"])
-    return {"threat_completeness": d1, "threat_accuracy": d2,
-            "mitigation_relevance": d3, "actionability": d4,
-            "composite": referee.composite(d1, d2, d3, d4)}
+    d5 = referee.score_d5_critical_recall(techs, attack_paths)
+    return {
+        "threat_completeness": d1,
+        "threat_accuracy": d2,
+        "mitigation_relevance": d3,
+        "actionability": d4,
+        "critical_recall": d5,
+        "composite": referee.composite(d1, d2, d3, d4),
+    }
 
 
 def _score_lexical_contender(referee: BoxingReferee, c: Dict, reference: Set[str]) -> Dict[str, float]:
@@ -879,7 +918,16 @@ def run_boxing_match(
     # ── Brain (corpus pattern) ────────────────────────────────────────────────
     if "brain" in run_set:
         logger.info("Boxing: brain for %s", arch_name)
-        results_map["brain"] = run_brain_contender(arch_name, arch_type, mmd_path=mmd_path)
+        brain_c = run_brain_contender(arch_name, arch_type, mmd_path=mmd_path)
+        # Inject attack_paths from ground_truth for D5 scoring
+        try:
+            gt_path = Path(get_settings().system.report_dir) / arch_name / "ground_truth.json"
+            if gt_path.exists():
+                gt_raw = json.loads(gt_path.read_text())
+                brain_c["attack_paths"] = gt_raw.get("attack_paths", gt_raw.get("expected_attack_paths", []))
+        except Exception as exc:
+            logger.warning("Could not load attack_paths for D5 scoring: %s", exc)
+        results_map["brain"] = brain_c
 
     # ── Brain-lexical (keyword scan) ──────────────────────────────────────────
     if "brain_lexical" in run_set:
@@ -959,12 +1007,14 @@ def run_boxing_match(
     # Routing signals — consumed by smart_router.py to select pipeline mode
     corpus_hits = scored.get("brain", {}).get("corpus_hits", 0)
     brain_vs_gold_delta = qvsc.get("brain_vs_gold_delta", None)
+    d5_critical_recall = scored.get("brain", {}).get("scores", {}).get("critical_recall")
     routing_signals: Dict[str, Any] = {
         "brain_vs_gold_delta": brain_vs_gold_delta,
         "corpus_hits": corpus_hits,
         "ref_technique_count": len(reference),
         "arch_type": arch_type or "",
         "brain_latency_speedup": qvsc.get("brain_latency_speedup"),
+        "d5_critical_recall": d5_critical_recall,
     }
 
     result: Dict[str, Any] = {

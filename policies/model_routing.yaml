@@ -23,6 +23,8 @@ overrides:
   aivss_composite_full_moe_threshold: 7.0
   # Unknown arch (no boxing data) — default mode
   no_boxing_data_default: "api_only"
+  # D5 gate: brain misses too many high-criticality techniques → force at least api_only
+  d5_critical_recall_min: 0.85
 
 # ── Tier thresholds ───────────────────────────────────────────────────────────
 tiers:
@@ -39,7 +41,8 @@ tiers:
   # full_moe: everything else (delta < -0.30, corpus_hits = 0, or AIVSS override)
 
 # ── Boxing data summary (reference — update after each new arch type boxed) ───
-# arch                    | ref_techs | delta   | corpus_hits | → tier
-# 22_generic_ai_nodes     |    43     | -0.128  |    7        | brain_fast
-# 21_agentic_ai_system    |    45     | -0.122  |    7        | brain_fast
-# 12_microservices        |    28     | +0.002  |    5        | brain_fast (brain wins)
+# arch                    | ref_techs | delta   | corpus_hits | D5    | → tier
+# 22_generic_ai_nodes     |    43     | -0.128  |    7        | —     | brain_fast
+# 21_agentic_ai_system    |    45     | -0.348  |   127       | —     | full_moe (delta too low after arch_type fix)
+# 12_microservices        |    28     | +0.002  |    5        | —     | brain_fast (brain wins)
+# 03_aws_3tier            |    32     | -0.049  |    9        | —     | brain_fast (T1566 restored after bug fix)

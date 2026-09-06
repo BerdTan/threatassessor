@@ -70,16 +70,17 @@ def _load_brain() -> dict:
 def _load_instances() -> list:
     if not INSTANCES_PATH.exists():
         return []
-    instances = []
+    seen: dict = {}
     for line in INSTANCES_PATH.read_text().strip().splitlines():
         line = line.strip()
         if not line:
             continue
         try:
-            instances.append(json.loads(line))
+            inst = json.loads(line)
+            seen[inst["arch_id"]] = inst  # last write wins — matches JSONL append contract
         except Exception:
             pass
-    return instances
+    return list(seen.values())
 
 
 # ── Interaction logger ────────────────────────────────────────────────────────
@@ -141,8 +142,13 @@ def _run_infer(
     patterns = brain.get("patterns", [])
     fired: list = []
 
-    # Pass 1: exact signature in evidence set
+    # Pass 1: exact signature match within the same arch_type pattern.
+    # arch_type alignment is required to prevent cross-type signature collisions
+    # (e.g. a promoted boxing instance sharing a topology hash with an unrelated arch).
     for p in patterns:
+        pat_type = p["trigger"].get("arch_type", "")
+        if arch_type and pat_type != arch_type:
+            continue
         if topology_signature in [
             _find_instance(aid)["topology_signature"]
             for aid in p.get("evidence_arch_ids", [])
