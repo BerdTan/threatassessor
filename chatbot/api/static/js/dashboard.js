@@ -973,9 +973,16 @@ class Dashboard {
     }
 
     async handleComplete(data) {
-        this.analysisData = data.data;
+        // Normal pipeline wraps ground_truth under data.data; brain_fast sends a flat payload
+        this.analysisData = data.data !== undefined ? data.data : data;
         console.log('[DEBUG] handleComplete - data.data:', this.analysisData);
         console.log('[DEBUG] handleComplete - architecture_name:', this.analysisData.architecture_name);
+
+        // Normalize to history-load shape: tabs expect this.analysisData.analysis.*
+        // (controls, hardening, threat-model all read analysis.expected_attack_paths etc.)
+        if (this.analysisData && !this.analysisData.analysis) {
+            this.analysisData = { ...this.analysisData, analysis: this.analysisData };
+        }
 
         // Use complete attack paths from final analysis data (not just streamed 3)
         if (this.analysisData.analysis && this.analysisData.analysis.expected_attack_paths) {

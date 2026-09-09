@@ -131,10 +131,18 @@ async def _brain_fast_stream(
         except Exception:
             pass
 
+    # Load existing ground_truth.json for overview stats (risk score, attack paths, controls).
     # brain_fast does NOT overwrite ground_truth.json — the existing RAPIDS-generated
     # file is kept intact so API tabs and the brain builder ingest remain correct.
     # BrainGuardian's ingest_guard() guards against any future path that does write
     # a brain_fast-tagged ground_truth (defense-in-depth).
+    ground_truth: dict = {}
+    gt_path = report_dir / "ground_truth.json"
+    if gt_path.exists():
+        try:
+            ground_truth = _json.loads(gt_path.read_text())
+        except Exception:
+            pass
 
     yield await SSEStream.send_progress(
         stage="complete", progress=100,
@@ -146,16 +154,25 @@ async def _brain_fast_stream(
     )
     await asyncio.sleep(0.05)
 
-    yield await SSEStream.send_complete({
+    # The dashboard's handleComplete reads data.data to populate this.analysisData.
+    # The history-load path wraps the full ground_truth as {analysis: gt}, so tabs
+    # read this.analysisData.analysis.expected_attack_paths / .threat_model / etc.
+    # We use the full ground_truth (not just gt["data"]) so threat_model, ADRs, etc.
+    # are present. Brain_fast markers overlay on top.
+    brain_fast_data: dict = {
+        **ground_truth,
         "architecture_name": arch_name,
         "generated_by": "brain_fast",
-        "techniques": techniques,
-        "controls_missing": controls,
+        "brain_techniques": techniques,
         "control_priorities": control_priorities,
         "brain_confidence": confidence,
         "patterns_fired": patterns_fired,
         "governance_signals": gov_signals,
-        "report_paths": {"ground_truth": str(report_dir / "ground_truth.json")},
+        "report_paths": {"ground_truth": str(gt_path)},
+    }
+    yield await SSEStream.send_complete({
+        **brain_fast_data,
+        "data": brain_fast_data,
     })
 
 
@@ -239,6 +256,21 @@ async def analyze_with_progress(
         )
 
         loop = asyncio.get_event_loop()
+        # Build agent_models override from routing decision (bench-derived model selection).
+        # All critics receive the same model — per-critic tuning can be added later.
+        _routed_model = _routing.model_id
+        _agent_models = (
+            {a: _routed_model for a in
+             ["architect", "tester", "red_team", "purple_team", "blackhat", "moe_orchestrator"]}
+            if _routed_model else {}
+        )
+        if _routed_model:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "smart_router: %s → mode=%s model=%s (%s)",
+                clean_arch_name, _routing.mode, _routing.model_alias, _routed_model,
+            )
+
         harness_future = loop.run_in_executor(
             None,
             lambda: harness.run(
@@ -248,6 +280,7 @@ async def analyze_with_progress(
                 enable_ssp=enable_ssp,
                 include_validation=include_validation,
                 architecture_name=clean_arch_name,
+                agent_models=_agent_models or None,
             )
         )
 

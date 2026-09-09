@@ -438,6 +438,95 @@ class TestIntegrationRealBoxingFiles:
         assert d.has_boxing_data is False
 
 
+# ── model_alias in RoutingDecision ────────────────────────────────────────────
+
+def _policy_with_model_selection() -> dict:
+    """Policy with model_selection block for model_alias tests."""
+    base = _default_policy()
+    base["tested_models"] = {
+        "hetzner":      {"model_id": "openai/Qwen/Qwen3.6-35B-A3B-FP8", "status": "confirmed"},
+        "gemini_flash": {"model_id": "gemini/gemini-3.6-flash",           "status": "confirmed"},
+        "excluded_mdl": {"model_id": "openrouter/some/model:free",        "status": "excluded"},
+    }
+    base["model_selection"] = {
+        "full_moe": {
+            "agentic": {"primary": "hetzner",      "fallback": "gemini_flash"},
+            "cloud":   {"primary": "excluded_mdl", "fallback": "gemini_flash"},
+            "default": {"primary": "hetzner",      "fallback": "gemini_flash"},
+        },
+        "api_only": {
+            "default": {"primary": "hetzner", "fallback": "gemini_flash"},
+        },
+    }
+    return base
+
+
+class TestModelAlias:
+    """RoutingDecision carries the correct model_alias + model_id."""
+
+    def _run(self, tmp_path, arch_name, delta, corpus_hits, arch_type="generic"):
+        data = _make_boxing_result(arch_name, delta=delta, corpus_hits=corpus_hits, arch_type=arch_type)
+        _write_boxing(tmp_path, arch_name, data)
+        policy = _policy_with_model_selection()
+        with patch("chatbot.harness.smart_router.get_settings") as mock_cfg, \
+             patch("chatbot.harness.smart_router._load_policy", return_value=policy):
+            mock_cfg.return_value.system.report_dir = str(tmp_path)
+            return select_mode(arch_name)
+
+    def test_full_moe_agentic_gets_hetzner(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.90, corpus_hits=5, arch_type="agentic")
+        assert d.mode == "full_moe"
+        assert d.model_alias == "hetzner"
+        assert "Qwen" in d.model_id
+
+    def test_full_moe_default_gets_hetzner(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.90, corpus_hits=5, arch_type="generic")
+        assert d.mode == "full_moe"
+        assert d.model_alias == "hetzner"
+
+    def test_api_only_gets_hetzner(self, tmp_path):
+        # hits=2 → api_only (below brain_fast min of 3)
+        d = self._run(tmp_path, "arch", delta=-0.10, corpus_hits=2, arch_type="generic")
+        assert d.mode == "api_only"
+        assert d.model_alias == "hetzner"
+
+    def test_excluded_primary_falls_back_to_gemini(self, tmp_path):
+        # cloud → primary=excluded_mdl (status=excluded) → fallback=gemini_flash
+        d = self._run(tmp_path, "arch", delta=-0.90, corpus_hits=5, arch_type="cloud")
+        assert d.mode == "full_moe"
+        assert d.model_alias == "gemini_flash"
+        assert "gemini" in d.model_id
+
+    def test_brain_fast_has_no_model(self, tmp_path):
+        d = self._run(tmp_path, "arch", delta=-0.10, corpus_hits=5, arch_type="generic")
+        assert d.mode == "brain_fast"
+        assert d.model_alias == ""
+        assert d.model_id == ""
+
+    def test_no_boxing_data_returns_empty_model(self):
+        d = select_mode("totally_nonexistent_arch_xyz_999")
+        assert d.mode == "api_only"
+        assert d.has_boxing_data is False
+        # model_alias is set even without boxing data (falls to default)
+        assert isinstance(d.model_alias, str)
+        assert isinstance(d.model_id, str)
+
+    def test_real_policy_agentic_routes_to_hetzner(self):
+        """21_agentic_ai_system is boxed as full_moe/hetzner — verify via real files."""
+        from pathlib import Path
+        try:
+            from chatbot.config import get_settings
+            report_dir = Path(get_settings().system.report_dir)
+        except Exception:
+            pytest.skip("Cannot load settings")
+        if not (report_dir / "21_agentic_ai_system" / "boxing_results.json").exists():
+            pytest.skip("No boxing_results.json for 21_agentic_ai_system")
+        d = select_mode("21_agentic_ai_system")
+        assert d.mode == "full_moe"
+        assert d.model_alias == "hetzner"
+        assert d.model_id != ""
+
+
 # ── QuickAssess endpoint — unit tests (no API server needed) ──────────────────
 
 fastapi = pytest.importorskip("fastapi", reason="fastapi not installed — skipping endpoint tests")

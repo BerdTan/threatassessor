@@ -42,6 +42,36 @@ class RoutingDecision:
     arch_type: str = ""
     aivss_override: bool = False
     has_boxing_data: bool = False
+    model_alias: str = ""      # e.g. "minimax", "hetzner" — alias in tested_models
+    model_id: str = ""         # full model string for llm_client, e.g. "openrouter/minimax/..."
+
+
+def _select_model(mode: str, arch_type: str, policy: dict) -> tuple[str, str]:
+    """Return (alias, model_id) for the given mode + arch_type from policy.
+
+    Falls back to 'default' entry if arch_type not listed, then to hetzner if
+    the policy section is missing entirely. brain_fast skips harness — no model needed.
+    """
+    if mode == "brain_fast":
+        return "", ""
+
+    sel = policy.get("model_selection", {})
+    mode_sel = sel.get(mode) or sel.get("api_only") or {}
+    entry = mode_sel.get(arch_type) or mode_sel.get("default") or {}
+
+    alias = entry.get("primary", "hetzner")
+    fallback_alias = entry.get("fallback", "gemini_flash")
+
+    models = policy.get("tested_models", {})
+    model_entry = models.get(alias, {})
+
+    # Skip excluded/unavailable models — try fallback
+    if model_entry.get("status") not in ("confirmed", "partial") or not model_entry.get("model_id"):
+        alias = fallback_alias
+        model_entry = models.get(alias, {})
+
+    model_id = model_entry.get("model_id", "")
+    return alias, model_id
 
 
 def _load_policy() -> dict:
@@ -111,20 +141,26 @@ def select_mode(
 
     # ── Hard override: AIVSS risk ─────────────────────────────────────────────
     if aivss_composite is not None and aivss_composite >= aivss_threshold:
+        _alias, _mid = _select_model("full_moe", "", policy)
         return RoutingDecision(
             mode="full_moe",
             rationale=f"AIVSS composite {aivss_composite:.1f} >= {aivss_threshold} security override",
             aivss_override=True,
             has_boxing_data=False,
+            model_alias=_alias,
+            model_id=_mid,
         )
 
     # ── Load boxing signals ───────────────────────────────────────────────────
     signals = _load_boxing_signals(arch_name)
     if signals is None:
+        _alias, _mid = _select_model(default_no_data, "", policy)
         return RoutingDecision(
             mode=default_no_data,
             rationale="no boxing data for this arch — using default",
             has_boxing_data=False,
+            model_alias=_alias,
+            model_id=_mid,
         )
 
     delta = float(signals.get("brain_vs_gold_delta", -999))
@@ -153,12 +189,14 @@ def select_mode(
 
     if delta >= bf_delta_min and corpus_hits >= bf_hits_min:
         if d5_blocked:
+            _alias, _mid = _select_model("api_only", arch_type, policy)
             return RoutingDecision(
                 mode="api_only",
                 rationale=(
                     f"brain_fast threshold met but D5 critical recall={d5:.3f} < {d5_min} — "
                     "downgraded to api_only (brain missing high-criticality techniques)"
                 ),
+                model_alias=_alias, model_id=_mid,
                 **base,
             )
         return RoutingDecision(
@@ -167,6 +205,7 @@ def select_mode(
                 f"brain_vs_gold_delta={delta:+.3f} >= {bf_delta_min} "
                 f"AND corpus_hits={corpus_hits} >= {bf_hits_min}"
             ),
+            model_alias="", model_id="",
             **base,
         )
 
@@ -176,21 +215,25 @@ def select_mode(
     ao_hits_min = int(ao.get("corpus_hits_min", 1))
 
     if delta >= ao_delta_min and corpus_hits >= ao_hits_min:
+        _alias, _mid = _select_model("api_only", arch_type, policy)
         return RoutingDecision(
             mode="api_only",
             rationale=(
                 f"brain_vs_gold_delta={delta:+.3f} >= {ao_delta_min} "
                 f"AND corpus_hits={corpus_hits} >= {ao_hits_min} (brain below brain_fast threshold)"
             ),
+            model_alias=_alias, model_id=_mid,
             **base,
         )
 
     # ── full_moe fallback ─────────────────────────────────────────────────────
+    _alias, _mid = _select_model("full_moe", arch_type, policy)
     return RoutingDecision(
         mode="full_moe",
         rationale=(
             f"brain_vs_gold_delta={delta:+.3f} or corpus_hits={corpus_hits} "
             "below api_only threshold"
         ),
+        model_alias=_alias, model_id=_mid,
         **base,
     )

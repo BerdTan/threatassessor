@@ -14,8 +14,8 @@
 #   corpus_hits          — unique source arch IDs that drove the fired brain patterns
 #   ref_technique_count  — number of validated techniques in the gold reference set
 
-version: "1.0"
-updated: "2026-09-06"
+version: "1.1"
+updated: "2026-09-08"
 
 # ── Hard overrides (checked before threshold logic) ───────────────────────────
 overrides:
@@ -39,6 +39,76 @@ tiers:
     corpus_hits_min: 1               # at least 1 corpus match
 
   # full_moe: everything else (delta < -0.30, corpus_hits = 0, or AIVSS override)
+
+# ── Tested model registry ─────────────────────────────────────────────────────
+# Only models from this list are eligible for routing.
+# Derived from bench_results/combined_20260829_leaderboard/bench_summary.json
+# status: confirmed=passed all bench runs, partial=incomplete runs, excluded=failed/timeout
+tested_models:
+  hetzner:
+    model_id: "openai/Qwen/Qwen3.6-35B-A3B-FP8"
+    status: "confirmed"
+    provider: "hetzner"
+    notes: "Primary provider. Best depth for agentic_ai (11.0). Best defensibility (5.38)."
+  gemini_flash:
+    model_id: "gemini/gemini-3.6-flash"
+    status: "confirmed"
+    provider: "gemini"
+    notes: "Fast (200-450s). Best depth for cloud (9.7). Good breadth."
+  minimax:
+    model_id: "openrouter/minimax/minimax-m3:free"
+    status: "excluded"
+    provider: "openrouter"
+    notes: "Was free tier — may have moved to paid. Do not route until re-verified. Bench scores (breadth 30-39, 128-216s) remain valid as historical reference."
+  hetzner_27b:
+    model_id: "openai/Qwen3.8-27B"
+    status: "confirmed"
+    provider: "hetzner"
+    notes: "Larger Qwen variant. Good depth but slower (585-1200s)."
+  nemotron_nano:
+    model_id: "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+    status: "partial"
+    provider: "openrouter"
+    notes: "Partial bench — slow (1185-1210s). Reasoning model."
+  nemotron_super:
+    model_id: "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    status: "partial"
+    provider: "openrouter"
+    notes: "Partial bench — slow (577-1162s). Large reasoning model. Interim replacement for minimax on cloud/web_app while gemma-4-26b is evaluated."
+  gemma_4_26b:
+    model_id: "openrouter/google/gemma-4-26b-a4b-it:free"
+    status: "candidate"
+    provider: "openrouter"
+    notes: "Not yet benched. Free tier — to trial next round as minimax replacement. Smaller than gemma-4-31b (excluded for quality). Run ta-boxing on 2-3 arches to get composite score before promoting to confirmed."
+  # Excluded: glm (timeout/fallback), ox_alpha (timeout), gemma-4-31b (quality issues), minimax (no longer free)
+
+# ── Model selection by arch_type ──────────────────────────────────────────────
+# Derived from bench composite = 0.35*depth_norm + 0.25*defens_norm + 0.25*breadth_norm - 0.15*latency_norm
+# Scores and methodology: bench_results/combined_20260829_leaderboard/bench_summary.json
+#
+# arch_type         | primary   | score  | fallback     | score  | note
+# agentic           | minimax   | 0.732  | gemini_flash | 0.704  |
+# agentic_ai        | minimax   | 0.661  | hetzner      | 0.659  | near-tie; hetzner wins on depth+defens
+# cloud             | minimax   | 0.814  | gemini_flash | 0.643  |
+# microservices     | minimax   | 0.807  | hetzner      | 0.679  |
+# generic/web_app/  |                                             | not in bench → use defaults
+# iot               |           |                                 |
+model_selection:
+  # full_moe: critics run — model quality matters most
+  # minimax excluded (no longer free) — nemotron_super interim for breadth-heavy arches
+  # gemma_4_26b: promote here once bench confirms quality (replace nemotron_super)
+  full_moe:
+    agentic:       { primary: hetzner,        fallback: gemini_flash }   # best depth+defens for security-critical
+    agentic_ai:    { primary: hetzner,        fallback: gemini_flash }   # near-tie; hetzner wins depth+defens for AI arches
+    cloud:         { primary: nemotron_super, fallback: gemini_flash }   # interim; replace with gemma_4_26b after bench
+    microservices: { primary: nemotron_super, fallback: hetzner }        # interim; replace with gemma_4_26b after bench
+    generic:       { primary: hetzner,        fallback: gemini_flash }
+    web_app:       { primary: nemotron_super, fallback: hetzner }        # interim; replace with gemma_4_26b after bench
+    iot:           { primary: gemini_flash,   fallback: hetzner }
+    default:       { primary: hetzner,        fallback: gemini_flash }
+  # api_only: deterministic engine + report only; speed favoured over depth
+  api_only:
+    default:       { primary: hetzner,        fallback: gemini_flash }
 
 # ── Boxing data summary (reference — update after each new arch type boxed) ───
 # arch                    | ref_techs | delta   | corpus_hits | D5    | → tier

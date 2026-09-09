@@ -4,6 +4,29 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 71 — 2026-09-08
+
+### Entry 156 — Smart router model selection: bench-derived, tested-set only; minimax flagged pending verification
+
+**What:** `RoutingDecision` extended with `model_alias` + `model_id`. `_select_model(mode, arch_type, policy)` added to `smart_router.py` — looks up `model_routing.yaml v1.1` which now has two new sections: `tested_models` (6 confirmed entries with full model strings) and `model_selection` (per arch_type + mode routing table). `streaming.py` passes `agent_models` dict to `harness.run()` when routing yields a model.
+
+**Routing table (full_moe):** agentic/agentic_ai → hetzner (best depth+defensibility); cloud/microservices/web_app → minimax (best breadth+speed); iot → gemini_flash; default → hetzner.
+
+**Minimax caveat:** minimax is on OpenRouter free tier (`openrouter/minimax/minimax-m3:free`) — availability and rate limits are uncontrolled. It leads the bench composite score (breadth 30-39, fastest 128-216s) but free-tier SLA is unknown. **Treat minimax routing as provisional until verified in a live test run.** If unavailable, `ModelRouter` fallback chain kicks in (hetzner/gemini_flash are always confirmed). Smart router testing planned for next session after the break.
+
+**Why bench-derived:** avoids ad-hoc model choices; scoring = 0.35×depth + 0.25×defensibility + 0.25×breadth − 0.15×latency from `bench_results/combined_20260829_leaderboard/bench_summary.json` (8 models × 5 arches). Models not in tested set are unreachable.
+
+**Alternatives rejected:** static model for all arches (ignores measured perf differences); per-critic tuning (premature — add later once per-stage bench data exists).
+
+### Entry 155 — brain_fast dashboard fix: SSE payload shape + analysis key normalisation
+
+**What:** Two bugs fixed in brain_fast end-to-end flow:
+1. `handleComplete` read `data.data` which was `undefined` for brain_fast (no `data` wrapper in SSE payload) → JS threw on line 978 → `_analysing` never reset → stuck banner.
+2. All tabs (controls, hardening, threat-model, attacks) read `this.analysisData.analysis.*` but streaming sets `this.analysisData` to the flat ground_truth dict (no `analysis` key). History-load wraps as `{analysis: gt}`. Fixed by normalising in `handleComplete`: if no `analysis` key, synthesise `{...this.analysisData, analysis: this.analysisData}`.
+3. brain_fast `send_complete` payload now spreads full `ground_truth` (top-level, not `data` sub-dict) so `threat_model`, `architecture_decision_records`, `blackhat_critique` are present.
+
+**Why:** brain_fast is a lookup-table mode — it serves the existing full-pipeline ground_truth.json cached on disk. The dashboard still needs to display the same tabs as a fresh run; the fix makes that possible without re-running the pipeline.
+
 ## Session 70 — 2026-09-06
 
 ### Entry 154 — brain_fast end-to-end verified; UI badge; 303/303 tests pass
