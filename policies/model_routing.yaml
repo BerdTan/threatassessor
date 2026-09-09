@@ -77,9 +77,9 @@ tested_models:
     notes: "Partial bench — slow (577-1162s). Large reasoning model. Interim replacement for minimax on cloud/web_app while gemma-4-26b is evaluated."
   gemma_4_26b:
     model_id: "openrouter/google/gemma-4-26b-a4b-it:free"
-    status: "candidate"
+    status: "partial"
     provider: "openrouter"
-    notes: "Not yet benched. Free tier — to trial next round as minimax replacement. Smaller than gemma-4-31b (excluded for quality). Run ta-boxing on 2-3 arches to get composite score before promoting to confirmed."
+    notes: "Benched 2026-09-09 on cloud+web_app (azure_hub_spoke, multi_region). Blockers: blackhat silent on both arches; purple_team missing on azure. Architect -1.6pt. Token efficiency excellent (24k vs 89k). Do not route until blackhat gap resolved. Re-bench with container_orchestration if free-tier issue clears."
   # Excluded: glm (timeout/fallback), ox_alpha (timeout), gemma-4-31b (quality issues), minimax (no longer free)
 
 # ── Model selection by arch_type ──────────────────────────────────────────────

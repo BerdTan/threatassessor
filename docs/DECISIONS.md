@@ -4,6 +4,24 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 72 — 2026-09-09
+
+### Entry 157 — gemma-4-26b-a4b-it:free bench: partial, not promoted
+
+**What:** Benched `google/gemma-4-26b-a4b-it:free` (via OR) against hetzner on `06_azure_hub_spoke` (cloud) and `17_multi_region` (web_app) — the arch types where nemotron_super is interim primary. Marked `status: partial` in `model_routing.yaml`. nemotron_super stays interim.
+
+**Result:** Two hard blockers — blackhat returning 0 tokens on both arches; purple_team missing on azure. Architect depth −1.6/−1.7 pts (below the ≥2pt gap threshold but noted). Token efficiency excellent (21–24k vs 89–94k hetzner). TATB + defensibility identical.
+
+**Hetzner tester 0.0 finding (separate):** tester completion hit 12k tokens (budget exhausted across retries) — JSON truncated before close, parse fails → score 0. Root cause: `/no_think` reduces but doesn't eliminate Qwen reasoning budget; 4k cap too tight for large arches. Pre-existing issue, not introduced by this bench. Fix tracked separately (raise tester `max_tokens` for hetzner on large arches).
+
+**Why not promoted:** blackhat silence on both arches is a hard quality regression — blackhat findings feed OCSF export and AIVSS scoring. A model that can't produce blackhat output cannot replace nemotron_super for corpus work.
+
+**Next step:** if gemma free tier resolves the blackhat issue (rate-limit or format mismatch), re-bench with `14_container_orchestration` added before reconsidering.
+
+**Alternatives rejected:** promoting with known gap (blackhat 0 would silently degrade corpus); routing gemma to non-blackhat critics only (premature per-critic tuning).
+
+---
+
 ## Session 71 — 2026-09-08
 
 ### Entry 156 — Smart router model selection: bench-derived, tested-set only; minimax flagged pending verification

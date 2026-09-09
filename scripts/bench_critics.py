@@ -107,6 +107,7 @@ MODEL_ALIASES = {
     "glm":              "openrouter/z-ai/glm-5.2",              # paid; tester=model cap (prose-wraps JSON); benched 2026-08-29
     "openrouter_free":  "openrouter/nvidia/nemotron-3.5-lightning:free",  # untested
     "cohere":           "openrouter/cohere/north-mini-code:free",          # untested; non-thinking sparse MoE
+    "gemma_4_26b":      "openrouter/google/gemma-4-26b-a4b-it:free",       # candidate; free tier; trial 2026-09-09
 }
 
 
@@ -636,7 +637,7 @@ def main():
     ap.add_argument("--archs",    nargs="*", default=None,
                     help="Arch names to benchmark. Omit to auto-select (uses qualify logic).")
     ap.add_argument("--models",   nargs="+", default=["current"],
-                    help="Model aliases: current hetzner hetzner_27b gemini_flash minimax nemotron_nano nemotron_super glm openrouter_free cohere")
+                    help="Model aliases: current hetzner hetzner_27b gemini_flash minimax nemotron_nano nemotron_super glm openrouter_free cohere gemma_4_26b")
     ap.add_argument("--critic-mode", default="partial_parallel",
                     choices=["partial_parallel", "sequential", "parallel", "auto"],
                     help="MoE critic execution mode (default: partial_parallel). Use sequential for rate-limited providers.")
