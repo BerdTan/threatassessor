@@ -28,7 +28,7 @@ flowchart TD
 
     subgraph Outputs
         rep_o["report/ directory"]
-        det_o["31 DETECT rules"]
+        det_o["36 DETECT rules"]
         brn_o["TA Brain"]
     end
 
@@ -56,7 +56,7 @@ flowchart TD
 | **Harness v2** | Pipeline controller: stages, circuit breaker, event broker | `chatbot/harness/` |
 | **Analysis engine** | Deterministic threat mapping — RAPIDS + MITRE ATT&CK embeddings | `chatbot/modules/ground_truth_generator.py` |
 | **MoE critics** | 5-critic panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster | `chatbot/modules/agents/critics/` |
-| **SOC detection layer** | 31 DETECT rules → OCSF DetectionFinding 2004 events per run | `policies/soc_detection_rules.yaml` |
+| **SOC detection layer** | 36 DETECT rules → OCSF DetectionFinding 2004 events per run | `policies/soc_detection_rules.yaml` |
 | **Model benchmark** | N-model (up to 3) side-by-side critic evaluation; colour-coded HTML radar report with per-critic improvement hints and cross-model gap detection | `scripts/bench_critics.py`, `scripts/bench_report.py` |
 | **TA Brain** | Persistent knowledge graph distilled from corpus; Stages 1–8 (Gap→MMD closes the self-growing loop); TACO query surface + CLI skills | `chatbot/modules/ta_brain_*.py` |
 | **AIVSS v4** | Three-flow safety scoring: inbound / internal / outbound | `chatbot/harness/stages.py` |
@@ -74,7 +74,7 @@ A `.mmd` file submitted to `POST /api/v1/analyze` passes through Harness v2 in o
 5. **CriticStage × 5** (FULL_MOE only) — runs in `partial_parallel` mode by default; each critic receives user-journey context relevant to its rubric.
 6. **ScrumMasterStage** (FULL_MOE only) — synthesises critic findings into sprint-ready impediments and an 8-week action plan.
 7. **AIVSSStage** — produces inbound / internal / outbound safety scores and appends to `governance_signals_history.jsonl`.
-8. **RuleEvaluator** — evaluates all 31 DETECT rules against the governance signals and emits OCSF DetectionFinding events.
+8. **RuleEvaluator** — evaluates all 36 DETECT rules against the governance signals and emits OCSF DetectionFinding events.
 
 For `POST /api/v1/analyze-stream`, the same pipeline runs with SSE progress events for the dashboard.
 
@@ -197,7 +197,7 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 **MCP transport** — stdio transport (default) has no network exposure. Network transport (`--transport sse` / `--transport streamable-http`) requires `TM_MCP_KEY`; the server refuses to start without it.
 
-**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` exploitation signals before any critic or output stage runs. The 31 DETECT rules emit OCSF events for SOC consumption.
+**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` exploitation signals before any critic or output stage runs. The 36 DETECT rules emit OCSF events for SOC consumption.
 
 ## Design decisions
 

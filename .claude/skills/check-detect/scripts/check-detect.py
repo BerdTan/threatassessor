@@ -4,6 +4,7 @@ check-detect — SOC detection rule regression + live corpus evaluation.
 
 Usage:
     python3 check-detect.py                      # unit tests only
+    python3 check-detect.py --count              # domain summary table + stale-count scan
     python3 check-detect.py 21_agentic_ai_system # tests + live rule eval
     python3 check-detect.py --all                # tests + all corpus archs
 """
@@ -117,6 +118,87 @@ def check_rule_count() -> None:
         print()
     except Exception as exc:
         print(f"  {AMBER(f'Could not load rules YAML: {exc}')}\n")
+
+
+_DOMAIN_NAMES = {
+    "QC":  "Quality & Confidence Manipulation",
+    "INJ": "Input Injection & Evasion",
+    "EXF": "Exfiltration & Leakage",
+    "SCT": "Supply Chain & Tampering",
+    "MCP": "MCP & API Abuse",
+    "RES": "Resource & Coverage",
+}
+
+
+def count_by_domain() -> None:
+    """Print a domain summary table and scan docs for stale rule counts."""
+    try:
+        import yaml
+        data = yaml.safe_load(RULES_PATH.read_text())
+        rules = data.get("rules", [])
+    except Exception as exc:
+        print(f"  {AMBER(f'Could not load rules YAML: {exc}')}")
+        return
+
+    from collections import defaultdict
+    by_domain: dict = defaultdict(list)
+    for r in rules:
+        dom = r.get("domain", "??")
+        by_domain[dom].append(r.get("id", "?"))
+
+    total = len(rules)
+    print(f"{BOLD('DETECT rule counts by domain')}  ({total} total)\n")
+    header = f"  {'Dom':<5}  {'Full name':<36}  {'N':>2}  Rules"
+    print(header)
+    print("  " + "─" * (len(header) - 1))
+    for dom in ("QC", "INJ", "EXF", "SCT", "MCP", "RES"):
+        ids   = sorted(by_domain.get(dom, []))
+        label = _DOMAIN_NAMES.get(dom, dom)
+        # Compact range: DETECT-DOM-001…DETECT-DOM-NNN
+        if ids:
+            suffix = lambda s: s.split("-")[-1]
+            compact = f"{ids[0]}…{ids[-1]}" if len(ids) > 1 else ids[0]
+        else:
+            compact = "—"
+        print(f"  {CYAN(f'{dom:<5}')}  {label:<36}  {len(ids):>2}  {DIM(compact)}")
+
+    unknown = [dom for dom in by_domain if dom not in _DOMAIN_NAMES]
+    if unknown:
+        for dom in sorted(unknown):
+            ids = sorted(by_domain[dom])
+            print(f"  {AMBER(f'{dom:<5}')}  {'(unknown domain)':<36}  {len(ids):>2}  {DIM(', '.join(ids))}")
+
+    print(f"\n  {'Total':<43}  {BOLD(str(total))}")
+    print()
+
+    # Scan docs for stale counts
+    doc_files = [
+        REPO_ROOT / "CLAUDE.md",
+        REPO_ROOT / "README.md",
+        REPO_ROOT / "openapi.yaml",
+    ]
+    stale: list = []
+    # Blog/changelog table rows describe historical counts — skip them.
+    _HISTORICAL = re.compile(r'blog|part \d+|post|changelog|iceberg|beneath|story', re.IGNORECASE)
+    pat = re.compile(r'(\d+)\s*DETECT rules?', re.IGNORECASE)
+    for fp in doc_files:
+        if not fp.exists():
+            continue
+        for lineno, line in enumerate(fp.read_text(encoding="utf-8").splitlines(), 1):
+            if _HISTORICAL.search(line):
+                continue
+            for m in pat.finditer(line):
+                n = int(m.group(1))
+                if n != total:
+                    stale.append((fp.relative_to(REPO_ROOT), lineno, n, line.strip()))
+
+    if stale:
+        print(f"{AMBER('Stale counts found in docs')} (expected {total}):\n")
+        for fpath, lineno, n, text in stale:
+            print(f"  {fpath}:{lineno}  says {AMBER(str(n))}  — {DIM(text[:80])}")
+        print()
+    else:
+        print(f"  {GREEN('✓')} No stale counts in docs.\n")
 
 
 # ── Live corpus evaluation ────────────────────────────────────────────────────
@@ -297,8 +379,13 @@ def sync_skill_metadata() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="SOC detection rule regression + live corpus eval")
     parser.add_argument("arch", nargs="?", help="Architecture name for live evaluation")
-    parser.add_argument("--all", action="store_true", help="Evaluate all corpus architectures")
+    parser.add_argument("--all",   action="store_true", help="Evaluate all corpus architectures")
+    parser.add_argument("--count", action="store_true", help="Print domain summary table + stale-count scan; skip tests")
     args = parser.parse_args()
+
+    if args.count:
+        count_by_domain()
+        return
 
     ok = run_unit_tests()
     sync_skill_metadata()

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: ThreatAssessor API
   description: 'Architecture threat modelling — MITRE ATT&CK mapping, MoE expert review,
-    SOC detection (31 DETECT rules), AIVSS scoring, TA export bundle (ta-export/1.0),
+    SOC detection (36 DETECT rules), AIVSS scoring, TA export bundle (ta-export/1.0),
     TA Brain KG, and TACO Agent (multi-hop routing chain).
 
 

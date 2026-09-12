@@ -4,6 +4,63 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 74 — 2026-09-12
+
+### Entry 160 — P11: DETECT domain renumbering complete
+
+**What:** Renamed all 36 DETECT rules from sequential IDs (`DETECT-001`…`DETECT-036`) to domain-scoped IDs (`DETECT-QC-001`, `DETECT-INJ-001`, etc.). Added `legacy_id:` field to each rule in `soc_detection_rules.yaml` preserving the old ID. Extended `RuleEvaluator` with `legacy_rule_ids` property and `get_rule_by_legacy_id()` for backward-compat lookups. Fixed DETECT-034 domain typo `SC` → `SCT`. Updated all cross-references across 20+ files (rules YAML, harness, API routes, skills, tests).
+
+**Domains:** QC (8), INJ (8), EXF (6), SCT (5+fix-034), MCP (5), RES (4).
+
+**Why:** Sequential IDs gave no signal about rule category. Domain-scoped IDs make filtering and reporting self-documenting, and prevent collision if domain sub-counts grow. The `legacy_id:` alias preserves backward compatibility for any hardcoded references in stored reports or external consumers.
+
+**Test result:** `check-detect` suite: 389/389 passed (226 rule evaluator + 68 aivss-to-findings + 41 incident simulator + 54 event broker).
+
+**Alternatives rejected:** Only renaming the YAML without updating cross-refs — would leave stale IDs in skill metadata and test failures.
+
+---
+
+## Session 73 — 2026-09-12
+
+### Entry 159 — gemma_4_26b + gemma_4_31b: both excluded, blackhat silence confirmed structural
+
+**What:** Re-trialled `google/gemma-4-26b-a4b-it:free` and trialled `google/gemma-4-31b-it:free` on `06_azure_hub_spoke` + `08_dmz_architecture`.
+
+**Results:**
+- blackhat: silent on both models, both arches — 0 tokens output. Confirmed persistent across 4 arches and 2 sessions for 26b.
+- purple_team: silent on azure for both models (simpler arch); 26b produced 12.0 on dmz.
+- architect/tester/red_team: strong on 26b (8–11); gemma_4_31b timed out entirely on dmz.
+- gemma_4_31b is strictly worse: same blackhat silence plus reliability failure.
+
+**Why excluded:** blackhat silence is a model-level characteristic of the gemma-4 instruction-tuned family — not rate limiting. Blackhat feeds OCSF export and AIVSS scoring; a model that cannot produce it cannot be used for corpus work regardless of other critic quality.
+
+**Alternatives rejected:** routing gemma to non-blackhat critics only — premature per-critic routing without evidence it generalises; adds routing complexity for marginal gain.
+
+**Next:** nemotron_super is the confirmed OR free-tier primary. No further gemma trials unless a new variant with different JSON compliance characteristics appears.
+
+---
+
+### Entry 158 — P10 complete: nemotron_super confirmed 6-arch bench; nex models excluded; 17_multi_region MMD fixed
+
+**What:** Filled all partial nemotron_super bench gaps. Ran full 6-arch bench (nex_mini vs nemotron_super) then retry on the two timeout arches. Also trialled nex-agi/nex-n2.5-pro:free and nex-n2.5-mini:free.
+
+**nemotron_super results (6 arches confirmed):**
+- Strong across all arch types: blackhat 6–9.6, red_team 6–10.2, purple_team 9–12, 20–54k fewer tokens than nex_mini
+- `07_gcp_serverless` architect +10.0 over nex_mini — notable depth advantage
+- `17_multi_region` + `06_azure_hub_spoke` initial timeouts were transient (OR rate limits); both completed on retry
+
+**nex models excluded:**
+- `nex_pro`: timed out on 17_multi_region in both runs — unreliable
+- `nex_mini`: 3–4pt depth gap vs nemotron_super on blackhat/red_team across all arches; not competitive
+
+**17_multi_region MMD fix:** Parser was creating phantom node `|Replication|` from inline edge label syntax `USDB <-->|Replication| EUDB`. Changed to `USDB <--> EUDB`. Ground truth needs regeneration before next bench on this arch.
+
+**Why nemotron_super promoted (not nex_mini):** depth gap is consistent across 5 arch types and 5 critics — not a single-critic or single-arch anomaly. Token efficiency difference is also in nemotron_super's favour.
+
+**Alternatives rejected:** routing nex_mini to non-blackhat critics (premature per-critic routing without sufficient data); keeping nex_mini as fallback (adds complexity with no quality gain).
+
+---
+
 ## Session 72 — 2026-09-09
 
 ### Entry 157 — gemma-4-26b-a4b-it:free bench: partial, not promoted

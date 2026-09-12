@@ -64,12 +64,12 @@ tail -f logs/api.log            # logs
 - `chatbot/harness/governance.py` — `GovernanceSignals`, governance adapter, injection/evasion detection
 - `chatbot/harness/policy_broker.py` — `PolicyBroker`, `BrokerDecision` (dynamic routing after QualityStage)
 - `chatbot/harness/event_broker.py` — `EventBrokerCritic`, pub/sub to SIEM/Langfuse/Webhook sinks
-- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (34 DETECT rules)
+- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (36 DETECT rules)
 - `chatbot/harness/rule_trend_evaluator.py` — `RuleTrendEvaluator` (trend analysis from history JSONL)
 - `chatbot/harness/registry.py` — `CriticRegistry`
 
 **SOC detection:**
-- `policies/soc_detection_rules.yaml` — 34 DETECT rules with OWASP/ATLAS/incident provenance
+- `policies/soc_detection_rules.yaml` — 36 DETECT rules with OWASP/ATLAS/incident provenance
 - `report/<arch>/governance_signals.json` — signal substrate for rule evaluation (includes `arch_metadata`, `aivss.delta`)
 - `report/<arch>/governance_signals_history.jsonl` — append-only run history; AIVSS delta computed on each append
 - `report/<arch>/ocsf_findings.json` — OCSF DetectionFinding 2004 export
