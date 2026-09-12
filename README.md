@@ -258,7 +258,7 @@ DEV-TEST/
 
 ## Build story
 
-The full build story is on Medium — 26 published parts covering the pipeline, cloud threat modelling, user journey intelligence, the MoE critic system, the harness, the quality flywheel, the detection layer, the skills infrastructure, TA as a GitHub Actions PR reviewer, the self-assessment that found a Critical in its own codebase, why a self-growing knowledge graph had the right answers all along, why new capabilities always introduce new attack surface, how divergence between the Brain and live analysis reveals genuinely novel architectures, why a generic leaderboard score is the wrong starting point for multi-agent model selection, what 9,000 annotated agent trajectories revealed about behavioural honesty monitoring, how a pattern store becomes an inference layer when the feedback loop closes, and how real AI incidents map to a six-stage kill chain with structural authorization gates:
+26 parts on Medium — from diagram to detection layer, with every design decision exposed:
 
 | # | Title | What it covers |
 |---|---|---|
