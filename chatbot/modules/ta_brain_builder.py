@@ -280,6 +280,7 @@ def extract_instance(arch_dir: Path, rule_evaluator=None) -> Optional[dict]:
         "hub_nodes": hub_nodes,
         "aivss_composite": float(aivss_composite),
         "aivss_severity": aivss_severity,
+        "gt_confidence": float(gt.get("confidence", 0.5)),
         "fired_detect_rules": fired_detect_rules,
         "run_ts": run_ts,
         "source": "real",
@@ -292,18 +293,20 @@ def _distill_weight(inst: dict) -> float:
     """
     Per-instance weight for confidence-weighted pattern extraction.
 
-    Real instances: AIVSS composite / 10, floored at 0.1 so zero-scoring
-    architectures still contribute a small signal.
+    Real instances: blend of (AIVSS composite / 10) and gt_confidence, floored
+    at 0.1. AIVSS measures security severity; gt_confidence measures how much to
+    trust the analysis itself. Equal-weight average of both signals.
     StepShield instances: 0.3 — labeled trajectory incidents, not full pipeline runs.
     Synthetic instances: 0.5 — generated, not observed.
     """
     source = inst.get("source", "real")
-    aivss = float(inst.get("aivss_composite", 0.0))
     if source and source.startswith("stepshield"):
         return 0.3
     if source == "synthetic":
         return 0.5
-    return max(0.1, min(1.0, aivss / 10.0))
+    aivss_w = float(inst.get("aivss_composite", 0.0)) / 10.0
+    gt_conf = float(inst.get("gt_confidence", 0.5))
+    return max(0.1, min(1.0, (aivss_w + gt_conf) / 2.0))
 
 
 def run_distiller(instances: list, min_evidence: int = MIN_EVIDENCE) -> list:
