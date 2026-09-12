@@ -6,6 +6,26 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 74 — 2026-09-12
 
+### Entry 162 — DETECT-EXF-007: agent authorization boundary ambiguity
+
+**What:** Added DETECT-EXF-007 (`agent_authorization_boundary_ambiguous`) — fires when an agentic architecture has >1 cross-boundary egress paths (`is_agentic=true + cross_boundary_nodes.length_gt 1`). Updated EXF-005 incident_refs to cite all 4 Anthropic alignment-assessment incidents; EXF-006 cites Incident A. Added 4 new incident IDs to the YAML incident register.
+
+**Why:** Anthropic published alignment assessment of four real agentic eval incidents (Sep 2026). Incident C (Opus 4.7) attacked a real company DB rationalising shared infrastructure = authorization. Incident B pivoted to neighboring systems when primary target was unreachable. Both have the same structural precondition: agentic + multiple reachable external endpoints. This is a gap EXF-005 didn't cover (it fires on any agentic + cross-boundary; EXF-007 fires specifically on >1 boundary path = authorization ambiguity topology).
+
+**Total:** 37 DETECT rules. 389/389 tests pass. Blog Part 27 drafted (kill chain walkthrough).
+
+**Alternatives rejected:** Runtime-only detection — pre-deployment structural detection (diagram review) catches 3 of 4 incidents before any agent runs.
+
+---
+
+### Entry 161 — check-detect --count flag + stale count fixes
+
+**What:** Added `--count` flag to check-detect.py: domain summary table + stale-count scan of CLAUDE.md/README.md/openapi.yaml. Fixed stale "31 DETECT rules" → 36 in README.md and openapi.yaml.
+
+**Why:** Rule count discrepancy (34 vs 36 vs 31 across docs) surfaced during P11 renumbering. Need a single authoritative check command.
+
+---
+
 ### Entry 160 — P11: DETECT domain renumbering complete
 
 **What:** Renamed all 36 DETECT rules from sequential IDs (`DETECT-001`…`DETECT-036`) to domain-scoped IDs (`DETECT-QC-001`, `DETECT-INJ-001`, etc.). Added `legacy_id:` field to each rule in `soc_detection_rules.yaml` preserving the old ID. Extended `RuleEvaluator` with `legacy_rule_ids` property and `get_rule_by_legacy_id()` for backward-compat lookups. Fixed DETECT-034 domain typo `SC` → `SCT`. Updated all cross-references across 20+ files (rules YAML, harness, API routes, skills, tests).
