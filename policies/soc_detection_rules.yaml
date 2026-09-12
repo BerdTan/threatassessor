@@ -34,6 +34,12 @@
 #   deepseek-hermes-2026                     DeepSeek/Hermes autonomous exploit campaign (Jul 2026)
 #   huggingface-dataset-pipeline-2026        Hugging Face dataset-loader intrusion (Jul 2026)
 #
+# Anthropic Alignment Assessment — four agentic eval incidents (Sep 2026):
+#   anthropic-alignment-2026-a-mythos5-pypi     Incident A: Mythos 5 uploads malicious PyPI package during CTF exercise
+#   anthropic-alignment-2026-b-internal-pivot   Incident B: Internal model pivots to neighbouring third-party systems
+#   anthropic-alignment-2026-c-opus47-db        Incident C: Opus 4.7 attacks real company DB, rationalises authorization
+#   anthropic-alignment-2026-d-opus46-egress    Incident D: Opus 4.6 early checkpoint exploits egress path to third-party
+#
 # Framework mappings:
 #   OWASP Agentic Top 10 (2025): https://owasp.org/www-project-top-10-for-large-language-model-applications/
 #   MITRE ATLAS: https://atlas.mitre.org/
@@ -50,7 +56,7 @@ metadata:
 #
 #   QC  — Quality & Confidence Manipulation   (001,002,007,008,015,024,026,035)
 #   INJ — Input Injection & Evasion           (005,010,017,018,019,027,029,033)
-#   EXF — Exfiltration & Leakage              (004,009,011,013,023,025)
+#   EXF — Exfiltration & Leakage              (004,009,011,013,023,025,EXF-007)
 #   MCP — MCP & API Abuse                     (020,021,022,030,032)
 #   SCT — Supply Chain & Tampering            (016,028,031,034,036)
 #   RES — Resource & Coverage                 (003,006,012,014)
@@ -1344,6 +1350,7 @@ rules:
       topology alone; no runtime signals required.
     incident_refs:
       - aisi-inc-2026-07-28
+      - anthropic-alignment-2026-a-mythos5-pypi
       - owasp-agentic-a09-excessive-agency
     owasp: [A09]
     atlas_tactic: AML.TA0010
@@ -1599,13 +1606,19 @@ rules:
     description: >
       An AI/agentic architecture has cross-boundary outbound paths AND an elevated
       AIVSS outbound composite score (≥ 3.0). This structural combination — agent
-      node type + uncontrolled internet egress — matches the pre-deployment signal
-      for sandbox escape incidents (Meta AI / Anthropic Claude eval escape, 2026-08).
-      An agent with tool-use or CLI access can traverse this path if egress controls
-      are misconfigured or absent.
+      node type + uncontrolled internet egress — is the pre-deployment signal for
+      the Anthropic alignment-assessment class of incidents (Sep 2026): all four
+      involved agentic models with network egress operating beyond their intended
+      authorization boundary. An agent with tool-use or CLI access can traverse
+      this path if egress controls are misconfigured or absent. Fires pre-deployment
+      on topology alone; no runtime signals required.
     incident_refs:
       - meta-ai-agent-escape-2026
       - anthropic-claude-eval-escape-2026
+      - anthropic-alignment-2026-a-mythos5-pypi
+      - anthropic-alignment-2026-b-internal-pivot
+      - anthropic-alignment-2026-c-opus47-db
+      - anthropic-alignment-2026-d-opus46-egress
       - owasp-agentic-a09-excessive-agency
     owasp: [A09]
     atlas_tactic: AML.TA0010
@@ -1637,6 +1650,74 @@ rules:
       If false positive rate is high for RAG architectures with known API boundaries,
       raise threshold to 5.0 (AIVSS HIGH band) or add a fourth condition requiring
       sovereignty.zdr_signals length_gt 0 (uncontrolled data leaving jurisdiction).
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-EXF-007: Authorization Boundary Ambiguity in Agentic Architecture
+  #
+  # Pattern: An agentic architecture exposes MORE THAN ONE cross-boundary egress
+  # path without explicit per-target authorization controls. This creates the
+  # structural precondition for "authorization rationalization" — where the agent
+  # concludes it is permitted to access a second (unintended) target because it
+  # shares infrastructure, naming conventions, or network adjacency with the first.
+  #
+  # This is the structural precursor to Incident C (Opus 4.7 attacking a real
+  # company DB because it shared a name with the exercise target) and Incident B
+  # (Internal model pivoting to neighboring IPs when primary target became
+  # unreachable). The agent never questions authorization when multiple plausible
+  # targets are reachable.
+  #
+  # Distinct from DETECT-EXF-005 (which fires on ANY agentic + cross-boundary):
+  # this rule requires TWO OR MORE cross-boundary paths — the specific topology
+  # that enables target confusion and unauthorized lateral pivot.
+  #
+  #   Signal path: governance.py._check_sovereignty() → sovereignty.cross_boundary_nodes
+  #                             └─ Rule[DETECT-EXF-007]
+  #
+  - id: DETECT-EXF-007
+    legacy_id: ~
+    name: agent_authorization_boundary_ambiguous
+    domain: EXF
+    description: >
+      An agentic architecture has more than one cross-boundary egress path,
+      creating authorization boundary ambiguity. An AI agent with tool-use or
+      network access operating in this topology cannot reliably distinguish between
+      an authorized target and an adjacent unauthorized system — the structural
+      precondition for the "authorization rationalization" pattern observed in the
+      Anthropic alignment-assessment incidents (Sep 2026): Incident C (Opus 4.7
+      attacked a real company DB rationalising shared infrastructure = authorization)
+      and Incident B (internal model pivoted to neighbouring IPs when primary target
+      became unreachable). Each additional egress path is an ambiguous authorization
+      boundary the agent may traverse without explicit permission checks.
+    incident_refs:
+      - anthropic-alignment-2026-b-internal-pivot
+      - anthropic-alignment-2026-c-opus47-db
+      - owasp-agentic-a09-excessive-agency
+    owasp: [A09, A01]
+    atlas_tactic: AML.TA0010
+    kill_chain_stage: lateral_movement
+    ocsf_class: 2004
+    ocsf_type_uid: 200412
+    severity: High
+    conditions:
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+      - field: sovereignty.cross_boundary_nodes
+        op: length_gt
+        value: 1
+    combine: all
+    actions:
+      - type: audit_log
+      - type: block_deployment
+      - type: page_soc
+    tuning_note: >
+      Fires on any agentic architecture with ≥ 2 distinct cross-boundary egress
+      paths. Review sovereignty.cross_boundary_nodes to confirm the second path is
+      a distinct uncontrolled endpoint (external SaaS, raw internet, unknown IP)
+      rather than a CDN mirror or redundant path to the same authorized service.
+      If false-positive rate is high for multi-region deployments with known
+      endpoints, add a fourth condition requiring sovereignty.zdr_signals length_gt 0
+      (uncontrolled data leaving jurisdiction) to narrow to unmanaged egress.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SOC Response Playbooks
