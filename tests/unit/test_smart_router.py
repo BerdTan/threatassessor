@@ -554,7 +554,7 @@ class TestQuickAssessEndpoint:
                     {"id": "T1190", "frequency": 0.8},
                 ],
                 "controls": ["AC-3", "SC-8"],
-                "detect_rules": ["DETECT-001"],
+                "detect_rules": ["DETECT-QC-001"],
                 "aivss_floor": 3.12,
             },
             "evidence": {"source_archs": ["arch_a", "arch_b", "arch_b", "arch_c"]},

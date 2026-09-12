@@ -54,7 +54,7 @@ def _brain_result_match(confidence: float = 0.80) -> dict:
         "cache_route": "kg",
         "predictions": {
             "techniques": ["T1190"],
-            "detect_rules": ["DETECT-001"],
+            "detect_rules": ["DETECT-QC-001"],
             "aivss_floor": 0.5,
             "aivss_mean": 0.6,
             "common_missing_controls": ["WAF"],

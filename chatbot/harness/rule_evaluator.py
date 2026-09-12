@@ -251,6 +251,7 @@ def _build_detection_finding(
         },
         "unmapped": {
             "rule_id":           rule_id,
+            "legacy_id":         rule.get("legacy_id", ""),
             "rule_name":         name,
             "run_id":            run_id,
             "incident_refs":     rule.get("incident_refs", []),
@@ -327,6 +328,17 @@ class RuleEvaluator:
     @property
     def rule_ids(self) -> List[str]:
         return [r.get("id", "") for r in self._rules]
+
+    @property
+    def legacy_rule_ids(self) -> List[str]:
+        return [r.get("legacy_id", r.get("id", "")) for r in self._rules]
+
+    def get_rule_by_legacy_id(self, legacy_id: str) -> Optional[Dict]:
+        """Look up a rule by its old sequential ID (e.g. \"DETECT-020\")."""
+        for r in self._rules:
+            if r.get("legacy_id") == legacy_id or r.get("id") == legacy_id:
+                return r
+        return None
 
     def __len__(self) -> int:
         return len(self._rules)

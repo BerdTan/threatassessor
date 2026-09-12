@@ -4,7 +4,7 @@ Tests for incident-simulator: scenario payloads fire expected DETECT rules.
 Covers:
   - All 5 scenarios fire their documented expected rules
   - No scenario fires false positives on a clean baseline
-  - DETECT-002/007 mutual exclusion (divergence_detected flag)
+  - DETECT-QC-002/007 mutual exclusion (divergence_detected flag)
   - Storycaster prompt structure (no LLM call — tests prompt content only)
   - write_to_report merges signals without destroying existing governance data
 
@@ -56,121 +56,121 @@ class TestScenariosFire:
     def test_targeted_pipeline_attack(self):
         fn, _ = SCENARIOS["targeted_pipeline_attack"]
         fired = _fired_ids(fn())
-        assert {"DETECT-005", "DETECT-002"} <= fired
+        assert {"DETECT-INJ-001", "DETECT-QC-002"} <= fired
 
     def test_rationalize_and_escape(self):
         fn, _ = SCENARIOS["rationalize_and_escape"]
         fired = _fired_ids(fn())
-        assert {"DETECT-001", "DETECT-003", "DETECT-007"} <= fired
+        assert {"DETECT-QC-001", "DETECT-RES-001", "DETECT-QC-003"} <= fired
 
     def test_exfil_with_adversarial(self):
         fn, _ = SCENARIOS["exfil_with_adversarial"]
         fired = _fired_ids(fn())
-        assert {"DETECT-005", "DETECT-004"} <= fired
+        assert {"DETECT-INJ-001", "DETECT-EXF-001"} <= fired
 
     def test_swarm_with_hyperfocus(self):
         fn, _ = SCENARIOS["swarm_with_hyperfocus"]
         fired = _fired_ids(fn())
-        assert {"DETECT-006", "DETECT-003"} <= fired
+        assert {"DETECT-RES-002", "DETECT-RES-001"} <= fired
 
     def test_full_compromise(self):
         fn, _ = SCENARIOS["full_compromise"]
         fired = _fired_ids(fn())
-        assert {"DETECT-001", "DETECT-002", "DETECT-004", "DETECT-005"} <= fired
+        assert {"DETECT-QC-001", "DETECT-QC-002", "DETECT-EXF-001", "DETECT-INJ-001"} <= fired
 
-    # ── New scenarios (DETECT-008 through DETECT-015) ──────────────────────
+    # ── New scenarios (DETECT-QC-004 through DETECT-QC-005) ──────────────────────
 
     def test_credential_leak_in_architecture(self):
         fn, _ = SCENARIOS["credential_leak_in_architecture"]
         fired = _fired_ids(fn())
-        assert {"DETECT-009"} <= fired
+        assert {"DETECT-EXF-002"} <= fired
 
     def test_path_traversal_mmd_probe(self):
         fn, _ = SCENARIOS["path_traversal_mmd_probe"]
         fired = _fired_ids(fn())
-        assert {"DETECT-010"} <= fired
+        assert {"DETECT-INJ-002"} <= fired
 
     def test_llm_egress_no_zdr(self):
         fn, _ = SCENARIOS["llm_egress_no_zdr"]
         fired = _fired_ids(fn())
-        assert {"DETECT-011"} <= fired
+        assert {"DETECT-EXF-003"} <= fired
 
     def test_stale_mitre_data(self):
         fn, _ = SCENARIOS["stale_mitre_data"]
         fired = _fired_ids(fn())
-        assert {"DETECT-012"} <= fired
+        assert {"DETECT-RES-003"} <= fired
 
     def test_high_outbound_surface(self):
         fn, _ = SCENARIOS["high_outbound_surface"]
         fired = _fired_ids(fn())
-        assert {"DETECT-013"} <= fired
+        assert {"DETECT-EXF-004"} <= fired
 
     def test_sm_selection_pressure(self):
         fn, _ = SCENARIOS["sm_selection_pressure"]
         fired = _fired_ids(fn())
-        assert {"DETECT-008"} <= fired
+        assert {"DETECT-QC-004"} <= fired
 
     def test_low_validation_coverage(self):
         fn, _ = SCENARIOS["low_validation_coverage"]
         fired = _fired_ids(fn())
-        assert {"DETECT-014"} <= fired
+        assert {"DETECT-RES-004"} <= fired
 
     def test_critic_convergence(self):
         fn, _ = SCENARIOS["critic_convergence"]
         fired = _fired_ids(fn())
-        assert {"DETECT-015"} <= fired
+        assert {"DETECT-QC-005"} <= fired
 
     def test_supply_chain_and_credentials(self):
         fn, _ = SCENARIOS["supply_chain_and_credentials"]
         fired = _fired_ids(fn())
-        assert {"DETECT-009", "DETECT-012"} <= fired
+        assert {"DETECT-EXF-002", "DETECT-RES-003"} <= fired
 
     def test_egress_and_low_validation(self):
         fn, _ = SCENARIOS["egress_and_low_validation"]
         fired = _fired_ids(fn())
-        assert {"DETECT-011", "DETECT-014", "DETECT-015"} <= fired
+        assert {"DETECT-EXF-003", "DETECT-RES-004", "DETECT-QC-005"} <= fired
 
-    # ── AST-grounded scenarios (DETECT-016/017/018) ────────────────────────
+    # ── AST-grounded scenarios (DETECT-SCT-001/017/018) ────────────────────────
 
     def test_critic_module_tampered(self):
         fn, _ = SCENARIOS["critic_module_tampered"]
         fired = _fired_ids(fn())
-        assert {"DETECT-016"} <= fired
+        assert {"DETECT-SCT-001"} <= fired
 
     def test_mutable_url_in_mmd(self):
         fn, _ = SCENARIOS["mutable_url_in_mmd"]
         fired = _fired_ids(fn())
-        assert {"DETECT-017"} <= fired
+        assert {"DETECT-INJ-003"} <= fired
 
     def test_homoglyph_evasion_attempt(self):
         fn, _ = SCENARIOS["homoglyph_evasion_attempt"]
         fired = _fired_ids(fn())
-        assert {"DETECT-018"} <= fired
+        assert {"DETECT-INJ-004"} <= fired
 
     def test_ast_composite(self):
         fn, _ = SCENARIOS["ast_composite"]
         fired = _fired_ids(fn())
-        assert {"DETECT-016", "DETECT-017", "DETECT-018"} <= fired
+        assert {"DETECT-SCT-001", "DETECT-INJ-003", "DETECT-INJ-004"} <= fired
 
     def test_high_category_injection(self):
         fn, _ = SCENARIOS["high_category_injection"]
         fired = _fired_ids(fn())
-        assert {"DETECT-019"} <= fired
+        assert {"DETECT-INJ-005"} <= fired
 
     def test_rest_rate_limit_abuse(self):
         fn, _ = SCENARIOS["rest_rate_limit_abuse"]
         fired = _fired_ids(fn())
-        assert {"DETECT-032"} <= fired
+        assert {"DETECT-MCP-005"} <= fired
 
     def test_arch_name_path_traversal(self):
         fn, _ = SCENARIOS["arch_name_path_traversal"]
         fired = _fired_ids(fn())
-        assert {"DETECT-033"} <= fired
+        assert {"DETECT-INJ-008"} <= fired
 
     def test_suspicious_skill_url(self):
         fn, _ = SCENARIOS["suspicious_skill_url"]
         fired = _fired_ids(fn())
-        assert {"DETECT-034"} <= fired
+        assert {"DETECT-SCT-004"} <= fired
 
     def test_all_expected_rules_match_documented(self):
         """Every scenario fires at least its documented expected set."""
@@ -192,32 +192,32 @@ class TestNoFalsePositives:
 
 
 # ---------------------------------------------------------------------------
-# DETECT-002 / DETECT-007 mutual exclusion
+# DETECT-QC-002 / DETECT-QC-003 mutual exclusion
 # ---------------------------------------------------------------------------
 
 class TestMutualExclusion:
     def test_detect007_requires_divergence_false(self):
-        """DETECT-007 fires only when divergence_detected=False."""
+        """DETECT-QC-003 fires only when divergence_detected=False."""
         fn, _ = SCENARIOS["rationalize_and_escape"]
         sig = fn()
-        # rationalize_and_escape has divergence_detected=False → DETECT-007 fires
-        assert "DETECT-007" in _fired_ids(sig)
-        assert "DETECT-002" not in _fired_ids(sig)
+        # rationalize_and_escape has divergence_detected=False → DETECT-QC-003 fires
+        assert "DETECT-QC-003" in _fired_ids(sig)
+        assert "DETECT-QC-002" not in _fired_ids(sig)
 
     def test_detect002_requires_divergence_true(self):
-        """DETECT-002 fires only when divergence_detected=True."""
+        """DETECT-QC-002 fires only when divergence_detected=True."""
         fn, _ = SCENARIOS["targeted_pipeline_attack"]
         sig = fn()
-        # targeted_pipeline_attack has divergence_detected=True → DETECT-002 fires
-        assert "DETECT-002" in _fired_ids(sig)
-        assert "DETECT-007" not in _fired_ids(sig)
+        # targeted_pipeline_attack has divergence_detected=True → DETECT-QC-002 fires
+        assert "DETECT-QC-002" in _fired_ids(sig)
+        assert "DETECT-QC-003" not in _fired_ids(sig)
 
     def test_full_compromise_fires_detect002_not_007(self):
         fn, _ = SCENARIOS["full_compromise"]
         sig = fn()
         fired = _fired_ids(sig)
-        assert "DETECT-002" in fired
-        assert "DETECT-007" not in fired
+        assert "DETECT-QC-002" in fired
+        assert "DETECT-QC-003" not in fired
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +276,7 @@ class TestMultiRuleFires:
 # ---------------------------------------------------------------------------
 
 class TestStorycasterPrompt:
-    def _make_finding(self, rule_id="DETECT-005", severity="Critical"):
+    def _make_finding(self, rule_id="DETECT-INJ-001", severity="Critical"):
         return {
             "class_uid": 2004,
             "severity": severity,
@@ -295,7 +295,7 @@ class TestStorycasterPrompt:
         arch_ctx = {"description": "Web app with ALB", "user_stories": {"edges": []}}
         prompt = _build_story_prompt("targeted_pipeline_attack", fn(), findings,
                                      "03_aws_3tier", arch_ctx)
-        assert "targeted_pipeline_attack" in prompt or "DETECT-005" in prompt
+        assert "targeted_pipeline_attack" in prompt or "DETECT-INJ-001" in prompt
 
     def test_prompt_contains_arch_description(self):
         fn, _ = SCENARIOS["exfil_with_adversarial"]

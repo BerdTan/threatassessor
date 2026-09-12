@@ -303,7 +303,7 @@ class LangfuseSink(BaseSink):
                     end_time=event.ts,
                 )
                 # Per-critic acceptance as individual Score objects so langfuse-to-ocsf
-                # can query by name ("sm_verdict_<critic>") for DETECT-008 evaluation.
+                # can query by name ("sm_verdict_<critic>") for DETECT-QC-004 evaluation.
                 for critic, verdict in (p.get("per_critic") or {}).items():
                     self._lf.create_score(
                         name=f"sm_verdict_{critic}",
@@ -312,7 +312,7 @@ class LangfuseSink(BaseSink):
                         data_type="NUMERIC",
                         comment=f"SM verdict for {critic}: {verdict}",
                     )
-                # Overall acceptance rate as a single score for DETECT-008 threshold query.
+                # Overall acceptance rate as a single score for DETECT-QC-004 threshold query.
                 self._lf.create_score(
                     name="sm_acceptance_rate",
                     value=float(p.get("acceptance_rate", 1.0)),

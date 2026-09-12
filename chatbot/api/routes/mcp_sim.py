@@ -16,8 +16,8 @@ Event types:
   sim_error       — {message}
 
 Personas: chatbot, code-agent, ciso, soc, copilot, chatgpt (benign)
-          recon_attack, flood_attack, auth_probe (adversarial — DETECT-020/021/022)
-          injection_attack, tag_injection, url_injection, c2_exfil_arch (governance-layer — DETECT-005/010/017/018/019/023)
+          recon_attack, flood_attack, auth_probe (adversarial — DETECT-MCP-001/021/022)
+          injection_attack, tag_injection, url_injection, c2_exfil_arch (governance-layer — DETECT-INJ-001/010/017/018/019/023)
 """
 
 from __future__ import annotations
@@ -107,7 +107,7 @@ def _personas(arch: str) -> dict:
         # ── Adversarial personas — deliberately trigger DETECT rules ─────
 
         "recon_attack": {
-            "description": "⚠ Adversarial — enumerate all archs then bulk-pull signals (DETECT-020)",
+            "description": "⚠ Adversarial — enumerate all archs then bulk-pull signals (DETECT-MCP-001)",
             "steps": [
                 ("list_architectures",    "Enumerate all architectures [recon step 1]",  lambda a: {}),
                 ("get_governance_signals","Pull signals: arch_1 [recon step 2]",         lambda a: {"arch_name": a}),
@@ -118,7 +118,7 @@ def _personas(arch: str) -> dict:
         },
 
         "flood_attack": {
-            "description": "⚠ Adversarial — submit expert review jobs without polling (DETECT-021)",
+            "description": "⚠ Adversarial — submit expert review jobs without polling (DETECT-MCP-002)",
             "steps": [
                 ("run_expert_review",     "Submit job #1 [flood step 1]",   lambda a: {"arch_name": a, "critic_mode": "partial_parallel"}),
                 ("run_expert_review",     "Submit job #2 [flood step 2]",   lambda a: {"arch_name": a, "critic_mode": "partial_parallel"}),
@@ -128,7 +128,7 @@ def _personas(arch: str) -> dict:
         },
 
         "auth_probe": {
-            "description": "⚠ Adversarial — repeated bad-key calls to probe auth (DETECT-022)",
+            "description": "⚠ Adversarial — repeated bad-key calls to probe auth (DETECT-MCP-003)",
             "steps": [
                 ("list_architectures",    "Probe with bad key #1 [auth step 1]",  lambda a: {"_bad_key": True}),
                 ("list_architectures",    "Probe with bad key #2 [auth step 2]",  lambda a: {"_bad_key": True}),
@@ -146,7 +146,7 @@ def _personas(arch: str) -> dict:
         "injection_attack": {
             "description": (
                 "⚠ Adversarial — HIGH injection + path traversal in MMD "
-                "(DETECT-005 · DETECT-010 · DETECT-019)"
+                "(DETECT-INJ-001 · DETECT-INJ-002 · DETECT-INJ-005)"
             ),
             "steps": [
                 ("governance_check", "Submit MMD with HIGH injection phrase [step 1]", lambda a: {
@@ -181,7 +181,7 @@ def _personas(arch: str) -> dict:
         "tag_injection": {
             "description": (
                 "⚠ Adversarial — LLM control token in MMD node label "
-                "(DETECT-005 CRITICAL → pipeline block)"
+                "(DETECT-INJ-001 CRITICAL → pipeline block)"
             ),
             "steps": [
                 ("governance_check", "Submit MMD with LLM control token [step 1]", lambda a: {
@@ -207,7 +207,7 @@ def _personas(arch: str) -> dict:
         "url_injection": {
             "description": (
                 "⚠ Adversarial — external URL + homoglyph evasion in MMD "
-                "(DETECT-017 · DETECT-018 · DETECT-019)"
+                "(DETECT-INJ-003 · DETECT-INJ-004 · DETECT-INJ-005)"
             ),
             "steps": [
                 ("governance_check", "Submit MMD with external URL in node label [step 1]", lambda a: {
@@ -242,13 +242,13 @@ def _personas(arch: str) -> dict:
         "c2_exfil_arch": {
             "description": (
                 "⚠ Adversarial — recon agentic + C2-connected arch, probe governance signals "
-                "(DETECT-020 recon sequence · surfaces DETECT-023 signal context)"
+                "(DETECT-MCP-001 recon sequence · surfaces DETECT-EXF-005 signal context)"
             ),
             "steps": [
                 # First: enumerate to find AI/agentic archs (list_architectures = recon step 1)
                 ("list_architectures",    "Enumerate to find agentic archs [recon step 1]", lambda a: {}),
                 # Pull governance signals for 3 distinct archs including known agentic ones
-                # (crosses recon_gov_archs ≥ 3 threshold → DETECT-020)
+                # (crosses recon_gov_archs ≥ 3 threshold → DETECT-MCP-001)
                 ("get_governance_signals","Pull signals: agentic target [recon step 2]",
                     lambda a: {"arch_name": "21_agentic_ai_system"}),
                 ("get_governance_signals","Pull signals: complex arch with C2 [recon step 3]",
@@ -270,12 +270,12 @@ def _personas(arch: str) -> dict:
             ],
         },
 
-        # ── AISI INC-2026-07-28 pattern personas (DETECT-025 to DETECT-028) ──
+        # ── AISI INC-2026-07-28 pattern personas (DETECT-EXF-006 to DETECT-SCT-002) ──
 
         "c2_beacon_architecture": {
             "description": (
                 "⚠ Adversarial — polling/scheduler node wired to C2 receiver "
-                "(DETECT-025 c2_beacon_architecture · AISI fetch-execute-exfil loop)"
+                "(DETECT-EXF-006 c2_beacon_architecture · AISI fetch-execute-exfil loop)"
             ),
             "steps": [
                 ("governance_check", "Submit C2 beacon architecture [cron→C2 receiver]", lambda a: {
@@ -296,7 +296,7 @@ def _personas(arch: str) -> dict:
         "downstream_agent_injection": {
             "description": (
                 "⚠ Adversarial — HTML comment targeting AI coding agents embedded in diagram "
-                "(DETECT-027 downstream_agent_prompt_injection · CRITICAL · AISI INC-2026-07-28)"
+                "(DETECT-INJ-006 downstream_agent_prompt_injection · CRITICAL · AISI INC-2026-07-28)"
             ),
             "steps": [
                 ("governance_check", "Submit MMD with agent-targeting HTML comment [step 1]", lambda a: {
@@ -324,7 +324,7 @@ def _personas(arch: str) -> dict:
         "skill_instruction_tamper": {
             "description": (
                 "⚠ Adversarial — simulates skill file divergence from git HEAD "
-                "(DETECT-028 skill_instruction_tamper · supply-chain poisoning of operator layer)"
+                "(DETECT-SCT-002 skill_instruction_tamper · supply-chain poisoning of operator layer)"
             ),
             "steps": [
                 ("get_governance_signals", "Pull baseline signals before tamper check", lambda a: {"arch_name": a}),
@@ -345,7 +345,7 @@ def _personas(arch: str) -> dict:
         "critic_consensus_collapse": {
             "description": (
                 "⚠ Adversarial — parallel agent cross-contamination producing critic synthesis failure "
-                "(DETECT-026 critic_consensus_collapse · AISI INC-2026-07-28)"
+                "(DETECT-QC-007 critic_consensus_collapse · AISI INC-2026-07-28)"
             ),
             "steps": [
                 ("get_governance_signals", "Pull pre-run governance baseline", lambda a: {"arch_name": a}),
@@ -357,12 +357,12 @@ def _personas(arch: str) -> dict:
             ],
         },
 
-        # ── harden-audit 2026-08-09 pattern personas (DETECT-029/030) ──────────
+        # ── harden-audit 2026-08-09 pattern personas (DETECT-INJ-007/030) ──────────
 
         "mmd_injection": {
             "description": (
                 "⚠ Adversarial — LLM-generated diagram contains injection markers "
-                "(DETECT-029 llm_generated_mmd_injection · TA harden-audit RT-02)"
+                "(DETECT-INJ-007 llm_generated_mmd_injection · TA harden-audit RT-02)"
             ),
             "steps": [
                 ("governance_check", "Submit generated MMD with direct-override injection markers", lambda a: {
@@ -382,7 +382,7 @@ def _personas(arch: str) -> dict:
         "mcp_unauth_exposure": {
             "description": (
                 "⚠ Adversarial — agentic arch with MCP tool calls and zero auth failures "
-                "(DETECT-030 unauthenticated_mcp_tool_exposure · TA harden-audit RT-06)"
+                "(DETECT-MCP-004 unauthenticated_mcp_tool_exposure · TA harden-audit RT-06)"
             ),
             "steps": [
                 ("list_architectures", "Enumerate architectures without credentials [step 1]", lambda a: {}),
@@ -451,7 +451,7 @@ def _call_tool(tool: str, args: dict, bad_key: bool = False) -> tuple[bool, dict
         gov_block = (tool == "governance_check" and r.status_code == 400)
         ok = r.status_code < 400 or r.status_code == 404 or gov_block
         auth_failed = r.status_code == 401
-        # Log to the in-process access logger so DETECT-020/021/022 can fire
+        # Log to the in-process access logger so DETECT-MCP-001/021/022 can fire
         from mcp_server.access_logger import get_access_logger
         get_access_logger().record_tool_call(
             tool,
@@ -549,9 +549,9 @@ async def _sim_stream(persona: str, arch: str) -> AsyncGenerator[str, None]:
                   for k in ("recon_sequence", "job_flood", "auth_failures")}
 
     _RULE_MAP = {
-        "recon_sequence": ("DETECT-020", "MCP Recon Sequence",    "Medium"),
-        "job_flood":      ("DETECT-021", "MCP Job Flooding",      "High"),
-        "auth_failures":  ("DETECT-022", "MCP Auth Probing",      "High"),
+        "recon_sequence": ("DETECT-MCP-001", "MCP Recon Sequence",    "Medium"),
+        "job_flood":      ("DETECT-MCP-002", "MCP Job Flooding",      "High"),
+        "auth_failures":  ("DETECT-MCP-003", "MCP Auth Probing",      "High"),
     }
 
     # Governance-layer rules fired from governance_check responses (not mcp_access signals)

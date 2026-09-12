@@ -2038,7 +2038,7 @@ paths:
       description: 'Return the current MCP session access pattern signals.
 
 
-        Used by the dashboard MCP tab to power the DETECT-020/021/022 status cards
+        Used by the dashboard MCP tab to power the DETECT-MCP-001/021/022 status cards
 
         and the tool-usage heatmap. No parameters — always returns the live state
 

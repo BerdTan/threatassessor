@@ -6,7 +6,7 @@ Observe → Diagnose → Prescribe → Gate → Apply → Verify → Log
 
 Usage:
     python3 detect-loop.py                          # full loop, auto-selects worst rule
-    python3 detect-loop.py --rule DETECT-014        # target a specific rule
+    python3 detect-loop.py --rule DETECT-RES-004        # target a specific rule
     python3 detect-loop.py --observe-only           # show coverage matrix, no changes
     python3 detect-loop.py --incident "desc"        # ground a new real incident
 """
@@ -162,11 +162,11 @@ _ARCH_TYPE_MAP = {
 
 # Minimal signal payloads per rule
 _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
-    # ── DETECT-001 through 007: manipulation/MoE signals ─────────────────────
+    # ── DETECT-QC-001 through 007: manipulation/MoE signals ─────────────────────
     # These fire on real corpus (001: 17/27, 002: 21/27). Prescriptions allow
     # detect-loop to generate new scenarios if coverage drops or new arch types
     # need targeted simulation.
-    "DETECT-001": {
+    "DETECT-QC-001": {
         "arch_key": "sm_verdicts",  # complex enterprise has most MoE signal variance
         "signals": {
             "manipulation": {
@@ -177,7 +177,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "confidence_swing=18 + swing_detected=True + synthesis FULL — visible rationalization",
     },
-    "DETECT-002": {
+    "DETECT-QC-002": {
         "arch_key": "sm_verdicts",
         "signals": {
             "manipulation": {
@@ -188,7 +188,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "divergence_detected=True + score>=20 + synthesis FULL — dissent suppressed",
     },
-    "DETECT-003": {
+    "DETECT-RES-001": {
         "arch_key": "outbound",  # data pipeline with many agents
         "signals": {
             "aivss": {
@@ -208,7 +208,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "blackhat token count 45× mean of peers (min 3 agents) — hyperfocus spike",
     },
-    "DETECT-004": {
+    "DETECT-EXF-001": {
         "arch_key": "outbound",
         "signals": {
             "leakage": {
@@ -224,7 +224,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "leakage.detected=True + cross_boundary_nodes present — covert C2 channel",
     },
-    "DETECT-005": {
+    "DETECT-INJ-001": {
         "arch_key": "traversal",
         "signals": {
             "exploitation": {
@@ -239,7 +239,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "exploitation.severity=CRITICAL + injection_patterns present — .mmd is the attack vector",
     },
-    "DETECT-006": {
+    "DETECT-RES-002": {
         "arch_key": "outbound",
         "signals": {
             "aivss": {
@@ -263,7 +263,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "coverage_pct>=60 + no CRITICAL per_threat + min 3 agents — distributed sweep",
     },
-    "DETECT-007": {
+    "DETECT-QC-003": {
         "arch_key": "sm_verdicts",
         "signals": {
             "manipulation": {
@@ -274,7 +274,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "swing_detected=True + div_score=0 + div_detected=False + quality=FULL — silent inflation",
     },
-    "DETECT-008": {
+    "DETECT-QC-004": {
         "arch_key": "sm_verdicts",
         "signals": {
             "sm_verdicts": {
@@ -286,7 +286,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "SM acceptance_rate=0.4, 3 critics rejected without redesign signal — reward hacking",
     },
-    "DETECT-009": {
+    "DETECT-EXF-002": {
         "arch_key": "credentials",
         "signals": {
             "leakage": {"detected": True, "severity": "CRITICAL",
@@ -295,7 +295,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "Credentials embedded in architecture description — block_run triggered",
     },
-    "DETECT-010": {
+    "DETECT-INJ-002": {
         "arch_key": "traversal",
         "signals": {
             "exploitation": {"severity": "CRITICAL", "injection_patterns": [],
@@ -304,7 +304,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "Path traversal in .mmd node labels — file system probe, no injection patterns",
     },
-    "DETECT-011": {
+    "DETECT-EXF-003": {
         "arch_key": "zdr",
         "signals": {
             "sovereignty": {"severity": "MEDIUM", "flagged": True,
@@ -313,7 +313,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "LLM→external service edge detected, no ZDR declaration present",
     },
-    "DETECT-012": {
+    "DETECT-RES-003": {
         "arch_key": "stale",
         "signals": {
             "leakage": {"detected": False, "severity": "LOW", "pii_indicators": [],
@@ -322,7 +322,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "MITRE ATT&CK data 95 days old (threshold: 90) — audit only, no block",
     },
-    "DETECT-013": {
+    "DETECT-EXF-004": {
         "arch_key": "outbound",
         "signals": {
             "aivss": {
@@ -340,7 +340,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "AIVSS outbound composite 7.2 — PII exfiltration surface without confirmed C2",
     },
-    "DETECT-014": {
+    "DETECT-RES-004": {
         "arch_key": "validation",
         "signals": {
             "validation": {"val_pct": 68.0, "total_techniques": 45,
@@ -349,7 +349,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "val_pct=68%, 15 invalid technique mappings — analysis quarantined",
     },
-    "DETECT-015": {
+    "DETECT-QC-005": {
         "arch_key": "gap_similarity",
         "signals": {
             "manipulation": {"severity": "LOW", "confidence_swing_detected": False,
@@ -359,7 +359,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "Critic gap Jaccard avg=0.52 — convergent outputs, independent perspectives absent",
     },
-    "DETECT-016": {
+    "DETECT-SCT-001": {
         "arch_key": "sm_verdicts",  # reuse 10_complex_enterprise — production pipeline
         "signals": {
             "identity": {
@@ -370,7 +370,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "Critic module hash mismatch vs git object — AST02 supply chain tampering",
     },
-    "DETECT-017": {
+    "DETECT-INJ-003": {
         "arch_key": "zdr",  # agentic/IoT — architectures that fetch external content
         "signals": {
             "exploitation": {
@@ -383,7 +383,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "Live https:// URL in MMD node label — AST05 mutable remote content",
     },
-    "DETECT-018": {
+    "DETECT-INJ-004": {
         "arch_key": "traversal",  # legacy/minimal — easiest to probe with evasion
         "signals": {
             "exploitation": {
@@ -394,7 +394,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
         },
         "description": "Cyrillic homoglyphs + URL-encoded sequences in input — AST08 scanner evasion",
     },
-    "DETECT-019": {
+    "DETECT-INJ-005": {
         "arch_key": "traversal",  # legacy — most likely to have jailbreak probe attempts
         "signals": {
             "exploitation": {
@@ -407,7 +407,7 @@ _RULE_PRESCRIPTIONS: Dict[str, Dict] = {
                 "external_url_references": 0, "external_url_list": [],
             },
         },
-        "description": "max_injection_severity=HIGH (direct_override) — below CRITICAL, DETECT-005 not triggered",
+        "description": "max_injection_severity=HIGH (direct_override) — below CRITICAL, DETECT-INJ-001 not triggered",
     },
 }
 
@@ -664,7 +664,7 @@ covers: {prescription['description']}
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="DETECT coverage flywheel")
-    parser.add_argument("--rule",         help="Target a specific rule ID (e.g. DETECT-014)")
+    parser.add_argument("--rule",         help="Target a specific rule ID (e.g. DETECT-RES-004)")
     parser.add_argument("--observe-only", action="store_true", help="Show coverage matrix and exit")
     parser.add_argument("--incident",     help="Real-world incident description to ground the scenario")
     args = parser.parse_args()

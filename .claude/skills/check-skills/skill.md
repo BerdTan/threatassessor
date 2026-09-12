@@ -6,7 +6,7 @@ allowed-tools: Bash(git:*) Bash(grep:*) Bash(find:*) Bash(ls:*) Bash(python3:*) 
 
 # check-skills — Skill Supply-Chain & Phishing Audit
 
-Read-only corpus-wide sweep of `.claude/skills/`. No writes until user approves. Surfaces supply-chain and phishing risks that DETECT-028 (runtime skill tamper) cannot catch alone — including committed-but-malicious content, embedded phishing URLs, and unconstrained tool scope.
+Read-only corpus-wide sweep of `.claude/skills/`. No writes until user approves. Surfaces supply-chain and phishing risks that DETECT-SCT-002 (runtime skill tamper) cannot catch alone — including committed-but-malicious content, embedded phishing URLs, and unconstrained tool scope.
 
 ---
 
@@ -117,7 +117,7 @@ Also check for hidden instruction payloads — zero-width chars, Cyrillic homogl
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel)
-# HTML comments (<!--...-->) — injection vector (DETECT-027 class)
+# HTML comments (<!--...-->) — injection vector (DETECT-INJ-006 class)
 grep -rEn "<!--.*-->" "$ROOT/.claude/skills/" --include="*.md"
 
 # Zero-width / control chars

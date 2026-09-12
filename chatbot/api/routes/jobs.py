@@ -244,7 +244,7 @@ async def _run_expert_review(
 async def get_mcp_access_signals():
     """Return the current MCP session access pattern signals.
 
-    Used by the dashboard MCP tab to power the DETECT-020/021/022 status cards
+    Used by the dashboard MCP tab to power the DETECT-MCP-001/021/022 status cards
     and the tool-usage heatmap. No parameters — always returns the live state
     of the module-level MCPAccessLogger singleton.
     """

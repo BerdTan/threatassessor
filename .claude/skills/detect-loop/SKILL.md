@@ -19,7 +19,7 @@ assertion, then re-runs /check-detect to confirm the delta.
 python3 .claude/skills/detect-loop/scripts/detect-loop.py
 
 # Target a specific uncovered rule
-python3 .claude/skills/detect-loop/scripts/detect-loop.py --rule DETECT-014
+python3 .claude/skills/detect-loop/scripts/detect-loop.py --rule DETECT-RES-004
 
 # Observe only — show coverage matrix, no changes
 python3 .claude/skills/detect-loop/scripts/detect-loop.py --observe-only

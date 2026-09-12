@@ -481,7 +481,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
 
         # Injection patterns — categorised scan on normalised text.
         # agent_targeting_injection is excluded from injection_patterns to avoid
-        # co-firing DETECT-005 (pipeline-targeted injection) alongside DETECT-027
+        # co-firing DETECT-INJ-001 (pipeline-targeted injection) alongside DETECT-INJ-006
         # (downstream AI agent targeting). They are distinct attack surfaces.
         _PIPELINE_INJECTION_CATS = {
             k for k in _INJECTION_PATTERNS if k != "agent_targeting_injection"
@@ -501,7 +501,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         }
 
         # Derived field: highest severity across all matched injection categories.
-        # Enables DETECT-019 rule using the existing >= op without a new evaluator op.
+        # Enables DETECT-INJ-005 rule using the existing >= op without a new evaluator op.
         # Order: CRITICAL > HIGH > MEDIUM > LOW; empty categories → "NONE".
         _SEV_ORD = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
         _max_sev = max(
@@ -541,7 +541,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         # agent_targeting_injection is excluded from pipeline severity escalation:
         # it targets downstream consumers, not this pipeline. Its presence raises
         # exploitation.injection_categories but does NOT set blocked=True or
-        # escalate exploitation.severity — DETECT-027 owns that signal.
+        # escalate exploitation.severity — DETECT-INJ-006 owns that signal.
         n_inj = len(sig.exploitation["injection_patterns"])
         n_trav = len(sig.exploitation["path_traversal"])
         n_over = sig.exploitation["oversized_labels"]
@@ -562,7 +562,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
 
         # Downstream agent threat — separate severity for agent_targeting_injection.
         # Does not affect exploitation.severity (pipeline threat) but surfaces
-        # the risk to downstream AI consumers for DETECT-027 and SOC visibility.
+        # the risk to downstream AI consumers for DETECT-INJ-006 and SOC visibility.
         if "agent_targeting_injection" in _matched_cats:
             sig.exploitation["downstream_agent_threat"] = "CRITICAL"
 
@@ -727,7 +727,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         modified_skills, skill_url_findings = self._check_skill_integrity()
         sig.identity["modified_skill_files"] = modified_skills
         sig.identity["skill_url_findings"] = skill_url_findings
-        # Separate list of SUSPICIOUS-only findings drives DETECT-034
+        # Separate list of SUSPICIOUS-only findings drives DETECT-SCT-004
         sig.identity["skill_url_suspicious"] = [
             f for f in skill_url_findings if f.get("classification") == "SUSPICIOUS"
         ]

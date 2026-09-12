@@ -46,7 +46,7 @@ _DETECT_CANDIDATES = {
             "An authenticated caller can inject instructions into /generate-mmd via the 'extra' field, "
             "causing the LLM to produce a malicious Mermaid diagram. If that diagram is stored and "
             "later analysed, it becomes an indirect prompt injection into the TA pipeline — "
-            "and if it contains HTML comments targeting AI coding agents, it triggers DETECT-027 "
+            "and if it contains HTML comments targeting AI coding agents, it triggers DETECT-INJ-006 "
             "in downstream consumers. The structural signal is: a generated MMD that contains "
             "injection markers or agent-targeting comments."
         ),
@@ -57,7 +57,7 @@ _DETECT_CANDIDATES = {
         "severity": "High",
         "incident_ref": "ta-harden-audit-2026-08-09-rt02",
         "proposed_rule": {
-            "id": "DETECT-029",
+            "id": "DETECT-INJ-007",
             "name": "llm_generated_mmd_injection",
             "description": (
                 "An LLM-generated architecture diagram contains prompt injection markers or "
@@ -82,7 +82,7 @@ _DETECT_CANDIDATES = {
             "authentication is structurally equivalent to the RT-06 finding: any caller can invoke "
             "analysis, retrieval, and governance tools without credentials. This is detectable as an "
             "architecture signal when an agentic system exposes tool-calling endpoints with no auth "
-            "node in the diagram — extending the existing MCP recon/flood rules (DETECT-020/021/022)."
+            "node in the diagram — extending the existing MCP recon/flood rules (DETECT-MCP-001/021/022)."
         ),
         "signal_path": "mcp_access.unauthenticated_tool_calls",
         "owasp": ["A02"],
@@ -91,13 +91,13 @@ _DETECT_CANDIDATES = {
         "severity": "High",
         "incident_ref": "ta-harden-audit-2026-08-09-rt06",
         "proposed_rule": {
-            "id": "DETECT-030",
+            "id": "DETECT-MCP-004",
             "name": "unauthenticated_mcp_tool_exposure",
             "description": (
                 "An agentic architecture exposes MCP-compatible tool APIs over a network transport "
                 "with no authentication layer. All tools are callable without credentials — any caller "
                 "can trigger analysis jobs, read reports, and access governance signals. Extends "
-                "DETECT-020/021/022 (MCP recon/flood/auth-probe) with a structural pre-condition check. "
+                "DETECT-MCP-001/021/022 (MCP recon/flood/auth-probe) with a structural pre-condition check. "
                 "Grounded in TA harden-audit 2026-08-09 RT-06: MCP server accepted network transport "
                 "with no auth gate."
             ),
@@ -154,7 +154,7 @@ def get_existing_rule_ids() -> set[str]:
 
 def get_next_detect_id(existing: set[str]) -> str:
     nums = [int(r.split("-")[1]) for r in existing if r.startswith("DETECT-")]
-    return f"DETECT-{max(nums) + 1:03d}" if nums else "DETECT-029"
+    return f"DETECT-{max(nums) + 1:03d}" if nums else "DETECT-INJ-007"
 
 
 # ── YAML builder ─────────────────────────────────────────────────────────────

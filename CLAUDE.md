@@ -97,7 +97,7 @@ tail -f logs/api.log            # logs
 **MCP server:**
 - `mcp_server/server.py` — FastMCP app, 18 tools (stdio transport); all tools log to `MCPAccessLogger`
 - `mcp_server/job_client.py` — HTTP wrapper for all REST calls
-- `mcp_server/access_logger.py` — `MCPAccessLogger` rolling-window singleton; produces `mcp_access` signals for DETECT-020/021/022
+- `mcp_server/access_logger.py` — `MCPAccessLogger` rolling-window singleton; produces `mcp_access` signals for DETECT-MCP-001/021/022
 - `mcp_server/client_sim.py` — 6-persona integration simulator (chatbot, code-agent, ciso, soc, copilot, chatgpt)
 - `mcp_server/README.md` — setup, 4-step testing protocol, per-client integration snippets
 
@@ -154,7 +154,7 @@ tail -f logs/api.log            # logs
 | `get_tatb_scores` | TATB benchmark scores across corpus or single arch |
 | `list_architectures` | All analysed architectures + metadata |
 | `lookup_mitre_technique` | Technique details + recommended mitigations by ATT&CK ID |
-| `get_mcp_access_signals` | Live session access patterns → feeds DETECT-020/021/022 |
+| `get_mcp_access_signals` | Live session access patterns → feeds DETECT-MCP-001/021/022 |
 | `export_assessment` | Unified TA bundle (ta-export/1.0): gate + OTM + OCSF + TATB |
 | `governance_check` | Fast MMD governance scan (~50ms, no LLM) → signals + fired DETECT rules |
 | `query_ta_brain` | Query TA Brain (infer/gaps/patterns/explain modes) |

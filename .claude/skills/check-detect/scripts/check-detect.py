@@ -200,7 +200,7 @@ def _live_counts() -> dict:
         import yaml  # type: ignore[import]
         rules = yaml.safe_load(RULES_PATH.read_text()).get("rules", [])
         counts["n_rules"] = len(rules)
-        counts["last_rule"] = rules[-1]["id"] if rules else "DETECT-001"
+        counts["last_rule"] = rules[-1]["id"] if rules else "DETECT-QC-001"
     except Exception:
         counts["n_rules"] = 0
         counts["last_rule"] = "?"
@@ -273,7 +273,7 @@ def sync_skill_metadata() -> None:
             f"Synthesise realistic governance_signals.json payloads for named incident scenarios, "
             f"run aivss-to-findings, and assert the expected DETECT rules fire. "
             f"{n_scenarios} scenarios cover all {n_rules} DETECT rules "
-            f"(DETECT-001 through {last_rule}), including AST02/05/08-grounded scenarios. "
+            f"(DETECT-QC-001 through {last_rule}), including AST02/05/08-grounded scenarios. "
             f"Optionally generates a storycaster narrative contextualised to a specific architecture. "
             f"Pass a scenario name, or omit to list all. Use --story to generate a narrative. "
             f"Use --write to persist the simulated governance_signals to a report directory."

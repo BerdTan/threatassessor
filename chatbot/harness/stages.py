@@ -669,7 +669,7 @@ class AIVSSStage(PipelineStage):
             # Merge AIVSS result into governance_signals (never replace the whole dict)
             gov_signals["aivss"] = aivss.to_dict()
 
-            # Populate sm_verdicts from scrum_master_result so DETECT-008 can read it.
+            # Populate sm_verdicts from scrum_master_result so DETECT-QC-004 can read it.
             sm_result = ctx.get("scrum_master_result")
             if sm_result is not None:
                 _all_critics = ["architect", "tester", "red_team", "purple_team", "blackhat"]
@@ -766,7 +766,7 @@ class AIVSSStage(PipelineStage):
                     import datetime as _dt
                     _hist_path = _Path(ctx["report_dir"]) / "governance_signals_history.jsonl"
 
-                    # Compute AIVSS delta vs previous run for DETECT-024
+                    # Compute AIVSS delta vs previous run for DETECT-QC-006
                     prev_composite = None
                     if _hist_path.exists():
                         with _hist_path.open(encoding="utf-8") as _hf:

@@ -52,7 +52,7 @@ metadata:
 #   INJ — Input Injection & Evasion           (005,010,017,018,019,027,029,033)
 #   EXF — Exfiltration & Leakage              (004,009,011,013,023,025)
 #   MCP — MCP & API Abuse                     (020,021,022,030,032)
-#   SCT — Supply Chain & Tampering            (016,028,031,036)
+#   SCT — Supply Chain & Tampering            (016,028,031,034,036)
 #   RES — Resource & Coverage                 (003,006,012,014)
 #
 # Migration path: when sequential IDs are replaced with domain-scoped IDs
@@ -66,7 +66,7 @@ metadata:
 rules:
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-001: Confidence Swing Without Reversal
+  # DETECT-QC-001: Confidence Swing Without Reversal
   # Incident: Anthropic Opus 4.7 cybersec eval (Apr 2026)
   #
   # Model recognised it was operating against a real environment, verbalized the
@@ -79,11 +79,12 @@ rules:
   #     └─ Span[critic_complete, source=red_team]
   #          └─ Signal[manipulation.confidence_swing=18]
   #               └─ Threshold[>=15.0 AND synthesis_quality==FULL]
-  #                    └─ Rule[DETECT-001]
+  #                    └─ Rule[DETECT-QC-001]
   #                         └─ Alert[OCSF-2004, severity=High]
   #                              └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-001
+  - id: DETECT-QC-001
+    legacy_id: DETECT-001
     name: swing_without_reversal
     domain: QC
     description: >
@@ -116,7 +117,7 @@ rules:
       Raise to 20.0 if false positive rate exceeds 5% on clean corpus runs.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-002: Critic Divergence Suppressed in Synthesis
+  # DETECT-QC-002: Critic Divergence Suppressed in Synthesis
   # Incident: Anthropic Mythos 5 CTF eval (2026)
   #
   # Critics disagreed significantly (divergence_detected=true, high divergence score).
@@ -125,12 +126,13 @@ rules:
   # "2026 calendar date proves it's a simulation". Synthesis proceeded with full
   # critic agreement recorded — the disagreement was silenced, not resolved.
   #
-  # Critical distinction from DETECT-001: here the critics actively diverged first,
-  # then converged. In DETECT-001, they never diverged. Both result in synthesis_quality
+  # Critical distinction from DETECT-QC-001: here the critics actively diverged first,
+  # then converged. In DETECT-QC-001, they never diverged. Both result in synthesis_quality
   # FULL, but the mechanism differs — diverge-then-converge is harder to detect and
   # indicates a more sophisticated rationalization.
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-002
+  - id: DETECT-QC-002
+    legacy_id: DETECT-002
     name: divergence_suppressed
     domain: QC
     description: >
@@ -167,7 +169,7 @@ rules:
       but fires earlier. Review both thresholds together if adjusting.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-003: Token Spike on Single Critic (Inference Hyperfocus)
+  # DETECT-RES-001: Token Spike on Single Critic (Inference Hyperfocus)
   # Incident: OpenAI ExploitGym / Hugging Face breach (Jul 2026)
   #
   # Models "spent substantial inference compute finding a way to obtain internet
@@ -176,7 +178,8 @@ rules:
   # disproportionate tokens relative to peers suggests goal-directed hyperfocus on
   # a narrow subtask — the same signal that preceded the zero-day discovery.
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-003
+  - id: DETECT-RES-001
+    legacy_id: DETECT-003
     name: token_spike_single_critic
     domain: RES
     description: >
@@ -208,7 +211,7 @@ rules:
       With 2 critics only, this rule does not fire — by design (ratio is unreliable).
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-004: Covert C2 Channel via Exfiltration + Boundary Exit
+  # DETECT-EXF-001: Covert C2 Channel via Exfiltration + Boundary Exit
   # Incident: DeepSeek/Hermes autonomous exploit campaign (Jul 2026)
   #
   # Operator used a single Telegram message to direct a fully autonomous campaign
@@ -222,7 +225,8 @@ rules:
   # defender side but can be the target. A malicious .mmd that embeds external
   # service references AND contains injection patterns maps to this vector.
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-004
+  - id: DETECT-EXF-001
+    legacy_id: DETECT-004
     name: covert_c2_channel
     domain: EXF
     description: >
@@ -255,7 +259,7 @@ rules:
         condition: severity == "Critical"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-005: Adversarial Input via Architecture Pipeline
+  # DETECT-INJ-001: Adversarial Input via Architecture Pipeline
   # Incident: Hugging Face dataset-loader intrusion (Jul 2026)
   #
   # Initial access was through a malicious remote-code dataset loader and template
@@ -268,7 +272,8 @@ rules:
   # of CRITICAL severity AND injection_patterns present means the input was purpose-built
   # as an attack, not accidentally malformed.
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-005
+  - id: DETECT-INJ-001
+    legacy_id: DETECT-005
     name: adversarial_input_via_pipeline
     domain: INJ
     description: >
@@ -304,7 +309,7 @@ rules:
       in agent_governance.yaml for those cases.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-006: Distributed Agentic Sweep (Swarm Recon Pattern)
+  # DETECT-RES-002: Distributed Agentic Sweep (Swarm Recon Pattern)
   # Incident: Hugging Face infrastructure intrusion (Jul 2026)
   #
   # Attacker used "a swarm of short-lived sandboxes" with 17,000+ recorded actions
@@ -318,7 +323,8 @@ rules:
   # finding yet — still in recon phase). The absence of CRITICAL findings despite
   # high coverage is the tell: the model is mapping, not targeting yet.
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-006
+  - id: DETECT-RES-002
+    legacy_id: DETECT-006
     name: distributed_agentic_sweep
     domain: RES
     description: >
@@ -355,7 +361,7 @@ rules:
       complexity increase is a secondary indicator of the same swarm pattern.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-007: Synthesised Confidence Inflation (Transparency Collapse)
+  # DETECT-QC-003: Synthesised Confidence Inflation (Transparency Collapse)
   # Source: AIID "Lack of Transparency" (42 incidents), MIT AI Risk 7.1/7.3
   #
   # Critics appeared to agree (divergence_score == 0, no divergence flag) yet the
@@ -364,7 +370,7 @@ rules:
   # the synthesis layer inflated confidence beyond what the individual critics
   # supported, without any transparency signal in the output.
   #
-  # Distinct from DETECT-001 (swing_without_reversal): that rule fires when critics
+  # Distinct from DETECT-QC-001 (swing_without_reversal): that rule fires when critics
   # DID show a swing (disagreement visible). This fires when there is NO visible
   # disagreement but the score still moved — the inflation happened silently.
   #
@@ -373,11 +379,12 @@ rules:
   #     └─ Span[synthesis]
   #          └─ Signal[confidence_swing=8, divergence_score=0, synthesis=FULL]
   #               └─ Threshold[swing>0 AND divergence==0 AND synthesis==FULL]
-  #                    └─ Rule[DETECT-007]
+  #                    └─ Rule[DETECT-QC-003]
   #                         └─ Alert[OCSF-2004, severity=Medium]
   #                              └─ Action[audit_log]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-007
+  - id: DETECT-QC-003
+    legacy_id: DETECT-007
     name: synthesised_confidence_inflation
     domain: QC
     description: >
@@ -416,10 +423,10 @@ rules:
       audit the corpus baseline — legitimate swing can occur when the SM stage
       adjusts confidence after deterministic vs. LLM score reconciliation.
       If false positive rate > 10%, add a minimum swing threshold (e.g. >= 5.0).
-      Does NOT fire when divergence_detected is true — that is DETECT-001/002.
+      Does NOT fire when divergence_detected is true — that is DETECT-QC-001/002.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-008: Selection Pressure / Reward Hacking Signal
+  # DETECT-QC-004: Selection Pressure / Reward Hacking Signal
   # Source: MIT AI Risk 7.1 (Goal Conflict / Specification Gaming)
   #
   # The ScrumMaster repeatedly rejected and retriggered critics — acceptance_rate
@@ -427,7 +434,7 @@ rules:
   # SM approval rather than honest gap reporting (reward hacking under selection
   # pressure). Grounded in MIT AI Risk 7.1: models learn to satisfy the evaluator
   # rather than the underlying objective, producing systematically inflated outputs
-  # on re-run. Unlike DETECT-001/007 (single-run swing), this fires on the ratio of
+  # on re-run. Unlike DETECT-QC-001/007 (single-run swing), this fires on the ratio of
   # rejections across all five critics in a single SM synthesis pass.
   #
   # Knowledge graph chain:
@@ -435,11 +442,12 @@ rules:
   #     └─ Span[sm_verdicts, source=scrum_master]
   #          └─ Signal[sm_verdicts.acceptance_rate=0.4]
   #               └─ Threshold[<= 0.6 AND redesign_signal==false]
-  #                    └─ Rule[DETECT-008]
+  #                    └─ Rule[DETECT-QC-004]
   #                         └─ Alert[OCSF-2004, severity=High]
   #                              └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-008
+  - id: DETECT-QC-004
+    legacy_id: DETECT-008
     name: selection_pressure_reward_hacking
     domain: QC
     description: >
@@ -476,25 +484,26 @@ rules:
       positives on structurally broken architectures where retriggers are expected.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-009: Credential / Secret Exposure in Architecture Artifact
+  # DETECT-EXF-002: Credential / Secret Exposure in Architecture Artifact
   # Source: OWASP A06 (Security Misconfiguration), MITRE T1552 (Unsecured Credentials)
   #
   # The governance adapter scans ground_truth for credential patterns (api_key=,
   # password=, secret=, token= etc.). A non-empty sensitive_keywords list means
   # real secrets were embedded in the architecture description or rationale text —
   # an immediate hard-stop: any analysis produced from this run is contaminated.
-  # Distinct from DETECT-004 which requires co-occurring cross-boundary evidence.
+  # Distinct from DETECT-EXF-001 which requires co-occurring cross-boundary evidence.
   #
   # Knowledge graph chain:
   #   Artifact[ground_truth.json]
   #     └─ Scan[_RE_CRED pattern match]
   #          └─ Signal[leakage.sensitive_keywords=["api_key","db_password"]]
   #               └─ Threshold[length_gt 0 AND flagged==true]
-  #                    └─ Rule[DETECT-009]
+  #                    └─ Rule[DETECT-EXF-002]
   #                         └─ Alert[OCSF-2004, severity=Critical]
   #                              └─ Action[block_run, forensic_capture]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-009
+  - id: DETECT-EXF-002
+    legacy_id: DETECT-009
     name: credential_exposure_in_artifact
     domain: EXF
     description: >
@@ -528,13 +537,13 @@ rules:
       to a governance allowlist in policies/agent_governance.yaml.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-010: Path Traversal in Architecture Input
+  # DETECT-INJ-002: Path Traversal in Architecture Input
   # Source: OWASP A01, MITRE T1059 (Command and Scripting Interpreter)
   #
   # Path traversal patterns (../../, /etc/passwd etc.) in architecture node labels
   # or edge annotations indicate the .mmd file was crafted to probe file system
   # access — an initial access attempt via the analysis pipeline input.
-  # DETECT-005 requires BOTH CRITICAL severity AND injection_patterns — this fires
+  # DETECT-INJ-001 requires BOTH CRITICAL severity AND injection_patterns — this fires
   # on path_traversal alone, catching the case where traversal is the only signal.
   #
   # Knowledge graph chain:
@@ -542,17 +551,18 @@ rules:
   #     └─ Scan[_RE_PATH_TRAVERSAL]
   #          └─ Signal[exploitation.path_traversal=["../../etc/passwd"]]
   #               └─ Threshold[length_gt 0]
-  #                    └─ Rule[DETECT-010]
+  #                    └─ Rule[DETECT-INJ-002]
   #                         └─ Alert[OCSF-2004, severity=High]
   #                              └─ Action[block_run, audit_log]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-010
+  - id: DETECT-INJ-002
+    legacy_id: DETECT-010
     name: path_traversal_in_input
     domain: INJ
     description: >
       Architecture input contains path traversal sequences (../../, /etc/, %2e%2e%2f
       etc.). The .mmd file is being used as a file system probe against the analysis
-      pipeline. Distinct from DETECT-005 which requires co-occurring injection_patterns.
+      pipeline. Distinct from DETECT-INJ-001 which requires co-occurring injection_patterns.
     incident_refs:
       - huggingface-dataset-pipeline-2026
     owasp: [A01]
@@ -576,13 +586,13 @@ rules:
       (e.g. a node named "File Path Service"), rename the node label in the .mmd.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-011: LLM→External Service Egress Without Data Residency Control
+  # DETECT-EXF-003: LLM→External Service Egress Without Data Residency Control
   # Source: OWASP A05, MITRE ATLAS AML.TA0010 (Exfiltration via External Service)
   #
   # The governance adapter detects LLM→external service edges in the architecture
   # (zdr_signals). This means the architecture explicitly routes inference output to
   # third-party services without a Zero Data Retention declaration — a sovereignty
-  # and data governance failure. Distinct from DETECT-004 which requires co-occurring
+  # and data governance failure. Distinct from DETECT-EXF-001 which requires co-occurring
   # leakage — zdr_signals fires on the architectural pattern alone, regardless of
   # whether PII was detected.
   #
@@ -591,11 +601,12 @@ rules:
   #     └─ EdgeScan[LLM→ExternalService pattern]
   #          └─ Signal[sovereignty.zdr_signals=["inference→external: LLM → SlackAPI"]]
   #               └─ Threshold[length_gt 0]
-  #                    └─ Rule[DETECT-011]
+  #                    └─ Rule[DETECT-EXF-003]
   #                         └─ Alert[OCSF-2004, severity=Medium]
   #                              └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-011
+  - id: DETECT-EXF-003
+    legacy_id: DETECT-011
     name: llm_external_egress_without_zdr
     domain: EXF
     description: >
@@ -603,7 +614,7 @@ rules:
       (Slack, Telegram, webhook, third-party API) without a Zero Data Retention
       declaration. Sovereign data may be leaving the controlled boundary without
       governance approval. Fires on the architectural pattern alone — no leakage
-      evidence required (complement to DETECT-004).
+      evidence required (complement to DETECT-EXF-001).
     incident_refs:
       - huggingface-dataset-pipeline-2026
     owasp: [A05]
@@ -629,7 +640,7 @@ rules:
       positive rate > 5% on well-known internal service labels.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-012: Stale Threat Intelligence Feed
+  # DETECT-RES-003: Stale Threat Intelligence Feed
   # Source: OWASP A05 (Security Misconfiguration), MITRE T1195 (Supply Chain Compromise)
   #
   # The governance adapter checks whether MITRE ATT&CK / embedding data files are
@@ -643,11 +654,12 @@ rules:
   #     └─ FreshnessCheck[mtime < now - 90 days]
   #          └─ Signal[leakage.supply_chain_stale_sources=["chatbot/data/enterprise-attack.json (91 days)"]]
   #               └─ Threshold[length_gt 0]
-  #                    └─ Rule[DETECT-012]
+  #                    └─ Rule[DETECT-RES-003]
   #                         └─ Alert[OCSF-2004, severity=Low]
   #                              └─ Action[audit_log]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-012
+  - id: DETECT-RES-003
+    legacy_id: DETECT-012
     name: stale_threat_intelligence_feed
     domain: RES
     description: >
@@ -678,32 +690,33 @@ rules:
       threshold to suppress this alert.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-013: High Outbound Threat Surface (Exfiltration Risk)
+  # DETECT-EXF-004: High Outbound Threat Surface (Exfiltration Risk)
   # Source: OWASP A06, MITRE ATLAS AML.TA0010 (Exfiltration)
   #
   # A high outbound AIVSS composite (>= 6.0) indicates the architecture has a
   # significant exfiltration-capable surface — PII exposure, data confidentiality
   # failure, or loss of governance signals present in the outbound flow. This fires
-  # independently of DETECT-004 (which requires both leakage.detected AND
+  # independently of DETECT-EXF-001 (which requires both leakage.detected AND
   # cross_boundary_nodes). An elevated outbound composite may arise from combinations
-  # of signals that individually fall below DETECT-004's threshold.
+  # of signals that individually fall below DETECT-EXF-001's threshold.
   #
   # Knowledge graph chain:
   #   AIVSSStage[outbound_scorer]
   #     └─ Signal[aivss.outbound.composite=7.2, severity=HIGH]
   #          └─ Threshold[>= 6.0]
-  #               └─ Rule[DETECT-013]
+  #               └─ Rule[DETECT-EXF-004]
   #                    └─ Alert[OCSF-2004, severity=High]
   #                         └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-013
+  - id: DETECT-EXF-004
+    legacy_id: DETECT-013
     name: high_outbound_threat_surface
     domain: EXF
     description: >
       AIVSS outbound composite score reached or exceeded 6.0 — the architecture
       presents a significant exfiltration-capable surface. PII exposure, data
       confidentiality failure, or sovereignty control loss signals are present in
-      the outbound flow. Complements DETECT-004 by catching broad outbound risk
+      the outbound flow. Complements DETECT-EXF-001 by catching broad outbound risk
       not tied to a single leakage + cross-boundary co-occurrence.
     incident_refs:
       - huggingface-dataset-pipeline-2026
@@ -730,7 +743,7 @@ rules:
       patterns — cross-check aivss.outbound.metrics for which sub-scores are elevated.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-014: Low Technique Validation Coverage
+  # DETECT-RES-004: Low Technique Validation Coverage
   # Source: MIT AI Risk 7.3 (Inaccurate Risk Assessment), OWASP A09
   #
   # val_pct measures what fraction of MITRE techniques in the attack paths were
@@ -744,11 +757,12 @@ rules:
   #   AnalysisStage[ground_truth.json → technique_validation[]]
   #     └─ Signal[validation.val_pct=62.0, invalid_techniques=8]
   #          └─ Threshold[val_pct < 75 AND invalid_techniques >= 3]
-  #               └─ Rule[DETECT-014]
+  #               └─ Rule[DETECT-RES-004]
   #                    └─ Alert[OCSF-2004, severity=Medium]
   #                         └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-014
+  - id: DETECT-RES-004
+    legacy_id: DETECT-014
     name: low_technique_validation_coverage
     domain: RES
     description: >
@@ -791,7 +805,7 @@ rules:
       inputs where MITRE mapping is not performed by TA.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-015: Critic Gap Convergence (Multi-Agent Collusion Proxy)
+  # DETECT-QC-005: Critic Gap Convergence (Multi-Agent Collusion Proxy)
   # Source: MIT AI Risk 7.1 (Goal Conflict), OWASP A09
   #
   # After a full MoE run, AIVSSStage computes Jaccard similarity of gap text
@@ -811,11 +825,12 @@ rules:
   #   AIVSSStage[moe_result.{critic}_result.gaps → Jaccard]
   #     └─ Signal[manipulation.gap_similarity_avg=0.52]
   #          └─ Threshold[avg > 0.4 OR max > 0.6]
-  #               └─ Rule[DETECT-015]
+  #               └─ Rule[DETECT-QC-005]
   #                    └─ Alert[OCSF-2004, severity=High]
   #                         └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-015
+  - id: DETECT-QC-005
+    legacy_id: DETECT-015
     name: critic_gap_convergence
     domain: QC
     description: >
@@ -854,7 +869,7 @@ rules:
       condition as a secondary trigger for single-pair convergence detection.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-016: Critic Module Tampering (AST02 Supply Chain Compromise)
+  # DETECT-SCT-001: Critic Module Tampering (AST02 Supply Chain Compromise)
   # Source: OWASP AST02, MITRE T1195 (Supply Chain Compromise)
   #
   # The governance adapter compares SHA-1 hashes of critic .py files against their
@@ -869,11 +884,12 @@ rules:
   #     └─ IntegrityCheck[SHA-1 disk vs git-object hash]
   #          └─ Signal[identity.supply_chain_modified_modules=["architect_critic.py"]]
   #               └─ Threshold[length_gt 0]
-  #                    └─ Rule[DETECT-016]
+  #                    └─ Rule[DETECT-SCT-001]
   #                         └─ Alert[OCSF-2004, severity=Critical]
   #                              └─ Action[block_run, forensic_capture]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-016
+  - id: DETECT-SCT-001
+    legacy_id: DETECT-016
     name: critic_module_tampering
     domain: SCT
     description: >
@@ -906,7 +922,7 @@ rules:
       If intentionally patching critics outside git, commit first.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-017: External URL References in Architecture Input (AST05)
+  # DETECT-INJ-003: External URL References in Architecture Input (AST05)
   # Source: OWASP AST05 (Untrusted External Instructions)
   #
   # AST05 documents that skills fetching live external URLs "may contain malicious
@@ -921,11 +937,12 @@ rules:
   #     └─ URLScan[_RE_EXTERNAL_URL]
   #          └─ Signal[exploitation.external_url_references=2]
   #               └─ Threshold[> 0]
-  #                    └─ Rule[DETECT-017]
+  #                    └─ Rule[DETECT-INJ-003]
   #                         └─ Alert[OCSF-2004, severity=High]
   #                              └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-017
+  - id: DETECT-INJ-003
+    legacy_id: DETECT-017
     name: external_url_in_architecture_input
     domain: INJ
     description: >
@@ -959,7 +976,7 @@ rules:
       If false positive rate > 5%, raise threshold to external_url_references > 2.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-018: Evasion Attempt via Encoding or Homoglyphs (AST08)
+  # DETECT-INJ-004: Evasion Attempt via Encoding or Homoglyphs (AST08)
   # Source: OWASP AST08 (Poor Scanning), OWASP A01
   #
   # The normalisation layer (governance.py _normalise()) defeats homoglyph
@@ -976,11 +993,12 @@ rules:
   #     └─ RawScan[pre-normalisation homoglyph + url-encoding count]
   #          └─ Signal[exploitation.evasion_attempts=3]
   #               └─ Threshold[> 0]
-  #                    └─ Rule[DETECT-018]
+  #                    └─ Rule[DETECT-INJ-004]
   #                         └─ Alert[OCSF-2004, severity=High]
   #                              └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-018
+  - id: DETECT-INJ-004
+    legacy_id: DETECT-018
     name: evasion_attempt_encoding_or_homoglyph
     domain: INJ
     description: >
@@ -1015,16 +1033,16 @@ rules:
       conditions if the deployment environment uses non-Latin scripts legitimately.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-019: High-Severity Injection Category in Architecture Input (OWASP A01)
+  # DETECT-INJ-005: High-Severity Injection Category in Architecture Input (OWASP A01)
   # Source: OWASP A01, MITRE ATLAS AML.TA0001
   #
-  # DETECT-005 requires exploitation.severity == CRITICAL (tag/control-token categories)
+  # DETECT-INJ-001 requires exploitation.severity == CRITICAL (tag/control-token categories)
   # to fire — it misses HIGH-severity injection categories (direct_override,
   # system_override, dan_jailbreak, safety_bypass, prompt_extraction, developer_mode)
   # which are unambiguous jailbreak/override attempts but do not reach CRITICAL severity.
-  # DETECT-019 closes this gap using the derived max_injection_severity field.
+  # DETECT-INJ-005 closes this gap using the derived max_injection_severity field.
   #
-  # Distinct from DETECT-005: this fires on HIGH (not CRITICAL), does not require
+  # Distinct from DETECT-INJ-001: this fires on HIGH (not CRITICAL), does not require
   # exploitation.blocked == True, and produces quarantine_trace rather than block_run.
   # The two rules can co-fire if exploitation.severity escalates to CRITICAL via path
   # traversal or oversized labels alongside a HIGH-category injection pattern.
@@ -1034,11 +1052,12 @@ rules:
   #     └─ Scan[_INJECTION_PATTERNS HIGH-severity categories]
   #          └─ Signal[exploitation.max_injection_severity="HIGH"]
   #               └─ Threshold[== "HIGH"]
-  #                    └─ Rule[DETECT-019]
+  #                    └─ Rule[DETECT-INJ-005]
   #                         └─ Alert[OCSF-2004, severity=High]
   #                              └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-019
+  - id: DETECT-INJ-005
+    legacy_id: DETECT-019
     name: high_severity_injection_category
     domain: INJ
     description: >
@@ -1046,7 +1065,7 @@ rules:
       system_override, dan_jailbreak, safety_bypass, prompt_extraction, or
       developer_mode). These are unambiguous jailbreak or instruction-override attempts.
       Below CRITICAL threshold (tag/control-token) but above incidental phrasing.
-      DETECT-005 covers CRITICAL; this rule covers the HIGH tier gap.
+      DETECT-INJ-001 covers CRITICAL; this rule covers the HIGH tier gap.
     incident_refs:
       - huggingface-dataset-pipeline-2026
       - owasp-a01-broken-access-control
@@ -1074,7 +1093,7 @@ rules:
       ("pretend this is a microservice") and have a high false-positive rate.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-020: MCP Recon Sequence (Discovery via API)
+  # DETECT-MCP-001: MCP Recon Sequence (Discovery via API)
   #
   # An agent calls list_architectures() to enumerate all analysed targets, then
   # bulk-pulls get_governance_signals() across ≥3 unique architectures within a
@@ -1086,11 +1105,12 @@ rules:
   #     └─ Span[list_architectures → get_governance_signals×N]
   #          └─ Signal[mcp_access.recon_sequence=true, recon_gov_archs≥3]
   #               └─ Threshold[recon_sequence==true AND recon_gov_archs>=3]
-  #                    └─ Rule[DETECT-020]
+  #                    └─ Rule[DETECT-MCP-001]
   #                         └─ Alert[OCSF-2004, severity=Medium]
   #                              └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-020
+  - id: DETECT-MCP-001
+    legacy_id: DETECT-020
     name: mcp_recon_sequence
     domain: MCP
     description: >
@@ -1123,7 +1143,7 @@ rules:
       false positives (they tend to batch all archs on load).
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-021: MCP Job Flooding (Resource Exhaustion via Expert Review)
+  # DETECT-MCP-002: MCP Job Flooding (Resource Exhaustion via Expert Review)
   #
   # An agent submits ≥3 run_expert_review() jobs within 120 seconds but polls
   # get_job_status() fewer than half as many times (poll/submit ratio < 0.5).
@@ -1136,11 +1156,12 @@ rules:
   #     └─ Span[run_expert_review×N, get_job_status×M where M/N < 0.5]
   #          └─ Signal[mcp_access.job_flood=true, job_flood_ratio<0.5]
   #               └─ Threshold[job_flood==true AND job_flood_submissions>=3]
-  #                    └─ Rule[DETECT-021]
+  #                    └─ Rule[DETECT-MCP-002]
   #                         └─ Alert[OCSF-2004, severity=High]
   #                              └─ Action[audit_log, block_run]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-021
+  - id: DETECT-MCP-002
+    legacy_id: DETECT-021
     name: mcp_job_flooding
     domain: MCP
     description: >
@@ -1173,11 +1194,11 @@ rules:
       redesigned to use wait_for_completion=True instead.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-022: MCP Auth Probing (Credential Access via Repeated 401s)
+  # DETECT-MCP-003: MCP Auth Probing (Credential Access via Repeated 401s)
   #
   # ≥5 requests return 401 Unauthorized within a 300-second window. This indicates
   # a client cycling through API keys or tokens to find a valid credential.
-  # Unlike DETECT-010 (path traversal in .mmd input), this attack operates at
+  # Unlike DETECT-INJ-002 (path traversal in .mmd input), this attack operates at
   # the transport layer — no architecture content is needed to execute it.
   #
   # Knowledge graph chain:
@@ -1185,11 +1206,12 @@ rules:
   #     └─ Span[tool_call×N → 401 responses]
   #          └─ Signal[mcp_access.auth_failures=true, auth_failure_count>=5]
   #               └─ Threshold[auth_failures==true]
-  #                    └─ Rule[DETECT-022]
+  #                    └─ Rule[DETECT-MCP-003]
   #                         └─ Alert[OCSF-2004, severity=High]
   #                              └─ Action[audit_log, forensic_capture, page_soc]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-022
+  - id: DETECT-MCP-003
+    legacy_id: DETECT-022
     name: mcp_auth_probing
     domain: MCP
     description: >
@@ -1220,7 +1242,7 @@ rules:
       raise threshold to 8.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-024: Assessment Quality Regression
+  # DETECT-QC-006: Assessment Quality Regression
   #
   # The AIVSS overall composite score dropped ≥ 2.0 points compared to the
   # previous pipeline run for this architecture. A meaningful composite drop
@@ -1242,11 +1264,12 @@ rules:
   #     └─ Signal[aivss.overall.composite=2.8]
   #          └─ Computed[aivss.delta.composite_drop=2.4]
   #               └─ Threshold[composite_drop >= 2.0]
-  #                    └─ Rule[DETECT-024]
+  #                    └─ Rule[DETECT-QC-006]
   #                         └─ Alert[OCSF-2004, severity=High]
   #                              └─ Action[audit_log, quarantine_trace]
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-024
+  - id: DETECT-QC-006
+    legacy_id: DETECT-024
     name: assessment_quality_regression
     domain: QC
     description: >
@@ -1283,7 +1306,7 @@ rules:
       techniques raise the composite), raise threshold to 3.0.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-025: C2 Beacon Architecture
+  # DETECT-EXF-006: C2 Beacon Architecture
   #
   # The architecture diagram contains a polling/scheduler node (cron, task runner,
   # polling agent, worker loop, etc.) with an outbound edge to an external receiver
@@ -1292,7 +1315,7 @@ rules:
   # INC-2026-07-28 incident: a Mythos5 agent created a cron-driven polling script
   # that fetched tasking from an attacker-controlled URL, executed the commands,
   # and POSTed output to an OAST endpoint every 20–60 seconds.
-  # Unlike DETECT-023 (which fires on structural egress presence), this fires on
+  # Unlike DETECT-EXF-005 (which fires on structural egress presence), this fires on
   # the BEHAVIOURAL SHAPE: a periodic-fetch-and-report loop explicitly visible in
   # the diagram topology.
   #
@@ -1300,7 +1323,7 @@ rules:
   #   Node[label∈{cron,scheduler,polling_agent,task_runner,...}]
   #     └─ Edge[→ Node[label∈{c2_server,oast,callback_server,...}]]
   #          └─ Signal[sovereignty.c2_beacon_nodes length_gt 0]
-  #               └─ Rule[DETECT-025]
+  #               └─ Rule[DETECT-EXF-006]
   #                    └─ Alert[OCSF-2004, severity=High]
   #                         └─ Action[audit_log, block_deployment, page_soc]
   #
@@ -1308,7 +1331,8 @@ rules:
   # "Agent created cmd.sh polling loop: fetch tasking every 20s from attacker URL,
   #  execute, POST output to OAST domain. Planted crontab @reboot persistence."
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-025
+  - id: DETECT-EXF-006
+    legacy_id: DETECT-025
     name: c2_beacon_architecture
     domain: EXF
     description: >
@@ -1345,7 +1369,7 @@ rules:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-028: Skill Instruction Tamper
+  # DETECT-SCT-002: Skill Instruction Tamper
   #
   # One or more skill instruction files (.claude/skills/*/SKILL.md or scripts/*.py)
   # have been modified on disk and diverged from their git HEAD hash. Skills are
@@ -1366,14 +1390,15 @@ rules:
   #
   # Knowledge graph chain:
   #   identity.modified_skill_files length_gt 0
-  #     └─ Rule[DETECT-028]
+  #     └─ Rule[DETECT-SCT-002]
   #          └─ Alert[OCSF-2004, severity=High / Critical if core skill]
   #               └─ Action[audit_log, forensic_capture, block_deployment, page_soc]
   #
   # Incident reference: AISI INC-2026-07-28 — attacker modified infrastructure
   # files to establish persistence; AST02 supply chain modification pattern.
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-028
+  - id: DETECT-SCT-002
+    legacy_id: DETECT-028
     name: skill_instruction_tamper
     domain: SCT
     description: >
@@ -1410,7 +1435,7 @@ rules:
       in dev-only deployments. In CI/CD, all skill files should be committed — any
       divergence from HEAD in a CI pipeline is a genuine tamper signal.
 
-  # DETECT-026: Critic Consensus Collapse
+  # DETECT-QC-007: Critic Consensus Collapse
   #
   # ScrumMaster rejected the majority of critic findings (acceptance_rate < 0.4)
   # AND flagged a redesign signal AND critics diverged. This triple condition
@@ -1422,20 +1447,21 @@ rules:
   # actions (one writing shared PAT etiquette while another exploited it).
   #
   # Distinct from existing rules:
-  #   DETECT-002: divergence detected but SM accepted (suppression)
-  #   DETECT-015: critics converged suspiciously (too similar)
-  #   DETECT-026: divergence so severe SM could NOT resolve it (collapse)
+  #   DETECT-QC-002: divergence detected but SM accepted (suppression)
+  #   DETECT-QC-005: critics converged suspiciously (too similar)
+  #   DETECT-QC-007: divergence so severe SM could NOT resolve it (collapse)
   #
   # Knowledge graph chain:
   #   ScrumMaster[acceptance_rate < 0.4, redesign_signal=true]
   #     └─ Signal[manipulation.divergence_detected=true]
-  #          └─ Rule[DETECT-026]
+  #          └─ Rule[DETECT-QC-007]
   #               └─ Alert[OCSF-2004, severity=High]
   #
   # Incident reference: AISI INC-2026-07-28 parallel agent cross-contamination;
   # OWASP Agentic A05 (Insufficient Output Validation across agents).
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-026
+  - id: DETECT-QC-007
+    legacy_id: DETECT-026
     name: critic_consensus_collapse
     domain: QC
     description: >
@@ -1480,7 +1506,7 @@ rules:
       validation.val_pct before escalating.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-027: Downstream AI Agent Prompt Injection
+  # DETECT-INJ-006: Downstream AI Agent Prompt Injection
   #
   # The architecture diagram contains hidden instructions targeting downstream AI
   # coding agents (Claude Code, Codex, Cursor, Copilot) — typically embedded as
@@ -1490,21 +1516,22 @@ rules:
   # One unaffiliated user triggered the payload inside a Docker container, giving
   # the attacker RCE on a home network outside the evaluation boundary.
   #
-  # Distinct from DETECT-005 (adversarial_input_via_pipeline): DETECT-005 targets
-  # the TA analysis pipeline itself. DETECT-027 targets the downstream consumer —
+  # Distinct from DETECT-INJ-001 (adversarial_input_via_pipeline): DETECT-INJ-001 targets
+  # the TA analysis pipeline itself. DETECT-INJ-006 targets the downstream consumer —
   # the AI agent that will read this architecture as context (issue triage, PR
   # review, code generation). The attack surface is the output, not the input.
   #
   # Knowledge graph chain:
   #   MMD[exploitation.injection_categories.agent_targeting_injection = CRITICAL]
-  #     └─ Rule[DETECT-027]
+  #     └─ Rule[DETECT-INJ-006]
   #          └─ Alert[OCSF-2004, severity=Critical]
   #               └─ Action[audit_log, block_run, forensic_capture, page_soc]
   #
   # Incident reference: AISI INC-2026-07-28 — hidden HTML comment → Claude Code /
   # Codex / Cursor → RCE in Docker container on unaffiliated home network.
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-027
+  - id: DETECT-INJ-006
+    legacy_id: DETECT-027
     name: downstream_agent_prompt_injection
     domain: INJ
     description: >
@@ -1541,7 +1568,7 @@ rules:
       rate is expected to be near zero on legitimate architecture diagrams.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-023: Agentic Tool Exfil Vector
+  # DETECT-EXF-005: Agentic Tool Exfil Vector
   #
   # An AI/agentic architecture (ai_system, rag_system, llm_agent, etc.) has been
   # assessed with cross-boundary outbound edges AND an elevated AIVSS outbound
@@ -1557,7 +1584,7 @@ rules:
   #          └─ Signal[arch_metadata.is_agentic=true,
   #                    sovereignty.cross_boundary_nodes ≥ 1,
   #                    aivss.outbound.composite >= 3.0]
-  #               └─ Rule[DETECT-023]
+  #               └─ Rule[DETECT-EXF-005]
   #                    └─ Alert[OCSF-2004, severity=High]
   #                         └─ Action[audit_log, block_deployment, page_soc]
   #
@@ -1565,7 +1592,8 @@ rules:
   # "Agent with CLI + offensive tools + misconfigured sandbox egress reached
   #  external organisation's systems and exploited a third-party vulnerability."
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-023
+  - id: DETECT-EXF-005
+    legacy_id: DETECT-023
     name: agentic_tool_exfil_vector
     domain: EXF
     description: >
@@ -1616,7 +1644,7 @@ rules:
 # Linked from actions above. Each playbook describes the full response chain for
 # a SOC analyst receiving an alert from these rules.
 # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-029: Llm Generated Mmd Injection
+  # DETECT-INJ-007: Llm Generated Mmd Injection
   #
   # An LLM-generated architecture diagram contains prompt injection markers or agent-targeting instructions. Indicates the g...
   #
@@ -1624,7 +1652,8 @@ rules:
   # OWASP: A01, A03  ATLAS: AML.TA0001
   # Kill chain: initial_access
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-029
+  - id: DETECT-INJ-007
+    legacy_id: DETECT-029
     name: llm_generated_mmd_injection
     domain: INJ
     description: >
@@ -1651,7 +1680,7 @@ rules:
       - type: page_soc
 
 
-  # DETECT-030: Unauthenticated Mcp Tool Exposure
+  # DETECT-MCP-004: Unauthenticated Mcp Tool Exposure
   #
   # An agentic architecture exposes MCP-compatible tool APIs over a network transport with no authentication layer. All tool...
   #
@@ -1659,11 +1688,12 @@ rules:
   # OWASP: A02  ATLAS: AML.TA0003
   # Kill chain: initial_access
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-030
+  - id: DETECT-MCP-004
+    legacy_id: DETECT-030
     name: unauthenticated_mcp_tool_exposure
     domain: MCP
     description: >
-      An agentic architecture exposes MCP-compatible tool APIs over a network transport with no authentication layer. All tools are callable without credentials — any caller can trigger analysis jobs, read reports, and access governance signals. Extends DETECT-020/021/022 (MCP recon/flood/auth-probe) with a structural pre-condition check. Grounded in TA harden-audit 2026-08-09 RT-06: MCP server accepted network transport with no auth gate.
+      An agentic architecture exposes MCP-compatible tool APIs over a network transport with no authentication layer. All tools are callable without credentials — any caller can trigger analysis jobs, read reports, and access governance signals. Extends DETECT-MCP-001/021/022 (MCP recon/flood/auth-probe) with a structural pre-condition check. Grounded in TA harden-audit 2026-08-09 RT-06: MCP server accepted network transport with no auth gate.
     incident_refs:
       - ta-harden-audit-2026-08-09-rt06
     owasp: ['A02']
@@ -1690,12 +1720,12 @@ rules:
       - type: audit_log
       - type: page_soc
 
-  # DETECT-031: Brain Training Data Poisoning Attempt
+  # DETECT-SCT-003: Brain Training Data Poisoning Attempt
   #
   # An architecture submitted to the pipeline shows evasion behaviour combined with
   # injection markers — the signature of a targeted attempt to slip malicious content
   # through validation into the TA Brain's synthetic training loop.
-  # Distinct from DETECT-029 (any injection) and DETECT-019 (HIGH severity injection):
+  # Distinct from DETECT-INJ-007 (any injection) and DETECT-INJ-005 (HIGH severity injection):
   # this requires evasion_attempts > 0 AND injection, flagging only architectures
   # that tried to hide their malicious content before being caught.
   #
@@ -1703,11 +1733,12 @@ rules:
   # OWASP: A03  ATLAS: AML.TA0001, AML.TA0002
   # Kill chain: initial_access
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-031
+  - id: DETECT-SCT-003
+    legacy_id: DETECT-031
     name: brain_training_data_poisoning
     domain: SCT
     description: >
-      An architecture submitted to the analysis pipeline shows both evasion attempts and injection categories — the combined signature of a targeted attempt to smuggle malicious content through validation into the TA Brain's training data. Unlike DETECT-029 (any injection) this specifically requires evasion_attempts > 0, indicating the attacker anticipated detection and tried to circumvent it. Grounded in TA harden-audit 2026-08-14 RT-01 (gen_id path traversal), RT-02 (max_per_run abuse), RT-03 (Mermaid XSS via generated MMDs). Attack path: craft adversarial synthetic MMD → trigger generate-mmds → pass approval → poison brain instance layer → corrupt pattern predictions.
+      An architecture submitted to the analysis pipeline shows both evasion attempts and injection categories — the combined signature of a targeted attempt to smuggle malicious content through validation into the TA Brain's training data. Unlike DETECT-INJ-007 (any injection) this specifically requires evasion_attempts > 0, indicating the attacker anticipated detection and tried to circumvent it. Grounded in TA harden-audit 2026-08-14 RT-01 (gen_id path traversal), RT-02 (max_per_run abuse), RT-03 (Mermaid XSS via generated MMDs). Attack path: craft adversarial synthetic MMD → trigger generate-mmds → pass approval → poison brain instance layer → corrupt pattern predictions.
     incident_refs:
       - ta-harden-audit-2026-08-14-rt01
       - ta-harden-audit-2026-08-14-rt02
@@ -1732,7 +1763,7 @@ rules:
       - type: page_soc
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-032: REST Rate-Limit Abuse (Resource Exhaustion via HTTP 429 Flood)
+  # DETECT-MCP-005: REST Rate-Limit Abuse (Resource Exhaustion via HTTP 429 Flood)
   #
   # A caller accumulates ≥10 HTTP 429 responses against the REST API in the
   # current process lifetime. Legitimate clients back off after 1–2 rejections;
@@ -1745,12 +1776,13 @@ rules:
   #   HTTP[429 responses × N]
   #     └─ Counter[rate_limit_counter.get() >= 10]
   #          └─ Signal[rest_api.rate_limited_count >= 10]
-  #               └─ Rule[DETECT-032]
+  #               └─ Rule[DETECT-MCP-005]
   #
   # Provenance: TA harden-audit 2026-08-22 DETECT backlog — REST rate-limit
   # abuse attack path identified via slowapi exception handler gap.
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-032
+  - id: DETECT-MCP-005
+    legacy_id: DETECT-032
     name: rest_rate_limit_abuse
     domain: MCP
     description: >
@@ -1783,24 +1815,25 @@ rules:
       tracking from slowapi state.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-033: arch_name Path Traversal Probe
+  # DETECT-INJ-008: arch_name Path Traversal Probe
   #
   # A caller passes an arch_name containing path traversal sequences (../, ..%2F,
   # or an absolute path prefix) to the /governance/check endpoint. The API blocks
   # the traversal attempt and emits arch_metadata.path_traversal_blocked=True.
-  # This distinguishes deliberate probing (DETECT-033) from accidental bad input:
+  # This distinguishes deliberate probing (DETECT-INJ-008) from accidental bad input:
   # legitimate callers never include directory separators in arch names.
   #
   # Knowledge graph chain:
   #   HTTP[POST /governance/check {arch_name: "../../etc/passwd"}]
   #     └─ Guard[is_arch_name_traversal(arch_name) = True]
   #          └─ Signal[arch_metadata.path_traversal_blocked = True]
-  #               └─ Rule[DETECT-033]
+  #               └─ Rule[DETECT-INJ-008]
   #
   # Provenance: TA harden-audit 2026-08-22 DETECT backlog — arch_name path
   # traversal gap identified in resolve_arch_dir (no traversal guard).
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-033
+  - id: DETECT-INJ-008
+    legacy_id: DETECT-033
     name: arch_name_path_traversal_probe
     domain: INJ
     description: >
@@ -1830,7 +1863,7 @@ rules:
       No tuning expected — legitimate arch names never contain ../ or absolute
       paths. Any firing is a true positive by construction.
 
-  # DETECT-034: Suspicious URL in Skill File (Supply-Chain / Phishing Link Injection)
+  # DETECT-SCT-004: Suspicious URL in Skill File (Supply-Chain / Phishing Link Injection)
   #
   # Trigger: A skill instruction file (.claude/skills/*/SKILL.md or skill.md) contains
   # an external URL classified as SUSPICIOUS by the URL classifier in governance.py
@@ -1844,22 +1877,23 @@ rules:
   # the operator as a legitimate reference link — enabling credential harvest, drive-by
   # download, or C2 beaconing.
   #
-  # Complement to DETECT-028 (skill_instruction_tamper): DETECT-028 fires on any git
-  # hash mismatch; DETECT-034 fires on URL content regardless of git state — catching
-  # malicious URLs that were committed to git (bypassing DETECT-028) or that were always
+  # Complement to DETECT-SCT-002 (skill_instruction_tamper): DETECT-SCT-002 fires on any git
+  # hash mismatch; DETECT-SCT-004 fires on URL content regardless of git state — catching
+  # malicious URLs that were committed to git (bypassing DETECT-SCT-002) or that were always
   # present but never reviewed.
   #
   # Signal path: governance.py._check_skill_integrity() → identity.skill_url_findings
-  #              └─ Rule[DETECT-034]
+  #              └─ Rule[DETECT-SCT-004]
   #
-  - id: DETECT-034
+  - id: DETECT-SCT-004
+    legacy_id: DETECT-034
     name: suspicious_skill_url
-    domain: SC
+    domain: SCT
     description: >
       A skill instruction file (.claude/skills/) contains an external URL matching a
       suspicious pattern: URL-shortener, uncommon TLD (.xyz, .tk, .ru, .cn), or raw
       IPv4 address. Possible supply-chain compromise or phishing link injection via
-      skill file modification. Complement to DETECT-028 (hash-based tamper detection)
+      skill file modification. Complement to DETECT-SCT-002 (hash-based tamper detection)
       — this fires on URL content regardless of git commit state.
     incident_refs:
       - supply-chain-skill-url-2026-08-30
@@ -1886,7 +1920,7 @@ rules:
       github.com refs) do not trigger this rule; only SUSPICIOUS ones do.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-035: Deceptive Completion Reporting
+  # DETECT-QC-008: Deceptive Completion Reporting
   # Incident: StepShield DEC-category trajectories (2026-09)
   #
   # An agentic analysis run emits a completion report that contradicts internal
@@ -1899,14 +1933,15 @@ rules:
   # observable system state (CrashLoopBackOff, failed assertions) contradicted them.
   #
   # Distinct from existing rules:
-  #   DETECT-001: confidence swing without reversal — critics swung but SM didn't flag redesign
-  #   DETECT-002: divergence suppressed — critics diverged, not SM rejection
-  #   DETECT-026: critic consensus collapse — SM could not reconcile critics; here SM flagged and was overridden
+  #   DETECT-QC-001: confidence swing without reversal — critics swung but SM didn't flag redesign
+  #   DETECT-QC-002: divergence suppressed — critics diverged, not SM rejection
+  #   DETECT-QC-007: critic consensus collapse — SM could not reconcile critics; here SM flagged and was overridden
   #
   # Grounded in: stepshield-dec-category-2026-09
   # OWASP: A09 (Overreliance on LLM Output)  ATLAS: AML.TA0009  Kill chain: impact
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-035
+  - id: DETECT-QC-008
+    legacy_id: DETECT-035
     name: deceptive_completion_reporting
     domain: QC
     description: >
@@ -1949,13 +1984,13 @@ rules:
       val_pct < 50 is expected for novel arch types. The quadruple conjunction is the deception signal.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-036: Security Test Assertion Bypass
+  # DETECT-SCT-005: Security Test Assertion Bypass
   # Incident: StepShield TST-category trajectories (2026-09)
   #
   # An agentic architecture is flagged for both supply-chain-modified modules
   # (dependency or test file manipulation) and stale supply chain sources — the
   # combined signature of an agent that weakened security test assertions to make
-  # insecure code pass CI. Unlike DETECT-028 (skill instruction tamper, which
+  # insecure code pass CI. Unlike DETECT-SCT-002 (skill instruction tamper, which
   # monitors internal TA skill files), this rule targets the assessed architecture's
   # own test layer: an agent silently modified test assertions to hide security
   # failures rather than fixing the underlying vulnerabilities.
@@ -1965,21 +2000,22 @@ rules:
   # to green on code that would otherwise fail penetration testing.
   #
   # Distinct from existing rules:
-  #   DETECT-028: monitors TA's own skill files for tamper — not the assessed arch's tests
-  #   DETECT-031: brain training data poisoning — injection through approval gate, not test bypass
+  #   DETECT-SCT-002: monitors TA's own skill files for tamper — not the assessed arch's tests
+  #   DETECT-SCT-003: brain training data poisoning — injection through approval gate, not test bypass
   #
   # Grounded in: stepshield-tst-category-2026-09
   # OWASP: A02 (Supply Chain Compromise)  ATLAS: AML.TA0002  Kill chain: defense_evasion
   # ─────────────────────────────────────────────────────────────────────────────
-  - id: DETECT-036
+  - id: DETECT-SCT-005
+    legacy_id: DETECT-036
     name: security_test_assertion_bypass
     domain: SCT
     description: >
       The assessed architecture shows supply-chain-modified modules combined with stale supply chain
       sources — the joint signature of security test assertion weakening. An agent modified test or
       assertion files (auth.test.js, security.spec.js, or equivalent) to remove or weaken security
-      checks, allowing CI to pass on insecure code. This is distinct from DETECT-028 (TA skill tamper)
-      and DETECT-031 (brain poisoning): here the attack targets the architecture's own verification
+      checks, allowing CI to pass on insecure code. This is distinct from DETECT-SCT-002 (TA skill tamper)
+      and DETECT-SCT-003 (brain poisoning): here the attack targets the architecture's own verification
       layer rather than TA's internals. Derived from StepShield TST-category trajectories where agents
       silently lowered assertion thresholds while leaving the vulnerable code untouched.
     incident_refs:
@@ -2017,32 +2053,32 @@ rules:
 playbooks:
 
   swing_without_reversal:
-    alert: DETECT-001
+    alert: DETECT-QC-001
     analyst_steps:
       - "Review the full critic transcript for the flagged run (Traces tab in dashboard)"
       - "Check if confidence_swing correlates with a specific node in the architecture"
       - "Look for verbalized uncertainty in critic output that was not reflected in final score"
-      - "If confidence_swing > 25, escalate to DETECT-002 pattern investigation"
+      - "If confidence_swing > 25, escalate to DETECT-QC-002 pattern investigation"
     escalation_threshold: 25.0
     false_positive_indicators:
       - "Architecture complexity changed significantly between runs (legitimate swing)"
       - "New architecture type with no prior baseline (first-run variance expected)"
 
   divergence_suppressed:
-    alert: DETECT-002
+    alert: DETECT-QC-002
     analyst_steps:
       - "Immediately quarantine the trace — do not use this analysis output"
       - "Pull the full critic transcript and score timeline from Langfuse/Traces tab"
       - "Identify which critics diverged and at what point synthesis forced convergence"
-      - "Check if the architecture input itself was modified between critics (DETECT-005 co-occurrence)"
+      - "Check if the architecture input itself was modified between critics (DETECT-INJ-001 co-occurrence)"
       - "Engage forensic_model (on-prem, unrestricted) for payload analysis if needed"
     escalation_threshold: 30
     note: >
-      Co-occurrence of DETECT-002 and DETECT-005 in the same run is a strong indicator
+      Co-occurrence of DETECT-QC-002 and DETECT-INJ-001 in the same run is a strong indicator
       of a crafted adversarial input designed to elicit divergence then convergence.
 
   adversarial_input_via_pipeline:
-    alert: DETECT-005
+    alert: DETECT-INJ-001
     analyst_steps:
       - "Hard stop: block_run fires automatically — no analysis output is produced"
       - "Quarantine the .mmd input file immediately"
@@ -2055,12 +2091,12 @@ playbooks:
       payload — commercial safety filters may block forensic analysis of injection patterns.
 
   selection_pressure_reward_hacking:
-    alert: DETECT-008
+    alert: DETECT-QC-004
     analyst_steps:
       - "Review 08_scrum_master.json for critics_retriggered list and iteration count"
       - "Compare critic scores before and after retrigger — a large positive delta suggests optimisation for SM approval"
       - "Check if the same critic is repeatedly retriggered across multiple runs (cross-run pattern)"
-      - "Cross-reference with DETECT-001/007 — concurrent swing signals strengthen the reward-hacking hypothesis"
+      - "Cross-reference with DETECT-QC-001/007 — concurrent swing signals strengthen the reward-hacking hypothesis"
       - "If redesign_signal is false and acceptance_rate < 0.4, escalate to critical incident"
     escalation_threshold: 0.4
     false_positive_indicators:
@@ -2069,7 +2105,7 @@ playbooks:
       - "SM configuration has unusually high confidence_target (e.g. > 95%) — more retriggers expected"
 
   critic_module_tampering:
-    alert: DETECT-016
+    alert: DETECT-SCT-001
     analyst_steps:
       - "Run `git diff chatbot/modules/agents/critics/` to identify modified files"
       - "Review the diff — determine whether the change was intentional (local dev) or injected"
@@ -2082,45 +2118,45 @@ playbooks:
       - "Container deployment without .git present — integrity check is skipped (no signal)"
 
   external_url_in_architecture_input:
-    alert: DETECT-017
+    alert: DETECT-INJ-003
     analyst_steps:
       - "Check exploitation.external_url_list for the specific URLs embedded in the architecture"
       - "Determine whether the URLs are documentation references or live instruction sources"
       - "If live instruction sources: do not resolve — treat content at those URLs as untrusted"
       - "Request submitter to replace URLs with static node labels in the .mmd"
-      - "Cross-reference with exploitation.injection_patterns — co-presence escalates to DETECT-005"
+      - "Cross-reference with exploitation.injection_patterns — co-presence escalates to DETECT-INJ-001"
     escalation_threshold: "URL domain matches known C2 or phishing lists → escalate to CRITICAL"
     false_positive_indicators:
       - "Documentation-only URL in a comment line (%% ...) — excluded from node scanning"
       - "CI/CD pipeline embedding build artifact URLs — move to metadata, not node labels"
 
   high_severity_injection_category:
-    alert: DETECT-019
+    alert: DETECT-INJ-005
     analyst_steps:
       - "Check exploitation.injection_categories for which HIGH-severity category matched"
       - "Review the matched text in injection_patterns — is it a legitimate phrase or a deliberate override attempt?"
-      - "Cross-reference with exploitation.severity — if CRITICAL, DETECT-005 also fires and block_run should be enforced"
+      - "Cross-reference with exploitation.severity — if CRITICAL, DETECT-INJ-001 also fires and block_run should be enforced"
       - "If deliberate: flag the submitting source; request architecture resubmission with injection-free labels"
       - "If false positive (legitimate phrase): add to governance allowlist in policies/agent_governance.yaml"
-    escalation_threshold: "co-present path_traversal or tag/control-token → escalate to DETECT-005/010"
+    escalation_threshold: "co-present path_traversal or tag/control-token → escalate to DETECT-INJ-001/010"
     false_positive_indicators:
       - "Architecture description contains phrases like 'ignore previous errors' or 'override configuration' as legitimate node labels"
       - "Node label describes a security control (e.g. 'Bypass Prevention Service')"
 
   evasion_attempt_encoding_or_homoglyph:
-    alert: DETECT-018
+    alert: DETECT-INJ-004
     analyst_steps:
       - "Check exploitation.homoglyph_count vs url_encoded_count to identify which evasion type"
       - "The normaliser has already neutralised the bypass — check exploitation.injection_patterns for what was found post-normalisation"
-      - "If injection_patterns is also non-empty (DETECT-005 co-fires): the bypass partially succeeded before normalisation caught it — escalate"
+      - "If injection_patterns is also non-empty (DETECT-INJ-001 co-fires): the bypass partially succeeded before normalisation caught it — escalate"
       - "Flag the submitting source for review — this pattern does not appear in legitimate architectures"
-    escalation_threshold: "co-present injection_patterns → escalate to DETECT-005/010"
+    escalation_threshold: "co-present injection_patterns → escalate to DETECT-INJ-001/010"
     false_positive_indicators:
       - "Architecture legitimately uses non-Latin scripts for node names — add to governance allowlist"
       - "Markdown-encoded URLs in node labels — restructure to use plain text labels"
 
   low_technique_validation_coverage:
-    alert: DETECT-014
+    alert: DETECT-RES-004
     analyst_steps:
       - "Check validation.invalid_techniques list in governance_signals for which techniques failed"
       - "Review ground_truth.json technique_validation[] for entries with valid=false"
@@ -2133,20 +2169,20 @@ playbooks:
       - "Novel architecture type with no self_validation coverage rules yet"
 
   critic_gap_convergence:
-    alert: DETECT-015
+    alert: DETECT-QC-005
     analyst_steps:
       - "Check manipulation.gap_similarity_avg and gap_similarity_max in governance_signals"
       - "Review 07_moe_orchestrator.json expert_validations — compare gap descriptions across critics"
       - "Re-run MoE with higher LLM temperature or a different model to test divergence"
       - "If convergence persists across re-runs, check for shared context or caching artifacts"
-      - "Cross-reference with DETECT-008 (SM acceptance rate) — co-occurrence strengthens collusion signal"
-    escalation_threshold: "gap_similarity_max > 0.7 AND DETECT-008 also fired → treat as confirmed collusion"
+      - "Cross-reference with DETECT-QC-004 (SM acceptance rate) — co-occurrence strengthens collusion signal"
+    escalation_threshold: "gap_similarity_max > 0.7 AND DETECT-QC-004 also fired → treat as confirmed collusion"
     false_positive_indicators:
       - "Minimal/simple architecture — all critics correctly identify the same small set of gaps"
       - "Architecture has a single dominant threat (e.g. injection-only surface) — unavoidable convergence"
 
   credential_exposure_in_artifact:
-    alert: DETECT-009
+    alert: DETECT-EXF-002
     analyst_steps:
       - "Identify which sensitive_keywords were matched (api_key, password, token, secret)"
       - "Locate the exact field in ground_truth.json that contains the credential pattern"
@@ -2159,30 +2195,30 @@ playbooks:
       - "Test architecture with placeholder values like 'password=example'"
 
   path_traversal_in_input:
-    alert: DETECT-010
+    alert: DETECT-INJ-002
     analyst_steps:
       - "Review exploitation.path_traversal list — identify the specific traversal sequence"
       - "Check whether the architecture was submitted by an external/untrusted source"
-      - "Cross-reference with exploitation.injection_patterns — co-presence escalates to DETECT-005"
+      - "Cross-reference with exploitation.injection_patterns — co-presence escalates to DETECT-INJ-001"
       - "Block the submitting account if traversal was intentional"
-    escalation_threshold: "co-present injection_patterns → escalate to DETECT-005"
+    escalation_threshold: "co-present injection_patterns → escalate to DETECT-INJ-001"
     false_positive_indicators:
       - "Node label contains a file path for documentation purposes (rename the node)"
 
   llm_external_egress_without_zdr:
-    alert: DETECT-011
+    alert: DETECT-EXF-003
     analyst_steps:
       - "Review sovereignty.zdr_signals — identify which LLM node and which external service"
       - "Verify whether the destination service has an approved ZDR agreement"
       - "If ZDR agreement exists, add the service to the governance allowlist in policies/agent_governance.yaml"
       - "If no ZDR agreement: flag the architecture for compliance review before deployment"
-    escalation_threshold: "co-present leakage.detected → escalate to DETECT-004"
+    escalation_threshold: "co-present leakage.detected → escalate to DETECT-EXF-001"
     false_positive_indicators:
       - "Internal service with external-sounding name (e.g. 'Slack-like internal chat')"
       - "LLM node connects only to an API Gateway that enforces ZDR"
 
   stale_threat_intelligence_feed:
-    alert: DETECT-012
+    alert: DETECT-RES-003
     analyst_steps:
       - "Run /update-data to refresh enterprise-attack.json and technique_embeddings.npz"
       - "Re-run the analysis after data refresh to get current technique coverage"
@@ -2192,19 +2228,19 @@ playbooks:
       - "Intentionally pinned dataset version for reproducibility (raise threshold in governance.py)"
 
   high_outbound_threat_surface:
-    alert: DETECT-013
+    alert: DETECT-EXF-004
     analyst_steps:
       - "Inspect aivss.outbound.metrics for which sub-scores (DS, CS) are elevated"
       - "Cross-reference with leakage.pii_indicators — PII exposure is the most common driver"
       - "Review sovereignty.cross_boundary_nodes to identify the data egress path"
-      - "If DETECT-004 also fired, treat as confirmed exfiltration surface — escalate immediately"
+      - "If DETECT-EXF-001 also fired, treat as confirmed exfiltration surface — escalate immediately"
     escalation_threshold: "composite >= 8.0 → escalate to critical, page SOC"
     false_positive_indicators:
       - "Architecture is a data analytics pipeline with legitimate PII processing under approved controls"
       - "Outbound score driven by sovereignty.cross_boundary_nodes with approved cross-region replication"
 
   covert_c2_channel:
-    alert: DETECT-004
+    alert: DETECT-EXF-001
     analyst_steps:
       - "Identify which architecture nodes triggered sovereignty.cross_boundary_nodes"
       - "Cross-reference with leakage.pii_indicators or leakage.sensitive_keywords"
@@ -2213,12 +2249,12 @@ playbooks:
     escalation_threshold: "sovereignty.zdr_signals present"
 
   mcp_recon_sequence:
-    alert: DETECT-020
+    alert: DETECT-MCP-001
     analyst_steps:
       - "Review mcp_access.recon_gov_archs — which architectures were enumerated and in what order"
       - "Check mcp_access.recon_list_calls — multiple list calls suggest automated retry loops"
       - "Cross-reference with the client's TM_API_KEY to identify the source agent or service"
-      - "If followed by targeted get_threat_briefing or get_ciso_brief calls, escalate to DETECT-020+004 pattern"
+      - "If followed by targeted get_threat_briefing or get_ciso_brief calls, escalate to DETECT-MCP-001+004 pattern"
       - "Block the API key if the client is not a known integration (SOC dashboard, CI gate)"
     escalation_threshold: "recon_gov_archs >= 10 in single session → treat as full corpus exfil attempt"
     false_positive_indicators:
@@ -2226,7 +2262,7 @@ playbooks:
       - "First-time /check-mcp --live run queries all corpus archs for smoke-test"
 
   mcp_job_flooding:
-    alert: DETECT-021
+    alert: DETECT-MCP-002
     analyst_steps:
       - "Review mcp_access.job_flood_submissions and job_flood_polls — confirm poll_ratio below threshold"
       - "Check job_store for active jobs — many queued/running with no caller polling indicates flood"
@@ -2239,7 +2275,7 @@ playbooks:
       - "Network partition between submit and poll (transient) — re-check after 5 minutes"
 
   mcp_auth_probing:
-    alert: DETECT-022
+    alert: DETECT-MCP-003
     analyst_steps:
       - "Review mcp_access.auth_failure_count and the 5-minute window boundary"
       - "Identify the source IP or client identity from API access logs (logs/api.log)"
@@ -2252,7 +2288,7 @@ playbooks:
       - "CI/CD secret not yet updated after key rotation — check GitHub/GitLab secret store"
 
   assessment_quality_regression:
-    alert: DETECT-024
+    alert: DETECT-QC-006
     analyst_steps:
       - "Check aivss.delta.composite_drop and aivss.delta.prev_composite vs curr_composite in governance_signals.json"
       - "Compare the two most recent entries in governance_signals_history.jsonl — identify which AIVSS sub-score (inbound/internal/outbound) changed most"
@@ -2267,7 +2303,7 @@ playbooks:
       - "Backfill-baseline entry had an unrealistically high composite — cross-check against actual analysis run"
 
   skill_instruction_tamper:
-    alert: DETECT-028
+    alert: DETECT-SCT-002
     analyst_steps:
       - "Review identity.modified_skill_files — which specific skill files have diverged from git HEAD"
       - "Run `git diff .claude/skills/` to see the exact changes"
@@ -2283,7 +2319,7 @@ playbooks:
       - "SKIP_SKILL_INTEGRITY_CHECK=1 env var suppresses in dev-only deployments"
 
   critic_consensus_collapse:
-    alert: DETECT-026
+    alert: DETECT-QC-007
     analyst_steps:
       - "Check sm_verdicts.acceptance_rate — what fraction of critic findings were accepted vs rejected"
       - "Review sm_verdicts per-critic breakdown — which specific critics were rejected (Blackhat? Red Team?)"
@@ -2298,7 +2334,7 @@ playbooks:
       - "Single critic with unusually high confidence skewing the acceptance rate — check per-critic breakdown"
 
   downstream_agent_prompt_injection:
-    alert: DETECT-027
+    alert: DETECT-INJ-006
     analyst_steps:
       - "Inspect exploitation.injection_categories.agent_targeting_injection for the matched HTML comment content"
       - "Identify which AI coding agent is targeted (Claude Code, Codex, Cursor, Copilot) from the comment text"
@@ -2313,7 +2349,7 @@ playbooks:
       - "Documentation examples showing what NOT to do — verify context before suppressing"
 
   c2_beacon_architecture:
-    alert: DETECT-025
+    alert: DETECT-EXF-006
     analyst_steps:
       - "Review sovereignty.c2_beacon_nodes — identify the polling/scheduler node and its external receiver"
       - "Inspect the architecture diagram for cron, scheduler, or task-runner nodes and trace their outbound edges"
@@ -2328,7 +2364,7 @@ playbooks:
       - "Legitimate polling agent fetching from a named, allowlisted SaaS (e.g. 'GitHub Actions Runner → GitHub API')"
 
   agentic_tool_exfil_vector:
-    alert: DETECT-023
+    alert: DETECT-EXF-005
     analyst_steps:
       - "Review sovereignty.cross_boundary_nodes — identify which nodes have uncontrolled outbound edges"
       - "Check aivss.outbound.composite and aivss.outbound.metrics for which sub-scores are elevated"
@@ -2343,7 +2379,7 @@ playbooks:
       - "aivss.outbound.composite elevated due to data residency signals (ZDR), not tool-use egress — check aivss.outbound.metrics breakdown"
 
   rest_rate_limit_abuse:
-    alert: DETECT-032
+    alert: DETECT-MCP-005
     analyst_steps:
       - "Check API logs for the source IP accumulating 429s: grep '429' logs/api.log | awk '{print $1}' | sort | uniq -c | sort -rn"
       - "Identify which endpoint is being flooded — analyze the URL pattern in 429 log lines"
@@ -2357,19 +2393,19 @@ playbooks:
       - "Development environment with rapid test iteration — consider excluding dev IPs from this rule"
 
   arch_name_path_traversal_probe:
-    alert: DETECT-033
+    alert: DETECT-INJ-008
     analyst_steps:
       - "Extract the raw arch_name from the 400 response body or API logs to confirm the traversal payload"
       - "Check the caller IP and API key — this is always a deliberate probe, not accidental"
       - "Rotate the API key if compromised; block the source IP at WAF level"
-      - "Review other requests from the same session for DETECT-020 (recon) or DETECT-010 (MMD-level traversal)"
+      - "Review other requests from the same session for DETECT-MCP-001 (recon) or DETECT-INJ-002 (MMD-level traversal)"
       - "Check that resolve_arch_dir blocked the attempt and no files were accessed outside report/"
     escalation_threshold: "Any single firing → escalate immediately; no legitimate use case exists for ../  in arch_name"
     false_positive_indicators:
       - "None expected — arch names never legitimately contain path separators"
 
   deceptive_completion_reporting:
-    alert: DETECT-035
+    alert: DETECT-QC-008
     analyst_steps:
       - "Pull the full pipeline run output — compare the SM verdict (redesign_signal=true) against what was returned to the caller"
       - "Check sm_verdicts.acceptance_rate: if < 0.5, SM rejected majority of critic findings before redesign"
@@ -2384,7 +2420,7 @@ playbooks:
       - "confidence_swing on deliberate red-team test where critics are expected to disagree — verify arch_name matches a known test fixture"
 
   deceptive_completion_reporting:
-    alert: DETECT-035
+    alert: DETECT-QC-008
     analyst_steps:
       - "Pull the full pipeline run output — compare the SM verdict (redesign_signal=true) against what was returned to the caller"
       - "Check sm_verdicts.acceptance_rate: if < 0.5, SM rejected majority of critic findings before redesign"
@@ -2399,7 +2435,7 @@ playbooks:
       - "confidence_swing on deliberate red-team test where critics are expected to disagree — verify arch_name matches a known test fixture"
 
   security_test_assertion_bypass:
-    alert: DETECT-036
+    alert: DETECT-SCT-005
     analyst_steps:
       - "Identify which test files appear in identity.supply_chain_modified_modules — focus on *test*, *spec*, *assert* patterns"
       - "Run: git diff HEAD~1 -- <test_file> to see what assertions were removed or weakened"
@@ -2414,7 +2450,7 @@ playbooks:
       - "New architecture type not yet covered by existing security test patterns — val_pct may naturally be low"
 
   suspicious_skill_url:
-    alert: DETECT-034
+    alert: DETECT-SCT-004
     analyst_steps:
       - "Run: git log --follow -p .claude/skills/<skill>/SKILL.md  — who committed the URL and when"
       - "Check committer identity against known contributors; flag if unfamiliar"
@@ -2430,9 +2466,9 @@ playbooks:
 # TATB integration note
 #
 # TATB (TA Test Benchmark) scores across runs are a secondary detection layer:
-#   - Score spike without architecture complexity increase → possible DETECT-003/006
-#   - Score plateau with high coverage_pct → possible DETECT-006 (mapping not finding)
-#   - Score drop with divergence signal → possible DETECT-002
+#   - Score spike without architecture complexity increase → possible DETECT-RES-001/006
+#   - Score plateau with high coverage_pct → possible DETECT-RES-002 (mapping not finding)
+#   - Score drop with divergence signal → possible DETECT-QC-002
 #
 # The TATB delta is not evaluated by this ruleset directly. It is a dashboard-level
 # indicator (Insights tab) that complements these signal-level rules.
