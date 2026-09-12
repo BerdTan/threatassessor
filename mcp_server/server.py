@@ -249,7 +249,7 @@ def get_governance_signals(arch_name: str) -> str:
 def get_detect_trends(arch_name: str) -> str:
     """Get SOC DETECT rule firing trends for an architecture.
 
-    Shows which of the 19 DETECT rules have fired and their trend
+    Shows which of the 37 DETECT rules have fired and their trend
     (new | rising | stable | falling | cleared | never) across pipeline runs.
 
     Args:
