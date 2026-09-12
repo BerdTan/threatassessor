@@ -4,6 +4,16 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 75 — 2026-09-12
+
+### Entry 163 — Blog Part 26 published
+
+**What:** Published Part 26 "When Agents Go Wild: Six Stages, Four Signals" to Medium. https://medium.com/@breadtan/when-agents-go-wild-six-stages-four-signals-70589e8031e4
+
+**Why:** Part 26 covers the Anthropic alignment-assessment incident kill chain walkthrough with Limit/Monitor/Stop/Recover defense framework. Draft scored 9/9 on gen-blog checker. Renumbered from initial P27 draft — kill chain post ships before TAclaw/routing story (which becomes P27).
+
+---
+
 ## Session 74 — 2026-09-12
 
 ### Entry 162 — DETECT-EXF-007: agent authorization boundary ambiguity
