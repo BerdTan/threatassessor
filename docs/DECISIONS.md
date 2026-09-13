@@ -4,6 +4,31 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 78 — 2026-09-13
+
+### Entry 169 — /recall skill: cross-reference priorities + DECISIONS for session gist
+
+**Context:** The `/priorities` skill reads only MEMORY.md and prints the numbered list. At session start or post-compact, that's not enough — items logged in DECISIONS.md in the last 1–2 sessions are often not yet reflected in memory priorities, and there is no concrete "first step" mapping.
+
+**Decision:** Built a new `/recall` skill with a Python script that synthesises both sources and outputs a ranked gist.
+
+**What it does:**
+- Reads `MEMORY.md` → extracts open priority items (strips done/merged lines correctly)
+- Reads last 2 DECISIONS.md session blocks → surfaces items with pending/engine/blog-candidate keywords not already in memory
+- Extracts `## ⬅ NEXT SESSION` heading text (not body history lines)
+- Maps known Engine Items to a concrete first action (file + command)
+- Output: Done count, open list, DECISIONS gap items, NEXT SESSION pointer, Next up with first step
+
+**Files:** `.claude/skills/recall/SKILL.md`, `.claude/skills/recall/scripts/recall.py`
+
+**Why:** Repeatedly asking "what's next" at session start is productive time lost. A skill that does the cross-reference and surfaces the next concrete action in one command makes resumption faster and removes a manual synthesis step.
+
+**Alternatives rejected:**
+- Extending `/priorities` in-place — that skill is intentionally lightweight (Read-only, no script). Adding DECISIONS cross-reference would change its character.
+- Using `/session-cleanup` — that's a full audit pass, not a quick reorient.
+
+---
+
 ## Session 77 — 2026-09-13
 
 ### Entry 168 — Engine Items 9–10: pre-flight authority layer + propagation/taint layer
