@@ -27,6 +27,8 @@ Read this file at the start of every session. After any significant decision abo
 
 **Rule count:** 37 → 39. Scenario count: 35 → 37. Tests: all 269 pass. Commit: f5f6ed6.
 
+**Backlog:** DETECT-LAT-001 — lateral workload execution. Fires when a service-to-service execution edge exists without an explicit auth boundary node between services in an agentic architecture. Closest Numbat analog: `lateral.workload_exec` + `chain.workload_identity_then_lateral_execution`. Blocked on: signal engineering — needs path analysis (auth boundary node detection on multi-hop edges), not just node-label scan. Prerequisite: understand whether `cross_boundary_nodes` can be refined into a lateral signal or a new `sovereignty.lateral_exec_nodes` field is needed.
+
 ### Entry 170 — TA-as-agent: what the Engine Items are actually for
 
 **Context:** Reflection on how far TA is from a Claude Code-style interactive agent experience — CLI, conversational, multi-turn, self-directing — given that the harness, memory, skills, MCP, KB, and logging primitives are already in place.
