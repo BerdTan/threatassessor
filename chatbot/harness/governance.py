@@ -368,6 +368,26 @@ _RE_C2_RECEIVER = re.compile(
     re.IGNORECASE,
 )
 
+# PER — Persistence mechanism node labels (schedulers, init scripts, SSH auth keys, shell profiles)
+# Grounded in: AISI INC-2026-07-28 — Mythos5 "Planted crontab @reboot persistence"; Numbat persistence ruleset
+_RE_PERSISTENCE_NODE = re.compile(
+    r"\b(cron(?:tab)?|at[\s_-]?job|systemd[\s_-]?service|launchd|init[\s_-]?script"
+    r"|startup[\s_-]?script|rc\.local|shell[\s_-]?profile|\.?bashrc|\.?zshrc|\.?profile"
+    r"|ssh[\s_-]?authorized[\s_-]?keys?|authorized[\s_-]?keys?"
+    r"|persistence[\s_-]?agent|persistent[\s_-]?worker)\b",
+    re.IGNORECASE,
+)
+
+# SEC — Credential store node labels (vaults, secret managers, key stores)
+# Grounded in: Numbat secrets ruleset; OWASP AST09 credential store access
+_RE_CREDENTIAL_STORE_NODE = re.compile(
+    r"\b(vault|hashicorp[\s_-]?vault|secrets?[\s_-]?manager|aws[\s_-]?secrets?[\s_-]?manager"
+    r"|azure[\s_-]?key[\s_-]?vault|gcp[\s_-]?secret[\s_-]?manager|google[\s_-]?secret"
+    r"|ssm[\s_-]?parameter(?:[\s_-]?store)?|aws[\s_-]?ssm|kms|aws[\s_-]?kms"
+    r"|credential[\s_-]?store|secret[\s_-]?store|key[\s_-]?management[\s_-]?service)\b",
+    re.IGNORECASE,
+)
+
 # Sovereignty — external service + expanded LLM node vocabulary
 _RE_EXTERNAL_SERVICE = re.compile(
     r"\b(sendgrid|twilio|stripe|salesforce|external\s+api|external\s+webhook"
@@ -463,6 +483,9 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
                 "zdr_signals": [],
                 "boundary_violations": [],
                 "c2_beacon_nodes": [],
+                "persistence_mechanism_nodes": [],
+                "credential_store_nodes": [],
+                "agent_credential_access": False,
                 "flagged": False,
                 "severity": "LOW",
                 "arc_categories": ["PRIV", "SEC", "SOC"],
@@ -662,6 +685,39 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
             # Don't downgrade if c2_beacon already set HIGH
             if sig.sovereignty["severity"] != "HIGH":
                 sig.sovereignty["severity"] = _severity(sev_level)
+
+        # PER — Persistence mechanism nodes (DETECT-PER-001).
+        # Fires when any node label matches a known persistence mechanism (cron, SSH keys,
+        # shell profiles, init scripts). The YAML rule gates on is_agentic; this collects
+        # the structural signal regardless of arch type so non-agentic archs are also visible.
+        _persist_node_ids = {
+            nid for nid, lbl in node_labels.items() if _RE_PERSISTENCE_NODE.search(lbl)
+        }
+        _persist_node_ids |= {
+            nid for nid in node_labels if _RE_PERSISTENCE_NODE.search(nid)
+        }
+        for nid in _persist_node_ids:
+            lbl = node_labels.get(nid, nid)
+            sig.sovereignty["persistence_mechanism_nodes"].append(f"{nid}[{lbl[:60]}]")
+
+        # SEC — Credential store node detection + direct agent→vault edge (DETECT-SEC-001).
+        # Collects all credential store nodes. Sets agent_credential_access=True when an
+        # LLM/agent node has a direct edge to a credential store with no auth intermediary.
+        _cred_store_ids = {
+            nid for nid, lbl in node_labels.items() if _RE_CREDENTIAL_STORE_NODE.search(lbl)
+        }
+        _cred_store_ids |= {
+            nid for nid in node_labels if _RE_CREDENTIAL_STORE_NODE.search(nid)
+        }
+        for nid in _cred_store_ids:
+            lbl = node_labels.get(nid, nid)
+            sig.sovereignty["credential_store_nodes"].append(f"{nid}[{lbl[:60]}]")
+
+        for em in _RE_EDGE.finditer(_edges_content):
+            src, dst = em.group(1), em.group(2)
+            if src in llm_node_ids and dst in _cred_store_ids:
+                sig.sovereignty["agent_credential_access"] = True
+                break
 
         sig.kill_chain_coverage = ["external_boundary", "data_boundary"]
         sig.overall_risk_level = self._compute_overall(sig)

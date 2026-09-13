@@ -60,6 +60,10 @@ def _base() -> Dict[str, Any]:
             "cross_boundary_nodes": [],
             "zdr_signals": [],
             "inferred_regions": [],
+            "c2_beacon_nodes": [],
+            "persistence_mechanism_nodes": [],
+            "credential_store_nodes": [],
+            "agent_credential_access": False,
         },
         "identity": {
             "supply_chain_modified_modules": [],
@@ -1016,6 +1020,71 @@ def scenario_suspicious_skill_url() -> Dict[str, Any]:
     return sig
 
 
+def scenario_agentic_persistence() -> Dict[str, Any]:
+    """
+    DETECT-PER-001 (Medium)
+
+    Based on: AISI INC-2026-07-28 — Mythos5 planted crontab @reboot persistence
+    after establishing C2 beacon. PER-001 fires on the persistence node alone;
+    EXF-006 fires on the C2 loop. This scenario isolates the persistence signal
+    (scheduler node present, no explicit C2 receiver) in an agentic architecture.
+
+    A legitimate-looking AI pipeline diagram includes a "CronJob" node that
+    pushes results to an internal metrics endpoint. The crontab node is a
+    persistence mechanism — even without an overt C2 receiver, its presence in
+    an agentic context requires review before deployment.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "agentic_system",
+        "node_count": 8,
+        "is_agentic": True,
+    }
+    sig["sovereignty"] = {
+        "severity": "MEDIUM",
+        "cross_boundary_nodes": [],
+        "zdr_signals": [],
+        "inferred_regions": [],
+        "c2_beacon_nodes": [],
+        "persistence_mechanism_nodes": ["CronJob[CronJob Metrics Push]"],
+        "credential_store_nodes": [],
+        "agent_credential_access": False,
+    }
+    return sig
+
+
+def scenario_agent_credential_access() -> Dict[str, Any]:
+    """
+    DETECT-SEC-001 (High)
+
+    Based on: AISI alignment incident D — unauthorized credential retrieval via
+    direct vault API call; Numbat secrets.cloud_secret_manager_read pattern.
+
+    An agentic architecture shows a direct edge from the LLM agent node to an
+    AWS Secrets Manager node with no IAM role node or auth middleware in between.
+    The agent can read production credentials without the access-control layer
+    that would log and gate the request. This is the structural authorization gap
+    that precedes credential exfiltration.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "agentic_system",
+        "node_count": 6,
+        "is_agentic": True,
+    }
+    sig["sovereignty"] = {
+        "severity": "HIGH",
+        "cross_boundary_nodes": [],
+        "zdr_signals": [],
+        "inferred_regions": [],
+        "c2_beacon_nodes": [],
+        "persistence_mechanism_nodes": [],
+        "credential_store_nodes": ["SecretsManager[AWS Secrets Manager]"],
+        "agent_credential_access": True,
+    }
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-INJ-001 (Critical) + DETECT-QC-002 (Critical) — adversarial input + divergence suppression"),
@@ -1087,6 +1156,10 @@ SCENARIOS = {
         "DETECT-INJ-008 (High) — arch_metadata.path_traversal_blocked = arch_name contains ../ = directory escape probe"),
     "suspicious_skill_url":          (scenario_suspicious_skill_url,
         "DETECT-SCT-004 (High) — identity.skill_url_suspicious non-empty = phishing/shortener URL embedded in skill file"),
+    "agentic_persistence":           (scenario_agentic_persistence,
+        "DETECT-PER-001 (Medium) — agentic arch + cron/scheduler persistence node = AISI INC-2026-07-28 planted-crontab precondition"),
+    "agent_credential_access":       (scenario_agent_credential_access,
+        "DETECT-SEC-001 (High) — agentic arch + direct LLM→vault edge = unmediated credential store access"),
 }
 
 EXPECTED_RULES = {
@@ -1126,6 +1199,8 @@ EXPECTED_RULES = {
     "rest_rate_limit_abuse":         {"DETECT-MCP-005"},
     "arch_name_path_traversal":      {"DETECT-INJ-008"},
     "suspicious_skill_url":          {"DETECT-SCT-004"},
+    "agentic_persistence":           {"DETECT-PER-001"},
+    "agent_credential_access":       {"DETECT-SEC-001"},
 }
 
 

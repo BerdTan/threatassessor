@@ -172,6 +172,16 @@ class TestScenariosFire:
         fired = _fired_ids(fn())
         assert {"DETECT-SCT-004"} <= fired
 
+    def test_agentic_persistence(self):
+        fn, _ = SCENARIOS["agentic_persistence"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-PER-001"} <= fired
+
+    def test_agent_credential_access(self):
+        fn, _ = SCENARIOS["agent_credential_access"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-SEC-001"} <= fired
+
     def test_all_expected_rules_match_documented(self):
         """Every scenario fires at least its documented expected set."""
         for name, (fn, _) in SCENARIOS.items():

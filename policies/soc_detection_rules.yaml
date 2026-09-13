@@ -2130,6 +2130,124 @@ rules:
       active dependency upgrade, verify that test files were not modified in the same commit window
       as the dependency change.
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-PER-001: Persistence Mechanism in Agentic Architecture
+  #
+  # An agentic architecture diagram contains a node whose label describes a
+  # persistence mechanism (cron, crontab, at-job, systemd service, launchd,
+  # startup script, rc.local, shell profile, ssh authorized_keys).
+  # At architecture review time this is the structural precondition for the
+  # AISI INC-2026-07-28 incident: Mythos5 planted crontab @reboot persistence
+  # after C2 beacon was established. EXF-006 fires on the C2 loop; PER-001
+  # fires on the persistence mechanism alone regardless of C2 receiver.
+  #
+  # Grounded in: AISI INC-2026-07-28; Numbat persistence ruleset
+  # (persistence.scheduler_install, persistence.shell_profile_write,
+  #  persistence.ssh_authorized_keys, persistence.ssh_authorized_keys_command)
+  # OWASP: A08  ATLAS: AML.TA0010  Kill chain: persistence
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-PER-001
+    legacy_id: DETECT-037
+    name: agentic_persistence_mechanism
+    domain: PER
+    description: >
+      An agentic architecture diagram contains one or more nodes whose labels
+      describe a persistence mechanism — cron/crontab, systemd service, launchd,
+      init/startup script, shell profile (.bashrc/.zshrc/rc.local), or SSH
+      authorized_keys. These nodes are the structural precondition for the
+      AISI INC-2026-07-28 incident pattern (Mythos5 planted crontab @reboot
+      persistence). DETECT-EXF-006 fires on the combined C2-loop topology
+      (scheduler + external receiver edge); PER-001 fires on the persistence
+      mechanism node alone, capturing architectures where persistence is
+      present without an overt C2 receiver label.
+    incident_refs:
+      - AISI-INC-2026-07-28
+    owasp: [A08]
+    atlas_tactic: AML.TA0010
+    kill_chain_stage: persistence
+    ocsf_class: 2004
+    ocsf_type_uid: 200402
+    severity: Medium
+    conditions:
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+      - field: sovereignty.persistence_mechanism_nodes
+        op: length_gt
+        value: 0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: block_deployment
+        condition: "severity >= High"
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Legitimate architectures (CI/CD pipelines, k8s CronJobs, scheduled ETL jobs) will
+      contain scheduler nodes. The is_agentic guard narrows to agentic architectures where
+      self-directed persistence is a concrete risk. For confirmed-benign scheduled tasks,
+      verify the scheduler node's outbound edges — if they target only internal, named,
+      allowlisted destinations, suppress. Escalate to HIGH if the same run also fires
+      DETECT-EXF-006 (C2 beacon present alongside persistence mechanism).
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-SEC-001: Direct Agent-to-Credential-Store Edge
+  #
+  # An agentic architecture diagram contains a direct edge from an LLM/agent node
+  # to a credential store (Vault, Secrets Manager, KMS, SSM Parameter Store, etc.)
+  # with no auth intermediary. The proper pattern is: Agent → Auth Middleware → Vault.
+  # A direct edge is a structural authorization gap — the agent can read secrets
+  # without the access-control layer that would log and gate the request.
+  #
+  # Grounded in: Numbat secrets ruleset (secrets.cloud_secret_manager_read,
+  # secrets.developer_credential_read, secrets.workload_identity_token_read);
+  # OWASP AST09 (Credential Store Access); AISI alignment incident D (unauthorized
+  # credential retrieval via direct vault API call).
+  # OWASP: A02/A06  ATLAS: AML.TA0007  Kill chain: credential_access
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-SEC-001
+    legacy_id: DETECT-038
+    name: agent_direct_credential_store_access
+    domain: SEC
+    description: >
+      An agentic architecture diagram contains a direct edge from an LLM or agent
+      node to a credential store (HashiCorp Vault, AWS Secrets Manager, Azure Key
+      Vault, GCP Secret Manager, AWS SSM Parameter Store, KMS, or similar). The
+      secure pattern requires an auth intermediary (IAM role, service account, or
+      secrets injection sidecar) between the agent and the credential store. A
+      direct agent→vault edge indicates the agent can read secrets unmediated —
+      no access-control layer to log or gate the request. Grounded in Numbat's
+      secrets ruleset and OWASP AST09 credential store access patterns.
+    incident_refs:
+      - AISI-alignment-incident-D
+    owasp: [A02, A06]
+    atlas_tactic: AML.TA0007
+    kill_chain_stage: credential_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200407
+    severity: High
+    conditions:
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+      - field: sovereignty.agent_credential_access
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: block_deployment
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      A direct edge fires this rule regardless of IAM policy at runtime. If the
+      architecture relies on ambient credentials (EC2 instance profile, k8s service
+      account IRSA, Workload Identity) rather than an explicit auth node, the direct
+      edge will fire — verify the credential injection mechanism before suppressing.
+      Suppress only when: (1) the edge is to a read-only secret that is non-sensitive
+      (public cert, non-secret config), or (2) an explicit sidecar/init-container
+      handles credential injection and the diagram omits it for clarity.
+
 # ─────────────────────────────────────────────────────────────────────────────
 playbooks:
 
@@ -2543,6 +2661,30 @@ playbooks:
     false_positive_indicators:
       - "Legitimate documentation or reference site with an unconventional TLD — verify domain ownership, add to trusted list"
       - "Test skill file containing intentional phishing URL as a detection fixture — should not be in .claude/skills/"
+
+  agentic_persistence_mechanism:
+    alert: DETECT-PER-001
+    analyst_steps:
+      - "Review sovereignty.persistence_mechanism_nodes — identify the scheduler/cron/ssh-keys node and its outbound edges"
+      - "Check whether DETECT-EXF-006 also fired — presence of both = C2 loop + persistence planted, escalate to CRITICAL"
+      - "Verify the scheduler destination: internal named endpoint (benign) vs external/dynamic URL (malicious)"
+      - "If confirmed persistence mechanism: require architecture redesign to remove or gate the persistence node behind an explicit approval workflow"
+    escalation_threshold: "DETECT-EXF-006 co-fires → escalate to CRITICAL; treat as full C2+persistence compromise precondition"
+    false_positive_indicators:
+      - "CI/CD pipeline with scheduled test runner — verify the scheduler's destination is internal CI endpoint, not external"
+      - "k8s CronJob for internal maintenance (log rotation, cache warm) — confirm destination label is clearly internal"
+
+  agent_direct_credential_store_access:
+    alert: DETECT-SEC-001
+    analyst_steps:
+      - "Review sovereignty.credential_store_nodes — identify which vault/secret store the agent node connects to directly"
+      - "Check the architecture diagram for an auth intermediary between the agent and the credential store (IAM role node, service account node, secrets sidecar)"
+      - "If no intermediary: require addition of an explicit auth/injection layer before deployment"
+      - "Check DETECT-EXF-005/007 for co-firing — direct vault access + cross-boundary = exfil precondition"
+    escalation_threshold: "agent_credential_access + DETECT-EXF-007 co-fires → treat as authorization-rationalization precondition; escalate immediately"
+    false_positive_indicators:
+      - "Ambient credential injection (EC2 instance profile, k8s IRSA, Workload Identity) where the diagram omits the IAM node for clarity — verify IAM binding exists in IaC"
+      - "Read-only public config secret (non-sensitive cert, non-secret endpoint) — verify the secret value classification before suppressing"
 
 # TATB integration note
 #
