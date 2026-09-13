@@ -6,6 +6,41 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 78 — 2026-09-13
 
+### Entry 170 — TA-as-agent: what the Engine Items are actually for
+
+**Context:** Reflection on how far TA is from a Claude Code-style interactive agent experience — CLI, conversational, multi-turn, self-directing — given that the harness, memory, skills, MCP, KB, and logging primitives are already in place.
+
+**Observation:** The structural parallel is close. TA has the pipeline intelligence, routing, brain memory, MCP tool surface, and operator interface that an agent needs. The gap is not in the pipeline itself — it is in the three properties an agent requires before it can act autonomously and be trusted to do so.
+
+**What TA has (agent-ready):**
+- Harness + smart router — stage pipeline with dynamic mode selection
+- TA Brain — persistent pattern KG across runs (memory)
+- 18 MCP tools + 44 dev skills — tool surface
+- MITRE ATT&CK + 37 DETECT rules — knowledge base
+- EventBroker + OCSF + Langfuse — logging and observability
+- Dashboard + REST + taclaw CLI — operator interface
+
+**What is missing (the actual agent gap):**
+1. **Interactive loop** — taclaw is batch; no multi-turn conversational session ("found 3 critical gaps — want mitigations?")
+2. **Authority layer** — Engine Item 9; no pre-flight trust-level per source, no authorization gate before autonomous action
+3. **Taint/provenance** — Engine Item 10; an agent needs to know which conclusions came from which inputs before it can act on them
+4. **Self-direction** — no loop-back: TA cannot decide "brain confidence dropped, I should escalate to full_moe and re-run"
+
+**Key framing:** Engine Items 6–10 are not random incremental features. They are the agent architecture primitives:
+- E6 — critic subprocess isolation = safe action boundary
+- E7 — adapter fidelity score = input quality self-assessment
+- E8 — Langfuse span metadata = per-stage observability
+- E9 — pre-flight authority layer = autonomous action authorization
+- E10 — taint propagation = provenance tracking before acting on findings
+
+The pipeline is real and the routing intelligence is real. The missing 35–40% is specifically the safety envelope (E9/E10), the interaction loop, and the self-correction cycle — the same properties where any responsible agent design requires the most care.
+
+**Closest TA thing to an agent today:** `ta gate` in CI (autonomous, single-shot, consequential) + `taclaw` (crawl → adapt → assess, unattended). That is an agent in the narrow sense. The conversational, self-directing version needs E6–E10 first.
+
+**Why capture this:** The Engine Items now have an architectural frame, not just a feature list. When prioritising E6–E10, the criterion is: does this close a gap in the agent safety envelope, or just improve an existing pipeline stage?
+
+---
+
 ### Entry 169 — /recall skill: cross-reference priorities + DECISIONS for session gist
 
 **Context:** The `/priorities` skill reads only MEMORY.md and prints the numbered list. At session start or post-compact, that's not enough — items logged in DECISIONS.md in the last 1–2 sessions are often not yet reflected in memory priorities, and there is no concrete "first step" mapping.
