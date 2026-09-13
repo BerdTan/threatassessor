@@ -8,7 +8,7 @@
 
 ## Session Protocol
 
-**Read at session start:** [`docs/DECISIONS.md`](docs/DECISIONS.md) (gitignored — local only)
+**Read at session start:** [`docs/DECISIONS.md`](docs/DECISIONS.md)
 
 Add an entry after any significant architectural decision: date, what, why, alternatives rejected.
 
@@ -240,12 +240,11 @@ report/                  # generated reports (gitignored)
 chatbot/data/*.json      # large data files
 chatbot/data/*.npz       # embeddings
 .env                     # API keys
-docs/DECISIONS.md        # gitignored — local architectural log
 docs/blog/               # gitignored — blog drafts
 _codex/ archive/         # experimental / historical
 ```
 
-**DO commit:** `tests/data/architectures/*.mmd`, `docs/` (except DECISIONS.md + blog/), `.claude/skills/`, `policies/`, `openapi.yaml`
+**DO commit:** `tests/data/architectures/*.mmd`, `docs/` (except blog/), `.claude/skills/`, `policies/`, `openapi.yaml`
 
 ---
 

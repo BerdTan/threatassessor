@@ -1,7 +1,7 @@
 # ThreatAssessor Documentation
 
-**Version:** 2.2 — Harness v2 shipped, 24 SOC DETECT rules, MCP server (13 tools) + connector package  
-**Last Updated:** 2026-08-08
+**Version:** 2.8 — Harness v2 + 39 SOC DETECT rules + MCP server (18 tools) + TA-SIP + TA Brain Stages 1–9 + smart routing + N-model bench  
+**Last Updated:** 2026-09-13
 
 ---
 
@@ -10,8 +10,8 @@
 | If you want to… | Go to |
 |---|---|
 | Start a dev session | [CLAUDE.md](../CLAUDE.md) (root) |
-| Understand architecture decisions | [DECISIONS.md](DECISIONS.md) (gitignored, local) |
-| Harness v2 implementation | [HARNESS_V2_DESIGN.md](HARNESS_V2_DESIGN.md) |
+| Understand architecture decisions | [DECISIONS.md](DECISIONS.md) |
+| Harness v2 implementation | [harness_v2_design.md](harness_v2_design.md) |
 | Run the API server | [operations/API_MANAGEMENT.md](operations/API_MANAGEMENT.md) |
 | Troubleshoot issues | [operations/OPERATIONS.md](operations/OPERATIONS.md) |
 | TATB benchmark rubric | [TATB_RUBRIC.md](TATB_RUBRIC.md) |
@@ -24,8 +24,8 @@
 
 | File | Purpose |
 |---|---|
-| [DECISIONS.md](DECISIONS.md) | Architectural decision log — read at session start (gitignored) |
-| [HARNESS_V2_DESIGN.md](HARNESS_V2_DESIGN.md) | Harness v2 Orchestrator/Broker/Bouncer — implemented; two items deferred |
+| [DECISIONS.md](DECISIONS.md) | Architectural decision log — read at session start |
+| [harness_v2_design.md](harness_v2_design.md) | Harness v2 Orchestrator/Broker/Bouncer — implemented |
 | [TATB_RUBRIC.md](TATB_RUBRIC.md) | TATB benchmark rubric (Threat/TTP/Risk/Plan) |
 
 ### Operations
@@ -57,9 +57,9 @@
 
 | File | Purpose |
 |---|---|
-| [../mcp_server/README.md](../mcp_server/README.md) | MCP server setup, 4-step testing protocol, 13 tools reference |
+| [../mcp_server/README.md](../mcp_server/README.md) | MCP server setup, 4-step testing protocol, 18 tools reference |
 | [../mcp_connector/README.md](../mcp_connector/README.md) | Connector package — Claude Desktop, OpenAI, LangChain, n8n integration patterns |
-| [../openapi.yaml](../openapi.yaml) | OpenAPI 3.1 spec — 47 paths, importable by n8n / LangChain / Zapier |
+| [../openapi.yaml](../openapi.yaml) | OpenAPI 3.1 spec — 72 paths, importable by n8n / LangChain / Zapier |
 
 ### Dashboard
 
@@ -71,7 +71,7 @@
 
 | File | Purpose |
 |---|---|
-| [blog/](blog/) | Medium draft series — Parts 1–15 published. `draft_latest.md` = most recent. |
+| [blog/](blog/) | Medium draft series — Parts 1–27 published (gitignored). `draft_latest.md` = most recent. |
 
 ---
 
