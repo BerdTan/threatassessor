@@ -6,6 +6,27 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 78 — 2026-09-13
 
+### Entry 171 — DETECT-PER-001 + DETECT-SEC-001: persistence and credential store rules (Numbat cross-reference)
+
+**Context:** Cross-referenced Numbat's rule catalog (50+ rules, 11 categories) against TA's 37 DETECT rules to find coverage gaps.
+
+**Decision:** Implement DETECT-PER-001 and DETECT-SEC-001 immediately; defer DETECT-LAT-001 (lateral movement) as non-trivial.
+
+**What was added:**
+- **DETECT-PER-001** (Medium) — `agentic_persistence_mechanism`: fires when an agentic architecture contains a persistence mechanism node (cron/crontab, systemd, ssh_authorized_keys, shell profile, startup script). Complementary to EXF-006 (C2 loop) — PER-001 fires on the persistence node alone, EXF-006 requires the scheduler→C2 receiver edge. Grounded in AISI INC-2026-07-28 "planted crontab @reboot persistence" + Numbat `persistence.scheduler_install` / `persistence.shell_profile_write`.
+- **DETECT-SEC-001** (High) — `agent_direct_credential_store_access`: fires when a direct LLM/agent→credential store edge exists (Vault, AWS Secrets Manager, Azure Key Vault, GCP Secret Manager, KMS, SSM) with no auth intermediary. The secure pattern is Agent → IAM/sidecar → Vault. Grounded in Numbat `secrets.cloud_secret_manager_read` + AISI alignment incident D + OWASP AST09.
+
+**Why these two and not lateral movement:**
+- PER and SEC both detectable from MMD node label + edge topology — same pattern as existing c2_beacon detection. No new evaluator operators needed.
+- Lateral movement (DETECT-LAT-001) requires understanding service-to-service execution paths and auth boundaries — needs path analysis, not just node labels. Deferred.
+
+**What Numbat covers that TA still doesn't:**
+- Runtime behavioral detection (actual subprocess spawns, file reads, network calls) — Numbat watches runtime; TA watches architecture
+- DETECT-LAT-001 (lateral workload execution)
+- Impact-phase rules (cryptomining, disk wipe) — post-compromise, TA is pre-deployment
+
+**Rule count:** 37 → 39. Scenario count: 35 → 37. Tests: all 269 pass. Commit: f5f6ed6.
+
 ### Entry 170 — TA-as-agent: what the Engine Items are actually for
 
 **Context:** Reflection on how far TA is from a Claude Code-style interactive agent experience — CLI, conversational, multi-turn, self-directing — given that the harness, memory, skills, MCP, KB, and logging primitives are already in place.
