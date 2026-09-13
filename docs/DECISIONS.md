@@ -124,8 +124,6 @@ The pipeline is real and the routing intelligence is real. The missing 35–40% 
 #10 propagation taint → trust across agent boundaries
 ```
 
-**Blog note:** P28 candidate — "The Questions I Ask Every Architecture (And Couldn't Answer About My Own)". The recursive application of TA's own threat model to itself is the aha moment. Engine Items 8–10 are the answer arc.
-
 ---
 
 ## Session 76 — 2026-09-13
