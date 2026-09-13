@@ -67,12 +67,6 @@
 |---|---|
 | [ui/DASHBOARD_GUIDE.md](ui/DASHBOARD_GUIDE.md) | Dashboard user guide |
 
-### Blog
-
-| File | Purpose |
-|---|---|
-| [blog/](blog/) | Medium draft series — Parts 1–27 published (gitignored). `draft_latest.md` = most recent. |
-
 ---
 
 ## Archive
