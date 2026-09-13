@@ -259,4 +259,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-09-09
+**Last Updated:** 2026-09-13

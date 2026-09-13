@@ -4,7 +4,135 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 77 — 2026-09-13
+
+### Entry 168 — Engine Items 9–10: pre-flight authority layer + propagation/taint layer
+
+**Context:** Reflection on ten provenance-and-authority questions every agentic system should answer. Mapped TA's current coverage; two structural gaps emerged that don't exist as formal layers yet.
+
+**Engine Item 9 — Pre-flight authority layer**
+
+*Problem:* TA is strong on post-hoc detection (DETECT-INJ rules, GovernanceSignals injection/evasion detection) but has no pre-flight rejection layer. A suspect input is detected after it has already influenced the pipeline. Authority is not modeled as a first-class concept — no trust level per source, no tool permission model, no independent authorization gate before high-risk actions.
+
+*What to build:*
+- Trust-level field per input source in `ArchitectureGraph` (e.g. `source_trust: verified | unverified | adversarial`)
+- Pre-flight input screener in `GovernanceSignals` — reject/flag inputs with suspect provenance before `AnalysisStage` fires, not only after
+- Formal tool permission model in MCP layer — what a tool is allowed to do, not just what it did
+- Independent authorization gate in `BouncerStage` for high-risk actions (second-signal confirmation, not single-point halt)
+
+*Why now:* Detection without prevention is incomplete. The injection sim personas (tag/URL/downstream) currently test detection; this item adds the layer that stops them earlier in the pipeline.
+
+**Engine Item 10 — Propagation / taint layer**
+
+*Problem:* Once a finding enters the system, its provenance is lost. The brain has no taint-tracking — a finding from a `brain_fast` run looks identical to one from a full `full_moe` run once ingested. `TAExportBundle` findings carry no cross-agent provenance tag.
+
+*What to build:*
+- Per-node provenance tags inside `ArchitectureGraph` — track which adapter, which run, which mode produced each node/edge
+- Taint flag on brain ingest: `provenance: full_moe | api_only | brain_fast | taclaw`; `BrainGuardian` already blocks `brain_fast` outputs — extend to carry taint metadata rather than just block
+- `generated_by` + `pipeline_mode` fields on each finding in `TAExportBundle`; downstream MCP consumers can filter by provenance trust level
+- Cross-agent provenance: when a TACO agent or MCP consumer produces a finding, tag its origin so it can be distinguished from harness-produced findings
+
+*Why now:* Langfuse span coverage (Engine Item 8) is a prerequisite for observing taint propagation. Item 10 depends on Item 8 being live.
+
+**Amplification chain addition:**
+```
+#8 Langfuse spans → observability substrate
+#9 pre-flight authority → prevention before detection
+#10 propagation taint → trust across agent boundaries
+```
+
+**Blog note:** P28 candidate — "The Questions I Ask Every Architecture (And Couldn't Answer About My Own)". The recursive application of TA's own threat model to itself is the aha moment. Engine Items 8–10 are the answer arc.
+
+---
+
+## Session 76 — 2026-09-13
+
+### Entry 167 — Outstanding backlog: 11 items ordered by dependency and impact
+
+**Context:** Compiled at session end from DECISIONS.md archaeology + new items raised in conversation. Covers technical, safety/observability, and content work. Ordered so each item amplifies or unblocks the next.
+
+**Technical backlog:**
+
+1. **Brain-fast fidelity gate + partial MoE fallback** *(safety — prerequisite for all routing work)*
+   - Add secondary signal check before serving cached diagnosis: AIVSS dimension overlap + technique cluster delta vs matched pattern
+   - If semantic drift exceeds threshold → fall back to partial MoE (blackhat-only, fastest critic, highest diagnostic delta)
+   - Always surface confidence score + match reasoning to CISO so they can request a full run
+   - *Problem:* topology signature is label-blind — architecturally similar but security-meaningfully different archs can false-match and deliver wrong advice to CISO
+
+2. **Brain-aware pre-router** *(depends on #1)*
+   - PolicyBroker reads brain infer-mode *before* AnalysisStage fires (currently reads last run's governance signals *after* QualityStage)
+   - Integration point: `chatbot/harness/policy_broker.py` + pre-route call to `ta_brain_query.py` (infer mode)
+   - Routing table: brain_fast (≥0.85 confidence) → partial MoE blackhat-only (0.65–0.85) → api_only → full_moe (<0.65 or novel topology); AIVSS ≥ 7.0 always overrides to full_moe
+   - *Benefit:* high-confidence known archs skip 30s analysis; novel archs always get full treatment + enrich brain
+
+3. **Brain Narrative Layer (Stage 9.5)** *(enrichment — depends on routing stability)*
+   - Markdown companion per pattern cluster: annotated relationships, known gaps, hidden attack paths, abstract cross-pattern connections
+   - Inspired by Obsidian-style second-brain / bidirectional linking — surfaces hidden paths JSON pattern layer cannot express
+   - RAG feed for `/api/v1/brain/explain` output + DETECT rule reviewer dashboard
+   - Keep JSON brain as canonical (markdown is read-only enrichment); no impact on determinism contract
+
+4. **Hetzner tester `max_tokens` fix for large arches** — raise cap so tester doesn't hit 12k budget on complex designs and score 0; enables reliable partial MoE execution
+
+5. **Minimax live test verification** — minimax routing is provisional (free-tier SLA unknown); confirm with live run before treating as stable in `model_routing.yaml`
+
+6. **17_multi_region ground truth regeneration** — phantom node MMD fixed (Session 73); ground_truth.json needs regen before next bench on this arch
+
+7. **Gemma-4 blackhat re-bench** — if free-tier blackhat silence resolves, re-bench with `14_container_orchestration`; otherwise defer indefinitely
+
+**Safety / observability backlog:**
+
+8. **TA Agent Sandbox** *(agent containment — self-referential safety)*
+   - TA detects agent breakout in *other* architectures (DETECT-EXF-005/007) but does not apply containment to its *own* MoE critics (blackhat, red team instructed to reason adversarially)
+   - Inspired by HuggingFace/OAI/Anthropic agentic eval incidents (Sep 2026) — an agent that reasons about attacks can act on that reasoning if not contained
+   - Components: network egress lockdown for critic processes during critique; tripwires detecting real URLs/IPs/credentials/shell syntax/persistence commands in critic output; `BlockedPipelineError` on breach (BouncerStage pattern already exists); tripwire events routed to Langfuse as new signal type
+   - *This is TA applying its own threat model to itself*
+
+9. **Langfuse live (cloud, 50K/month free tier)** *(depends on #8 for full value; unblocks #10)*
+   - Stand up cloud Langfuse; EventBroker → LangfuseSink already wired — just needs live endpoint config
+   - Routes: critic output traces + sandbox tripwire events (#8); 50K/month sufficient for dev/staging
+   - *Deferred blocker for DETECT-QC-015 and e2e EventBroker validation*
+
+10. **DETECT-QC-015 cosine collusion upgrade** *(depends on #9)*
+    - Upgrade from Jaccard proxy to true cosine similarity on critic reasoning text
+    - Needs critic text stored as Langfuse observations; Jaccard proxy remains live fallback until then
+
+**Content backlog:**
+
+11. **Blog Part 27** — TAclaw as orchestrator + smart routing + 13-arch delta distribution
+    - Prerequisites met: 13-arch routing table complete (Sessions 68–69)
+    - Angle: three modes (brain 0.05s / llm_only 78s D2=0.093 / full MoE gold); smart routing picks per arch; llm_only D2=0.093 is the surprise that justifies the deterministic engine
+    - No draft yet; routing story was absorbed into P26 scope then separated back to P27
+
+**Amplification chain:**
+```
+#1 fidelity gate → trust routing
+#2 pre-router → faster + cheaper decisions
+#3 narrative brain → richer CISO output
+#8 sandbox → TA protects itself
+#9 Langfuse live → observability layer active
+#10 DETECT-015 → collusion detection closes
+#11 blog → routing story told
+```
+
+---
+
 ## Session 75 — 2026-09-12
+
+### Entry 165 — Engine Item 5 sub-item 1: gt_confidence blended into distill weight
+
+**What:** `extract_instance()` now extracts `ground_truth.confidence` as `gt_confidence` per instance. `_distill_weight()` changed from `aivss_composite/10` to `(aivss_composite/10 + gt_confidence) / 2`. Brain rebuilt to v38 (178 corpus, 170 train, 6 patterns). Recall benchmark: avg 96%, avg Brier 0.165. brain_fast archs all at 97–100% recall.
+
+**Why:** AIVSS measures security severity; `gt_confidence` measures how much to trust the analysis itself (pipeline's own confidence in technique/control coverage). A sparse arch with 57% pipeline confidence should dilute the cluster less than a dense arch at 90%+. Equal-weight blend of both signals. The before/after recall diff was not measurable (no v37 benchmark run exists), but the 96% avg recall sets the baseline going forward.
+
+**Alternatives rejected:** Using `gt_confidence` alone — AIVSS captures severity signal that pipeline confidence doesn't. Using a weighted blend (e.g. 0.7/0.3) — equal weight simpler and defensible until a calibration run shows one signal dominates.
+
+---
+
+### Entry 164 — CLI bug: brain_dir undefined for --calibrate flag
+
+**What:** `--calibrate` in `ta_brain_builder.py` CLI used `brain_dir` which is only in scope inside `build_brain()`. Fixed by adding `_brain_dir_cal = report_dir / "brain"` in the `__main__` block. Pre-existing bug, same pattern in `--process` and `--enrich-gaps`.
+
+---
 
 ### Entry 163 — Blog Part 26 published
 
