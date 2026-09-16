@@ -115,6 +115,28 @@ TRAVERSAL_TECHNIQUES = {
     "active directory": ["T1087", "T1078", "T1110", "T1098", "T1136", "T1040"],
     "domain":      ["T1087", "T1078", "T1098", "T1136"],
 
+    # AD / On-Premises Identity (ACSC AD advisory Sep 2026 + NIST IR 8587)
+    "domain controller": ["T1003.006", "T1003.003", "T1550.002", "T1021", "T1087"],  # DCSync, NTDS, PtH
+    "read-only dc":      ["T1207", "T1003.006", "T1021"],                             # Rogue DC, DCSync path
+    "krbtgt":            ["T1558", "T1558.001", "T1558.003", "T1550.003"],            # Kerberos ticket attacks
+    "laps":              ["T1003", "T1555"],                                           # OS Cred Dumping, LAPS bypass
+    "ad cs":             ["T1649", "T1553"],                                           # Forge Auth Certs, ESC attacks
+    "enrollment service": ["T1649"],                                                   # Cert enrollment abuse
+    "issuing ca":        ["T1649", "T1553"],                                           # Cert forgery
+    "root ca":           ["T1649", "T1553"],                                           # Root cert compromise
+    "certificate template": ["T1649"],                                                 # ESC1/ESC4 template abuse
+    "adminsdholder":     ["T1484", "T1098"],                                           # ACL / AdminSDHolder abuse
+    "group policy":      ["T1484", "T1078"],                                           # GPO modification
+
+    # SSO / Federation / OAuth (NIST IR 8587)
+    "token vault":       ["T1528", "T1550.001"],                                       # Token theft + replay
+    "token endpoint":    ["T1528", "T1606"],                                           # Token endpoint abuse
+    "authorization server": ["T1606", "T1528", "T1550.001"],                          # OAuth AS abuse
+    "jwks":              ["T1528", "T1552"],                                           # JWKS key theft
+    "federation":        ["T1199", "T1606"],                                           # Trusted relationship abuse
+    "security token service": ["T1199", "T1606"],                                     # STS / federation abuse
+    "assertion":         ["T1606", "T1606.001"],                                       # SAML assertion forgery
+
     # Storage/Backup
     "storage":     ["T1213", "T1530", "T1083"],
     "backup":      ["T1005", "T1213", "T1083"],
@@ -228,6 +250,16 @@ TARGET_TECHNIQUES = {
     "secret":   ["T1552", "T1555", "T1041"],
     "key":      ["T1552", "T1041"],
     "credentials": ["T1552", "T1555", "T1041"],
+    "credential store": ["T1003.003", "T1552", "T1555", "T1041"],  # NTDS dump target
+    # AD / On-Premises Identity targets (ACSC AD advisory + NIST IR 8587)
+    "krbtgt":        ["T1558", "T1558.001", "T1558.003", "T1550.003"],  # Golden/Silver Ticket, Kerberoasting
+    "laps":          ["T1003", "T1555"],                                  # LAPS password dump
+    "adminsdholder": ["T1484", "T1098"],                                  # ACL / AdminSDHolder abuse
+    "svc-":          ["T1558.003", "T1078"],                              # SPN service accounts → Kerberoasting
+    "group policy":  ["T1484"],                                           # GPO modification target
+    # SSO / Federation targets
+    "token vault":   ["T1528", "T1550.001"],                              # Token theft + replay
+    "session database": ["T1539", "T1185"],                               # Session cookie theft
     "pii":      ["T1213", "T1005", "T1041", "T1530", "T1565"],
     "payment":  ["T1213", "T1005", "T1041", "T1530", "T1565"],
     "model":    ["T1213", "T1041", "T1530", "T1567"],

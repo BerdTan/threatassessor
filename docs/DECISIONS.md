@@ -4,6 +4,26 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 79 — 2026-09-16
+
+### Entry 172 — AD/identity threat pattern upgrade: per_node_ttp_mapper extensions + 3 synthetic MMDs
+
+**What:** Extended `chatbot/modules/per_node_ttp_mapper.py` (`TRAVERSAL_TECHNIQUES` + `TARGET_TECHNIQUES`) with AD/on-prem identity and SSO/federation keyword→technique mappings. Staged 3 synthetic MMDs to `report/brain/synthetic_queue/`. Ran full MoE on `on_prem_ad_domain_3`, ingested to brain v42.
+
+**Why:** ACSC AD advisory (Sep 2026) + NIST IR 8587 gap analysis found zero coverage of Kerberoasting (T1558.*), DCSync (T1003.006), Pass-the-Hash/Ticket (T1550.002/003), LAPS bypass (T1003), AD CS/ESC (T1649), token forgery (T1606), session theft (T1539), federation abuse (T1199) in existing brain patterns and DETECT rules.
+
+**Decisions:**
+1. `map_path_to_techniques` in `ground_truth_generator.py` is a dead function — real technique assignment is in `per_node_ttp_mapper.py`. Added AD/identity entries there.
+2. New TRAVERSAL_TECHNIQUES keys: `domain controller`, `read-only dc`, `krbtgt`, `laps`, `ad cs`, `enrollment service`, `issuing ca`, `root ca`, `certificate template`, `adminsdholder`, `group policy`, `token vault`, `token endpoint`, `authorization server`, `jwks`, `federation`, `security token service`, `assertion`.
+3. New TARGET_TECHNIQUES keys: `credential store`, `krbtgt`, `laps`, `adminsdholder`, `svc-`, `group policy`, `token vault`, `session database`.
+4. Per-path technique cap lifted from 5 → 12 in `ground_truth_generator.py` (dead code but left consistent).
+5. Three synthetic MMDs staged: `GEN-GAP-AD001` (on_prem_ad), `GEN-GAP-AD002` (hybrid_identity + AD CS), `GEN-GAP-ID001` (sso_federation).
+6. AD001 fully run: base analysis (30 techniques incl. T1003.006/T1558.001/003/T1550.002/003/T1484/T1003) → MoE parallel (Red Team 92, Blackhat 95 — both AD-aware) → brain v42. On_prem_ad instances fold into BRAIN-004 (generic) — arch type not yet its own pattern.
+
+**Alternatives rejected:** Bulk PDF ingest (noisy signal), comments-in-MMD approach (parser strips comments).
+
+**Next session:** Run AD002 (hybrid_identity + AD CS) → MoE → ingest. Then ID001 (sso_federation). Consider trimming stale on_prem_ad_domain/_0/_1/_2 instances from ta_brain_instances.jsonl before next distill. DETECT-SEC-002 (token_forgery_risk rule) still unwritten. Planned `threatpattern-upgrade` skill to formalise this advisory→gap→MMD→ingest loop.
+
 ## Session 78 — 2026-09-13
 
 ### Entry 171 — DETECT-PER-001 + DETECT-SEC-001: persistence and credential store rules (Numbat cross-reference)

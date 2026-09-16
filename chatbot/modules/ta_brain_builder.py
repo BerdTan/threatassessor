@@ -705,9 +705,10 @@ if __name__ == "__main__":
 
     if args.calibrate:
         from chatbot.modules.ta_brain_benchmarks import save_calibration
+        _brain_dir_cal = report_dir / "brain"
         cal_result = save_calibration(
-            brain_path=brain_dir / "ta_brain.json",
-            instances_path=brain_dir / "ta_brain_instances.jsonl",
+            brain_path=_brain_dir_cal / "ta_brain.json",
+            instances_path=_brain_dir_cal / "ta_brain_instances.jsonl",
             report_dir=report_dir,
         )
         print(f"\nBenchmark calibration complete")

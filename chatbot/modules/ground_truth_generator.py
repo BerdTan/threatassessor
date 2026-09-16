@@ -581,13 +581,44 @@ def map_path_to_techniques(
         target_label = nodes[path[-1]].get("label", "").lower()
         if "database" in target_label or "db" in target_label:
             techniques.append("T1213")  # Data from Information Repositories
-        if "secret" in target_label or "key" in target_label:
+        if "secret" in target_label or "key" in target_label or "credential" in target_label:
             techniques.append("T1552")  # Unsecured Credentials
 
     # Control-based technique mapping (Phase 3B: Removed T1190 duplicate, kept T1078)
     controls_lower = [c.lower() for c in controls_present]
     if "mfa" not in controls_lower:
         techniques.append("T1078")  # Valid Accounts (credential theft risk)
+
+    # AD / on-prem identity technique mapping (label-driven)
+    for node_id in path:
+        label = nodes[node_id].get("label", "").lower()
+        if any(kw in label for kw in ["krbtgt", "kerberos", "kdc"]):
+            techniques.append("T1558")      # Steal or Forge Kerberos Tickets
+            techniques.append("T1558.003")  # Kerberoasting
+            techniques.append("T1558.001")  # Golden Ticket
+            techniques.append("T1550.003")  # Pass-the-Ticket
+        if "domain controller" in label or "ntds" in label:
+            techniques.append("T1003.006")  # DCSync
+            techniques.append("T1003.003")  # NTDS
+            techniques.append("T1550.002")  # Pass-the-Hash
+        if any(kw in label for kw in ["issuing ca", "root ca", "ad cs", "enrollment service", "certificate template"]):
+            techniques.append("T1649")      # Steal or Forge Authentication Certificates
+        if "laps" in label:
+            techniques.append("T1003")      # OS Credential Dumping
+        if "adminsdh" in label or "adminsd" in label:
+            techniques.append("T1484")      # Domain Policy Modification / ACL abuse
+        if "read-only dc" in label or "rodc" in label:
+            techniques.append("T1207")      # Rogue Domain Controller
+        if "service provider" in label or "saml" in label:
+            techniques.append("T1606")      # Forge Web Credentials (SAML)
+            techniques.append("T1606.001")  # Web Cookies
+        if any(kw in label for kw in ["token vault", "token endpoint", "authorization server", "jwks"]):
+            techniques.append("T1528")      # Steal Application Access Token
+            techniques.append("T1550.001")  # Application Access Token (replay)
+        if "federation trust" in label or "security token service" in label:
+            techniques.append("T1199")      # Trusted Relationship
+        if "session database" in label or "session store" in label:
+            techniques.append("T1539")      # Steal Web Session Cookie
 
     # Deduplicate while preserving order
     seen = set()
@@ -597,7 +628,7 @@ def map_path_to_techniques(
             seen.add(t)
             unique_techniques.append(t)
 
-    return unique_techniques[:5]  # Top 5
+    return unique_techniques[:12]  # Extended cap for AD/identity-rich architectures
 
 
 # ============================================================================

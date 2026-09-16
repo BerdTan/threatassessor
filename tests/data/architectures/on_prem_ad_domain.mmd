@@ -1,0 +1,73 @@
+flowchart LR
+
+subgraph External[External]
+    Attacker([Attacker])
+end
+
+subgraph Endpoint_Layer[Endpoint Layer]
+    WS01[WS01]
+    WS02[WS02]
+    AdminWS[Admin Workstation]
+    PAW[PAW]
+end
+
+subgraph Domain_Services[Domain Services]
+    DC01[(Domain Controller)]
+    RODC[(Read-Only DC)]
+    GPO[Group Policy]
+    AdminSDHolder[AdminSDHolder]
+end
+
+subgraph Service_Accounts[Service Accounts]
+    KRBTGT[krbtgt]
+    SvcSQL[SVC-SQL]
+    SvcApp[SVC-APP]
+end
+
+subgraph Sensitive_Targets[Sensitive Targets]
+    NTDS[(Credential Store)]
+    LAPS[LAPS Store]
+end
+
+subgraph File_Services[File Services]
+    FS01[File Server]
+end
+
+%% Initial access
+Attacker --> WS01
+Attacker --> WS02
+
+%% Lateral movement via SMB and Kerberos
+WS01 --> DC01
+WS01 --> FS01
+WS02 --> DC01
+WS02 --> FS01
+
+%% Kerberos TGS requests (Kerberoasting / AS-REP Roasting / Pass-the-Ticket)
+WS01 -.-> SvcSQL
+WS01 -.-> SvcApp
+WS01 -.-> KRBTGT
+
+%% Admin paths (DCSync / Golden Ticket / NTDS dump)
+AdminWS --> DC01
+AdminWS --> LAPS
+PAW --> DC01
+
+%% AD replication (DCSync / Rogue DC T1207)
+DC01 <--> RODC
+
+%% DC as hub to sensitive objects
+DC01 --> NTDS
+DC01 --> KRBTGT
+DC01 --> SvcSQL
+DC01 --> SvcApp
+DC01 --> AdminSDHolder
+DC01 --> GPO
+DC01 --> LAPS
+
+%% LAPS retrieval path from file server
+FS01 --> LAPS
+
+%% GPO application to endpoints
+GPO --> WS01
+GPO --> WS02
