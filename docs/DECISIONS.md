@@ -4,6 +4,36 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 82 — 2026-09-19
+
+### Entry 175 — Engine Item 8.1: Langfuse span metadata enrichment
+
+**What:** Enriched Langfuse traces with three pipeline dimensions: `routing_mode`, `arch_type`, `aivss_composite`.
+
+**Design decisions:**
+- `routing_mode` passed as kwarg into `harness.run()` via `streaming.py` (not through `PipelineRequest.metadata`) — `run()` already accepts `**kwargs` forwarded to ctx; simpler than adding a typed field.
+- `routing_mode` added to trace `metadata` **and** `tags` list at `run_start` — Langfuse tags are indexed for filter queries; metadata holds raw value for programmatic access.
+- `arch_type` sourced from `ctx.get("arch_metadata", {}).get("arch_type", "")` — set by `AIVSSStage` which reads from ground_truth; available at `run_complete`.
+- `aivss_composite` = `AIVSSScore.overall` (float), not `outbound.composite` — `overall` is the single-number summary used in CISO briefs and routing signals; more meaningful for P28 token-efficiency comparison.
+- `pipeline_wall_s` also added to `run_complete` metadata as a latency anchor.
+
+**Commits:** 1670a4a
+
+### Entry 176 — Engine Item 8.2: Per-critic Langfuse generation spans
+
+**What:** Added individual `critic_generation` events per critic agent after `critic_complete`; `LangfuseSink` converts each to a `generation` span with per-agent token/cost/latency data.
+
+**Design decisions:**
+- New `critic_generation` event type (registered in `EVENT_TYPES`) rather than embedding per-critic data in `critic_complete` payload — keeps `critic_complete` as the aggregate summary; `critic_generation` events are the per-agent detail layer.
+- Source field = `critic_{key}` (e.g. `critic_architect`) — Langfuse span names are queryable; this lets token spend be broken down by critic role across a bench run.
+- `completion_tokens` hardcoded 0 — `ValidationResult.perf.llm_tokens` is total tokens (OpenRouter doesn't always split input/output); honesty > fabricated split.
+- `critic_trace` preset extended to include `critic_generation` — subscribers using the preset automatically get both the aggregate and per-agent spans without config change.
+- `sm_verdicts` already logs acceptance/rejection per critic in Langfuse Scores — the new `critic_generation` spans add the token cost dimension to the same critic-level granularity.
+
+**Commits:** b744e4a
+
+---
+
 ## Session 81 — 2026-09-18
 
 ### Entry 174 — DETECT candidates from OpenAI Model Misalignment Reporting Framework
