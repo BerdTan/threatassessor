@@ -30,6 +30,7 @@ Version: 2.0 (Phase 3E — Purple Team + BH pivot-diverge)
 
 import json
 import logging
+import multiprocessing as _mp
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -271,6 +272,70 @@ class MoEResult:
             return "ACCEPTABLE - Several gaps, review recommended"
         else:
             return "NEEDS REVIEW - Significant gaps found"
+
+
+# ============================================================================
+# CRITIC SUBPROCESS ISOLATION
+# ============================================================================
+
+# Set to False to run critics inline (no subprocess overhead — useful for tests
+# that mock the LLM or check call counts, and for debugging with pdb).
+CRITIC_ISOLATION: bool = True
+
+# Per-critic wall-clock timeout in seconds. Covers the LLM network round-trip
+# plus parsing. A stuck HTTP call will be killed at this boundary.
+_CRITIC_TIMEOUT_SECS: int = 300
+
+
+def _isolation_worker(fn, args, result_queue: "_mp.Queue") -> None:
+    """Subprocess entry point: run fn(*args) and push result to queue."""
+    try:
+        result_queue.put(("ok", fn(*args)))
+    except Exception as exc:
+        result_queue.put(("err", str(exc)))
+
+
+def _run_isolated(fn, *args, timeout: int = _CRITIC_TIMEOUT_SECS):
+    """
+    Run fn(*args) in an isolated subprocess with a hard timeout.
+
+    On success returns the CritiqueScore result.
+    On timeout: kills subprocess, raises RuntimeError.
+    On crash: raises RuntimeError with subprocess stderr/message.
+    When CRITIC_ISOLATION=False: runs inline (no subprocess overhead).
+    """
+    if not CRITIC_ISOLATION:
+        return fn(*args)
+
+    ctx = _mp.get_context("fork")
+    q: "_mp.Queue" = ctx.Queue()
+    p = ctx.Process(target=_isolation_worker, args=(fn, args, q), daemon=True)
+    p.start()
+    p.join(timeout)
+
+    if p.is_alive():
+        p.terminate()
+        p.join(2)
+        if p.is_alive():
+            p.kill()
+            p.join(1)
+        raise RuntimeError(
+            f"Critic {getattr(fn, '__self__', fn).__class__.__name__} "
+            f"timed out after {timeout}s in isolated subprocess"
+        )
+
+    if not q.empty():
+        status, payload = q.get_nowait()
+        if status == "ok":
+            return payload
+        raise RuntimeError(
+            f"Critic {getattr(fn, '__self__', fn).__class__.__name__} "
+            f"subprocess raised: {payload}"
+        )
+
+    raise RuntimeError(
+        f"Critic subprocess exited with code {p.exitcode} and produced no result"
+    )
 
 
 # ============================================================================
@@ -833,7 +898,11 @@ class MoEOrchestrator:
             architect_critique = saved_arch
         else:
             logger.info("MoE Pipeline: Layer 2A - Running Architect validation...")
-            architect_critique = self.architect.critique(artifacts)
+            try:
+                architect_critique = _run_isolated(self.architect.critique, artifacts)
+            except RuntimeError as exc:
+                logger.warning("MoE Pipeline: Layer 2A isolation failure — falling back inline: %s", exc)
+                architect_critique = self.architect.critique(artifacts)
             self._save_validation(architect_critique, arch_path)
         architect_result = self._process_architect_validation(architect_critique)
         logger.info(f"MoE Pipeline: ✓ Layer 2A complete - {architect_result.validation_status} "
@@ -848,7 +917,11 @@ class MoEOrchestrator:
             tester_critique = saved_tester
         else:
             logger.info("MoE Pipeline: Layer 2B - Running Tester validation...")
-            tester_critique = self.tester.critique(artifacts, architect_critique)
+            try:
+                tester_critique = _run_isolated(self.tester.critique, artifacts, architect_critique)
+            except RuntimeError as exc:
+                logger.warning("MoE Pipeline: Layer 2B isolation failure — falling back inline: %s", exc)
+                tester_critique = self.tester.critique(artifacts, architect_critique)
             self._save_validation(tester_critique, test_path)
         tester_result = self._process_tester_validation(tester_critique)
         logger.info(f"MoE Pipeline: ✓ Layer 2B complete - {tester_result.validation_status} "
@@ -863,7 +936,13 @@ class MoEOrchestrator:
             red_team_critique = saved_red
         else:
             logger.info("MoE Pipeline: Layer 2C - Running Red Team validation...")
-            red_team_critique = self.red_team.critique(artifacts, ground_truth, tester_critique)
+            try:
+                red_team_critique = _run_isolated(
+                    self.red_team.critique, artifacts, ground_truth, tester_critique
+                )
+            except RuntimeError as exc:
+                logger.warning("MoE Pipeline: Layer 2C isolation failure — falling back inline: %s", exc)
+                red_team_critique = self.red_team.critique(artifacts, ground_truth, tester_critique)
             self._save_validation(red_team_critique, red_path)
         red_team_result = self._process_red_team_validation(red_team_critique)
         logger.info(f"MoE Pipeline: ✓ Layer 2C complete - {red_team_result.validation_status} "
@@ -905,15 +984,29 @@ class MoEOrchestrator:
         elif saved_arch:
             architect_critique = saved_arch
             logger.info("MoE Pipeline: Partial-parallel — loaded saved Architect; running Red Team...")
-            red_team_critique = self.red_team.critique(artifacts, ground_truth, tester_critique=None)
+            try:
+                red_team_critique = _run_isolated(
+                    self.red_team.critique, artifacts, ground_truth, None
+                )
+            except RuntimeError as exc:
+                logger.warning("MoE Pipeline: Red Team isolation failure — falling back inline: %s", exc)
+                red_team_critique = self.red_team.critique(artifacts, ground_truth, tester_critique=None)
             self._save_validation(red_team_critique, red_path)
         else:
             logger.info("MoE Pipeline: Partial-parallel — running Architect ∥ Red Team (blind)...")
             with ThreadPoolExecutor(max_workers=2) as pool:
-                f_arch = pool.submit(self.architect.critique, artifacts)
-                f_red  = pool.submit(self.red_team.critique, artifacts, ground_truth, None)
-                architect_critique = f_arch.result()
-                red_team_critique  = f_red.result()
+                f_arch = pool.submit(_run_isolated, self.architect.critique, artifacts)
+                f_red  = pool.submit(_run_isolated, self.red_team.critique, artifacts, ground_truth, None)
+                try:
+                    architect_critique = f_arch.result()
+                except RuntimeError as exc:
+                    logger.warning("MoE Pipeline: Architect isolation failure — falling back inline: %s", exc)
+                    architect_critique = self.architect.critique(artifacts)
+                try:
+                    red_team_critique = f_red.result()
+                except RuntimeError as exc:
+                    logger.warning("MoE Pipeline: Red Team isolation failure — falling back inline: %s", exc)
+                    red_team_critique = self.red_team.critique(artifacts, ground_truth, None)
             self._save_validation(architect_critique, arch_path)
             self._save_validation(red_team_critique, red_path)
 
@@ -928,7 +1021,11 @@ class MoEOrchestrator:
             tester_critique = saved_tester
         else:
             logger.info("MoE Pipeline: Partial-parallel — running Tester with Architect output...")
-            tester_critique = self.tester.critique(artifacts, architect_critique)
+            try:
+                tester_critique = _run_isolated(self.tester.critique, artifacts, architect_critique)
+            except RuntimeError as exc:
+                logger.warning("MoE Pipeline: Tester isolation failure — falling back inline: %s", exc)
+                tester_critique = self.tester.critique(artifacts, architect_critique)
             self._save_validation(tester_critique, test_path)
         tester_result = self._process_tester_validation(tester_critique)
         logger.info(f"MoE Pipeline: ✓ Tester (partial-parallel) - {tester_result.validation_status}")
