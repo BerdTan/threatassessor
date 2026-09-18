@@ -1,0 +1,72 @@
+flowchart LR
+
+subgraph External[External]
+    User([User])
+    Attacker([Attacker])
+end
+
+subgraph Identity_Provider[Identity Provider]
+    IdP[Identity Provider]
+    SAMLSvc[SAML Assertion Service]
+    TokenEndpoint[Token Endpoint]
+    UserDirectory[(User Directory)]
+end
+
+subgraph OAuth_OIDC[OAuth / OIDC Layer]
+    AuthServer[Authorization Server]
+    TokenStore[(Token Vault)]
+    JWKS[JWKS Endpoint]
+    Introspection[Token Introspection]
+end
+
+subgraph Service_Provider[Service Provider]
+    SP1[Service Provider]
+    ResourceServer[Resource Server]
+    SessionStore[(Session Database)]
+end
+
+subgraph Federation[Federation]
+    STSSvc[Security Token Service]
+    FedTrust[Federation Trust]
+end
+
+%% Legitimate user flows
+User --> IdP
+User --> AuthServer
+User --> SP1
+
+%% Attacker entry points
+Attacker --> User
+Attacker --> IdP
+Attacker --> AuthServer
+Attacker --> STSSvc
+
+%% IdP internal structure
+IdP --> SAMLSvc
+IdP --> UserDirectory
+IdP --> TokenEndpoint
+
+%% OAuth / OIDC flows
+TokenEndpoint --> TokenStore
+AuthServer --> TokenStore
+AuthServer --> JWKS
+AuthServer --> Introspection
+AuthServer --> STSSvc
+
+%% Federation trust chain
+STSSvc --> FedTrust
+FedTrust --> IdP
+
+%% Token delivery to service providers
+SAMLSvc --> SP1
+TokenEndpoint --> SP1
+TokenEndpoint --> ResourceServer
+
+%% Session management
+SP1 --> SessionStore
+ResourceServer --> SessionStore
+
+%% Attacker lateral paths (token replay / session theft)
+Attacker -.-> TokenStore
+Attacker -.-> SessionStore
+Attacker -.-> JWKS

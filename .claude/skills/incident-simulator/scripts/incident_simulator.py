@@ -1049,6 +1049,7 @@ def scenario_agentic_persistence() -> Dict[str, Any]:
         "persistence_mechanism_nodes": ["CronJob[CronJob Metrics Push]"],
         "credential_store_nodes": [],
         "agent_credential_access": False,
+        "token_forgery_risk": False,
     }
     return sig
 
@@ -1081,6 +1082,38 @@ def scenario_agent_credential_access() -> Dict[str, Any]:
         "persistence_mechanism_nodes": [],
         "credential_store_nodes": ["SecretsManager[AWS Secrets Manager]"],
         "agent_credential_access": True,
+    }
+    return sig
+
+
+def scenario_token_forgery_risk() -> Dict[str, Any]:
+    """
+    DETECT-SEC-002 (High)
+
+    A hybrid identity architecture (SSO federation with AD CS) exposes a direct
+    attacker path to the token store and JWKS endpoint via dashed edges in the
+    Mermaid diagram. This is the structural precondition for Golden-SAML (T1606),
+    token replay (T1550.001), and application access token theft (T1528).
+
+    Based on: Microsoft identity platform golden-ticket incident patterns and
+    the id001_sso_federation architecture ingest (Session 80).
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "generic",
+        "node_count": 14,
+        "is_agentic": False,
+    }
+    sig["sovereignty"] = {
+        "severity": "HIGH",
+        "cross_boundary_nodes": [],
+        "zdr_signals": [],
+        "inferred_regions": [],
+        "c2_beacon_nodes": [],
+        "persistence_mechanism_nodes": [],
+        "credential_store_nodes": [],
+        "agent_credential_access": False,
+        "token_forgery_risk": True,
     }
     return sig
 
@@ -1160,6 +1193,8 @@ SCENARIOS = {
         "DETECT-PER-001 (Medium) — agentic arch + cron/scheduler persistence node = AISI INC-2026-07-28 planted-crontab precondition"),
     "agent_credential_access":       (scenario_agent_credential_access,
         "DETECT-SEC-001 (High) — agentic arch + direct LLM→vault edge = unmediated credential store access"),
+    "token_forgery_risk":            (scenario_token_forgery_risk,
+        "DETECT-SEC-002 (High) — SSO federation arch + attacker path to token store/JWKS = Golden-SAML precondition"),
 }
 
 EXPECTED_RULES = {
@@ -1201,6 +1236,7 @@ EXPECTED_RULES = {
     "suspicious_skill_url":          {"DETECT-SCT-004"},
     "agentic_persistence":           {"DETECT-PER-001"},
     "agent_credential_access":       {"DETECT-SEC-001"},
+    "token_forgery_risk":            {"DETECT-SEC-002"},
 }
 
 

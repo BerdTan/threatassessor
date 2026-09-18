@@ -4,6 +4,24 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 80 — 2026-09-18
+
+### Entry 173 — AD002 + ID001 MoE ingest + DETECT-SEC-002 (token_forgery_risk)
+
+**What:** Ran full MoE on `ad002_hybrid_identity_adcs` and `id001_sso_federation` → ingested to brain v45 (181 instances, 173 train + 8 hold-out). Trimmed stale `on_prem_ad_domain`/`_1`/`_2` report dirs and their instance records. Added DETECT-SEC-002 (`token_forgery_risk`) to SOC detection ruleset. 391 tests passing, 0 failed.
+
+**Decisions:**
+1. AD002 stored with `_1` suffix (second analysis run); pre-MoE base dir (`ad002_hybrid_identity_adcs`) deleted after ingest — only the post-MoE version kept.
+2. Both AD002 and ID001 ingested as `arch_type=generic` — hybrid identity / SSO federation do not yet warrant a distinct arch type in the brain (insufficient evidence to split pattern).
+3. Stale `on_prem_ad_domain`/`_1`/`_2` deleted: 4 instances trimmed, `_3` retained as the definitive AD001 record (post full MoE, 30 techniques).
+4. DETECT-SEC-002 fires on `sovereignty.token_forgery_risk`: True when (a) federation/SSO identity nodes exist AND (b) attacker dashed edge (`-.->`) reaches token store, JWKS endpoint, or session database. Verified: fires on `id001_sso_federation`, silent on `ad002_hybrid_identity_adcs` and `01_minimal_vulnerable`.
+5. New regex patterns added to `governance.py`: `_RE_FEDERATION_IDENTITY_NODE` (IdP/SAML/STS/JWKS/OAuth AS) + `_RE_TOKEN_STORE_NODE` (TokenVault/JWKS/SessionDB). Attacker-node detection keyed on Mermaid `Attacker` label — standard convention in all TA synthetic MMDs.
+6. Test suite: 391 passed (was 390 before). Incident simulator scenario `token_forgery_risk` added (38 scenarios total). Rule count 39→40.
+
+**Why:** Completing the AD/identity upgrade arc (Session 79 left AD002 + ID001 pending). DETECT-SEC-002 closes the golden-SAML / token forgery gap identified in the ACSC advisory analysis — no DETECT rule previously covered T1606/T1528/T1550.001.
+
+**Alternatives rejected:** Using technique list (T1606 present) as the signal — techniques not in governance_signals.json. Using a combined `identity.token_forgery_risk` field — sovereignty is the right block (structural architecture gap, not a LLM-layer identity signal).
+
 ## Session 79 — 2026-09-16
 
 ### Entry 172 — AD/identity threat pattern upgrade: per_node_ttp_mapper extensions + 3 synthetic MMDs

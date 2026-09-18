@@ -2248,6 +2248,53 @@ rules:
       (public cert, non-secret config), or (2) an explicit sidecar/init-container
       handles credential injection and the diagram omits it for clarity.
 
+  # DETECT-SEC-002: Token Forgery / Golden-SAML Risk
+  #
+  # An architecture containing federation/SSO identity components (IdP, SAML assertion
+  # service, STS, Authorization Server, JWKS endpoint) also shows an adversarial dashed
+  # edge (attacker -.-> ) reaching a token store, JWKS endpoint, or session database.
+  # This structural pattern is the precondition for Golden-SAML (T1606), token replay
+  # (T1550.001), and application access token theft (T1528). The attacker-reachable
+  # token store indicates the architecture has not separated token issuance infrastructure
+  # from attacker-accessible paths. Grounded in MITRE T1606 / T1528 and Microsoft
+  # identity platform golden-ticket / golden-SAML incident patterns.
+  - id: DETECT-SEC-002
+    name: token_forgery_risk
+    domain: SEC
+    description: >
+      An architecture containing federation or SSO identity components (Identity
+      Provider, SAML Assertion Service, Security Token Service, OAuth Authorization
+      Server, JWKS endpoint) has an adversarial dashed-edge path (-.->)  reaching a
+      token store, JWKS endpoint, or session database. This structural pattern is the
+      precondition for Golden-SAML (T1606), token replay (T1550.001), and application
+      access token theft (T1528). Grounded in Microsoft identity platform incident
+      patterns and MITRE ATT&CK T1606/T1528/T1550.001.
+    mitre_techniques: [T1606, T1606.001, T1528, T1550.001, T1199]
+    owasp: [A07]
+    kill_chain_stage: credential_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200407
+    severity: High
+    conditions:
+      - field: sovereignty.token_forgery_risk
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      The rule fires when: (1) federation/SSO identity nodes exist in the architecture
+      AND (2) a dashed attacker edge (-.-> in Mermaid) reaches a token store, JWKS
+      endpoint, or session database. Suppress when: (a) the dashed edge represents
+      a monitored/gated read path (introspection endpoint behind API gateway with
+      rate-limiting and anomaly detection), or (b) the token store is write-only and
+      uses short-lived tokens (< 5 min TTL) with no refresh capability. In all other
+      cases, require: rotation of signing keys to HSM, network segmentation of the
+      token store, and mutual TLS on the federation trust path.
+
 # ─────────────────────────────────────────────────────────────────────────────
 playbooks:
 
@@ -2685,6 +2732,22 @@ playbooks:
     false_positive_indicators:
       - "Ambient credential injection (EC2 instance profile, k8s IRSA, Workload Identity) where the diagram omits the IAM node for clarity — verify IAM binding exists in IaC"
       - "Read-only public config secret (non-sensitive cert, non-secret endpoint) — verify the secret value classification before suppressing"
+
+  token_forgery_risk:
+    alert: DETECT-SEC-002
+    analyst_steps:
+      - "Review sovereignty.token_forgery_risk — confirm federation nodes and token store are both present in the architecture"
+      - "Identify the attacker-reachable token store: TokenStore, JWKS endpoint, or SessionDatabase"
+      - "Check whether a network boundary, API gateway, or rate-limiting layer separates the attacker from the token store"
+      - "Verify token signing key storage — HSM-backed keys vs. software keys in the token store"
+      - "Review federation trust chain: is STS → IdP trust validated with certificate pinning?"
+      - "If no network isolation exists: block deployment and require token store network segmentation"
+      - "Check DETECT-EXF-002 for co-firing — token store access + data exfil path = full credential exfil scenario"
+    escalation_threshold: "DETECT-SEC-002 + DETECT-EXF-002 co-fires → escalate to CRITICAL; treat as Golden-SAML prerequisite"
+    false_positive_indicators:
+      - "Token introspection endpoint (read-only, rate-limited, behind API gateway) — verify monitoring and anomaly detection are in place"
+      - "Short-lived token store (< 5 min TTL, no refresh tokens) — verify TTL configuration in IaC before suppressing"
+      - "Development/test environment with non-production signing keys — confirm environment classification"
 
 # TATB integration note
 #

@@ -1,0 +1,66 @@
+flowchart LR
+
+subgraph External[External]
+    Attacker([Attacker])
+end
+
+subgraph Endpoint_Layer[Endpoint Layer]
+    WS01[WS01]
+    AdminWS[Admin Workstation]
+end
+
+subgraph On_Prem_AD[On-Premises AD]
+    DC01[(Domain Controller)]
+    NTDS[(Credential Store)]
+    KRBTGT[krbtgt]
+end
+
+subgraph AD_CS[AD Certificate Services]
+    ADCS[AD CS Server]
+    CertTemplate[Certificate Templates]
+    EnrollmentSvc[Enrollment Service]
+    IssuingCA[(Issuing CA)]
+    RootCA[(Root CA)]
+    CRL[CRL Distribution Point]
+end
+
+subgraph Cloud_Identity[Cloud Identity]
+    EntraID[Entra ID]
+    AADConnect[Azure AD Connect]
+    HybridAgent[Hybrid Join Agent]
+end
+
+%% Initial access
+Attacker --> WS01
+Attacker --> AdminWS
+
+%% Endpoint to domain
+WS01 --> DC01
+WS01 --> EnrollmentSvc
+AdminWS --> DC01
+AdminWS --> ADCS
+
+%% Domain controller hub
+DC01 --> NTDS
+DC01 --> KRBTGT
+DC01 --> ADCS
+DC01 <--> EntraID
+
+%% AD CS internal structure (ESC attack paths via misconfigured templates)
+ADCS --> CertTemplate
+ADCS --> EnrollmentSvc
+ADCS --> IssuingCA
+IssuingCA --> RootCA
+IssuingCA --> CRL
+EnrollmentSvc --> IssuingCA
+
+%% Hybrid identity sync paths
+AADConnect --> DC01
+AADConnect --> EntraID
+HybridAgent --> DC01
+HybridAgent --> EntraID
+
+%% Attacker template abuse (ESC1/ESC4/ESC8)
+WS01 -.-> CertTemplate
+WS01 -.-> IssuingCA
+AdminWS --> RootCA

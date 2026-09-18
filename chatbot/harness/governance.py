@@ -378,6 +378,24 @@ _RE_PERSISTENCE_NODE = re.compile(
     re.IGNORECASE,
 )
 
+# SEC — Federation / SSO identity node labels (IdP, SAML, STS, OAuth AS, JWKS)
+# Grounded in: MITRE T1606 (Forge Web Credentials), T1528 (Steal App Access Token)
+_RE_FEDERATION_IDENTITY_NODE = re.compile(
+    r"\b(identity[\s_-]?provider|idp|saml(?:[\s_-]?svc|[\s_-]?service|[\s_-]?assertion)?|"
+    r"security[\s_-]?token[\s_-]?service|sts(?:[\s_-]?svc)?|federation[\s_-]?trust|"
+    r"authorization[\s_-]?server|auth[\s_-]?server|token[\s_-]?endpoint|"
+    r"jwks(?:[\s_-]?endpoint)?|oauth[\s_-]?server|oidc[\s_-]?provider)\b",
+    re.IGNORECASE,
+)
+
+# SEC — Token store node labels (token vaults, JWKS stores, session databases)
+_RE_TOKEN_STORE_NODE = re.compile(
+    r"\b(token[\s_-]?(?:store|vault|cache|db|database)|"
+    r"jwks(?:[\s_-]?endpoint)?|session[\s_-]?(?:store|database|db)|"
+    r"refresh[\s_-]?token[\s_-]?store)\b",
+    re.IGNORECASE,
+)
+
 # SEC — Credential store node labels (vaults, secret managers, key stores)
 # Grounded in: Numbat secrets ruleset; OWASP AST09 credential store access
 _RE_CREDENTIAL_STORE_NODE = re.compile(
@@ -486,6 +504,7 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
                 "persistence_mechanism_nodes": [],
                 "credential_store_nodes": [],
                 "agent_credential_access": False,
+                "token_forgery_risk": False,
                 "flagged": False,
                 "severity": "LOW",
                 "arc_categories": ["PRIV", "SEC", "SOC"],
@@ -718,6 +737,39 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
             if src in llm_node_ids and dst in _cred_store_ids:
                 sig.sovereignty["agent_credential_access"] = True
                 break
+
+        # SEC — Token forgery risk: federation/SSO architecture with attacker edge to
+        # token store or JWKS endpoint (T1606 Golden SAML / T1528 token theft precondition).
+        _fed_ids = {
+            nid for nid, lbl in node_labels.items() if _RE_FEDERATION_IDENTITY_NODE.search(lbl)
+        }
+        _fed_ids |= {nid for nid in node_labels if _RE_FEDERATION_IDENTITY_NODE.search(nid)}
+        _token_store_ids = {
+            nid for nid, lbl in node_labels.items() if _RE_TOKEN_STORE_NODE.search(lbl)
+        }
+        _token_store_ids |= {
+            nid for nid in node_labels if _RE_TOKEN_STORE_NODE.search(nid)
+        }
+        if _fed_ids and _token_store_ids:
+            # Attacker dashed edges -.-> indicate adversarial reachability in the MMD
+            _RE_ATTACKER_EDGE = re.compile(
+                r'(\w+)\s*-\.+->\s*(\w+)', re.MULTILINE
+            )
+            attacker_ids = {
+                nid for nid, lbl in node_labels.items()
+                if re.search(r'\battacker\b', lbl, re.IGNORECASE)
+            }
+            attacker_ids |= {
+                nid for nid in node_labels
+                if re.search(r'\battacker\b', nid, re.IGNORECASE)
+            }
+            for em in _RE_ATTACKER_EDGE.finditer(_edges_content):
+                src, dst = em.group(1), em.group(2)
+                reaches_token_store = dst in _token_store_ids
+                from_attacker = src in attacker_ids
+                if reaches_token_store and (from_attacker or src in _fed_ids):
+                    sig.sovereignty["token_forgery_risk"] = True
+                    break
 
         sig.kill_chain_coverage = ["external_boundary", "data_boundary"]
         sig.overall_risk_level = self._compute_overall(sig)
