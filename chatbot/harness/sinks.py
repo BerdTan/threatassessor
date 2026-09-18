@@ -39,7 +39,7 @@ class BaseSink(ABC):
         """Map YAML preset names (stage_trace, critic_trace) to concrete event types."""
         presets = {
             "stage_trace":  {"run_start", "stage_complete", "run_complete"},
-            "critic_trace": {"critic_complete"},
+            "critic_trace": {"critic_complete", "critic_generation"},
             "governance":   {"governance_complete"},
             "aivss":        {"aivss_complete", "aivss_gate"},
         }
@@ -247,6 +247,22 @@ class LangfuseSink(BaseSink):
                     usage_details={"total_tokens": p.get("moe_total_tokens", 0)},
                     cost_details={"total_cost": p.get("moe_total_cost", 0.0)},
                     metadata=p,
+                )
+
+            elif event.event_type == "critic_generation" and self._trace:
+                self._trace.generation(
+                    name=event.source,
+                    model=p.get("model", ""),
+                    usage_details={
+                        "input": p.get("prompt_tokens", 0),
+                        "output": p.get("completion_tokens", 0),
+                        "total": p.get("prompt_tokens", 0) + p.get("completion_tokens", 0),
+                    },
+                    cost_details={"total_cost": p.get("cost_usd", 0.0)},
+                    metadata={
+                        "latency_s": p.get("latency_s", 0.0),
+                        "validation_status": p.get("validation_status", ""),
+                    },
                 )
 
             elif event.event_type == "governance_complete" and self._trace:

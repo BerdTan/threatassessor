@@ -174,6 +174,20 @@ class CriticStage(PipelineStage):
                 "moe_total_cost": perf.get("total_cost_usd", 0.0),
                 "model": perf.get("model", ""),
             })
+            # Per-critic generation spans: ValidationResult.perf carries per-agent token data
+            for _critic_key in ("architect", "tester", "red_team", "purple_team", "blackhat"):
+                _vr = getattr(moe, f"{_critic_key}_result", None)
+                if _vr is None:
+                    continue
+                _cp = getattr(_vr, "perf", None) or {}
+                _emit(ctx, "critic_generation", f"critic_{_critic_key}", {
+                    "model": _cp.get("llm_model", perf.get("model", "")),
+                    "prompt_tokens": _cp.get("llm_tokens", 0),
+                    "completion_tokens": 0,
+                    "cost_usd": _cp.get("llm_cost_usd", 0.0),
+                    "latency_s": _cp.get("llm_latency_s", 0.0),
+                    "validation_status": getattr(_vr, "validation_status", ""),
+                })
         return ctx
 
 

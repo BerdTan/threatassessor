@@ -88,6 +88,9 @@ class TestHarnessEvent:
     def test_sm_verdicts_in_event_types(self):
         assert "sm_verdicts" in EVENT_TYPES
 
+    def test_critic_generation_in_event_types(self):
+        assert "critic_generation" in EVENT_TYPES
+
     def test_default_payload_is_empty_dict(self):
         ev = HarnessEvent(event_type="run_start", source="harness",
                           run_id="x", ts="2026-01-01T00:00:00Z")
@@ -255,6 +258,7 @@ class TestBaseSinkFiltering:
     def test_critic_trace_preset(self):
         sink = self._sink(["critic_trace"])
         assert sink._should_handle(_event("critic_complete")) is True
+        assert sink._should_handle(_event("critic_generation")) is True
         assert sink._should_handle(_event("stage_complete")) is False
 
     def test_governance_preset(self):
@@ -468,6 +472,24 @@ class TestLangfuseSink:
         mock_trace.generation.assert_called_once()
         call_str = str(mock_trace.generation.call_args)
         assert "red_team" in call_str
+
+    def test_critic_generation_creates_per_critic_generation_span(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        mock_trace = MagicMock()
+        sink._trace = mock_trace
+        payload = {
+            "model": "qwen3-35b",
+            "prompt_tokens": 850,
+            "completion_tokens": 0,
+            "cost_usd": 0.003,
+            "latency_s": 4.2,
+            "validation_status": "PASS",
+        }
+        sink.emit(_event("critic_generation", source="critic_architect", payload=payload))
+        mock_trace.generation.assert_called_once()
+        call_str = str(mock_trace.generation.call_args)
+        assert "critic_architect" in call_str
+        assert "qwen3-35b" in call_str
 
     def test_governance_complete_updates_trace(self):
         sink, mock_lf = self._sink_with_mock_lf()

@@ -26,6 +26,7 @@ EVENT_TYPES = frozenset({
     "run_start",
     "stage_complete",
     "critic_complete",
+    "critic_generation",
     "governance_complete",
     "aivss_complete",
     "aivss_gate",
