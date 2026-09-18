@@ -10,6 +10,27 @@ Read-only corpus-wide sweep of `.claude/skills/`. No writes until user approves.
 
 ---
 
+## Phase 0 — SHA256 Manifest Drift (fastest check, run first)
+
+```bash
+cd "$(git rev-parse --show-toplevel)" && source .venv/bin/activate && \
+  python3 .claude/skills/check-skills/scripts/check-skills.py
+```
+
+Compares every `*.md / *.py / *.sh / *.yaml / *.json` file under `.claude/skills/`
+against the committed `skills.sha256` baseline. Exits 0 if clean; exits 1 and prints
+`ADD / REMOVE / MODIFIED` lines if drift is detected.
+
+After intentional skill changes (adding a script, editing a SKILL.md):
+```bash
+python3 .claude/skills/check-skills/scripts/check-skills.py --regen
+git add .claude/skills/skills.sha256 && git commit -m "chore(skills): update sha256 manifest"
+```
+
+Clean = ✅. Any drift = **High** until explained and manifest regenerated.
+
+---
+
 ## Phase 1 — Git Integrity
 
 ```bash

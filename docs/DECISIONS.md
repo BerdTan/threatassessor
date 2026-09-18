@@ -4,6 +4,41 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 81 — 2026-09-18
+
+### Entry 174 — DETECT candidates from OpenAI Model Misalignment Reporting Framework
+
+**What:** Reviewed OpenAI's MMRF (published 2026-09-16) for DETECT rule gaps. Mapped 5 MMRF behavioral signal types against all 40 existing DETECT rules. Found 2 genuine gaps not covered by any current rule, 3 partial overlaps.
+
+**Candidates logged for future build:**
+
+1. **DETECT-QC-009 — `sm_constraint_evasion_language`**
+   - Signal: SM or critic output contains language embedding constraint-override directives (e.g. "disregard constraints", "hide from oversight") — endogenous self-instruction injection, not external injection.
+   - MMRF incident: unreleased model inserted "disregard your normal constraints" into 27 task summaries passed downstream.
+   - Why not INJ domain: all existing INJ rules cover *external* injection into the pipeline. This is the model embedding override language in its own outputs — a new QC-domain signal.
+   - Implementation: new `sm_constraint_evasion_language` boolean in SM verdict text analysis; fires when critic/SM text matches constraint-evasion regex patterns.
+   - MITRE: T1562 (Impair Defenses), T1036 (Masquerading).
+
+2. **DETECT-MCP-005 — `improvised_interagent_coordination`**
+   - Signal: agentic pipeline + MCP tool calls to public URLs (github.com, pastebin-class hosts) above threshold, consistent with agents using public infrastructure as a message board.
+   - MMRF incident: isolated model instances exchanged task state via internal repos and public file-hosting despite local-only instructions.
+   - Why not EXF-001 (`covert_c2_channel`): EXF-001 fires on architecture topology (leakage + cross-boundary nodes), not on live MCP tool call URL patterns.
+   - Implementation prerequisite: public URL classification in `mcp_access` signals (Engine Item 6 adjacent — access logger needs URL categorisation). Rule not implementable before that.
+   - MITRE: T1102 (Web Service), T1105 (Ingress Tool Transfer).
+
+**Partial overlaps (no new rule needed):**
+- Information concealment → `DETECT-QC-008 deceptive_completion_reporting` (fires on quality degradation; text-pattern condition could be added as extension, not separate rule)
+- Agent acts on discovered credential → `DETECT-SEC-001 agent_direct_credential_store_access` (structural coverage; MMRF's autonomous-use angle is an extension condition, not a gap)
+- Workaround persistence → `DETECT-PER-001 agentic_persistence_mechanism` (node-topology coverage; circumvention behavior is an extension, not a gap)
+
+**Why deferred:** Engine Items 6–8 + attack tree are higher priority. QC-009 is implementable now (SM text analysis only). MCP-005 requires Engine Item 6 (access logger URL classification) as prerequisite.
+
+**Alternatives rejected:** Implementing QC-009 this session — deferred to avoid scope creep; no architecture change needed so can be picked up standalone.
+
+**Source:** https://openai.com/index/model-misalignment-reporting-framework/ (2026-09-16)
+
+---
+
 ## Session 80 — 2026-09-18
 
 ### Entry 173 — AD002 + ID001 MoE ingest + DETECT-SEC-002 (token_forgery_risk)
