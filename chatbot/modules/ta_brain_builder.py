@@ -204,6 +204,60 @@ def _load_rule_evaluator():
     return RuleEvaluator()
 
 
+_VALID_SOURCES = frozenset({"real", "stepshield/v1", "synthetic"})
+_VALID_ARCH_TYPES = frozenset({"generic", "web_app", "cloud", "agentic", "ai_system", "iot"})
+
+_REQUIRED_FIELDS = {
+    "arch_id": str,
+    "arch_type": str,
+    "source": str,
+    "aivss_composite": (int, float),
+    "node_count": int,
+    "techniques": list,
+}
+
+
+def _validate_instance(inst: dict, line_num: int) -> bool:
+    """Return True if inst passes integrity checks; log a warning and return False otherwise."""
+    for field, expected in _REQUIRED_FIELDS.items():
+        if field not in inst:
+            logger.warning("Brain JSONL line %d rejected: missing field %r", line_num, field)
+            return False
+        if not isinstance(inst[field], expected):
+            logger.warning(
+                "Brain JSONL line %d rejected: field %r expected %s got %s",
+                line_num, field, expected, type(inst[field]).__name__,
+            )
+            return False
+    if inst["source"] not in _VALID_SOURCES:
+        logger.warning(
+            "Brain JSONL line %d rejected: unknown source %r", line_num, inst["source"]
+        )
+        return False
+    if inst["arch_type"] not in _VALID_ARCH_TYPES:
+        logger.warning(
+            "Brain JSONL line %d rejected: unknown arch_type %r", line_num, inst["arch_type"]
+        )
+        return False
+    composite = inst["aivss_composite"]
+    if not (0.0 <= composite <= 10.0):
+        logger.warning(
+            "Brain JSONL line %d rejected: aivss_composite %s out of range [0, 10]",
+            line_num, composite,
+        )
+        return False
+    # gt_confidence is optional (absent in pre-Engine-Item-5 StepShield instances)
+    if "gt_confidence" in inst:
+        confidence = inst["gt_confidence"]
+        if not isinstance(confidence, (int, float)) or not (0.0 <= confidence <= 1.0):
+            logger.warning(
+                "Brain JSONL line %d rejected: gt_confidence %s out of range [0, 1]",
+                line_num, confidence,
+            )
+            return False
+    return True
+
+
 def extract_instance(arch_dir: Path, rule_evaluator=None) -> Optional[dict]:
     """
     Extract one InstanceEntry from a corpus arch directory.
@@ -515,13 +569,20 @@ def build_brain(
     if instances_path.exists():
         raw_lines = [l.strip() for l in instances_path.read_text().splitlines() if l.strip()]
         seen: dict = {}
-        for line in raw_lines:
+        rejected = 0
+        for line_num, line in enumerate(raw_lines, 1):
             try:
                 inst = json.loads(line)
+                if not _validate_instance(inst, line_num):
+                    rejected += 1
+                    continue
                 seen[inst["arch_id"]] = (inst, line)
             except Exception:
-                pass
-        if len(seen) < len(raw_lines):
+                logger.warning("Brain JSONL line %d rejected: invalid JSON", line_num)
+                rejected += 1
+        if rejected:
+            logger.warning("Brain JSONL: rejected %d malformed/invalid line(s)", rejected)
+        if len(seen) < len(raw_lines) - rejected:
             instances_path.write_text("\n".join(l for _, l in seen.values()) + "\n")
             logger.info("Deduped brain JSONL: %d → %d entries", len(raw_lines), len(seen))
         for inst, _ in seen.values():

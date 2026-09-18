@@ -397,8 +397,8 @@ class TestBuildBrain:
 
     def test_writes_instances_jsonl_and_brain_json(self, tmp_path):
         self._populate_report_dir(tmp_path, [
-            ("arch1", "web", ["T1078"], ["mfa"]),
-            ("arch2", "web", ["T1059"], ["waf"]),
+            ("arch1", "web_app", ["T1078"], ["mfa"]),
+            ("arch2", "web_app", ["T1059"], ["waf"]),
             ("arch3", "agentic", ["AML.T0020"], ["rate_limiting"]),
         ])
         result = build_brain(report_dir=tmp_path, hold_out=frozenset())
@@ -408,7 +408,7 @@ class TestBuildBrain:
 
     def test_instances_jsonl_is_append_only(self, tmp_path):
         self._populate_report_dir(tmp_path, [
-            ("arch1", "web", ["T1078"], ["mfa"]),
+            ("arch1", "web_app", ["T1078"], ["mfa"]),
         ])
         build_brain(report_dir=tmp_path, hold_out=frozenset(), incremental=False)
         build_brain(report_dir=tmp_path, hold_out=frozenset(), incremental=False)  # explicit non-incremental re-appends
@@ -417,8 +417,8 @@ class TestBuildBrain:
 
     def test_incremental_skips_existing(self, tmp_path):
         self._populate_report_dir(tmp_path, [
-            ("arch1", "web", ["T1078"], ["mfa"]),
-            ("arch2", "web", ["T1059"], ["waf"]),
+            ("arch1", "web_app", ["T1078"], ["mfa"]),
+            ("arch2", "web_app", ["T1059"], ["waf"]),
         ])
         build_brain(report_dir=tmp_path, hold_out=frozenset(), incremental=False)
         result2 = build_brain(report_dir=tmp_path, hold_out=frozenset(), incremental=True)
@@ -426,20 +426,20 @@ class TestBuildBrain:
 
     def test_hold_out_excluded_from_patterns(self, tmp_path):
         self._populate_report_dir(tmp_path, [
-            ("arch_train", "web", ["T1078"], ["mfa"]),
-            ("arch_holdout", "unique_type", ["T9999"], ["special_control"]),
+            ("arch_train", "web_app", ["T1078"], ["mfa"]),
+            ("arch_holdout", "cloud", ["T9999"], ["special_control"]),
         ])
         result = build_brain(
             report_dir=tmp_path, hold_out=frozenset({"arch_holdout"})
         )
         brain = json.loads((tmp_path / "brain" / "ta_brain.json").read_text())
         pattern_types = {p["trigger"]["arch_type"] for p in brain["patterns"]}
-        assert "unique_type" not in pattern_types
+        assert "cloud" not in pattern_types
         assert result["hold_out_instances"] == 1
 
     def test_pattern_version_increments(self, tmp_path):
         self._populate_report_dir(tmp_path, [
-            ("arch1", "web", ["T1078"], ["mfa"]),
+            ("arch1", "web_app", ["T1078"], ["mfa"]),
         ])
         build_brain(report_dir=tmp_path, hold_out=frozenset())
         r2 = build_brain(report_dir=tmp_path, hold_out=frozenset())
@@ -447,7 +447,7 @@ class TestBuildBrain:
 
     def test_brain_json_has_required_keys(self, tmp_path):
         self._populate_report_dir(tmp_path, [
-            ("arch1", "web", ["T1078"], ["mfa"]),
+            ("arch1", "web_app", ["T1078"], ["mfa"]),
         ])
         build_brain(report_dir=tmp_path, hold_out=frozenset())
         brain = json.loads((tmp_path / "brain" / "ta_brain.json").read_text())
@@ -457,7 +457,7 @@ class TestBuildBrain:
 
     def test_skips_dirs_without_required_files(self, tmp_path):
         self._populate_report_dir(tmp_path, [
-            ("valid_arch", "web", ["T1078"], ["mfa"]),
+            ("valid_arch", "web_app", ["T1078"], ["mfa"]),
         ])
         # Create an invalid dir (no JSON files)
         (tmp_path / "invalid_dir").mkdir()
