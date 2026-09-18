@@ -645,6 +645,42 @@ class TestLangfuseSink:
         sink.emit(_event("run_complete", payload=payload))
         mock_trace.update.assert_called_once()
 
+    def test_run_complete_includes_arch_type_and_aivss_composite(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        mock_trace = MagicMock()
+        sink._trace = mock_trace
+        payload = {
+            "confidence": 80.0,
+            "errors": [],
+            "arch_type": "web_app",
+            "aivss_composite": 6.5,
+            "pipeline_wall_s": 12.3,
+        }
+        sink.emit(_event("run_complete", payload=payload))
+        call_kwargs = mock_trace.update.call_args
+        call_str = str(call_kwargs)
+        assert "web_app" in call_str
+        assert "6.5" in call_str
+
+    def test_run_start_includes_routing_mode_in_metadata_and_tags(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        mock_trace = MagicMock()
+        mock_lf.trace.return_value = mock_trace
+        payload = {"scenario": "full_moe", "architecture": "01_minimal", "routing_mode": "brain_fast"}
+        sink.emit(_event("run_start", run_id="run_abc", payload=payload))
+        call_kwargs = mock_lf.trace.call_args
+        call_str = str(call_kwargs)
+        assert "brain_fast" in call_str
+
+    def test_run_start_empty_routing_mode_no_tags(self):
+        sink, mock_lf = self._sink_with_mock_lf()
+        mock_trace = MagicMock()
+        mock_lf.trace.return_value = mock_trace
+        payload = {"scenario": "api_only", "architecture": "01_minimal"}
+        sink.emit(_event("run_start", run_id="run_xyz", payload=payload))
+        call_str = str(mock_lf.trace.call_args)
+        assert "tags=[]" in call_str
+
     def test_flush_calls_langfuse_flush(self):
         sink, mock_lf = self._sink_with_mock_lf()
         sink.flush()

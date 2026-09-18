@@ -220,13 +220,16 @@ class LangfuseSink(BaseSink):
         try:
             p = event.payload
             if event.event_type == "run_start":
+                _routing_mode = p.get("routing_mode", "")
                 self._trace = self._lf.trace(
                     id=event.run_id,
                     name="threat_assessment",
                     metadata={
                         "scenario": p.get("scenario", ""),
                         "architecture": p.get("architecture", ""),
+                        "routing_mode": _routing_mode,
                     },
+                    tags=[_routing_mode] if _routing_mode else [],
                 )
                 self._current_trace = self._trace
 
@@ -332,10 +335,17 @@ class LangfuseSink(BaseSink):
                 )
 
             elif event.event_type == "run_complete" and self._trace:
-                self._trace.update(output={
-                    "confidence": p.get("confidence"),
-                    "errors": p.get("errors", []),
-                })
+                self._trace.update(
+                    output={
+                        "confidence": p.get("confidence"),
+                        "errors": p.get("errors", []),
+                    },
+                    metadata={
+                        "arch_type": p.get("arch_type", ""),
+                        "aivss_composite": p.get("aivss_composite"),
+                        "pipeline_wall_s": p.get("pipeline_wall_s"),
+                    },
+                )
 
         except Exception as exc:
             logger.warning(f"LangfuseSink emit failed (non-fatal): {exc}")

@@ -281,6 +281,7 @@ async def analyze_with_progress(
                 include_validation=include_validation,
                 architecture_name=clean_arch_name,
                 agent_models=_agent_models or None,
+                routing_mode=_routing.mode,
             )
         )
 

@@ -618,6 +618,7 @@ class ThreatAssessorHarness:
                     payload={
                         "scenario": self.scenario,
                         "architecture": ctx.get("architecture_name", ""),
+                        "routing_mode": ctx.get("routing_mode", ""),
                     },
                 ))
         except Exception:
@@ -757,6 +758,8 @@ class ThreatAssessorHarness:
                         "confidence": ctx.get("confidence"),
                         "errors": ctx.errors,
                         "pipeline_wall_s": _pipeline_wall,
+                        "arch_type": ctx.get("arch_metadata", {}).get("arch_type", ""),
+                        "aivss_composite": getattr(ctx.get("_aivss_score"), "overall", None),
                     },
                 ))
                 _broker.flush()
