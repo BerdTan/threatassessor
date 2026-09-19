@@ -64,7 +64,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
-os.environ.setdefault("LANGFUSE_SKIP", "1")  # protect free-tier quota; override with LANGFUSE_SKIP=0
+os.environ.setdefault("LANGFUSE_SKIP", "1")  # protect free-tier quota; override with --langfuse flag
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -654,7 +654,12 @@ def main():
     ap.add_argument("--output",   default="bench_results")
     ap.add_argument("--timeout",  type=int, default=1500)
     ap.add_argument("--report-dir", default=None)
+    ap.add_argument("--langfuse",  action="store_true",
+                    help="Enable Langfuse tracing (overrides LANGFUSE_SKIP default)")
     args = ap.parse_args()
+
+    if args.langfuse:
+        os.environ["LANGFUSE_SKIP"] = "0"
 
     # --combine: merge existing summaries and exit
     if args.combine:

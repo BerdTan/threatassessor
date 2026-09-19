@@ -195,6 +195,7 @@ async def _run_expert_review(
             critic_mode=critic_mode,
             architecture_name=arch_name,
             agent_models=_agent_models,
+            metadata={"routing_mode": "full_moe"},
         )
 
         harness = AsyncThreatAssessorHarness(scenario=ScenarioConfig.FULL_MOE)
