@@ -22,6 +22,7 @@ NodeType = Literal[
 ]
 
 SourceTrust = Literal["verified", "unverified", "adversarial"]
+NodeProvenance = Literal["adapter", "synthetic", "brain_enriched", "taclaw"]
 
 _MMD_SHAPE: Dict[str, tuple[str, str]] = {
     "service":  ("[", "]"),
@@ -53,6 +54,8 @@ class ArchNode(BaseModel):
     node_type: NodeType = "unknown"
     trust_zone: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    # Engine Item 10.1: per-node origin tag set by the producing adapter/generator
+    provenance: Optional[str] = None
 
 
 class ArchEdge(BaseModel):
@@ -75,6 +78,8 @@ class ArchitectureGraph(BaseModel):
     source_component_count: int = 0
     # provenance trust level set by the adapter; "adversarial" blocks ingest
     source_trust: SourceTrust = "unverified"
+    # Engine Item 10.1: pipeline mode that analyzed this graph (set post-routing)
+    pipeline_mode: Optional[str] = None
 
     def to_mmd(self) -> str:
         """Emit a valid Mermaid flowchart LR diagram from this graph."""

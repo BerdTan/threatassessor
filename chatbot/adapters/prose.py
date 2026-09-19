@@ -124,9 +124,9 @@ def _fallback_graph(text: str, title: str) -> Tuple[List[ArchNode], List[ArchEdg
             nid = keyword.replace(" ", "_")
             if nid not in seen:
                 seen.add(nid)
-                nodes.append(ArchNode(id=nid, label=keyword.title(), node_type=node_type))  # type: ignore[arg-type]
+                nodes.append(ArchNode(id=nid, label=keyword.title(), node_type=node_type, provenance="adapter"))  # type: ignore[arg-type]
     if not nodes:
-        nodes = [ArchNode(id="system", label=title, node_type="service")]
+        nodes = [ArchNode(id="system", label=title, node_type="service", provenance="adapter")]
     return nodes, []
 
 
@@ -143,6 +143,7 @@ def _parse_llm_response(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
             id=str(n.get("id", f"node_{len(nodes)}")),
             label=str(n.get("label", n.get("id", "Component"))),
             node_type=ntype,  # type: ignore[arg-type]
+            provenance="adapter",
         ))
 
     node_ids = {n.id for n in nodes}

@@ -51,7 +51,7 @@ def _parse_openapi(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
         url = server.get("url", "")
         if url and not url.startswith("/") and "localhost" not in url and "127.0.0.1" not in url:
             node_id = f"server_{len(nodes)}"
-            nodes[node_id] = ArchNode(id=node_id, label=url[:60], node_type="external")
+            nodes[node_id] = ArchNode(id=node_id, label=url[:60], node_type="external", provenance="adapter")
 
     # Security schemes → "service" nodes (auth services)
     sec_schemes = (
@@ -67,6 +67,7 @@ def _parse_openapi(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
             label=f"{scheme_name} ({scheme_type})",
             node_type="service",
             metadata={"scheme_type": scheme_type},
+            provenance="adapter",
         )
         auth_nodes[scheme_name] = node_id
 
@@ -77,7 +78,7 @@ def _parse_openapi(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
         if prefix not in path_groups:
             node_id = f"svc_{prefix.strip('/') or 'root'}"
             label = _label_from_path(prefix) + " Service"
-            nodes[node_id] = ArchNode(id=node_id, label=label, node_type="service")
+            nodes[node_id] = ArchNode(id=node_id, label=label, node_type="service", provenance="adapter")
             path_groups[prefix] = node_id
 
         svc_id = path_groups[prefix]
@@ -115,6 +116,7 @@ def _parse_openapi(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
                     id=node_id,
                     label=f"{schema_name} (data)",
                     node_type="database",
+                    provenance="adapter",
                 )
 
     return list(nodes.values()), edges
@@ -137,7 +139,7 @@ def _extract_schema_edges(
         node_id = f"schema_{schema_name}"
         if node_id not in nodes:
             nodes[node_id] = ArchNode(
-                id=node_id, label=f"{schema_name} (data)", node_type="database"
+                id=node_id, label=f"{schema_name} (data)", node_type="database", provenance="adapter",
             )
         if source_id != node_id and (source_id, node_id) not in seen:
             seen.add((source_id, node_id))
@@ -162,6 +164,7 @@ def _parse_asyncapi(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
             id=node_id,
             label=f"{server_name} ({protocol})" if protocol else server_name,
             node_type="external",
+            provenance="adapter",
         )
 
     # Channels → queue nodes
@@ -171,12 +174,13 @@ def _parse_asyncapi(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
             id=node_id,
             label=channel_name,
             node_type="queue",
+            provenance="adapter",
         )
 
     # Components schemas → data nodes
     for schema_name in (data.get("components", {}).get("schemas") or {}):
         node_id = f"schema_{schema_name}"
-        nodes[node_id] = ArchNode(id=node_id, label=f"{schema_name} (schema)", node_type="database")
+        nodes[node_id] = ArchNode(id=node_id, label=f"{schema_name} (schema)", node_type="database", provenance="adapter")
 
     return list(nodes.values()), edges
 

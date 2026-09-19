@@ -115,6 +115,7 @@ def _parse_template(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
             label=_short_label(logical_id, cf_type),
             node_type=_cf_type_to_node_type(cf_type),
             metadata={"cf_type": cf_type},
+            provenance="adapter",
         )
         resources[logical_id] = (cf_type, node)
 

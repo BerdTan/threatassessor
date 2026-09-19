@@ -111,6 +111,7 @@ def _parse_tf(content: str) -> Tuple[List[ArchNode], List[ArchEdge], int]:
             id=key,
             label=_human_label(rtype, rname),
             node_type=_resource_type_to_node_type(rtype),
+            provenance="adapter",
         )
         for key, (rtype, rname) in resources.items()
     ]
@@ -173,6 +174,7 @@ def _parse_plan_json(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge], int]:
             id=addr,
             label=_human_label(rtype, rname),
             node_type=_resource_type_to_node_type(rtype),
+            provenance="adapter",
         )
 
     # Also from planned_values if resource_changes is empty
@@ -187,6 +189,7 @@ def _parse_plan_json(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge], int]:
             id=addr,
             label=_human_label(rtype, rname),
             node_type=_resource_type_to_node_type(rtype),
+            provenance="adapter",
         )
 
     nodes = list(resources.values())
@@ -264,6 +267,7 @@ def _parse_hcl2(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge], int]:
                 id=key,
                 label=_human_label(rtype, rname),
                 node_type=_resource_type_to_node_type(rtype),
+                provenance="adapter",
             )
     return list(resources.values()), [], len(resources)
 

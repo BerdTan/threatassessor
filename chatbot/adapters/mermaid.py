@@ -51,6 +51,7 @@ class MermaidAdapter(BaseAdapter):
                     id=_safe_id(nid),
                     label=ndata.get("label", nid),
                     node_type=_shape_to_node_type(ndata.get("shape", "rect")),
+                    provenance="adapter",
                 )
                 for nid, ndata in parsed.get("nodes", {}).items()
             ]
@@ -64,7 +65,7 @@ class MermaidAdapter(BaseAdapter):
             ]
         except Exception:
             # Minimal fallback: single node
-            nodes = [ArchNode(id="arch", label=Path(filename).stem or "architecture", node_type="service")]
+            nodes = [ArchNode(id="arch", label=Path(filename).stem or "architecture", node_type="service", provenance="adapter")]
             edges = []
 
         title = Path(filename).stem or "mermaid"

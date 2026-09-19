@@ -45,12 +45,16 @@ def _read_ocsf(path: Path) -> List[Dict]:
 def _build_architecture(arch_name: str, gt: Dict) -> Dict:
     meta = gt.get("metadata", {})
     return {
-        "name":       arch_name,
-        "type":       meta.get("architecture_type", "unknown"),
-        "node_count": meta.get("node_count", 0),
-        "edge_count": meta.get("edge_count", 0),
-        "ssp_profile": meta.get("ssp_profile", ""),
-        "run_id":     meta.get("run_id", ""),
+        "name":         arch_name,
+        "type":         meta.get("architecture_type", "unknown"),
+        "node_count":   meta.get("node_count", 0),
+        "edge_count":   meta.get("edge_count", 0),
+        "ssp_profile":  meta.get("ssp_profile", ""),
+        "run_id":       meta.get("run_id", ""),
+        # Engine Item 10.3: propagate pipeline provenance into export bundle
+        "generated_by": meta.get("generated_by", "parser"),
+        "pipeline_mode": meta.get("routing_mode") or meta.get("pipeline_mode") or "api_only",
+        "source_trust": meta.get("source_trust", "unverified"),
     }
 
 
@@ -82,12 +86,16 @@ def _build_assessment(gt: Dict) -> Dict:
     techs = gt.get("techniques", [])
     controls = gt.get("control_recommendations", [])
     val = gt.get("validation", {}) or gt.get("validation_report", {}) or {}
+    meta = gt.get("metadata", {})
 
     return {
         "risk_score_before":   gt.get("residual_risk_before", {}) or None,
         "risk_score_after":    gt.get("residual_risk_after", {})  or None,
         "confidence":          gt.get("confidence"),
         "val_pct":             val.get("val_pct"),
+        # Engine Item 10.3: pipeline provenance on assessment findings
+        "pipeline_mode":       meta.get("routing_mode") or meta.get("pipeline_mode") or "api_only",
+        "generated_by":        meta.get("generated_by", "parser"),
         "attack_paths": [
             {
                 "id":         ap.get("id"),

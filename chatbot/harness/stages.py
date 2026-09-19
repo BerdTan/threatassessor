@@ -70,6 +70,16 @@ class AnalysisStage(PipelineStage):
         ctx["confidence"] = result.data.get("confidence", 0)
         ctx["patterns_applied"] = result.data.get("patterns_applied", [])
 
+        # ── Engine Item 10.2: propagate routing/trust taint into ground_truth ──
+        # routing_mode + source_trust flow in from extra_ctx via harness.run(**kwargs).
+        # Stamped into metadata so ReportStage writes them to ground_truth.json on disk,
+        # making them available to extract_instance() and ta_exporter at read time.
+        _gt_meta = ctx["ground_truth"].setdefault("metadata", {})
+        if ctx.get("routing_mode"):
+            _gt_meta.setdefault("routing_mode", ctx["routing_mode"])
+        if ctx.get("_source_trust"):
+            _gt_meta.setdefault("source_trust", ctx["_source_trust"])
+
         if cb := kw.get("progress_callback"):
             cb("analysis", 55, "Threat analysis complete")
 

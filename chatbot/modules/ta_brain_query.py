@@ -314,6 +314,8 @@ def query_brain(
                 had_match=cached_response.get("had_match", False),
                 cache_route="cache_hit",
             )
+            # Engine Item 10.4: cross-agent provenance for TACO-produced findings
+            _cap = {"source": "brain", "query_mode": "infer", "caller_type": caller_type, "data_origin": "cache"}
             return {
                 "mode": "infer",
                 "arch_name": arch_name,
@@ -321,6 +323,7 @@ def query_brain(
                 "arch_type": resolved_type,
                 "pattern_version": pattern_version,
                 "cache_route": "cache_hit",
+                "cross_agent_provenance": _cap,
                 **cached_response,
             }
 
@@ -342,6 +345,8 @@ def query_brain(
             cache_route=miss_label,
         )
 
+        # Engine Item 10.4: cross-agent provenance for TACO-produced findings
+        _kgp = {"source": "brain", "query_mode": "infer", "caller_type": caller_type, "data_origin": "kg_match"}
         return {
             "mode": "infer",
             "arch_name": arch_name,
@@ -349,6 +354,7 @@ def query_brain(
             "arch_type": resolved_type,
             "pattern_version": pattern_version,
             "cache_route": miss_label,
+            "cross_agent_provenance": _kgp,
             **result,
         }
 
@@ -371,6 +377,7 @@ def query_brain(
             "pattern_version": brain.get("pattern_version", 0),
             "gap_count": len(gaps),
             "gaps": gaps,
+            "cross_agent_provenance": {"source": "brain", "query_mode": "gaps", "caller_type": caller_type},
         }
 
     # ── patterns mode ─────────────────────────────────────────────────────────
@@ -394,6 +401,7 @@ def query_brain(
             "pattern_version": brain.get("pattern_version", 0),
             "pattern_count": len(patterns),
             "patterns": patterns,
+            "cross_agent_provenance": {"source": "brain", "query_mode": "patterns", "caller_type": caller_type},
         }
 
     return {"error": "Unreachable"}

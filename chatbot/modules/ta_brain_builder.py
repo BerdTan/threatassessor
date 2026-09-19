@@ -363,6 +363,9 @@ def extract_instance(arch_dir: Path, rule_evaluator=None) -> Optional[dict]:
         except Exception as exc:
             logger.debug("Rule evaluation skipped for %s: %s", arch_dir.name, exc)
 
+    # Engine Item 10.2: carry pipeline mode into brain instance for taint tracking
+    pipeline_provenance = meta.get("routing_mode") or "unknown"
+
     return {
         "arch_id": arch_dir.name,
         "arch_type": arch_type,
@@ -378,6 +381,7 @@ def extract_instance(arch_dir: Path, rule_evaluator=None) -> Optional[dict]:
         "fired_detect_rules": fired_detect_rules,
         "run_ts": run_ts,
         "source": "real",
+        "pipeline_provenance": pipeline_provenance,
     }
 
 
