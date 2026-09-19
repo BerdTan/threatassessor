@@ -56,6 +56,7 @@ os.environ.setdefault("LANGFUSE_SKIP", "1")  # safety net; --langfuse overrides
 # brain_fast: D5=1.0, 9+ hits; api_only: 0 brain hits; full_moe: D5=0.154
 DEFAULT_ARCHS = ["03_aws_3tier", "07_gcp_serverless", "21_agentic_ai_system"]
 
+MMD_DIR         = ROOT / "tests" / "data" / "architectures"
 API_URL_DEFAULT = "http://localhost:8000"
 STREAM_TIMEOUT  = 300   # seconds to wait for SSE complete event per arch
 LANGFUSE_WAIT   = 8     # seconds after run before querying Langfuse (flush delay)
@@ -91,54 +92,75 @@ def _langfuse_creds() -> tuple[str, str, str]:
 
 def _run_via_stream(api_url: str, arch: str, api_key: str, timeout: int) -> dict:
     """
-    POST to /api/v1/analyze/stream (SSE) and drain until 'complete' event.
-    smart_router assigns routing mode; Langfuse captures the trace.
+    POST to /api/v1/analyze-stream (SSE) as multipart form with the .mmd file.
+    smart_router derives arch name from filename → assigns routing mode.
+    Langfuse captures the trace.
 
     Returns dict with keys: routing_mode, wall_s, moe_tokens, aivss_composite, error.
     """
     import requests
 
+    mmd_path = MMD_DIR / f"{arch}.mmd"
+    if not mmd_path.exists():
+        return {"arch": arch, "routing_mode": "unknown", "wall_s": 0,
+                "moe_tokens": 0, "aivss_composite": None,
+                "error": f"MMD file not found: {mmd_path}"}
+
     headers = {"TM-API-KEY": api_key, "Accept": "text/event-stream"}
-    body    = {"arch_name": arch}
 
     t0 = time.time()
-    routing_mode   = None
-    moe_tokens     = 0
+    routing_mode    = None
+    moe_tokens      = 0
     aivss_composite = None
-    error          = None
+    error           = None
+
+    # Routing mode is authoritative from smart_router (set before run)
+    routing_mode = _predict_routing(arch)
 
     try:
-        with requests.post(
-            f"{api_url}/api/v1/analyze/stream",
-            json=body,
-            headers=headers,
-            stream=True,
-            timeout=(10, timeout),
-        ) as resp:
-            resp.raise_for_status()
-            for raw_line in resp.iter_lines(decode_unicode=True):
-                if not raw_line or not raw_line.startswith("data:"):
-                    continue
-                try:
-                    payload = json.loads(raw_line[5:].strip())
-                except json.JSONDecodeError:
-                    continue
+        with mmd_path.open("rb") as fh:
+            files = {"architecture_file": (f"{arch}.mmd", fh, "text/plain")}
+            with requests.post(
+                f"{api_url}/api/v1/analyze-stream",
+                files=files,
+                headers=headers,
+                stream=True,
+                timeout=(10, timeout),
+            ) as resp:
+                resp.raise_for_status()
+                # SSE streams interleave "event: <type>" and "data: <json>" lines.
+                # The final payload has a "success" key (not a "type" field).
+                current_event = ""
+                for raw_line in resp.iter_lines(decode_unicode=True):
+                    if not raw_line:
+                        current_event = ""
+                        continue
+                    if raw_line.startswith("event:"):
+                        current_event = raw_line[6:].strip()
+                        continue
+                    if not raw_line.startswith("data:"):
+                        continue
+                    try:
+                        payload = json.loads(raw_line[5:].strip())
+                    except json.JSONDecodeError:
+                        continue
 
-                etype = payload.get("type", "")
+                    # Final event: has "success" key
+                    if "success" in payload:
+                        wall_ms = payload.get("execution_time_ms", 0)
+                        if wall_ms:
+                            # Override wall time with server-reported value
+                            pass  # will override below
+                        aivss_composite = (
+                            (payload.get("governance_signals") or {})
+                            .get("aivss", {}).get("overall", {}).get("composite")
+                        )
+                        break
 
-                if etype == "complete":
-                    routing_mode    = payload.get("routing_mode") or payload.get("mode")
-                    moe_tokens      = payload.get("moe_total_tokens", 0) or 0
-                    aivss_composite = (
-                        payload.get("aivss_composite")
-                        or (payload.get("governance_signals") or {}).get("aivss", {})
-                              .get("overall", {}).get("composite")
-                    )
-                    break
-
-                if etype == "error":
-                    error = payload.get("message", "unknown error")
-                    break
+                    # Error event
+                    if current_event == "error" or payload.get("error"):
+                        error = payload.get("message") or payload.get("error") or "unknown"
+                        break
 
     except Exception as exc:
         error = str(exc)
@@ -255,11 +277,12 @@ def _print_table(results: list[dict]) -> None:
         elif mode == "full_moe":
             savings = "baseline"
 
-        mode_colour = GREEN if mode == "brain_fast" else (BLUE if mode == "api_only" else YELLOW)
-        err_suffix  = f"  {_c('ERR: '+str(err)[:40], RED)}" if err else ""
+        mode_colour  = GREEN if mode == "brain_fast" else (BLUE if mode == "api_only" else YELLOW)
+        err_suffix   = f"  {_c('ERR: '+str(err)[:40], RED)}" if err else ""
+        mode_display = f"{_c(mode, mode_colour)}"
 
         print(
-            f"{arch:<35} {_c(mode, mode_colour):<12+len(mode_colour)+len(RESET)} "
+            f"{arch:<35} {mode_display:<{12 + len(mode_colour) + len(RESET)}} "
             f"{str(wall):>7} {str(tokens):>8} "
             f"{str(round(aivss,2) if aivss else '—'):>6} {savings:>8}"
             f"{err_suffix}"

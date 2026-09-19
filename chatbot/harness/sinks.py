@@ -183,6 +183,7 @@ class LangfuseSink(BaseSink):
         self._trace: Optional[Any] = None
         self._current_trace: Optional[Any] = None  # alias for EventDetectorStage
         self._lf: Optional[Any] = None
+        self._routing_mode: str = ""  # preserved across trace.update() calls
         self._init_client(config)
 
     def _init_client(self, config: Dict[str, Any]) -> None:
@@ -221,6 +222,7 @@ class LangfuseSink(BaseSink):
             p = event.payload
             if event.event_type == "run_start":
                 _routing_mode = p.get("routing_mode", "")
+                self._routing_mode = _routing_mode  # persist for subsequent trace.update() calls
                 self._trace = self._lf.trace(
                     id=event.run_id,
                     name="threat_assessment",
@@ -267,6 +269,7 @@ class LangfuseSink(BaseSink):
 
             elif event.event_type == "governance_complete" and self._trace:
                 self._trace.update(metadata={
+                    "routing_mode":     self._routing_mode,  # re-include; trace.update replaces metadata
                     "governance_risk_level": p.get("overall_risk_level", "LOW"),
                     "D1_exploitation":  p.get("D1", "LOW"),
                     "D2_manipulation":  p.get("D2", "LOW"),
@@ -357,7 +360,8 @@ class LangfuseSink(BaseSink):
                         "errors": p.get("errors", []),
                     },
                     metadata={
-                        "arch_type": p.get("arch_type", ""),
+                        "routing_mode":    self._routing_mode,  # re-include; trace.update replaces metadata
+                        "arch_type":       p.get("arch_type", ""),
                         "aivss_composite": p.get("aivss_composite"),
                         "pipeline_wall_s": p.get("pipeline_wall_s"),
                     },
