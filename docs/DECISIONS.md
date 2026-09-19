@@ -4,6 +4,27 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 84 — 2026-09-19
+
+### Entry 177 — Engine Item 10: Propagation/taint layer
+
+**What:** Four-sub-item provenance tracking layer that propagates pipeline origin through the entire analysis chain — from adapter to brain ingest to export bundle to cross-agent findings.
+
+**Design decisions:**
+- **10.1 Per-node provenance + graph pipeline_mode**: Added `NodeProvenance = Literal["adapter", "synthetic", "brain_enriched", "taclaw"]` type alias and `ArchNode.provenance: Optional[str] = None` field. All five adapters (mermaid, terraform, cloudformation, openapi, prose) set `provenance="adapter"` on every node they produce. Added `ArchitectureGraph.pipeline_mode: Optional[str] = None` for callers that know the routing mode at graph construction time (set to None by adapters; can be set post-routing by callers).
+- **10.2 Brain ingest taint**: `AnalysisStage._logic()` now stamps `routing_mode` and `source_trust` from ctx into `ctx["ground_truth"]["metadata"]` after service call. Since `ReportStage` writes the in-memory ground_truth dict to `ground_truth.json`, these fields land on disk automatically without touching the service layer. `extract_instance()` in `ta_brain_builder.py` reads `metadata.routing_mode` and stores it as `pipeline_provenance` in each brain instance JSONL entry. Absent routing_mode → `"unknown"`.
+- **10.3 TAExportBundle provenance**: `_build_architecture()` in `ta_exporter.py` now includes `generated_by`, `pipeline_mode`, and `source_trust` from ground_truth metadata. `_build_assessment()` adds `pipeline_mode` and `generated_by`. Both default gracefully: `pipeline_mode` → `"api_only"`, `generated_by` → `"parser"`, `source_trust` → `"unverified"`.
+- **10.4 Cross-agent provenance**: `query_brain()` in `ta_brain_query.py` now returns `cross_agent_provenance: {source, query_mode, caller_type, data_origin}` in all three modes (infer/gaps/patterns). Cache hits tag `data_origin="cache"`, KG matches tag `data_origin="kg_match"`. MCP `query_ta_brain` and `run_taco_agent` tools inherit this via the REST API layer.
+
+**Alternatives rejected:**
+- Patching ground_truth.json from `AnalysisStage` via direct file write was considered but rejected — the service writes the file via `generate_report_package`, so patching the in-memory dict is cleaner and avoids a double-write race.
+- Adding `routing_mode` as a formal parameter to `ThreatAnalysisService.execute()` was considered but rejected — the service is infrastructure-level and should not know about routing policy; the harness context is the right carrier.
+- Making `ArchNode.provenance` a strict Literal type (rejecting other values) was considered but rejected — future generators (e.g. graph-RAG enrichment) may introduce new provenance tags not yet in the vocabulary; `Optional[str]` with documented values is more extensible.
+
+**Commits:** (this session)
+
+---
+
 ## Session 83 — 2026-09-19
 
 ### Entry 176 — Engine Item 9: Pre-flight authority layer
