@@ -68,6 +68,9 @@ class ArchitectureGraph(BaseModel):
     edges: List[ArchEdge] = Field(default_factory=list)
     source_format: str = "unknown"      # "terraform" | "cloudformation" | "openapi" | "prose" | "mmd"
     adapter_metadata: Dict[str, Any] = Field(default_factory=dict)
+    fidelity: float = Field(default=1.0, ge=0.0, le=1.0)
+    # raw count of source entities before filtering (resources / paths / etc.)
+    source_component_count: int = 0
 
     def to_mmd(self) -> str:
         """Emit a valid Mermaid flowchart LR diagram from this graph."""

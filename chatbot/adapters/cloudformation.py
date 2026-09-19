@@ -186,6 +186,7 @@ class CloudFormationAdapter(BaseAdapter):
         if not isinstance(data, dict):
             data = {}
 
+        raw_count = len(data.get("Resources", {}))
         nodes, edges = _parse_template(data)
         title = (
             data.get("Description")
@@ -193,12 +194,15 @@ class CloudFormationAdapter(BaseAdapter):
             or Path(filename).stem
             or "cloudformation"
         )
+        fidelity = 1.0 if raw_count == 0 else min(1.0, len(nodes) / raw_count)
 
         return ArchitectureGraph(
             title=str(title)[:80],
             nodes=nodes,
             edges=edges,
             source_format="cloudformation",
+            fidelity=fidelity,
+            source_component_count=raw_count,
             adapter_metadata={
                 "filename": filename,
                 "template_version": data.get("AWSTemplateFormatVersion", ""),

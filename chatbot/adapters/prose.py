@@ -185,11 +185,17 @@ class ProseAdapter(BaseAdapter):
             nodes, edges = _fallback_graph(text, title)
             method = "keyword_fallback"
 
+        # Prose fidelity: LLM extraction retains ~80% of structural intent;
+        # keyword fallback is best-effort at ~30%.
+        fidelity = 0.8 if method == "llm" else 0.3
+
         return ArchitectureGraph(
             title=title,
             nodes=nodes,
             edges=edges,
             source_format="prose",
+            fidelity=fidelity,
+            source_component_count=len(nodes),
             adapter_metadata={
                 "filename": filename,
                 "extraction_method": method,

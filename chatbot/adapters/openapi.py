@@ -217,16 +217,28 @@ class OpenAPIAdapter(BaseAdapter):
             nodes, edges = _parse_asyncapi(data)
             fmt = "asyncapi"
             title = data.get("info", {}).get("title", Path(filename).stem or "asyncapi")
+            raw_count = (
+                len(data.get("channels", {}))
+                + len((data.get("components") or {}).get("schemas", {}))
+            )
         else:
             nodes, edges = _parse_openapi(data)
             fmt = "openapi"
             title = data.get("info", {}).get("title", Path(filename).stem or "openapi")
+            raw_count = (
+                len(data.get("paths", {}))
+                + len((data.get("components") or {}).get("schemas", {}))
+                + len((data.get("components") or {}).get("securitySchemes", {}))
+            )
 
+        fidelity = 1.0 if raw_count == 0 else min(1.0, len(nodes) / raw_count)
         return ArchitectureGraph(
             title=str(title)[:80],
             nodes=nodes,
             edges=edges,
             source_format=fmt,
+            fidelity=fidelity,
+            source_component_count=raw_count,
             adapter_metadata={
                 "filename": filename,
                 "version": data.get("openapi") or data.get("swagger") or data.get("asyncapi", ""),

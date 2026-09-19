@@ -114,6 +114,8 @@ async def analyze_artifact(
         "node_count": len(graph.nodes),
         "edge_count": len(graph.edges),
         "arch_name": _derived_arch,
+        "fidelity": graph.fidelity,
+        "source_component_count": graph.source_component_count,
         **graph.adapter_metadata,
     }
 

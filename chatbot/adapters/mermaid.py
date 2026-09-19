@@ -73,6 +73,8 @@ class MermaidAdapter(BaseAdapter):
             nodes=nodes,
             edges=edges,
             source_format="mmd",
+            fidelity=1.0,
+            source_component_count=len(nodes),
             adapter_metadata={
                 "filename": filename,
                 "node_count": len(nodes),

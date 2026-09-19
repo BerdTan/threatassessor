@@ -57,6 +57,9 @@ ARCH_TYPE_OVERRIDES: dict = {
 # same arch_type to become part of a pattern.
 MIN_EVIDENCE = 2
 
+# Corpus drift: instances with drift_score >= this should be re-run before ingest.
+DRIFT_THRESHOLD = 0.30
+
 
 # ── Topology signature ────────────────────────────────────────────────────────
 
@@ -99,18 +102,55 @@ def compute_hub_nodes(parsed_edges: list, parsed_nodes: dict, top_n: int = 3) ->
 
 class BrainGuardian:
     """
-    Two-layer flywheel protector:
-      1. ingest_guard   — hard block on circular ingest (brain_fast → corpus)
-      2. flywheel_health — stagnation monitor for /check-brain skill
+    Three-layer flywheel protector (Engine Items 6.1, 7.2, 7.3):
+      1. ingest_guard    — hard block on circular ingest (brain_fast → corpus)
+      2. quality_guard   — fidelity gate + drift-stale detection
+      3. flywheel_health — stagnation monitor for /check-brain skill
     """
 
     BLOCKED_SOURCES: frozenset = frozenset({"brain_fast"})
+    FIDELITY_THRESHOLD: float = 0.50   # adapter fidelity < this → reject
+    DRIFT_THRESHOLD: float = DRIFT_THRESHOLD  # re-uses module constant
 
     def ingest_guard(self, ground_truth: dict) -> tuple:
         """Return (True, 'ok') or (False, reason) for an instance being ingested."""
         source = ground_truth.get("metadata", {}).get("generated_by", "")
         if source in self.BLOCKED_SOURCES:
             return False, f"circular ingest blocked: generated_by={source}"
+        return True, "ok"
+
+    def quality_guard(
+        self,
+        current_instance: dict,
+        fidelity: float = 1.0,
+        instances_path: Optional[Path] = None,
+    ) -> tuple:
+        """
+        Return (True, 'ok') or (False, reason) based on adapter fidelity and
+        corpus drift against the last ingested instance.
+
+        fidelity  — ArchitectureGraph.fidelity from the adapter (default 1.0 for
+                    MMD/direct corpus entries that don't go through an adapter).
+        instances_path — path to ta_brain_instances.jsonl; defaults to standard
+                    report/brain location when None.
+        """
+        if fidelity < self.FIDELITY_THRESHOLD:
+            return False, (
+                f"adapter fidelity {fidelity:.2f} below threshold {self.FIDELITY_THRESHOLD}"
+            )
+
+        arch_id = current_instance.get("arch_id", "")
+        if arch_id and instances_path is not None:
+            last = get_last_brain_instance(arch_id, instances_path)
+            if last is not None:
+                drift = compute_drift_score(current_instance, last)
+                current_instance["_drift_score"] = drift  # carry for caller visibility
+                if drift >= self.DRIFT_THRESHOLD:
+                    return False, (
+                        f"corpus drift {drift:.3f} ≥ threshold {self.DRIFT_THRESHOLD} "
+                        f"— re-run full pipeline before re-ingesting {arch_id}"
+                    )
+
         return True, "ok"
 
     def flywheel_health(self) -> dict:
@@ -339,6 +379,68 @@ def extract_instance(arch_dir: Path, rule_evaluator=None) -> Optional[dict]:
         "run_ts": run_ts,
         "source": "real",
     }
+
+
+# ── Corpus drift signal (Engine Item 7.2) ─────────────────────────────────────
+
+_DRIFT_WEIGHTS = {
+    "node_delta":       0.50,
+    "arch_type_change": 0.30,
+    "ttp_delta":        0.20,
+}
+
+
+def get_last_brain_instance(arch_id: str, instances_path: Path) -> Optional[dict]:
+    """Return the most recent ingested instance for arch_id, or None."""
+    if not instances_path.exists():
+        return None
+    last: Optional[dict] = None
+    try:
+        for line in instances_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                inst = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if inst.get("arch_id") == arch_id:
+                last = inst  # last-write-wins
+    except Exception as exc:
+        logger.debug("get_last_brain_instance(%s): %s", arch_id, exc)
+    return last
+
+
+def compute_drift_score(current_instance: dict, last_instance: dict) -> float:
+    """
+    Score how much an arch has drifted since its last brain ingest.
+
+    Returns 0.0 (no drift) → 1.0 (completely changed). Scores ≥ DRIFT_THRESHOLD
+    indicate the instance should be re-ingested before the next brain build.
+
+    Components (see _DRIFT_WEIGHTS):
+      node_delta       — fractional change in node count
+      arch_type_change — 1.0 if arch_type flipped, else 0.0
+      ttp_delta        — fractional change in technique count
+    """
+    last_nodes = max(1, last_instance.get("node_count", 1))
+    curr_nodes = max(0, current_instance.get("node_count", 0))
+    node_delta = min(1.0, abs(curr_nodes - last_nodes) / last_nodes)
+
+    arch_type_changed = float(
+        current_instance.get("arch_type", "") != last_instance.get("arch_type", "")
+    )
+
+    last_ttps = max(1, len(last_instance.get("techniques", [])))
+    curr_ttps = max(0, len(current_instance.get("techniques", [])))
+    ttp_delta = min(1.0, abs(curr_ttps - last_ttps) / last_ttps)
+
+    score = (
+        _DRIFT_WEIGHTS["node_delta"]       * node_delta
+        + _DRIFT_WEIGHTS["arch_type_change"] * arch_type_changed
+        + _DRIFT_WEIGHTS["ttp_delta"]        * ttp_delta
+    )
+    return round(min(1.0, score), 4)
 
 
 # ── Distiller ─────────────────────────────────────────────────────────────────

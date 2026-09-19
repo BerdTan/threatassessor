@@ -99,7 +99,7 @@ _DEPENDS_ON = re.compile(
 )
 
 
-def _parse_tf(content: str) -> Tuple[List[ArchNode], List[ArchEdge]]:
+def _parse_tf(content: str) -> Tuple[List[ArchNode], List[ArchEdge], int]:
     resources: Dict[str, Tuple[str, str]] = {}  # "TYPE.NAME" → (type, name)
     for m in _RESOURCE_BLOCK.finditer(content):
         rtype, rname = m.group(1), m.group(2)
@@ -152,12 +152,12 @@ def _parse_tf(content: str) -> Tuple[List[ArchNode], List[ArchEdge]]:
                 seen_edges.add((last_block, ref))
                 edges.append(ArchEdge(source=last_block, target=ref, label="depends_on"))
 
-    return nodes, edges
+    return nodes, edges, len(resources)
 
 
 # ── plan.json parser ──────────────────────────────────────────────────────────
 
-def _parse_plan_json(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
+def _parse_plan_json(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge], int]:
     resources: Dict[str, ArchNode] = {}
 
     # From resource_changes
@@ -191,7 +191,11 @@ def _parse_plan_json(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
 
     nodes = list(resources.values())
     edges: List[ArchEdge] = []
-    return nodes, edges
+    # raw_count: total candidate resources seen (resource_changes + planned_values combined)
+    raw_count = len(data.get("resource_changes", [])) + len(
+        data.get("planned_values", {}).get("root_module", {}).get("resources", [])
+    )
+    return nodes, edges, max(len(nodes), raw_count)
 
 
 # ── adapter ───────────────────────────────────────────────────────────────────
@@ -216,10 +220,10 @@ class TerraformAdapter(BaseAdapter):
         if name.endswith(".json"):
             try:
                 data = json.loads(content)
-                nodes, edges = _parse_plan_json(data)
+                nodes, edges, raw_count = _parse_plan_json(data)
                 fmt = "terraform_plan"
             except json.JSONDecodeError:
-                nodes, edges = _parse_tf(content)
+                nodes, edges, raw_count = _parse_tf(content)
                 fmt = "terraform"
         else:
             # Try python-hcl2 if available, fall back to regex
@@ -227,18 +231,21 @@ class TerraformAdapter(BaseAdapter):
                 import hcl2  # type: ignore
                 import io
                 data = hcl2.load(io.StringIO(content))
-                nodes, edges = _parse_hcl2(data)
+                nodes, edges, raw_count = _parse_hcl2(data)
                 fmt = "terraform_hcl2"
             except ImportError:
-                nodes, edges = _parse_tf(content)
+                nodes, edges, raw_count = _parse_tf(content)
                 fmt = "terraform"
 
+        fidelity = 1.0 if raw_count == 0 else min(1.0, len(nodes) / raw_count)
         title = Path(filename).stem or "terraform"
         return ArchitectureGraph(
             title=title,
             nodes=nodes,
             edges=edges,
             source_format=fmt,
+            fidelity=fidelity,
+            source_component_count=raw_count,
             adapter_metadata={
                 "filename": filename,
                 "node_count": len(nodes),
@@ -247,7 +254,7 @@ class TerraformAdapter(BaseAdapter):
         )
 
 
-def _parse_hcl2(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
+def _parse_hcl2(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge], int]:
     """Parse python-hcl2 output dict."""
     resources: Dict[str, ArchNode] = {}
     for rtype, instances in data.get("resource", {}).items():
@@ -258,7 +265,7 @@ def _parse_hcl2(data: Dict) -> Tuple[List[ArchNode], List[ArchEdge]]:
                 label=_human_label(rtype, rname),
                 node_type=_resource_type_to_node_type(rtype),
             )
-    return list(resources.values()), []
+    return list(resources.values()), [], len(resources)
 
 
 # Self-register
