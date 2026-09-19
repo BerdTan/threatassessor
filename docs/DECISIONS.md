@@ -4,6 +4,45 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 85 — 2026-09-19
+
+### Entry 178 — DTap injection taxonomy: gap analysis against DETECT-INJ domain
+
+**Context:** DecodingTrust-Agent (DTap, arXiv 2605.04808) defines a 5-vector injection taxonomy from red-teaming 14 real-world agent domains (Google Workspace, PayPal, Slack) with 300+ risk categories and 4,000+ malicious goals. Assessed for relevance to the adversarial check engine.
+
+**DTap's 5 injection vectors:**
+1. **Prompt-level** — malicious instructions appended directly to user queries
+2. **Tool-level** — compromised MCP tool descriptions and parameters
+3. **Skill-level** — poisoned agent skill metadata and executable bodies
+4. **Environment-level** — malicious payloads embedded in external data sources (emails, docs, API responses, web content ingested by the agent)
+5. **Compositional** — multi-vector attacks combining ≥2 of the above
+
+**Key DTap finding (architecturally significant):** Skill and tool injections outperform environment injections — agents implicitly trust internal channels (tool/skill layer) more than external content. Compositional attacks are most effective overall.
+
+**Mapping to current DETECT-INJ coverage:**
+
+| DTap vector | Current coverage | Gap |
+|---|---|---|
+| Prompt-level | DETECT-INJ-005 (tag_injection), DETECT-INJ-010 (injection_attack) | Covered |
+| Tool-level | Partial — `auth_probe` persona tests this surface, DETECT-MCP-* catches access anomalies | **No rule for tool description/parameter poisoning** |
+| Skill-level | `skill_instruction_tamper` persona (DETECT-028); DETECT-QC-009 planned | Planned rule validates this direction |
+| Environment-level | DETECT-INJ-017/018/019 (url_injection), `downstream_agent_injection` | **TAclaw file-read surface uncovered** — crawler ingests arbitrary repo files with no env-injection rule |
+| Compositional | `c2_beacon_architecture` / `c2_exfil_arch` personas are partly compositional | **No explicit multi-vector detection rule** |
+
+**Decision:** Adopt DTap's 5-vector taxonomy as the reference classification for DETECT-INJ rule documentation going forward. Mark the three confirmed gaps as candidate rules:
+
+- **DETECT-INJ-new: `tool_description_poison`** — fires when MCP tool call parameters or descriptions contain instruction-override patterns (e.g. "ignore previous instructions", "act as", role-reset directives). Maps to DETECT-MCP layer but is distinct — MCP-* rules detect *access anomalies*; this rule detects *content poisoning at the tool layer*.
+- **DETECT-INJ-new: `environment_payload_injection`** — fires when TAclaw-ingested file content or enrichment API responses contain directive patterns targeting the analysis agent. The TAclaw crawler (`chatbot/api/routes/taclaw.py`) reads arbitrary repo files and passes them through the pipeline — this is the primary environment-injection surface we currently have no rule for.
+- **DETECT-QC-009: `sm_constraint_evasion_language`** (already logged, Entry 174) — skill-level injection; DTap taxonomy confirms this is a real vector class, not an edge case.
+
+**Alternatives rejected:**
+- Full DTap benchmark integration (running DTap-Red against the TA pipeline) — out of scope; DTap evaluates *task-executing* agents, our pipeline is an *analysis tool*; direct scenario transfer is low.
+- Implementing all three new rules now — deferred; tool_description_poison and environment_payload_injection require Engine Item 6 URL classification (already flagged for MCP-005) and a TAclaw output inspection hook respectively. Log as candidates, implement when the prerequisite engine items land.
+
+**Not adopted from DTap:** The 14-domain risk category dataset (300+ categories, 4000+ goals) is not applicable to the current critics. The categories are framed as platform-specific policy violations ("make the agent do X in Salesforce/Gmail/PayPal") — what a *task agent* is prohibited from doing, not what an *external attacker* exploits in a system architecture. The existing critics already have MITRE ATT&CK + 181-instance brain corpus + control mapper, which covers architectural attack surface knowledge more directly. Revisit if a dedicated agentic-AI critic is ever built targeting arch types like `21_agentic_ai_system` — DTap's agent-exploitation patterns would be directly applicable there.
+
+---
+
 ## Session 84 — 2026-09-19
 
 ### Entry 177 — Engine Item 10: Propagation/taint layer
