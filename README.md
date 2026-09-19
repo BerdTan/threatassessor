@@ -5,7 +5,7 @@ Upload a Mermaid (`.mmd`) architecture diagram and receive a MITRE ATT&CK-mapped
 ## What you get
 
 - **Threat model** — MITRE ATT&CK techniques mapped per node and hop; deterministic, no LLM required
-- **SOC signals** — 37 DETECT rules evaluated per run; OCSF DetectionFinding 2004 events emitted to SIEM / Langfuse / webhook
+- **SOC signals** — 40 DETECT rules evaluated per run; OCSF DetectionFinding 2004 events emitted to SIEM / Langfuse / webhook
 - **Expert review** — 5-critic MoE panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster synthesis, on demand
 - **TA Brain** — self-growing knowledge graph that predicts findings for known topology patterns and drives smart routing
 
@@ -44,7 +44,7 @@ flowchart TD
 
     subgraph Outputs
         rep_o["report/ directory"]
-        ocsf_o["OCSF DetectionFindings\n37 DETECT rules"]
+        ocsf_o["OCSF DetectionFindings\n40 DETECT rules"]
         brn_o["TA Brain\n(instance · pattern · meta)"]
     end
 
@@ -166,18 +166,18 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 **MCP transport** — stdio (default) has no network exposure. Network transport (`--transport sse` / `--transport streamable-http`) requires `TM_MCP_KEY`.
 
-**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before any LLM token is spent. 37 DETECT rules emit OCSF events for SOC consumption.
+**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before any LLM token is spent. 40 DETECT rules emit OCSF events for SOC consumption.
 
 ## Go deeper
 
 - [`CLAUDE.md`](CLAUDE.md) — full module map, harness concepts, all check commands
 - [`mcp_server/README.md`](mcp_server/README.md) — all 18 tools, 4-step test protocol, client integration snippets
-- [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 37 DETECT rules with OWASP/ATLAS/incident provenance
+- [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 40 DETECT rules with OWASP/ATLAS/incident provenance
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decision log (local only, gitignored)
 
 ## Build story
 
-26 parts on Medium — from diagram to detection layer, with every design decision exposed:
+28 parts on Medium — from diagram to detection layer, with every design decision exposed:
 
 | # | Title | What it covers |
 |---|---|---|
@@ -208,3 +208,4 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 | 25 | [The Brain Grew Up](https://medium.com/@breadtan/the-brain-grew-up-4e929965e533) | Confidence-weighted distiller (Engine Item 5), JSONL dedup fix, 57% complexity floor, and how closing the feedback loop turns a pattern store into an inference layer |
 | 26 | [When Agents Go Wild: Six Stages, Four Signals](https://medium.com/@breadtan/when-agents-go-wild-six-stages-four-signals-70589e8031e4) | Four Anthropic alignment incidents mapped to a six-stage kill chain; three were blockable at architecture review time before the first tool call; EXF-007 and structural authorization gates |
 | 27 | [Smart Routing Is Just Measurement in Disguise](https://medium.com/@breadtan/smart-routing-is-just-measurement-in-disguise-19d12e1673af) | 13-arch delta distribution drives mode selection (brain_fast / api_only / full_moe); topology fingerprint collision as the case against configuration; TAclaw routes without history by design |
+| 28 | [Every Agent Is an Attack Surface — Including Your Pipeline](https://medium.com/@breadtan/every-agent-is-an-attack-surface-including-your-pipeline-4dd17c23054d) | DTap 5-vector taxonomy gap analysis; routing mode as a trust signal; pre-flight authority gate; taint propagation through the export bundle; the endogenous injection case |
