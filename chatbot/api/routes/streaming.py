@@ -182,6 +182,7 @@ async def analyze_with_progress(
     include_validation: bool = True,
     ssp_profile: str = "low_risk_cloud",
     enable_ssp: bool = True,
+    extra_ctx: Optional[dict] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Run analysis with SSE progress updates via ThreatAssessorHarness.
@@ -271,6 +272,7 @@ async def analyze_with_progress(
                 clean_arch_name, _routing.mode, _routing.model_alias, _routed_model,
             )
 
+        _extra = extra_ctx or {}
         harness_future = loop.run_in_executor(
             None,
             lambda: harness.run(
@@ -282,6 +284,7 @@ async def analyze_with_progress(
                 architecture_name=clean_arch_name,
                 agent_models=_agent_models or None,
                 routing_mode=_routing.mode,
+                **_extra,
             )
         )
 

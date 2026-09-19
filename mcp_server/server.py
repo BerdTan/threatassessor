@@ -50,6 +50,61 @@ from mcp_server.access_logger import get_access_logger
 
 _access_log = get_access_logger()
 
+# ---------------------------------------------------------------------------
+# Engine Item 9.3 — Tool permission model
+# ---------------------------------------------------------------------------
+# Tool risk tiers:
+#   read    — query/export already-analyzed data; always allowed
+#   analyze — submit new architecture content; content-trust checked
+#   modify  — write to brain/feedback/jobs; content-trust checked
+_TOOL_RISK: dict[str, str] = {
+    "analyze_architecture":            "analyze",
+    "run_expert_review":               "modify",
+    "get_job_status":                  "read",
+    "get_threat_briefing":             "read",
+    "get_ciso_brief":                  "read",
+    "get_governance_signals":          "read",
+    "get_detect_trends":               "read",
+    "get_tatb_scores":                 "read",
+    "list_architectures":              "read",
+    "lookup_mitre_technique":          "read",
+    "get_mcp_access_signals":          "read",
+    "export_assessment":               "read",
+    "governance_check":                "analyze",
+    "query_ta_brain":                  "read",
+    "record_brain_feedback":           "modify",
+    "generate_synthetic_architectures":"modify",
+    "run_taco_agent":                  "modify",
+    "run_taclaw":                      "analyze",
+}
+
+
+def _mcp_content_trust_check(tool_name: str, mmd_content: str) -> str | None:
+    """Return an error string if mmd_content fails the pre-flight injection check, else None.
+
+    Only runs for analyze/modify tier tools that accept architecture content.
+    Uses InhouseGovernanceAdapter.check_input — the same check that BouncerStage
+    enforces inside the pipeline (independent second path for the MCP surface).
+    """
+    tier = _TOOL_RISK.get(tool_name, "read")
+    if tier == "read" or not mmd_content:
+        return None
+    try:
+        from chatbot.harness.governance import get_governance_adapter
+        gov = get_governance_adapter()
+        sig = gov.check_input(mmd_content, "mcp_input")
+        if sig.exploitation.get("blocked") is True:
+            cats = list(sig.exploitation.get("injection_categories", {}).keys())
+            return (
+                f"MCP content trust gate: exploitation.blocked=True "
+                f"(categories: {', '.join(cats) or 'injection/traversal'}). "
+                "Tool call denied."
+            )
+    except Exception:
+        pass
+    return None
+
+
 mcp = FastMCP(
     name="threatassessor",
     instructions=(
@@ -83,6 +138,9 @@ def analyze_architecture(
         JSON with threat findings, MITRE techniques, RAPIDS controls, AIVSS score,
         and confidence breakdown.
     """
+    if _err := _mcp_content_trust_check("analyze_architecture", mmd_content):
+        _access_log.record_tool_call("analyze_architecture", success=False)
+        return json.dumps({"error": _err})
     try:
         result = api.analyze_architecture(mmd_content, ssp_profile)
         _access_log.record_tool_call("analyze_architecture")
@@ -435,6 +493,9 @@ def governance_check(mmd_content: str, arch_name: str = "mcp_input") -> str:
         JSON with signals dict, fired_rules list, and blocked flag.
         If exploitation.severity == CRITICAL, the response indicates a block.
     """
+    if _err := _mcp_content_trust_check("governance_check", mmd_content):
+        _access_log.record_tool_call("governance_check", success=False)
+        return json.dumps({"error": _err})
     try:
         result = api.governance_check(mmd_content, arch_name)
         _access_log.record_tool_call("governance_check")

@@ -496,6 +496,15 @@ class BouncerStage(PipelineStage):
         except Exception:
             pass  # YAML load failure → allow through (non-fatal)
 
+        # ── Check 5: Pre-flight authority gate (independent second signal) ──
+        # Set by the adapter-layer check_preflight() before the harness starts.
+        # This path is independent of QualityStage — it fires even when Quality
+        # is skipped, and uses adapter provenance rather than content injection signals.
+        if ctx.get("_preflight_blocked") is True:
+            reason = "preflight_authority_gate"
+            _emit(ctx, "stage_complete", "bouncer", {"blocked": True, "reason": reason})
+            raise BlockedPipelineError(reason, ctx)
+
         _emit(ctx, "stage_complete", "bouncer", {"blocked": False})
         return ctx
 

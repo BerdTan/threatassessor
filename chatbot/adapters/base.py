@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Dict, List, Literal, Optional
+from typing import Any, ClassVar, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,8 @@ from pydantic import BaseModel, Field
 NodeType = Literal[
     "service", "database", "network", "external", "queue", "storage", "unknown"
 ]
+
+SourceTrust = Literal["verified", "unverified", "adversarial"]
 
 _MMD_SHAPE: Dict[str, tuple[str, str]] = {
     "service":  ("[", "]"),
@@ -71,6 +73,8 @@ class ArchitectureGraph(BaseModel):
     fidelity: float = Field(default=1.0, ge=0.0, le=1.0)
     # raw count of source entities before filtering (resources / paths / etc.)
     source_component_count: int = 0
+    # provenance trust level set by the adapter; "adversarial" blocks ingest
+    source_trust: SourceTrust = "unverified"
 
     def to_mmd(self) -> str:
         """Emit a valid Mermaid flowchart LR diagram from this graph."""

@@ -91,6 +91,17 @@ async def analyze_artifact(
             detail=f"Adapter found 0 nodes in '{filename}'. Check the file is a valid architecture artifact.",
         )
 
+    # 1b. Pre-flight authority check — runs before the pipeline starts
+    from chatbot.harness.governance import get_governance_adapter as _get_gov
+    _gov = _get_gov()
+    _preflight_sig = _gov.check_preflight(graph)
+    _preflight_blocked = _preflight_sig.preflight.get("blocked", False)
+    if _preflight_blocked:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=_preflight_sig.preflight.get("reason", "Pre-flight authority check failed"),
+        )
+
     # 2. Convert to Mermaid and write to tempfile
     mmd_text = graph.to_mmd()
     effective_name = arch_name or Path(filename).stem
@@ -116,12 +127,20 @@ async def analyze_artifact(
         "arch_name": _derived_arch,
         "fidelity": graph.fidelity,
         "source_component_count": graph.source_component_count,
+        "source_trust": graph.source_trust,
         **graph.adapter_metadata,
+    }
+
+    _extra_ctx = {
+        "_source_trust": graph.source_trust,
+        "_preflight_blocked": False,  # already blocked above if True; reaches here only when False
+        "_preflight_signals": _preflight_sig.preflight,
     }
 
     async def _stream_with_meta():
         async for chunk in analyze_with_progress(
-            tmp_path, effective_name, include_validation, ssp_profile, enable_ssp
+            tmp_path, effective_name, include_validation, ssp_profile, enable_ssp,
+            extra_ctx=_extra_ctx,
         ):
             # Inject adapter_metadata into the 'complete' event data
             if chunk.startswith("event: complete\ndata: "):

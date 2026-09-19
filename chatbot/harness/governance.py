@@ -68,6 +68,10 @@ class GovernanceSignals:
     # Registry enforcement — critics to block based on governance policy decisions
     blocked_agents: list = field(default_factory=list)
 
+    # Pre-flight authority signals — populated by check_preflight() before AnalysisStage.
+    # Keys: blocked (bool), reason (str), trust_level (str), warnings (list[str])
+    preflight: dict = field(default_factory=dict)
+
     # Architecture metadata — populated from ground_truth.metadata in check_artifact.
     # Keys: architecture_type (str), node_count (int), is_agentic (bool).
     arch_metadata: dict = field(default_factory=dict)
@@ -458,6 +462,14 @@ class GovernanceAdapter(ABC):
     @abstractmethod
     def wrap_capability(self, fn: Callable, capability_type: str, critic_name: str) -> Callable:
         """Return a wrapped version of fn that logs the call and catches ToolErrors."""
+
+    def check_preflight(self, graph: Any) -> GovernanceSignals:
+        """Pre-flight authority check on an ArchitectureGraph before the pipeline starts.
+
+        Default implementation — subclasses may override for stricter policy.
+        Returns a GovernanceSignals with only the `preflight` field populated.
+        """
+        return GovernanceSignals(preflight={"blocked": False, "reason": "", "trust_level": "unverified", "warnings": []})
 
 
 # ---------------------------------------------------------------------------
@@ -864,6 +876,55 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         sig.kill_chain_coverage = ["deterministic_layer", "llm_layer"]
         sig.overall_risk_level = self._compute_overall(sig)
         return sig
+
+    # ── Pre-flight authority screener ─────────────────────────────────────
+
+    # Maximum node count before the graph is flagged as oversized
+    _PREFLIGHT_NODE_LIMIT = 500
+    # Fidelity floor for prose-extracted graphs (below this → warn)
+    _PREFLIGHT_PROSE_FIDELITY_FLOOR = 0.30
+
+    def check_preflight(self, graph: Any) -> GovernanceSignals:
+        """Authority check on ArchitectureGraph before AnalysisStage fires.
+
+        Checks (in order):
+          1. source_trust == "adversarial" → CRITICAL block
+          2. Oversized graph (node_count > _PREFLIGHT_NODE_LIMIT) → HIGH warn
+          3. Low-fidelity prose extraction (source_format == "prose" and fidelity < floor) → MEDIUM warn
+        """
+        trust = getattr(graph, "source_trust", "unverified")
+        fidelity = getattr(graph, "fidelity", 1.0)
+        source_format = getattr(graph, "source_format", "unknown")
+        node_count = len(getattr(graph, "nodes", []))
+
+        warnings: list = []
+        blocked = False
+        reason = ""
+        severity = "LOW"
+
+        if trust == "adversarial":
+            blocked = True
+            reason = f"source_trust=adversarial — adapter rejected ingest (source_format={source_format})"
+            severity = "CRITICAL"
+        else:
+            if node_count > self._PREFLIGHT_NODE_LIMIT:
+                warnings.append(f"oversized_graph: {node_count} nodes exceeds limit {self._PREFLIGHT_NODE_LIMIT}")
+                severity = "HIGH"
+            if source_format == "prose" and fidelity < self._PREFLIGHT_PROSE_FIDELITY_FLOOR:
+                warnings.append(f"low_fidelity_prose: fidelity={fidelity:.2f} below floor {self._PREFLIGHT_PROSE_FIDELITY_FLOOR}")
+                if severity not in ("HIGH", "CRITICAL"):
+                    severity = "MEDIUM"
+
+        return GovernanceSignals(preflight={
+            "blocked": blocked,
+            "reason": reason,
+            "trust_level": trust,
+            "fidelity": fidelity,
+            "node_count": node_count,
+            "source_format": source_format,
+            "severity": severity,
+            "warnings": warnings,
+        })
 
     # ── Dimension 4: wrap_capability ─────────────────────────────────────
 
