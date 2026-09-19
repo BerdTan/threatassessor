@@ -4,6 +4,26 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 83 — 2026-09-19
+
+### Entry 176 — Engine Item 9: Pre-flight authority layer
+
+**What:** Four-sub-item trust/provenance layer that gates architecture ingest before the pipeline fires.
+
+**Design decisions:**
+- **9.1 `source_trust` on `ArchitectureGraph`**: `Literal["verified", "unverified", "adversarial"]` field added to the canonical graph type. MermaidAdapter sets `"verified"` (lossless, first-party diagrams); all other adapters default to `"unverified"`. `"adversarial"` is not set by adapters — it is a policy output from the screener if/when that path is added. Rationale: trust propagates from the adapter that produced the graph, not from downstream analysis.
+- **9.2 `check_preflight()`**: Added as a concrete method on `GovernanceAdapter` base (non-abstract with safe default) and fully implemented in `InhouseGovernanceAdapter`. Three gates: (a) `source_trust == "adversarial"` → CRITICAL block; (b) `node_count > 500` → HIGH warn; (c) prose fidelity < 0.30 → MEDIUM warn. Fires in `artifact.py` before the SSE stream starts — returns 422 immediately if blocked. Signals exposed in `preflight` dict on `GovernanceSignals`.
+- **9.3 MCP tool permission model**: `_TOOL_RISK` table classifies all 18 tools as `read | analyze | modify`. `_mcp_content_trust_check()` runs `check_input()` on submitted MMD content for analyze/modify tools and returns a denial string if `exploitation.blocked=True`. Wired into `analyze_architecture` and `governance_check`. `run_expert_review` operates on arch names (no raw content), so content gate only applies at submission time.
+- **9.4 BouncerStage Check 5**: `_preflight_blocked` in ctx triggers `BlockedPipelineError("preflight_authority_gate")` independently of `QualityStage.check_input` (Check 1). This is the independent second signal from DECISIONS Entry 168 — the adapter-provenance path runs even when QualityStage is skipped. Passed from `artifact.py` via `extra_ctx` → `analyze_with_progress(extra_ctx=...)` → `harness.run(**_extra)`.
+
+**Alternatives rejected:**
+- Setting `source_trust="adversarial"` inside `check_preflight` and re-attaching to graph was considered but rejected — the graph is already extracted; mutating it post-extract would surprise callers. The field is set at extract time, not at screen time.
+- Adding a `check_preflight` abstract method (forcing all subclasses to implement) was considered but rejected — `AGTGovernanceAdapter` inherits from `InhouseGovernanceAdapter` and the default non-abstract method on the base is sufficient.
+
+**Commits:** fcc21f5
+
+---
+
 ## Session 82 — 2026-09-19
 
 ### Entry 175 — Engine Item 8.1: Langfuse span metadata enrichment
