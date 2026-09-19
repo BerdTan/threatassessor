@@ -6,6 +6,48 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 86 — 2026-09-19
 
+### Entry 184 — prompt-audit skill (Engine Item 16)
+
+**Context:** `promptsmith` exists as a prompt creation and quality skill. No skill audits the prompt templates as a security surface. The critic system prompts, API handler prompts, and any f-string/template paths where external content flows into LLM context are currently unaudited for injection risk, leakage, and over-permission.
+
+**Decision:** Define `prompt-audit` as Engine Item 16. Distinct from `promptsmith` — quality lens vs security lens on the same material.
+
+**Scope:**
+- **Template enumeration**: locate all prompt templates in the codebase — critic system prompts (`chatbot/modules/agents/critics/`), orchestrator prompts, harness stage prompts, f-string constructions where external content is interpolated
+- **Injection path audit**: flag any path where user-supplied or externally-ingested content flows into a prompt without sanitisation — specifically: architecture diagram text, TAclaw-crawled file content, enrichment API responses, MCP tool parameters passed to analysis context
+- **Leakage check**: scan system prompts for exposed internal config (file paths, key names, module names, internal error text) that could assist an attacker in crafting a targeted injection
+- **Over-permission audit**: assess whether each critic system prompt grants broader permissions than the critic role requires; a blackhat critic that is inadvertently prompted to "be helpful" is over-permissioned
+- **Instruction-override surface**: for each prompt template, assess whether a user input can escape the user-role boundary into system-role context (prompt injection escalation path)
+- **Critic scope tightness**: verify the five critic prompts are scoped such that a poisoned architecture input cannot redirect the critic's role or elicit out-of-role behaviour (connects to `DETECT-QC-009` — endogenous constraint evasion)
+
+**Relationship to promptsmith:** `promptsmith` creates and improves prompts (quality). `prompt-audit` stress-tests them (security). They should remain separate skills — merging would blur purpose and make the security audit optional rather than a standalone gate.
+
+**Relationship to aisurface-audit (Item 13):** `aisurface-audit` enumerates ingest surfaces at the data-path level. `prompt-audit` drills into the prompt construction layer — how ingested data becomes LLM input and where that construction is vulnerable. Run `aisurface-audit` first for the map; `prompt-audit` for depth on the prompt slice.
+
+**Target location:** `.claude/skills/prompt-audit/`
+
+---
+
+### Entry 183 — skill-audit skill (Engine Item 15)
+
+**Context:** `check-skills` covers supply-chain integrity: SHA256 manifest (Engine Item 6), git integrity, URL audit, `allowed-tools` gaps, phishing phrase detection. This is a tamper-detection layer. No skill audits the execution model of the skill corpus itself as an adversarial surface — parameter injection, privilege paths, skill chaining blast radius.
+
+**Decision:** Define `skill-audit` as Engine Item 15. Distinct from `check-skills` — integrity/tamper detection vs adversarial execution surface.
+
+**Scope:**
+- **Parameter injection audit**: for each skill that accepts arguments (from user input, DECISIONS.md content, or harness output), verify inputs are sanitised before passing to bash or Python subprocess; flag any skill where unsanitised external content reaches a shell command (e.g. `eval`, unquoted variable expansion, `$ARCH` in a `curl` call)
+- **Privilege path audit**: all skills run with full filesystem access as the invoking user; enumerate which skills write to sensitive paths (`report/`, `chatbot/data/`, `.env`, `policies/`); assess whether a skill can be triggered to write outside its documented scope
+- **Skill chaining map**: identify all skills that invoke other skills (e.g. `session-cleanup` calls `check-skills`; `bench-loop` calls `qualify-corpus`); map the dependency graph; flag chains where a compromised downstream skill's output influences an upstream skill's execution
+- **Output injection**: for skills whose output is consumed by the harness or another skill, assess whether adversarially-crafted output could inject commands into the consumer (e.g. a skill that writes to DECISIONS.md whose output is later parsed)
+- **Manifest coverage gap**: cross-reference `check-skills` SHA256 manifest against the full `.claude/skills/` corpus; flag any skill file not in the manifest (Engine Item 6 covers generation — this covers ongoing drift)
+- **Execution scope vs declared scope**: compare each skill's `allowed-tools` declaration against its actual filesystem/network operations; flag skills that operate outside their declared scope
+
+**Relationship to check-skills:** `check-skills` = tamper detection (did someone modify this file?). `skill-audit` = execution risk (if someone did modify it, or if a skill receives adversarial input, what is the blast radius?). Both are needed; neither is redundant.
+
+**Target location:** `.claude/skills/skill-audit/`
+
+---
+
 ### Entry 182 — model-audit skill (Engine Item 14)
 
 **Context:** The LLM model layer is an implicit trust boundary. TA currently validates model assignments at run time via `HarnessModelGuardian` but has no config-layer audit, no identity consistency check, and no mechanism to detect routing config tampering or endogenous model output manipulation.
