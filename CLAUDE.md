@@ -66,12 +66,12 @@ tail -f logs/api.log            # logs
 - `chatbot/harness/event_broker.py` — `EventBrokerCritic`, pub/sub to SIEM/Langfuse/Webhook sinks
 - `chatbot/harness/sinks.py` — `SiemSink`, `LangfuseSink`, `WebhookSink`; routing_mode tag preservation across trace.update() calls
 - `chatbot/harness/smart_router.py` — `select_mode(arch_name)` → `RoutingDecision`; brain_fast / api_only / full_moe selection
-- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (39 DETECT rules)
+- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (40 DETECT rules)
 - `chatbot/harness/rule_trend_evaluator.py` — `RuleTrendEvaluator` (trend analysis from history JSONL)
 - `chatbot/harness/registry.py` — `CriticRegistry`
 
 **SOC detection:**
-- `policies/soc_detection_rules.yaml` — 39 DETECT rules with OWASP/ATLAS/incident provenance
+- `policies/soc_detection_rules.yaml` — 40 DETECT rules with OWASP/ATLAS/incident provenance
 - `report/<arch>/governance_signals.json` — signal substrate for rule evaluation (includes `arch_metadata`, `aivss.delta`)
 - `report/<arch>/governance_signals_history.jsonl` — append-only run history; AIVSS delta computed on each append
 - `report/<arch>/ocsf_findings.json` — OCSF DetectionFinding 2004 export
@@ -183,7 +183,7 @@ tail -f logs/api.log            # logs
 /aivss-gate
 
 # ── SOC detection ────────────────────────────────────────────────────────────
-# Regression suite (40 rules, 37 scenarios)
+# Regression suite (40 rules, 43 scenarios)
 python3 .claude/skills/check-detect/scripts/check-detect.py
 python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 
