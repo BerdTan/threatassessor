@@ -4,7 +4,105 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
-## Session 85 — 2026-09-19
+## Session 86 — 2026-09-19
+
+### Entry 182 — model-audit skill (Engine Item 14)
+
+**Context:** The LLM model layer is an implicit trust boundary. TA currently validates model assignments at run time via `HarnessModelGuardian` but has no config-layer audit, no identity consistency check, and no mechanism to detect routing config tampering or endogenous model output manipulation.
+
+**Decision:** Define `model-audit` as Engine Item 14 — a dedicated skill that audits the model trust surface independently of the runtime guardian.
+
+**Scope:**
+- **Config integrity**: verify `AGENT_MODEL_*` env var assignments match `model_routing.yaml` entries; flag any drift between config sources
+- **Routing config staleness**: detect if `model_routing.yaml` was modified since the last validated bench run (mtime vs last bench timestamp)
+- **Fingerprint consistency probe**: send a fixed deterministic probe to each assigned critic model endpoint; compare response signature against expected profile (not content — structure, format, token count range); flag unexpected deviations
+- **Critic role validation**: for each critic role (architect/tester/red_team/purple_team/blackhat/scrummaster), assert the assigned model has a confirmed non-silent bench result on at least one arch; flag `blackhat_silence` exclusion pattern (gemma_4_26b/31b precedent)
+- **Endogenous output pattern scan**: static analysis of ScrumMaster verdict text for constraint-override language — promotion path for `DETECT-QC-009` (`sm_constraint_evasion_language`); this is the only injection vector where the attacker is already inside the pipeline
+- **Provider config audit**: verify `LLM_PROVIDER` value matches one of the documented providers in `.env.example`; flag if set to an undocumented or unverified provider
+
+**Attack vectors this covers:**
+- Model substitution (MITM between TA and LLM API swaps the endpoint)
+- Routing config tampering (`model_routing.yaml` or `AGENT_MODEL_*` modified to demote a critic)
+- Model identity drift (provider silently updates model behaviour; TA has no consistency check)
+- Endogenous constraint injection (`DETECT-QC-009` — model embeds constraint-override in its own critic output to influence ScrumMaster downstream)
+- Critic role confusion (model assigned to a role responds as a generic assistant — silent blackhat precedent)
+
+**Relationship to existing checks:** `HarnessModelGuardian` validates assignments at run time. `model-audit` covers the config layer, identity consistency, and the endogenous output surface that the guardian does not reach.
+
+**Target location:** `.claude/skills/model-audit/`
+
+**Prerequisite:** None — can be built now. DETECT-QC-009 promotion requires SM verdict text analysis hook (implementable).
+
+---
+
+### Entry 181 — aisurface-audit skill (Engine Item 13)
+
+**Context:** `harden-audit` runs TA on its own architecture diagram — it finds threats TA would flag in others' systems. But three ingest surfaces are not reachable by architecture-level analysis: the data paths where external content enters the pipeline and could carry adversarial payloads.
+
+**Decision:** Define `aisurface-audit` as Engine Item 13 — an adversarial surface enumeration skill that audits all data ingest paths across TA.
+
+**Surfaces to cover:**
+- **Prompt surface**: enumerate all locations where user-supplied or external content flows into LLM prompt context; flag any path with no sanitisation gate before the LLM call
+- **Skill script surface**: enumerate `.claude/skills/` shell scripts reachable from the harness or API; verify SHA256 manifest coverage (Engine Item 6 skill manifest); flag any executable not in manifest
+- **Brain JSONL surface**: verify `ta_brain_instances.jsonl` integrity gate (Engine Item 6 JSONL gate) is active; flag any instance with `pipeline_provenance: unknown` that entered post-gate
+- **Enrichment API surface**: enumerate `chatbot/api/routes/enrich.py` input paths; assess whether response content from the fuzzy component lookup flows into LLM context without inspection
+- **TAclaw crawl surface**: enumerate file types accepted by `RepoCrawler`; flag any type (README, prose, YAML) that flows into critic context without an environment-injection check (gap identified in Entry 178)
+- **MCP tool parameter surface**: enumerate all 18 MCP tools; flag any tool whose parameters accept free-form string input that flows into analysis context without validation (feeds into mcp-audit)
+
+**Output format:** ranked surface table — surface name, ingest path, current gate, gap rating (covered/partial/open)
+
+**Relationship to mcp-audit:** `aisurface-audit` enumerates the full surface; `mcp-audit` drills into the MCP layer specifically. Run `aisurface-audit` first to get the map; run `mcp-audit` for depth on the MCP slice.
+
+**Target location:** `.claude/skills/aisurface-audit/`
+
+---
+
+### Entry 180 — mcp-audit skill (Engine Item 12)
+
+**Context:** The MCP server exposes 18 tools to external agents. Current security coverage: `check-mcp` validates protocol correctness and static structure; `MCPAccessLogger` feeds DETECT-MCP-001/021/022; adversarial personas cover known attack patterns. No skill audits the MCP surface itself as an attack vector.
+
+**Decision:** Define `mcp-audit` as Engine Item 12 — a dedicated audit skill for the MCP attack surface.
+
+**Scope:**
+- **Tool description injection audit**: scan all 18 tool descriptions for instruction-override patterns ("ignore", "act as", role-reset directives); this is the `tool_description_poison` detection gap from Entry 178
+- **Parameter validation audit**: for each tool, verify input parameters have explicit type validation and no free-form string reaches LLM context without inspection
+- **Scope gap analysis**: compare declared tool capabilities against `MCPAccessLogger` access signals; flag tools with no access history (never called in bench/sim) — possible dead surface or undiscovered vector
+- **Transport security audit**: verify stdio transport has no network exposure; flag if `--transport sse` or `--transport streamable-http` is configured without `TM_MCP_KEY`
+- **Persona coverage gaps**: compare 17 adversarial personas against 18 tools; flag any tool not exercised by at least one adversarial persona
+- **Agent identity validation**: when agent passport system (Engine Item 11) is live, verify each tool enforces ABAC scope check before dispatch
+
+**Target location:** `.claude/skills/mcp-audit/`
+
+**Relationship to check-mcp:** `check-mcp` validates protocol correctness (40 checks). `mcp-audit` audits the security posture of the exposed surface. Run together.
+
+---
+
+### Entry 179 — Engine Item 11: agent registry + agent passport + MCP ABAC enforcement
+
+**Context:** TAclaw calls the TA REST API (and indirectly the MCP server) using only an API key. Any caller with a valid key is indistinguishable from TAclaw. A rogue or spoofed TAclaw can perform any operation the key permits. There is no per-agent identity, no capability boundary, and no audit trail linking actions to a verified agent identity.
+
+**Decision:** Define Engine Item 11 as a four-sub-item agent identity layer.
+
+**Design:**
+
+- **11.1 Agent registry** (`chatbot/agents/registry.py`): stores `agent_id`, `agent_type` (taclaw/taco/mcp_client/external), allowed tools (list), allowed arch patterns (glob or explicit), trust tier (verified/external/synthetic), issued_at, expiry. Backed by a local JSONL (append-only, same pattern as brain instances) so it survives restarts without a database dependency.
+
+- **11.2 Agent passport issuance** (`POST /api/v1/agents/register`): accepts `agent_type` + `requested_scopes`; validates against registry policy; issues a short-lived signed JWT (`agent_id`, `scopes`, `iat`, `exp`). Passport is presented as `TM-AGENT-PASSPORT` header on subsequent calls. API key remains required separately — passport augments, does not replace, key auth.
+
+- **11.3 MCP ABAC enforcement** (`mcp_server/server.py`): before each tool dispatch, verify `TM-AGENT-PASSPORT` header is present, valid, and includes the requested tool in `scopes`. Reject with 403 if absent or scope mismatch. Unknown callers (valid API key, no passport) are permitted on read-only tools only (`governance_check`, `list_architectures`, `lookup_mitre_technique`) — this is the backwards-compatible path for unauthenticated MCP clients.
+
+- **11.4 Rogue agent detection** (new DETECT rule `agent_identity_spoofing`): fires when a caller presents a valid API key but no passport (or expired passport) and attempts a write/analysis tool (`analyze_architecture`, `run_expert_review`, `run_taclaw`, `generate_synthetic_architectures`). This distinguishes a legitimate unauthenticated client from a potential impersonation attempt at high-privilege operations.
+
+**Demo scenario (P30 blog anchor):** TAclaw calls `run_taclaw` with API key only (insecure path) — succeeds today. After Item 11: same call without passport → allowed only on read tools. TAclaw registers → receives passport with `scopes: [run_taclaw, export_assessment]` → full access restored. Spoofed TAclaw with stolen key but no passport → blocked at tool dispatch + `agent_identity_spoofing` fires.
+
+**Alternatives rejected:**
+- OAuth2/OIDC for agent identity — too heavy for a local-first tool; JWT with shared secret is sufficient for the trust model here
+- mTLS — requires certificate management infrastructure; out of scope for current deployment model
+- Scoping restrictions via API key prefixes — opaque, not per-tool, cannot carry capability metadata
+
+**Blog angle (P30):** Demonstrate insecure vs secure TAclaw call sequence. ABAC scopes as the Limit leg of LMSR. `agent_identity_spoofing` as the Monitor leg.
+
+---
 
 ### Entry 178 — DTap injection taxonomy: gap analysis against DETECT-INJ domain
 
