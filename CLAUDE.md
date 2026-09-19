@@ -1,8 +1,8 @@
 # ThreatAssessor — Developer Quick Reference
 
 **Version:** 2.8  
-**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (40 rules) + Harness v2 + MCP server (18 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (1252 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised + N-model bench (7 models) + /no_think tester fix + foreign-provider config bypass fixed + full corpus rerun (gemini_flash, 52 archs) + TA-SIP external platform (adapters/TAclaw/enrichment API/taclaw CLI).  
-**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 39 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG + TA-SIP (TF/CF/OAI/Prose/MMD adapters → ArchitectureGraph → pipeline)
+**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (40 rules) + Harness v2 + MCP server (18 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (1278 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised + N-model bench (7 models) + /no_think tester fix + foreign-provider config bypass fixed + full corpus rerun (gemini_flash, 52 archs) + TA-SIP external platform (adapters/TAclaw/enrichment API/taclaw CLI).  
+**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 40 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG + TA-SIP (TF/CF/OAI/Prose/MMD adapters → ArchitectureGraph → pipeline)
 
 ---
 
@@ -64,6 +64,8 @@ tail -f logs/api.log            # logs
 - `chatbot/harness/governance.py` — `GovernanceSignals`, governance adapter, injection/evasion detection
 - `chatbot/harness/policy_broker.py` — `PolicyBroker`, `BrokerDecision` (dynamic routing after QualityStage)
 - `chatbot/harness/event_broker.py` — `EventBrokerCritic`, pub/sub to SIEM/Langfuse/Webhook sinks
+- `chatbot/harness/sinks.py` — `SiemSink`, `LangfuseSink`, `WebhookSink`; routing_mode tag preservation across trace.update() calls
+- `chatbot/harness/smart_router.py` — `select_mode(arch_name)` → `RoutingDecision`; brain_fast / api_only / full_moe selection
 - `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (39 DETECT rules)
 - `chatbot/harness/rule_trend_evaluator.py` — `RuleTrendEvaluator` (trend analysis from history JSONL)
 - `chatbot/harness/registry.py` — `CriticRegistry`
@@ -181,7 +183,7 @@ tail -f logs/api.log            # logs
 /aivss-gate
 
 # ── SOC detection ────────────────────────────────────────────────────────────
-# Regression suite (39 rules, 37 scenarios)
+# Regression suite (40 rules, 37 scenarios)
 python3 .claude/skills/check-detect/scripts/check-detect.py
 python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 
@@ -258,4 +260,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-09-18
+**Last Updated:** 2026-09-19
