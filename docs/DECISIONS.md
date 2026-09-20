@@ -4,6 +4,41 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 89 — 2026-09-20
+
+### Entry 187 — TAclaw capability map + hardening plan + design docs restructure
+
+**Context:** TAclaw is the external-facing agent interface used by CI pipelines, MCP-enabled coding agents (Claude Desktop, Cursor, Copilot), and external developers submitting repos for autonomous threat assessment. No capability introspection had been done — gaps were unknown. Design docs (HARNESS_V2_DESIGN.md, TATB_RUBRIC.md) had not been updated since Engine Items 6–10 landed.
+
+**Decision:** (1) Produce a full TAclaw capability map via outside-in/inside-out introspection. (2) Write a structured hardening plan (TACLAW.md) covering export completeness, smart routing, agent passport, test suite MVP with eval. (3) Rename design docs to one-word caps convention and update them to reflect current implementation state.
+
+**What was done:**
+
+- **TAclaw capability map** — forked introspection agent read `taclaw.py`, `crawler.py`, `ta_exporter.py`, `mcp_connector/`. Key findings: `enrich_from_github` is a dead flag (accepted, never executed); TAclaw always routes `api_only` (smart router bypassed); `tatb` section always `{}` in export; `fidelity_detail` lost at merge (composite hardcodes `fidelity=1.0`); `brain_quality` (Engine Item 7.2) only on SSE, not in export; no agent passport; no Kubernetes/Compose/Bicep adapter coverage.
+
+- **TACLAW.md** — new design doc at `docs/TACLAW.md` with 5 implementation groups:
+  - Group 1: export completeness (TATB scores, brain_quality, fidelity_detail through merge)
+  - Group 2: smart routing in TAclaw (`select_mode()` before harness, `routing_mode` in job result)
+  - Group 3: agent passport — Engine Item 11 anchored here; `AgentPassport` JWT + `DETECT-AGT-001`
+  - Group 4: MCP surface completeness (schema updates, remove dead `enrich_from_github`)
+  - Group 5: test suite MVP — 4 fixtures (simple_webapp/mixed_iac/high_risk.mmd/ecommerce_api.yaml), structural + quality + regression eval, scorecard runner with `--smoke` flag
+
+- **Design docs renamed** — `HARNESS_V2_DESIGN.md` → `HARNESS.md`; `TATB_RUBRIC.md` → `TATB.md`; new `TACLAW.md`. One-word all-caps convention for canonical design docs.
+
+- **HARNESS.md updated** — added brain_fast / api_only / full_moe stage order diagrams; BouncerStage 5-check list; Engine Items 6–10 implementation status table; Engine Items 11–16 planned table.
+
+- **TATB.md updated** — added brain_fast path TATB coverage note (MoE sections fall back to neutral 50%); brain_quality / Brier field reference; TAclaw export context.
+
+- **docs/README.md updated** — version 2.9; all links updated to new names; new TAclaw section with pipeline description and adapter coverage; new Key Design Decisions cross-reference table by topic area.
+
+- **`/docs-health` skill extended** — Check 5 added: design doc staleness (status date vs HEAD), file path validity, Engine Item status drift between HARNESS.md and DECISIONS.md, README link validation.
+
+**Alternatives rejected:** Extending existing docs in-place with long stale names — harder to reference and inconsistent with DECISIONS.md / README.md conventions.
+
+**Distribution roadmap (deferred, separate session):** Docker image, PyPI publish (`pip install taclaw`), quick-start README, MCP manifest for auto-discovery.
+
+---
+
 ## Session 88 — 2026-09-20
 
 ### Entry 186 — Engine Item 7: adapter fidelity detail + brain-path quality bridge + corpus diversity signal
