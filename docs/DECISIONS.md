@@ -4,6 +4,32 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 92 — 2026-09-20
+
+### Entry 192 — aisurface-audit skill (Engine Item 13)
+
+**Context:** mcp-audit (Item 12) drills into the MCP layer. No skill audited the broader AI ingest surface: all paths where external or user-supplied content enters the pipeline and could carry adversarial payloads.
+
+**Decision:** Implement `aisurface-audit` as Engine Item 13 — a static enumeration skill covering six ingest surfaces with gap ratings (covered/partial/open) and a ranked findings table.
+
+**Six surfaces:**
+- **SRF-1 Prompt surface** — mmd_content/arch_content flows into LLM via f-strings in ground_truth_generator; gate is GovernanceAdapter.check_input() in QualityStage. Gap: QualityStage.required=False — gate non-fatal.
+- **SRF-2 Skill script surface** — SHA256 manifest (Engine Item 6) covers all scripts. Required manifest regeneration to include mcp-audit, taclaw-swarm, health-audit, aisurface-audit (added Sessions 87–91).
+- **SRF-3 Brain JSONL surface** — BrainGuardian.ingest_guard() blocks brain_fast circular ingest. Gap: pre-gate instances carry pipeline_provenance="unknown" (expected for historical corpus).
+- **SRF-4 Enrichment API surface** — /api/v1/enrich is deterministic; no LLM call; reads existing reports only. API key gate present. Gap: resolve_arch_dir() has no visible path traversal check.
+- **SRF-5 TAclaw crawl surface** — RepoCrawler accepts .md/.txt/.pdf/.docx via prose adapter. No environment-injection check on crawled prose before harness submission. source_trust not stamped on CrawledArtifact. Two HIGH findings — pre-existing gap from Entry 178.
+- **SRF-6 MCP parameter surface** — Covered by mcp-audit (Engine Item 12); cross-referenced only.
+
+**First run result:** 0 critical, 2 high (both SRF-5), 4 medium, 0 low, 9 info.
+
+**Why static analysis only:** All six surfaces are checkable by reading source files (AST parsing, regex, SHA256 comparison, file existence). No API, no LLM call. Same principle as mcp-audit.
+
+**Relationship to mcp-audit:** aisurface-audit maps the full surface; mcp-audit drills into the MCP slice. Run aisurface-audit first for the map; mcp-audit for depth.
+
+**Target:** `.claude/skills/aisurface-audit/`
+
+---
+
 ## Session 91 — 2026-09-20
 
 ### Entry 191 — mcp-audit DIM-2 HIGH fixes (c820e5e)

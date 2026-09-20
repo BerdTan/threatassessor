@@ -2,6 +2,7 @@ d31fc6c6563e1edf5b54f37e054274361eb6839d97de4bb609fc03f197558deb  .claude/skills
 c012a2d7bf22a38bb38e57354ee598f753f66fb38d5734f75ac26319b1342c5c  .claude/skills/add-provider/scripts/add-provider.py
 86dab5f2a4da3d3746d089402e4a0528a00e38458f527ab4a4ea15d0d84abe95  .claude/skills/adr-patch/SKILL.md
 6e71eba6161becdc11bc34afc1e7570a247f54c887c05b822944e2b32dab6ad9  .claude/skills/adr-patch/scripts/adr-patch.py
+fc354cba75c8e9db7273e9bdeb32894933738ecde78aefc5aec88fbc952c662c  .claude/skills/aisurface-audit/scripts/aisurface-audit.py
 634a96748356688608648cc823d51d2e04d985a48776268d84f4ecb0c7e9c89c  .claude/skills/aivss-gate/SKILL.md
 cb3e6c6f0cff263497aafff5306f4ea8e7ae3db697334fcc0f1cf5c7d75c86bc  .claude/skills/aivss-gate/scripts/aivss-gate.py
 5e98c0624e01b53381f021e796fc26aeca4acc50be3449f00f5878799c5857ed  .claude/skills/aivss-score/SKILL.md
@@ -58,7 +59,7 @@ e65fdd790e16148f3b144cf66089e538f27c3be64c3e51e2cf83b927d0991d16  .claude/skills
 75d60138ce8f0e1ed20c6b68b5aaab1bd0a1074878912563f29ec289eb75faf8  .claude/skills/check-routing/SKILL.md
 fd0638031cafc14aea2a86a32e7020e96daf6358af6656307e2345da9f982d27  .claude/skills/check-routing/scripts/check-routing.py
 6fdfc070d70543513f7a4bde7c6023866483b2d3a7823002868a85bd02c1b3d7  .claude/skills/check-sip/SKILL.md
-5e8dfebf3778fc8c9c3f75c566913b4d3af0d8d73df0f3bda1b02ef3da46b325  .claude/skills/check-sip/scripts/check-sip.py
+a0cf9b29f1212cd42486c02144f0547f959ba92435b049331e2410b0c1badfd3  .claude/skills/check-sip/scripts/check-sip.py
 00487d70c9e0f57c75f2842519c32d4ca5258571869723b5ab7ab2effc306dba  .claude/skills/check-skills/scripts/check-skills.py
 328ea9e845ee1ea4905eca51f1beb6a2f3c6f47b38e5310a888ae4416a9208c3  .claude/skills/check-skills/skill.md
 250f3ebba8c3f035462d6c9c33fa1067a4f8960aa768e8a1fbf358d8a906823f  .claude/skills/ciso-brief/SKILL.md
@@ -77,7 +78,7 @@ ccb173fa9e994d4d15f471fa9412cba1b55ee80c0e5948dd80b353c0fe3140e5  .claude/skills
 242090fab015f2d02ade68112469cf1e25eb73d11376b56c03845327416bac13  .claude/skills/detect-loop/scripts/detect-loop.py
 9ed7e7b4c3799e30b3cfa617649f37d9033d4a44ec761358af2476ad37e3ab7e  .claude/skills/detect-trend/SKILL.md
 a878065ccb8947bd740ed04d4c2fbd1cae88e938bd46b9eec3de49fa74e57b45  .claude/skills/detect-trend/scripts/detect-trend.py
-dfe9de3a41afe04adeae046f4480be8929d2c77180e4c9e67f0546ee3b75e700  .claude/skills/docs-health/SKILL.md
+8bea1c9f8ee7212225a9d78084cea27063eaf44afe230ee2fe8ae722e8f98e0d  .claude/skills/docs-health/SKILL.md
 a36d568eac4698d13ce2466e5e8247ba3c9e8efcc92a2a290068ad74a2fb4b62  .claude/skills/factcheck/INSTALL.md
 ca1edddd388b8a4aac0ad5a66d64c9a32a984eb6e024376ff6131f5302c83c65  .claude/skills/factcheck/SKILL.md
 5fa9f24659be8e682e09a4f6c9f34b4bb300f87419328bbf23deb557784ec1a1  .claude/skills/factcheck/factcheck-trigger.md
@@ -86,10 +87,14 @@ c3ef6b13248043c5fec82d37a6011430140435f1ceb4e7fdb558c094b9944873  .claude/skills
 897662244c2aca9e425caad85fc1d211c2cb16ab3d9a0c3f5c745da91e16987b  .claude/skills/harden-audit/SKILL.md
 e7729b30ebcdf168eeb46e227ae5085e9bba05230c1c196263446a7e485aa32a  .claude/skills/harden-audit/references/report-template.md
 6c088bdb7bf45e154017bbc1dc956ab146c3af3713056dc74e5f733a58b01de0  .claude/skills/harden-audit/references/webpage.md
+93ea3d1e8bc184b9b044ccd143434bac4b7f7dcea1c80f388833ac747a86fe13  .claude/skills/health-audit/health-audit.md
+0ba90766b485a0310764c08909df905a5b2e9ec06043034643a5b76a49d923f2  .claude/skills/health-audit/scripts/health-audit.py
 7d0bab162bf52170d16cd9087b4de1fc7ad5de287ef0b5f84b062ec2b1c1c35f  .claude/skills/incident-simulator/SKILL.md
-1fff01610060215377694fac5c336db607b2e384c0c698486e8798d41cc9c0f0  .claude/skills/incident-simulator/scripts/incident_simulator.py
+d1d2a6e61b37f4211a1371386bd691dfdef6ec92876fcc6021ca45f958c6d1ec  .claude/skills/incident-simulator/scripts/incident_simulator.py
 9ddd2e486584e18f2fad75b6f6c7121b3dab4e1ff74bcc58c98cd2919c460e44  .claude/skills/langfuse-to-ocsf/SKILL.md
 4837cc7e7182b0ae83b1b26d5c973e8e64516b60bcb4485af57721d09bc985d7  .claude/skills/langfuse-to-ocsf/scripts/langfuse_to_ocsf.py
+14ea17b883f5af6eb3db52d1fba7a6c26c3524845861770144a166d651e887e4  .claude/skills/mcp-audit/scripts/mcp-audit.py
+21a8a3451e3faad5486e4553b904fcd5484757149a61fc2a2b70b0a462baa973  .claude/skills/mcp-audit/skill.md
 fce3ba05ad0e447e96a5a8d198ac10a31b9ca4eddd907bef2015aa72c5ae5dd5  .claude/skills/mmd/SKILL.md
 61b079488c93f7136671f3f7740be195f50224bbc17f6a31ec5c4ea9e401e7f4  .claude/skills/mmd/scripts/parse_mmd.py
 25e2b40ce0f31321008ede11cbfbf60d24fef24aee68834968c165ccef6ded72  .claude/skills/mmd/scripts/validate_arch.py
@@ -135,6 +140,8 @@ d3a76f9b38b85b2814d94cec4811a7abc3cfe3e9637d214b6ee102852d68d142  .claude/skills
 447b3b6d296aaf0b6e3b9c3ce31a4a885dc56955704bab1fa9c94d173f4fdf77  .claude/skills/ta-boxing/scripts/ta-boxing.py
 fb1c8e8c115e2ff4a2a883db0eb99b96ae4ffa1dcddcf3239f91e0ba11b7a664  .claude/skills/taci/SKILL.md
 80bfe467c7c1997a4a64a2fd3650181d5e51e5154116d7196c2b4d1fa16860fa  .claude/skills/taci/scripts/taci.py
+2cf66987d82510431951fed96df750323b6a105595c95c376dc621dc1f18db69  .claude/skills/taclaw-swarm/scripts/taclaw-swarm.py
+495809d868d0aa475e625dba5896a68190cdd2f6477b5c8225c4777e2fe86a1b  .claude/skills/taclaw-swarm/skill.md
 534a95b38af078ae06c1ce282373cdebaf7205887120c250dfd36bc24e97c8c9  .claude/skills/taclaw/SKILL.md
 d05d6e1b92c718bf50798b50487d35e6d3965f925845daf1fe97bd502a7c9fca  .claude/skills/taco-benchmark/SKILL.md
 40e554d68e99ce452ec86f8df10f02608e8ad6979fee5fa7b1c60565215dd112  .claude/skills/taco-benchmark/scripts/taco-benchmark.py
