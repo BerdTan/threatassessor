@@ -1,8 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
-**Version:** 2.8  
-**Status:** Production-ready. REST API + dashboard live. MoE critics (prompts v2) + SOC detection layer (40 rules) + Harness v2 + MCP server (18 tools) + TA export bundle + rerun-moe + critic-gym + GitHub Actions PR reviewer + unified input panel + harden-audit + TA Brain Stages 1–9 (1278 tests, 4 CLI skills) + Brain+TACO UI tab + Brier calibration fixed (avg conf 0.80) + report/brain/ reorganised + N-model bench (7 models) + /no_think tester fix + foreign-provider config bypass fixed + full corpus rerun (gemini_flash, 52 archs) + TA-SIP external platform (adapters/TAclaw/enrichment API/taclaw CLI).  
-**Core:** `.mmd` architecture diagram → threat model + MITRE ATT&CK + MoE expert review + 40 SOC DETECT rules + AIVSS scoring + MCP external access + ta-export/1.0 + TA Brain self-growing KG + TA-SIP (TF/CF/OAI/Prose/MMD adapters → ArchitectureGraph → pipeline)
+**Version:** 2.9  
+**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 40 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph)
 
 ---
 
@@ -16,23 +15,10 @@ Add an entry after any significant architectural decision: date, what, why, alte
 
 ## GitHub Actions CI
 
-**Workflow:** `.github/workflows/ta-review.yml` — triggers on PRs that change `**/*.mmd` files.
-
-**Review script:** `scripts/ci/ta_pr_review.py`
-
-**Flow:** governance_check (50ms, no LLM) → analyze-stream (30s deterministic) → export gate → PR comment + request_changes on BLOCK
-
-**Required GitHub secrets:**
-- `TA_API_KEY` — matches `API_KEY` in `.env`
-- `OPENROUTER_API_KEY` — for LLM-dependent stages (optional for deterministic-only)
-
-**Local test:**
-```bash
-TA_API_URL=http://localhost:8000 \
-TA_API_KEY=<key> \
-BASE_REF=master \
-python3 scripts/ci/ta_pr_review.py   # posts comment to stdout if no GITHUB_TOKEN
-```
+**Workflow:** `.github/workflows/ta-review.yml` — triggers on `**/*.mmd` PR changes.  
+**Flow:** governance_check → analyze-stream → export gate → PR comment + request_changes on BLOCK  
+**Secrets:** `TA_API_KEY`, `OPENROUTER_API_KEY` (optional for deterministic-only)  
+**Local test:** `TA_API_URL=http://localhost:8000 TA_API_KEY=<key> BASE_REF=master python3 scripts/ci/ta_pr_review.py`
 
 ---
 
@@ -72,10 +58,6 @@ tail -f logs/api.log            # logs
 
 **SOC detection:**
 - `policies/soc_detection_rules.yaml` — 40 DETECT rules with OWASP/ATLAS/incident provenance
-- `report/<arch>/governance_signals.json` — signal substrate for rule evaluation (includes `arch_metadata`, `aivss.delta`)
-- `report/<arch>/governance_signals_history.jsonl` — append-only run history; AIVSS delta computed on each append
-- `report/<arch>/ocsf_findings.json` — OCSF DetectionFinding 2004 export
-- `report/<arch>/ta_export.json` — TA export bundle (written by `save=true` on `/export` endpoint)
 
 **REST API:**
 - `chatbot/api/app.py` — FastAPI factory
@@ -114,16 +96,8 @@ tail -f logs/api.log            # logs
 - `report/brain/ta_brain_instances.jsonl` — append-only instance layer (use `incremental=True` to avoid duplicates)
 - `report/brain/synthetic_queue/` — staged synthetic MMDs awaiting approval before harness submission
 
-**MoE agents:**
-- `chatbot/modules/agents/critics/` — Architect, Tester, Red Team, Purple Team, Blackhat
-- `chatbot/modules/agents/orchestrators/` — MoEOrchestrator
-
 **LLM client:**
 - `agentic/llm_client.py` — OpenRouter + Bedrock (use this, not `agentic/llm.py`)
-
-**Data (not in git):**
-- `chatbot/data/enterprise-attack.json` (44 MB) — MITRE ATT&CK
-- `chatbot/data/technique_embeddings.npz` (3 MB float16) — embeddings cache
 
 ---
 
@@ -144,30 +118,8 @@ tail -f logs/api.log            # logs
 
 ## MCP server — 18 tools
 
-| Tool | What it does |
-|------|-------------|
-| `analyze_architecture` | Submit `.mmd` diagram → full threat model + MITRE TTPs (~30s sync) |
-| `run_expert_review` | Queue FULL_MOE (5 critics + SM) → `job_id` (async) |
-| `get_job_status` | Poll job; `wait_for_completion=True` to block until done |
-| `get_threat_briefing` | CISO briefing (md or json) for a known architecture |
-| `get_ciso_brief` | Full CISO brief with investment tiers + multi-critic findings |
-| `get_governance_signals` | AIVSS composite + per-dimension signals |
-| `get_detect_trends` | SOC DETECT rule firing trends (new/rising/stable/falling/never) |
-| `get_tatb_scores` | TATB benchmark scores across corpus or single arch |
-| `list_architectures` | All analysed architectures + metadata |
-| `lookup_mitre_technique` | Technique details + recommended mitigations by ATT&CK ID |
-| `get_mcp_access_signals` | Live session access patterns → feeds DETECT-MCP-001/021/022 |
-| `export_assessment` | Unified TA bundle (ta-export/1.0): gate + OTM + OCSF + TATB |
-| `governance_check` | Fast MMD governance scan (~50ms, no LLM) → signals + fired DETECT rules |
-| `query_ta_brain` | Query TA Brain (infer/gaps/patterns/explain modes) |
-| `record_brain_feedback` | Record confirmed/wrong feedback for a brain prediction |
-| `generate_synthetic_architectures` | Generate synthetic MMDs from brain meta-layer gaps; stage for approval |
-| `run_taco_agent` | Run TACO agent on a brain prediction — infer, validate, and write feedback |
-| `run_taclaw` | Autonomous repo assessment: crawl dir/git URL → adapt → merge → TA pipeline → export |
-
-**Transport:** stdio (Claude Desktop standard). See `mcp_server/README.md` for setup + all client types.
-
-**Sim personas — 17 total:** 6 benign (chatbot/code-agent/ciso/soc/copilot/chatgpt) + 11 adversarial: `recon_attack` (020), `flood_attack` (021), `auth_probe` (022), `injection_attack` (005/010/019), `tag_injection` (005 CRITICAL), `url_injection` (017/018/019), `c2_exfil_arch` (020/019), `c2_beacon_architecture` (025), `downstream_agent_injection` (027 CRITICAL), `skill_instruction_tamper` (028), `critic_consensus_collapse` (026). Run via dashboard MCP tab or `GET /api/v1/mcp/simulate/{persona}`.
+Full tool reference, sim personas (17), and client integration: [`mcp_server/README.md`](mcp_server/README.md).  
+**Transport:** stdio (Claude Desktop standard). `mcp_server/server.py` — FastMCP app.
 
 ---
 
@@ -261,4 +213,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-09-20

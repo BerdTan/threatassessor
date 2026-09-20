@@ -224,14 +224,16 @@ def build_export(
     arch_name: str,
     report_dir: Path,
     tatb_scores: Optional[Dict] = None,
+    brain_quality: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
     Assemble ta_export.json for one architecture.
 
     Args:
-        arch_name:   Architecture directory name.
-        report_dir:  Path to report/<arch_name>/.
-        tatb_scores: Optional pre-fetched tatb-corpus response dict.
+        arch_name:     Architecture directory name.
+        report_dir:    Path to report/<arch_name>/.
+        tatb_scores:   Optional pre-fetched tatb-corpus response dict.
+        brain_quality: Optional Brier calibration dict from brain_fast or post-ingest query.
 
     Returns:
         Export bundle dict (schema ta-export/1.0).
@@ -248,6 +250,7 @@ def build_export(
         "gate":         _build_gate(gov, ocsf),
         "assessment":   _build_assessment(gt),
         "tatb":         _build_tatb(tatb_scores, arch_name),
+        "brain_quality": brain_quality or {},
         "governance":   _build_governance(gov),
         "moe_consensus": _build_moe_consensus(moe),
         "detect_findings": [f for f in ocsf if f.get("class_uid") == 2004],

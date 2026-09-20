@@ -199,13 +199,42 @@ async def _run_taclaw_job(
         finally:
             mmd_path.unlink(missing_ok=True)
 
+        store.update(job.job_id, progress=83, message="Scoring TATB rubric")
+
+        # 6a. Fetch TATB scores for this arch (non-fatal)
+        tatb_scores: dict | None = None
+        try:
+            import importlib.util as _ilu
+            import json as _json
+            _skill_path = Path(__file__).parent.parent.parent.parent / ".claude/skills/tatb-score/scripts/tatb-score.py"
+            if _skill_path.exists() and (report_dir / "ground_truth.json").exists():
+                _spec = _ilu.spec_from_file_location("tatb_score_skill", _skill_path)
+                _mod = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_mod)
+                _gt = _json.loads((report_dir / "ground_truth.json").read_text())
+                _gov = _json.loads((report_dir / "governance_signals.json").read_text()) if (report_dir / "governance_signals.json").exists() else None
+                _moe = _json.loads((report_dir / "07_moe_orchestrator.json").read_text()) if (report_dir / "07_moe_orchestrator.json").exists() else None
+                _sm  = _json.loads((report_dir / "08_scrum_master.json").read_text()) if (report_dir / "08_scrum_master.json").exists() else None
+                _tech_ids: set = set()
+                for _ap in _gt.get("expected_attack_paths", []):
+                    _tech_ids.update(_ap.get("techniques", []))
+                _mitre_mits, _mit_names = _mod.fetch_mitre(list(_tech_ids))
+                _t = _mod.score_threat(_gt)
+                _ttp = _mod.score_ttp(_gt, _moe, _mitre_mits, _mit_names)
+                _r = _mod.score_risk(_gt, _gov)
+                _p = _mod.score_plan(_gt, _sm)
+                _valid = [s["score"] for s in [_t, _ttp, _r, _p] if isinstance(s, dict) and s.get("score") is not None]
+                tatb_scores = {"architectures": [{"name": arch_name, "overall": round(sum(_valid) / len(_valid)) if _valid else None, "threat": _t.get("score"), "ttp": _ttp.get("score"), "risk": _r.get("score"), "plan": _p.get("score")}]}
+        except Exception as exc:
+            logger.warning("TAclaw: tatb scoring failed (non-fatal): %s", exc)
+
         store.update(job.job_id, progress=85, message="Building export bundle")
 
-        # 6. Build export bundle
+        # 6b. Build export bundle
         export_data: dict = {}
         try:
             from chatbot.modules.ta_exporter import build_export
-            export_data = build_export(arch_name, report_dir)
+            export_data = build_export(arch_name, report_dir, tatb_scores=tatb_scores)
         except Exception as exc:
             logger.warning("TAclaw: export bundle failed: %s", exc)
             export_data = {"gate": {"result": gate}}
@@ -232,6 +261,30 @@ async def _run_taclaw_job(
                 None,
                 lambda: query_brain(mode="infer", arch_name=arch_name, caller_type="taclaw"),
             )
+
+            # 8a. Build brain_quality from Brier scores for matched pattern
+            _patterns = brain_insight.get("patterns_fired", [])
+            if _patterns:
+                try:
+                    from chatbot.modules.ta_brain_benchmarks import BENCHMARKS_PATH
+                    import json as _json2
+                    if BENCHMARKS_PATH.exists():
+                        _bscores = _json2.loads(BENCHMARKS_PATH.read_text()).get("brier_scores", {})
+                        _pat_id = _patterns[0]
+                        if _pat_id in _bscores:
+                            _bs = _bscores[_pat_id]
+                            export_data["brain_quality"] = {
+                                "pattern_id": _pat_id,
+                                "arch_type": _bs.get("arch_type", ""),
+                                "brier_combined": _bs.get("brier_combined"),
+                                "brier_technique": _bs.get("brier_technique"),
+                                "brier_control": _bs.get("brier_control"),
+                                "benchmark_confidence": _bs.get("benchmark_confidence_brier"),
+                                "samples_used": _bs.get("samples_used", 0),
+                            }
+                except Exception:
+                    pass
+
         except Exception as exc:
             logger.warning("TAclaw: brain ingest/infer failed (non-fatal): %s", exc)
 

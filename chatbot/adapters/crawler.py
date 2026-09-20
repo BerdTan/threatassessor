@@ -119,15 +119,23 @@ class RepoCrawler:
                 merged_edges.append(ArchEdge(source=src, target=tgt, label=label or None))
 
         source_formats = list(dict.fromkeys(g.source_format for g in graphs))
+        composite_fidelity = min(g.fidelity for g in graphs)
+        adapters_fidelity = [
+            {"source_format": g.source_format,
+             **g.adapter_metadata.get("fidelity_detail", {"node_coverage": round(g.fidelity, 3)})}
+            for g in graphs
+        ]
         return ArchitectureGraph(
             title=f"composite ({len(graphs)} sources)",
             nodes=merged_nodes,
             edges=merged_edges,
             source_format="composite",
+            fidelity=composite_fidelity,
             adapter_metadata={
                 "source_formats": source_formats,
                 "source_count": len(graphs),
                 "original_node_counts": [len(g.nodes) for g in graphs],
+                "adapters_fidelity": adapters_fidelity,
             },
         )
 
