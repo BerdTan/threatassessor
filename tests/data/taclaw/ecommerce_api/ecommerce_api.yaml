@@ -1,0 +1,232 @@
+openapi: "3.0.3"
+info:
+  title: E-Commerce API
+  version: "2.0.0"
+  description: Customer-facing storefront and order management API
+
+servers:
+  - url: https://api.shop.example.com/v2
+
+paths:
+  /products:
+    get:
+      summary: List products
+      operationId: listProducts
+      responses:
+        '200':
+          description: Product catalogue
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+    post:
+      summary: Create product (admin)
+      operationId: createProduct
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: Created
+
+  /products/{id}:
+    get:
+      summary: Get product details
+      operationId: getProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product
+
+  /orders:
+    post:
+      summary: Place order
+      operationId: placeOrder
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderRequest'
+      responses:
+        '201':
+          description: Order confirmed
+
+  /orders/{id}:
+    get:
+      summary: Get order status
+      operationId: getOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order detail
+
+  /payments:
+    post:
+      summary: Process payment
+      operationId: processPayment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          description: Payment result
+
+  /users/{id}/cart:
+    get:
+      summary: Get user cart
+      operationId: getCart
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cart contents
+    put:
+      summary: Update cart
+      operationId: updateCart
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartUpdate'
+      responses:
+        '200':
+          description: Updated cart
+
+  /admin/users:
+    get:
+      summary: List all users (admin only)
+      operationId: listUsers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User list
+
+  /admin/orders:
+    get:
+      summary: List all orders (admin only)
+      operationId: listAllOrders
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Orders
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+          format: float
+        category:
+          type: string
+        stock:
+          type: integer
+
+    ProductInput:
+      type: object
+      required: [name, price]
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+        category:
+          type: string
+        stock:
+          type: integer
+
+    OrderRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: string
+              quantity:
+                type: integer
+        shipping_address:
+          type: string
+        coupon_code:
+          type: string
+
+    PaymentRequest:
+      type: object
+      required: [order_id, card_number, cvv, expiry]
+      properties:
+        order_id:
+          type: string
+        card_number:
+          type: string
+        cvv:
+          type: string
+        expiry:
+          type: string
+        billing_address:
+          type: string
+
+    CartUpdate:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object

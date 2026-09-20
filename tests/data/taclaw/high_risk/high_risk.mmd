@@ -1,0 +1,23 @@
+flowchart TD
+    Internet["Internet (Public)"]
+    AdminPanel["Admin Panel\n(no authentication)"]
+    AppServer["App Server\n(exec on user input)"]
+    Database["PostgreSQL\nroot:password123@db"]
+    SecretStore["Secret Store\n(world-readable filesystem)"]
+    BackupS3["S3 Backup Bucket\n(public-read ACL)"]
+    CorpNetwork["Corporate VPN"]
+    LogServer["Log Server\n(unauthenticated syslog)"]
+
+    Internet -->|"HTTP port 80"| AdminPanel
+    Internet -->|"HTTP port 80"| AppServer
+    AdminPanel -->|"Direct DB connection"| Database
+    AdminPanel -->|"No authz check"| SecretStore
+    AppServer -->|"exec(request.body)"| AppServer
+    AppServer --> Database
+    AppServer --> SecretStore
+    AppServer -->|"write logs"| LogServer
+    Database -->|"nightly dump"| BackupS3
+    SecretStore -->|"API keys in plaintext"| AppServer
+    BackupS3 -->|"public-read"| Internet
+    CorpNetwork -->|"direct to DB"| Database
+    CorpNetwork --> AdminPanel

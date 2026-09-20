@@ -1,0 +1,129 @@
+openapi: "3.0.3"
+info:
+  title: Mixed IaC API
+  version: "1.0.0"
+  description: Internal service API fronted by API Gateway
+
+servers:
+  - url: https://api.example.internal/v1
+
+paths:
+  /items:
+    get:
+      summary: List items
+      operationId: listItems
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Item list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+    post:
+      summary: Create item
+      operationId: createItem
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemInput'
+      responses:
+        '201':
+          description: Created
+
+  /items/{id}:
+    get:
+      summary: Get item by ID
+      operationId: getItem
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Item detail
+
+  /admin/config:
+    get:
+      summary: Get system configuration
+      operationId: getConfig
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Config object
+    put:
+      summary: Update system configuration
+      operationId: updateConfig
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Updated
+
+  /events:
+    post:
+      summary: Publish event to SQS queue
+      operationId: publishEvent
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Event'
+      responses:
+        '202':
+          description: Accepted
+
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ItemInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        metadata:
+          type: object
+    Event:
+      type: object
+      required: [type, payload]
+      properties:
+        type:
+          type: string
+        payload:
+          type: object
