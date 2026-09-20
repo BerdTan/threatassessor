@@ -286,15 +286,24 @@ def aud3_skill_chaining() -> None:
 
 # ── AUD-4: Output injection ───────────────────────────────────────────────────
 # Skills that write to shared docs consumed by other skills (recall, gen-blog, session-cleanup)
+#
+# Detect write-to-DECISIONS by requiring the open/write call to reference DECISIONS on the
+# same line — prevents false positives where a script reads DECISIONS and separately writes
+# to an unrelated path.
 
-_DECISIONS_WRITE_RE = re.compile(
-    r'DECISIONS|decisions\.md', re.IGNORECASE
+# Require open( with paren (function call) to avoid matching "open/pending" in comments/docstrings
+_DECISIONS_WRITE_LINE_RE = re.compile(
+    r'(?:open\(|write_text\(|\.write\()[^#\n]*DECISIONS|DECISIONS[^#\n]*(?:open\(|write_text\(|\.write\()',
+    re.IGNORECASE,
 )
-_BLOG_WRITE_RE = re.compile(r'docs/blog|draft_', re.IGNORECASE)
-_DOCS_WRITE_RE = re.compile(r'docs/[A-Z]|write.*docs/', re.IGNORECASE)
-
-# Skills whose output feeds other skills
-_CONSUMER_SKILLS = {"recall", "gen-blog", "session-cleanup", "docs-health", "health-audit"}
+_BLOG_WRITE_LINE_RE = re.compile(
+    r'(?:open\(|write_text\(|\.write\()[^#\n]*(?:docs/blog|draft_)|(?:docs/blog|draft_)[^#\n]*(?:open\(|write_text\(|\.write\()',
+    re.IGNORECASE,
+)
+_DOCS_WRITE_LINE_RE = re.compile(
+    r'(?:open\(|write_text\(|\.write\()[^#\n]*docs/[A-Z]|docs/[A-Z][^#\n]*(?:open\(|write_text\(|\.write\()',
+    re.IGNORECASE,
+)
 
 
 def aud4_output_injection() -> None:
@@ -302,14 +311,17 @@ def aud4_output_injection() -> None:
     flagged = 0
 
     for script in _skill_scripts():
+        # Skip self — regex pattern strings in this file would self-match
+        if _skill_name(script) == "skill-audit":
+            continue
+
         text = _read(script)
         skill = _skill_name(script)
         rel = str(script.relative_to(ROOT))
 
-        # Check for writes to shared docs
-        writes_decisions = bool(_DECISIONS_WRITE_RE.search(text) and _OPEN_WRITE_RE.search(text))
-        writes_blog = bool(_BLOG_WRITE_RE.search(text) and _OPEN_WRITE_RE.search(text))
-        writes_docs = bool(_DOCS_WRITE_RE.search(text) and _OPEN_WRITE_RE.search(text))
+        writes_decisions = bool(_DECISIONS_WRITE_LINE_RE.search(text))
+        writes_blog = bool(_BLOG_WRITE_LINE_RE.search(text))
+        writes_docs = bool(_DOCS_WRITE_LINE_RE.search(text))
 
         if writes_decisions:
             _find(dim, f"{skill}: writes DECISIONS.md", "MEDIUM",
@@ -390,16 +402,33 @@ def aud5_manifest_coverage() -> None:
 
 
 # ── AUD-6: Execution scope drift ──────────────────────────────────────────────
-# Skills operating outside declared allowed-tools scope
+# Skills operating outside their declared allowed-tools scope.
+#
+# allowed-tools governs Claude Code tool invocations, NOT Python library calls.
+# Checks here target shell-level operations that map directly to Claude Code tools:
+#   - curl/wget in subprocess → should declare Bash(curl:*) or WebFetch
+#   - git/python3 subprocess → should declare Bash(git:*) / Bash(python3:*)
+#   - No allowed-tools at all + significant ops → implicit wildcard (LOW)
 
-_NET_RE = re.compile(r'\brequests\b|\bhttpx\b|\burllib\b|http\.client|aiohttp|websocket', re.IGNORECASE)
-_WRITE_OP_RE = re.compile(r'\.write_text\(|open\([^)]+["\']w|json\.dump\s*\(|shutil\.(copy|move|rmtree)')
+_SHELL_CURL_RE = re.compile(
+    r'subprocess[^#\n]*["\']curl|subprocess[^#\n]*["\']wget|'
+    r'\[["\']*curl\b|\[["\']*wget\b',
+    re.IGNORECASE,
+)
+_SHELL_GIT_RE = re.compile(
+    r'subprocess[^#\n]*["\']git\b|\[["\']*git\b',
+    re.IGNORECASE,
+)
+_SHELL_PYTHON_RE = re.compile(
+    r'subprocess[^#\n]*["\']python3?\b|\[["\']*python3?\b',
+    re.IGNORECASE,
+)
+_WRITE_OP_RE2 = re.compile(r'\.write_text\(|open\([^)]+["\']w[b]?["\']|json\.dump\s*\(|shutil\.(copy|move|rmtree)')
 _SUBPROCESS_RE = re.compile(r'\bsubprocess\b|\bos\.system\b|\bos\.popen\b')
 
-# Patterns that indicate network or write ops in skill.md allowed-tools
-_AT_NET_RE = re.compile(r'WebFetch|WebSearch|curl', re.IGNORECASE)
-_AT_WRITE_RE = re.compile(r'\bWrite\b|\bEdit\b', re.IGNORECASE)
 _AT_BASH_RE = re.compile(r'\bBash\b', re.IGNORECASE)
+_AT_READ_RE = re.compile(r'\bRead\b', re.IGNORECASE)
+_AT_WRITE_RE = re.compile(r'\bWrite\b|\bEdit\b', re.IGNORECASE)
 
 
 def aud6_execution_scope() -> None:
@@ -417,7 +446,6 @@ def aud6_execution_scope() -> None:
         if not scripts_dir.is_dir():
             continue
 
-        # Read all scripts for this skill
         combined = ""
         for f in scripts_dir.iterdir():
             if f.suffix in {".py", ".sh"}:
@@ -428,45 +456,45 @@ def aud6_execution_scope() -> None:
 
         skill_md_text = _read(skill_md_path)
         has_allowed_tools = "allowed-tools" in skill_md_text.lower()
+        at_bash = bool(_AT_BASH_RE.search(skill_md_text))
+        at_write = bool(_AT_WRITE_RE.search(skill_md_text))
 
-        uses_network = bool(_NET_RE.search(combined))
-        uses_write = bool(_WRITE_OP_RE.search(combined))
+        # Shell-level network calls via subprocess — map to Bash(curl:*) / WebFetch
+        uses_shell_curl = bool(_SHELL_CURL_RE.search(combined))
+        # Shell subprocess calls in general — map to Bash
         uses_subprocess = bool(_SUBPROCESS_RE.search(combined))
-
-        at_declares_net = bool(_AT_NET_RE.search(skill_md_text))
-        at_declares_write = bool(_AT_WRITE_RE.search(skill_md_text))
-        at_declares_bash = bool(_AT_BASH_RE.search(skill_md_text))
+        uses_write = bool(_WRITE_OP_RE2.search(combined))
 
         issues: list[str] = []
 
-        if uses_network and not at_declares_net and has_allowed_tools:
-            issues.append("network calls (requests/httpx/urllib) but allowed-tools does not include WebFetch/WebSearch")
+        if uses_shell_curl and not at_bash and has_allowed_tools:
+            issues.append("subprocess curl/wget but allowed-tools does not include Bash(curl:*) or Bash(wget:*)")
 
-        if uses_write and not at_declares_write and not at_declares_bash and has_allowed_tools:
-            issues.append("file write ops (write_text/open-w/json.dump) but allowed-tools lacks Write/Edit/Bash")
-
-        if uses_subprocess and not at_declares_bash and has_allowed_tools:
+        if uses_subprocess and not at_bash and has_allowed_tools:
             issues.append("subprocess calls but allowed-tools does not include Bash")
+
+        if uses_write and not at_write and not at_bash and has_allowed_tools:
+            issues.append("file write ops but allowed-tools lacks Write/Edit/Bash")
 
         if issues:
             rel = str(skill_md_path.relative_to(ROOT)) if skill_md_path.exists() else skill
             for issue in issues:
                 _find(dim, f"{skill}: scope mismatch — {issue.split(' but')[0]}", "MEDIUM",
-                      f"{skill} {issue}. Declared allowed-tools may be understating actual scope.",
+                      f"{skill} {issue}. Declared allowed-tools understates actual scope.",
                       rel)
                 flagged += 1
 
-        # No allowed-tools at all — check if skill does anything significant
-        if not has_allowed_tools and (uses_network or uses_write or uses_subprocess):
+        # No allowed-tools at all — flag if skill does significant work
+        if not has_allowed_tools and (uses_subprocess or uses_write or uses_shell_curl):
             rel = str(skill_md_path.relative_to(ROOT)) if skill_md_path.exists() else skill
             ops = []
-            if uses_network:
-                ops.append("network")
-            if uses_write:
-                ops.append("write")
+            if uses_shell_curl:
+                ops.append("curl/wget")
             if uses_subprocess:
                 ops.append("subprocess")
-            _find(dim, f"{skill}: no allowed-tools declaration ({', '.join(ops)} ops detected)",
+            if uses_write:
+                ops.append("write")
+            _find(dim, f"{skill}: no allowed-tools declaration ({', '.join(set(ops))} ops detected)",
                   "LOW",
                   "Skill performs significant operations but skill.md has no allowed-tools line. "
                   "Implicit wildcard scope — no declared constraint on what Claude can invoke.",

@@ -132,7 +132,8 @@ bf16fc89341ac81179634718a4192ba13d8367d949ead284c0c34db14d979e30  .claude/skills
 d152b8b3cfdacf324573559fb482871733b2d6949949de465087337b90e4172d  .claude/skills/run-er/SKILL.md
 4a2b61ca31025204acd735726b3b5e408f975345e9f0c7c58ccbb8fd50f8edf4  .claude/skills/run-er/scripts/run-er.py
 c0981ae3ed37d0a8aeb16ae43c49d73013566de6a346a2d3b0084f43515260bd  .claude/skills/session-cleanup/skill.md
-9f826d5da1ce4381e90768f2bfb7ebc08b010987f0cfda86fada5f18a31bc380  .claude/skills/skill-audit/scripts/skill-audit.py
+b271426fefa86fe132af477127e3beff4286e93339ef08279893d067ebf378a6  .claude/skills/skill-audit/scripts/skill-audit.py
+42963ea5446995b1deaf247137faa3f100920f64661013fd754edfb8199e5fa3  .claude/skills/skill-audit/skill.md
 52c2854c5bb84280563f801acec62b2624d16a801b16c2e4154aa79aa930df5c  .claude/skills/skill-stress-test/SKILL.md
 ab4670f443b666f54811d9990f7f6359db78b71c8be5357f64615eda17a18770  .claude/skills/skill-stress-test/references/attacks.md
 c564d3c75c26da6d69de3a17e0f77857091d1f8b4ff1ab42f91b3c7f861491d8  .claude/skills/skill-stress-test/references/audit.md
