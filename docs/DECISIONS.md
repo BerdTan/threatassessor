@@ -6,6 +6,42 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 90 — 2026-09-20
 
+### Entry 189 — taclaw-swarm skill: multi-target fan-out + champion ranking
+
+**Context:** TAclaw has three entry points (CLI, dashboard, MCP tool `run_taclaw`), all single-target. Monorepo scans, CI pipelines covering many microservices, and agentic batch workflows need a way to submit N targets in parallel, aggregate findings cross-swarm, and identify the highest-risk component.
+
+**Decision:** Add a `.claude/skills/taclaw-swarm/` skill as a fourth outside-in entry point. Client-side aggregation (no new API routes) using concurrent `ThreadPoolExecutor` fan-out over `POST /api/v1/taclaw/run` + polling. Champion score = `AIVSS × avg_fidelity × log(1 + technique_count)`.
+
+**What was done:**
+- `.claude/skills/taclaw-swarm/skill.md` — entry points table, all CLI flags, champion score formula, exit codes, outside-in CI usage pattern, Wave 2 rationale
+- `.claude/skills/taclaw-swarm/scripts/taclaw-swarm.py` — `TASwarmClient` (submit + poll), `SwarmJob` dataclass, `run_wave()` with `ThreadPoolExecutor`, `aggregate()` (technique frequency, max AIVSS, DETECT hit count, BLOCK count), `print_report()` (table + champion spotlight), JSON export
+
+**Wave 2 design:** `--wave2-on-block` resubmits BLOCK targets after Wave 1 completes. Keeps token spend proportional to actual risk — clean targets cost one pass; hot targets get a second pass.
+
+**Why client-side aggregation over a new `/api/v1/taclaw/swarm` endpoint:** Skill ships immediately with no API changes. The merge logic is thin (~30 lines) and doesn't need server-side deduplication at current scale. If the swarm endpoint becomes valuable (dashboard integration, MCP tool), the merge logic lifts cleanly into a new route.
+
+**Alternatives rejected:** Workflow (multi-agent) — too heavy for a deterministic fan-out loop over a known target list. Async/await — `ThreadPoolExecutor` is simpler and consistent with `run_suite.py`.
+
+---
+
+### Entry 188b — TAclaw Groups 4–5 + taclaw_cli → taclaw rename
+
+**Context:** TAclaw hardening Groups 1–3 (export completeness, smart routing, agent passport) completed in session 89. Groups 4–5 + a naming cleanup were the remaining items from the TACLAW.md plan.
+
+**What was done:**
+
+- **Group 4 — MCP surface completeness** (`mcp_server/server.py`): Removed dead parameters `enrich_from_github` and `github_repo` from `run_taclaw()`. Updated Returns docstring to document `routing_mode`, `passport_id`, `adapters_fidelity`, `brain_quality`. Header comment corrected ("18 tools"). Commit `398f88b`.
+
+- **Rename `taclaw_cli/` → `taclaw/`** (`8ce839a`): Python package name was already `taclaw` in pyproject.toml; only the folder and module path needed updating. 13 files touched (CLAUDE.md, README.md, docs/, `.github/workflows/publish-cli.yml`, `.claude/skills/check-sip/`). No internal `from taclaw_cli import ...` anywhere — blast radius was all documentation + build config.
+
+- **Group 5 — Test suite MVP** (`a40da34`): 4 fixtures in `tests/data/taclaw/` (simple_webapp TF, mixed_iac TF+CF+OAI, high_risk MMD, ecommerce_api OAI). Runner `tests/taclaw/run_suite.py` with 13 structural assertions, 6 quality eval dimensions, regression baseline diff. `gate_is_hard=False` for all fixtures (gate result is LLM-dependent).
+
+**Why `gate_is_hard=False`:** Whether `high_risk.mmd` produces BLOCK depends on the LLM model active at test time. Making gate matching advisory keeps the suite deterministic regardless of model state.
+
+**Why rename:** `taclaw_cli/` implied a CLI-only package. The package serves as the pip-installable entrypoint for both CLI and external import use; `taclaw/` matches the Python module name already declared in pyproject.toml.
+
+---
+
 ### Entry 188 — ARCHITECTURE.md foundation doc
 
 **Context:** HARNESS/TATB/TACLAW design docs exist but there was no single structural overview showing how all 13 layers fit together, what the execution paths are, and what the system invariants are. Archive contained pre-harness architecture docs (2026-05-02) fully stale — no useful fragments.
