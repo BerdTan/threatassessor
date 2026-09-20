@@ -4,6 +4,36 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 93 — 2026-09-20
+
+### Entry 195 — skill-audit skill (Engine Item 15)
+
+**Context:** `check-skills` covers supply-chain tamper detection (SHA256 manifest, git integrity, URL audit). No skill audited the execution surface: parameter injection, privilege paths, skill chaining blast radius, output injection, manifest drift.
+
+**Decision:** Implement `skill-audit` as Engine Item 15 — six dimensions auditing the `.claude/skills/` corpus as an adversarial execution surface. Distinct from `check-skills` — tamper detection vs execution risk.
+
+**Dimensions:**
+- **AUD-1 Parameter injection** — `shell=True`, `eval()`, `os.system()` with unsanitised user args
+- **AUD-2 Privilege path audit** — writes to `report/`, `chatbot/data/`, `.env`, `policies/`, `DECISIONS.md`
+- **AUD-3 Skill chaining map** — skills invoking other skills; transitive blast radius if downstream compromised
+- **AUD-4 Output injection** — skills writing to shared docs (`DECISIONS.md`, `docs/blog/`) consumed by other skills (`recall`, `gen-blog`, `session-cleanup`)
+- **AUD-5 Manifest coverage gap** — `.py`/`.sh` scripts not covered by `skills.sha256`
+- **AUD-6 Execution scope drift** — network/write ops vs declared `allowed-tools`
+
+**First run (2026-09-20):** 0 critical, 0 high, 14 medium, 35 low, 4 info. Exit 0.
+- AUD-1: INFO — no parameter injection patterns across 72 skill scripts
+- AUD-2: LOW — expected writes to `report/`/`chatbot/data/`/`policies/`; no `.env` writes
+- AUD-3: MEDIUM — audit-to-detect/detect-loop/incident-simulator chaining; transitive nodes: aisurface-audit, check-detect, critic-gym, detect-loop, model-audit; all manifest-covered
+- AUD-4: MEDIUM — detect-loop, gen-blog, tatb-loop write `DECISIONS.md` (intentional; feeds downstream consumers)
+- AUD-5: INFO — all 72 corpus scripts in manifest after regen (173 entries)
+- AUD-6: MEDIUM — 7 skills with network calls underdeclared in `allowed-tools`; LOW — 8 skills without `allowed-tools`
+
+**AUD-3 note:** skill chaining is by design in this corpus (audit-to-detect orchestrates check-detect; detect-loop orchestrates check-detect). Operational risk is low because all transitive nodes are SHA256-manifest-covered. The MEDIUM findings document the blast radius for future reference, not immediate remediation.
+
+**AUD-6 note:** `allowed-tools` gaps (network calls without `WebFetch` declaration) are a documentation/governance gap, not a live injection path. Most of these skills make API calls to the TA REST API (internal, not external). Flagged as sprint backlog — add `WebFetch` or `Bash(curl:*)` to `allowed-tools` where appropriate.
+
+---
+
 ## Session 92 — 2026-09-20
 
 ### Entry 194 — model-audit DIM-1 fix: tatb_labeller_models registry
