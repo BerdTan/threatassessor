@@ -144,6 +144,28 @@ async def _brain_fast_stream(
         except Exception:
             pass
 
+    # Engine Item 7.2 — brain-path quality bridge: attach recall/Brier for the matched pattern
+    brain_quality: dict = {}
+    if patterns_fired:
+        try:
+            from chatbot.modules.ta_brain_benchmarks import BENCHMARKS_PATH  # noqa: PLC0415
+            if BENCHMARKS_PATH.exists():
+                bscores = _json.loads(BENCHMARKS_PATH.read_text()).get("brier_scores", {})
+                pat_id = patterns_fired[0]
+                if pat_id in bscores:
+                    bs = bscores[pat_id]
+                    brain_quality = {
+                        "pattern_id": pat_id,
+                        "arch_type": bs.get("arch_type", arch_type),
+                        "brier_combined": bs.get("brier_combined"),
+                        "brier_technique": bs.get("brier_technique"),
+                        "brier_control": bs.get("brier_control"),
+                        "benchmark_confidence": bs.get("benchmark_confidence_brier"),
+                        "samples_used": bs.get("samples_used", 0),
+                    }
+        except Exception:
+            pass
+
     yield await SSEStream.send_progress(
         stage="complete", progress=100,
         message=(
@@ -169,6 +191,7 @@ async def _brain_fast_stream(
         "patterns_fired": patterns_fired,
         "governance_signals": gov_signals,
         "report_paths": {"ground_truth": str(gt_path)},
+        "brain_quality": brain_quality,
     }
     yield await SSEStream.send_complete({
         **brain_fast_data,

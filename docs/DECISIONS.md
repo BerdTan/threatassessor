@@ -4,6 +4,26 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 88 — 2026-09-20
+
+### Entry 186 — Engine Item 7: adapter fidelity detail + brain-path quality bridge + corpus diversity signal
+
+**Context:** Three TATB blind spots addressed: (1) IaC adapters produce a single `fidelity` float but no breakdown; (2) brain_fast results carry no quality signal alongside their predictions; (3) brain corpus skew toward dominant arch types goes undetected.
+
+**Decision:** Implement all three sub-items of Engine Item 7 as deterministic, no-LLM additions to existing data structures.
+
+**What was done:**
+
+- **Sub-item 1 (adapter fidelity detail):** TF, CF, and OAI adapters now compute `fidelity_detail` in `adapter_metadata`: `node_coverage` (same as existing `fidelity` scalar), `component_type_rate` (non-unknown nodes / total), `untyped_node_count`, `edge_inferred_count`, `source_component_count`. Exposed via TAclaw job result (`adapter_metadata` already returned). No schema change to `ArchitectureGraph`.
+- **Sub-item 2 (brain-path quality bridge):** `_brain_fast_stream()` in `streaming.py` now loads `ta_brain_benchmarks.json` and attaches `brain_quality` to the SSE complete payload: pattern_id, arch_type, brier_combined/technique/control, benchmark_confidence, samples_used. Empty dict if benchmarks unavailable (graceful degradation).
+- **Sub-item 3 (corpus diversity signal):** `_corpus_diversity()` added to `ta_brain_builder.py` — computes Shannon entropy of arch_type distribution, dominant_type/fraction, and `flagged` bool (dominant >50% OR entropy <50% of max). Added to `build_brain()` output and `ta_brain.json` meta layer. `BrainGuardian.flywheel_health()` now reads diversity, sets `health="warning"` when flagged, and adds a concrete recommendation naming the skewed type.
+
+**Tests:** `tests/test_engine_item7.py` — 14 tests, 1.0s, no API. All pass.
+
+**Alternatives rejected:** Storing fidelity_detail in a separate file — unnecessary indirection; adapter_metadata is already part of the graph returned from adapt() and surfaced in the TAclaw job result.
+
+---
+
 ## Session 87 — 2026-09-20
 
 ### Entry 185 — /health-audit first run: all 5 findings resolved

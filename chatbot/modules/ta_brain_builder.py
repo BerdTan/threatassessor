@@ -13,6 +13,7 @@ LLM is restricted to the output layer (explain/generate) added in later stages.
 import hashlib
 import json
 import logging
+import math
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -219,7 +220,23 @@ class BrainGuardian:
                 pass
 
         stagnant = last_rebuild_days > 30 and feedback_30d == 0
-        health = "stagnant" if stagnant else ("warning" if last_rebuild_days > 14 else "healthy")
+        corpus_diversity = brain.get("corpus_diversity", {})
+        diversity_flagged = corpus_diversity.get("flagged", False)
+        health = (
+            "stagnant" if stagnant
+            else "warning" if last_rebuild_days > 14 or diversity_flagged
+            else "healthy"
+        )
+
+        recommendations = []
+        if stagnant:
+            recommendations.append("Run /brain-grow or /brain-ingest on a new arch to restart growth")
+        if diversity_flagged:
+            dom = corpus_diversity.get("dominant_type", "unknown")
+            frac = corpus_diversity.get("dominant_fraction", 0.0)
+            recommendations.append(
+                f"Corpus skewed: '{dom}' is {frac:.0%} of instances — ingest more arch-type diversity"
+            )
 
         return {
             "pattern_version": pattern_version,
@@ -228,12 +245,9 @@ class BrainGuardian:
             "last_rebuild_days_ago": last_rebuild_days,
             "taco_feedback_last_30d": feedback_30d,
             "stagnant": stagnant,
+            "corpus_diversity": corpus_diversity,
             "health": health,
-            "recommendation": (
-                "Run /brain-grow or /brain-ingest on a new arch to restart growth"
-                if stagnant
-                else "Flywheel healthy"
-            ),
+            "recommendation": " | ".join(recommendations) if recommendations else "Flywheel healthy",
         }
 
 
@@ -642,6 +656,41 @@ def detect_gaps(instances: list, patterns: list) -> list:
     return sorted(gaps, key=lambda g: g["priority"], reverse=True)
 
 
+# ── Corpus diversity signal (Engine Item 7.3) ────────────────────────────────
+
+_DIVERSITY_ENTROPY_RATIO_FLOOR = 0.5  # flag when entropy < 50% of max possible
+
+def _corpus_diversity(train_instances: list) -> dict:
+    """
+    Shannon entropy of arch_type distribution across training instances.
+
+    entropy == log2(n_types) → perfectly uniform distribution.
+    flagged=True when the dominant type holds >50% OR entropy < 50% of max.
+    """
+    by_type: Counter = Counter(i["arch_type"] for i in train_instances)
+    total = sum(by_type.values())
+    if total == 0:
+        return {
+            "entropy": 0.0, "arch_type_counts": {},
+            "dominant_type": None, "dominant_fraction": 0.0, "flagged": True,
+        }
+    probs = [c / total for c in by_type.values()]
+    entropy = round(-sum(p * math.log2(p) for p in probs if p > 0), 4)
+    n_types = len(by_type)
+    max_entropy = math.log2(n_types) if n_types > 1 else 1.0
+    dominant_type, dominant_count = by_type.most_common(1)[0]
+    dominant_fraction = round(dominant_count / total, 3)
+    flagged = dominant_fraction > 0.5 or entropy < max_entropy * _DIVERSITY_ENTROPY_RATIO_FLOOR
+    return {
+        "entropy": entropy,
+        "max_entropy": round(max_entropy, 4),
+        "arch_type_counts": dict(sorted(by_type.items())),
+        "dominant_type": dominant_type,
+        "dominant_fraction": dominant_fraction,
+        "flagged": flagged,
+    }
+
+
 # ── Brain builder (main entry point) ─────────────────────────────────────────
 
 def build_brain(
@@ -761,6 +810,7 @@ def build_brain(
         "corpus_size": len(all_instances),
         "train_size": len(train_instances),
         "hold_out": sorted(hold_out),
+        "corpus_diversity": _corpus_diversity(train_instances),
         "patterns": patterns,
         "gaps": gaps,
     }

@@ -236,6 +236,7 @@ class OpenAPIAdapter(BaseAdapter):
             )
 
         fidelity = 1.0 if raw_count == 0 else min(1.0, len(nodes) / raw_count)
+        typed_nodes = sum(1 for n in nodes if n.node_type != "unknown")
         return ArchitectureGraph(
             title=str(title)[:80],
             nodes=nodes,
@@ -248,6 +249,13 @@ class OpenAPIAdapter(BaseAdapter):
                 "version": data.get("openapi") or data.get("swagger") or data.get("asyncapi", ""),
                 "node_count": len(nodes),
                 "edge_count": len(edges),
+                "fidelity_detail": {
+                    "node_coverage": round(fidelity, 3),
+                    "component_type_rate": round(typed_nodes / len(nodes), 3) if nodes else 1.0,
+                    "untyped_node_count": len(nodes) - typed_nodes,
+                    "edge_inferred_count": len(edges),
+                    "source_component_count": raw_count,
+                },
             },
         )
 
