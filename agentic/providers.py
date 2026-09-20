@@ -46,9 +46,10 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
         },
         "litellm_kwargs": {},
         "models": {
-            "default":      "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            # OPENROUTER_MODEL overrides default/fast; high_quality stays pinned
+            "default":      os.getenv("OPENROUTER_MODEL", "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"),
             "high_quality": "openrouter/anthropic/claude-sonnet-4",
-            "fast":         "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            "fast":         os.getenv("OPENROUTER_MODEL", "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"),
         },
         "cost_per_1k": None,   # varies by model
         "active": True,
@@ -156,16 +157,15 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
         "model_prefix":  "openai/",
         "api_key_env":   "HETZNER_API_KEY",
         "base_url":      "https://inference.hetzner.com/api/v1",
-        "base_url_env":  None,
+        "base_url_env":  "HETZNER_BASE_URL",
         "region_env":    None,
         "extra_headers": {},
         "litellm_kwargs": {},
         "models": {
-            # Qwen3.6-35B: smallest active params (3B), fast — default/fast
-            # Qwen3.8-27B: 27B dense, higher quality reasoning
-            "default":      "openai/Qwen/Qwen3.6-35B-A3B-FP8",
+            # HETZNER_MODEL overrides default/fast; high_quality stays pinned
+            "default":      os.getenv("HETZNER_MODEL", "openai/Qwen/Qwen3.6-35B-A3B-FP8"),
             "high_quality": "openai/Qwen3.8-27B",
-            "fast":         "openai/Qwen/Qwen3.6-35B-A3B-FP8",
+            "fast":         os.getenv("HETZNER_MODEL", "openai/Qwen/Qwen3.6-35B-A3B-FP8"),
         },
         "cost_per_1k": None,
         "active": True,

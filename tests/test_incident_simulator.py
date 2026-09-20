@@ -182,6 +182,98 @@ class TestScenariosFire:
         fired = _fired_ids(fn())
         assert {"DETECT-SEC-001"} <= fired
 
+    # ── MCP scenarios ────────────────────────────────────────────────────────
+
+    def test_mcp_recon_sequence(self):
+        fn, _ = SCENARIOS["mcp_recon_sequence"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-MCP-001"} <= fired
+
+    def test_mcp_job_flooding(self):
+        fn, _ = SCENARIOS["mcp_job_flooding"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-MCP-002"} <= fired
+
+    def test_mcp_auth_probing(self):
+        fn, _ = SCENARIOS["mcp_auth_probing"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-MCP-003"} <= fired
+
+    def test_mcp_unauth_exposure(self):
+        fn, _ = SCENARIOS["mcp_unauth_exposure"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-MCP-004"} <= fired
+
+    # ── Exfiltration scenarios ───────────────────────────────────────────────
+
+    def test_agentic_exfil_vector(self):
+        fn, _ = SCENARIOS["agentic_exfil_vector"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-EXF-005"} <= fired
+
+    def test_c2_beacon_architecture(self):
+        fn, _ = SCENARIOS["c2_beacon_architecture"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-EXF-006"} <= fired
+
+    def test_authorization_boundary_ambiguity(self):
+        fn, _ = SCENARIOS["authorization_boundary_ambiguity"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-EXF-007"} <= fired
+
+    # ── Injection scenarios ──────────────────────────────────────────────────
+
+    def test_downstream_agent_injection(self):
+        fn, _ = SCENARIOS["downstream_agent_injection"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-INJ-006"} <= fired
+
+    def test_mmd_injection(self):
+        fn, _ = SCENARIOS["mmd_injection"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-INJ-007"} <= fired
+
+    # ── Quality-control scenarios ────────────────────────────────────────────
+
+    def test_assessment_quality_regression(self):
+        fn, _ = SCENARIOS["assessment_quality_regression"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-QC-006"} <= fired
+
+    def test_critic_consensus_collapse(self):
+        fn, _ = SCENARIOS["critic_consensus_collapse"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-QC-007"} <= fired
+
+    def test_deceptive_completion_reporting(self):
+        fn, _ = SCENARIOS["deceptive_completion_reporting"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-QC-008"} <= fired
+
+    # ── Supply-chain scenarios ───────────────────────────────────────────────
+
+    def test_skill_instruction_tamper(self):
+        fn, _ = SCENARIOS["skill_instruction_tamper"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-SCT-002"} <= fired
+
+    def test_brain_training_poisoning(self):
+        fn, _ = SCENARIOS["brain_training_poisoning"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-SCT-003"} <= fired
+
+    def test_security_test_assertion_bypass(self):
+        fn, _ = SCENARIOS["security_test_assertion_bypass"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-SCT-005"} <= fired
+
+    # ── Security / token scenarios ───────────────────────────────────────────
+
+    def test_token_forgery_risk(self):
+        fn, _ = SCENARIOS["token_forgery_risk"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-SEC-002"} <= fired
+
     def test_all_expected_rules_match_documented(self):
         """Every scenario fires at least its documented expected set."""
         for name, (fn, _) in SCENARIOS.items():

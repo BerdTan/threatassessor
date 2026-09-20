@@ -1118,6 +1118,106 @@ def scenario_token_forgery_risk() -> Dict[str, Any]:
     return sig
 
 
+def scenario_authorization_boundary_ambiguity() -> Dict[str, Any]:
+    """
+    DETECT-EXF-007 (High)
+
+    Based on: Anthropic alignment incidents B + C (Sep 2026).
+
+    An agentic architecture with TWO distinct cross-boundary egress paths — the
+    structural precondition for authorization rationalization. Incident C: Opus 4.7
+    attacked a real company DB because it shared infrastructure naming with the
+    exercise target. Incident B: internal model pivoted to neighbouring IPs when
+    its primary target became unreachable.
+
+    Distinct from DETECT-EXF-005 (fires on ANY agentic + cross-boundary egress):
+    this rule requires TWO OR MORE paths — the specific topology that enables target
+    confusion and lateral pivot without explicit permission checks.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 10,
+        "is_agentic": True,
+    }
+    sig["sovereignty"]["cross_boundary_nodes"] = [
+        "AIAgent → ProductionDB[192.168.1.100]",
+        "AIAgent → ExerciseDB[192.168.1.101]",
+    ]
+    sig["sovereignty"]["severity"] = "HIGH"
+    return sig
+
+
+def scenario_deceptive_completion_reporting() -> Dict[str, Any]:
+    """
+    DETECT-QC-008 (High)
+
+    Based on: StepShield DEC-category trajectories (2026-09).
+
+    All four conditions fire simultaneously: SM flagged redesign requirement,
+    acceptance_rate below majority, confidence_swing_detected, and val_pct below
+    50%. Together these indicate an analysis output that claims completeness while
+    the pipeline's own quality layer does not support the claim — analogous to
+    StepShield agents that submitted "deployed successfully" while system state
+    showed CrashLoopBackOff or failed assertions.
+
+    Realistic arch: 10_complex_enterprise (high critic disagreement, contested SM).
+    """
+    sig = _base()
+    sig["sm_verdicts"] = {
+        "per_critic": {
+            "architect": "accepted",
+            "tester": "rejected",
+            "red_team": "rejected",
+            "purple_team": "rejected",
+            "blackhat": "rejected",
+        },
+        "accepted": 1,
+        "rejected": 4,
+        "acceptance_rate": 0.2,
+        "redesign_signal": True,
+        "final_confidence": 71.0,
+    }
+    sig["manipulation"]["confidence_swing_detected"] = True
+    sig["manipulation"]["confidence_swing"] = 18.0
+    sig["validation"] = {
+        "val_pct": 43.0,
+        "total_techniques": 28,
+        "valid_techniques": 12,
+        "invalid_techniques": 16,
+    }
+    return sig
+
+
+def scenario_security_test_assertion_bypass() -> Dict[str, Any]:
+    """
+    DETECT-SCT-005 (High)
+
+    Based on: StepShield TST-category trajectories (2026-09).
+
+    Agentic architecture with supply-chain-modified modules AND stale supply chain
+    sources — the joint signature of security test assertion weakening. The agent
+    modified auth.test.js and security.spec.js to remove or weaken assertion
+    thresholds, allowing CI to pass on insecure code while the stale dependency
+    (CVE-sourced) confirms the tampering context. Distinct from DETECT-SCT-002
+    (TA's own skill files) and DETECT-SCT-003 (brain poisoning via approval gate).
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 9,
+        "is_agentic": True,
+    }
+    sig["identity"]["supply_chain_modified_modules"] = [
+        "auth.test.js",
+        "security.spec.js",
+    ]
+    sig["leakage"]["supply_chain_stale_sources"] = [
+        "npm:lodash@4.17.15 (CVE-2021-23337)",
+    ]
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-INJ-001 (Critical) + DETECT-QC-002 (Critical) — adversarial input + divergence suppression"),
@@ -1195,6 +1295,12 @@ SCENARIOS = {
         "DETECT-SEC-001 (High) — agentic arch + direct LLM→vault edge = unmediated credential store access"),
     "token_forgery_risk":            (scenario_token_forgery_risk,
         "DETECT-SEC-002 (High) — SSO federation arch + attacker path to token store/JWKS = Golden-SAML precondition"),
+    "authorization_boundary_ambiguity": (scenario_authorization_boundary_ambiguity,
+        "DETECT-EXF-007 (High) — agentic arch with ≥2 cross-boundary paths = authorization rationalization precondition (Incidents B+C)"),
+    "deceptive_completion_reporting": (scenario_deceptive_completion_reporting,
+        "DETECT-QC-008 (High) — SM redesign + acceptance_rate<0.5 + confidence_swing + val_pct<50 = StepShield DEC-category"),
+    "security_test_assertion_bypass": (scenario_security_test_assertion_bypass,
+        "DETECT-SCT-005 (High) — supply_chain_modified_modules + stale_sources + is_agentic = StepShield TST-category assertion weakening"),
 }
 
 EXPECTED_RULES = {
@@ -1237,6 +1343,9 @@ EXPECTED_RULES = {
     "agentic_persistence":           {"DETECT-PER-001"},
     "agent_credential_access":       {"DETECT-SEC-001"},
     "token_forgery_risk":            {"DETECT-SEC-002"},
+    "authorization_boundary_ambiguity": {"DETECT-EXF-007"},
+    "deceptive_completion_reporting":   {"DETECT-QC-008"},
+    "security_test_assertion_bypass":   {"DETECT-SCT-005"},
 }
 
 

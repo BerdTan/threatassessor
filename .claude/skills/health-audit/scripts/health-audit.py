@@ -199,12 +199,16 @@ def check_env_vars() -> int:
         finding("env-vars", ".env.example missing", "❌", "restore .env.example")
         return 1
 
-    # Keys declared in .env.example
+    # Keys declared in .env.example — both active lines and commented-out vars
+    # Commented vars (# KEY=value) are intentional documentation of optional keys
     declared: set[str] = set()
     for line in env_example.read_text().splitlines():
         line = line.strip()
-        if not line or line.startswith("#"):
+        if not line:
             continue
+        # Strip leading comment marker for commented-out key lines
+        if line.startswith("#"):
+            line = line.lstrip("#").strip()
         key = line.split("=", 1)[0].strip()
         if re.match(r"^[A-Z_][A-Z0-9_]*$", key):
             declared.add(key)
@@ -220,12 +224,25 @@ def check_env_vars() -> int:
     ]
 
     consumed: set[str] = set()
+    # Pattern 1: os.getenv("KEY") / os.environ.get("KEY") / os.environ["KEY"]
     env_get_pat = re.compile(r'os\.(?:getenv|environ\.get)\(["\']([A-Z_][A-Z0-9_]*)["\']')
     env_brk_pat = re.compile(r'os\.environ\[["\']([A-Z_][A-Z0-9_]*)["\']')
+    # Pattern 2: dict-based provider config — "api_key_env": "KEY" / "base_url_env": "KEY" / etc.
+    env_dict_pat = re.compile(r'"(?:api_key_env|base_url_env|env_var|key_env|env_key|region_env)"\s*:\s*"([A-Z_][A-Z0-9_]*)"')
     for f in py_files:
         text = f.read_text(errors="ignore")
         consumed.update(env_get_pat.findall(text))
         consumed.update(env_brk_pat.findall(text))
+        consumed.update(env_dict_pat.findall(text))
+
+    # Pattern 3: ${KEY} substitution in JSON/YAML config files
+    config_var_pat = re.compile(r'\$\{([A-Z_][A-Z0-9_]*)\}')
+    for config_dir in [ROOT / "chatbot" / "config"]:
+        if config_dir.exists():
+            for cf in config_dir.rglob("*.json"):
+                consumed.update(config_var_pat.findall(cf.read_text(errors="ignore")))
+            for cf in config_dir.rglob("*.yaml"):
+                consumed.update(config_var_pat.findall(cf.read_text(errors="ignore")))
 
     # Skip well-known framework/system vars that don't belong in .env.example
     framework_vars = {
@@ -237,15 +254,31 @@ def check_env_vars() -> int:
         "CI", "GITHUB_TOKEN", "GITHUB_REF", "GITHUB_REPOSITORY",
         "GITHUB_SHA", "GITHUB_WORKSPACE", "GITHUB_EVENT_NAME",
         "PR_NUMBER", "REPO", "BASE_REF",
-        # GCP / cloud credential conventions
+        # GCP / cloud credential conventions (standard SDK vars, not TA-specific)
         "GOOGLE_APPLICATION_CREDENTIALS", "GCP_REGION",
         # TA CI script vars (not the main service config)
         "TA_API_KEY", "TA_API_URL",
+        # Client-side connector vars (set in the caller's env, not the TA server)
+        "TA_API_BASE_URL", "TM_API_BASE_URL",
     }
     consumed -= framework_vars
 
-    orphaned_keys = sorted(declared - consumed)       # in .env.example, never read
-    undocumented  = sorted(consumed - declared)       # read in code, not in .env.example
+    # Also exclude from both directions: GCP/cloud SDK vars, client-side connector vars,
+    # and vars explicitly documented in .env.example as reserved/future (not yet wired)
+    both_exclude = framework_vars | {
+        "GOOGLE_APPLICATION_CREDENTIALS", "GCP_REGION",
+        "TA_API_BASE_URL", "TM_API_BASE_URL", "TM_API_KEY",
+        "TM_MCP_KEY", "TM_PICKLE_KEY",
+        # TACO mini vars — reserved for Phase 3/4; documented ahead of implementation
+        "AGENT_MODEL_TACO_BRAIN", "AGENT_MODEL_TACO_HARNESS",
+        "AGENT_MODEL_TACO_RAG", "AGENT_MODEL_TACO_CRITIC",
+    }
+    orphaned_keys = sorted((declared - consumed) - both_exclude)
+    # Filter noise: single-word vars ≤3 chars are example-code artefacts, not real config
+    undocumented  = sorted(
+        k for k in (consumed - declared) - framework_vars
+        if len(k) > 3
+    )
 
     issues = 0
     for k in orphaned_keys:
