@@ -93,6 +93,12 @@ def dim1_config_integrity() -> None:
 
     routing = _load_yaml(routing_path)
     tested_models: dict = routing.get("tested_models", {})
+    # Also include brain labeller models as registered model IDs
+    tatb_models: dict = routing.get("tatb_labeller_models", {})
+    all_registered_ids: set[str] = (
+        {v.get("model_id", "") for v in tested_models.values()}
+        | {v.get("model_id", "") for v in tatb_models.values()}
+    )
     model_ids = {k: v.get("model_id", "") for k, v in tested_models.items()}
     confirmed_ids = {v["model_id"] for v in tested_models.values()
                      if v.get("status") == "confirmed"}
@@ -132,19 +138,17 @@ def dim1_config_integrity() -> None:
                     f"Remove the override or update tested_models.status.",
                     str(routing_path.relative_to(ROOT)),
                 )
-            elif model_val and model_val not in confirmed_ids:
-                # Model set but not in confirmed list — partial or unlisted
-                in_tested = any(model_val == v for v in model_ids.values())
-                if not in_tested:
-                    _find(
-                        "DIM-1",
-                        f"{var}={model_val!r} — model not in tested_models registry",
-                        "MEDIUM",
-                        f"This model has no bench record in model_routing.yaml. "
-                        f"It may not be validated for ThreatAssessor quality requirements. "
-                        f"Run bench-loop and add an entry to tested_models before production routing.",
-                        str(routing_path.relative_to(ROOT)),
-                    )
+            elif model_val and model_val not in all_registered_ids:
+                # Model set but not in any registered section
+                _find(
+                    "DIM-1",
+                    f"{var}={model_val!r} — model not in registry",
+                    "MEDIUM",
+                    f"This model ID is not in tested_models or tatb_labeller_models in "
+                    f"model_routing.yaml. It may not be validated for TA quality requirements. "
+                    f"Add an entry to the appropriate section of model_routing.yaml.",
+                    str(routing_path.relative_to(ROOT)),
+                )
 
     # Check model_selection entries reference only tested_models keys
     model_selection = routing.get("model_selection", {})

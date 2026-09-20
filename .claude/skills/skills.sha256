@@ -99,7 +99,7 @@ d1d2a6e61b37f4211a1371386bd691dfdef6ec92876fcc6021ca45f958c6d1ec  .claude/skills
 fce3ba05ad0e447e96a5a8d198ac10a31b9ca4eddd907bef2015aa72c5ae5dd5  .claude/skills/mmd/SKILL.md
 61b079488c93f7136671f3f7740be195f50224bbc17f6a31ec5c4ea9e401e7f4  .claude/skills/mmd/scripts/parse_mmd.py
 25e2b40ce0f31321008ede11cbfbf60d24fef24aee68834968c165ccef6ded72  .claude/skills/mmd/scripts/validate_arch.py
-b0133236ce7c799a4bcaf623ca5381866bbebba9de41c796ae2382fa30adbed1  .claude/skills/model-audit/scripts/model-audit.py
+be2f9b2460b9bdca38ba0ca00ad86c447f4eea3ff13944e25ebbaeb1e8775388  .claude/skills/model-audit/scripts/model-audit.py
 ea943d66fd7e09e551c2fd257ba1cf5f27891ef7366858684593f72ca73a9bb2  .claude/skills/model-audit/skill.md
 48e3c10a0bc2edb93ce822199ff9d527e3ebaa659512898de3c4c07459341b84  .claude/skills/priorities/SKILL.md
 52cf634998c8e0f6f7dcbb8ba6633d2d66eafbeefff4b643554fb0d7d9d6e451  .claude/skills/promptsmith/SKILL.md
