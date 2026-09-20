@@ -1,6 +1,6 @@
 # ThreatAssessor
 
-Upload a Mermaid (`.mmd`) architecture diagram and receive a MITRE ATT&CK-mapped threat model, SOC detection signals, and optional MoE expert review — in under two minutes.
+Submit a Mermaid (`.mmd`) diagram, a Git repo, or IaC files and receive a MITRE ATT&CK-mapped threat model, SOC detection signals, and optional MoE expert review — in under two minutes.
 
 ## What you get
 
@@ -8,6 +8,7 @@ Upload a Mermaid (`.mmd`) architecture diagram and receive a MITRE ATT&CK-mapped
 - **SOC signals** — 40 DETECT rules evaluated per run; OCSF DetectionFinding 2004 events emitted to SIEM / Langfuse / webhook
 - **Expert review** — 5-critic MoE panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster synthesis, on demand
 - **TA Brain** — self-growing knowledge graph that predicts findings for known topology patterns and drives smart routing
+- **TAclaw** — autonomous repo assessment: point at a Git URL or directory; adapters (TF / CF / OAI / Prose / MMD) convert it to a graph and run the full pipeline; usable via REST, MCP tool, or `ta analyze` CLI
 
 ## Architecture
 
@@ -170,8 +171,10 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 ## Go deeper
 
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system structure: 13 layers, execution paths, design invariants, component diagram
 - [`CLAUDE.md`](CLAUDE.md) — full module map, harness concepts, all check commands
 - [`mcp_server/README.md`](mcp_server/README.md) — all 18 tools, 4-step test protocol, client integration snippets
+- [`taclaw_cli/README.md`](taclaw_cli/README.md) — TAclaw CLI: `ta analyze`, `ta gate`, `ta export`
 - [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 40 DETECT rules with OWASP/ATLAS/incident provenance
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decision log (local only, gitignored)
 
