@@ -28,6 +28,7 @@ from chatbot.adapters.crawler import CrawledArtifact, RepoCrawler, clone_repo
 from chatbot.api.dependencies import verify_api_key
 from chatbot.api.job_store import Job, get_job_store
 from chatbot.config import get_settings
+from chatbot.modules.agent_passport import AgentPassport, mint_passport, validate_token as _validate_passport
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +69,25 @@ async def _run_taclaw_job(
     ssp_profile: str,
     enrich_from_github: bool,
     github_repo: Optional[str],
+    passport: Optional[AgentPassport] = None,
+    passport_token: Optional[str] = None,
 ) -> None:
     store = get_job_store()
     _tmpdir: Optional[str] = None
+
+    # 0. Validate agent passport (defense-in-depth — token was just minted)
+    _passport_valid = True
+    _passport_reason = "ok"
+    if passport_token:
+        _passport_valid, _passport_reason, _ = _validate_passport(passport_token)
+        if not _passport_valid:
+            logger.warning(
+                "TAclaw: passport validation failed for job %s: %s", job.job_id, _passport_reason
+            )
+    else:
+        logger.warning("TAclaw: job %s has no passport token", job.job_id)
+        _passport_valid = False
+        _passport_reason = "missing_token"
 
     try:
         store.update(job.job_id, status="running", progress=5, message="Preparing target")
@@ -211,7 +228,11 @@ async def _run_taclaw_job(
                         enable_moe=routing_mode == "full_moe",
                         enable_scrum_master=routing_mode == "full_moe",
                         agent_models=_agent_models,
-                        metadata={"routing_mode": routing_mode},
+                        metadata={
+                            "routing_mode": routing_mode,
+                            "agent_passport_status": "valid" if _passport_valid else _passport_reason,
+                            "agent_passport_id": passport.passport_id() if passport else "",
+                        },
                     )
                     return harness.run_typed(req)
 
@@ -258,6 +279,21 @@ async def _run_taclaw_job(
         except Exception as exc:
             logger.warning("TAclaw: tatb scoring failed (non-fatal): %s", exc)
 
+        # 6b-pre. If passport was invalid, stamp identity.agent_passport_invalid into
+        # governance_signals.json before build_export() reads it — so the DETECT-AGT-001
+        # rule can fire from the export bundle's governance section.
+        if not _passport_valid:
+            _gov_path = report_dir / "governance_signals.json"
+            if _gov_path.exists():
+                try:
+                    import json as _json_gov
+                    _gov_data = _json_gov.loads(_gov_path.read_text())
+                    _gov_data.setdefault("identity", {})["agent_passport_invalid"] = True
+                    _gov_data["identity"]["agent_passport_reason"] = _passport_reason
+                    _gov_path.write_text(_json_gov.dumps(_gov_data, indent=2))
+                except Exception:
+                    pass
+
         store.update(job.job_id, progress=85, message="Building export bundle")
 
         # 6b. Build export bundle
@@ -268,6 +304,10 @@ async def _run_taclaw_job(
         except Exception as exc:
             logger.warning("TAclaw: export bundle failed: %s", exc)
             export_data = {"gate": {"result": gate}}
+
+        # 6c. Inject agent passport provenance into export bundle
+        if passport:
+            export_data.setdefault("provenance", {})["agent_passport"] = passport.to_provenance()
 
         # Override gate from pipeline if we got a BLOCK exception
         if gate == "BLOCK":
@@ -327,6 +367,7 @@ async def _run_taclaw_job(
                 "arch_name": arch_name,
                 "gate": gate,
                 "routing_mode": routing_mode,
+                "passport_id": passport.passport_id() if passport else None,
                 "artifacts_found": len(artifacts),
                 "graphs_merged": len(graphs),
                 "composite_nodes": len(merged.nodes),
@@ -380,6 +421,13 @@ async def taclaw_run(body: TAClawRequest):
         message=f"TAclaw queued for {body.target_type}: {body.target[:60]}",
     )
 
+    # Mint agent passport at job creation — gives every TAclaw run a signed identity token
+    _passport, _passport_token = mint_passport(
+        caller="taclaw",
+        target=arch_name,
+        job_id=job.job_id,
+    )
+
     asyncio.create_task(
         _run_taclaw_job(
             job=job,
@@ -389,6 +437,8 @@ async def taclaw_run(body: TAClawRequest):
             ssp_profile=body.ssp_profile,
             enrich_from_github=body.enrich_from_github,
             github_repo=body.github_repo,
+            passport=_passport,
+            passport_token=_passport_token,
         )
     )
 
@@ -398,6 +448,7 @@ async def taclaw_run(body: TAClawRequest):
         "arch_name": arch_name,
         "target": body.target,
         "target_type": body.target_type,
+        "passport_id": _passport.passport_id(),
         "poll_url": f"/api/v1/taclaw/jobs/{job.job_id}",
     }
 

@@ -2295,6 +2295,52 @@ rules:
       cases, require: rotation of signing keys to HSM, network segmentation of the
       token store, and mutual TLS on the federation trust path.
 
+  # DETECT-AGT-001: Agent Identity Spoofing / Missing Passport
+  #
+  # A TAclaw job presented an HMAC-SHA256 passport token that failed signature
+  # verification or had an expired TTL. Every legitimate TAclaw job mints a
+  # passport at creation time (caller="taclaw", signed with API_KEY, TTL=300s).
+  # A failed verification means the token was forged, replayed, or the API key
+  # changed between mint and validation. Grounded in T1134 (Access Token
+  # Manipulation) and T1550 (Use Alternate Authentication Material).
+  - id: DETECT-AGT-001
+    name: agent_identity_spoofing
+    domain: AGT
+    description: >
+      A TAclaw pipeline call carried an agent passport token that failed HMAC-SHA256
+      signature verification or had exceeded its TTL. Each TAclaw job mints a
+      passport (caller, target, job_id, issued_at) signed with the instance API_KEY
+      at creation time. A failed signature indicates the token was forged, replayed
+      from a prior run, or the API key was rotated between mint and validation.
+      An expired token indicates abnormal processing delay (>300s) or a clock-skew
+      attack. Either condition breaks traceability: the assessment result cannot be
+      attributed to an authenticated job and must not be used for compliance.
+    owasp: [A02, A07]
+    mitre_techniques: ["T1134", "T1550"]
+    atlas_tactic: AML.TA0006
+    kill_chain_stage: credential_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200407
+    severity: High
+    conditions:
+      - field: identity.agent_passport_invalid
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Fires only when a TAclaw job passport token fails HMAC verification or has
+      expired. Non-TAclaw pipeline calls (direct MMD analysis, artifact upload)
+      do not carry a passport and will never set identity.agent_passport_invalid —
+      this rule will not fire for them. Suppress when: (a) API key was rotated
+      mid-job (re-run with current key), or (b) clock drift >300s between hosts
+      (verify NTP sync). An invalid_signature finding (not expired) should be
+      treated as a potential active credential compromise.
+
 # ─────────────────────────────────────────────────────────────────────────────
 playbooks:
 
@@ -2732,6 +2778,20 @@ playbooks:
     false_positive_indicators:
       - "Ambient credential injection (EC2 instance profile, k8s IRSA, Workload Identity) where the diagram omits the IAM node for clarity — verify IAM binding exists in IaC"
       - "Read-only public config secret (non-sensitive cert, non-secret endpoint) — verify the secret value classification before suppressing"
+
+  agent_identity_spoofing:
+    alert: DETECT-AGT-001
+    analyst_steps:
+      - "Check identity.agent_passport_invalid and identity.agent_passport_reason in governance_signals.json"
+      - "Cross-reference provenance.agent_passport.job_id in the export bundle with the TAclaw job store"
+      - "If reason=invalid_signature: check whether API_KEY was rotated recently — the passport was minted with the old key"
+      - "If reason=expired: verify the TAclaw job did not take >300s and that host clocks are NTP-synchronised"
+      - "Review MCP access log for the session — an MCP caller with an invalid passport may indicate a replayed or spoofed agent call"
+      - "If invalid_signature confirmed with no key rotation: rotate API_KEY, invalidate in-flight jobs, and audit recent TAclaw results"
+    escalation_threshold: "reason=invalid_signature AND no recent key rotation → treat as active credential compromise; page SOC lead"
+    false_positive_indicators:
+      - "API key rotated mid-job (passport minted with old key) — verify rotation timestamp vs job created_at"
+      - "Clock drift >300s between mint host and validation host — verify NTP sync before suppressing"
 
   token_forgery_risk:
     alert: DETECT-SEC-002
