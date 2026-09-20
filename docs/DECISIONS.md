@@ -6,6 +6,18 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 92 — 2026-09-20
 
+### Entry 194 — model-audit DIM-1 fix: tatb_labeller_models registry
+
+**Context:** model-audit DIM-1 flagged `AGENT_MODEL_TATB_LABELLER` as MEDIUM — model not in `tested_models`. The TATB labeller is a real model call (brain instance labelling) and belongs in the registry, but it is not a critic role and should not be conflated with the critic routing registry.
+
+**Decision:** Add a separate `tatb_labeller_models` section to `model_routing.yaml`. model-audit DIM-1 checks both `tested_models` and `tatb_labeller_models` when validating `AGENT_MODEL_*` vars — TATB vars resolve against the labeller section, critic vars against tested_models.
+
+**Added entries:** `gemini-2.0-flash-001` (primary, .env.example default), `nemotron-3.5-lightning` (live .env primary), `nemotron-ultra` (live .env fallback). All `status: confirmed`, `role: brain_labeller`.
+
+**Result:** DIM-1 INFO; re-run 0C/0H/1M/2L. Remaining MEDIUM = DETECT-QC-009 not yet live (sprint backlog).
+
+---
+
 ### Entry 193 — model-audit skill (Engine Item 14)
 
 **Context:** HarnessModelGuardian validates model assignments at run time. No skill audits the config layer (env vars vs routing YAML), routing staleness vs bench results, blackhat-silence exclusion registry enforcement, or the endogenous output surface where the attacker is already inside the pipeline.
