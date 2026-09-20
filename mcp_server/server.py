@@ -4,7 +4,7 @@ ThreatAssessor MCP Server
 Exposes ThreatAssessor capabilities to Claude Desktop and external agents
 via the Model Context Protocol (stdio transport).
 
-17 tools:
+18 tools:
   1.  analyze_architecture      — submit MMD, get full threat model
   2.  run_expert_review         — queue FULL_MOE, return job_id
   3.  get_job_status            — poll a queued/running job
@@ -22,6 +22,7 @@ via the Model Context Protocol (stdio transport).
   15. record_brain_feedback     — mark a Brain prediction confirmed/wrong/partial; feeds confidence decay
   16. generate_synthetic_architectures — Generate synthetic MMDs from brain meta-layer gaps; stage for approval
   17. run_taco_agent            — Run TACO routing chain (brain→rag→harness); returns full HopChain
+  18. run_taclaw                — autonomous security assessment: crawl repo/dir → threat report + passport
 
 Setup (Claude Desktop):
   {
@@ -704,7 +705,7 @@ def run_taco_agent(
 
 
 # ---------------------------------------------------------------------------
-# Tool 19: run_taclaw — autonomous security assessment agent
+# Tool 18: run_taclaw — autonomous security assessment agent
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
@@ -713,8 +714,6 @@ def run_taclaw(
     arch_name: str = "",
     target_type: str = "directory",
     ssp_profile: str = "low_risk_cloud",
-    enrich_from_github: bool = False,
-    github_repo: str = "",
 ) -> str:
     """Autonomous security assessment: crawl a repo or directory, discover architecture artifacts,
     analyze, and produce a unified threat report.
@@ -723,16 +722,20 @@ def run_taclaw(
     merges them into a composite architecture graph, and runs the full TA threat-modeling pipeline.
 
     Args:
-        target:              Local directory path or git URL (https://github.com/...).
-        arch_name:           Name for the assessment (defaults to target basename).
-        target_type:         "directory" | "git_url" (default: "directory").
-        ssp_profile:         SSP profile for TA analysis (default: "low_risk_cloud").
-        enrich_from_github:  Cross-reference GitHub Code Scanning alerts (requires github_repo).
-        github_repo:         "owner/repo" string for GitHub enrichment.
+        target:      Local directory path or git URL (https://github.com/...).
+        arch_name:   Name for the assessment (defaults to target basename).
+        target_type: "directory" | "git_url" (default: "directory").
+        ssp_profile: SSP profile for TA analysis (default: "low_risk_cloud").
 
     Returns:
-        JSON with job_id and poll_url. Poll with get_job_status(job_id) until status == "completed".
-        The result includes gate (PASS/BLOCK), artifacts_found, graphs_merged, and the full export bundle.
+        JSON with job_id, passport_id, and poll_url. Poll with get_job_status(job_id)
+        until status == "completed". The completed result includes:
+          - gate: PASS or BLOCK
+          - routing_mode: brain_fast | api_only | full_moe (pipeline mode selected)
+          - passport_id: signed agent identity token for this job (PP-<job_id[:12]>)
+          - adapters_fidelity: per-source fidelity scores from merged adapter graphs
+          - brain_quality: Brier calibration scores for the matched brain pattern (if any)
+          - artifacts_found, graphs_merged, and the full ta-export/1.0 bundle
 
     Example::
         result = run_taclaw("/path/to/my-infra-repo", arch_name="my_infra")
@@ -745,12 +748,9 @@ def run_taclaw(
             "target": target,
             "target_type": target_type,
             "ssp_profile": ssp_profile,
-            "enrich_from_github": enrich_from_github,
         }
         if arch_name:
             payload["arch_name"] = arch_name
-        if github_repo:
-            payload["github_repo"] = github_repo
         result = api._post("/api/v1/taclaw/run", payload)
         _access_log.record_tool_call("run_taclaw", arch_name=arch_name or target)
         return json.dumps(result, indent=2)
