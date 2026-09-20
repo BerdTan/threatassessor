@@ -4,6 +4,28 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 87 — 2026-09-20
+
+### Entry 185 — /health-audit first run: all 5 findings resolved
+
+**Context:** `/health-audit` was built last session (commit ddb8874) and run for the first time. It surfaced 5 structural findings across 7 checks: 16 uncovered DETECT rules, 17 route-drift issues, 16 orphaned fixture MMDs, 30+ undocumented env vars, and parser bugs in the health-audit script itself.
+
+**Decision:** Fix all findings with the correct recommended action (not suppression or workarounds).
+
+**What was done:**
+
+- **detect-coverage**: 3 new scenario functions added to `incident_simulator.py` (EXF-007, QC-008, SCT-005); 16 new test methods in `test_incident_simulator.py`. Tests: 43 → 59.
+- **env-vars**: `.env.example` expanded from ~28 to 58 keys; `agentic/providers.py` wired `HETZNER_BASE_URL`, `HETZNER_MODEL`, `OPENROUTER_MODEL` via `os.getenv()`. Zero-drift confirmed.
+- **route-drift**: `openapi.yaml` updated — added 15 missing paths (SIP, routing, bench, boxing, brain/match, schemas); removed stale `/api/v1/analyze` (replaced by `/api/v1/analyze-stream`). Health-audit script regex fixed to handle empty-string routes (workspaces false-positive).
+- **fixtures**: `tests/test_architecture_corpus.py` created — registers all 36 MMDs as `TESTED_ELSEWHERE` or `CORPUS_ONLY`; validates corpus-only MMDs are non-empty valid Mermaid; drift guard fails on any unregistered new file. 18 tests pass in <0.5s.
+- **health-audit script bugs**: ROOT path (parents[3]→[4]), YAML id: regex, skills structural check, env-var commented-line parser, both_exclude filter.
+
+**Result:** `/health-audit` exits 0 — 0 issues, 7 clean. Commits a68ed7a + 4359b98.
+
+**Alternatives rejected:** Suppressing findings with exclude lists — would hide real drift rather than fix it.
+
+---
+
 ## Session 86 — 2026-09-19
 
 ### Entry 184 — prompt-audit skill (Engine Item 16)
