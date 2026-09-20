@@ -6,6 +6,30 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 92 — 2026-09-20
 
+### Entry 193 — model-audit skill (Engine Item 14)
+
+**Context:** HarnessModelGuardian validates model assignments at run time. No skill audits the config layer (env vars vs routing YAML), routing staleness vs bench results, blackhat-silence exclusion registry enforcement, or the endogenous output surface where the attacker is already inside the pipeline.
+
+**Decision:** Implement `model-audit` as Engine Item 14 — six dimensions covering the model trust surface.
+
+**Six dimensions:**
+- **DIM-1 Config integrity** — reads AGENT_MODEL_* from .env/.env.example; verifies each model value is in `tested_models` registry; flags if an excluded model is set via env override. First run: TATB_LABELLER vars flagged MEDIUM (brain labeller is intentionally separate from critic routing registry).
+- **DIM-2 Routing staleness** — compares `model_routing.yaml` mtime against newest `bench_summary.json`. First run: 3-day delta (bench 2026-09-12, routing updated 2026-09-08) → MEDIUM.
+- **DIM-3 Critic role validation** — checks no excluded/blackhat-silence models appear in `model_selection`; verifies all `_SWARM_AGENT_NAMES` roles present in guardian. First run: `hetzner_27b` confirmed but unrouted → LOW (safe).
+- **DIM-4 Endogenous output scan** — scans existing `07_scrum_master*.json` files for constraint-override language (DETECT-QC-009 pattern). No SM files in report/ on first run → LOW. DETECT-QC-009 not yet in `soc_detection_rules.yaml` → MEDIUM (promotion item).
+- **DIM-5 Provider config audit** — verifies `LLM_PROVIDER` against documented providers in `.env.example` and known set {openrouter, bedrock, hetzner, gemini}. First run: INFO (openrouter is documented).
+- **DIM-6 Guardian wiring** — verifies `HarnessModelGuardian` in `controller.py`; `_model_guardian` in ctx; no `os.getenv("AGENT_MODEL_*")` in `stages.py`. First run: all INFO.
+
+**First run result:** 0 critical, 0 high, 4 medium, 2 low, 11 info. Exit 0.
+
+**DETECT-QC-009 promotion path:** Add rule to `soc_detection_rules.yaml` (domain: QC) → wire SM verdict text into `RuleEvaluator` after `ScrumMasterStage` → add test scenario. DIM-4 will downgrade from MEDIUM to INFO when the rule is live.
+
+**Why separate from HarnessModelGuardian:** The guardian validates at runtime; model-audit audits the config layer the guardian reads, plus the endogenous output surface the guardian cannot reach. Run after any bench run or `model_routing.yaml` update.
+
+**Target:** `.claude/skills/model-audit/`
+
+---
+
 ### Entry 192 — aisurface-audit skill (Engine Item 13)
 
 **Context:** mcp-audit (Item 12) drills into the MCP layer. No skill audited the broader AI ingest surface: all paths where external or user-supplied content enters the pipeline and could carry adversarial payloads.
