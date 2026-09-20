@@ -4,6 +4,40 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 91 — 2026-09-20
+
+### Entry 190 — mcp-audit skill (Engine Item 12)
+
+**Context:** 18-tool MCP server exposes analyze, modify, and read tier tools to external agents.
+`check-mcp` validates protocol correctness (40 checks). No skill audited the security posture of the surface itself — injection vectors, parameter validation gaps, coverage blind spots, transport auth, and caller-identity enforcement.
+
+**Decision:** Implement `mcp-audit` as Engine Item 12 — a six-dimension static audit skill at `.claude/skills/mcp-audit/`.
+
+**What was done:**
+- `.claude/skills/mcp-audit/scripts/mcp-audit.py` — AST-based parser for server.py + client_sim.py; six audit functions; findings table sorted by severity; exit 1 on HIGH+
+- `.claude/skills/mcp-audit/skill.md` — dimension reference, severity levels, exit codes, findings from first run, relationship to check-mcp
+
+**First run results (2026-09-20): 0 critical, 11 high, 11 medium, 5 low, 5 info.**
+
+Key HIGH findings:
+- **DIM-2**: `run_taco_agent.query` (natural language to LLM) and `run_taclaw.target` (path to crawler) bypass `_mcp_content_trust_check` — the content trust gate only screens `mmd_content`
+- **DIM-3**: 11/18 tools have zero client_sim persona coverage; 7 of those are analyze/modify tier (analyze_architecture, governance_check, run_expert_review, record_brain_feedback, generate_synthetic_architectures, run_taco_agent, run_taclaw)
+- **DIM-5**: No adversarial persona file (`client_sim_adversarial.py`) exists; 7 modify/analyze-tier tools have zero adversarial test coverage
+
+Key MEDIUM findings:
+- **DIM-2**: `max_per_run` unbounded (flood risk), `feedback` enum unenforced, `technique_ids` format unchecked
+- **DIM-4**: Network transport default `--host 0.0.0.0` exposes all interfaces even with TM_MCP_KEY
+- **DIM-6**: No ABAC caller-identity check at MCP dispatch; `_mcp_content_trust_check` scope limited to mmd_content
+
+**DIM-1 clean:** All 18 tool docstrings + FastMCP.instructions pass instruction-override pattern scan.
+**DIM-4 mostly clean:** TM_MCP_KEY guard + FASTMCP_AUTH_TOKEN relay present; stdio default has no network exposure.
+
+**Why AST-based over regex:** Tool parameters and risk tiers change as the server evolves. AST extraction of `_TOOL_RISK` dict and `@mcp.tool()` function signatures stays correct when tools are added or renamed. Regex on raw source would drift.
+
+**Alternatives rejected:** Embedding audit checks in check-mcp — check-mcp is a protocol/structural validator (tool count, import correctness, routing); mixing security posture findings there would blur the separation. mcp-audit runs as a separate pass after check-mcp so each has a single responsibility.
+
+---
+
 ## Session 90 — 2026-09-20
 
 ### Entry 189 — taclaw-swarm skill: multi-target fan-out + champion ranking
