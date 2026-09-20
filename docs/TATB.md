@@ -116,6 +116,25 @@ Overall = weighted average of the four rubrics:
 
 Rubrics with missing data fall back to a neutral 50% for the unavailable signals.
 
+### brain_fast path — reduced TATB coverage
+
+When an analysis runs on the `brain_fast` path (smart router bypasses the harness), `07_moe_orchestrator.json` and `08_scrum_master.json` are not written for that run. The TTP-Accurate cross-critic and MoE lift sub-metrics fall back to neutral 50%. Plan-Actionable falls back entirely.
+
+The SSE complete payload from `_brain_fast_stream()` carries a `brain_quality` dict with Brier scores from `ta_brain_benchmarks.json`:
+
+| Field | Meaning |
+|---|---|
+| `brier_combined` | Combined calibration error (lower = better; <0.2 is well-calibrated) |
+| `brier_technique` | Technique prediction calibration |
+| `brier_control` | Control recommendation calibration |
+| `benchmark_confidence` | Confidence in the benchmark estimate itself (based on sample count) |
+
+`brain_quality` is advisory context — it tells a caller how well-calibrated the brain pattern is for this arch type. It is not folded into the TATB score directly, but a `brier_combined >= 0.3` on a brain_fast result should prompt a full pipeline re-run before using the output for a security decision.
+
+### TAclaw export — TATB in the bundle
+
+When TAclaw runs against an external repo, the `ta_export.json` bundle includes a `tatb` section populated from `get_tatb_scores(arch_name)`. For `brain_fast` routed TAclaw runs the `tatb` section reflects the reduced coverage above. For `api_only` runs all four rubrics are scored.
+
 ---
 
 ## Design principles
@@ -132,7 +151,7 @@ Rubrics with missing data fall back to a neutral 50% for the unavailable signals
 
 ## Implementation references
 
-- `chatbot/api/static/js/dashboard.js` — `_computeTatbScores()` (dashboard scorer) and `_tatbShowRubricDoc()` (this document's UI rendering)
+- `chatbot/api/static/js/dashboard.js` — `_computeTatbScores()` (dashboard scorer) and `_tatbShowRubricDoc()` (renders `docs/TATB.md` in the dashboard UI)
 - `.claude/skills/tatb-score/scripts/tatb-score.py` — CLI scorer (mirrors dashboard logic)
 - `chatbot/modules/self_validation.py` — emits `technique_validation` with CONFIRMED/PLAUSIBLE/FAILED classification
 - `chatbot/modules/rapids_driven_controls.py` — `_MULTI_LAYER_CONTROLS` (hop-layer inference)

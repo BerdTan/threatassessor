@@ -1,6 +1,6 @@
 ---
 name: docs-health
-description: Audits CLAUDE.md, docs/DECISIONS.md, and memory files for staleness and accuracy. Use at session start or after a major feature lands. Checks last-updated dates, module paths, API table completeness, and memory entry validity. Outputs a health table with proposed edits — no auto-writes.
+description: Audits CLAUDE.md, docs/DECISIONS.md, design docs (HARNESS/TATB/TACLAW), and memory files for staleness and accuracy. Use at session start or after a major feature lands. Checks last-updated dates, module paths, API table completeness, implementation status tables, and memory entry validity. Outputs a health table with proposed edits — no auto-writes.
 allowed-tools: Bash(git:*) Bash(ls:*) Bash(grep:*) Read
 ---
 
@@ -54,6 +54,50 @@ ls \~/.claude/projects/<project>/memory/
 
 Read each memory file. For any line referencing a module path, commit hash, or script path — verify it still exists. Flag entries with broken references or advice that contradicts the current codebase.
 
+## Check 5 — Design docs (HARNESS / TATB / TACLAW)
+
+The three canonical design docs live at `docs/HARNESS.md`, `docs/TATB.md`, `docs/TACLAW.md`. Each must stay in sync with the implementation.
+
+```bash
+ROOT=$(git rev-parse --show-toplevel)
+
+# 1. Status line freshness — does each doc's Status/Last Updated reflect recent commits?
+grep -n "^**Status:\|^**Last Updated:\|^**Date:" \
+  "$ROOT/docs/HARNESS.md" "$ROOT/docs/TATB.md" "$ROOT/docs/TACLAW.md"
+git -C "$ROOT" log -1 --format="%ci %s"
+
+# 2. File path validity — do referenced .py paths still exist?
+grep -hE "chatbot/[a-z_/]+\.py|mcp_server/[a-z_/]+\.py|taclaw_cli/[a-z_/]+\.py|policies/[a-z_]+\.yaml" \
+  "$ROOT/docs/HARNESS.md" "$ROOT/docs/TATB.md" "$ROOT/docs/TACLAW.md" \
+  | grep -oE "[a-z_/]+\.(py|yaml)" | sort -u | while read p; do
+      [ -f "$ROOT/$p" ] && echo "✅ $p" || echo "❌ $p"
+    done
+
+# 3. Engine Item completeness — are items 11-16 still ⬜ Planned, or have some shipped?
+grep -n "Engine Item\|⬜ Planned\|✅ Shipped" "$ROOT/docs/HARNESS.md" | tail -20
+
+# 4. README links — do all docs/README.md links resolve?
+grep -oE '\[.*?\]\(([^)]+\.md)\)' "$ROOT/docs/README.md" \
+  | grep -oE '\(([^)]+)\)' | tr -d '()' | while read p; do
+      target="$ROOT/docs/$p"
+      [ -f "$target" ] && echo "✅ $p" || echo "❌ $p (broken link)"
+    done
+
+# 5. TACLAW status — are Group statuses accurate?
+grep -n "^### Group\|Status:" "$ROOT/docs/TACLAW.md" | head -20
+```
+
+**Flag when:**
+- Status line date is >14 days behind the most recent commit
+- Any `❌` path (referenced file no longer exists)
+- Engine Items marked `⬜ Planned` in HARNESS.md but `✅ Shipped` in DECISIONS.md (or vice versa)
+- Any docs/README.md link points to a file that does not exist
+
+**Propose:**
+- Updated Status/date line for each stale doc
+- Corrected path for each broken reference
+- Engine Item status flip for anything shipped but still marked Planned
+
 ## Check 4 — Current Priorities
 
 Read `~/.claude/projects/<project>/memory/MEMORY.md` and extract the **Current priorities** section.
@@ -76,6 +120,10 @@ If any priority is now unblocked by work done this session, call that out explic
 |------|--------|-------|-------------|
 | CLAUDE.md | ⚠ | "Last Updated: 2026-05-24" | Update to today's date |
 | DECISIONS.md | ✅ | Last entry matches HEAD | — |
+| HARNESS.md | ⚠ | Status date 14d behind HEAD | Update status line to today |
+| TATB.md | ✅ | All paths valid | — |
+| TACLAW.md | ⚠ | Group 1 marked planned; shipped in d1bf90b | Update to ✅ Shipped |
+| docs/README.md | ❌ | Broken link: old_name.md | Update to HARNESS.md |
 | memory/project_roadmap.md | ✅ | All paths valid | — |
 
 ## Priorities
