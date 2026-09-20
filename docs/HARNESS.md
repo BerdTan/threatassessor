@@ -1,6 +1,6 @@
 # ThreatAssessor Harness v2 — Extension Architecture Design
 
-**Status:** Implemented — 2026-08-01 (commits 224d95a, 5c4326e). Two items intentionally deferred (see end of doc).  
+**Status:** Implemented — 2026-08-01 (commits 224d95a, 5c4326e). Extended through Engine Items 6–10 (2026-09-12 to 2026-09-20). Two items intentionally deferred (see status table).  
 **Scope:** Three roles: Orchestrator (decouple front/backend), Broker (policy-driven routing), Bouncer (kill switch / isolation). Incremental additions only — nothing removed, existing callers unaffected.
 
 ---
@@ -237,16 +237,42 @@ class CircuitBreaker:
 
 ## Stage order after v2
 
+**brain_fast path** (known arch, high recall — smart router decides before harness is entered):
 ```
+select_mode(arch_name) → brain_fast
+  └─ _brain_fast_stream()  [streaming.py — bypasses harness entirely]
+       └─ query_brain(infer) → SSE complete (techniques + controls + brain_quality)
+```
+No harness stages run on brain_fast. Ground truth is not rewritten. Existing report files are reused.
+
+**api_only path** (default, new arch, or brain miss):
+```
+AnalysisStage         ← ground_truth_generator + self_validation
+ReportStage           ← threat_report
 QualityStage          ← governance signals from input + artifact
-BouncerStage (NEW)    ← hard isolation gate (required=True)
+BouncerStage          ← hard isolation gate (required=True); Checks 1–5 (see below)
 PolicyBroker call     ← dynamic routing decision injected into ctx
-CriticStage           ← MoE critics (post-output guard deferred — see status table)
-ScrumMasterStage
 AIVSSStage
-OutboundAIVSSGate     ← wire _outbound_blocked read → BouncerStage handles it
+OutboundAIVSSGate     ← _outbound_blocked read by BouncerStage on next run
 RecordEventStage
 ```
+
+**full_moe path** (agentic arches; AIVSS ≥ 7.0; D5 < 0.85):
+```
+[same as api_only through BouncerStage, then:]
+CriticStage           ← MoE critics (Architect / Tester / RedTeam / PurpleTeam / Blackhat)
+ScrumMasterStage      ← SM consensus + action plan
+AIVSSStage
+OutboundAIVSSGate
+RecordEventStage
+```
+
+**BouncerStage — 5 checks (Check 5 added Engine Item 9):**
+1. `exploitation.blocked=True` → BLOCK
+2. `_outbound_blocked=True` → BLOCK
+3. `kill_switch` in `agent_governance.yaml` → BLOCK
+4. `architecture_name` in `blocked_architectures` → BLOCK
+5. `check_preflight(source_trust)` fails → BLOCK (unverified sources above risk threshold)
 
 ---
 
@@ -273,7 +299,9 @@ This design makes TA safe to expose externally: external callers cannot affect t
 
 ---
 
-## Implementation status — 2026-08-08
+## Implementation status
+
+### Harness v2 core — 2026-08-08
 
 | Component | Status | Notes |
 |---|---|---|
@@ -281,9 +309,46 @@ This design makes TA safe to expose externally: external callers cannot affect t
 | `AsyncThreatAssessorHarness` | ✅ Shipped | `asyncio.to_thread()` wrapper |
 | `ProgressCallback` TypeAlias | ✅ Shipped | `controller.py` |
 | `PolicyBroker` / `BrokerDecision` | ✅ Shipped | `policy_broker.py`; 5 routing rules |
-| `BouncerStage` (`required=True`) | ✅ Shipped | `stages.py`; kill_switch + blocked_architectures |
+| `BouncerStage` (`required=True`) | ✅ Shipped | `stages.py`; Checks 1–4 |
 | `BlockedPipelineError` | ✅ Shipped | `controller.py`; API returns 400 |
 | `CircuitBreaker` | ✅ Shipped | `controller.py`; wraps ModelRouter |
 | `PipelineResponse.detect_summary` | ✅ Shipped | `{rules_fired, total_fired}` populated by AIVSSStage |
-| **`EventPriority` / `_priority_sinks`** | ⏸ Deferred | `sink_tier` is computed in `BrokerDecision` but `EventBrokerCritic` does not read it. No current consumer needs priority routing — all sinks receive all events. Implement when a SIEM sink needs to suppress DEBUG events. |
-| **Post-critic output guard** | ⏸ Deferred | Design: scan MoE output dict through `check_artifact()` for leakage before writing to ctx. Not built — MoE critics do not handle raw user data, so leakage risk is low. Revisit if critics gain direct file/network access. |
+| **`EventPriority` / `_priority_sinks`** | ⏸ Deferred | `sink_tier` computed in `BrokerDecision` but `EventBrokerCritic` does not read it. Implement when a SIEM sink needs to suppress DEBUG events. |
+| **Post-critic output guard** | ⏸ Deferred | MoE critics do not handle raw user data; leakage risk is low. Revisit if critics gain direct file/network access. |
+
+### Engine Items 6–10 extensions
+
+| Item | Component | Status | Commit | Notes |
+|---|---|---|---|---|
+| 6.1 | JSONL integrity gate | ✅ Shipped | 5253db4 | Governance signals history validated before DETECT trend read |
+| 6.2 | Critic subprocess isolation | ✅ Shipped | a5b43c5 | Critics run in isolated subprocess; output deserialized before ctx write |
+| 6.3 | Skills SHA256 manifest | ✅ Shipped | f426186 | `.claude/skills/` content-addressed manifest; `/check-skills` validates |
+| 7.1 | Adapter `fidelity_detail` | ✅ Shipped | d1bf90b | TF/CF/OAI adapters emit `fidelity_detail` in `adapter_metadata` |
+| 7.2 | Brain-path quality bridge | ✅ Shipped | d1bf90b | `brain_quality` dict (Brier scores) in SSE complete payload from `_brain_fast_stream()` |
+| 7.3 | Corpus diversity signal | ✅ Shipped | d1bf90b | Shannon entropy of arch_type distribution; `flywheel_health()` flags skew |
+| 8.1 | Routing tags | ✅ Shipped | 1670a4a | `routing_mode` tag preserved across `trace.update()` in all sinks |
+| 8.2 | Per-critic generation spans | ✅ Shipped | b744e4a | `arch_type` + `aivss_composite` in `run_complete`; per-critic spans in `CriticStage` |
+| 8.3 | Bench routing run | ✅ Shipped | b61d881 | `bench_routing.py`; routing distribution across 13 arches |
+| 9 | Pre-flight authority layer | ✅ Shipped | Session 85 | `source_trust` on `ArchitectureGraph`; `check_preflight()` in `GovernanceAdapter`; BouncerStage Check 5 |
+| 10 | Propagation / taint layer | ✅ Shipped | Session 85 | Per-node provenance in adapters; `routing_mode` + `source_trust` stamped to `ground_truth` metadata; `TAExportBundle` `generated_by`/`pipeline_mode`/`source_trust`; cross-agent provenance in `query_brain()` |
+
+### Smart routing — fully wired (Session 70)
+
+| Component | Status | Notes |
+|---|---|---|
+| `select_mode(arch_name)` | ✅ Shipped | `smart_router.py` → `RoutingDecision`; reads `policies/model_routing.yaml` |
+| `_brain_fast_stream()` | ✅ Shipped | `streaming.py`; bypasses harness; serves from brain corpus patterns |
+| `BrainGuardian` | ✅ Shipped | `ingest_guard()` blocks `generated_by: brain_fast` at build time; `flywheel_health()` stagnation + skew detection |
+| `/check-brain` skill | ✅ Shipped | exits 1 when brain is stagnant; run after heavy brain_fast traffic |
+| D5 gate | ✅ Shipped | critical recall gate; backfilled on all 13 boxed arches |
+
+### Engine Items 11–16 — planned
+
+| Item | Description | Status |
+|---|---|---|
+| 11 | Agent registry + agent passport (JWT, `TM-AGENT-PASSPORT` header) + MCP ABAC enforcement + DETECT-AGT-001 `agent_identity_spoofing` | ⬜ Planned — TAclaw hardening |
+| 12 | mcp-audit skill | ⬜ Planned |
+| 13 | aisurface-audit skill | ⬜ Planned |
+| 14 | model-audit skill | ⬜ Planned |
+| 15 | skill-audit skill | ⬜ Planned |
+| 16 | prompt-audit skill | ⬜ Planned |
