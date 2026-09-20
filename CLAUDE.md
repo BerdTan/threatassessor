@@ -225,6 +225,7 @@ python3 .claude/skills/check-sip/scripts/check-sip.py --live  # + REST API check
 
 ```bash
 /session-cleanup      # master housekeeping: docs-health + repo-organise in one pass
+/health-audit         # structural health: orphaned routes/adapters, DETECT coverage gaps, env-var drift
 /check-skills         # supply-chain + phishing audit of .claude/skills/ corpus
 /check-deprecation    # broken imports + anti-patterns — run after heavy refactoring
 /skill-stress-test    # red-team a skill before finalising — pass skill name as arg
