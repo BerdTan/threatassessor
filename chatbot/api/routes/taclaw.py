@@ -157,47 +157,77 @@ async def _run_taclaw_job(
 
         mmd_text = merged.to_mmd()
 
-        # 5. Run TA pipeline
-        store.update(job.job_id, progress=55, message="Running TA analysis pipeline")
+        # 5. Smart routing — decide mode before harness runs
+        from chatbot.harness.smart_router import select_mode as _select_mode
+        from chatbot.config import get_settings
+        settings = get_settings()
+        report_dir = Path(settings.system.report_dir) / arch_name
 
-        mmd_tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".mmd", delete=False, encoding="utf-8"
-        )
-        mmd_tmp.write(mmd_text)
-        mmd_tmp.close()
-        mmd_path = Path(mmd_tmp.name)
+        routing = _select_mode(arch_name)
+        routing_mode = routing.mode
 
-        try:
-            from chatbot.harness.controller import ThreatAssessorHarness, PipelineRequest, BlockedPipelineError
-            from chatbot.config import get_settings
+        # brain_fast: skip pipeline if existing report files are present; else fall back
+        if routing_mode == "brain_fast" and not (report_dir / "ground_truth.json").exists():
+            routing_mode = "api_only"
+            logger.info("TAclaw: brain_fast → api_only (no existing report for %s)", arch_name)
 
-            settings = get_settings()
-            report_dir = Path(settings.system.report_dir) / arch_name
+        store.update(job.job_id, progress=55, message=f"Running TA pipeline [{routing_mode}]")
 
-            def _run_pipeline():
-                harness = ThreatAssessorHarness()
-                req = PipelineRequest(
-                    architecture_path=str(mmd_path),
-                    report_dir=str(report_dir),
-                    ssp_profile=ssp_profile,
-                    architecture_name=arch_name,
-                )
-                return harness.run_typed(req)
-
-            store.update(job.job_id, progress=60, message="TA pipeline running (~30s)")
-            pipeline_result = await asyncio.get_event_loop().run_in_executor(None, _run_pipeline)
+        if routing_mode == "brain_fast":
+            # Serve from existing report files — no new pipeline run
             gate = "PASS"
-        except Exception as exc:
-            # BlockedPipelineError is a BLOCK gate, not a failure
-            if "BlockedPipelineError" in type(exc).__name__ or "blocked" in str(exc).lower():
-                gate = "BLOCK"
-                pipeline_result = None
-                logger.warning("TAclaw: pipeline blocked for %s: %s", arch_name, exc)
-            else:
-                store.update(job.job_id, status="failed", error=f"Pipeline failed: {exc}", progress=0)
-                return
-        finally:
-            mmd_path.unlink(missing_ok=True)
+            pipeline_result = None
+            logger.info("TAclaw: brain_fast path for %s (skipping full pipeline)", arch_name)
+        else:
+            mmd_tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".mmd", delete=False, encoding="utf-8"
+            )
+            mmd_tmp.write(mmd_text)
+            mmd_tmp.close()
+            mmd_path = Path(mmd_tmp.name)
+
+            try:
+                from chatbot.harness.controller import ThreatAssessorHarness, PipelineRequest, BlockedPipelineError
+
+                _routed_model = routing.model_id
+                _agent_models = (
+                    {a: _routed_model for a in
+                     ["architect", "tester", "red_team", "purple_team", "blackhat", "moe_orchestrator"]}
+                    if _routed_model else None
+                )
+                if _routed_model:
+                    logger.warning(
+                        "TAclaw smart_router: %s → mode=%s model=%s (%s)",
+                        arch_name, routing_mode, routing.model_alias, _routed_model,
+                    )
+
+                def _run_pipeline():
+                    harness = ThreatAssessorHarness()
+                    req = PipelineRequest(
+                        architecture_path=str(mmd_path),
+                        report_dir=str(report_dir),
+                        ssp_profile=ssp_profile,
+                        architecture_name=arch_name,
+                        enable_moe=routing_mode == "full_moe",
+                        enable_scrum_master=routing_mode == "full_moe",
+                        agent_models=_agent_models,
+                        metadata={"routing_mode": routing_mode},
+                    )
+                    return harness.run_typed(req)
+
+                store.update(job.job_id, progress=60, message=f"TA pipeline running [{routing_mode}]")
+                pipeline_result = await asyncio.get_event_loop().run_in_executor(None, _run_pipeline)
+                gate = "PASS"
+            except Exception as exc:
+                if "BlockedPipelineError" in type(exc).__name__ or "blocked" in str(exc).lower():
+                    gate = "BLOCK"
+                    pipeline_result = None
+                    logger.warning("TAclaw: pipeline blocked for %s: %s", arch_name, exc)
+                else:
+                    store.update(job.job_id, status="failed", error=f"Pipeline failed: {exc}", progress=0)
+                    return
+            finally:
+                mmd_path.unlink(missing_ok=True)
 
         store.update(job.job_id, progress=83, message="Scoring TATB rubric")
 
@@ -292,10 +322,11 @@ async def _run_taclaw_job(
             job.job_id,
             status="completed",
             progress=100,
-            message=f"TAclaw complete — gate={gate}, arch='{arch_name}'",
+            message=f"TAclaw complete — gate={gate}, mode={routing_mode}, arch='{arch_name}'",
             result={
                 "arch_name": arch_name,
                 "gate": gate,
+                "routing_mode": routing_mode,
                 "artifacts_found": len(artifacts),
                 "graphs_merged": len(graphs),
                 "composite_nodes": len(merged.nodes),
