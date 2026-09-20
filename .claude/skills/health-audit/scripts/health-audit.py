@@ -104,7 +104,7 @@ def check_route_openapi_drift() -> int:
 
     # Extract FastAPI route paths from decorator lines, add /api/v1 prefix
     # Pattern: @router.METHOD("path") — capture the first string argument
-    route_pat = re.compile(r'@router\.\w+\(\s*["\']([^"\']+)["\']')
+    route_pat = re.compile(r'@router\.\w+\(\s*["\']([^"\']*)["\']')
     prefix_pat = re.compile(r'APIRouter\(.*?prefix=["\']([^"\']+)["\']')
 
     fa_paths: set[str] = set()

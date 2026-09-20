@@ -53,111 +53,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
-  /api/v1/analyze:
-    post:
-      tags:
-      - analysis
-      summary: Analyze architecture diagram
-      description: 'Run deterministic threat analysis (Team 1: ThreatAnalysisService).
-
-
-        **Expected Performance:**
-
-        - Response time: ~30 seconds (P50), ~45 seconds (P95)
-
-        - Timeout: 120 seconds
-
-
-        **Confidence Level:**
-
-        - Base confidence: 99.5% (deterministic engine)
-
-        - Includes: RAPIDS assessment, attack paths, control recommendations
-
-
-        **Dependencies:**
-
-        - ✅ **No prerequisites** - This is the entry point
-
-        - Generates: `ground_truth.json` in `report/{arch_name}/` directory
-
-
-        **Output Files:**
-
-        - `report/{arch_name}/ground_truth.json` - Analysis results (used by /validate)
-
-        - `report/{arch_name}/01_executive_summary.md`
-
-        - `report/{arch_name}/02_technical_report.md`
-
-        - `report/{arch_name}/03_action_plan.md`
-
-
-        **Use Cases:**
-
-        - Initial threat assessment
-
-        - Quick architecture review
-
-        - CI/CD pipeline integration
-
-        - Entry point for two-step workflow (analyze → validate)'
-      operationId: analyze_architecture_api_v1_analyze_post
-      parameters:
-      - name: include_validation
-        in: query
-        required: false
-        schema:
-          type: boolean
-          default: true
-          title: Include Validation
-      - name: TM-API-KEY
-        in: header
-        required: false
-        schema:
-          type: string
-          description: ThreatAssessor API key for authentication
-          title: Tm-Api-Key
-        description: ThreatAssessor API key for authentication
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Body_analyze_architecture_api_v1_analyze_post'
-      responses:
-        '200':
-          description: Analysis completed successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AnalyzeResponse'
-        '400':
-          description: Invalid file format
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Missing or invalid API key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '422':
-          description: Invalid Mermaid syntax
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-      security:
-      - ApiKeyAuth: []
   /dashboard:
     get:
       tags:
@@ -2848,6 +2743,503 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - ApiKeyAuth: []
+
+  /api/v1/adapters:
+    get:
+      tags:
+      - sip
+      summary: List Adapters
+      description: Return registered TA-SIP adapter types and their capabilities.
+      operationId: list_adapters_api_v1_adapters_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - ApiKeyAuth: []
+  /api/v1/sip/health:
+    get:
+      tags:
+      - sip
+      summary: SIP Health
+      description: Return health status of the TA-SIP platform (adapters, enrichment, TAclaw).
+      operationId: sip_health_api_v1_sip_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - ApiKeyAuth: []
+  /api/v1/enrich:
+    post:
+      tags:
+      - sip
+      summary: Enrich Component
+      description: Fuzzy component-to-attack-path lookup (<50ms, no LLM). Returns relevant MITRE techniques for a named component.
+      operationId: enrich_api_v1_enrich_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {}
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/analyze/artifact:
+    post:
+      tags:
+      - sip
+      summary: Analyze Artifact
+      description: Upload a file (TF/CF/OAI/Prose/MMD) — adapter auto-detects format, converts to ArchitectureGraph, then runs the full analysis SSE stream.
+      operationId: analyze_artifact_api_v1_analyze_artifact_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: SSE stream of analysis events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/taclaw/run:
+    post:
+      tags:
+      - sip
+      summary: TAclaw Run
+      description: Async repo assessment — crawl dir or git URL, adapt, merge, run TA pipeline, export. Returns job_id.
+      operationId: taclaw_run_api_v1_taclaw_run_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {}
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/taclaw/jobs:
+    get:
+      tags:
+      - sip
+      summary: List TAclaw Jobs
+      description: List all TAclaw async jobs with status and results.
+      operationId: list_taclaw_jobs_api_v1_taclaw_jobs_get
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - ApiKeyAuth: []
+  /api/v1/taclaw/jobs/{job_id}:
+    get:
+      tags:
+      - sip
+      summary: Get TAclaw Job
+      description: Get status and result for a specific TAclaw job.
+      operationId: get_taclaw_job_api_v1_taclaw_jobs_job_id_get
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Job not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/routing/suggest/{arch_name}:
+    get:
+      tags:
+      - routing
+      summary: Routing Suggest
+      description: Recommend pipeline mode (brain_fast/api_only/full_moe) from boxing data for a named architecture.
+      operationId: routing_suggest_api_v1_routing_suggest_arch_name_get
+      parameters:
+      - name: arch_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Arch Name
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Architecture not found in routing table
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/routing/quick-assess/{arch_name}:
+    get:
+      tags:
+      - routing
+      summary: Routing Quick Assess
+      description: Pattern-based threat estimate (~50ms, no LLM) for a named architecture.
+      operationId: routing_quick_assess_api_v1_routing_quick_assess_arch_name_get
+      parameters:
+      - name: arch_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Arch Name
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Architecture not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/bench/runs:
+    get:
+      tags:
+      - bench
+      summary: List Bench Runs
+      description: List all benchmark run directories with summary metadata.
+      operationId: list_bench_runs_api_v1_bench_runs_get
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - ApiKeyAuth: []
+  /api/v1/bench/report/{run_id}:
+    get:
+      tags:
+      - bench
+      summary: Bench Report
+      description: Return the HTML benchmark report for a specific run.
+      operationId: bench_report_api_v1_bench_report_run_id_get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      responses:
+        '200':
+          description: HTML report
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: Run not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/boxing/run:
+    post:
+      tags:
+      - boxing
+      summary: Boxing Run
+      description: Start an async boxing job — score current and contender model outputs, compute D5 gate.
+      operationId: boxing_run_api_v1_boxing_run_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {}
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/boxing/jobs/{job_id}:
+    get:
+      tags:
+      - boxing
+      summary: Get Boxing Job
+      description: Poll status and result for a specific boxing job.
+      operationId: get_boxing_job_api_v1_boxing_jobs_job_id_get
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Job not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/boxing/promote:
+    post:
+      tags:
+      - boxing
+      summary: Boxing Promote
+      description: Promote a boxing winner to the active model routing config.
+      operationId: boxing_promote_api_v1_boxing_promote_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {}
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/boxing/results:
+    get:
+      tags:
+      - boxing
+      summary: Boxing Results
+      description: Return all completed boxing scorecard results.
+      operationId: boxing_results_api_v1_boxing_results_get
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - ApiKeyAuth: []
+  /api/v1/brain/match:
+    post:
+      tags:
+      - brain
+      summary: Brain Match
+      description: Return brain pattern matches for a given architecture signature. Used by smart_router and MCP.
+      operationId: brain_match_api_v1_brain_match_post
+      parameters:
+      - name: TM-API-KEY
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Tm-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {}
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - ApiKeyAuth: []
+  /api/v1/schemas/ta-export:
+    get:
+      tags:
+      - schemas
+      summary: TA Export Schema
+      description: Return the JSON Schema for ta-export/1.0 assessment bundles.
+      operationId: ta_export_schema_api_v1_schemas_ta_export_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - ApiKeyAuth: []
 components:
   schemas:
     AnalyzeResponse:
@@ -3310,6 +3702,15 @@ x-tagGroups:
   tags:
   - graph-index
   - ta-wiz
+- name: SIP Platform
+  tags:
+  - sip
+  - routing
+- name: Operations
+  tags:
+  - bench
+  - boxing
+  - schemas
 - name: Configuration
   tags:
   - config
