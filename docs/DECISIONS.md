@@ -20,17 +20,21 @@ Read this file at the start of every session. After any significant decision abo
 - **AUD-5 Manifest coverage gap** — `.py`/`.sh` scripts not covered by `skills.sha256`
 - **AUD-6 Execution scope drift** — network/write ops vs declared `allowed-tools`
 
-**First run (2026-09-20):** 0 critical, 0 high, 14 medium, 35 low, 4 info. Exit 0.
+**First run (2026-09-20):** 0 critical, 0 high, 6 medium, 33 low, 5 info. Exit 0.
+(After fixing two false-positive sources: AUD-4 docstring/self-match and AUD-6 Python import category error.)
+
 - AUD-1: INFO — no parameter injection patterns across 72 skill scripts
 - AUD-2: LOW — expected writes to `report/`/`chatbot/data/`/`policies/`; no `.env` writes
-- AUD-3: MEDIUM — audit-to-detect/detect-loop/incident-simulator chaining; transitive nodes: aisurface-audit, check-detect, critic-gym, detect-loop, model-audit; all manifest-covered
-- AUD-4: MEDIUM — detect-loop, gen-blog, tatb-loop write `DECISIONS.md` (intentional; feeds downstream consumers)
-- AUD-5: INFO — all 72 corpus scripts in manifest after regen (173 entries)
-- AUD-6: MEDIUM — 7 skills with network calls underdeclared in `allowed-tools`; LOW — 8 skills without `allowed-tools`
+- AUD-3: MEDIUM — `audit-to-detect → check-detect → detect-loop` multi-hop chains; transitive nodes: `check-detect`, `detect-loop`; all manifest-covered
+- AUD-4: MEDIUM — `detect-loop` and `tatb-loop` genuinely write to `DECISIONS.md` (intentional; feeds recall/session-cleanup/gen-blog next session)
+- AUD-5: INFO — all 72 corpus scripts in manifest (174 entries after regen)
+- AUD-6: LOW — 8 skills without `allowed-tools` declaration (implicit wildcard scope)
 
-**AUD-3 note:** skill chaining is by design in this corpus (audit-to-detect orchestrates check-detect; detect-loop orchestrates check-detect). Operational risk is low because all transitive nodes are SHA256-manifest-covered. The MEDIUM findings document the blast radius for future reference, not immediate remediation.
+**AUD-3 note:** chaining is by design. Blast radius is bounded by SHA256 manifest coverage on all transitive nodes. MEDIUM findings document the dependency graph, not immediate remediation items.
 
-**AUD-6 note:** `allowed-tools` gaps (network calls without `WebFetch` declaration) are a documentation/governance gap, not a live injection path. Most of these skills make API calls to the TA REST API (internal, not external). Flagged as sprint backlog — add `WebFetch` or `Bash(curl:*)` to `allowed-tools` where appropriate.
+**AUD-4 note:** `detect-loop` and `tatb-loop` write to `DECISIONS.md` by design (they log findings there). The finding is documented so future reviewers know which skills can alter the shared session log.
+
+**AUD-6 note:** Python `requests`/`httpx` library calls are NOT Claude Code tool invocations — `allowed-tools` governs Claude Code tools, not Python runtime. The original v1 of AUD-6 incorrectly flagged Python imports as scope drift; fixed to detect shell-level subprocess calls (`curl`, `wget`, `git`) instead. The remaining LOWs are skills with no `allowed-tools` declaration at all.
 
 ---
 
