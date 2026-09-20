@@ -38,7 +38,7 @@ def _load_source(path: Path) -> ast.Module:
 
 
 def extract_tools(tree: ast.Module) -> list[dict]:
-    """Return list of {name, docstring, params} for each @mcp.tool() function."""
+    """Return list of {name, docstring, params, guard_calls} for each @mcp.tool() function."""
     tools = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef):
@@ -56,7 +56,19 @@ def extract_tools(tree: ast.Module) -> list[dict]:
         defaults_offset = len(node.args.args) - len(node.args.defaults)
         for i, default in enumerate(node.args.defaults):
             params[defaults_offset + i]["default"] = ast.unparse(default)
-        tools.append({"name": node.name, "docstring": docstring, "params": params})
+        # Collect names of guard functions called in the body
+        guard_calls: set[str] = set()
+        for child in ast.walk(node):
+            if isinstance(child, ast.Call):
+                func_name = ast.unparse(child.func)
+                if any(g in func_name for g in ("_mcp_content_trust_check", "_validate_taclaw_target")):
+                    guard_calls.add(func_name)
+        tools.append({
+            "name": node.name,
+            "docstring": docstring,
+            "params": params,
+            "guard_calls": guard_calls,
+        })
     return tools
 
 
@@ -182,52 +194,67 @@ def dim1_description_injection(tools: list[dict], instructions: str) -> list[dic
 
 # ─── DIM-2: Parameter validation gaps ────────────────────────────────────────
 
-# Params that should have explicit format/range validation but don't
-_PARAM_RISKS: dict[str, list[tuple[str, str, str]]] = {
+# Params that require explicit validation before reaching LLM/crawler/API.
+# Each entry: (param_name, severity_if_unguarded, description, expected_guard_fn_or_None)
+# expected_guard_fn: substring of a guard function name expected in the tool body.
+#   If that function is called in the body, the finding is downgraded to INFO (guard present).
+_PARAM_RISKS: dict[str, list[tuple[str, str, str, str | None]]] = {
     "run_taco_agent": [
         ("query", "HIGH",
          "Natural-language string flows directly to LLM via api.run_taco_agent(); "
-         "no injection screen applied (only mmd_content gets _mcp_content_trust_check)."),
+         "injection screen (_mcp_content_trust_check) must be applied to the query string.",
+         "_mcp_content_trust_check"),
     ],
     "run_taclaw": [
         ("target", "HIGH",
          "Local path or git URL flows to RepoCrawler without path-traversal validation; "
-         "a path like '../../../../etc' or a private git URL could exfiltrate data."),
+         "a path like '../../../../etc' or a private git URL could exfiltrate data. "
+         "_validate_taclaw_target must be called before dispatch.",
+         "_validate_taclaw_target"),
         ("target_type", "MEDIUM",
          "Enum constraint ('directory'|'git_url') not enforced at MCP layer; "
-         "arbitrary string reaches API payload."),
+         "arbitrary string reaches API payload.",
+         None),
         ("ssp_profile", "LOW",
          "Enum constraint (low_risk_cloud|medium_risk_cloud|high_risk_gov|critical_infrastructure) "
-         "not enforced at MCP layer for this tool (only docstring note, no validation)."),
+         "not enforced at MCP layer (docstring note only).",
+         None),
     ],
     "analyze_architecture": [
         ("ssp_profile", "LOW",
-         "Enum constraint not enforced at MCP layer; arbitrary value flows to API."),
+         "Enum constraint not enforced at MCP layer; arbitrary value flows to API.",
+         None),
     ],
     "generate_synthetic_architectures": [
         ("max_per_run", "MEDIUM",
          "Integer param has no upper bound; a caller could pass max_per_run=1000 "
-         "triggering mass LLM generation in a single call."),
+         "triggering mass LLM generation in a single call.",
+         None),
         ("gap_ids", "LOW",
-         "CSV string fed to split() and forwarded to API with no format check on individual IDs."),
+         "CSV string fed to split() and forwarded to API with no format check on individual IDs.",
+         None),
     ],
     "record_brain_feedback": [
         ("feedback", "MEDIUM",
          "Enum constraint ('confirmed'|'wrong'|'partial') declared in docstring only; "
-         "no Python-level validation before the value reaches api.record_brain_feedback()."),
+         "no Python-level validation before the value reaches api.record_brain_feedback().",
+         None),
     ],
     "lookup_mitre_technique": [
         ("technique_ids", "MEDIUM",
          "CSV string (e.g. 'T1566,T1078') has no format validation; "
-         "arbitrary string flows to the MITRE lookup endpoint."),
+         "arbitrary string flows to the MITRE lookup endpoint.",
+         None),
     ],
     "run_expert_review": [
         ("critic_mode", "LOW",
-         "Enum constraint (partial_parallel|sequential|parallel|auto) not enforced at MCP layer."),
+         "Enum constraint (partial_parallel|sequential|parallel|auto) not enforced at MCP layer.",
+         None),
     ],
     "get_threat_briefing": [
         ("fmt", "LOW",
-         "Enum constraint ('md'|'json') not enforced at MCP layer."),
+         "Enum constraint ('md'|'json') not enforced at MCP layer.",
+         None),
     ],
 }
 
@@ -242,28 +269,41 @@ def dim2_parameter_validation(tools: list[dict]) -> list[dict]:
         if not tool:
             continue
         param_names = {p["name"] for p in tool["params"]}
-        for param, severity, detail in param_risks:
+        guard_calls = tool.get("guard_calls", set())
+        for param, severity, detail, expected_guard in param_risks:
             if param not in param_names:
                 continue
             if param in _CONTENT_TRUST_PROTECTED:
+                continue
+            # Guard detection: if the expected guard function is called in this tool's body,
+            # downgrade to INFO (guard present — regression would surface here).
+            if expected_guard and any(expected_guard in g for g in guard_calls):
+                findings.append({
+                    "dim": "DIM-2",
+                    "severity": "INFO",
+                    "location": f"tool:{tool_name} param:{param}",
+                    "issue": f"Guard present: {expected_guard}",
+                    "detail": f"Parameter is screened by {expected_guard} before dispatch.",
+                    "remediation": "",
+                })
                 continue
             findings.append({
                 "dim": "DIM-2",
                 "severity": severity,
                 "location": f"tool:{tool_name} param:{param}",
-                "issue": f"Unvalidated parameter reaches downstream system",
+                "issue": "Unvalidated parameter reaches downstream system",
                 "detail": detail,
                 "remediation": (
                     "Add explicit validation: enum allowlist check, integer range clamp, "
                     "or path-traversal sanitization before the API call."
                 ),
             })
-    if not findings:
+    if not any(f["severity"] not in ("INFO",) for f in findings):
         findings.append({
             "dim": "DIM-2",
             "severity": "INFO",
             "location": "all tools",
-            "issue": "No parameter validation gaps detected",
+            "issue": "No unguarded parameter validation gaps detected",
             "detail": "Clean",
             "remediation": "",
         })

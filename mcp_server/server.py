@@ -86,6 +86,8 @@ def _mcp_content_trust_check(tool_name: str, mmd_content: str) -> str | None:
     Only runs for analyze/modify tier tools that accept architecture content.
     Uses InhouseGovernanceAdapter.check_input — the same check that BouncerStage
     enforces inside the pipeline (independent second path for the MCP surface).
+    Also called for natural-language query strings (run_taco_agent) where the same
+    injection patterns apply even though the input is not MMD.
     """
     tier = _TOOL_RISK.get(tool_name, "read")
     if tier == "read" or not mmd_content:
@@ -103,6 +105,25 @@ def _mcp_content_trust_check(tool_name: str, mmd_content: str) -> str | None:
             )
     except Exception:
         pass
+    return None
+
+
+def _validate_taclaw_target(target: str, target_type: str) -> str | None:
+    """Return error string if the TAclaw target fails path/URL safety checks, else None.
+
+    Catches path traversal ('..') and non-https git URLs before the payload
+    reaches RepoCrawler server-side.
+    """
+    if ".." in target:
+        return (
+            "MCP target safety gate: path traversal pattern ('..') detected in target. "
+            "Use absolute paths or relative paths without '..'."
+        )
+    if target_type == "git_url" and not target.startswith("https://"):
+        return (
+            "MCP target safety gate: git_url must use https:// protocol. "
+            "SSH, file://, and git:// schemes are not permitted."
+        )
     return None
 
 
@@ -694,6 +715,9 @@ def run_taco_agent(
         JSON HopChain with: chain_id, hops (each with hop_type, confidence,
         response_summary, metadata), final_confidence, routing flags.
     """
+    if _err := _mcp_content_trust_check("run_taco_agent", query):
+        _access_log.record_tool_call("run_taco_agent", success=False)
+        return json.dumps({"error": _err})
     try:
         result = api.run_taco_agent(query=query, arch_name=arch_name, force_critic=force_critic)
         _access_log.record_tool_call("run_taco_agent", arch_name=arch_name)
@@ -743,6 +767,9 @@ def run_taclaw(
         # poll:
         status = get_job_status(job["job_id"], wait_for_completion=True)
     """
+    if _err := _validate_taclaw_target(target, target_type):
+        _access_log.record_tool_call("run_taclaw", success=False)
+        return json.dumps({"error": _err})
     try:
         payload = {
             "target": target,
