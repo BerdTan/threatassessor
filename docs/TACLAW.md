@@ -97,7 +97,7 @@
 
 **Goal:** A self-contained runner that external developers execute against their own TA instance to verify TAclaw works and evaluate output quality.
 
-**Location:** `taclaw_cli/tests/`
+**Location:** `taclaw/tests/`
 
 #### Fixtures (`tests/data/taclaw/`)
 
@@ -110,12 +110,12 @@
 
 Fixtures are minimal (5–15 components), deterministic, and committed to `tests/data/taclaw/`. No real infrastructure.
 
-#### Runner (`taclaw_cli/tests/run_suite.py`)
+#### Runner (`taclaw/tests/run_suite.py`)
 
 ```
-python taclaw_cli/tests/run_suite.py              # full suite
-python taclaw_cli/tests/run_suite.py --smoke      # simple_webapp only, fastest path
-python taclaw_cli/tests/run_suite.py --eval-only  # re-run eval against cached outputs
+python taclaw/tests/run_suite.py              # full suite
+python taclaw/tests/run_suite.py --smoke      # simple_webapp only, fastest path
+python taclaw/tests/run_suite.py --eval-only  # re-run eval against cached outputs
 ```
 
 Flags: `--api-url`, `--api-key`, `--timeout`, `--output-dir`
@@ -216,5 +216,5 @@ Group 2 is independent of Group 1 and can be implemented in parallel. Groups 3 a
 | `policies/soc_detection_rules.yaml` | 3 | DETECT-AGT-001 rule |
 | `mcp_server/server.py` | 4 | tool schema updates |
 | `mcp_connector/client.py` | 4 | typed response updates |
-| `taclaw_cli/tests/run_suite.py` | 5 | NEW — test suite runner |
+| `taclaw/tests/run_suite.py` | 5 | NEW — test suite runner |
 | `tests/data/taclaw/` | 5 | NEW — 4 fixtures + baseline files |

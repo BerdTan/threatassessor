@@ -72,10 +72,10 @@ TAclaw is the external-facing agent interface to the TA engine. External develop
 | Resource | Purpose |
 |---|---|
 | [TACLAW.md](TACLAW.md) | Full hardening plan: export completeness, smart routing, agent passport, test suite MVP with eval |
-| [../taclaw_cli/README.md](../taclaw_cli/README.md) | CLI install + usage — `ta analyze`, `ta gate`, `ta export` |
+| [../taclaw/README.md](../taclaw/README.md) | CLI install + usage — `ta analyze`, `ta gate`, `ta export` |
 | [../mcp_connector/README.md](../mcp_connector/README.md) | MCP connector — `run_taclaw` tool, typed `TAExportBundle` |
 | `POST /api/v1/taclaw/run` | REST endpoint — async job; poll `GET /api/v1/taclaw/jobs` |
-| `taclaw_cli/tests/run_suite.py` | Test suite MVP — structural + quality + regression eval; `--smoke` for quick check |
+| `taclaw/tests/run_suite.py` | Test suite MVP — structural + quality + regression eval; `--smoke` for quick check |
 
 **TAclaw pipeline (current):** `git_url / directory → RepoCrawler (MAX_FILES=200) → adapters (TF/CF/OAI/MMD/Prose) → merge_graphs → to_mmd() → ThreatAssessorHarness → build_export → brain ingest`
 

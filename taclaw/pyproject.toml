@@ -16,12 +16,12 @@ dependencies = [
 ]
 
 [project.scripts]
-ta = "taclaw_cli.cli:main"
-taclaw = "taclaw_cli.cli:main"
+ta = "taclaw.cli:main"
+taclaw = "taclaw.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/breadtan88/threatassessor"
 Repository = "https://github.com/breadtan88/threatassessor"
 
 [tool.hatch.build.targets.wheel]
-packages = ["taclaw_cli"]
+packages = ["taclaw"]

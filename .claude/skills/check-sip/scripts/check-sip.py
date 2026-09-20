@@ -204,13 +204,13 @@ def check_contracts():
     _check("mcp_connector typed models import + instantiate correctly", _models_import)
 
     def _taclaw_pyproject():
-        pp = REPO_ROOT / "taclaw_cli" / "pyproject.toml"
-        assert pp.exists(), "taclaw_cli/pyproject.toml not found"
+        pp = REPO_ROOT / "taclaw" / "pyproject.toml"
+        assert pp.exists(), "taclaw/pyproject.toml not found"
         text = pp.read_text()
-        assert 'ta = "taclaw_cli.cli:main"' in text
-        assert 'taclaw = "taclaw_cli.cli:main"' in text
+        assert 'ta = "taclaw.cli:main"' in text
+        assert 'taclaw = "taclaw.cli:main"' in text
 
-    _check("taclaw_cli/pyproject.toml has both 'ta' and 'taclaw' entry points", _taclaw_pyproject)
+    _check("taclaw/pyproject.toml has both 'ta' and 'taclaw' entry points", _taclaw_pyproject)
 
     def _publish_workflows():
         cli_wf  = REPO_ROOT / ".github" / "workflows" / "publish-cli.yml"
@@ -331,17 +331,17 @@ def check_cli():
 
     def _ta_cli_importable():
         result = subprocess.run(
-            [sys.executable, "-c", "from taclaw_cli.cli import main; print('ok')"],
+            [sys.executable, "-c", "from taclaw.cli import main; print('ok')"],
             capture_output=True, text=True, cwd=REPO_ROOT
         )
         assert result.returncode == 0, f"Import failed: {result.stderr[:300]}"
         assert "ok" in result.stdout
 
-    _check("taclaw_cli.cli imports without error", _ta_cli_importable)
+    _check("taclaw.cli imports without error", _ta_cli_importable)
 
     def _ta_help():
         result = subprocess.run(
-            [sys.executable, "-m", "taclaw_cli.cli", "--help"],
+            [sys.executable, "-m", "taclaw.cli", "--help"],
             capture_output=True, text=True, cwd=REPO_ROOT,
             env={**os.environ, "PYTHONPATH": str(REPO_ROOT)},
         )

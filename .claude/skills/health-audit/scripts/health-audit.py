@@ -360,7 +360,7 @@ def check_adapter_usage() -> int:
     # Search the entire codebase for each class name
     search_dirs = [
         ROOT / "chatbot" / "api",
-        ROOT / "taclaw_cli",
+        ROOT / "taclaw",
         ROOT / "mcp_server",
         ROOT / "mcp_connector",
         ROOT / "scripts",

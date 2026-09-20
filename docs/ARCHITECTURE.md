@@ -27,7 +27,7 @@ The system is designed around one invariant: **every analysis path converges on 
 | **Export** | `chatbot/modules/ta_exporter.py`, `chatbot/schemas/ta_export_v1.json` | `ta-export/1.0` bundle (gate + OTM + OCSF + TATB + provenance) |
 | **REST API** | `chatbot/api/routes/` | FastAPI surface: SSE streams, async job layer, admin (72 paths) |
 | **MCP Server** | `mcp_server/` | 18 tools via stdio — for Claude Desktop and coding agents |
-| **TAclaw** | `taclaw_cli/`, `chatbot/api/routes/taclaw.py` | Autonomous repo assessment: crawl → adapt → merge → harness → export |
+| **TAclaw** | `taclaw/`, `chatbot/api/routes/taclaw.py` | Autonomous repo assessment: crawl → adapt → merge → harness → export |
 | **MCP Connector** | `mcp_connector/` | Typed SDK (`TAExportBundle`, `enrich_finding()`) for downstream integrations |
 | **Dashboard** | `chatbot/api/static/` | 7-tab browser UI |
 | **Policies** | `policies/` | Runtime governance config: DETECT rules, agent governance, model routing |
@@ -81,7 +81,7 @@ flowchart TD
     subgraph SURFACES["External Surfaces"]
         E1["REST API\nchatbot/api/routes/\n72 paths  FastAPI"]
         E2["MCP Server\nmcp_server/\n18 tools  stdio"]
-        E3["TAclaw\ntaclaw_cli/ + routes/taclaw.py\nta analyze · ta gate · ta export"]
+        E3["TAclaw\ntaclaw/ + routes/taclaw.py\nta analyze · ta gate · ta export"]
         E4["MCP Connector\nmcp_connector/\nTAExportBundle SDK"]
         E5["Dashboard\nchatbot/api/static/\n7 tabs"]
         E6["CI/CD\nGitHub Actions ta-review.yml\nta gate exits 1 on BLOCK"]

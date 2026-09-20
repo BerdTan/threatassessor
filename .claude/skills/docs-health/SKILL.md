@@ -67,7 +67,7 @@ grep -n "^**Status:\|^**Last Updated:\|^**Date:\|^**Version:" \
 git -C "$ROOT" log -1 --format="%ci %s"
 
 # 2. File path validity — do referenced .py paths still exist?
-grep -hE "chatbot/[a-z_/]+\.py|mcp_server/[a-z_/]+\.py|taclaw_cli/[a-z_/]+\.py|policies/[a-z_]+\.yaml" \
+grep -hE "chatbot/[a-z_/]+\.py|mcp_server/[a-z_/]+\.py|taclaw/[a-z_/]+\.py|policies/[a-z_]+\.yaml" \
   "$ROOT/docs/ARCHITECTURE.md" "$ROOT/docs/HARNESS.md" "$ROOT/docs/TATB.md" "$ROOT/docs/TACLAW.md" \
   | grep -oE "[a-z_/]+\.(py|yaml)" | sort -u | while read p; do
       [ -f "$ROOT/$p" ] && echo "✅ $p" || echo "❌ $p"

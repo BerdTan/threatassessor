@@ -174,7 +174,7 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system structure: 13 layers, execution paths, design invariants, component diagram
 - [`CLAUDE.md`](CLAUDE.md) — full module map, harness concepts, all check commands
 - [`mcp_server/README.md`](mcp_server/README.md) — all 18 tools, 4-step test protocol, client integration snippets
-- [`taclaw_cli/README.md`](taclaw_cli/README.md) — TAclaw CLI: `ta analyze`, `ta gate`, `ta export`
+- [`taclaw/README.md`](taclaw/README.md) — TAclaw CLI: `ta analyze`, `ta gate`, `ta export`
 - [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 40 DETECT rules with OWASP/ATLAS/incident provenance
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decision log (local only, gitignored)
 

@@ -76,7 +76,7 @@ tail -f logs/api.log            # logs
 - `chatbot/api/routes/platform.py` — `GET /api/v1/adapters` + `GET /api/v1/sip/health`
 - `chatbot/schemas/ta_export_v1.json` — JSON Schema for ta-export/1.0; served at `GET /api/v1/schemas/ta-export`
 - `mcp_connector/` — `threatassessor-mcp` v1.1.0; typed `TAExportBundle`, `ComponentContext`; `enrich_finding()`
-- `taclaw_cli/` — `ta`/`taclaw` CLI; `ta gate` exits 1 on BLOCK (CI); publish on `taclaw-v*` tags
+- `taclaw/` — `ta`/`taclaw` CLI; `ta gate` exits 1 on BLOCK (CI); publish on `taclaw-v*` tags
 
 **MCP server:**
 - `mcp_server/server.py` — FastMCP app, 18 tools (stdio transport); all tools log to `MCPAccessLogger`
