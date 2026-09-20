@@ -56,19 +56,19 @@ Read each memory file. For any line referencing a module path, commit hash, or s
 
 ## Check 5 — Design docs (HARNESS / TATB / TACLAW)
 
-The three canonical design docs live at `docs/HARNESS.md`, `docs/TATB.md`, `docs/TACLAW.md`. Each must stay in sync with the implementation.
+The four canonical design docs live at `docs/ARCHITECTURE.md`, `docs/HARNESS.md`, `docs/TATB.md`, `docs/TACLAW.md`. Each must stay in sync with the implementation.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel)
 
 # 1. Status line freshness — does each doc's Status/Last Updated reflect recent commits?
-grep -n "^**Status:\|^**Last Updated:\|^**Date:" \
-  "$ROOT/docs/HARNESS.md" "$ROOT/docs/TATB.md" "$ROOT/docs/TACLAW.md"
+grep -n "^**Status:\|^**Last Updated:\|^**Date:\|^**Version:" \
+  "$ROOT/docs/ARCHITECTURE.md" "$ROOT/docs/HARNESS.md" "$ROOT/docs/TATB.md" "$ROOT/docs/TACLAW.md"
 git -C "$ROOT" log -1 --format="%ci %s"
 
 # 2. File path validity — do referenced .py paths still exist?
 grep -hE "chatbot/[a-z_/]+\.py|mcp_server/[a-z_/]+\.py|taclaw_cli/[a-z_/]+\.py|policies/[a-z_]+\.yaml" \
-  "$ROOT/docs/HARNESS.md" "$ROOT/docs/TATB.md" "$ROOT/docs/TACLAW.md" \
+  "$ROOT/docs/ARCHITECTURE.md" "$ROOT/docs/HARNESS.md" "$ROOT/docs/TATB.md" "$ROOT/docs/TACLAW.md" \
   | grep -oE "[a-z_/]+\.(py|yaml)" | sort -u | while read p; do
       [ -f "$ROOT/$p" ] && echo "✅ $p" || echo "❌ $p"
     done

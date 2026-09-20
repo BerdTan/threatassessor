@@ -10,6 +10,7 @@
 | If you want to… | Go to |
 |---|---|
 | Start a dev session | [CLAUDE.md](../CLAUDE.md) (root) |
+| Understand the system structure | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Understand architecture decisions | [DECISIONS.md](DECISIONS.md) |
 | Harness v2 implementation | [HARNESS.md](HARNESS.md) |
 | TAclaw hardening + test suite plan | [TACLAW.md](TACLAW.md) |
@@ -25,6 +26,7 @@
 
 | File | Purpose |
 |---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System structure — 13 layers, execution paths, design invariants, component diagram |
 | [DECISIONS.md](DECISIONS.md) | Architectural decision log — read at session start |
 | [HARNESS.md](HARNESS.md) | Harness v2 Orchestrator/Broker/Bouncer — implemented; Engine Items 6–10 extensions |
 | [TATB.md](TATB.md) | TATB benchmark rubric (Threat/TTP/Risk/Plan); brain_fast coverage notes |

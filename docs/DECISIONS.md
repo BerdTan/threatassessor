@@ -4,6 +4,25 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 90 — 2026-09-20
+
+### Entry 188 — ARCHITECTURE.md foundation doc
+
+**Context:** HARNESS/TATB/TACLAW design docs exist but there was no single structural overview showing how all 13 layers fit together, what the execution paths are, and what the system invariants are. Archive contained pre-harness architecture docs (2026-05-02) fully stale — no useful fragments.
+
+**Decision:** Add `docs/ARCHITECTURE.md` as the foundation structural doc. One-word caps naming convention (matches HARNESS/TATB/TACLAW/DECISIONS). Content driven from live code introspection + codemap graphs.
+
+**What was done:**
+- New `docs/ARCHITECTURE.md` — purpose paragraph, 13-layer table, system Mermaid diagram (INGEST → ADAPTERS → BRAIN/ROUTER → HARNESS → PIPELINE → SURFACES), three execution paths summary with brain_fast note, 6 design invariants, codemap graph reference table, related docs links
+- `docs/README.md` — added ARCHITECTURE.md to Quick Navigation and Active Documentation root table
+- `docs-health` Check 5 — extended to include ARCHITECTURE.md in staleness + path validity sweep (now 4 design docs: ARCHITECTURE/HARNESS/TATB/TACLAW)
+
+**Why:** External developers and new contributors need a structural entry point before reading HARNESS or TACLAW. The codemap graphs exist but are not surfaced in docs; ARCHITECTURE.md bridges them. The 6 invariants (adapters always produce ArchitectureGraph; Harness always gates; ta-export/1.0 is canonical output; routing decides before harness runs; governance signals flow through; policies are the control plane) are the non-obvious load-bearing rules that shape every implementation decision.
+
+**Alternatives rejected:** Embedding raw codemap graphs directly — they are dated 2026-07-18 (pre-TA-SIP) and would need continuous re-embedding. Instead, ARCHITECTURE.md references them and notes the refresh command.
+
+---
+
 ## Session 89 — 2026-09-20
 
 ### Entry 187 — TAclaw capability map + hardening plan + design docs restructure
