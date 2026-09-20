@@ -6,6 +6,25 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 91 — 2026-09-20
 
+### Entry 191 — mcp-audit DIM-2 HIGH fixes (c820e5e)
+
+**Context:** mcp-audit first run (Entry 190) flagged two DIM-2 HIGH findings: `run_taco_agent.query` (natural-language to LLM) and `run_taclaw.target` (path/URL to crawler) both bypassed `_mcp_content_trust_check`, which only screened `mmd_content`.
+
+**Decision:** Patch both immediately — these are production code gaps, not test coverage gaps.
+
+**What was done (`mcp_server/server.py`):**
+- `run_taco_agent`: call `_mcp_content_trust_check("run_taco_agent", query)` before dispatch. Tool is modify-tier, so the injection gate runs on the query string — same gate already protecting `mmd_content` in `analyze_architecture`.
+- `run_taclaw`: add `_validate_taclaw_target(target, target_type)` — rejects paths containing `..` (traversal) and `git_url` targets not starting with `https://`. Called before `api._post()`.
+- Extended docstring on `_mcp_content_trust_check` to note it applies to natural-language query strings, not only MMD content.
+
+**mcp-audit updated (`mcp-audit.py`):** DIM-2 now detects guard presence via AST (`guard_calls` extracted from each tool's function body). Guarded params downgrade to INFO so a regression (guard removed) surfaces immediately on the next audit run.
+
+**Re-run result:** 0 critical, 9 high (was 11) — two DIM-2 HIGHs → INFO. Remaining 9 HIGHs are DIM-3/DIM-5 coverage gaps (sprint backlog, not production vulnerabilities).
+
+**Why not fix DIM-3/DIM-5 now:** Those are simulator additions (`client_sim_adversarial.py`) — infrastructure work. The two DIM-2 findings were actual call-path vulnerabilities affecting live production code and warranted immediate patching.
+
+---
+
 ### Entry 190 — mcp-audit skill (Engine Item 12)
 
 **Context:** 18-tool MCP server exposes analyze, modify, and read tier tools to external agents.
