@@ -2,7 +2,7 @@ d31fc6c6563e1edf5b54f37e054274361eb6839d97de4bb609fc03f197558deb  .claude/skills
 c012a2d7bf22a38bb38e57354ee598f753f66fb38d5734f75ac26319b1342c5c  .claude/skills/add-provider/scripts/add-provider.py
 86dab5f2a4da3d3746d089402e4a0528a00e38458f527ab4a4ea15d0d84abe95  .claude/skills/adr-patch/SKILL.md
 6e71eba6161becdc11bc34afc1e7570a247f54c887c05b822944e2b32dab6ad9  .claude/skills/adr-patch/scripts/adr-patch.py
-fc354cba75c8e9db7273e9bdeb32894933738ecde78aefc5aec88fbc952c662c  .claude/skills/aisurface-audit/scripts/aisurface-audit.py
+9210f247292a8019fabb0b7f83e6ec2322d9f9d1a7f6921d3cca40be036554a4  .claude/skills/aisurface-audit/scripts/aisurface-audit.py
 706c3ec3082a7eb706bb179d1494b8cd0eca76f83e74f0ee4369e42312dc9cc2  .claude/skills/aisurface-audit/skill.md
 634a96748356688608648cc823d51d2e04d985a48776268d84f4ecb0c7e9c89c  .claude/skills/aivss-gate/SKILL.md
 cb3e6c6f0cff263497aafff5306f4ea8e7ae3db697334fcc0f1cf5c7d75c86bc  .claude/skills/aivss-gate/scripts/aivss-gate.py
@@ -102,7 +102,7 @@ fce3ba05ad0e447e96a5a8d198ac10a31b9ca4eddd907bef2015aa72c5ae5dd5  .claude/skills
 be2f9b2460b9bdca38ba0ca00ad86c447f4eea3ff13944e25ebbaeb1e8775388  .claude/skills/model-audit/scripts/model-audit.py
 ea943d66fd7e09e551c2fd257ba1cf5f27891ef7366858684593f72ca73a9bb2  .claude/skills/model-audit/skill.md
 48e3c10a0bc2edb93ce822199ff9d527e3ebaa659512898de3c4c07459341b84  .claude/skills/priorities/SKILL.md
-6975281f7cbf1cecb69edb5c63c5371df16d27ae12d176b547500baf23340a98  .claude/skills/prompt-audit/scripts/prompt-audit.py
+6231ac18920738f6bcd252ea4f2fe013407c65b116b880c0bf3b94fc64c2c053  .claude/skills/prompt-audit/scripts/prompt-audit.py
 7ef6db7ea6131ac8257a7011f6a2f77a7ec1fb21704527cba802a47778382828  .claude/skills/prompt-audit/skill.md
 52cf634998c8e0f6f7dcbb8ba6633d2d66eafbeefff4b643554fb0d7d9d6e451  .claude/skills/promptsmith/SKILL.md
 8dbc6e90a0c5fbab28a7f8504469eace97e23b7d99cad3c6a9c9317dc59b2582  .claude/skills/promptsmith/references/authoring.md

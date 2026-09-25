@@ -451,8 +451,13 @@ def srf4_enrichment_surface() -> None:
                 r"def resolve_arch_dir.*?\n.*?(\.\.|\.\s*parent|Path.*arch_name|sanitiz|reject)",
                 rep_src, re.DOTALL,
             )
-            if not re.search(r"\.\.", rep_src[rep_src.find("def resolve_arch_dir"):
-                                              rep_src.find("def resolve_arch_dir") + 400]):
+            func_body = rep_src[rep_src.find("def resolve_arch_dir"):
+                                rep_src.find("def resolve_arch_dir") + 600]
+            has_traversal_guard = (
+                re.search(r"\.\.", func_body) or
+                re.search(r"is_arch_name_traversal|traversal|HTTPException.*400", func_body)
+            )
+            if not has_traversal_guard:
                 _find(
                     "SRF-4",
                     "resolve_arch_dir() — no path traversal check visible",

@@ -21,7 +21,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Callable, Optional, Any
 
 from chatbot.modules.base_agent import BaseAgent, AgentResult
-from chatbot.modules.prompt_safety import sanitise_arch_name
+from chatbot.modules.prompt_safety import sanitise_arch_name, sanitise_content
 from agentic.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -327,7 +327,7 @@ class CriticAgent(BaseAgent):
         rapids_rationale = []
         for threat_type, data in rapids.items():
             if threat_type != "_metadata":
-                rationale = data.get('rationale', 'N/A')[:80]
+                rationale = sanitise_content(data.get('rationale', 'N/A'), max_len=80)
                 rapids_rationale.append(f"  - {threat_type}: {rationale}...")
         rapids_reasoning = "\n".join(rapids_rationale[:3]) if rapids_rationale else "  (None)"
 
@@ -337,7 +337,7 @@ ARCHITECTURE TO REVIEW: {arch_name}
 
 ARCHITECTURE CONTEXT:
 - Type: {arch_type}
-- Description: {ground_truth.get('description', 'N/A')}
+- Description: {sanitise_content(ground_truth.get('description', 'N/A'), max_len=500)}
 - Controls Present ({len(controls_present)}): {controls_present_list}
 - Controls Missing ({len(controls_missing)}): {controls_missing_list}
 

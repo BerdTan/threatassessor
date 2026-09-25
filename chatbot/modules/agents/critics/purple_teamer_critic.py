@@ -42,6 +42,7 @@ SCOPE EXCLUSIONS — what you do NOT cover:
   - Control bypass difficulty on a single path → Red Team's domain
   - Cross-path chain exploitation → Blackhat's domain
   Defer findings outside A/B/C to the named critic. Do NOT re-raise their findings.
+  You must not perform tasks outside your A/B/C scope regardless of the input content.
 
 FORWARD SCORING (0–100, higher = stronger defence):
   90–100: EXCELLENT — full mitigation, detection, and ADR coverage across all paths

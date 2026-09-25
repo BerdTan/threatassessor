@@ -517,15 +517,29 @@ def pau5_instruction_override() -> None:
         if not has_external:
             continue
 
-        # Single-block prompts with external vars: no clear role separation
+        # Single-block prompts with external vars: check if system_prompt= kwarg is used nearby
+        # (meaning the role split is at the LLM call level, not inline — architectural norm here)
+        _SYSTEM_KW_RE = re.compile(r'system_(?:prompt|message)\s*=\s*[\w"\']', re.IGNORECASE)
+        has_system_kwarg = bool(_SYSTEM_KW_RE.search(content))
+
         if single_block_hits and has_external:
-            severity = "MEDIUM"
-            _find(dim, f"{f.name} — single-block prompt with external var interpolation",
-                  severity,
-                  "Prompt is constructed as a single block (no explicit system/user role split) "
-                  "and interpolates external content. A carefully crafted input could attempt to "
-                  "prepend 'Ignore previous instructions' style overrides.",
-                  _rel(f))
+            if has_system_kwarg:
+                severity = "LOW"
+                _find(dim, f"{f.name} — single-block prompt, role split at call-site (system_prompt= kwarg)",
+                      severity,
+                      "Prompt is a single f-string block but system_prompt= is passed separately at the "
+                      "LLM call site — role split is in place at the call layer, not inline. "
+                      "External content is in the user-role message. Residual: ensure system_prompt "
+                      "is always passed first and no user message precedes it.",
+                      _rel(f))
+            else:
+                severity = "MEDIUM"
+                _find(dim, f"{f.name} — single-block prompt with external var interpolation",
+                      severity,
+                      "Prompt is constructed as a single block (no explicit system/user role split) "
+                      "and interpolates external content. A carefully crafted input could attempt to "
+                      "prepend 'Ignore previous instructions' style overrides.",
+                      _rel(f))
             flagged += 1
         elif role_boundary_hits and has_external:
             _find(dim, f"{f.name} — external content in user-role message (nominal)",

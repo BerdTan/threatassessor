@@ -174,6 +174,19 @@ async def _run_taclaw_job(
 
         mmd_text = merged.to_mmd()
 
+        # 4b. Pre-flight authority check (mirrors artifact.py pattern)
+        from chatbot.harness.governance import get_governance_adapter as _get_gov
+        _gov = _get_gov()
+        _preflight_sig = _gov.check_preflight(merged)
+        if _preflight_sig.preflight.get("blocked", False):
+            store.update(
+                job.job_id,
+                status="failed",
+                error=_preflight_sig.preflight.get("reason", "Pre-flight authority check failed"),
+                progress=0,
+            )
+            return
+
         # 5. Smart routing — decide mode before harness runs
         from chatbot.harness.smart_router import select_mode as _select_mode
         from chatbot.config import get_settings
@@ -232,6 +245,9 @@ async def _run_taclaw_job(
                             "routing_mode": routing_mode,
                             "agent_passport_status": "valid" if _passport_valid else _passport_reason,
                             "agent_passport_id": passport.passport_id() if passport else "",
+                            "_preflight_blocked": False,
+                            "_source_trust": getattr(merged, "source_trust", "unverified"),
+                            "_preflight_signals": _preflight_sig.preflight,
                         },
                     )
                     return harness.run_typed(req)
