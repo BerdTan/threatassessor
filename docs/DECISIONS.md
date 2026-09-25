@@ -6,6 +6,30 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 94 — 2026-09-25
 
+### Entry 198 — Jev (typesafe.ai) integration opportunities
+
+**Context:** Jev is a structured System 1 model (noul/choice/score question types) — fast, calibrated, no generation. API: `POST /v1/systemone` with `state` + `questions` map; all questions evaluated in one call. Not an LLM replacement — designed as a fast gate that feeds or filters expensive LLM passes.
+
+**Opportunities identified (priority order):**
+
+1. **TATB labeller** ⭐ — Replace/augment `AGENT_MODEL_TATB_LABELLER` with 4 `score` questions in one Jev call (threat_relevant, ttp_accurate, risk_defensible, plan_actionable). Faster, calibrated confidence per dimension, no LLM variability. Validate by comparing Brier scores on boxing corpus before promoting. Entry point: `chatbot/modules/ta_brain_builder.py` — add `JevTATBLabeller` alongside existing LLM labeller.
+
+2. **Smart router augmentation** — `choice` question on arch description to suggest routing mode for unboxed archs (cold-start gap in `select_mode()`). Confidence-gated: only override default if Jev confidence > threshold.
+
+3. **PolicyBroker critic pre-screen** — `noul` fan-out before critics run ("is identity expert warranted?", "is cloud critic warranted?"). Reduces full_moe cost by skipping low-confidence critics.
+
+4. **Governance pre-flight** — `noul` questions on raw input ("instruction-override language present?", "is this an architecture description?") before harness starts. Cheap, logged, feeds GovernanceSignals.
+
+5. **TAclaw** — Natural target for Jev: crawled repo content scored for relevance/trust before passing to adapters; `choice` question to select the right adapter when file type is ambiguous; `score` on extracted graph quality before brain ingest.
+
+**Decision:** Capture for future sprint. API key available. Start with TATB labeller as the most self-contained swap with a built-in validation path (Brier comparison on boxing corpus). TAclaw integration to follow once TATB path is validated.
+
+**Not decided yet:** Whether Jev replaces or augments the LLM labeller — depends on Brier comparison result.
+
+---
+
+### Entry 197 — Tier 2 security hardening: mcp-audit DIM-3/DIM-5 + aisurface SRF-5
+
 ### Entry 197 — Tier 2 security hardening: mcp-audit DIM-3/DIM-5 + aisurface SRF-5
 
 **Decision:** Implemented Tier 2 risk-reduction across two audit dimensions in one commit (ca0338b).
