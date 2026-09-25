@@ -44,6 +44,7 @@ from chatbot.modules.agents.critics.purple_teamer_critic import PurpleTeamerCrit
 from chatbot.modules.artifact_extractor import extract_artifacts, ArtifactSet
 from chatbot.harness.registry import _DEFAULT_REGISTRY
 from chatbot.modules.agent_framework import CritiqueScore
+from chatbot.modules.prompt_safety import sanitise_arch_name
 from agentic.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -1534,7 +1535,7 @@ class MoEOrchestrator:
         """
         try:
             # ---- build the prompt ----
-            arch_name = ground_truth.get("architecture", "unknown")
+            arch_name = sanitise_arch_name(ground_truth.get("architecture", "unknown"))
 
             # Risk numbers from ground truth
             rt = self._extract_risk_transformation(ground_truth)

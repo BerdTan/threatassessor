@@ -44,6 +44,7 @@ from chatbot.modules.self_validation import (
     apply_confidence_adjustments
 )
 from chatbot.config import get_settings
+from chatbot.modules.prompt_safety import sanitise_content
 
 logger = logging.getLogger(__name__)
 
@@ -1565,7 +1566,7 @@ def enhance_with_llm(
     from agentic.llm_client import generate_response_with_system
 
     with open(mmd_file_path, 'r') as f:
-        mermaid_content = f.read()
+        mermaid_content = sanitise_content(f.read())
 
     system_prompt = "You are a cybersecurity architect specializing in threat modeling and MITRE ATT&CK framework."
 

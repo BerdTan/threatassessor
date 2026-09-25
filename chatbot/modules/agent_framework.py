@@ -21,6 +21,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Callable, Optional, Any
 
 from chatbot.modules.base_agent import BaseAgent, AgentResult
+from chatbot.modules.prompt_safety import sanitise_arch_name
 from agentic.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -276,7 +277,7 @@ class CriticAgent(BaseAgent):
         - {after_risk}
         """
         # Extract key data (adapted to actual ground truth format)
-        arch_name = ground_truth.get("architecture", "Unknown")
+        arch_name = sanitise_arch_name(ground_truth.get("architecture", "Unknown"))
         arch_type = ground_truth.get("metadata", {}).get("architecture_type", "Unknown")
 
         # Component count from controls present + missing

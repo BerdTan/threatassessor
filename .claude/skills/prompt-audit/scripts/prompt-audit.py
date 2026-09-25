@@ -160,9 +160,10 @@ _FSTRING_INTERP_RE = re.compile(r'\{[^}]+\}')
 
 # Sanitisation indicators
 _SANITISE_RE = re.compile(
-    r'(sanitize|sanitise|escape|strip_tags|re\.sub\s*\(.*injection'
+    r'(sanitize|sanitise|sanitise_arch_name|sanitise_content|escape|strip_tags'
+    r'|re\.sub\s*\(.*injection'
     r'|html\.escape|bleach\.|markupsafe|remove_prompt_injection'
-    r'|clean_input|validate_arch)',
+    r'|clean_input|validate_arch|prompt_safety)',
     re.IGNORECASE,
 )
 
@@ -186,13 +187,20 @@ def pau2_injection_paths(templates: list[TemplateRecord]) -> None:
         block_lines = lines[max(0, tmpl.line - 1): tmpl.line + 30]
         block = "\n".join(block_lines)
 
-        # Check for external var interpolation within f-string context
-        external_matches = _EXTERNAL_VARS.findall(block)
+        # Only flag vars that appear inside {…} interpolation braces — not as free text labels
+        _BRACE_INTERP_RE = re.compile(r'\{([^}]+)\}')
+        external_matches = []
+        for m in _BRACE_INTERP_RE.finditer(block):
+            expr = m.group(1)
+            hit = _EXTERNAL_VARS.search(expr)
+            if hit:
+                external_matches.append(hit.group(0))
         if not external_matches:
             continue
 
-        # Check if any sanitisation is applied near this site (±20 lines)
-        context_start = max(0, tmpl.line - 20)
+        # Check if any sanitisation is applied near this site (200 lines upstream, 50 downstream)
+        # The sanitisation call may be at variable assignment, which can be far above the f-string.
+        context_start = max(0, tmpl.line - 200)
         context_end = min(len(lines), tmpl.line + 50)
         context = "\n".join(lines[context_start:context_end])
         has_sanitise = bool(_SANITISE_RE.search(context))
@@ -500,8 +508,12 @@ def pau5_instruction_override() -> None:
         if not role_boundary_hits and not single_block_hits:
             continue
 
-        # Check if architecture/external vars appear in the same file
-        has_external = bool(_EXTERNAL_VARS.search(content))
+        # Check if external vars appear in {…} interpolations in this file
+        _PAU5_BRACE_RE = re.compile(r'\{([^}]+)\}')
+        has_external = any(
+            _EXTERNAL_VARS.search(m.group(1))
+            for m in _PAU5_BRACE_RE.finditer(content)
+        )
         if not has_external:
             continue
 
@@ -567,7 +579,9 @@ _EXPECTED_CRITICS = {
 }
 
 _OUTPUT_FORMAT_RE = re.compile(
-    r'(return.*json|respond.*json|json.*code block|```json|"json_schema")',
+    r'(return.*json|respond.*json|json.*code block|```json|"json_schema"'
+    r'|single\s+json\s+object|exact\s+shape|OUTPUT\s+FORMAT.*JSON'
+    r'|response\s+must\s+be.*json|reply\s+with.*json)',
     re.IGNORECASE,
 )
 
