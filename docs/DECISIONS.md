@@ -6,6 +6,20 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 94 — 2026-09-25
 
+### Entry 197 — Tier 2 security hardening: mcp-audit DIM-3/DIM-5 + aisurface SRF-5
+
+**Decision:** Implemented Tier 2 risk-reduction across two audit dimensions in one commit (ca0338b).
+
+**DIM-3 (tool coverage gap):** 7 MCP tools had zero sim persona coverage — `analyze_architecture`, `generate_synthetic_architectures`, `governance_check`, `record_brain_feedback`, `run_expert_review`, `run_taclaw`, `run_taco_agent`. Wired into chatbot/code-agent/ciso personas. All 18 tools now exercised by at least one benign persona.
+
+**DIM-5 (no adversarial persona):** Created `mcp_server/client_sim_adversarial.py` with 5 adversarial scenarios: ADV-1 brain poisoning via `record_brain_feedback`, ADV-2 quota abuse via `generate_synthetic_architectures`, ADV-3 path traversal via `run_taclaw` target, ADV-4 LLM injection via `run_taco_agent` query, ADV-5 bulk recon sequence. Each scenario verifies the server rejects the payload (not exploiting).
+
+**SRF-5 HIGHs (prose adapter):** Two HIGHs resolved — `ProseAdapter.extract()` now calls `sanitise_content()` before passing text to `_call_llm()`, and returns `source_trust="crawled"`. `CrawledArtifact` dataclass gains `source_trust: str = "crawled"` field. `aisurface-audit` re-run: Exit 0, 0C/0H/2M (SRF-5 → INFO).
+
+**Alternatives rejected:** Separate PRs per dimension — unnecessary overhead for co-located fixes.
+
+---
+
 ### Entry 196 — prompt-audit skill (Engine Item 16)
 
 **Context:** No skill audited prompt templates as a security surface. `promptsmith` covers quality; `aisurface-audit` covers ingest data paths. The prompt construction layer — where ingested content becomes LLM input — was unaudited for injection risk, leakage, over-permission, and critic scope tightness.
