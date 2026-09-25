@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from chatbot.adapters.base import ArchEdge, ArchitectureGraph, ArchNode, BaseAdapter, NodeType
 from chatbot.adapters.registry import register
+from chatbot.modules.prompt_safety import sanitise_content as _sanitise_content
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,7 @@ class ProseAdapter(BaseAdapter):
             logger.warning("ProseAdapter: %s", e)
             text = content.decode("utf-8", errors="replace") if isinstance(content, bytes) else str(content)
 
+        text = _sanitise_content(text)
         llm_data = _call_llm(text)
         if llm_data and isinstance(llm_data, dict):
             nodes, edges = _parse_llm_response(llm_data)
@@ -195,6 +197,7 @@ class ProseAdapter(BaseAdapter):
             nodes=nodes,
             edges=edges,
             source_format="prose",
+            source_trust="crawled",
             fidelity=fidelity,
             source_component_count=len(nodes),
             adapter_metadata={

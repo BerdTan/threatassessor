@@ -488,21 +488,32 @@ def srf5_taclaw_surface() -> None:
     crawler_src = crawler.read_text(encoding="utf-8", errors="replace")
     prose_src = prose_adapter.read_text(encoding="utf-8", errors="replace") if prose_adapter.exists() else ""
 
-    # Check 1: Prose adapter accepts markdown/text files
+    # Check 1: Prose adapter accepts markdown/text files — verify injection sanitisation is present
+    has_sanitise = bool(re.search(r"sanitise_content|_sanitise_content|prompt_safety", prose_src))
     if re.search(r"\.(md|txt|pdf|docx)", prose_src):
-        _find(
-            "SRF-5",
-            "Prose adapter accepts .md, .txt, .pdf, .docx from crawled repos",
-            "HIGH",
-            "RepoCrawler ingests README.md, docs/, prose, and YAML files via the prose "
-            "adapter. These file types can contain adversarial payloads (e.g., "
-            "'Ignore previous instructions...'). No environment-injection check runs "
-            "on crawled prose before content enters the TA analysis pipeline. "
-            "Gap identified in DECISIONS Entry 178. "
-            "Remediation: add a content trust gate on crawled files with source_trust "
-            "set from RepoCrawler (external/unverified) before harness submission.",
-            str(prose_adapter.relative_to(ROOT)) if prose_adapter.exists() else "chatbot/adapters/prose.py",
-        )
+        if has_sanitise:
+            _find(
+                "SRF-5",
+                "Prose adapter: injection sanitisation applied before LLM call",
+                "INFO",
+                "sanitise_content() is called on crawled text before _call_llm(). "
+                "Adversarial override phrases are stripped prior to LLM ingestion.",
+                str(prose_adapter.relative_to(ROOT)) if prose_adapter.exists() else "chatbot/adapters/prose.py",
+            )
+        else:
+            _find(
+                "SRF-5",
+                "Prose adapter accepts .md, .txt, .pdf, .docx from crawled repos",
+                "HIGH",
+                "RepoCrawler ingests README.md, docs/, prose, and YAML files via the prose "
+                "adapter. These file types can contain adversarial payloads (e.g., "
+                "'Ignore previous instructions...'). No environment-injection check runs "
+                "on crawled prose before content enters the TA analysis pipeline. "
+                "Gap identified in DECISIONS Entry 178. "
+                "Remediation: add a content trust gate on crawled files with source_trust "
+                "set from RepoCrawler (external/unverified) before harness submission.",
+                str(prose_adapter.relative_to(ROOT)) if prose_adapter.exists() else "chatbot/adapters/prose.py",
+            )
     else:
         _find(
             "SRF-5",

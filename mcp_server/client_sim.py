@@ -261,6 +261,15 @@ async def persona_chatbot(session: ClientSession, arch_name: str) -> None:
     else:
         _warn("No MITRE technique IDs in briefing — skipping lookup")
 
+    _step(5, "Query TACO brain for architectural patterns")
+    taco = await call(session, "run_taco_agent", query=f"What are the top threat patterns for {arch_name}?", mode="infer")
+    if "error" in taco:
+        _warn(f"TACO query: {taco['error']}")
+    else:
+        _ok("TACO brain response received")
+        _result("patterns_found", len(taco.get("patterns") or taco.get("results") or []))
+        _result("confidence",     taco.get("confidence"))
+
     _code_block("Integration snippet (Python + any LLM)", """
         # In your LLM tool-use loop:
         tools_response = await session.list_tools()
@@ -327,6 +336,30 @@ async def persona_code_agent(session: ClientSession, arch_name: str) -> None:
         _ok(f"GATE: PASS — severity={severity}, all TATB ≥ {TATB_THRESHOLD}")
         print(f"\n  {GREEN('→ CI step exits 0, PR can merge')}")
 
+    _step(4, "Trigger fresh analysis to get up-to-date ground truth")
+    analysis = await call(session, "analyze_architecture", arch_name=arch_name, mode="api_only")
+    if "error" in analysis:
+        _warn(f"Analysis: {analysis['error']} (may need running API)")
+    else:
+        _ok("Analysis job triggered")
+        _result("job_id", analysis.get("job_id") or analysis.get("id"))
+
+    _step(5, "Run TAclaw on repo for compliance posture")
+    taclaw = await call(session, "run_taclaw", target=arch_name, mode="assess")
+    if "error" in taclaw:
+        _warn(f"TAclaw: {taclaw['error']} (may need running API)")
+    else:
+        _ok("TAclaw job accepted")
+        _result("job_id", taclaw.get("job_id") or taclaw.get("id"))
+
+    _step(6, "Generate synthetic test scenarios for arch coverage")
+    synth = await call(session, "generate_synthetic_architectures", arch_name=arch_name, count=1)
+    if "error" in synth:
+        _warn(f"Synthetic gen: {synth['error']} (may need running API)")
+    else:
+        _ok("Synthetic architecture generation triggered")
+        _result("queued", synth.get("queued") or synth.get("count"))
+
     _code_block("GitHub Actions step (YAML)", """
         - name: ThreatAssessor gate
           run: |
@@ -377,6 +410,49 @@ async def persona_ciso(session: ClientSession, arch_name: str) -> None:
         _result("avg plan_actionable",  f"{avg('plan'):.0f}")
     else:
         _warn("No TATB corpus data returned")
+
+    _step(3, "Governance check — verify pipeline compliance posture")
+    gcheck = await call(session, "governance_check", arch_name=arch_name)
+    if "error" in gcheck:
+        _warn(f"Governance check: {gcheck['error']}")
+    else:
+        _ok("Governance check complete")
+        _result("blocked",     gcheck.get("blocked", False))
+        _result("kill_switch", gcheck.get("kill_switch", False))
+        signals = gcheck.get("signals") or {}
+        for sig in ["injection", "evasion", "sovereignty"]:
+            v = signals.get(sig)
+            if v not in (None, {}, False, 0):
+                _result(f"signal:{sig}", v)
+
+    _step(4, "Launch async expert review for arch")
+    review = await call(session, "run_expert_review", arch_name=arch_name)
+    if "error" in review:
+        _warn(f"Expert review: {review['error']} (may need running API)")
+    else:
+        _ok("Expert review job queued")
+        _result("job_id", review.get("job_id") or review.get("id"))
+        _result("status",  review.get("status"))
+
+    _step(5, "Record brain feedback for quality flywheel")
+    feedback = await call(session, "record_brain_feedback",
+                          arch_name=arch_name,
+                          feedback_type="quality",
+                          notes="Simulated CISO review sign-off")
+    if "error" in feedback:
+        _warn(f"Brain feedback: {feedback['error']}")
+    else:
+        _ok("Brain feedback recorded")
+        _result("recorded", feedback.get("recorded", True))
+
+    _step(6, "Export assessment bundle for audit trail")
+    export = await call(session, "export_assessment", arch_name=arch_name)
+    if "error" in export:
+        _warn(f"Export: {export['error']}")
+    else:
+        _ok("Assessment export complete")
+        _result("format",  export.get("format"))
+        _result("version", export.get("version"))
 
     _code_block("Slack digest integration (Python)", """
         brief   = await session.call_tool("get_ciso_brief",   {"arch_name": arch})

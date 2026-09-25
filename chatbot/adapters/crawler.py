@@ -37,6 +37,7 @@ class CrawledArtifact:
     path: Path
     adapter: BaseAdapter
     content: bytes
+    source_trust: str = "crawled"
 
 
 class RepoCrawler:
