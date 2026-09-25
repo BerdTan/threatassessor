@@ -4,6 +4,25 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 94 — 2026-09-25
+
+### Entry 196 — prompt-audit skill (Engine Item 16)
+
+**Context:** No skill audited prompt templates as a security surface. `promptsmith` covers quality; `aisurface-audit` covers ingest data paths. The prompt construction layer — where ingested content becomes LLM input — was unaudited for injection risk, leakage, over-permission, and critic scope tightness.
+
+**Decision:** Implement `prompt-audit` as Engine Item 16. Six dimensions: template enumeration (PAU-1), injection path audit (PAU-2), leakage check (PAU-3), over-permission audit (PAU-4), instruction-override surface (PAU-5), critic scope tightness (PAU-6). No API required.
+
+**First-run result (2026-09-25):** 0C/1H/12M/3L/6I. Exit 1.
+- PAU-2 HIGH: `moe_orchestrator.py:1662` interpolates raw `architecture`/`arch_name` into orchestrator prompt without sanitisation — attacker-controlled arch diagram can embed directives
+- PAU-5 MEDIUM: 5 files (architect_critic, tester_critic, moe_orchestrator, agent_framework, ground_truth_generator) use single-block prompts with external var interpolation — no explicit system/user role separation
+- PAU-6 MEDIUM: 4 of 5 critics have anchor score 1/10; prompts describe role but lack explicit constraint directives
+
+**Alternatives rejected:** Merging into `promptsmith` — would blur security/quality boundary and make the security audit optional rather than a standalone gate. Merging into `aisurface-audit` — that skill operates at data-path level; prompt-audit drills the construction layer specifically.
+
+**Location:** `.claude/skills/prompt-audit/`
+
+---
+
 ## Session 93 — 2026-09-20
 
 ### Entry 195 — skill-audit skill (Engine Item 15)
