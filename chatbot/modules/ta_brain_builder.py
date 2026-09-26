@@ -854,6 +854,10 @@ if __name__ == "__main__":
                         help="Re-run demand-weighted gap detection from interaction log (Stage 5)")
     parser.add_argument("--calibrate", action="store_true",
                         help="Run benchmark calibration (Brier + framework floors) (Stage 6)")
+    parser.add_argument("--validate-jev", action="store_true",
+                        help="Run JevTATBLabeller Brier comparison on hold-out corpus (Engine Item 17)")
+    parser.add_argument("--jev-promote", action="store_true",
+                        help="Print promotion verdict (use with --validate-jev)")
     parser.add_argument("--process", action="store_true",
                         help="Run TACO processor — full coordinated feedback loop (Stage 7)")
     args = parser.parse_args()
@@ -933,6 +937,35 @@ if __name__ == "__main__":
         print(f"  Avg Brier:       {cal_result['avg_brier_combined']}")
         print(f"  Divergences:     {cal_result['divergences']}")
         print(f"  Forced gaps:     {cal_result['forced_gaps_added']}")
+
+    if args.validate_jev:
+        from chatbot.modules.ta_brain_jev_labeller import run_jev_validation
+        _brain_dir_jev = report_dir / "brain"
+        jev_result = run_jev_validation(
+            instances_path=_brain_dir_jev / "ta_brain_instances.jsonl",
+            brain_path=_brain_dir_jev / "ta_brain.json",
+            hold_out_archs=HOLD_OUT_ARCHS,
+        )
+        if "error" in jev_result:
+            print(f"\nJev validation error: {jev_result['error']}")
+        else:
+            print(f"\nJev TATB labeller validation (Engine Item 17)")
+            print(f"  Hold-out instances: {jev_result['n_instances']}")
+            print(f"  Jev Brier:          {jev_result['avg_brier']}")
+            print(f"  Baseline Brier:     {jev_result['baseline_brier']}")
+            print(f"  Improvement:        {jev_result['improvement']:+.6f}")
+            verdict = "PROMOTE" if jev_result.get("promote") else "DO NOT PROMOTE"
+            print(f"  Verdict:            {verdict}  (jev_brier < baseline_brier = {jev_result.get('promote')})")
+            if args.jev_promote and jev_result.get("promote"):
+                print("\n  Jev beats naive baseline — update AGENT_MODEL_TATB_LABELLER to use Jev.")
+            print()
+            for row in jev_result.get("per_instance", []):
+                print(
+                    f"    {row['arch_id']:<35} "
+                    f"recall={row['brain_recall']:.3f}  "
+                    f"jev_ttp={row['jev_ttp_accurate']:.3f}  "
+                    f"brier={row['brier']:.4f}"
+                )
 
     if args.pre_warm_cache:
         from chatbot.modules.ta_brain_cache import CacheManager, reset_singleton
