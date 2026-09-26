@@ -4,6 +4,38 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 96 — 2026-09-26
+
+### Entry 201 — JevClient + 5 integration points wired + check-jev skill (Engine Item 17 complete)
+
+**Decision:** Completed all 5 Jev integration points using shared `JevClient` singleton with circuit breaker. Commit e27fe5c.
+
+**JevClient design:**
+- `JEV_ENABLED=0` (or no `JEV_API_KEY`) → all 5 integration points skip instantly, TA behaviour unchanged
+- Circuit breaker: 3 consecutive failures → `_circuit_open=True` for session; logs once, never crashes TA
+- `get_jev_client()` session singleton; `reset_circuit()` for tests
+- `ask(state, questions) → dict` — always returns `{}` on failure (never raises)
+
+**Five integration points:**
+
+| # | Location | Type | What it does | Fallback |
+|---|----------|------|-------------|---------|
+| 1 | `ta_brain_jev_labeller.py` | noul | TATB 4-dim scorer (threat/ttp/risk/plan) | 0.5 neutral |
+| 2 | `smart_router.py:select_mode()` | choice | Cold-start routing when no boxing signals; conf>=0.85 | `no_boxing_data_default` from yaml |
+| 3 | `governance.py:check_input()` | noul | Pre-flight: instruction_override + contains_injection; augments regex scan | regex only, no jev_preflight key |
+| 4 | `policy_broker.py:decide()` | noul | Critic pre-screen (needs_red_team, needs_cloud_expert); blocks only if < 0.15 | existing rules only |
+| 5 | `adapters/registry.py:detect_adapter()` | choice | Fallback when no adapter claims file; conf>=0.80 | ValueError (same as before) |
+
+**check-jev skill:** 6 checks — connectivity, noul governance accuracy (0 false pos/neg at 0.70 threshold), choice routing (5 arch types), choice adapter (3 formats), circuit breaker, TATB Brier optional. Prints RECOMMEND: ENABLE / ENABLE with monitoring / DISABLE.
+
+**Tests:** 20 unit tests pass (9 new in `test_jev_client.py`; 11 in `test_ta_brain_jev_labeller.py`). Pre-existing Pydantic failure in `test_prose_fidelity_*` unrelated.
+
+**Why conservative thresholds:** Jev is additive, never subtractive for critical paths. Block threshold 0.15 (not 0.5) for policy_broker because a false block is expensive; only override with very high confidence Jev is wrong. Governance pre-flight stays non-fatal: adds signal to `sig.exploitation["jev_preflight"]` but doesn't block on its own.
+
+**Next:** add `arch_description` from MMD to brain instances → re-run TATB Brier; DETECT-QC-009 promotion.
+
+---
+
 ## Session 95 — 2026-09-26
 
 ### Entry 200 — Jev question type schema reference + TATB noul switch + decisions-archive skill
