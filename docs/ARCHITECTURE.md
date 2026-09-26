@@ -110,6 +110,34 @@ All three paths share the same Harness gate (Bouncer) and ta-export output. See 
 
 ---
 
+## Jev — System 1 semantic gate
+
+**Module:** `chatbot/modules/jev_client.py` — `get_jev_client()` returns a session singleton with a circuit breaker (3 consecutive failures → open; all calls return `{}` silently).
+
+**Endpoint:** `POST /v1/systemone` at typesafe.ai. Payload: `{"model":"jev-latest","state":{...},"questions":{...}}`.
+
+**Three question types:**
+
+| Type | Input | Output | Use in TA |
+|---|---|---|---|
+| `noul` | `instructions` string | `.noul` float 0–1 (semantic yes probability) | Governance, PolicyBroker, TATB labeller |
+| `choice` | `criteria` dict `{key: description}` | `.choice` string + `.confidence` + `.probabilities` | Smart router cold-start, adapter fallback |
+| `score` | `criteria` list of strings | `.score` float | Not used — returns 0.500 (prior only) for bare technique identifiers |
+
+**Five integration points (all non-fatal — every caller falls back silently if Jev returns `{}`):**
+
+| # | Point | File | Type | Threshold |
+|---|---|---|---|---|
+| ❶ | Governance pre-flight | `chatbot/harness/governance.py` | noul | 0.85 to flag |
+| ❷ | Adapter registry fallback | `chatbot/adapters/registry.py` | choice | 0.80 to use |
+| ❸ | Smart router cold-start | `chatbot/harness/smart_router.py` | choice | 0.85 to override yaml default |
+| ❹ | PolicyBroker critic pre-screen | `chatbot/harness/policy_broker.py` | noul | 0.15 to skip critic |
+| ❺ | TATB quality labeller | `chatbot/modules/ta_brain_jev_labeller.py` | noul | Brier-validated |
+
+**Enable/disable:** `JEV_ENABLED=0` or absent `JEV_API_KEY` disables all five points; pipeline behaviour reverts to pre-Jev logic at each point. See `check-jev` skill for the 6-check benchmark.
+
+---
+
 ## Key Design Invariants
 
 These hold across all execution paths and all callers (REST, MCP, TAclaw, CLI):

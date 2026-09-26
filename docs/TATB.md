@@ -137,6 +137,36 @@ When TAclaw runs against an external repo, the `ta_export.json` bundle includes 
 
 ---
 
+## Jev TATB labeller
+
+`chatbot/modules/ta_brain_jev_labeller.py` runs a Jev (typesafe.ai) System 1 call against the completed analysis and returns a calibrated probability for each of the four rubric dimensions. The labeller feeds the TATB labelling pipeline used during brain distillation — it does not alter the rubric scores shown in the dashboard.
+
+**Question type used:** `noul` — each rubric dimension is a plain-language yes/no question; Jev returns a float 0–1. The `score` type was evaluated and rejected: it returned exactly 0.500 for every instance regardless of state, providing no signal above the prior.
+
+**State contents:**
+
+| Field | When present |
+|---|---|
+| `arch_type`, `node_count`, `edge_count` | Always |
+| `technique_count`, `techniques` | Always |
+| `aivss_composite`, `aivss_severity` | Always |
+| `controls_missing`, `hub_node_count` | Always |
+| `arch_description` (MMD text, up to 2000 chars) | When `with_prose=True` |
+
+**Brier calibration experiment (Session 97, 8 hold-out architectures):**
+
+| Variant | Brier | Baseline | Improvement |
+|---|---|---|---|
+| noul, no prose in state | 0.2101 | 0.2203 | +0.0101 |
+| noul, with MMD prose in state | 0.1845 | 0.2203 | +0.0358 |
+| score, actual technique list | 0.2203 | 0.2203 | 0.0000 |
+
+The MMD prose in state produces 3.5× more improvement than switching question types. Adding `arch_description` to all brain instances is the next step to confirm this in production (Priority 30).
+
+**Fallback:** If Jev is unavailable (`JEV_ENABLED=0`, no key, or circuit open), the labeller returns neutral 0.5 for all dimensions. Brain distillation proceeds unchanged; Jev labels are supplementary, not required.
+
+---
+
 ## Design principles
 
 **Warn-only.** TATB never blocks analysis. A low score is a signal for iteration, not a gate.

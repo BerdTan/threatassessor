@@ -191,7 +191,7 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 ## Build story
 
-29 parts on Medium — from diagram to detection layer, with every design decision exposed:
+31 parts on Medium — from diagram to detection layer, with every design decision exposed:
 
 | # | Title | What it covers |
 |---|---|---|
@@ -224,3 +224,5 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 | 27 | [Smart Routing Is Just Measurement in Disguise](https://medium.com/@breadtan/smart-routing-is-just-measurement-in-disguise-19d12e1673af) | 13-arch delta distribution drives mode selection (brain_fast / api_only / full_moe); topology fingerprint collision as the case against configuration; TAclaw routes without history by design |
 | 28 | [Every Agent Is an Attack Surface — Including Your Pipeline](https://medium.com/@breadtan/every-agent-is-an-attack-surface-including-your-pipeline-4dd17c23054d) | DTap 5-vector taxonomy gap analysis; routing mode as a trust signal; pre-flight authority gate; taint propagation through the export bundle; the endogenous injection case |
 | 29 | [The Pipeline That Knows What to Trust](https://medium.com/@breadtan/the-pipeline-that-knows-what-to-trust-d28aa348bb97) | Three-layer provenance implementation: source trust stamped at the adapter, pre-flight gate before any analysis token is spent, and trust level + routing mode carried through to the export bundle and brain corpus |
+| 30 | [Five Surfaces, Five Blind Spots](https://medium.com/@breadtan/five-surfaces-five-blind-spots-05ed7c1129e6) | Five independent security audits (MCP, AI ingest, prompt, skill execution, model trust) run against the same pipeline on the same day — five distinct findings with zero overlap; each attack surface needs its own vantage point |
+| 31 | [Three Types, Five Integration Points, One System 1 Model](https://medium.com/@breadtan/three-types-five-integration-points-one-system-1-model-29d91f4e4356) | Jev (typesafe.ai) wired at five pipeline decision points; score type returns 0.500 (pure noise); state quality drives 3.5× more improvement than question type selection; the hard part is giving the model something worth reading |
