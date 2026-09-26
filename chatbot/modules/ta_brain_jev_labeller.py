@@ -29,35 +29,36 @@ from chatbot.modules.ta_brain_query import query_brain
 logger = logging.getLogger(__name__)
 
 JEV_API_URL = os.environ.get("JEV_API_URL", "https://api.typesafe.ai/v1/systemone")
+JEV_MODEL = os.environ.get("JEV_MODEL", "jev-latest")
 
 _QUESTIONS = {
     "threat_relevant": {
         "type": "score",
-        "question": (
+        "criteria": [
             "Are the identified threats relevant and plausible for this architecture "
             "type, scale, and topology?"
-        ),
+        ],
     },
     "ttp_accurate": {
         "type": "score",
-        "question": (
+        "criteria": [
             "Do the predicted MITRE ATT&CK techniques accurately reflect the "
             "attack surface implied by the architecture profile?"
-        ),
+        ],
     },
     "risk_defensible": {
         "type": "score",
-        "question": (
+        "criteria": [
             "Is the composite risk severity defensible given the node count, "
             "edge count, and architecture type?"
-        ),
+        ],
     },
     "plan_actionable": {
         "type": "score",
-        "question": (
+        "criteria": [
             "Are the identified missing controls actionable and proportionate to "
             "the detected threat techniques?"
-        ),
+        ],
     },
 }
 
@@ -95,7 +96,7 @@ class JevTATBLabeller:
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json",
                 },
-                json={"state": state, "questions": _QUESTIONS},
+                json={"model": JEV_MODEL, "state": state, "questions": _QUESTIONS},
                 timeout=self.timeout,
             )
             resp.raise_for_status()
@@ -144,7 +145,7 @@ class JevTATBLabeller:
                 arch_type=inst.get("arch_type", ""),
                 caller_type="jev_validation",
             )
-            predicted = set(brain_result.get("techniques", []))
+            predicted = set(brain_result.get("predictions", {}).get("techniques", []))
             recall = len(predicted & actual) / len(actual)
 
             jev = self.label(inst)
@@ -186,14 +187,18 @@ class JevTATBLabeller:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _build_state(instance: dict) -> dict:
+    techniques = instance.get("techniques", [])
+    controls = instance.get("controls_missing", [])
     return {
         "arch_type": instance.get("arch_type", "unknown"),
         "node_count": instance.get("node_count", 0),
         "edge_count": instance.get("edge_count", 0),
-        "technique_count": len(instance.get("techniques", [])),
+        "technique_count": len(techniques),
+        "techniques": techniques,
         "aivss_composite": instance.get("aivss_composite", 0.0),
         "aivss_severity": instance.get("aivss_severity", "UNKNOWN"),
-        "controls_missing_count": len(instance.get("controls_missing", [])),
+        "controls_missing": controls,
+        "controls_missing_count": len(controls),
         "hub_node_count": len(instance.get("hub_nodes", [])),
     }
 

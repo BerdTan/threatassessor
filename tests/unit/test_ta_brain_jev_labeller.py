@@ -109,7 +109,7 @@ def test_brier_on_corpus_promote_when_jev_beats_baseline(tmp_path):
 
     jev_scores = {"threat_relevant": 1.0, "ttp_accurate": 1.0,
                   "risk_defensible": 1.0, "plan_actionable": 1.0, "composite": 1.0}
-    brain_result = {"techniques": ["T1059", "T1078", "T1190"]}  # recall = 1.0
+    brain_result = {"predictions": {"techniques": ["T1059", "T1078", "T1190"]}}  # recall = 1.0
 
     with patch.object(labeller, "label", return_value=jev_scores), \
          patch("chatbot.modules.ta_brain_jev_labeller.query_brain", return_value=brain_result):
@@ -130,7 +130,7 @@ def test_brier_on_corpus_no_promote_when_jev_same_as_baseline(tmp_path):
 
     jev_scores = {"threat_relevant": 0.5, "ttp_accurate": 0.5,
                   "risk_defensible": 0.5, "plan_actionable": 0.5, "composite": 0.5}
-    brain_result = {"techniques": ["T1059"]}  # recall = 1.0
+    brain_result = {"predictions": {"techniques": ["T1059"]}}  # recall = 1.0
 
     with patch.object(labeller, "label", return_value=jev_scores), \
          patch("chatbot.modules.ta_brain_jev_labeller.query_brain", return_value=brain_result):
@@ -147,7 +147,7 @@ def test_brier_on_corpus_skips_instances_without_techniques(tmp_path):
     empty = _instance(techniques=[])
 
     with patch.object(labeller, "label") as mock_label, \
-         patch("chatbot.modules.ta_brain_jev_labeller.query_brain", return_value={"techniques": []}):
+         patch("chatbot.modules.ta_brain_jev_labeller.query_brain", return_value={"predictions": {"techniques": []}}):
         result = labeller.brier_on_corpus([empty], brain_path)
 
     mock_label.assert_not_called()
@@ -180,7 +180,7 @@ def test_run_jev_validation_filters_to_hold_out(tmp_path):
         for inst in instances:
             fh.write(json.dumps(inst) + "\n")
 
-    brain_result = {"techniques": ["T1059"]}
+    brain_result = {"predictions": {"techniques": ["T1059"]}}
 
     jev_scores = {"threat_relevant": 0.8, "ttp_accurate": 0.8,
                   "risk_defensible": 0.8, "plan_actionable": 0.8, "composite": 0.8}
