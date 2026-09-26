@@ -6,28 +6,28 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 97 — 2026-09-26
 
-### Entry 202 — Jev score type: unused today, valid use case in TATB validation mode
+### Entry 202 — Jev Brier experiment: prose beats question type; score confirmed dead
 
-**Decision:** Deferred. `score` type not wired in any of the 5 integration points. Document the one valid TA use case for future trial.
+**Decision:** `arch_description` (MMD text) added to `extract_instance()` in `ta_brain_builder.py`. `score` type confirmed useless for this task — returns 0.500 for every instance (no signal). CLOSED.
 
-**Why score was skipped:** `score` returns 0.0 for open semantic questions (e.g. "are these threats plausible?"). Works only when ground truth criteria are explicit structured strings. All 5 current integration points are semantic judgements with no ground truth available at call time.
+**Experiment (Session 97, 2026-09-26):** Three variants on 8 hold-out instances via `scripts/experiments/jev_brier_experiment.py`:
 
-**Valid use case (TATB validation path):** In `brier_on_corpus`, `instance["techniques"]` is the ground truth. Instead of `noul` asking "do the predicted techniques reflect the attack surface?" without knowing what the techniques are, we could switch `ttp_accurate` to `score` in validation mode:
+| Variant | Brier | Baseline | Δ | Promote |
+|---------|-------|----------|---|---------|
+| A — noul, no prose | 0.2101 | 0.2203 | +0.0101 | ✓ |
+| **B — noul + prose** | **0.1845** | **0.2203** | **+0.0358** | **✓** |
+| C — score + actual techniques | 0.2203 | 0.2203 | +0.0000 | ✗ |
 
-```python
-# Only in brier_on_corpus where actual techniques are known
-if actual:
-    questions["ttp_accurate"] = {
-        "type": "score",
-        "criteria": list(actual),   # e.g. ["T1059", "T1078", "T1190"]
-    }
-```
+**Findings:**
+1. **Prose is the dominant lever.** Adding `arch_description` (MMD text ≤2000 chars) to state dropped Brier from 0.2101 → 0.1845 — a 3.5× larger improvement than Jev alone gave in Session 96. Without prose, noul is rating an opaque state dict of counts. With prose, it can reason about the actual architecture.
+2. **score type returns 0.500 for every instance** — no signal at all. The 500 and 400 API errors during variant C confirm Jev rejects or ignores `score` with technique lists as criteria. score is confirmed dead for this task.
+3. **Best Brier now 0.1845** (was 0.2203 baseline, 0.2158 noul-no-prose from Session 96).
 
-This is the input format `score` was designed for: short, enumerable, structured criteria with implicit ground truth. Expected to outperform `noul` (0.2158 Brier) since the model can directly compare against known techniques rather than inferring from state counts.
+**Implementation:** `extract_instance()` in `ta_brain_builder.py` now reads `tests/data/architectures/{arch_id}.mmd` and stores it as `arch_description` when the file exists. 27 of 191 unique arch_ids have MMDs → those 27 (and variants) get prose on next rebuild.
 
-**Next step:** wire as flag `--use-score-type` in `run_jev_validation()` → compare Brier against current noul baseline. Run after `arch_description` improvement (priority 29) to get clean comparison.
+**Why score returns 0.500:** score criteria must be a rubric — structured descriptions of what a high score looks like, not a list of identifiers. Passing `["T1059", "T1078"]` gives no grading signal because Jev has no way to compare the state against bare technique IDs. The `noul` formulation ("do the techniques reflect the attack surface?") is actually more informative because the question carries the evaluation logic.
 
-**Why deferred:** priority 29 (arch_description prose) should move first — it improves noul's context. Score experiment is most meaningful once noul has its best input, so we're comparing score vs best-noul, not score vs noul-with-no-prose.
+**Blog impact (P31):** Score returning 0.0 was already the aha. 0.500 (pure noise, not even directionally wrong) is stronger. And the prose result gives a second insight: question type matters less than state quality.
 
 ---
 

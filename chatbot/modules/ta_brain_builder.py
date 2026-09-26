@@ -380,7 +380,7 @@ def extract_instance(arch_dir: Path, rule_evaluator=None) -> Optional[dict]:
     # Engine Item 10.2: carry pipeline mode into brain instance for taint tracking
     pipeline_provenance = meta.get("routing_mode") or "unknown"
 
-    return {
+    instance: dict = {
         "arch_id": arch_dir.name,
         "arch_type": arch_type,
         "topology_signature": topology_sig,
@@ -397,6 +397,14 @@ def extract_instance(arch_dir: Path, rule_evaluator=None) -> Optional[dict]:
         "source": "real",
         "pipeline_provenance": pipeline_provenance,
     }
+
+    # Populate arch_description from MMD when available — used by JevTATBLabeller
+    # to give noul questions prose context rather than just numeric state fields.
+    mmd_path = ROOT / "tests" / "data" / "architectures" / f"{arch_dir.name}.mmd"
+    if mmd_path.exists():
+        instance["arch_description"] = mmd_path.read_text().strip()
+
+    return instance
 
 
 # ── Corpus drift signal (Engine Item 7.2) ─────────────────────────────────────
