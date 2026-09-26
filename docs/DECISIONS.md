@@ -6,6 +6,39 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 95 — 2026-09-26
 
+### Entry 200 — Jev question type schema reference + TATB noul switch + decisions-archive skill
+
+**Decision:** Switched JevTATBLabeller from `score` to `noul` question type after live validation showed `score` returns 0.0 (confidence 1.0) for all semantic assessment questions. Added decisions-archive skill with time-based archiving and `--recall` command. Commit 00feec6.
+
+**Jev schema reference (jev-latest):**
+
+| Type | Request format | Response key | Best for |
+|------|---------------|--------------|----------|
+| `noul` | `{"type":"noul","instructions":"string question"}` | `answers.dim.noul` (float 0–1) | Semantic yes/no probability — governance pre-flight, TATB quality |
+| `choice` | `{"type":"choice","criteria":{"opt":"description",...}}` | `answers.dim.choice` (string), `.confidence`, `.probabilities` | Routing/classification with predefined options |
+| `score` | `{"type":"score","criteria":["string"]}` | `answers.dim.score` | **Avoid for semantic questions** — returns 0.0 always; may work for structured grading with ground truth |
+
+**Top-level payload always requires:** `{"model":"jev-latest","state":{...},"questions":{...}}`
+
+**noul validation results (benign vs attack inputs):**
+- Benign (AWS, MMD, IaC): `instruction_override`=0.02–0.04, `is_arch_request`=0.91–0.95, `inject`=0.03–0.06
+- Attack inputs (direct override, SYSTEM injection, indirect jailbreak, prompt injection): all 0.92–0.99 — perfect separation
+
+**choice validation (smart router cold-start):**
+- simple_3tier → brain_fast (conf=1.00), agentic_ai → full_moe (conf=0.99), enterprise_ad → full_moe (conf=1.00), iot_embedded → api_only (conf=0.94), data_pipeline → brain_fast (conf=0.99) — all correct
+
+**TATB noul Brier result:** 0.2158 vs baseline 0.2203 → improvement +0.004 → **marginal PROMOTE**. Jev scores 0.44–0.58 (calibrated uncertainty, no arch prose yet). Will improve when `arch_description` populated from MMD in instances.
+
+**decisions-archive skill:** Time-based (--days 60 default), KEEP_PATTERNS override. `--recall N [--confirm]` pulls archived entry back into DECISIONS.md — essential because GitHub/CI/skills only read DECISIONS.md, not the archive.
+
+**Next Jev items:**
+1. Add `arch_description` to brain instances from MMD → re-run Brier to measure prose improvement
+2. Wire `noul` governance pre-flight at `GovernanceSignals` ingest (before harness starts)
+3. Wire `choice` smart router cold-start in `smart_router.py` `select_mode()` cold path
+4. Blog candidate: Part 31 — "Three types, five integration points, one System 1 model"
+
+---
+
 ### Entry 199 — Engine Item 17: JevTATBLabeller System 1 quality scorer
 
 **Decision:** Implemented `JevTATBLabeller` in `chatbot/modules/ta_brain_jev_labeller.py` as a System 1 TATB quality scorer via Jev (typesafe.ai) `/v1/systemone` API. Commit 44272e0.
