@@ -22,6 +22,20 @@ from pathlib import Path
 import requests
 
 ROOT = Path(__file__).resolve().parents[4]
+
+# Load .env from repo root if present (before reading env vars)
+_dotenv = ROOT / ".env"
+if _dotenv.exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_dotenv, override=False)
+    except ImportError:
+        for _line in _dotenv.read_text().splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 API_KEY = os.environ.get("JEV_API_KEY", "")
 API_URL = os.environ.get("JEV_API_URL", "https://api.typesafe.ai/v1/systemone")
 MODELS_URL = "https://api.typesafe.ai/v1/models"
