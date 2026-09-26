@@ -25,11 +25,9 @@ from pathlib import Path
 from typing import Optional
 
 from chatbot.modules.ta_brain_query import query_brain
+from chatbot.modules.jev_client import JevClient, get_jev_client
 
 logger = logging.getLogger(__name__)
-
-JEV_API_URL = os.environ.get("JEV_API_URL", "https://api.typesafe.ai/v1/systemone")
-JEV_MODEL = os.environ.get("JEV_MODEL", "jev-latest")
 
 _QUESTIONS = {
     "threat_relevant": {
@@ -72,9 +70,8 @@ class JevTATBLabeller:
     """
 
     def __init__(self, api_key: Optional[str] = None, timeout: int = 10):
-        self.api_key = api_key or os.environ.get("JEV_API_KEY", "")
-        self.timeout = timeout
-        if not self.api_key:
+        self._client = JevClient(api_key=api_key, timeout=timeout)
+        if not self._client.api_key:
             logger.warning("JEV_API_KEY not set — label() will return neutral scores")
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -84,26 +81,12 @@ class JevTATBLabeller:
         Score one instance.
         Returns {threat_relevant, ttp_accurate, risk_defensible, plan_actionable,
                  composite, error?}.
-        Never raises — falls back to neutral 0.5 on API failure.
+        Never raises — falls back to neutral 0.5 on API failure or when Jev is disabled.
         """
-        import requests  # lazy — only loaded when Jev is active
-
         state = _build_state(instance)
-        try:
-            resp = requests.post(
-                JEV_API_URL,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"model": JEV_MODEL, "state": state, "questions": _QUESTIONS},
-                timeout=self.timeout,
-            )
-            resp.raise_for_status()
-            answers = resp.json().get("answers", {})
-        except Exception as exc:
-            logger.warning("Jev API error for %s: %s", instance.get("arch_id", "?"), exc)
-            return {d: 0.5 for d in _DIMS} | {"composite": 0.5, "error": str(exc)}
+        answers = self._client.ask(state, _QUESTIONS)
+        if not answers:
+            return {d: 0.5 for d in _DIMS} | {"composite": 0.5, "error": "jev disabled or failed"}
 
         scores = {d: float(answers.get(d, {}).get("noul", 0.5)) for d in _DIMS}
         scores["composite"] = round(sum(scores[d] for d in _DIMS) / len(_DIMS), 4)

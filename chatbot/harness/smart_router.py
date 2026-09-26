@@ -120,14 +120,18 @@ def _load_boxing_signals(arch_name: str) -> Optional[dict]:
 def select_mode(
     arch_name: str,
     aivss_composite: Optional[float] = None,
+    arch_description: Optional[str] = None,
 ) -> RoutingDecision:
     """
     Select pipeline mode for arch_name.
 
     Args:
-        arch_name:       Architecture identifier (matches report/<arch>/ directory).
-        aivss_composite: Live AIVSS composite score if already computed; used for
-                         the security hard override. Pass None when unknown.
+        arch_name:        Architecture identifier (matches report/<arch>/ directory).
+        aivss_composite:  Live AIVSS composite score if already computed; used for
+                          the security hard override. Pass None when unknown.
+        arch_description: Optional text description of the architecture (e.g. raw MMD
+                          content). When provided and Jev is enabled, used for
+                          cold-start routing when no boxing data exists.
 
     Returns:
         RoutingDecision with chosen mode and rationale.
@@ -154,6 +158,36 @@ def select_mode(
     # ── Load boxing signals ───────────────────────────────────────────────────
     signals = _load_boxing_signals(arch_name)
     if signals is None:
+        # Jev cold-start augmentation — override default_no_data when confident
+        if arch_description:
+            from chatbot.modules.jev_client import get_jev_client as _get_jev
+            _jev = _get_jev()
+            if _jev.is_enabled():
+                _answers = _jev.ask(
+                    state={"arch_description": arch_description[:1500], "arch_name": arch_name},
+                    questions={
+                        "routing_mode": {
+                            "type": "choice",
+                            "criteria": {
+                                "brain_fast": "Architecture is simple, well-known type, low node count (<10), no agentic/AI components — use cached brain patterns only",
+                                "api_only":   "Architecture is moderate complexity, standard cloud/web patterns, 10–30 nodes — use AI analysis without full expert review",
+                                "full_moe":   "Architecture is complex, agentic, AI-heavy, large enterprise, or has unusual trust boundaries (>30 nodes or AI agents) — use full mixture-of-experts review",
+                            },
+                        }
+                    },
+                )
+                _jev_mode = _answers.get("routing_mode", {}).get("choice")
+                _jev_conf = float(_answers.get("routing_mode", {}).get("confidence", 0.0))
+                if _jev_mode in ("brain_fast", "api_only", "full_moe") and _jev_conf >= 0.85:
+                    _alias, _mid = _select_model(_jev_mode, "", policy)
+                    return RoutingDecision(
+                        mode=_jev_mode,
+                        rationale=f"Jev cold-start choice={_jev_mode} conf={_jev_conf:.2f} (no boxing data)",
+                        has_boxing_data=False,
+                        model_alias=_alias,
+                        model_id=_mid,
+                    )
+
         _alias, _mid = _select_model(default_no_data, "", policy)
         return RoutingDecision(
             mode=default_no_data,

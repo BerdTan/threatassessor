@@ -78,6 +78,7 @@ class PolicyBroker:
         self,
         governance_signals: dict,
         aivss_score: Optional[object] = None,
+        arch_description: Optional[str] = None,
     ) -> BrokerDecision:
         """Evaluate signals and return a BrokerDecision.
 
@@ -141,6 +142,37 @@ class PolicyBroker:
                 rationale_parts.append(
                     f"sm_verdicts.acceptance_rate={rate} <= 0.4 → sink_tier escalated"
                 )
+
+        # ── Jev noul critic pre-screen (additive — can only add blocks, never remove) ─
+        if arch_description:
+            from chatbot.modules.jev_client import get_jev_client as _get_jev
+            _jev = _get_jev()
+            if _jev.is_enabled():
+                _answers = _jev.ask(
+                    state={"arch_description": arch_description[:1500]},
+                    questions={
+                        "needs_red_team": {
+                            "type": "noul",
+                            "instructions": "Does this architecture warrant a dedicated adversarial red team security review, given its complexity, attack surface, and exposed components?",
+                        },
+                        "needs_cloud_expert": {
+                            "type": "noul",
+                            "instructions": "Does this architecture require a cloud-specific security expert review (AWS/GCP/Azure infrastructure, managed services, cloud-native attack patterns)?",
+                        },
+                    },
+                )
+                _needs_red = float(_answers.get("needs_red_team", {}).get("noul", 1.0))
+                _needs_cloud = float(_answers.get("needs_cloud_expert", {}).get("noul", 1.0))
+                # Only block when Jev is very confident the critic is NOT needed (< 0.15)
+                _jev_blocks = []
+                if _needs_red < 0.15 and "red_team" not in decision.blocked_agents:
+                    decision.blocked_agents.append("red_team")
+                    _jev_blocks.append(f"red_team (jev_prob={_needs_red:.2f})")
+                if _needs_cloud < 0.15 and "architect" not in decision.blocked_agents:
+                    decision.blocked_agents.append("architect")
+                    _jev_blocks.append(f"architect (jev_prob={_needs_cloud:.2f})")
+                if _jev_blocks:
+                    rationale_parts.append(f"Jev pre-screen blocked: {', '.join(_jev_blocks)}")
 
         decision.rationale = "; ".join(rationale_parts) if rationale_parts else "no policy match"
         return decision

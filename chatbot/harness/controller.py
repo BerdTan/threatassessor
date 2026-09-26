@@ -657,6 +657,7 @@ class ThreatAssessorHarness:
                         decision = broker.decide(
                             ctx.get("governance_signals", {}),
                             ctx.get("_aivss_score"),
+                            arch_description=ctx.get("_raw_mmd_content", ""),
                         )
                         # Merge: add broker-decided blocks to existing list
                         existing = set(ctx.get("blocked_agents", []))

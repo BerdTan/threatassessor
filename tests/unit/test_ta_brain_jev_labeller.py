@@ -61,14 +61,13 @@ def test_build_state_missing_keys():
 
 def test_label_returns_four_dims_plus_composite():
     labeller = JevTATBLabeller(api_key="test-key")
-    mock_resp = MagicMock()
-    mock_resp.json.return_value = _jev_answer({
+    answers = _jev_answer({
         "threat_relevant": 0.9,
         "ttp_accurate": 0.8,
         "risk_defensible": 0.7,
         "plan_actionable": 0.85,
-    })
-    with patch("requests.post", return_value=mock_resp):
+    })["answers"]
+    with patch.object(labeller._client, "ask", return_value=answers):
         result = labeller.label(_instance())
     assert result["threat_relevant"] == 0.9
     assert result["ttp_accurate"] == 0.8
@@ -80,7 +79,7 @@ def test_label_returns_four_dims_plus_composite():
 
 def test_label_fallback_on_api_error():
     labeller = JevTATBLabeller(api_key="test-key")
-    with patch("requests.post", side_effect=ConnectionError("timeout")):
+    with patch.object(labeller._client, "ask", return_value={}):
         result = labeller.label(_instance())
     for dim in ("threat_relevant", "ttp_accurate", "risk_defensible", "plan_actionable"):
         assert result[dim] == 0.5
@@ -90,9 +89,8 @@ def test_label_fallback_on_api_error():
 
 def test_label_missing_answer_key_falls_back_to_half():
     labeller = JevTATBLabeller(api_key="test-key")
-    mock_resp = MagicMock()
-    mock_resp.json.return_value = {"answers": {"threat_relevant": {"noul": 0.9}}}
-    with patch("requests.post", return_value=mock_resp):
+    partial_answers = {"threat_relevant": {"noul": 0.9}}
+    with patch.object(labeller._client, "ask", return_value=partial_answers):
         result = labeller.label(_instance())
     assert result["threat_relevant"] == 0.9
     assert result["ttp_accurate"] == 0.5   # missing → neutral
