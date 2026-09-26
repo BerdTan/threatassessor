@@ -4,6 +4,31 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 95 — 2026-09-26
+
+### Entry 199 — Engine Item 17: JevTATBLabeller System 1 quality scorer
+
+**Decision:** Implemented `JevTATBLabeller` in `chatbot/modules/ta_brain_jev_labeller.py` as a System 1 TATB quality scorer via Jev (typesafe.ai) `/v1/systemone` API. Commit 44272e0.
+
+**What:** 4 `score` dimensions per instance in one API call — `threat_relevant`, `ttp_accurate`, `risk_defensible`, `plan_actionable`. Composite is their mean. Falls back to neutral 0.5 on API failure (never blocks callers). Module-level import of `query_brain` (not lazy) — tests patch `chatbot.modules.ta_brain_jev_labeller.query_brain`.
+
+**Validation path:** `--validate-jev` flag in `ta_brain_builder` CLI runs `brier_on_corpus()` against hold-out instances. For each: brain infer → technique recall vs actual; Brier = `(jev_ttp_accurate - recall)^2`. `promote=True` when `avg_brier < baseline_brier` (naive 0.5 labeller). `--jev-promote` prints explicit promotion guidance.
+
+**Live Brier result (fd8f604, 2026-09-26):**
+- Brain recall on 8 hold-outs: ~1.0 for 6 archs; 0.964, 0.152 for two
+- Jev `ttp_accurate`: 0.0 for ALL instances (model returns 0 with conf=1.0)
+- Jev Brier: 0.8497 vs baseline 0.2203 → improvement: −0.629 → **DO NOT PROMOTE**
+- Root cause: Jev cannot make a positive `score` assessment from numeric/categorical state alone (arch_type, node_count, technique IDs). It needs architecture prose or a structured description to evaluate TTP plausibility.
+- Schema bugs fixed in fd8f604: (1) API requires `model` field + `criteria` as list (not flat `question` string); (2) brain infer returns techniques at `predictions.techniques`, not top-level.
+
+**Decision:** Do not replace `AGENT_MODEL_TATB_LABELLER` with Jev yet. Brain recall is the stronger signal; Jev needs richer input. Next step: pass arch description text in state (from MMD → prose summary) so Jev can assess technique plausibility from content, not just counts.
+
+**Tests:** 10 unit tests (all offline, mocked, updated to match real brain response shape); 44 existing brain builder tests unaffected.
+
+**Next Jev items (from Entry 198):** smart router cold-start (choice), PolicyBroker critic pre-screen (noul), governance pre-flight (noul), TAclaw adapter selection + crawl quality scoring.
+
+---
+
 ## Session 94 — 2026-09-25
 
 ### Entry 198 — Jev (typesafe.ai) integration opportunities
