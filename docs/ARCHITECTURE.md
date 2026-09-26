@@ -87,11 +87,19 @@ flowchart TD
         E6["CI/CD\nGitHub Actions ta-review.yml\nta gate exits 1 on BLOCK"]
     end
 
+    JEV["Jev  typesafe.ai\nSystem 1 gate\nnoul · choice · circuit breaker"]
+
     AG --> HARNESS
     SR -->|routing decision| HC
     HARNESS --> PIPELINE
     PIPELINE --> E1
     E1 --> E2 & E3 & E4 & E5 & E6
+
+    JEV -.->|❶ noul  governance pre-flight| HG
+    JEV -.->|❷ choice  adapter fallback| AG
+    JEV -.->|❸ choice  cold-start routing| SR
+    JEV -.->|❹ noul  critic pre-screen| HS
+    JEV -.->|❺ noul  TATB quality label| B1
 ```
 
 ---
