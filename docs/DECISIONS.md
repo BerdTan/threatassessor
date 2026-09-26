@@ -590,14 +590,14 @@ Key MEDIUM findings:
 
 - **11.4 Rogue agent detection** (new DETECT rule `agent_identity_spoofing`): fires when a caller presents a valid API key but no passport (or expired passport) and attempts a write/analysis tool (`analyze_architecture`, `run_expert_review`, `run_taclaw`, `generate_synthetic_architectures`). This distinguishes a legitimate unauthenticated client from a potential impersonation attempt at high-privilege operations.
 
-**Demo scenario (P30 blog anchor):** TAclaw calls `run_taclaw` with API key only (insecure path) — succeeds today. After Item 11: same call without passport → allowed only on read tools. TAclaw registers → receives passport with `scopes: [run_taclaw, export_assessment]` → full access restored. Spoofed TAclaw with stolen key but no passport → blocked at tool dispatch + `agent_identity_spoofing` fires.
+**Demo scenario (future blog anchor):** TAclaw calls `run_taclaw` with API key only (insecure path) — succeeds today. After Item 11: same call without passport → allowed only on read tools. TAclaw registers → receives passport with `scopes: [run_taclaw, export_assessment]` → full access restored. Spoofed TAclaw with stolen key but no passport → blocked at tool dispatch + `agent_identity_spoofing` fires.
 
 **Alternatives rejected:**
 - OAuth2/OIDC for agent identity — too heavy for a local-first tool; JWT with shared secret is sufficient for the trust model here
 - mTLS — requires certificate management infrastructure; out of scope for current deployment model
 - Scoping restrictions via API key prefixes — opaque, not per-tool, cannot carry capability metadata
 
-**Blog angle (P30):** Demonstrate insecure vs secure TAclaw call sequence. ABAC scopes as the Limit leg of LMSR. `agent_identity_spoofing` as the Monitor leg.
+**Blog angle (future):** Demonstrate insecure vs secure TAclaw call sequence. ABAC scopes as the Limit leg of LMSR. `agent_identity_spoofing` as the Monitor leg.
 
 ---
 
