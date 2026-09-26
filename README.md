@@ -16,7 +16,7 @@ Submit a Mermaid (`.mmd`) diagram, a Git repo, or IaC files and receive a MITRE 
 flowchart TD
     subgraph Inputs
         mmd_in["Mermaid .mmd"]
-        sip_in["TF / CF / OAI / Prose\n(TA-SIP adapters)"]
+        sip_in["TF / CF / OAI / Prose"]
         pr_in["GitHub PR"]
         ai_in["AI agent / MCP client"]
     end
@@ -27,6 +27,9 @@ flowchart TD
     end
 
     mcp_srv["MCP Server\n18 tools"]
+    adpt["Adapter Registry\n(TF · CF · OAI · Prose · MMD)"]
+    gov["Governance\n+ injection check"]
+    jev["Jev  (typesafe.ai)\nSystem 1 gate"]
 
     subgraph Router["Smart Router"]
         sr["select_mode()\nbrain_fast · api_only · full_moe"]
@@ -50,13 +53,15 @@ flowchart TD
     end
 
     mmd_in --> rest_api
-    sip_in --> rest_api
+    sip_in --> adpt
+    adpt --> rest_api
     pr_in --> rest_api
     ai_in --> mcp_srv
     mcp_srv --> rest_api
     dash_ui --> rest_api
 
-    rest_api --> sr
+    rest_api --> gov
+    gov --> sr
     brn_o -.->|routing signals| sr
 
     sr -->|brain_fast| brn_o
@@ -74,9 +79,15 @@ flowchart TD
     av_s --> brn_o
     av_s --> eb
     ocsf_o --> eb
+
+    jev -.->|noul pre-flight| gov
+    jev -.->|choice cold-start| sr
+    jev -.->|noul critic screen| ql_s
+    jev -.->|choice adapter fallback| adpt
+    jev -.->|noul TATB label| brn_o
 ```
 
-Three pipeline modes: **brain_fast** serves predictions from the TA Brain for known topology patterns (~50ms); **api_only** runs the deterministic analysis pipeline; **full_moe** adds the 5-critic expert panel. The Smart Router selects the mode automatically based on Brain confidence and AIVSS history.
+Three pipeline modes: **brain_fast** serves predictions from the TA Brain for known topology patterns (~50ms); **api_only** runs the deterministic analysis pipeline; **full_moe** adds the 5-critic expert panel. The Smart Router selects the mode automatically based on Brain confidence and AIVSS history. **Jev** (typesafe.ai) augments five decision points as a fast System 1 gate: governance injection detection, smart router cold-start, PolicyBroker critic pre-screening, adapter format fallback, and TATB quality labelling — all non-fatal; every point falls back silently if Jev is unavailable.
 
 ## Quick start
 
