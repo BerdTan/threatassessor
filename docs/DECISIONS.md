@@ -4,6 +4,33 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 97 — 2026-09-26
+
+### Entry 202 — Jev score type: unused today, valid use case in TATB validation mode
+
+**Decision:** Deferred. `score` type not wired in any of the 5 integration points. Document the one valid TA use case for future trial.
+
+**Why score was skipped:** `score` returns 0.0 for open semantic questions (e.g. "are these threats plausible?"). Works only when ground truth criteria are explicit structured strings. All 5 current integration points are semantic judgements with no ground truth available at call time.
+
+**Valid use case (TATB validation path):** In `brier_on_corpus`, `instance["techniques"]` is the ground truth. Instead of `noul` asking "do the predicted techniques reflect the attack surface?" without knowing what the techniques are, we could switch `ttp_accurate` to `score` in validation mode:
+
+```python
+# Only in brier_on_corpus where actual techniques are known
+if actual:
+    questions["ttp_accurate"] = {
+        "type": "score",
+        "criteria": list(actual),   # e.g. ["T1059", "T1078", "T1190"]
+    }
+```
+
+This is the input format `score` was designed for: short, enumerable, structured criteria with implicit ground truth. Expected to outperform `noul` (0.2158 Brier) since the model can directly compare against known techniques rather than inferring from state counts.
+
+**Next step:** wire as flag `--use-score-type` in `run_jev_validation()` → compare Brier against current noul baseline. Run after `arch_description` improvement (priority 29) to get clean comparison.
+
+**Why deferred:** priority 29 (arch_description prose) should move first — it improves noul's context. Score experiment is most meaningful once noul has its best input, so we're comparing score vs best-noul, not score vs noul-with-no-prose.
+
+---
+
 ## Session 96 — 2026-09-26
 
 ### Entry 201 — JevClient + 5 integration points wired + check-jev skill (Engine Item 17 complete)
