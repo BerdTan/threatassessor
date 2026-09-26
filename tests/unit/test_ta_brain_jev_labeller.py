@@ -36,7 +36,7 @@ def _instance(arch_id="01_minimal_vulnerable", arch_type="generic", techniques=N
 
 
 def _jev_answer(scores: dict) -> dict:
-    return {"answers": {k: {"score": v} for k, v in scores.items()}}
+    return {"answers": {k: {"noul": v} for k, v in scores.items()}}
 
 
 # ── _build_state ──────────────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ def test_label_fallback_on_api_error():
 def test_label_missing_answer_key_falls_back_to_half():
     labeller = JevTATBLabeller(api_key="test-key")
     mock_resp = MagicMock()
-    mock_resp.json.return_value = {"answers": {"threat_relevant": {"score": 0.9}}}
+    mock_resp.json.return_value = {"answers": {"threat_relevant": {"noul": 0.9}}}
     with patch("requests.post", return_value=mock_resp):
         result = labeller.label(_instance())
     assert result["threat_relevant"] == 0.9

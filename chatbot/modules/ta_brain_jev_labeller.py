@@ -33,32 +33,32 @@ JEV_MODEL = os.environ.get("JEV_MODEL", "jev-latest")
 
 _QUESTIONS = {
     "threat_relevant": {
-        "type": "score",
-        "criteria": [
+        "type": "noul",
+        "instructions": (
             "Are the identified threats relevant and plausible for this architecture "
             "type, scale, and topology?"
-        ],
+        ),
     },
     "ttp_accurate": {
-        "type": "score",
-        "criteria": [
+        "type": "noul",
+        "instructions": (
             "Do the predicted MITRE ATT&CK techniques accurately reflect the "
-            "attack surface implied by the architecture profile?"
-        ],
+            "attack surface described in the architecture?"
+        ),
     },
     "risk_defensible": {
-        "type": "score",
-        "criteria": [
-            "Is the composite risk severity defensible given the node count, "
-            "edge count, and architecture type?"
-        ],
+        "type": "noul",
+        "instructions": (
+            "Is the composite AIVSS risk severity defensible and proportionate given "
+            "the architecture description and node complexity?"
+        ),
     },
     "plan_actionable": {
-        "type": "score",
-        "criteria": [
-            "Are the identified missing controls actionable and proportionate to "
-            "the detected threat techniques?"
-        ],
+        "type": "noul",
+        "instructions": (
+            "Are the identified missing controls actionable and relevant to the "
+            "detected threat techniques and architecture?"
+        ),
     },
 }
 
@@ -105,7 +105,7 @@ class JevTATBLabeller:
             logger.warning("Jev API error for %s: %s", instance.get("arch_id", "?"), exc)
             return {d: 0.5 for d in _DIMS} | {"composite": 0.5, "error": str(exc)}
 
-        scores = {d: float(answers.get(d, {}).get("score", 0.5)) for d in _DIMS}
+        scores = {d: float(answers.get(d, {}).get("noul", 0.5)) for d in _DIMS}
         scores["composite"] = round(sum(scores[d] for d in _DIMS) / len(_DIMS), 4)
         return scores
 
@@ -189,7 +189,7 @@ class JevTATBLabeller:
 def _build_state(instance: dict) -> dict:
     techniques = instance.get("techniques", [])
     controls = instance.get("controls_missing", [])
-    return {
+    state: dict = {
         "arch_type": instance.get("arch_type", "unknown"),
         "node_count": instance.get("node_count", 0),
         "edge_count": instance.get("edge_count", 0),
@@ -201,6 +201,10 @@ def _build_state(instance: dict) -> dict:
         "controls_missing_count": len(controls),
         "hub_node_count": len(instance.get("hub_nodes", [])),
     }
+    # Include arch description text when available — noul needs prose, not just counts
+    if instance.get("arch_description"):
+        state["arch_description"] = instance["arch_description"]
+    return state
 
 
 # ── Standalone runner ─────────────────────────────────────────────────────────
