@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
 **Version:** 2.9  
-**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 40 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph)
+**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 41 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph)
 
 ---
 
@@ -52,12 +52,12 @@ tail -f logs/api.log            # logs
 - `chatbot/harness/event_broker.py` — `EventBrokerCritic`, pub/sub to SIEM/Langfuse/Webhook sinks
 - `chatbot/harness/sinks.py` — `SiemSink`, `LangfuseSink`, `WebhookSink`; routing_mode tag preservation across trace.update() calls
 - `chatbot/harness/smart_router.py` — `select_mode(arch_name)` → `RoutingDecision`; brain_fast / api_only / full_moe selection
-- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (40 DETECT rules)
+- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (41 DETECT rules)
 - `chatbot/harness/rule_trend_evaluator.py` — `RuleTrendEvaluator` (trend analysis from history JSONL)
 - `chatbot/harness/registry.py` — `CriticRegistry`
 
 **SOC detection:**
-- `policies/soc_detection_rules.yaml` — 40 DETECT rules with OWASP/ATLAS/incident provenance
+- `policies/soc_detection_rules.yaml` — 41 DETECT rules with OWASP/ATLAS/incident provenance
 
 **REST API:**
 - `chatbot/api/app.py` — FastAPI factory
@@ -135,7 +135,7 @@ Full tool reference, sim personas (17), and client integration: [`mcp_server/REA
 /aivss-gate
 
 # ── SOC detection ────────────────────────────────────────────────────────────
-# Regression suite (40 rules, 43 scenarios)
+# Regression suite (41 rules, 43 scenarios)
 python3 .claude/skills/check-detect/scripts/check-detect.py
 python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 
@@ -213,4 +213,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-09-20
+**Last Updated:** 2026-09-27

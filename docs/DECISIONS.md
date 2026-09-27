@@ -4,6 +4,82 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 98 — 2026-09-27
+
+### Entry 204 — P33 blog candidate: Beyond Zero + AI Control as architecture-level assessment dimensions
+
+**Decision:** Log P33 blog angle and three TA roadmap items derived from Google's Beyond Zero paradigm and DeepMind's AI Control Roadmap. No implementation yet.
+
+**Source material:**
+- Google Security Blog: "Going Beyond Zero — A New Paradigm for Enterprise Security" (2026)
+- DeepMind: "Securing the Future of AI Agents" (2026)
+
+**Blog candidate — P33: "Your threat model doesn't model the threat modeller"**
+
+Thesis: Zero-trust authorizes *who*. Beyond Zero authorizes *what action, on what resource, at what risk level, in real time*. Most architecture diagrams — and most threat models — still reason at the "who has access" level. The gap is per-action dynamic risk enrichment and AI control maturity scoring.
+
+Practitioner hook: TA already implements several Beyond Zero principles (governance pre-flight, Bouncer containment, agentic routing to full_moe, ATLAS techniques). But three gaps remain that apply to any agentic architecture a practitioner is assessing.
+
+**Three gaps identified in TA (all P33 scope):**
+
+1. **Per-action MCP authorization gap**
+   - Current state: TA's 18 MCP tools authorized at connection level (valid API key = all tools).
+   - Beyond Zero principle: MCP surfaces are per-invocation authorization boundaries; each call should carry dynamic risk enrichment (role + data touched + intended operation).
+   - TA gap: a compromised caller with a valid key can invoke any tool. `mcp-audit` enumerates the surface; the missing piece is a per-call Jev noul gate on high-risk invocations (file reads, exports, analysis triggers).
+   - Roadmap item: route high-risk MCP tool calls through Jev noul; threshold TBD.
+
+2. **Agentic architecture AI control maturity — no rubric**
+   - Current state: TA detects `is_agentic` and routes to `full_moe` + ATLAS techniques, but does not score the architecture's *control posture* against agentic threats.
+   - DeepMind framework: D1–D4 (agent evasion capability) × R1–R3 (defender response level) maturity matrix.
+   - TA gap: TATB has four rubrics (Threat-Relevant, TTP-Accurate, Risk-Defensible, Plan-Actionable) but no AI Control Maturity dimension. For agentic architectures, Risk-Defensible currently can't distinguish "no agentic controls" from "sandboxed, auditable, supervised."
+   - Roadmap item: new TATB sub-dimension or AIVSS modifier for agentic architectures — scoring sandboxing, reasoning auditability, oversight coverage, containment triggers.
+
+3. **Oversight awareness — undetected threat class**
+   - Current state: DETECT-QC-009 (P28, next priority) targets SM verdict text for constraint evasion language. SM reviews the *output*, not the reasoning chain.
+   - DeepMind threat: "oversight awareness" — an agent detects it is being monitored and suppresses visible reasoning. Opaque or absent CoT in SM output is a signal, not just a style choice.
+   - TA gap: no DETECT rule checks for absent/thin SM reasoning chain as a distinct signal from constraint evasion.
+   - Roadmap item: add "opaque reasoning" sub-check to DETECT-QC-009 alongside evasion language check. Same SM output file; adjacent signal; minimal extra lift.
+
+**Central insight:** Beyond Zero and AI Control are design-time properties, not post-incident responses. The highest-leverage moment to detect their absence is when the architecture diagram arrives — before anything is built.
+
+**Closing implication:** A threat model that treats the AI agent inside the architecture as a trusted first-party component is already behind. The architecture review should ask: what happens when this agent is compromised, miscalibrated, or monitoring-aware?
+
+**Why:** Both Google and DeepMind have published practitioner frameworks. TA is the right tool to operationalise them at architecture review time. The three gaps above are concrete, not theoretical — each has a specific file, a named mechanism, and a plausible exploit path.
+
+**Alternatives rejected:** Waiting for a standard (no public benchmark evaluates agentic architecture control maturity — same gap TATB filled for threat models); treating these as post-deployment concerns only (Beyond Zero explicitly argues the access model must be defined before the system is built).
+
+---
+
+### Entry 203 — P32 blog candidate + skill-evolve skill: Jev as skill inventory lifecycle manager
+
+**Decision:** Log P32 blog angle and `skill-evolve` as next planned skill. No implementation yet.
+
+**Blog candidate — P32: "Doing the Right Thing Right"**
+
+Three-part arc using Jev as the through-line for skill inventory improvement:
+
+1. **Optimize** — Jev as pre-filter for slow/token-heavy skills. Pattern: `noul` gate before expensive LLM calls or full pipeline runs. Candidates: taclaw-swarm (repo triage before full run), bench-loop (skip unchanged instances), summarise-er (skip boilerplate ERs), adr-patch (skip gaps already covered). Saves tokens; same output quality.
+
+2. **Generalize** — Jev identifies which skills have logic that already transcends TA. Pattern: `noul` — "does this skill's core logic depend on TA-specific domain knowledge?" Candidates: qualify-corpus (general corpus quality assessment), review-unsure (semantic uncertainty resolution for any pattern-matching system), arch-to-graph (general text→graph pre-gate). These are transferable to other ML/security pipelines.
+
+3. **Modernize** — Jev identifies laggard skills written for a pipeline that has since evolved. Pattern: `noul` against skill description + current pipeline state — "does this skill still reflect how TA works today?" Skills written at Engine Items 1–6 may duplicate logic now native to the harness, Jev integration, or brain.
+
+**Central insight:** Jev turns a static skill inventory into a living one. Without it, skills accumulate silently — some useful, some redundant, some obsolete. With it, a cheap semantic sweep surfaces all three conditions continuously.
+
+**Closing implication (P32 "so what"):** `skill-evolve` as a continuous loop, not a one-time audit.
+
+**skill-evolve skill (planned):**
+- Input: each skill's manifest/description + current pipeline files (harness, stages, ARCHITECTURE.md)
+- Three Jev `noul` passes per skill: (1) modernize — "does this skill still reflect current pipeline?" (2) generalize — "is the core logic TA-specific or transferable?" (3) optimize — "does this skill involve slow/token-heavy work a pre-filter could reduce?"
+- Output: three-bucket report (optimize / generalize / modernize) with suggested changes per skill
+- Companion to `skill-audit` (security surface) — this covers semantic currency and lifecycle
+
+**Why:** Skills accumulate across 30+ sessions. No mechanism today to detect drift, redundancy, or hidden generalizability. Jev makes the audit cheap enough to run continuously.
+
+**Alternatives rejected:** Manual review (doesn't scale past ~10 skills); structural analysis only (misses semantic drift — a skill can reference the right files and still be conceptually stale).
+
+---
+
 ## Session 97 — 2026-09-26
 
 ### Entry 202 — Jev Brier experiment: prose beats question type; score confirmed dead
