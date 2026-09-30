@@ -702,19 +702,46 @@ class AIVSSStage(PipelineStage):
             # Merge AIVSS result into governance_signals (never replace the whole dict)
             gov_signals["aivss"] = aivss.to_dict()
 
-            # Populate sm_verdicts from scrum_master_result so DETECT-QC-004 can read it.
+            # Populate sm_verdicts from scrum_master_result so DETECT-QC-004/009 can read it.
             sm_result = ctx.get("scrum_master_result")
             if sm_result is not None:
                 _all_critics = ["architect", "tester", "red_team", "purple_team", "blackhat"]
                 _retriggered = set(getattr(sm_result, "critics_retriggered", None) or [])
                 _per_critic = {c: ("rejected" if c in _retriggered else "accepted") for c in _all_critics}
                 _accepted_n = sum(1 for v in _per_critic.values() if v == "accepted")
+
+                # DETECT-QC-009: scan SM text output for constraint-evasion language.
+                # Patterns cover T1562 (Impair Defenses) and T1036 (Masquerading) vectors
+                # where an endogenous model embeds override directives in its synthesis output.
+                _CEL_PATTERNS = (
+                    "ignore previous", "ignore prior", "ignore all previous",
+                    "override constraint", "override safety", "override restriction",
+                    "bypass constraint", "bypass restriction", "bypass safety",
+                    "disregard constraint", "disregard instruction", "disregard guideline",
+                    "circumvent", "disable safety", "disable guard",
+                    "constraints are optional", "guidelines are optional",
+                    "you can ignore", "you should ignore",
+                    "new instructions:", "new instruction:", "forget previous",
+                    "pretend you have no", "act as if you have no restriction",
+                )
+                _sm_text_parts = [getattr(sm_result, "synthesis_note", "") or ""]
+                _ap = getattr(sm_result, "action_plan", None) or []
+                for _item in _ap:
+                    if isinstance(_item, dict):
+                        _sm_text_parts.append(_item.get("description", "") or "")
+                        _sm_text_parts.append(_item.get("title", "") or "")
+                    elif isinstance(_item, str):
+                        _sm_text_parts.append(_item)
+                _sm_text_lower = " ".join(_sm_text_parts).lower()
+                _cel_detected = any(p in _sm_text_lower for p in _CEL_PATTERNS)
+
                 gov_signals["sm_verdicts"] = {
                     "per_critic": _per_critic,
                     "accepted": _accepted_n,
                     "rejected": len(_retriggered),
                     "acceptance_rate": round(_accepted_n / len(_all_critics), 4),
                     "redesign_signal": bool(getattr(sm_result, "redesign_signal", False)),
+                    "sm_constraint_evasion_language": _cel_detected,
                 }
 
             # Populate validation block from ground_truth.technique_validation.

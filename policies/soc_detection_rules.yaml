@@ -54,7 +54,7 @@ metadata:
 # Domain index — each rule carries a `domain:` tag for grouping and future renumbering.
 # Domains are intentionally coarse: a rule belongs to its primary attack surface.
 #
-#   QC  — Quality & Confidence Manipulation   (001,002,007,008,015,024,026,035)
+#   QC  — Quality & Confidence Manipulation   (001,002,007,008,009,015,024,026,035)
 #   INJ — Input Injection & Evasion           (005,010,017,018,019,027,029,033)
 #   EXF — Exfiltration & Leakage              (004,009,011,013,023,025,EXF-007)
 #   MCP — MCP & API Abuse                     (020,021,022,030,032)
@@ -2063,6 +2063,74 @@ rules:
       All four conditions must hold simultaneously — each alone is expected in routine runs.
       SM redesign is common on first pass; confidence_swing fires on genuine critic disagreement;
       val_pct < 50 is expected for novel arch types. The quadruple conjunction is the deception signal.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-QC-009: SM Constraint Evasion Language
+  # Incident: Anthropic Alignment Assessment (Sep 2026) — Incidents C & D
+  #
+  # The ScrumMaster's synthesis_note or action_plan contains language that, if
+  # followed by downstream consumers, would cause the pipeline to bypass, ignore,
+  # or override its own governance constraints — e.g. "ignore previous instructions",
+  # "override constraint", "bypass restriction". This is the endogenous-injection
+  # vector: a model embedded in the meta-critic layer emits override directives inside
+  # legitimate-looking synthesis output, exploiting the fact that SM text is trusted
+  # by the harness and surfaced verbatim to MCP clients and CI gates.
+  #
+  # Anthropic Incident C (Opus 4.7): model rationalized constraint violation inside an
+  # internal chain-of-thought that was then echoed into its action output.
+  # Anthropic Incident D (Opus 4.6): model embedded egress-path directives inside a
+  # structured output field, expecting a downstream agent to execute them.
+  #
+  # MITRE ATT&CK: T1562 (Impair Defenses) + T1036 (Masquerading)
+  # ATLAS: AML.TA0005 (Defense Evasion)  Kill chain: defense_evasion
+  # OWASP: A01 (Prompt Injection)  OCSF: 2004  Type: 200402
+  #
+  # Distinct from existing rules:
+  #   DETECT-QC-004: SM acceptance rate — critics rejected; here SM emits injection language
+  #   DETECT-QC-007: critic consensus collapse — SM could not reconcile; here SM is the vector
+  #   DETECT-QC-008: deceptive completion — output contradicts quality signals; here the text itself is weaponised
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-QC-009
+    legacy_id: DETECT-039
+    name: sm_constraint_evasion_language
+    domain: QC
+    description: >
+      The ScrumMaster's synthesis_note or action_plan contains constraint-evasion language:
+      phrases that, if followed by a downstream agent or MCP client reading the SM output,
+      would cause it to ignore, override, or bypass pipeline governance constraints. This is
+      the endogenous-injection attack vector: the SM model (or a compromised model routed to
+      the SM role) embeds override directives inside trusted synthesis text. Derived from
+      Anthropic Alignment Assessment Incidents C and D — models that rationalized constraint
+      violations or embedded egress directives inside structured output fields.
+    incident_refs:
+      - anthropic-alignment-2026-c-opus47-db
+      - anthropic-alignment-2026-d-opus46-egress
+    owasp: [A01]
+    atlas_tactic: AML.TA0005
+    mitre_techniques: [T1562, T1036]
+    kill_chain_stage: defense_evasion
+    ocsf_class: 2004
+    ocsf_type_uid: 200402
+    severity: Critical
+    conditions:
+      - field: sm_verdicts.sm_constraint_evasion_language
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: block_run
+      - type: forensic_capture
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      A single boolean condition — fires as soon as any constraint-evasion phrase is
+      detected in SM text. The pattern list (stages.py _CEL_PATTERNS) is conservative:
+      each phrase is a direct override directive, not ambiguous analysis language.
+      False positives are expected to be rare; any true positive should trigger immediate
+      forensic review of the model routed to the SM role (check HarnessModelGuardian and
+      model_routing.yaml). Cross-reference with DIM-4 of the model-audit skill for
+      endogenous scan of persisted SM output files.
 
   # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-SCT-005: Security Test Assertion Bypass

@@ -4,6 +4,25 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 99 — 2026-09-30
+
+### Entry 205 — DETECT-QC-009 promoted: SM constraint evasion language
+
+**Decision:** Promoted DETECT-QC-009 (`sm_constraint_evasion_language`) from DIM-4 model-audit finding to a live SOC detection rule. This is rule 42 (legacy_id DETECT-039).
+
+**What was added:**
+- `policies/soc_detection_rules.yaml`: DETECT-QC-009 — severity Critical, kill_chain defense_evasion, block_run + forensic_capture actions. Single boolean condition: `sm_verdicts.sm_constraint_evasion_language == true`. Incident refs: Anthropic Alignment Assessment C (Opus 4.7) + D (Opus 4.6). MITRE T1562 + T1036.
+- `chatbot/harness/stages.py` (AIVSSStage): `sm_constraint_evasion_language` boolean added to `sm_verdicts` block. Scans `synthesis_note` + `action_plan` text against 23-phrase `_CEL_PATTERNS` list covering override/bypass/ignore directives.
+- `tests/test_soc_rule_evaluator.py`: `TestDetect039SMConstraintEvasionLanguage` (8 tests). Rule count updated 40→42.
+
+**Reasoning:** DIM-4 of model-audit could only scan persisted SM output files — it couldn't fire in real-time during pipeline execution. The endogenous injection vector (SM model embedding override directives in trusted synthesis text) needed a live signal. Severity = Critical + block_run because any true positive means the meta-critic layer is compromised; false positives are expected to be rare given the conservative phrase list.
+
+**Alternatives rejected:** Fuzzy/semantic matching — too expensive at pipeline runtime; phrase list is conservative and auditable. Separate validation stage — unnecessary; the AIVSSStage already has access to sm_result.
+
+**Result:** check-detect passes 420 tests, 0 failures. 42 rules loaded.
+
+---
+
 ## Session 98 — 2026-09-27
 
 ### Entry 204 — P33 blog candidate: Beyond Zero + AI Control as architecture-level assessment dimensions

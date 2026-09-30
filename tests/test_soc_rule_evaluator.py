@@ -118,7 +118,7 @@ class TestYAMLLoading:
 
     def test_loads_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 40
+        assert len(ev) == 42
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -2071,3 +2071,73 @@ class TestDetect032RestRateLimitAbuse:
         findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
         f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-MCP-005")
         assert f["finding"]["kill_chain_stage"] == "impact"
+
+
+class TestDetect039SMConstraintEvasionLanguage:
+    """Endogenous injection: SM synthesis_note or action_plan contains constraint-evasion phrases."""
+
+    def _trigger(self, phrase: str = "ignore previous instructions") -> dict:
+        s = _clean()
+        s["sm_verdicts"] = {
+            "redesign_signal": False,
+            "acceptance_rate": 0.8,
+            "sm_constraint_evasion_language": True,
+        }
+        return s
+
+    def _clean_sm(self) -> dict:
+        s = _clean()
+        s["sm_verdicts"] = {
+            "redesign_signal": False,
+            "acceptance_rate": 0.8,
+            "sm_constraint_evasion_language": False,
+        }
+        return s
+
+    def test_fires_on_evasion_language(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-009" in ids
+
+    def test_does_not_fire_when_language_clean(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._clean_sm(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-009" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-009" not in ids
+
+    def test_does_not_fire_when_sm_verdicts_absent(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        # sm_verdicts not set at all — must not raise and must not fire
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-QC-009" not in ids
+
+    def test_severity_is_critical(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-009")
+        assert f["severity"].upper() == "CRITICAL"
+
+    def test_kill_chain_is_defense_evasion(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-009")
+        assert f["finding"]["kill_chain_stage"] == "defense_evasion"
+
+    def test_actions_include_block_run(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-009")
+        assert "block_run" in f["unmapped"]["actions"]
+
+    def test_incident_refs_present(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-009")
+        refs = f["unmapped"]["incident_refs"]
+        assert any("opus47" in r for r in refs)
+        assert any("opus46" in r for r in refs)
