@@ -590,6 +590,15 @@
 }
 #bench-pane .bp-footnotes p + p { margin-top:0.35rem; }
 #bench-pane .bp-fn-mark { color:var(--bp-violet); }
+
+/* TAgym tiles */
+.gym-tile {
+  flex:1; min-width:90px; background:var(--card-bg);
+  border:1px solid var(--border-color); border-radius:6px;
+  padding:0.6rem 0.9rem; display:flex; flex-direction:column; gap:0.15rem;
+}
+.gym-tile-val { font-size:1.35rem; font-weight:700; line-height:1; }
+.gym-tile-lbl { font-size:0.68rem; color:var(--text-tertiary); }
 </style>
 
 <!-- hero -->
@@ -1263,6 +1272,8 @@
                         style="padding:0.45rem 1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:0.78rem;">Enrichment</button>
                     <button id="sip-subtab-artifact"  onclick="window.dashboard&&window.dashboard._sipSubTab('artifact')"
                         style="padding:0.45rem 1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:0.78rem;">Artifact Analysis</button>
+                    <button id="sip-subtab-gym"       onclick="window.dashboard&&window.dashboard._sipSubTab('gym')"
+                        style="padding:0.45rem 1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:0.78rem;">⟳ TAgym</button>
                 </div>
 
                 <!-- Sub-panel: Adapters -->
@@ -1370,6 +1381,82 @@
                     <!-- Progress + result -->
                     <div id="sip-artifact-status" style="font-size:0.78rem;color:var(--text-tertiary);margin-bottom:0.75rem;min-height:1rem;"></div>
                     <div id="sip-artifact-result" style="font-size:0.78rem;"></div>
+                </div>
+
+                <!-- Sub-panel: TAgym -->
+                <div id="sip-sub-gym" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+                    <!-- Controls bar -->
+                    <div style="flex-shrink:0;padding:1rem 1.5rem;border-bottom:1px solid var(--border-color);background:var(--sidebar-bg);">
+                        <div style="font-weight:700;font-size:0.88rem;margin-bottom:0.75rem;">⟳ TAgym — Autonomous Assessment Flywheel</div>
+                        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end;">
+                            <div style="flex:1;min-width:220px;">
+                                <div style="font-size:0.72rem;color:var(--text-tertiary);margin-bottom:0.25rem;">Targets (one path or git URL per line)</div>
+                                <textarea id="gym-targets" rows="3" placeholder="/path/to/repo&#10;https://github.com/org/repo"
+                                    style="width:100%;box-sizing:border-box;padding:0.4rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.78rem;resize:vertical;"></textarea>
+                            </div>
+                            <div>
+                                <div style="font-size:0.72rem;color:var(--text-tertiary);margin-bottom:0.25rem;">Type</div>
+                                <select id="gym-target-type" style="padding:0.35rem 0.5rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.78rem;">
+                                    <option value="directory">Directory</option>
+                                    <option value="git_url">Git URL</option>
+                                </select>
+                            </div>
+                            <div>
+                                <div style="font-size:0.72rem;color:var(--text-tertiary);margin-bottom:0.25rem;">SSP Profile</div>
+                                <select id="gym-ssp" style="padding:0.35rem 0.5rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.78rem;">
+                                    <option value="low_risk_cloud">low_risk_cloud</option>
+                                    <option value="high_impact_saas">high_impact_saas</option>
+                                    <option value="agentic">agentic</option>
+                                </select>
+                            </div>
+                            <div>
+                                <div style="font-size:0.72rem;color:var(--text-tertiary);margin-bottom:0.25rem;">Max Iterations</div>
+                                <input id="gym-max-iter" type="number" value="10" min="1" max="200"
+                                    style="width:80px;padding:0.35rem 0.5rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.78rem;">
+                            </div>
+                            <div style="display:flex;gap:0.5rem;">
+                                <button id="gym-start-btn" onclick="window.dashboard&&window.dashboard._gymStart()"
+                                    style="padding:0.4rem 1rem;border:none;border-radius:5px;background:#f59e0b;color:#000;font-size:0.78rem;font-weight:700;cursor:pointer;">▶ Start</button>
+                                <button id="gym-stop-btn" onclick="window.dashboard&&window.dashboard._gymStop()"
+                                    style="padding:0.4rem 0.8rem;border:1px solid var(--border-color);border-radius:5px;background:var(--card-bg);color:var(--text-secondary);font-size:0.78rem;cursor:pointer;">■ Stop</button>
+                            </div>
+                        </div>
+                        <div id="gym-status-line" style="margin-top:0.5rem;font-size:0.72rem;color:var(--text-tertiary);min-height:1rem;"></div>
+                    </div>
+
+                    <!-- Stat tiles -->
+                    <div id="gym-stats-row" style="flex-shrink:0;display:flex;gap:0.75rem;padding:0.75rem 1.5rem;border-bottom:1px solid var(--border-color);background:var(--main-bg);">
+                        <div class="gym-tile" data-key="connections">
+                            <div class="gym-tile-val" id="gym-stat-connections">—</div>
+                            <div class="gym-tile-lbl">Connections</div>
+                        </div>
+                        <div class="gym-tile" data-key="tm_produced">
+                            <div class="gym-tile-val" id="gym-stat-tm">—</div>
+                            <div class="gym-tile-lbl">TMs Produced</div>
+                        </div>
+                        <div class="gym-tile" data-key="mitigations">
+                            <div class="gym-tile-val" id="gym-stat-mit">—</div>
+                            <div class="gym-tile-lbl">Mitigations</div>
+                        </div>
+                        <div class="gym-tile" data-key="gate_pass">
+                            <div class="gym-tile-val" id="gym-stat-pass" style="color:#22c55e;">—</div>
+                            <div class="gym-tile-lbl">Gate PASS</div>
+                        </div>
+                        <div class="gym-tile" data-key="gate_block">
+                            <div class="gym-tile-val" id="gym-stat-block" style="color:#ef4444;">—</div>
+                            <div class="gym-tile-lbl">Gate BLOCK</div>
+                        </div>
+                        <div class="gym-tile" data-key="brier">
+                            <div class="gym-tile-val" id="gym-stat-brier">—</div>
+                            <div class="gym-tile-lbl">Brier (latest)</div>
+                        </div>
+                    </div>
+
+                    <!-- Iterations log -->
+                    <div style="flex:1;overflow-y:auto;padding:0.75rem 1.5rem;">
+                        <div style="font-weight:600;font-size:0.8rem;margin-bottom:0.5rem;color:var(--text-secondary);">Iterations</div>
+                        <div id="gym-iterations-table" style="font-size:0.75rem;"></div>
+                    </div>
                 </div>
             </div>
 

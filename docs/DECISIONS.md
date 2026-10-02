@@ -4,6 +4,30 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 100 — 2026-10-02
+
+### Entry 206 — TAgym: autonomous TAclaw assessment flywheel
+
+**Decision:** Implemented TAgym — the autonomous simulation loop that closes the TAclaw flywheel. New backend route + dashboard sub-tab in SIP panel.
+
+**What was built:**
+- `chatbot/api/routes/gym.py`: `GymSession` + `GymIteration` state; `POST /api/v1/gym/start`, `GET /api/v1/gym/status`, `POST /api/v1/gym/stop`; `_gym_loop` asyncio task drives TAclaw jobs continuously up to `max_iterations`, harvesting gate/mitigations/Brier snapshots per iteration.
+- `chatbot/api/routes/__init__.py` + `chatbot/api/app.py`: `gym_router` wired in.
+- `chatbot/api/static/index.html`: "⟳ TAgym" sub-tab added to SIP panel with controls (targets, type, SSP profile, max iterations, start/stop) + stat tiles (Connections, TMs Produced, Mitigations, Gate PASS/BLOCK, Brier latest) + iterations log table.
+- `chatbot/api/static/js/dashboard.js`: `_gymStart`, `_gymStop`, `_gymPoll`, `_gymRender`, `_gymStatus`, `_gymStartPolling`; `_apiPost` helper added; `_sipSubTab` updated to include `gym`.
+
+**Design choices:**
+- Single session model (replaces on restart) — gym is a continuous flywheel, not a multi-session queue.
+- All heavy work delegated to existing `_run_taclaw_job` — no duplication.
+- Brier snapshots read from `ta_brain_benchmarks.json` after each iteration — passive, no forced re-calibration.
+- 2.5 s polling from the dashboard when running; stops automatically when session ends.
+
+**Alternatives rejected:**
+- Separate nav tab in Simulation group: SIP is the right home (TAclaw jobs already live there).
+- Server-sent events for live streaming: polling at 2.5 s is sufficient for a batch flywheel.
+
+---
+
 ## Session 99 — 2026-09-30
 
 ### Entry 205 — DETECT-QC-009 promoted: SM constraint evasion language

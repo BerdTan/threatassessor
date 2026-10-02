@@ -20710,6 +20710,20 @@ class Dashboard {
         return r.json();
     }
 
+    async _apiPost(path, body) {
+        const apiKey = localStorage.getItem('tm_api_key') || '';
+        const r = await fetch(path, {
+            method: 'POST',
+            headers: { 'TM-API-KEY': apiKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({ detail: r.statusText }));
+            throw new Error(err.detail || `HTTP ${r.status}`);
+        }
+        return r.json();
+    }
+
     _platformInit() {
         if (this._sipInited) return;
         this._sipInited = true;
@@ -20740,17 +20754,18 @@ class Dashboard {
 
     _sipSubTab(name) {
         this._sipActiveSubTab = name;
-        ['adapters', 'jobs', 'enrich', 'artifact'].forEach(n => {
+        ['adapters', 'jobs', 'enrich', 'artifact', 'gym'].forEach(n => {
             const btn  = document.getElementById(`sip-subtab-${n}`);
             const pane = document.getElementById(`sip-sub-${n}`);
             const active = n === name;
             if (btn)  { btn.style.borderBottomColor = active ? '#f59e0b' : 'transparent';
                         btn.style.color = active ? '#f59e0b' : 'var(--text-secondary)';
                         btn.style.fontWeight = active ? '600' : '400'; }
-            if (pane) { pane.style.display = active ? (n === 'jobs' ? 'flex' : 'block') : 'none'; }
+            if (pane) { pane.style.display = active ? (n === 'jobs' || n === 'gym' ? 'flex' : 'block') : 'none'; }
         });
         if (name === 'adapters') this._sipLoadAdapters();
         if (name === 'jobs')     this._sipLoadJobs();
+        if (name === 'gym')      this._gymPoll();
     }
 
     async _sipLoadAdapters() {
@@ -21008,6 +21023,107 @@ class Dashboard {
             if (status) status.textContent = '';
             if (result) result.innerHTML = `<span style="color:#ef4444;">Error: ${this._esc(err.message)}</span>`;
         }
+    }
+
+    // ── TAgym ─────────────────────────────────────────────────────────────────
+
+    async _gymStart() {
+        const raw = document.getElementById('gym-targets')?.value?.trim() || '';
+        const targets = raw.split('\n').map(s => s.trim()).filter(Boolean);
+        if (!targets.length) { this._gymStatus('No targets specified.'); return; }
+        const target_type = document.getElementById('gym-target-type')?.value || 'directory';
+        const ssp_profile = document.getElementById('gym-ssp')?.value || 'low_risk_cloud';
+        const max_iterations = parseInt(document.getElementById('gym-max-iter')?.value || '10', 10);
+
+        this._gymStatus('Starting gym session…');
+        try {
+            const data = await this._apiPost('/api/v1/gym/start', { targets, target_type, ssp_profile, max_iterations });
+            this._gymStatus(`Running — session ${data.session_id?.slice(0,8)}…`);
+            this._gymStartPolling();
+        } catch (e) {
+            this._gymStatus(`Error: ${e.message}`);
+        }
+    }
+
+    async _gymStop() {
+        this._gymStatus('Stopping…');
+        try {
+            const data = await this._apiPost('/api/v1/gym/stop', {});
+            this._gymStatus(`Stopped — ${data.session_id?.slice(0,8) || ''}`);
+            if (this._gymTimer) { clearInterval(this._gymTimer); this._gymTimer = null; }
+        } catch (e) {
+            this._gymStatus(`Error: ${e.message}`);
+        }
+    }
+
+    _gymStartPolling() {
+        if (this._gymTimer) clearInterval(this._gymTimer);
+        this._gymTimer = setInterval(() => this._gymPoll(), 2500);
+        this._gymPoll();
+    }
+
+    async _gymPoll() {
+        try {
+            const d = await this._apiGet('/api/v1/gym/status');
+            this._gymRender(d);
+            if (d.status === 'stopped' || d.status === 'idle') {
+                if (this._gymTimer) { clearInterval(this._gymTimer); this._gymTimer = null; }
+            }
+        } catch { /* silent — keep polling */ }
+    }
+
+    _gymRender(d) {
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v ?? '—'; };
+        set('gym-stat-connections', d.connections ?? '—');
+        set('gym-stat-tm',         d.tm_produced ?? '—');
+        set('gym-stat-mit',        d.mitigations_total ?? '—');
+        set('gym-stat-pass',       d.gate_pass ?? '—');
+        set('gym-stat-block',      d.gate_block ?? '—');
+        const briers = d.brier_snapshots || [];
+        set('gym-stat-brier', briers.length ? briers[briers.length - 1].toFixed(4) : '—');
+
+        const statusLine = document.getElementById('gym-status-line');
+        if (statusLine) {
+            const pct = d.max_iterations > 0 ? Math.round((d.current_iteration / d.max_iterations) * 100) : 0;
+            const bierTrend = briers.length >= 2
+                ? (briers[briers.length-1] < briers[0] ? ' ↓ improving' : ' ↑ drifting')
+                : '';
+            statusLine.textContent = d.status === 'idle'
+                ? 'Idle — no session'
+                : `${d.status}  ·  iteration ${d.current_iteration}/${d.max_iterations}  (${pct}%)${bierTrend}`;
+        }
+
+        const tbl = document.getElementById('gym-iterations-table');
+        if (!tbl || !d.iterations?.length) return;
+        const rows = [...d.iterations].reverse().slice(0, 50).map(it => {
+            const gateColor = it.gate === 'BLOCK' ? '#ef4444' : it.gate === 'PASS' ? '#22c55e' : 'var(--text-tertiary)';
+            const statusColor = it.status === 'failed' ? '#ef4444' : it.status === 'running' ? '#f59e0b' : 'var(--text-secondary)';
+            const dur = it.completed_at ? `${((it.completed_at - it.started_at)).toFixed(0)}s` : '…';
+            return `<tr>
+                <td style="padding:0.25rem 0.5rem;color:var(--text-tertiary);">#${it.iteration}</td>
+                <td style="padding:0.25rem 0.5rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${this._esc(it.target)}">${this._esc(it.arch_name || it.target)}</td>
+                <td style="padding:0.25rem 0.5rem;color:${statusColor};">${it.status}</td>
+                <td style="padding:0.25rem 0.5rem;font-weight:700;color:${gateColor};">${it.gate || '—'}</td>
+                <td style="padding:0.25rem 0.5rem;">${it.mitigations}</td>
+                <td style="padding:0.25rem 0.5rem;color:var(--text-tertiary);">${dur}</td>
+            </tr>`;
+        }).join('');
+        tbl.innerHTML = `<table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="color:var(--text-tertiary);text-align:left;border-bottom:1px solid var(--border-color);">
+                <th style="padding:0.25rem 0.5rem;">#</th>
+                <th style="padding:0.25rem 0.5rem;">Target / Arch</th>
+                <th style="padding:0.25rem 0.5rem;">Status</th>
+                <th style="padding:0.25rem 0.5rem;">Gate</th>
+                <th style="padding:0.25rem 0.5rem;">Mitigations</th>
+                <th style="padding:0.25rem 0.5rem;">Duration</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    _gymStatus(msg) {
+        const el = document.getElementById('gym-status-line');
+        if (el) el.textContent = msg;
     }
 
     // ── end Platform / SIP ────────────────────────────────────────────────────

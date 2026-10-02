@@ -419,7 +419,7 @@ Run deterministic threat analysis (Team 1: ThreatAnalysisService).
         """
 
     # Include routers
-    from chatbot.api.routes import streaming_router, reports_router, config_router, workspaces_router, ta_wiz_router, graph_search_router, jobs_router, mcp_sim_router, brain_router, taco_router, bench_router, enrich_router, artifact_router, taclaw_router, platform_router, boxing_router, routing_router
+    from chatbot.api.routes import streaming_router, reports_router, config_router, workspaces_router, ta_wiz_router, graph_search_router, jobs_router, mcp_sim_router, brain_router, taco_router, bench_router, enrich_router, artifact_router, taclaw_router, platform_router, boxing_router, routing_router, gym_router
     from chatbot.api.routes.broker import router as broker_router
     app.include_router(streaming_router)
     app.include_router(reports_router)
@@ -439,6 +439,7 @@ Run deterministic threat analysis (Team 1: ThreatAnalysisService).
     app.include_router(platform_router)
     app.include_router(boxing_router)
     app.include_router(routing_router)
+    app.include_router(gym_router)
 
     # Enrich OpenAPI spec: add server URL and API key security scheme
     from fastapi.openapi.utils import get_openapi
