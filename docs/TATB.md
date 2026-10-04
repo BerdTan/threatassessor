@@ -161,7 +161,7 @@ When TAclaw runs against an external repo, the `ta_export.json` bundle includes 
 | noul, with MMD prose in state | 0.1845 | 0.2203 | +0.0358 |
 | score, actual technique list | 0.2203 | 0.2203 | 0.0000 |
 
-The MMD prose in state produces 3.5× more improvement than switching question types. Adding `arch_description` to all brain instances is the next step to confirm this in production (Priority 30).
+The MMD prose in state produces 3.5× more improvement than switching question types. `arch_description` was subsequently added to all brain instances (Session 97, confirmed in production).
 
 **Fallback:** If Jev is unavailable (`JEV_ENABLED=0`, no key, or circuit open), the labeller returns neutral 0.5 for all dimensions. Brain distillation proceeds unchanged; Jev labels are supplementary, not required.
 

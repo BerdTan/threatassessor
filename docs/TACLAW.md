@@ -1,7 +1,7 @@
 # TAclaw Hardening Plan
 
-**Status:** Draft — under review  
-**Date:** 2026-09-20  
+**Status:** Active — Groups 1–5 complete (2026-10-03)  
+**Date:** 2026-10-03  
 **Context:** TAclaw is the external-facing agent interface to the TA engine. External developers, CI pipelines, and MCP-enabled coding agents (Claude Desktop, Cursor, Copilot) use it. The current state has silent gaps that make the output incomplete and the caller unidentifiable.
 
 ---

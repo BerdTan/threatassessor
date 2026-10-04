@@ -10,6 +10,9 @@ Usage:
   ta archs
   ta status
   ta brain match --sig <signature> --type <arch-type>
+  ta gym status
+  ta gym start --targets <path> [--max-iterations N]
+  ta gym stop
   ta serve
   ta configure
 """
@@ -38,6 +41,9 @@ app = typer.Typer(
 )
 brain_app = typer.Typer(help="TA Brain query commands.")
 app.add_typer(brain_app, name="brain")
+
+gym_app = typer.Typer(help="TAgym autonomous assessment loop.")
+app.add_typer(gym_app, name="gym")
 
 console = Console()
 
@@ -520,6 +526,125 @@ def brain_match(
         f"AIVSS floor: {matched.get('aivss_floor', 'N/A')}",
         title="Brain Match",
     ))
+
+
+# ── gym ───────────────────────────────────────────────────────────────────────
+
+@gym_app.command("status")
+def gym_status():
+    """Show current TAgym session — per-arch iteration table and summary stats."""
+    cfg = _load_config()
+    r = _client(cfg).get(f"{_get_base_url(cfg)}/api/v1/gym/status", headers=_headers(cfg))
+    r.raise_for_status()
+    data = r.json()
+
+    sess_status = data.get("status", "idle")
+    if sess_status == "idle":
+        rprint("[yellow]TAgym — no active session[/yellow]")
+        raise typer.Exit()
+
+    session_id = (data.get("session_id") or "")[:8]
+    current = data.get("current_iteration", 0)
+    max_iter = data.get("max_iterations", 0)
+    gate_pass = data.get("gate_pass", 0)
+    gate_block = data.get("gate_block", 0)
+    mitigations_total = data.get("mitigations_total", 0)
+    brier_snapshots = data.get("brier_snapshots", [])
+    iterations = data.get("iterations", [])
+
+    color = "cyan" if sess_status == "running" else "yellow"
+    rprint(f"\n[bold]TAgym[/bold]  [dim]{session_id}[/dim]  ·  [{color}]{sess_status}[/{color}]  ·  {current}/{max_iter} iterations\n")
+
+    tbl = Table(show_header=True, header_style="bold", box=None, pad_edge=False, min_width=72)
+    tbl.add_column("#",       style="dim",   width=4)
+    tbl.add_column("Arch",                   min_width=24)
+    tbl.add_column("Gate",                   width=7)
+    tbl.add_column("Mitigations",            width=13, justify="right")
+    tbl.add_column("Brier",                  width=8,  justify="right")
+    tbl.add_column("",                       width=14)
+
+    for it in iterations:
+        idx = it.get("iteration", 0)
+        arch = it.get("arch_name") or it.get("target", "?")
+        gate = it.get("gate", "")
+        mits = it.get("mitigations", 0)
+        brier = brier_snapshots[idx] if idx < len(brier_snapshots) else None
+        prev  = brier_snapshots[idx - 1] if idx > 0 and (idx - 1) < len(brier_snapshots) else None
+
+        gate_str = f"[green]{gate}[/green]" if gate == "PASS" else f"[red]{gate}[/red]" if gate == "BLOCK" else gate
+        brier_str = f"{brier:.4f}" if brier is not None else "—"
+        note = ""
+        if gate == "BLOCK" and prev is not None and brier is not None and brier == prev:
+            note = "[dim]← no change[/dim]"
+        elif prev is not None and brier is not None:
+            delta = brier - prev
+            if delta < 0:
+                note = f"[green]▼ {abs(delta):.4f}[/green]"
+            elif delta > 0:
+                note = f"[red]▲ {delta:.4f}[/red]"
+
+        tbl.add_row(str(idx + 1), arch, gate_str, str(mits), brier_str, note)
+
+    console.print(tbl)
+
+    avg_mits = round(mitigations_total / current, 1) if current > 0 else 0
+    brier_delta = ""
+    if len(brier_snapshots) >= 2:
+        d = brier_snapshots[-1] - brier_snapshots[0]
+        sign = "−" if d < 0 else "+"
+        brier_delta = f"   Brier Δ: {sign}{abs(d):.4f}"
+
+    rprint(
+        f"\n Pass: [green]{gate_pass}[/green]   Block: [red]{gate_block}[/red]"
+        f"   Avg mitigations: {avg_mits}{brier_delta}\n"
+    )
+
+
+@gym_app.command("start")
+def gym_start(
+    targets: list[str] = typer.Option(..., "--target", "-t", help="Target path or git URL (repeat for multiple)."),
+    target_type: str   = typer.Option("directory", "--type",           help="directory | git_url"),
+    ssp_profile: str   = typer.Option("low_risk_cloud", "--ssp",       help="SSP profile name"),
+    max_iterations: int = typer.Option(10, "--max-iterations", "-n",   help="Maximum iterations (1–200)"),
+):
+    """Start the TAgym autonomous assessment loop."""
+    cfg = _load_config()
+    payload = {
+        "targets": targets,
+        "target_type": target_type,
+        "ssp_profile": ssp_profile,
+        "max_iterations": max_iterations,
+    }
+    r = _client(cfg).post(
+        f"{_get_base_url(cfg)}/api/v1/gym/start",
+        headers=_headers(cfg),
+        json=payload,
+    )
+    if r.status_code == 400:
+        _err(r.json().get("detail", r.text))
+    r.raise_for_status()
+    data = r.json()
+    sid = (data.get("session_id") or "")[:8]
+    rprint(
+        f"[green]TAgym started[/green]  session={sid}  "
+        f"targets={len(targets)}  max_iterations={max_iterations}\n"
+        f"Run [bold]ta gym status[/bold] to follow progress."
+    )
+
+
+@gym_app.command("stop")
+def gym_stop():
+    """Stop the running TAgym session."""
+    cfg = _load_config()
+    r = _client(cfg).post(f"{_get_base_url(cfg)}/api/v1/gym/stop", headers=_headers(cfg))
+    r.raise_for_status()
+    data = r.json()
+    status = data.get("status", "")
+    if status == "already_stopped":
+        rprint("[yellow]TAgym — no running session to stop[/yellow]")
+    else:
+        sid = (data.get("session_id") or "")[:8]
+        rprint(f"[green]TAgym stopped[/green]  session={sid}")
 
 
 # ── serve ─────────────────────────────────────────────────────────────────────

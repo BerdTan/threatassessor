@@ -4,6 +4,90 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 102 — 2026-10-03
+
+### Entry 208 — Jev Phase 2: three noul expansion points
+
+**Decision:** Extend Jev integration from 5 to 8 points — all noul type, all fallback-safe (unavailable Jev → continue as-is, same contract as points ❶–❺). Three points in priority order:
+
+| # | Point | File | Fallback |
+|---|---|---|---|
+| ❻ | Ground truth technique applicability | `chatbot/modules/ground_truth_generator.py` | Keep technique assignment unchanged |
+| ❼ | DETECT-ABU investigation questions | `chatbot/harness/rule_evaluator.py` + ABU rules | Count-based threshold (Entry 207 design) |
+| ❽ | CISO risk posture at export | `chatbot/modules/ta_exporter.py` | `posture_signal` absent / null in bundle |
+
+**Question patterns:**
+- ❻ noul: "Is [technique_id] genuinely applicable to [node_role] given its position and connections in this architecture?"
+- ❼ noul: Each of the 6 DETECT-ABU investigation questions evaluated as noul rather than threshold rules; convergence becomes semantic, not just count-based
+- ❽ noul: "Is this architecture's overall threat profile consistent with its stated risk tolerance and deployment context?"
+
+**Motivation:** The current 5 points are all defensive/routing — they prevent bad inputs and route correctly. Phase 2 shifts Jev into the output quality and advisory layer. ❻ is the highest-leverage internal quality gate (reduces false-positive technique assignment before critics see anything). ❼ makes the DETECT-ABU question-set semantically richer than threshold rules alone. ❽ opens the strategic advisory layer: TA moves from "here are threats" to "here is whether your posture is appropriate" — something no current threat modelling tool does.
+
+**Relation to existing work:**
+- ❼ is part of Priority 33 (DETECT-ABU implementation); implement alongside the 6 rules
+- ❻ and ❽ are net-new scope; implement after ❼ is proven
+- All three follow the `get_jev_client()` singleton + silent fallback pattern from `jev_client.py`
+- Remaining candidates from the full opportunity map (SM veto validation, critic deduplication, brain promotion gate, bench-loop promotion) deferred — secondary signal, revisit after Phase 2 is calibrated
+
+**Implementation order:** ❼ (Priority 33, already scoped) → ❻ (pipeline-layer, highest internal leverage) → ❽ (export-layer, CISO advisory)
+
+**Alternatives rejected:**
+- Expanding to all identified points at once: too much signal to calibrate simultaneously; start with the three highest-leverage and measure Brier impact before adding more
+- Using `choice` type for posture: noul is sufficient and cheaper; a binary "is posture consistent?" gives a clear signal without requiring criteria enumeration
+
+---
+
+## Session 101 — 2026-10-03
+
+### Entry 207 — DETECT-ABU domain: TA Abuse Protection scheme
+
+**Decision:** Define a new DETECT-ABU-* domain — six rules covering TA's own API/MCP abuse surface. Companion investigation question set and dashboard investigation panel to follow. No implementation yet.
+
+**Motivation:** P32's instrument gym (TAgym) needs its own immune system. A gym that can be gamed builds confidence in a broken instrument. The existing 41 DETECT rules monitor architecture-under-assessment; DETECT-ABU monitors the assessor being abused. The question-set framing (see below) makes signals actionable for CISO investigation without requiring a domain expert to read rule logic directly.
+
+**Six DETECT-ABU rules (to be implemented in `policies/soc_detection_rules.yaml`):**
+
+| Rule | Signal | Threshold / condition |
+|---|---|---|
+| DETECT-ABU-001 | Probe pattern — same arch queried >3× within 1 hr, varying params | rolling window per arch_name, MCP + REST combined |
+| DETECT-ABU-002 | Output harvesting — export endpoint called within 30 s of every PASS, >5 per session | timestamp delta on export vs gate result |
+| DETECT-ABU-003 | Path enumeration velocity — attack path queries >10/min against single arch | query rate on `/api/v1/enrich` per arch |
+| DETECT-ABU-004 | Caller fingerprint drift — MCP caller user-agent or tool sequence changed mid-session | compare first vs subsequent calls in MCPAccessLogger window |
+| DETECT-ABU-005 | Lateral harvesting — multiple archs assessed, findings cross-referenced in same export burst | export count + arch variety within 5-min window |
+| DETECT-ABU-006 | Queue injection — synthetic MMD submitted outside gap-identification flow | synthetic_queue write without preceding gap signal |
+
+**Investigation question set (3+ "yes" → block recommendation):**
+
+1. Has this target been assessed more than twice in the last 24 h?
+2. Did the caller export results within 30 s of each PASS gate?
+3. Is the attack path query rate consistent with genuine threat modelling?
+4. Did MCP caller behaviour change after receiving high-severity findings?
+5. Are multiple architectures being assessed with suspiciously similar component names?
+6. Were synthetic MMDs submitted that the gap-identification flow did not generate?
+
+**Response tiers:**
+- 0–2 yes: log only
+- 3–4 yes: investigate (surface in CISO brief)
+- 5–6 yes: block recommendation (hook into BouncerStage / PolicyBroker)
+
+**Relation to existing work:**
+- DETECT-ABU-001/003/004 extend MCPAccessLogger signals already used by DETECT-MCP-001/021/022
+- DETECT-ABU-006 gates the synthetic queue path introduced in Brain Stage 8
+- Per-action Jev noul gate (Entry 204 roadmap item 1) is the enforcement layer; DETECT-ABU is the investigation layer above it
+- P33 blog ("The gym that monitors itself") builds the narrative around this scheme; bridges from P32's closing paragraph
+
+**Next steps:**
+1. Implement 6 rules in `policies/soc_detection_rules.yaml` (new domain block, after DETECT-MCP-*)
+2. Extend MCPAccessLogger with per-arch rolling windows + export timestamp tracking
+3. Add investigation panel to dashboard (CISO brief or new "Abuse" sub-tab)
+4. Draft P33 blog around the question-set framing + AI Control Roadmap bridge
+
+**Alternatives rejected:**
+- Folding into DETECT-MCP-*: ABU signals span REST + MCP + synthetic queue; a separate domain keeps the boundary clean.
+- Single composite score instead of questions: questions force temporal reasoning ("did X follow Y?") that a threshold score flattens; the narrative is the value for CISO investigation.
+
+---
+
 ## Session 100 — 2026-10-02
 
 ### Entry 206 — TAgym: autonomous TAclaw assessment flywheel

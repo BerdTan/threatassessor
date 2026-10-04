@@ -1,14 +1,14 @@
 # ARCHITECTURE
 
-**Version:** 1.0  
-**Date:** 2026-09-20  
-**Status:** Active — reflects Harness v2 + TA-SIP + TA Brain + Engine Items 1–10
+**Version:** 1.1  
+**Date:** 2026-10-03  
+**Status:** Active — reflects Harness v2 + TA-SIP + TA Brain + TAgym + Engine Items 1–17 + Jev 5-point integration
 
 ---
 
 ## Purpose
 
-ThreatAssessor turns an architecture diagram (or a whole repository) into an actionable threat model. It parses structure, maps MITRE ATT&CK techniques, applies five expert-review critics, scores the output against four quality rubrics, fires 40 SOC detection rules, and exports a signed assessment bundle — all through a single REST call, an MCP tool, or a CLI command.
+ThreatAssessor turns an architecture diagram (or a whole repository) into an actionable threat model. It parses structure, maps MITRE ATT&CK techniques, applies five expert-review critics, scores the output against four quality rubrics, fires 42 SOC detection rules, and exports a signed assessment bundle — all through a single REST call, an MCP tool, or a CLI command.
 
 The system is designed around one invariant: **every analysis path converges on the same Harness gate before any result leaves the system**. The path may be fast (brain pattern match) or full (multi-model MoE critics), but the governance check, AIVSS scoring, and ta-export bundle are non-negotiable steps on all paths.
 
@@ -23,11 +23,12 @@ The system is designed around one invariant: **every analysis path converges on 
 | **TA Brain** | `chatbot/modules/ta_brain_*.py` | 181-instance KG; TACO query; routing signals |
 | **Smart Router** | `chatbot/harness/smart_router.py` | `select_mode()` → brain_fast / api_only / full_moe |
 | **Analysis Pipeline** | `chatbot/modules/ground_truth_generator.py` + `moe_orchestrator` | Deterministic threat mapping + LLM expert review → 16 report files |
-| **Harness v2** | `chatbot/harness/` | Stage sequencing, governance gate, 40 DETECT rules, EventBroker |
+| **Harness v2** | `chatbot/harness/` | Stage sequencing, governance gate, 42 DETECT rules, EventBroker |
 | **Export** | `chatbot/modules/ta_exporter.py`, `chatbot/schemas/ta_export_v1.json` | `ta-export/1.0` bundle (gate + OTM + OCSF + TATB + provenance) |
 | **REST API** | `chatbot/api/routes/` | FastAPI surface: SSE streams, async job layer, admin (72 paths) |
 | **MCP Server** | `mcp_server/` | 18 tools via stdio — for Claude Desktop and coding agents |
 | **TAclaw** | `taclaw/`, `chatbot/api/routes/taclaw.py` | Autonomous repo assessment: crawl → adapt → merge → harness → export |
+| **TAgym** | `chatbot/api/routes/gym.py`, `taclaw/cli.py` | Instrument gym flywheel: continuous TAclaw loop → Brier snapshot per iteration → calibration signal; `ta gym start/status/stop` CLI |
 | **MCP Connector** | `mcp_connector/` | Typed SDK (`TAExportBundle`, `enrich_finding()`) for downstream integrations |
 | **Dashboard** | `chatbot/api/static/` | 7-tab browser UI |
 | **Policies** | `policies/` | Runtime governance config: DETECT rules, agent governance, model routing |

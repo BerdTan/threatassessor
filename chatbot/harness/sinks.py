@@ -222,38 +222,44 @@ class LangfuseSink(BaseSink):
             p = event.payload
             if event.event_type == "run_start":
                 _routing_mode = p.get("routing_mode", "")
-                self._routing_mode = _routing_mode  # persist for subsequent trace.update() calls
-                self._trace = self._lf.trace(
-                    id=event.run_id,
+                self._routing_mode = _routing_mode
+                # v4: start_observation with trace_context pins the trace_id so
+                # create_score(trace_id=run_id) references the same trace.
+                self._trace = self._lf.start_observation(
+                    trace_context={"trace_id": event.run_id},
                     name="threat_assessment",
+                    as_type="span",
                     metadata={
                         "scenario": p.get("scenario", ""),
                         "architecture": p.get("architecture", ""),
                         "routing_mode": _routing_mode,
                     },
-                    tags=[_routing_mode] if _routing_mode else [],
                 )
                 self._current_trace = self._trace
 
             elif event.event_type == "stage_complete" and self._trace:
-                self._trace.span(
+                child = self._trace.start_observation(
                     name=event.source,
+                    as_type="span",
                     metadata=p,
-                    end_time=event.ts,
                 )
+                child.end()
 
             elif event.event_type == "critic_complete" and self._trace:
-                self._trace.generation(
+                child = self._trace.start_observation(
                     name=event.source,
+                    as_type="generation",
                     model=p.get("model", ""),
                     usage_details={"total_tokens": p.get("moe_total_tokens", 0)},
                     cost_details={"total_cost": p.get("moe_total_cost", 0.0)},
                     metadata=p,
                 )
+                child.end()
 
             elif event.event_type == "critic_generation" and self._trace:
-                self._trace.generation(
+                child = self._trace.start_observation(
                     name=event.source,
+                    as_type="generation",
                     model=p.get("model", ""),
                     usage_details={
                         "input": p.get("prompt_tokens", 0),
@@ -266,17 +272,18 @@ class LangfuseSink(BaseSink):
                         "validation_status": p.get("validation_status", ""),
                     },
                 )
+                child.end()
 
             elif event.event_type == "governance_complete" and self._trace:
                 self._trace.update(metadata={
-                    "routing_mode":     self._routing_mode,  # re-include; trace.update replaces metadata
+                    "routing_mode":          self._routing_mode,
                     "governance_risk_level": p.get("overall_risk_level", "LOW"),
-                    "D1_exploitation":  p.get("D1", "LOW"),
-                    "D2_manipulation":  p.get("D2", "LOW"),
-                    "D3_leakage":       p.get("D3", "LOW"),
-                    "D4_identity":      p.get("D4", "LOW"),
-                    "D5_sovereignty":   p.get("D5", "LOW"),
-                    "blocked_agents":   p.get("blocked_agents", []),
+                    "D1_exploitation":       p.get("D1", "LOW"),
+                    "D2_manipulation":       p.get("D2", "LOW"),
+                    "D3_leakage":            p.get("D3", "LOW"),
+                    "D4_identity":           p.get("D4", "LOW"),
+                    "D5_sovereignty":        p.get("D5", "LOW"),
+                    "blocked_agents":        p.get("blocked_agents", []),
                 })
 
             elif event.event_type == "aivss_complete" and self._trace:
@@ -291,16 +298,17 @@ class LangfuseSink(BaseSink):
                 outbound = _composite(p.get("outbound", 0.0))
                 overall_sev = p.get("overall_severity", "LOW")
 
-                self._trace.span(
+                child = self._trace.start_observation(
                     name="aivss_scoring",
+                    as_type="span",
                     metadata={
-                        "inbound":  inbound,
-                        "internal": internal,
-                        "outbound": outbound,
+                        "inbound":         inbound,
+                        "internal":        internal,
+                        "outbound":        outbound,
                         "overall_severity": overall_sev,
                     },
-                    end_time=event.ts,
                 )
+                child.end()
 
                 # Attach AIVSS composites as first-class Langfuse Score objects so
                 # langfuse-to-ocsf can fetch them via scores_v3.get_many_v3(trace_id=).
@@ -319,11 +327,12 @@ class LangfuseSink(BaseSink):
                     )
 
             elif event.event_type == "sm_verdicts" and self._trace:
-                self._trace.span(
+                child = self._trace.start_observation(
                     name="sm_verdicts",
+                    as_type="span",
                     metadata=p,
-                    end_time=event.ts,
                 )
+                child.end()
                 # Per-critic acceptance as individual Score objects so langfuse-to-ocsf
                 # can query by name ("sm_verdict_<critic>") for DETECT-QC-004 evaluation.
                 for critic, verdict in (p.get("per_critic") or {}).items():
@@ -344,28 +353,30 @@ class LangfuseSink(BaseSink):
                 )
 
             elif event.event_type == "aivss_gate" and self._trace:
-                self._trace.span(
+                child = self._trace.start_observation(
                     name="outbound_aivss_gate",
+                    as_type="span",
                     metadata={
                         "outbound_score": p.get("outbound_score", 0.0),
-                        "blocked": p.get("blocked", False),
+                        "blocked":        p.get("blocked", False),
                     },
-                    end_time=event.ts,
                 )
+                child.end()
 
             elif event.event_type == "run_complete" and self._trace:
-                self._trace.update(
+                self._trace.set_trace_io(
                     output={
                         "confidence": p.get("confidence"),
-                        "errors": p.get("errors", []),
-                    },
-                    metadata={
-                        "routing_mode":    self._routing_mode,  # re-include; trace.update replaces metadata
-                        "arch_type":       p.get("arch_type", ""),
-                        "aivss_composite": p.get("aivss_composite"),
-                        "pipeline_wall_s": p.get("pipeline_wall_s"),
+                        "errors":     p.get("errors", []),
                     },
                 )
+                self._trace.update(metadata={
+                    "routing_mode":    self._routing_mode,
+                    "arch_type":       p.get("arch_type", ""),
+                    "aivss_composite": p.get("aivss_composite"),
+                    "pipeline_wall_s": p.get("pipeline_wall_s"),
+                })
+                self._trace.end()
 
         except Exception as exc:
             logger.warning(f"LangfuseSink emit failed (non-fatal): {exc}")

@@ -442,21 +442,20 @@ class TestLangfuseSink:
     def test_run_start_creates_trace(self):
         sink, mock_lf = self._sink_with_mock_lf()
         mock_trace = MagicMock()
-        mock_lf.trace.return_value = mock_trace
+        mock_lf.start_observation.return_value = mock_trace
         sink.emit(_event("run_start", run_id="arch_20260713", payload={"scenario": "full_moe"}))
-        mock_lf.trace.assert_called_once()
-        call_kwargs = mock_lf.trace.call_args
-        # id should contain the run_id
+        mock_lf.start_observation.assert_called_once()
+        call_kwargs = mock_lf.start_observation.call_args
+        # trace_context should contain the run_id
         assert "arch_20260713" in str(call_kwargs)
 
     def test_stage_complete_creates_span(self):
         sink, mock_lf = self._sink_with_mock_lf()
         mock_trace = MagicMock()
-        mock_lf.trace.return_value = mock_trace
         sink._trace = mock_trace
         sink.emit(_event("stage_complete", source="analysis"))
-        mock_trace.span.assert_called_once()
-        call_kwargs = mock_trace.span.call_args
+        mock_trace.start_observation.assert_called_once()
+        call_kwargs = mock_trace.start_observation.call_args
         assert "analysis" in str(call_kwargs)
 
     def test_critic_complete_creates_generation(self):
@@ -469,8 +468,8 @@ class TestLangfuseSink:
             "total_cost": 0.015,
         }
         sink.emit(_event("critic_complete", source="red_team", payload=payload))
-        mock_trace.generation.assert_called_once()
-        call_str = str(mock_trace.generation.call_args)
+        mock_trace.start_observation.assert_called_once()
+        call_str = str(mock_trace.start_observation.call_args)
         assert "red_team" in call_str
 
     def test_critic_generation_creates_per_critic_generation_span(self):
@@ -486,8 +485,8 @@ class TestLangfuseSink:
             "validation_status": "PASS",
         }
         sink.emit(_event("critic_generation", source="critic_architect", payload=payload))
-        mock_trace.generation.assert_called_once()
-        call_str = str(mock_trace.generation.call_args)
+        mock_trace.start_observation.assert_called_once()
+        call_str = str(mock_trace.start_observation.call_args)
         assert "critic_architect" in call_str
         assert "qwen3-35b" in call_str
 
@@ -507,7 +506,7 @@ class TestLangfuseSink:
         payload = {"inbound": {"composite": 0.0}, "internal": {"composite": 6.25},
                    "outbound": {"composite": 0.0}, "overall_severity": "MEDIUM"}
         sink.emit(_event("aivss_complete", payload=payload))
-        mock_trace.span.assert_called_once()
+        mock_trace.start_observation.assert_called_once()
 
     def test_aivss_complete_creates_three_score_objects(self):
         """Extension: AIVSS composites attached as Langfuse Score objects."""
@@ -571,7 +570,7 @@ class TestLangfuseSink:
             "acceptance_rate": 0.8, "redesign_signal": False, "final_confidence": 88.0,
         }
         sink.emit(_event("sm_verdicts", payload=payload))
-        mock_trace.span.assert_called_once()
+        mock_trace.start_observation.assert_called_once()
 
     def test_sm_verdicts_creates_per_critic_scores(self):
         sink, mock_lf = self._sink_with_mock_lf()
@@ -687,21 +686,21 @@ class TestLangfuseSink:
     def test_run_start_includes_routing_mode_in_metadata_and_tags(self):
         sink, mock_lf = self._sink_with_mock_lf()
         mock_trace = MagicMock()
-        mock_lf.trace.return_value = mock_trace
+        mock_lf.start_observation.return_value = mock_trace
         payload = {"scenario": "full_moe", "architecture": "01_minimal", "routing_mode": "brain_fast"}
         sink.emit(_event("run_start", run_id="run_abc", payload=payload))
-        call_kwargs = mock_lf.trace.call_args
-        call_str = str(call_kwargs)
+        call_str = str(mock_lf.start_observation.call_args)
         assert "brain_fast" in call_str
 
     def test_run_start_empty_routing_mode_no_tags(self):
         sink, mock_lf = self._sink_with_mock_lf()
         mock_trace = MagicMock()
-        mock_lf.trace.return_value = mock_trace
+        mock_lf.start_observation.return_value = mock_trace
         payload = {"scenario": "api_only", "architecture": "01_minimal"}
         sink.emit(_event("run_start", run_id="run_xyz", payload=payload))
-        call_str = str(mock_lf.trace.call_args)
-        assert "tags=[]" in call_str
+        call_str = str(mock_lf.start_observation.call_args)
+        # v4: no tags parameter; routing_mode in metadata (empty string)
+        assert "routing_mode" in call_str
 
     def test_flush_calls_langfuse_flush(self):
         sink, mock_lf = self._sink_with_mock_lf()

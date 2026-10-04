@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
-**Version:** 2.9  
-**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 41 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph)
+**Version:** 3.0  
+**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 42 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph) + TAgym (instrument gym flywheel)
 
 ---
 
@@ -73,10 +73,11 @@ tail -f logs/api.log            # logs
 - `chatbot/api/routes/enrich.py` — `POST /api/v1/enrich`: fuzzy component→attack paths (<50ms, no LLM)
 - `chatbot/api/routes/artifact.py` — `POST /api/v1/analyze/artifact`: file upload → adapter → SSE stream
 - `chatbot/api/routes/taclaw.py` — `POST /api/v1/taclaw/run` + `GET /api/v1/taclaw/jobs` (async crawl+assess)
+- `chatbot/api/routes/gym.py` — `POST /api/v1/gym/start` + `GET /api/v1/gym/status` + `POST /api/v1/gym/stop`; `GymSession`/`GymIteration` state; `_gym_loop` asyncio task; Brier snapshots per iteration
 - `chatbot/api/routes/platform.py` — `GET /api/v1/adapters` + `GET /api/v1/sip/health`
 - `chatbot/schemas/ta_export_v1.json` — JSON Schema for ta-export/1.0; served at `GET /api/v1/schemas/ta-export`
 - `mcp_connector/` — `threatassessor-mcp` v1.1.0; typed `TAExportBundle`, `ComponentContext`; `enrich_finding()`
-- `taclaw/` — `ta`/`taclaw` CLI; `ta gate` exits 1 on BLOCK (CI); publish on `taclaw-v*` tags
+- `taclaw/` — `ta`/`taclaw` CLI; `ta gate` exits 1 on BLOCK (CI); `ta gym start/status/stop` — TAgym CLI; publish on `taclaw-v*` tags
 
 **MCP server:**
 - `mcp_server/server.py` — FastMCP app, 18 tools (stdio transport); all tools log to `MCPAccessLogger`
@@ -213,4 +214,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-09-27
+**Last Updated:** 2026-10-03
