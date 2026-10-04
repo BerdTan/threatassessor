@@ -22,27 +22,35 @@ python3 .claude/skills/recall/scripts/recall.py
 
 **Done (N):** 1, 2, 3, ...
 
-**Open priorities:**
-  4. ⬜ Engine Item 6 — ...
-  5. ⬜ Engine Item 7 — ...
+**Build sequence (open):**
+
+  [Priority 33]
+  Step  1 ⬜ DETECT-ABU 6 rules
+           → policies/soc_detection_rules.yaml
+  Step  2 ⬜ MCPAccessLogger rolling windows + export timestamps  ← needs step 1
+           → mcp_server/access_logger.py
+  ...
+
+  📝 P34 blog — draft after steps 1–4 live
 
 **From recent DECISIONS (not yet in memory):**
-  • P28 blog candidate: ...
+  • blog candidate: ...
 
-**Next session pointer:** Engine Items 6–8 ...
-
-**Next up:** Engine Item 6 — critic subprocess isolation
-  → Check chatbot/harness/stages.py — ...
+**Next up:** Step 1 — DETECT-ABU 6 rules
+  → policies/soc_detection_rules.yaml
 ```
 
 ## Rules
 
 - Done items are collapsed to a count + number list — do not expand them
-- Open items keep enough context to act on (Engine Item label + short description)
+- Open priorities are expanded into their build sub-steps in dependency order
+- Each step shows its file hint and which prior step it depends on
+- Blog gates are shown inline after the last step that enables them
 - New DECISIONS items shown only when not already reflected in priorities
-- Next up = first open item + one concrete first action (file, command, or endpoint)
-- If priorities list is empty, print only DECISIONS items + NEXT SESSION pointer
+- Next up = first incomplete step in the sequence + file hint
+- If priorities list is empty, print only DECISIONS items
 - No commentary after the block — the gist is the whole output
+- **After a dependency analysis session:** update `PRIORITY_STEPS` in `recall.py` to reflect the new sequence; mark completed steps with a ✅ prefix on their label
 
 ## When to use
 

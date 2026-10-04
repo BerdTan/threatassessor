@@ -2,11 +2,14 @@
 """
 recall.py — Synthesise outstanding priorities from MEMORY.md + DECISIONS.md.
 
-Outputs a concise ranked gist:
-  - Ordered priority list with status markers
+Outputs a sequence-ordered gist:
+  - Done count (collapsed)
+  - Open priorities expanded into their build steps with file hints
   - NEXT SESSION pointer
   - New items from recent DECISIONS.md entries not yet in memory
-  - Concrete first step
+  - Concrete first step (first incomplete step in sequence)
+
+Update PRIORITY_STEPS after any dependency analysis session.
 """
 
 import re
@@ -18,7 +21,34 @@ MEMORY_DIR = Path.home() / ".claude/projects/-mnt-c-BACKUP-DEV-TEST/memory"
 MEMORY_FILE = MEMORY_DIR / "MEMORY.md"
 DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+# ── Sequence config ───────────────────────────────────────────────────────────
+# Each entry: (step, priority_num, label, file_hint, depends_on_step)
+# Update this after a dependency analysis session.
+# Mark a step done by prepending ✅ to its label.
+PRIORITY_STEPS = [
+    # Priority 33 — DETECT-ABU domain
+    (1,  33, "DETECT-ABU 6 rules",                     "policies/soc_detection_rules.yaml",          None),
+    (2,  33, "MCPAccessLogger rolling windows + export timestamps", "mcp_server/access_logger.py",   1),
+    (3,  33, "❼ Jev noul on 6 ABU investigation questions", "chatbot/harness/rule_evaluator.py",     1),
+    (4,  33, "Dashboard ABU investigation panel",       "chatbot/api/static/index.html + dashboard.js", 2),
+    # → P34 blog: drafted after steps 1–4
+    # Priority 34 — Jev Phase 2 (❻ ❽)
+    (5,  34, "❻ GT technique applicability noul",       "chatbot/modules/ground_truth_generator.py",  3),
+    (6,  34, "❽ CISO posture noul at export",           "chatbot/modules/ta_exporter.py",             5),
+    # Priority 35 — Beyond Zero (independent items can run parallel with 5–6)
+    (7,  35, "P35-C Opaque reasoning sub-check in DETECT-QC-009", "chatbot/harness/stages.py",       None),
+    (8,  35, "P35-B TATB AI Control Maturity sub-dim",  "chatbot/modules/ta_brain_benchmarks.py",    None),
+    (9,  35, "P35-A Per-action MCP Jev noul gate",      "mcp_server/server.py",                       3),
+    # Freestanding
+    (10, 0,  "skill-evolve skill",                      ".claude/skills/skill-evolve/",              None),
+]
+
+BLOG_GATES = {
+    34: "P34 blog — draft after steps 1–4 live",
+    35: "P35 blog — draft after steps 7–9 live",
+}
+
+# ── helpers ───────────────────────────────────────────────────────────────────
 
 def read_file(p: Path) -> str:
     try:
@@ -29,41 +59,21 @@ def read_file(p: Path) -> str:
 
 def extract_priorities(memory: str) -> list[tuple[int, str, bool]]:
     """Return list of (num, text, done) from the '## Current priorities' section."""
-    section = re.search(
-        r"## Current priorities.*?(?=\n##|\Z)", memory, re.S
-    )
+    section = re.search(r"## Current priorities.*?(?=\n##|\Z)", memory, re.S)
     if not section:
         return []
     items = re.findall(r"(\d+)\.\s+(.*)", section.group())
     result = []
     for num, text in items:
         stripped = text.strip()
-        # Done: strikethrough markup OR line starts with ✅
         done = (
             (stripped.startswith("~~") and stripped.endswith("~~"))
             or stripped.startswith("✅")
-            or re.match(r"^1[–-]\d+\.", stripped) is not None  # merged done-summary like "1–13. ✅ Done"
+            or re.match(r"^1[–-]\d+\.", stripped) is not None
         )
         clean = re.sub(r"~~(.+?)~~", r"\1", stripped).strip()
         result.append((int(num), clean, done))
     return result
-
-
-def extract_next_session(memory: str) -> str:
-    """Extract the NEXT SESSION topic from the section heading or first meaningful line."""
-    # Try to grab the text after 'NEXT SESSION:' on the heading line itself
-    m = re.search(r"##\s*.*?NEXT SESSION[:\s–-]+(.+)", memory)
-    if m:
-        return m.group(1).strip()
-    # Fallback: first non-history bullet inside the section
-    m = re.search(r"##\s*.*?NEXT SESSION.*?\n(.*?)(?=\n##|\Z)", memory, re.S)
-    if not m:
-        return ""
-    for line in m.group(1).splitlines():
-        stripped = line.strip("- •").strip()
-        if stripped and not re.match(r"^Session\s+\d", stripped):
-            return stripped
-    return ""
 
 
 def extract_recent_decisions(decisions: str, max_sessions: int = 2) -> list[str]:
@@ -71,8 +81,8 @@ def extract_recent_decisions(decisions: str, max_sessions: int = 2) -> list[str]
     sessions = re.split(r"(?=^## Session)", decisions, flags=re.M)
     open_items = []
     seen = set()
-    target_kws = ["engine item", "p28", "p29", "p30", "todo", "pending", "blog candidate"]
-    skip_kws = ["why now", "blog note", "depends on", "prerequisite", "recursive", "answer arc"]
+    target_kws = ["blog candidate", "planned", "next steps", "todo", "pending"]
+    skip_kws = ["why now", "depends on", "prerequisite", "recursive", "answer arc", "alternatives rejected"]
     for session in sessions[1 : max_sessions + 1]:
         for line in session.splitlines():
             stripped = line.strip()
@@ -82,11 +92,9 @@ def extract_recent_decisions(decisions: str, max_sessions: int = 2) -> list[str]
             if any(kw in low for kw in skip_kws):
                 continue
             if any(kw in low for kw in target_kws):
-                # Only take header-like lines (bold, bullet, or starts with Engine/Entry)
-                if not re.match(r"^[-*#]|^\*\*|^Engine|^Entry", stripped):
+                if not re.match(r"^[-*#]|^\*\*|^Entry", stripped):
                     continue
                 clean = re.sub(r"^[-*#]+\s*|\*\*", "", stripped).strip()
-                # Truncate long lines
                 if len(clean) > 100:
                     clean = clean[:97] + "..."
                 key = clean.lower()[:40]
@@ -104,25 +112,27 @@ def in_priorities(text: str, priorities: list[tuple[int, str, bool]]) -> bool:
     return False
 
 
-# ── main ─────────────────────────────────────────────────────────────────────
+def priority_is_done(pnum: int, priorities: list[tuple[int, str, bool]]) -> bool:
+    for n, _, done in priorities:
+        if n == pnum:
+            return done
+    return False
+
+
+# ── main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     memory = read_file(MEMORY_FILE)
     decisions = read_file(DECISIONS_FILE)
 
     priorities = extract_priorities(memory)
-    next_session = extract_next_session(memory)
     decision_items = extract_recent_decisions(decisions, max_sessions=2)
 
-    # Partition priorities
     done = [(n, t) for n, t, d in priorities if d]
-    open_p = [(n, t) for n, t, d in priorities if not d]
+    open_pnums = {n for n, _, d in priorities if not d}
 
     # New items from DECISIONS not yet reflected in memory priorities
-    new_items = [
-        item for item in decision_items
-        if not in_priorities(item, priorities)
-    ]
+    new_items = [item for item in decision_items if not in_priorities(item, priorities)]
 
     lines = ["## Recall\n"]
 
@@ -130,43 +140,57 @@ def main() -> None:
     if done:
         lines.append(f"**Done ({len(done)}):** " + ", ".join(str(n) for n, _ in done))
 
-    # Open priorities
-    if open_p:
-        lines.append("\n**Open priorities:**")
-        for n, text in open_p:
-            lines.append(f"  {n}. ⬜ {text}")
-    else:
-        lines.append("\n**Open priorities:** none")
+    # Open priorities — expanded into build steps, in sequence order
+    open_steps = [
+        (step, pnum, label, hint, dep)
+        for step, pnum, label, hint, dep in PRIORITY_STEPS
+        if pnum in open_pnums or pnum == 0  # 0 = freestanding
+    ]
+
+    if open_steps:
+        lines.append("\n**Build sequence (open):**")
+        current_pnum = None
+        for step, pnum, label, hint, dep in open_steps:
+            done_marker = "✅" if label.startswith("✅") else "⬜"
+            # Group header when priority changes
+            if pnum != current_pnum:
+                p_label = f"Priority {pnum}" if pnum else "Freestanding"
+                lines.append(f"\n  [{p_label}]")
+                current_pnum = pnum
+                # Insert blog gate note if this priority has one
+                if pnum in BLOG_GATES and step > 1:
+                    # Only show gate at the start of the priority block
+                    pass
+            dep_note = f"  ← needs step {dep}" if dep else ""
+            lines.append(f"  Step {step:2d} {done_marker} {label}{dep_note}")
+            lines.append(f"           → {hint}")
+
+        # Blog gates
+        gates_shown = set()
+        for step, pnum, label, hint, dep in open_steps:
+            if pnum in BLOG_GATES and pnum not in gates_shown:
+                gates_shown.add(pnum)
+        if gates_shown:
+            lines.append("")
+            for pnum in sorted(gates_shown):
+                lines.append(f"  📝 {BLOG_GATES[pnum]}")
 
     # New from DECISIONS not yet in memory
     if new_items:
         lines.append("\n**From recent DECISIONS (not yet in memory):**")
-        for item in new_items[:5]:
+        for item in new_items[:4]:
             lines.append(f"  • {item}")
 
-    # NEXT SESSION pointer
-    if next_session:
-        lines.append(f"\n**Next session pointer:** {next_session}")
-
-    # Concrete next step: first open priority
-    if open_p:
-        _, first = open_p[0]
-        lines.append(f"\n**Next up:** {first}")
-
-        # Heuristic: map known Engine Items to a concrete first action
-        first_low = first.lower()
-        if "engine item 6" in first_low:
-            lines.append("  → Check `chatbot/harness/stages.py` — critic subprocess isolation; JSONL write gate")
-        elif "engine item 7" in first_low:
-            lines.append("  → `chatbot/adapters/` — adapter fidelity score; corpus drift signal")
-        elif "engine item 8" in first_low:
-            lines.append("  → Langfuse span metadata tags; run bench with `--langfuse` flag")
-        elif "engine item 9" in first_low:
-            lines.append("  → Pre-flight authority layer — trust-level per source, input screener")
-        elif "engine item 10" in first_low:
-            lines.append("  → Propagation/taint layer — per-node provenance in graph")
-        elif "blog" in first_low or "p28" in first_low:
-            lines.append("  → Run `/gen-blog` with `--since 2026-09-13`")
+    # Concrete next step: first ⬜ step in sequence
+    first_open = next(
+        ((step, label, hint) for step, pnum, label, hint, dep in open_steps
+         if not label.startswith("✅")),
+        None
+    )
+    if first_open:
+        s, lbl, hint = first_open
+        lines.append(f"\n**Next up:** Step {s} — {lbl}")
+        lines.append(f"  → {hint}")
 
     print("\n".join(lines))
 
