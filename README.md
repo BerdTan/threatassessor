@@ -5,7 +5,7 @@ Submit a Mermaid (`.mmd`) diagram, a Git repo, or IaC files and receive a MITRE 
 ## What you get
 
 - **Threat model** — MITRE ATT&CK techniques mapped per node and hop; deterministic, no LLM required
-- **SOC signals** — 40 DETECT rules evaluated per run; OCSF DetectionFinding 2004 events emitted to SIEM / Langfuse / webhook
+- **SOC signals** — 42 DETECT rules evaluated per run; OCSF DetectionFinding 2004 events emitted to SIEM / Langfuse / webhook
 - **Expert review** — 5-critic MoE panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster synthesis, on demand
 - **TA Brain** — self-growing knowledge graph that predicts findings for known topology patterns and drives smart routing
 - **TAclaw** — autonomous repo assessment: point at a Git URL or directory; adapters (TF / CF / OAI / Prose / MMD) convert it to a graph and run the full pipeline; usable via REST, MCP tool, or `ta analyze` CLI
@@ -178,7 +178,7 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 **MCP transport** — stdio (default) has no network exposure. Network transport (`--transport sse` / `--transport streamable-http`) requires `TM_MCP_KEY`.
 
-**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before any LLM token is spent. 40 DETECT rules emit OCSF events for SOC consumption.
+**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before any LLM token is spent. 42 DETECT rules emit OCSF events for SOC consumption.
 
 ## Go deeper
 
@@ -186,12 +186,12 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 - [`CLAUDE.md`](CLAUDE.md) — full module map, harness concepts, all check commands
 - [`mcp_server/README.md`](mcp_server/README.md) — all 18 tools, 4-step test protocol, client integration snippets
 - [`taclaw/README.md`](taclaw/README.md) — TAclaw CLI: `ta analyze`, `ta gate`, `ta export`
-- [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 40 DETECT rules with OWASP/ATLAS/incident provenance
+- [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 42 DETECT rules with OWASP/ATLAS/incident provenance
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decision log (local only, gitignored)
 
 ## Build story
 
-31 parts on Medium — from diagram to detection layer, with every design decision exposed:
+33 parts on Medium — from diagram to detection layer, with every design decision exposed:
 
 | # | Title | What it covers |
 |---|---|---|
@@ -226,3 +226,5 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 | 29 | [The Pipeline That Knows What to Trust](https://medium.com/@breadtan/the-pipeline-that-knows-what-to-trust-d28aa348bb97) | Three-layer provenance implementation: source trust stamped at the adapter, pre-flight gate before any analysis token is spent, and trust level + routing mode carried through to the export bundle and brain corpus |
 | 30 | [Five Surfaces, Five Blind Spots](https://medium.com/@breadtan/five-surfaces-five-blind-spots-05ed7c1129e6) | Five independent security audits (MCP, AI ingest, prompt, skill execution, model trust) run against the same pipeline on the same day — five distinct findings with zero overlap; each attack surface needs its own vantage point |
 | 31 | [Three Types, Five Integration Points, One System 1 Model](https://medium.com/@breadtan/three-types-five-integration-points-one-system-1-model-29d91f4e4356) | Jev (typesafe.ai) wired at five pipeline decision points; score type returns 0.500 (pure noise); state quality drives 3.5× more improvement than question type selection; the hard part is giving the model something worth reading |
+| 32 | [Why Security Keeps Building Gyms](https://medium.com/@breadtan/why-security-keeps-building-gyms-93fca618b169) | Three-gym taxonomy: human gym (CyberGym), technique gym (ExploitGym), instrument gym (TAgym); almost every programme has the first, some have the second, almost none have the third — the one that tells you whether the other two are working |
+| 33 | [From Ideas to Instrument: What It Takes to Build a Trustworthy AI-Assisted Threat Modeling System](https://medium.com/@breadtan/from-ideas-to-instrument-what-it-takes-to-build-a-trustworthy-ai-assisted-threat-modeling-system-dd046387f945) | Twelve engineering bricks each discovered by its absence; ground truth as a continuously challenged assumption, not a delivered artefact; why the experienced analyst moves upstream rather than disappears |
