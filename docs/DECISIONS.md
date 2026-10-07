@@ -4,6 +4,38 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 103 — 2026-10-07
+
+### Entry 209 — DETECT-ABU domain implemented (6 rules, 48 total)
+
+**Decision:** Implement all 6 DETECT-ABU rules designed in Entry 207. Full signal wiring across three new signal sources; 457 tests green (0 failed).
+
+**Rules:**
+
+| ID | Name | Severity | Signal source |
+|---|---|---|---|
+| DETECT-ABU-001 | probe_pattern_repeated_arch_requery | Medium | `mcp_access.probe_pattern` (MCPAccessLogger) |
+| DETECT-ABU-002 | output_harvesting_rapid_export_sequence | High | `export.harvest_rapid_sequence` (ExportHarvestTracker) |
+| DETECT-ABU-003 | path_enumeration_velocity | High | `mcp_access.path_enum_velocity` (MCPAccessLogger) |
+| DETECT-ABU-004 | caller_fingerprint_drift | High | `mcp_access.caller_fingerprint_drift` (MCPAccessLogger, bigram Jaccard) |
+| DETECT-ABU-005 | lateral_harvesting_multi_arch_export_burst | High | `export.lateral_harvest_burst` (ExportHarvestTracker) |
+| DETECT-ABU-006 | queue_injection_without_gap_signal | Critical | `synthetic_queue.injection_without_gap` (ta_brain_mmd_generator) |
+
+**New modules:**
+- `chatbot/api/export_tracker.py` — `ExportHarvestTracker` singleton; `record_export()` / `record_pass_gate()` / `get_signals()`; `GET /api/v1/export/harvest-signals` endpoint
+- `mcp_server/access_logger.py` — extended with `probe_pattern`, `path_enum_velocity`, `caller_fingerprint_drift` (bigram Jaccard on first-5 vs rest of session); constants: `_PROBE_WINDOW_S=3600`, `_PROBE_THRESHOLD=3`, `_ENUM_WINDOW_S=60`, `_ENUM_THRESHOLD=10`, `_FINGERPRINT_MIN_CALLS=10`, `_FINGERPRINT_SIM_THRESHOLD=0.4`
+- `ta_brain_mmd_generator.py` — `get_queue_injection_signals()` scans `synthetic_queue/*.meta.json` for missing gap_id
+
+**Tests:** 419 → 457 passed (0 failed); +31 in test_soc_rule_evaluator.py, +6 in test_incident_simulator.py; 6 new incident scenarios in incident_simulator.py
+
+**Alternatives rejected:**
+- Adding ABU signals to MCP domain: kept separate because signals span REST + MCP + brain queue; a clean ABU domain boundary avoids MCP-* rule bloat
+- Client-side fingerprint via User-Agent: User-Agent is trivially spoofable; tool-call bigram grammar is harder to mimic while maintaining functional behavior
+
+**Next:** Priority 33 Steps 2–4 — MCPAccessLogger rolling window export timestamps (Step 2 partially done by ExportHarvestTracker), ❼ Jev noul on 6 ABU investigation questions (Step 3), dashboard ABU investigation panel (Step 4)
+
+---
+
 ## Session 102 — 2026-10-03
 
 ### Entry 208 — Jev Phase 2: three noul expansion points
