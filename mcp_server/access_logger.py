@@ -4,12 +4,13 @@ MCP Access Logger
 Tracks tool call patterns in a rolling time window and produces an `mcp_access`
 signals dict that can be merged into governance_signals.json for DETECT rule evaluation.
 
-Three signals are produced:
-  mcp_access.recon_sequence      — bulk list+governance calls (discovery pattern)
-  mcp_access.job_flood           — expert review submissions without polling (resource abuse)
-  mcp_access.auth_failures       — repeated 401 responses (credential probing)
-
-These feed DETECT-020, DETECT-021, DETECT-022 respectively.
+Signals produced:
+  mcp_access.recon_sequence          — bulk list+governance calls (DETECT-MCP-001)
+  mcp_access.job_flood               — expert review submissions without polling (DETECT-MCP-021)
+  mcp_access.auth_failures           — repeated 401 responses (DETECT-MCP-022)
+  mcp_access.probe_pattern           — same arch queried >3× / 1 hr (DETECT-ABU-001)
+  mcp_access.path_enum_velocity      — enrich/attack-path queries >10/min / arch (DETECT-ABU-003)
+  mcp_access.caller_fingerprint_drift — tool-call sequence grammar shift mid-session (DETECT-ABU-004)
 """
 
 from __future__ import annotations
@@ -18,9 +19,9 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field, asdict
-from typing import Deque, Dict, List, Optional
+from typing import Deque, Dict, List, Optional, Set
 
-# Windows for pattern detection
+# Windows for existing patterns
 _RECON_WINDOW_S     = 60    # list+bulk-gov calls within this window = recon
 _FLOOD_WINDOW_S     = 120   # review submissions within this window = flood
 _AUTH_WINDOW_S      = 300   # auth failures within this window = probing
@@ -29,6 +30,21 @@ _RECON_GOV_THRESHOLD  = 3   # ≥N unique archs queried via get_governance_signa
 _FLOOD_JOB_THRESHOLD  = 3   # ≥N expert review submissions
 _FLOOD_POLL_RATIO     = 0.5 # poll_count / submit_count < this = flood (not polling back)
 _AUTH_FAIL_THRESHOLD  = 5   # ≥N auth failures
+
+# ABU-001: Probe pattern — same arch queried >threshold within window
+_PROBE_WINDOW_S   = 3600  # 1-hour rolling window
+_PROBE_THRESHOLD  = 3     # >3 assessments of same arch = probe
+_PROBE_TOOLS: Set[str] = {"run_expert_review", "analyze_architecture", "get_threat_assessment"}
+
+# ABU-003: Path enumeration velocity — enrich calls per minute per arch
+_ENUM_WINDOW_S    = 60    # 1-minute rolling window
+_ENUM_THRESHOLD   = 10    # >10 enrich calls/min against single arch
+_ENUM_TOOLS: Set[str] = {"enrich_finding", "get_attack_paths", "enrich"}
+
+# ABU-004: Caller fingerprint drift — tool-call grammar change mid-session
+_FINGERPRINT_EARLY_N   = 5    # first N calls define the early baseline
+_FINGERPRINT_MIN_CALLS = 10   # don't fire until at least this many calls
+_FINGERPRINT_SIM_THRESHOLD = 0.4  # Jaccard similarity on bigrams < this = drift
 
 
 @dataclass
@@ -50,6 +66,22 @@ class MCPAccessSignals:
     auth_failures:           bool = False
     auth_failure_count:      int  = 0
     auth_failure_window_s:   int  = _AUTH_WINDOW_S
+
+    # ABU-001: Probe pattern — same arch queried >threshold within 1 hr
+    probe_pattern:           bool  = False
+    probe_pattern_arch:      str   = ""
+    probe_count:             int   = 0
+    probe_window_seconds:    int   = _PROBE_WINDOW_S
+
+    # ABU-003: Path enumeration velocity
+    path_enum_velocity:      bool  = False
+    path_enum_arch:          str   = ""
+    path_enum_rate:          float = 0.0  # calls/min
+    path_enum_window_seconds: int  = _ENUM_WINDOW_S
+
+    # ABU-004: Caller fingerprint drift
+    caller_fingerprint_drift: bool  = False
+    fingerprint_similarity:   float = 1.0  # 1.0 = identical; lower = more drift
 
     # Meta
     total_tool_calls:   int   = 0
@@ -108,7 +140,7 @@ class MCPAccessLogger:
     # ── private ──────────────────────────────────────────────────────────────
 
     def _prune(self, now: float) -> None:
-        max_window = max(_RECON_WINDOW_S, _FLOOD_WINDOW_S, _AUTH_WINDOW_S)
+        max_window = max(_RECON_WINDOW_S, _FLOOD_WINDOW_S, _AUTH_WINDOW_S, _PROBE_WINDOW_S)
         cutoff = now - max_window
         while self._calls and self._calls[0]["ts"] < cutoff:
             self._calls.popleft()
@@ -166,13 +198,60 @@ class MCPAccessLogger:
         sig.auth_failure_count = auth_count
         sig.auth_failures      = auth_count >= _AUTH_FAIL_THRESHOLD
 
+        # ── ABU-001: Probe pattern ─────────────────────────────────────────
+        probe_cutoff = now - _PROBE_WINDOW_S
+        probe_calls  = [c for c in calls if c["ts"] >= probe_cutoff and c["tool"] in _PROBE_TOOLS]
+        arch_counts: Dict[str, int] = defaultdict(int)
+        for c in probe_calls:
+            if c["arch"]:
+                arch_counts[c["arch"]] += 1
+        if arch_counts:
+            top_arch       = max(arch_counts, key=lambda a: arch_counts[a])
+            top_count      = arch_counts[top_arch]
+            sig.probe_count        = top_count
+            sig.probe_pattern_arch = top_arch if top_count > _PROBE_THRESHOLD else ""
+            sig.probe_pattern      = top_count > _PROBE_THRESHOLD
+        # ── ABU-003: Path enumeration velocity ────────────────────────────
+        enum_cutoff = now - _ENUM_WINDOW_S
+        enum_calls  = [c for c in calls if c["ts"] >= enum_cutoff and c["tool"] in _ENUM_TOOLS]
+        enum_arch_counts: Dict[str, int] = defaultdict(int)
+        for c in enum_calls:
+            if c["arch"]:
+                enum_arch_counts[c["arch"]] += 1
+        if enum_arch_counts:
+            top_enum_arch  = max(enum_arch_counts, key=lambda a: enum_arch_counts[a])
+            top_enum_count = enum_arch_counts[top_enum_arch]
+            rate           = round(top_enum_count / (_ENUM_WINDOW_S / 60.0), 2)
+            sig.path_enum_rate     = rate
+            sig.path_enum_arch     = top_enum_arch if top_enum_count > _ENUM_THRESHOLD else ""
+            sig.path_enum_velocity = top_enum_count > _ENUM_THRESHOLD
+
+        # ── ABU-004: Caller fingerprint drift ─────────────────────────────
+        if sig.total_tool_calls >= _FINGERPRINT_MIN_CALLS:
+            tools_seq = [c["tool"] for c in calls]
+            early = tools_seq[:_FINGERPRINT_EARLY_N]
+            late  = tools_seq[_FINGERPRINT_EARLY_N:]
+            early_bigrams = set(zip(early, early[1:]))
+            late_bigrams  = set(zip(late,  late[1:]))
+            if early_bigrams or late_bigrams:
+                intersection = early_bigrams & late_bigrams
+                union        = early_bigrams | late_bigrams
+                similarity   = len(intersection) / len(union) if union else 1.0
+                sig.fingerprint_similarity    = round(similarity, 3)
+                sig.caller_fingerprint_drift  = similarity < _FINGERPRINT_SIM_THRESHOLD
+            else:
+                sig.fingerprint_similarity = 1.0
+
         # ── Severity roll-up ──────────────────────────────────────────────
-        flagged_signals = [sig.recon_sequence, sig.job_flood, sig.auth_failures]
-        n_flagged       = sum(flagged_signals)
-        if sig.auth_failures:
+        flagged_signals = [
+            sig.recon_sequence, sig.job_flood, sig.auth_failures,
+            sig.probe_pattern, sig.path_enum_velocity, sig.caller_fingerprint_drift,
+        ]
+        n_flagged = sum(flagged_signals)
+        if sig.auth_failures or sig.path_enum_velocity or sig.caller_fingerprint_drift:
             sig.severity = "High"
-        elif sig.job_flood:
-            sig.severity = "High"
+        elif sig.job_flood or sig.probe_pattern:
+            sig.severity = "Medium"
         elif sig.recon_sequence:
             sig.severity = "Medium"
         else:

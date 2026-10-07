@@ -182,6 +182,38 @@ class TestScenariosFire:
         fired = _fired_ids(fn())
         assert {"DETECT-SEC-001"} <= fired
 
+    # ── ABU scenarios ────────────────────────────────────────────────────────
+
+    def test_probe_pattern_requery(self):
+        fn, _ = SCENARIOS["probe_pattern_requery"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-ABU-001"} <= fired
+
+    def test_output_harvesting(self):
+        fn, _ = SCENARIOS["output_harvesting"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-ABU-002"} <= fired
+
+    def test_path_enumeration_velocity(self):
+        fn, _ = SCENARIOS["path_enumeration_velocity"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-ABU-003"} <= fired
+
+    def test_caller_fingerprint_drift(self):
+        fn, _ = SCENARIOS["caller_fingerprint_drift"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-ABU-004"} <= fired
+
+    def test_lateral_harvest_burst(self):
+        fn, _ = SCENARIOS["lateral_harvest_burst"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-ABU-005"} <= fired
+
+    def test_queue_injection(self):
+        fn, _ = SCENARIOS["queue_injection"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-ABU-006"} <= fired
+
     # ── MCP scenarios ────────────────────────────────────────────────────────
 
     def test_mcp_recon_sequence(self):

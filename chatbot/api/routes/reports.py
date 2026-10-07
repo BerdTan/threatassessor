@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from typing import List, Dict
 from chatbot.api.dependencies import verify_api_key
+from chatbot.api.export_tracker import get_export_tracker
 from chatbot.modules.mitre import MitreHelper, get_mitre_helper as _get_mitre_singleton
 from chatbot.modules.atlas_helper import get_atlas_helper as _get_atlas_singleton
 
@@ -2312,10 +2313,23 @@ async def export_assessment(
         else:
             bundle = build_export(architecture_name, report_dir, tatb_scores)
 
+        tracker = get_export_tracker()
+        gate_result = bundle.get("gate", {}).get("result", "")
+        if gate_result == "PASS":
+            tracker.record_pass_gate(architecture_name)
+        tracker.record_export(architecture_name)
         return bundle
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Export failed: {exc}")
+
+
+# ── Export Harvest Signals (ABU-002 / ABU-005) ───────────────────────────────
+
+@router.get("/export/harvest-signals", tags=["detect"])
+async def get_export_harvest_signals(_: str = Depends(verify_api_key)):
+    """Return current export harvest signals for DETECT-ABU-002 and DETECT-ABU-005."""
+    return get_export_tracker().get_signals()
 
 
 # ── Governance Input Check ────────────────────────────────────────────────────

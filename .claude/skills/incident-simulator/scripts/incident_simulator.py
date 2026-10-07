@@ -1218,6 +1218,106 @@ def scenario_security_test_assertion_bypass() -> Dict[str, Any]:
     return sig
 
 
+def scenario_probe_pattern_requery() -> Dict[str, Any]:
+    """
+    DETECT-ABU-001 (Medium)
+
+    Same architecture assessed >3 times within 1 hour with varying params.
+    Caller is systematically probing the model's sensitivity to input changes —
+    a reconnaissance signature before targeted adversarial crafting.
+    """
+    sig = _base()
+    sig["mcp_access"] = {
+        "probe_pattern":      True,
+        "probe_pattern_arch": "cloud_api_gateway",
+        "probe_count":        5,
+    }
+    return sig
+
+
+def scenario_output_harvesting() -> Dict[str, Any]:
+    """
+    DETECT-ABU-002 (High)
+
+    Export endpoint called within 30s of every PASS gate, >5 times in one session.
+    Automated collection of full TA export bundles (threat model + MITRE + AIVSS)
+    immediately upon gate clearance — bulk data harvesting.
+    """
+    sig = _base()
+    sig["export"] = {
+        "harvest_rapid_sequence": True,
+        "harvest_count":          7,
+        "harvest_session_archs":  ["cloud_api_gateway", "iot_firmware", "microservices_k8s"],
+    }
+    return sig
+
+
+def scenario_path_enumeration_velocity() -> Dict[str, Any]:
+    """
+    DETECT-ABU-003 (High)
+
+    >10 attack-path enrich queries per minute against a single architecture.
+    Caller is exhausting the component→attack-path mapping space for the target arch,
+    not exploring a specific finding.
+    """
+    sig = _base()
+    sig["mcp_access"] = {
+        "path_enum_velocity": True,
+        "path_enum_arch":     "cloud_api_gateway",
+        "path_enum_rate":     14.5,
+    }
+    return sig
+
+
+def scenario_caller_fingerprint_drift() -> Dict[str, Any]:
+    """
+    DETECT-ABU-004 (High)
+
+    MCP tool-call sequence grammar shifted mid-session (Jaccard similarity 0.22).
+    A different automation script or persona took over the session token —
+    consistent with session handoff or hijack.
+    """
+    sig = _base()
+    sig["mcp_access"] = {
+        "caller_fingerprint_drift": True,
+        "fingerprint_similarity":   0.22,
+    }
+    return sig
+
+
+def scenario_lateral_harvest_burst() -> Dict[str, Any]:
+    """
+    DETECT-ABU-005 (High)
+
+    Export bundles for 4 distinct architectures collected within a 5-minute window.
+    Multi-arch sweep pattern — caller assembling a portfolio of threat models,
+    consistent with competitive intelligence gathering or bulk data extraction.
+    """
+    sig = _base()
+    sig["export"] = {
+        "lateral_harvest_burst":  True,
+        "lateral_harvest_archs":  ["cloud_api_gateway", "iot_firmware", "microservices_k8s", "llm_saas"],
+        "lateral_harvest_count":  4,
+    }
+    return sig
+
+
+def scenario_queue_injection() -> Dict[str, Any]:
+    """
+    DETECT-ABU-006 (Critical)
+
+    Synthetic MMD written to synthetic_queue/ without a preceding gap-identification
+    signal. Out-of-band queue injection bypassing the gap→MMD approved intake flow —
+    potential adversarial training data targeting the TA brain's pattern layer.
+    """
+    sig = _base()
+    sig["synthetic_queue"] = {
+        "injection_without_gap": True,
+        "injected_filename":     "GEN-UNKNOWN-20261007T120000Z.meta.json",
+    }
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-INJ-001 (Critical) + DETECT-QC-002 (Critical) — adversarial input + divergence suppression"),
@@ -1301,6 +1401,18 @@ SCENARIOS = {
         "DETECT-QC-008 (High) — SM redesign + acceptance_rate<0.5 + confidence_swing + val_pct<50 = StepShield DEC-category"),
     "security_test_assertion_bypass": (scenario_security_test_assertion_bypass,
         "DETECT-SCT-005 (High) — supply_chain_modified_modules + stale_sources + is_agentic = StepShield TST-category assertion weakening"),
+    "probe_pattern_requery":          (scenario_probe_pattern_requery,
+        "DETECT-ABU-001 (Medium) — same arch queried >3× / 1 hr with varying params = model-sensitivity recon"),
+    "output_harvesting":              (scenario_output_harvesting,
+        "DETECT-ABU-002 (High) — ≥5 rapid exports within 30s of PASS gate = bulk export bundle collection"),
+    "path_enumeration_velocity":      (scenario_path_enumeration_velocity,
+        "DETECT-ABU-003 (High) — >10 enrich calls/min against single arch = systematic attack-path enumeration"),
+    "caller_fingerprint_drift":       (scenario_caller_fingerprint_drift,
+        "DETECT-ABU-004 (High) — tool-call grammar Jaccard 0.22 mid-session = session handoff or hijack"),
+    "lateral_harvest_burst":          (scenario_lateral_harvest_burst,
+        "DETECT-ABU-005 (High) — 4 distinct archs exported in 5 min = multi-arch data exfiltration sweep"),
+    "queue_injection":                (scenario_queue_injection,
+        "DETECT-ABU-006 (Critical) — synthetic MMD written without gap_id = out-of-band brain poisoning attempt"),
 }
 
 EXPECTED_RULES = {
@@ -1346,6 +1458,12 @@ EXPECTED_RULES = {
     "authorization_boundary_ambiguity": {"DETECT-EXF-007"},
     "deceptive_completion_reporting":   {"DETECT-QC-008"},
     "security_test_assertion_bypass":   {"DETECT-SCT-005"},
+    "probe_pattern_requery":            {"DETECT-ABU-001"},
+    "output_harvesting":                {"DETECT-ABU-002"},
+    "path_enumeration_velocity":        {"DETECT-ABU-003"},
+    "caller_fingerprint_drift":         {"DETECT-ABU-004"},
+    "lateral_harvest_burst":            {"DETECT-ABU-005"},
+    "queue_injection":                  {"DETECT-ABU-006"},
 }
 
 

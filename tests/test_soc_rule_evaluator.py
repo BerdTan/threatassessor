@@ -118,7 +118,7 @@ class TestYAMLLoading:
 
     def test_loads_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 42
+        assert len(ev) == 48
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -2141,3 +2141,243 @@ class TestDetect039SMConstraintEvasionLanguage:
         refs = f["unmapped"]["incident_refs"]
         assert any("opus47" in r for r in refs)
         assert any("opus46" in r for r in refs)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-ABU-001 — Probe Pattern (repeated arch requery)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectABU001ProbePattern:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("mcp_access", {})["probe_pattern"] = True
+        return s
+
+    def test_fires_on_probe_pattern(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-001" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("mcp_access", {})["probe_pattern"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-ABU-001" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-001" not in ids
+
+    def test_severity_is_medium(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-001")
+        assert f["severity"].upper() == "MEDIUM"
+
+    def test_kill_chain_is_reconnaissance(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-001")
+        assert f["finding"]["kill_chain_stage"] == "reconnaissance"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-ABU-002 — Output Harvesting (rapid export after PASS)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectABU002OutputHarvesting:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("export", {})["harvest_rapid_sequence"] = True
+        return s
+
+    def test_fires_on_harvest_rapid_sequence(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-002" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("export", {})["harvest_rapid_sequence"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-ABU-002" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-002" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-002")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_exfiltration(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-002")
+        assert f["finding"]["kill_chain_stage"] == "exfiltration"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-ABU-003 — Path Enumeration Velocity
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectABU003PathEnumVelocity:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("mcp_access", {})["path_enum_velocity"] = True
+        return s
+
+    def test_fires_on_path_enum_velocity(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-003" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("mcp_access", {})["path_enum_velocity"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-ABU-003" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-003" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-003")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_reconnaissance(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-003")
+        assert f["finding"]["kill_chain_stage"] == "reconnaissance"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-ABU-004 — Caller Fingerprint Drift
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectABU004CallerFingerprintDrift:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("mcp_access", {})["caller_fingerprint_drift"] = True
+        return s
+
+    def test_fires_on_fingerprint_drift(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-004" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("mcp_access", {})["caller_fingerprint_drift"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-ABU-004" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-004" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-004")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_lateral_movement(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-004")
+        assert f["finding"]["kill_chain_stage"] == "lateral_movement"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-ABU-005 — Lateral Harvesting (multi-arch export burst)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectABU005LateralHarvesting:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("export", {})["lateral_harvest_burst"] = True
+        return s
+
+    def test_fires_on_lateral_harvest_burst(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-005" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("export", {})["lateral_harvest_burst"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-ABU-005" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-005" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-005")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_exfiltration(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-005")
+        assert f["finding"]["kill_chain_stage"] == "exfiltration"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-ABU-006 — Queue Injection Without Gap Signal
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectABU006QueueInjection:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("synthetic_queue", {})["injection_without_gap"] = True
+        return s
+
+    def test_fires_on_injection_without_gap(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-006" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("synthetic_queue", {})["injection_without_gap"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-ABU-006" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-006" not in ids
+
+    def test_severity_is_critical(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-006")
+        assert f["severity"].upper() == "CRITICAL"
+
+    def test_kill_chain_is_resource_development(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-006")
+        assert f["finding"]["kill_chain_stage"] == "resource_development"
+
+    def test_actions_include_block_run(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-006")
+        assert "block_run" in f["unmapped"]["actions"]

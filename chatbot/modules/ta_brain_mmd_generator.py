@@ -352,3 +352,35 @@ def get_generation_summary(queue_dir: Path = None) -> dict:
         "by_gap_id": by_gap_id,
         "gaps_covered": sorted(by_gap_id.keys()),
     }
+
+
+def get_queue_injection_signals(queue_dir: Path = None) -> dict:
+    """Return synthetic_queue signals for DETECT-ABU-006.
+
+    Scans the queue directory for .meta.json files that lack a gap_id.
+    A file without gap_id bypassed the approved gap→MMD intake flow.
+
+    Returns:
+        {"synthetic_queue": {"injection_without_gap": bool, "injected_filename": str}}
+    """
+    import os
+
+    qdir = queue_dir or QUEUE_DIR
+    injected_file = ""
+    if qdir.exists():
+        for meta_path in sorted(qdir.glob("*.meta.json")):
+            try:
+                meta = json.loads(meta_path.read_text())
+            except Exception:
+                continue
+            gap_id = meta.get("gap_id")
+            if not gap_id or str(gap_id).strip() in ("", "None", "null"):
+                injected_file = meta_path.name
+                break
+
+    return {
+        "synthetic_queue": {
+            "injection_without_gap": bool(injected_file),
+            "injected_filename":     injected_file,
+        }
+    }

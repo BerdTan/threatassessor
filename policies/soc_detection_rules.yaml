@@ -2409,6 +2409,338 @@ rules:
       (verify NTP sync). An invalid_signature finding (not expired) should be
       treated as a potential active credential compromise.
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-ABU-001: Probe Pattern — Repeated Arch Requery with Varying Params
+  #
+  # The same architecture name is queried more than 3 times within a 1-hour
+  # rolling window across both MCP and REST surfaces, with differing input
+  # parameters. Legitimate reassessments are rare and usually triggered by
+  # explicit diagram changes; high-frequency same-arch probes with parameter
+  # variation are a reconnaissance signature — the caller is systematically
+  # exploring the attack surface of a known architecture to map the model's
+  # sensitivity to input perturbation.
+  #
+  # Grounded in: Entry 207 (DETECT-ABU domain design, 2026-10-01)
+  # OWASP: A07, A09  ATLAS: AML.TA0007  Kill chain: reconnaissance
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-ABU-001
+    legacy_id: DETECT-043
+    name: probe_pattern_repeated_arch_requery
+    domain: ABU
+    description: >
+      The same architecture name was submitted more than 3 times within a 1-hour
+      rolling window across combined MCP and REST surfaces, with varying input
+      parameters. Legitimate reassessments are uncommon and correlate with
+      explicit diagram edits; systematic same-arch requerying with parameter
+      variation is a model-sensitivity reconnaissance pattern — the caller is
+      mapping how the assessor responds to controlled input changes.
+      MCPAccessLogger tracks per-arch call counts and param variation flags
+      within the probe window. Signals: mcp_access.probe_pattern (bool),
+      mcp_access.probe_pattern_arch (str), mcp_access.probe_count (int).
+    owasp: [A07, A09]
+    atlas_tactic: AML.TA0007
+    mitre_techniques: ["T1595", "T1592"]
+    kill_chain_stage: reconnaissance
+    ocsf_class: 2004
+    ocsf_type_uid: 200431
+    severity: Medium
+    conditions:
+      - field: mcp_access.probe_pattern
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Fires when MCPAccessLogger records >3 assessments of the same arch_name
+      within 1 hour (PROBE_WINDOW_S=3600, PROBE_THRESHOLD=3). param_variation
+      is tracked via a set of frozenset(params) hashes per arch — identical
+      re-runs (same diagram, same options) do not contribute. Suppress when:
+      (a) CI/CD pipeline runs the same architecture on every commit (add
+      arch_name to PROBE_CI_ALLOWLIST in access_logger.py), or (b) user is
+      actively iterating on diagram refinement in a single session (check
+      session_duration_s < 900 and total_tool_calls < 8 before escalating).
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-ABU-002: Output Harvesting — Rapid Export After Every PASS Gate
+  #
+  # The export endpoint is called within 30 seconds of a PASS gate result,
+  # more than 5 times in a session. A legitimate user occasionally exports
+  # a completed report; systematic same-session export-on-every-PASS at
+  # sub-30s latency signals automated collection of the full TA export bundle
+  # (threat model + MITRE map + AIVSS scores) for bulk ingestion or resale.
+  #
+  # Grounded in: Entry 207 (DETECT-ABU domain design, 2026-10-01)
+  # OWASP: A09  ATLAS: AML.TA0009  Kill chain: exfiltration
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-ABU-002
+    legacy_id: DETECT-044
+    name: output_harvesting_rapid_export_sequence
+    domain: ABU
+    description: >
+      The TA export endpoint (/reports/{arch}/export) was called within 30
+      seconds of a PASS gate result for the same architecture, and this
+      pattern occurred more than 5 times in the same session. Individual
+      exports are expected; systematic rapid-export-after-PASS across
+      multiple architectures in one session is an automated collection
+      signature — the caller is harvesting full export bundles (threat model,
+      MITRE ATT&CK map, AIVSS scores, MoE verdict, OCSF events) immediately
+      upon gate clearance. Signals: export.harvest_rapid_sequence (bool),
+      export.harvest_count (int), export.harvest_session_archs (list).
+    owasp: [A09]
+    atlas_tactic: AML.TA0009
+    mitre_techniques: ["T1041", "T1530"]
+    kill_chain_stage: exfiltration
+    ocsf_class: 2004
+    ocsf_type_uid: 200432
+    severity: High
+    conditions:
+      - field: export.harvest_rapid_sequence
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Fires when ≥5 export calls occur within 30s of a PASS result in a single
+      session (HARVEST_DELTA_S=30, HARVEST_SESSION_THRESHOLD=5). Timestamp
+      delta is computed between the PASS gate log entry and the subsequent
+      export request in routes/reports.py. Suppress when: (a) automated CI
+      export is configured (add caller to EXPORT_CI_ALLOWLIST), or (b) user
+      is bulk-migrating prior reports to a new store (confirm with user and
+      add a one-time suppression window). Co-firing with DETECT-ABU-005
+      (lateral harvest) elevates to Critical — treat as systematic data
+      collection operation.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-ABU-003: Path Enumeration Velocity — High-Rate Enrich Queries
+  #
+  # More than 10 attack-path enrich queries per minute are issued against a
+  # single architecture via /api/v1/enrich. The enrich endpoint performs
+  # fuzzy component→attack-path resolution in <50ms without LLM. At >10/min
+  # per arch, the caller is systematically exhausting the attack path space,
+  # not interactively exploring a finding.
+  #
+  # Grounded in: Entry 207 (DETECT-ABU domain design, 2026-10-01)
+  # OWASP: A01, A09  ATLAS: AML.TA0007  Kill chain: reconnaissance
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-ABU-003
+    legacy_id: DETECT-045
+    name: path_enumeration_velocity
+    domain: ABU
+    description: >
+      More than 10 calls to /api/v1/enrich were recorded within a 1-minute
+      window for a single architecture name. The enrich endpoint resolves
+      fuzzy component identifiers to attack paths cheaply and without LLM
+      invocation, making it an attractive target for systematic enumeration.
+      High-velocity enrich queries against a single arch indicate the caller
+      is exhausting the component→attack-path mapping rather than
+      interactively exploring a specific finding. Signals:
+      mcp_access.path_enum_velocity (bool), mcp_access.path_enum_arch (str),
+      mcp_access.path_enum_rate (float — calls/min).
+    owasp: [A01, A09]
+    atlas_tactic: AML.TA0007
+    mitre_techniques: ["T1595", "T1598"]
+    kill_chain_stage: reconnaissance
+    ocsf_class: 2004
+    ocsf_type_uid: 200433
+    severity: High
+    conditions:
+      - field: mcp_access.path_enum_velocity
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Fires when >10 enrich calls/min are recorded for a single arch_name
+      (ENUM_WINDOW_S=60, ENUM_THRESHOLD=10). Rate is computed per arch per
+      rolling minute in routes/enrich.py, written to the mcp_access signal
+      dict. Suppress when: (a) a graph-rendering client pre-fetches all nodes
+      on load (add client_id to ENUM_PREFETCH_ALLOWLIST), or (b) a batch
+      enrichment pipeline runs enrichment as part of a scheduled job (verify
+      via X-Client-ID header and job_id correlation). Co-firing with
+      DETECT-ABU-001 (probe pattern on same arch) elevates to Critical.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-ABU-004: Caller Fingerprint Drift — MCP Tool Sequence Change Mid-Session
+  #
+  # The MCP caller's tool-call sequence signature changed materially between
+  # the first 5 calls and subsequent calls within the same session. A stable
+  # MCP client has a consistent tool invocation grammar (e.g. always calls
+  # get_governance_signals before run_expert_review). A mid-session sequence
+  # shift indicates a different process, persona, or automation script took
+  # over the session token — a session hijack or agent impersonation signal.
+  #
+  # Grounded in: Entry 207 (DETECT-ABU domain design, 2026-10-01)
+  # OWASP: A07, A02  ATLAS: AML.TA0006  Kill chain: lateral_movement
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-ABU-004
+    legacy_id: DETECT-046
+    name: caller_fingerprint_drift
+    domain: ABU
+    description: >
+      The sequence of MCP tool calls in the first 5 invocations of a session
+      differs materially from the subsequent call sequence (Jaccard similarity
+      < 0.4 between early and late tool-call n-grams). Legitimate MCP clients
+      have stable invocation grammars — the set of tools called and their
+      ordering is predictable across a session. A mid-session grammar shift
+      indicates the session was handed off to a different caller: a second
+      automation script, a session-hijacking agent, or a persona switch. This
+      does not fire on first-time callers (no prior baseline to compare
+      against). Signals: mcp_access.caller_fingerprint_drift (bool),
+      mcp_access.fingerprint_similarity (float 0–1).
+    owasp: [A07, A02]
+    atlas_tactic: AML.TA0006
+    mitre_techniques: ["T1550", "T1134"]
+    kill_chain_stage: lateral_movement
+    ocsf_class: 2004
+    ocsf_type_uid: 200434
+    severity: High
+    conditions:
+      - field: mcp_access.caller_fingerprint_drift
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Fires when Jaccard similarity between the first-5 tool n-gram set and
+      the subsequent n-gram set drops below 0.4 (FINGERPRINT_SIM_THRESHOLD),
+      after at least 10 total calls (FINGERPRINT_MIN_CALLS=10). Early-session
+      window is calls 1–5; late-session is all subsequent calls.
+      Similarity is computed on ordered bigrams (tool[i], tool[i+1]) to
+      capture sequence, not just tool presence. Suppress when: (a) a
+      legitimate orchestrator switches modes (verify with X-Client-ID header
+      and session metadata), or (b) the client completed a task phase and
+      moved to a new workflow phase with a different tool set (review
+      session_duration_s and phase markers before escalating).
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-ABU-005: Lateral Harvesting — Multi-Arch Export Burst
+  #
+  # Multiple architectures are assessed and their export bundles are collected
+  # within a 5-minute window, with ≥3 distinct arch_names. Unlike ABU-002
+  # (single-arch rapid export), this targets breadth: the caller is sweeping
+  # multiple architectures in a burst to collect a portfolio of threat models —
+  # a competitive intelligence or data-resale signature.
+  #
+  # Grounded in: Entry 207 (DETECT-ABU domain design, 2026-10-01)
+  # OWASP: A01, A09  ATLAS: AML.TA0009  Kill chain: exfiltration
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-ABU-005
+    legacy_id: DETECT-047
+    name: lateral_harvesting_multi_arch_export_burst
+    domain: ABU
+    description: >
+      Export bundles for 3 or more distinct architecture names were collected
+      within a 5-minute rolling window. This multi-arch sweep pattern differs
+      from normal usage (single architecture worked on at a time) and from
+      ABU-002 (repeated export of the same arch). The combination of breadth
+      (multiple archs) and velocity (within 5 minutes) indicates systematic
+      collection — the caller is assembling a portfolio of threat models across
+      different architecture types, consistent with competitive intelligence
+      gathering or bulk data extraction for downstream use. Signals:
+      export.lateral_harvest_burst (bool), export.lateral_harvest_archs (list),
+      export.lateral_harvest_count (int).
+    owasp: [A01, A09]
+    atlas_tactic: AML.TA0009
+    mitre_techniques: ["T1530", "T1213"]
+    kill_chain_stage: exfiltration
+    ocsf_class: 2004
+    ocsf_type_uid: 200435
+    severity: High
+    conditions:
+      - field: export.lateral_harvest_burst
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Fires when ≥3 distinct arch_names appear in export calls within
+      LATERAL_WINDOW_S=300 (5 min). Arch variety is tracked in the export
+      request handler (routes/reports.py) alongside timestamps. Suppress
+      when: (a) a migration or bulk-import job is running with a documented
+      job_id, (b) a SOC analyst is reviewing multiple architectures for
+      an incident investigation (verify via role claim in auth token).
+      Co-firing with DETECT-ABU-002 in the same session: treat as a
+      sustained data exfiltration operation and escalate to Critical.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-ABU-006: Queue Injection — Synthetic MMD Without Gap Signal
+  #
+  # A synthetic MMD was written to the synthetic_queue/ directory without a
+  # preceding gap-identification signal from the Brain Gap generator (Stage 8).
+  # The approved intake path is: gap analysis → gap signal → MMD generator →
+  # synthetic_queue → human approval → harness submission. A write that arrives
+  # without a matching gap signal bypasses the origin-verification step and
+  # could inject adversarial training data into the brain's instance layer.
+  #
+  # Grounded in: Entry 207 (DETECT-ABU domain design, 2026-10-01)
+  # OWASP: A03, A04  ATLAS: AML.TA0002  Kill chain: resource_development
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-ABU-006
+    legacy_id: DETECT-048
+    name: queue_injection_without_gap_signal
+    domain: ABU
+    description: >
+      A file was written to report/brain/synthetic_queue/ without a
+      corresponding gap-identification record (gap_id) in the Brain's gap
+      registry. The authorised synthetic MMD intake flow requires: (1) gap
+      analysis identifies a coverage gap, (2) ta_brain_mmd_generator.py
+      generates a staged MMD keyed to that gap_id, (3) human approval
+      promotes the file for harness submission. A write that bypasses step
+      (1) — no matching gap_id — is an out-of-band queue injection:
+      potentially adversarial training data that could distort the brain's
+      pattern layer if approved without verification. Signals:
+      synthetic_queue.injection_without_gap (bool),
+      synthetic_queue.injected_filename (str).
+    owasp: [A03, A04]
+    atlas_tactic: AML.TA0002
+    mitre_techniques: ["T1608", "T1027"]
+    kill_chain_stage: resource_development
+    ocsf_class: 2004
+    ocsf_type_uid: 200436
+    severity: Critical
+    conditions:
+      - field: synthetic_queue.injection_without_gap
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: block_run
+      - type: forensic_capture
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Fires when ta_brain_mmd_generator.py (or any writer) creates a file in
+      synthetic_queue/ that lacks a gap_id entry in the gap registry
+      (report/brain/gap_registry.json). The generator stamps every legitimate
+      file with gap_id on write; the evaluator checks presence in the registry
+      before approving. If the registry is missing (first-run), suppress and
+      initialise it rather than blocking. Suppress when: (a) admin is
+      performing a one-time manual seeding (requires explicit ADMIN_SEED_MODE
+      env var set), or (b) the gap registry was deleted by accident — restore
+      from git and re-verify. Any true positive should quarantine the injected
+      file and trigger a full brain integrity review before the next gym run.
+
 # ─────────────────────────────────────────────────────────────────────────────
 playbooks:
 
@@ -2876,6 +3208,85 @@ playbooks:
       - "Token introspection endpoint (read-only, rate-limited, behind API gateway) — verify monitoring and anomaly detection are in place"
       - "Short-lived token store (< 5 min TTL, no refresh tokens) — verify TTL configuration in IaC before suppressing"
       - "Development/test environment with non-production signing keys — confirm environment classification"
+
+  probe_pattern_repeated_arch_requery:
+    alert: DETECT-ABU-001
+    analyst_steps:
+      - "Pull mcp_access signals: probe_pattern_arch (arch name), probe_count (number of queries), and session time range"
+      - "Review the varying params across the >3 calls — are they systematic perturbations (node renames, param sweeps) or organic edits?"
+      - "Check if the caller has a CI/CD correlation (job_id in logs) or is interactive (low session_duration_s)"
+      - "If no CI/CD correlation and params are adversarially varied: escalate to DETECT-ABU-003 investigation for path enumeration co-occurrence"
+      - "Add arch_name to PROBE_CI_ALLOWLIST if the caller is an authorised pipeline; otherwise flag the session for review"
+    escalation_threshold: "probe_count > 8 in 1 hour → escalate; co-fire with DETECT-ABU-003 → Critical"
+    false_positive_indicators:
+      - "CI/CD pipeline re-runs the same architecture on every PR commit — add to PROBE_CI_ALLOWLIST"
+      - "Developer actively iterating on diagram: session_duration_s < 900 and total_tool_calls < 8"
+
+  output_harvesting_rapid_export_sequence:
+    alert: DETECT-ABU-002
+    analyst_steps:
+      - "Pull export.harvest_session_archs — are the harvested architectures all owned by the same team?"
+      - "Check harvest_count and the delta between each PASS timestamp and export timestamp"
+      - "Verify whether there is a documented bulk-migration job_id in the export request headers"
+      - "If no job_id and archs span multiple teams: treat as systematic exfiltration; escalate to DETECT-ABU-005 lateral harvest check"
+      - "Temporarily rate-limit the caller's export endpoint access while investigation proceeds"
+    escalation_threshold: "harvest_count > 10 in a session, or co-fire with DETECT-ABU-005 → Critical"
+    false_positive_indicators:
+      - "Automated CI export configured and running legitimately — add caller to EXPORT_CI_ALLOWLIST"
+      - "User performing a one-time bulk migration of prior reports — confirm intent and add suppression window"
+
+  path_enumeration_velocity:
+    alert: DETECT-ABU-003
+    analyst_steps:
+      - "Pull mcp_access.path_enum_arch and path_enum_rate — which arch and how fast?"
+      - "Review the component identifiers queried — are they sequential/systematic (enum scan) or organic (specific findings)?"
+      - "Check whether the caller has an X-Client-ID header linking to a known batch enrichment job"
+      - "If no job correlation and components are exhaustive: block the caller's enrich access and open an incident"
+      - "Cross-reference with DETECT-ABU-001 on the same arch — probe + path enum = full recon sequence"
+    escalation_threshold: "path_enum_rate > 20/min, or co-fire with DETECT-ABU-001 → Critical"
+    false_positive_indicators:
+      - "Graph rendering client pre-fetches all nodes on load — add client_id to ENUM_PREFETCH_ALLOWLIST"
+      - "Scheduled batch enrichment pipeline with documented job_id — verify header and suppress"
+
+  caller_fingerprint_drift:
+    alert: DETECT-ABU-004
+    analyst_steps:
+      - "Pull mcp_access.fingerprint_similarity — the lower the score, the more dramatic the grammar shift"
+      - "Compare early-session tool sequence vs late-session tool sequence from the MCPAccessLogger call log"
+      - "Check X-Client-ID and session metadata for a legitimate phase transition (e.g. discovery phase → reporting phase)"
+      - "If no phase metadata and similarity < 0.2: treat as session handoff to a different automation script"
+      - "Correlate with DETECT-AGT-001 — fingerprint drift + invalid passport = active session hijack"
+    escalation_threshold: "fingerprint_similarity < 0.2, or co-fire with DETECT-AGT-001 → Critical"
+    false_positive_indicators:
+      - "Legitimate orchestrator completing a task phase and switching to a different tool set — verify X-Client-ID and phase markers"
+      - "Client upgraded between early and late session (rare) — verify version header"
+
+  lateral_harvesting_multi_arch_export_burst:
+    alert: DETECT-ABU-005
+    analyst_steps:
+      - "Pull export.lateral_harvest_archs — identify ownership and classification of each architecture harvested"
+      - "Check whether the caller has a documented migration job_id or SOC analyst role claim in their auth token"
+      - "Determine if the harvested archs span multiple teams or business units — cross-team sweep is higher risk"
+      - "If no authorised job and archs are cross-team: escalate to CRITICAL; notify affected architecture owners"
+      - "Co-fire with DETECT-ABU-002 in the same session: treat as sustained data exfiltration operation"
+    escalation_threshold: "lateral_harvest_count ≥ 5 archs, or co-fire with DETECT-ABU-002 → Critical"
+    false_positive_indicators:
+      - "SOC analyst reviewing multiple architectures for an active incident — verify role claim and incident ticket"
+      - "Authorised bulk-migration job with documented job_id — add to EXPORT_CI_ALLOWLIST for the duration"
+
+  queue_injection_without_gap_signal:
+    alert: DETECT-ABU-006
+    analyst_steps:
+      - "Pull synthetic_queue.injected_filename — identify the file and its content immediately"
+      - "Quarantine the file (move out of synthetic_queue/) before any human approval step can promote it"
+      - "Check whether ADMIN_SEED_MODE env var is set — if so, verify the admin performed the write intentionally"
+      - "If ADMIN_SEED_MODE is not set: open a brain integrity incident; do not run the gym or ingest until cleared"
+      - "Review the injected MMD for adversarial content: unusual node names, injected prompts, synthetic attack paths that would bias the brain toward or away from specific MITRE techniques"
+      - "Run check-brain skill after clearance to verify pattern layer integrity"
+    escalation_threshold: "Always Critical — any true positive is a brain poisoning attempt until proven otherwise"
+    false_positive_indicators:
+      - "Admin performing authorised manual seeding with ADMIN_SEED_MODE=1 — verify and document"
+      - "Gap registry was accidentally deleted — restore from git and re-verify before re-running"
 
 # TATB integration note
 #
