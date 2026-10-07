@@ -27,8 +27,8 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 # Mark a step done by prepending ✅ to its label.
 PRIORITY_STEPS = [
     # Priority 33 — DETECT-ABU domain
-    (1,  33, "DETECT-ABU 6 rules",                     "policies/soc_detection_rules.yaml",          None),
-    (2,  33, "MCPAccessLogger rolling windows + export timestamps", "mcp_server/access_logger.py",   1),
+    (1,  33, "✅ DETECT-ABU 6 rules",                    "policies/soc_detection_rules.yaml",          None),
+    (2,  33, "✅ MCPAccessLogger rolling windows + export timestamps", "mcp_server/access_logger.py", 1),
     (3,  33, "❼ Jev noul on 6 ABU investigation questions", "chatbot/harness/rule_evaluator.py",     1),
     (4,  33, "Dashboard ABU investigation panel",       "chatbot/api/static/index.html + dashboard.js", 2),
     # → P34 blog: drafted after steps 1–4
