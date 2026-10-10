@@ -52,12 +52,12 @@ metadata:
   product: "ThreatAssessor"
   last_updated: "2026-10-10"
   csa_art_version: "2025-08-26"
-  csa_art_coverage: "11/12 categories covered (4.3 physical/ICS systems partial; 4.2 checker-out-of-loop: structural gate blocks via QC-012; 4.8 memory/context gap closed by ABU-007/QC-011)"
+  csa_art_coverage: "11/12 categories covered (4.3 physical/ICS systems partial; 4.2 checker-out-of-loop: structural gate blocks via QC-012; 4.8 memory/context gap closed by ABU-007/QC-011; 4.12 untraceability: no-sink detection via QC-013)"
 
 # Domain index — each rule carries a `domain:` tag for grouping and future renumbering.
 # Domains are intentionally coarse: a rule belongs to its primary attack surface.
 #
-#   QC  — Quality & Confidence Manipulation   (001,002,007,008,009,015,024,026,035,049,050,056)  12 rules
+#   QC  — Quality & Confidence Manipulation   (001,002,007,008,009,015,024,026,035,049,050,056,057)  13 rules
 #   INJ — Input Injection & Evasion           (005,010,017,018,019,027,029,033)               8 rules
 #   EXF — Exfiltration & Leakage              (004,009,011,013,023,025,EXF-007)               7 rules
 #   MCP — MCP & API Abuse                     (020,021,022,030,032,055)                       6 rules
@@ -81,7 +81,7 @@ metadata:
 #   4.9 Orchestration/Multi-Ag → DETECT-INJ-006/007, DETECT-QC-005/007/011, DETECT-SEC-002, DETECT-AGT-001/003, DETECT-ABU-004
 #   4.10 Resource Exhaustion   → DETECT-RES-001/002, DETECT-MCP-002/005/006
 #   4.11 Supply Chain          → DETECT-SCT-001/002/003/004/005, DETECT-INJ-002/003/004
-#   4.12 Untraceability        → DETECT-QC-008, DETECT-ABU-002/003/004  (PARTIAL — no log-tamper detection rule)
+#   4.12 Untraceability        → DETECT-QC-008, DETECT-ABU-002/003/004, DETECT-QC-013 (no-sink structural gate)
   forensic_model_note: >
     When analysing real incident payloads, prefer an on-prem open-weight model
     (e.g. zai-org/GLM-5.2 or equivalent). Commercial API safety filters may block
@@ -2971,6 +2971,59 @@ rules:
       diagram or the BouncerStage block should be overridden via agent_governance.yaml.
       Cross-reference DETECT-QC-002 (critic divergence suppressed) and DETECT-QC-007
       (critic consensus collapse) as runtime complements to this structural gate.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-QC-013: No Active Trace Sink — Forensic Capture Unavailable
+  #
+  # No SIEM, Langfuse, or webhook sink is active for this run. Any rule that
+  # declares forensic_capture cannot write its record. Grounded in CSA ART §4.12.
+  #
+  # OWASP: A09  ATLAS: AML.TA0005  Kill chain: defense_evasion
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-QC-013
+    legacy_id: DETECT-057
+    name: trace_sink_unavailable_no_forensic_record
+    domain: QC
+    description: |
+      The pipeline has no active event sink (SIEM, Langfuse, or webhook) for this
+      run. Any rule that declares a forensic_capture action cannot write the forensic
+      record that Recover relies on. A run that generates no trace is structurally
+      untraceable: incident response can confirm a block occurred but has no timeline,
+      no evidence of what reached downstream consumers, and no basis for replay or
+      remediation. Grounded in CSA ART §4.12 — untraceability, the subclass where
+      the trace foundation is absent at the infrastructure level.
+    incident_refs:
+      - csa-art-2025-4.12-untraceability-no-sink
+    owasp:
+      - A09
+    csa_art:
+      - "4.12"
+      - "4.12.2"
+    atlas_tactic: AML.TA0005
+    mitre_techniques:
+      - T1562
+      - T1070
+    kill_chain_stage: defense_evasion
+    ocsf_class: 2004
+    ocsf_type_uid: 200439
+    severity: High
+    conditions:
+      - field: arch_metadata.trace_missing
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      Signal is set in QualityStage when ctx["_event_broker"] is absent or has no
+      active sinks (EventBrokerCritic._enabled=False). This fires in dev/test
+      environments where no sink is configured — suppress via governance_signals
+      filter if intentional. In production, every run should have at least one
+      active sink; if this rule fires, the forensic_capture actions on any other
+      triggered rules were not written. Cross-reference DETECT-QC-008 (deceptive
+      completion reporting) for the output-side of the untraceability gap.
 
   # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-ABU-007: Temporal Attack — Staged Submission Sequence

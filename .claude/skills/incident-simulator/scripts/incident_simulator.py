@@ -1415,6 +1415,32 @@ def scenario_csa_goal_instruction_manipulation() -> Dict[str, Any]:
     return sig
 
 
+def scenario_csa_untraceability() -> Dict[str, Any]:
+    """
+    DETECT-QC-013 (High) — CSA ART 4.12 untraceability: no trace sink active
+
+    No SIEM, Langfuse, or webhook sink is configured for this run.
+    forensic_capture actions on any co-firing rules cannot write their
+    records. Recover is blind: incident response can confirm a block occurred
+    but has no timeline, no evidence of what reached downstream consumers,
+    and no basis for replay or remediation.
+
+    Representative scenario: a production agentic pipeline that mis-deployed
+    with sinks disabled (e.g., Langfuse API key expired, SIEM endpoint
+    misconfigured), meaning every detection event for the session was
+    silently dropped.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 7,
+        "is_agentic": True,
+        "no_oversight_path": False,
+        "trace_missing": True,
+    }
+    return sig
+
+
 def scenario_csa_checker_out_of_loop() -> Dict[str, Any]:
     """
     DETECT-QC-012 (High) — CSA ART 4.2 checker-out-of-loop: no oversight path
@@ -1545,6 +1571,8 @@ SCENARIOS = {
         "DETECT-INJ-001 (Critical) + DETECT-QC-009 (Critical) — CSA 4.4.3/4.4.7: CRITICAL injection + SM embeds constraint-evasion language"),
     "csa_checker_out_of_loop":            (scenario_csa_checker_out_of_loop,
         "DETECT-QC-012 (High) — CSA 4.2: agentic arch with tool access and no declared oversight path; structural gate blocks before model runs"),
+    "csa_untraceability":                 (scenario_csa_untraceability,
+        "DETECT-QC-013 (High) — CSA 4.12: no active trace sink; forensic_capture actions cannot write; Recover is blind"),
 }
 
 EXPECTED_RULES = {
@@ -1602,6 +1630,7 @@ EXPECTED_RULES = {
     "csa_permission_escalation_boundary":   {"DETECT-EXF-007", "DETECT-SEC-001"},
     "csa_goal_instruction_manipulation":    {"DETECT-INJ-001", "DETECT-QC-009"},
     "csa_checker_out_of_loop":              {"DETECT-QC-012"},
+    "csa_untraceability":                   {"DETECT-QC-013"},
 }
 
 

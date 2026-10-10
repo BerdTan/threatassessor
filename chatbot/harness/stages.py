@@ -578,6 +578,20 @@ class QualityStage(PipelineStage):
             merged.blocked_agents = list(set(blocked))
             ctx["blocked_agents"] = merged.blocked_agents
 
+            # Propagate run_id so it appears in governance_signals for downstream consumers.
+            merged.run_id = ctx.get("_run_id", "")
+
+            # ── CSA ART 4.12 untraceability — trace sink availability ────────
+            # If no event sink is active, forensic_capture actions declared by
+            # triggered rules cannot write their records. Recover is blind.
+            # DETECT-QC-013 reads this signal. Set before to_dict() so it lands
+            # in governance_signals["arch_metadata"]["trace_missing"].
+            _broker = ctx.get("_event_broker")
+            _has_sinks = _broker is not None and getattr(_broker, "_enabled", False)
+            _arch_meta = dict(merged.arch_metadata)
+            _arch_meta["trace_missing"] = not _has_sinks
+            merged.arch_metadata = _arch_meta
+
             ctx["governance_signals"] = merged.to_dict()
 
             # Save governance signals now (without AIVSS — full score happens in AIVSSStage
