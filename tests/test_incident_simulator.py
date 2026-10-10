@@ -306,6 +306,28 @@ class TestScenariosFire:
         fired = _fired_ids(fn())
         assert {"DETECT-SEC-002"} <= fired
 
+    # ── CSA ART (Aug 2025) grounded scenarios ────────────────────────────────
+
+    def test_csa_authorization_hijack(self):
+        fn, _ = SCENARIOS["csa_authorization_hijack"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-INJ-005"} <= fired
+
+    def test_csa_multi_agent_trust_bypass(self):
+        fn, _ = SCENARIOS["csa_multi_agent_trust_bypass"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-AGT-001", "DETECT-INJ-006"} <= fired
+
+    def test_csa_permission_escalation_boundary(self):
+        fn, _ = SCENARIOS["csa_permission_escalation_boundary"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-EXF-007", "DETECT-SEC-001"} <= fired
+
+    def test_csa_goal_instruction_manipulation(self):
+        fn, _ = SCENARIOS["csa_goal_instruction_manipulation"]
+        fired = _fired_ids(fn())
+        assert {"DETECT-INJ-001", "DETECT-QC-009"} <= fired
+
     def test_all_expected_rules_match_documented(self):
         """Every scenario fires at least its documented expected set."""
         for name, (fn, _) in SCENARIOS.items():

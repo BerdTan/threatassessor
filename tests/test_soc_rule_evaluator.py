@@ -118,7 +118,7 @@ class TestYAMLLoading:
 
     def test_loads_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 48
+        assert len(ev) == 55
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -2381,3 +2381,331 @@ class TestDetectABU006QueueInjection:
         findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
         f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-006")
         assert "block_run" in f["unmapped"]["actions"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-QC-010 — Hallucination Chain Attack (CSA ART 4.5.2/4.5.4)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectQC010HallucinationChain:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("arch_metadata", {})["hallucination_chain_detected"] = True
+        s.setdefault("aivss", {}).setdefault("inbound", {})["composite"] = 3.5
+        return s
+
+    def test_fires_when_both_conditions_met(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-010" in ids
+
+    def test_does_not_fire_without_hallucination_chain(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("aivss", {}).setdefault("inbound", {})["composite"] = 3.5
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-QC-010" not in ids
+
+    def test_does_not_fire_with_low_inbound_composite(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {})["hallucination_chain_detected"] = True
+        s.setdefault("aivss", {}).setdefault("inbound", {})["composite"] = 1.5
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-QC-010" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-010" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-010")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_impact(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-010")
+        assert f["finding"]["kill_chain_stage"] == "impact"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-QC-011 — Orchestrator State Poisoning (CSA ART 4.9.9/4.8.1)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectQC011OrchestratorStatePoisoning:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("exploitation", {})["orchestrator_state_poisoned"] = True
+        return s
+
+    def test_fires_on_state_poisoned(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-011" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("exploitation", {})["orchestrator_state_poisoned"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-QC-011" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-011" not in ids
+
+    def test_severity_is_critical(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-011")
+        assert f["severity"].upper() == "CRITICAL"
+
+    def test_actions_include_block_run(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-011")
+        assert "block_run" in f["unmapped"]["actions"]
+
+    def test_actions_include_forensic_capture(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-011")
+        assert "forensic_capture" in f["unmapped"]["actions"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-ABU-007 — Temporal Attack Staged Submission (CSA ART 4.8.4/4.8.2)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectABU007TemporalAttack:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("mcp_access", {})["temporal_attack_staged"] = True
+        s["mcp_access"]["staged_submission_count"] = 4
+        return s
+
+    def test_fires_when_both_conditions_met(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-007" in ids
+
+    def test_does_not_fire_without_staged_flag(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("mcp_access", {})["staged_submission_count"] = 5
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-ABU-007" not in ids
+
+    def test_does_not_fire_with_low_submission_count(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("mcp_access", {})["temporal_attack_staged"] = True
+        s["mcp_access"]["staged_submission_count"] = 2
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-ABU-007" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-007" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-007")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_impact(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-007")
+        assert f["finding"]["kill_chain_stage"] == "impact"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-AGT-003 — Permission Escalation Without Revocation (CSA ART 4.1.2/4.1.7)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectAGT003PermissionEscalation:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("arch_metadata", {})["is_agentic"] = True
+        s["arch_metadata"]["permission_escalation_detected"] = True
+        s["arch_metadata"]["revocation_path_present"] = False
+        return s
+
+    def test_fires_when_all_three_conditions_met(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-AGT-003" in ids
+
+    def test_does_not_fire_when_not_agentic(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {})["is_agentic"] = False
+        s["arch_metadata"]["permission_escalation_detected"] = True
+        s["arch_metadata"]["revocation_path_present"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-AGT-003" not in ids
+
+    def test_does_not_fire_when_revocation_path_present(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {})["is_agentic"] = True
+        s["arch_metadata"]["permission_escalation_detected"] = True
+        s["arch_metadata"]["revocation_path_present"] = True
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-AGT-003" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-AGT-003" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-AGT-003")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_privilege_escalation(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-AGT-003")
+        assert f["finding"]["kill_chain_stage"] == "privilege_escalation"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-SCT-006 — Dependency Integrity Violation (CSA ART 4.11.2/4.11.4)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectSCT006DependencyIntegrity:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("identity", {})["dependency_integrity_violated"] = True
+        return s
+
+    def test_fires_on_integrity_violated(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-SCT-006" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("identity", {})["dependency_integrity_violated"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-SCT-006" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-SCT-006" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-SCT-006")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_initial_access(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-SCT-006")
+        assert f["finding"]["kill_chain_stage"] == "initial_access"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-ABU-008 — TACO Feedback Gaming (CSA ART 4.7.4/4.7.5)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectABU008TacoFeedbackGaming:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("synthetic_queue", {})["taco_feedback_gaming"] = True
+        s["synthetic_queue"]["gaming_submission_count"] = 3
+        return s
+
+    def test_fires_when_both_conditions_met(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-008" in ids
+
+    def test_does_not_fire_without_gaming_flag(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("synthetic_queue", {})["gaming_submission_count"] = 5
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-ABU-008" not in ids
+
+    def test_does_not_fire_with_low_submission_count(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("synthetic_queue", {})["taco_feedback_gaming"] = True
+        s["synthetic_queue"]["gaming_submission_count"] = 1
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-ABU-008" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-ABU-008" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-008")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_impact(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-ABU-008")
+        assert f["finding"]["kill_chain_stage"] == "impact"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-MCP-006 — Economic Denial of Service (CSA ART 4.10.5/4.10.2)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectMCP006EconomicDoS:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("mcp_access", {})["billing_amplification_detected"] = True
+        s["mcp_access"]["cost_multiplier"] = 15
+        return s
+
+    def test_fires_when_both_conditions_met(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-MCP-006" in ids
+
+    def test_does_not_fire_without_amplification_flag(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("mcp_access", {})["cost_multiplier"] = 20
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-MCP-006" not in ids
+
+    def test_does_not_fire_with_low_multiplier(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("mcp_access", {})["billing_amplification_detected"] = True
+        s["mcp_access"]["cost_multiplier"] = 5
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-MCP-006" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-MCP-006" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-MCP-006")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_impact(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-MCP-006")
+        assert f["finding"]["kill_chain_stage"] == "impact"

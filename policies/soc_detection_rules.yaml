@@ -44,25 +44,44 @@
 #   OWASP Agentic Top 10 (2025): https://owasp.org/www-project-top-10-for-large-language-model-applications/
 #   MITRE ATLAS: https://atlas.mitre.org/
 #   OCSF v1.1: https://schema.ocsf.io/1.1.0/classes/detection_finding
+#   CSA Agentic AI Red Teaming Guide (Aug 2025): https://cloudsecurityalliance.org/research/working-groups/ai-organizational-responsibilities
 
 metadata:
   version: "1.0"
   ocsf_version: "1.1"
   product: "ThreatAssessor"
-  last_updated: "2026-09-04"
+  last_updated: "2026-10-10"
+  csa_art_version: "2025-08-26"
+  csa_art_coverage: "11/12 categories covered (4.3 physical/ICS systems partial, 4.2 checker-out-of-loop partial; 4.8 memory/context gap closed by ABU-007/QC-011)"
 
 # Domain index — each rule carries a `domain:` tag for grouping and future renumbering.
 # Domains are intentionally coarse: a rule belongs to its primary attack surface.
 #
-#   QC  — Quality & Confidence Manipulation   (001,002,007,008,009,015,024,026,035)
-#   INJ — Input Injection & Evasion           (005,010,017,018,019,027,029,033)
-#   EXF — Exfiltration & Leakage              (004,009,011,013,023,025,EXF-007)
-#   MCP — MCP & API Abuse                     (020,021,022,030,032)
-#   SCT — Supply Chain & Tampering            (016,028,031,034,036)
-#   RES — Resource & Coverage                 (003,006,012,014)
+#   QC  — Quality & Confidence Manipulation   (001,002,007,008,009,015,024,026,035,049,050)  11 rules
+#   INJ — Input Injection & Evasion           (005,010,017,018,019,027,029,033)               8 rules
+#   EXF — Exfiltration & Leakage              (004,009,011,013,023,025,EXF-007)               7 rules
+#   MCP — MCP & API Abuse                     (020,021,022,030,032,055)                       6 rules
+#   SCT — Supply Chain & Tampering            (016,028,031,034,036,053)                       6 rules
+#   RES — Resource & Coverage                 (003,006,012,014)                               4 rules
+#   ABU — Abuse & Harvesting                  (043,044,045,046,047,048,051,054)               8 rules
+#   AGT — Agent Identity                      (041,052)                                       2 rules
 #
 # Migration path: when sequential IDs are replaced with domain-scoped IDs
 # (e.g. DETECT-MCP-001), old IDs become aliases in the `legacy_id:` field.
+#
+# CSA ART coverage summary (by category, as of v1.0):
+#   4.1 Authorization/Control  → DETECT-MCP-003, DETECT-EXF-002/007, DETECT-INJ-005/008, DETECT-SEC-001/002, DETECT-ABU-003
+#   4.2 Checker-Out-of-Loop    → DETECT-QC-004, DETECT-QC-006  (PARTIAL — no SM-unavailable rule)
+#   4.3 Critical System        → DETECT-EXF-006, DETECT-PER-001  (PARTIAL — physical/ICS out of scope)
+#   4.4 Goal/Instruction Manip → DETECT-INJ-001/002/003/004/005/007/008, DETECT-QC-009, DETECT-EXF-001/003/004/005/006/007, DETECT-ABU-002/005
+#   4.5 Hallucination Exploit  → DETECT-QC-001/002/003/004/008/010, DETECT-RES-004
+#   4.6 Impact/Blast Radius    → DETECT-EXF-001/004/005/007, DETECT-RES-002, DETECT-PER-001, DETECT-MCP-001
+#   4.7 Knowledge Base Poison  → DETECT-SCT-002/003/005/006, DETECT-RES-003, DETECT-ABU-006/008
+#   4.8 Memory/Context Manip   → DETECT-ABU-007 (staged temporal), DETECT-QC-011 (orchestrator state)
+#   4.9 Orchestration/Multi-Ag → DETECT-INJ-006/007, DETECT-QC-005/007/011, DETECT-SEC-002, DETECT-AGT-001/003, DETECT-ABU-004
+#   4.10 Resource Exhaustion   → DETECT-RES-001/002, DETECT-MCP-002/005/006
+#   4.11 Supply Chain          → DETECT-SCT-001/002/003/004/005, DETECT-INJ-002/003/004
+#   4.12 Untraceability        → DETECT-QC-008, DETECT-ABU-002/003/004  (PARTIAL — no log-tamper detection rule)
   forensic_model_note: >
     When analysing real incident payloads, prefer an on-prem open-weight model
     (e.g. zai-org/GLM-5.2 or equivalent). Commercial API safety filters may block
@@ -99,6 +118,7 @@ rules:
     incident_refs:
       - anthropic-cybersec-evals-2026-opus47
     owasp: [A09]
+    csa_art: ["4.5.3", "4.5.5"]
     atlas_tactic: AML.TA0009
     kill_chain_stage: llm_layer
     ocsf_class: 2004
@@ -148,6 +168,7 @@ rules:
     incident_refs:
       - anthropic-cybersec-evals-2026-mythos5
     owasp: [A09, A05]
+    csa_art: ["4.5.2", "4.9.8"]
     atlas_tactic: AML.TA0009
     kill_chain_stage: llm_layer
     ocsf_class: 2004
@@ -195,6 +216,7 @@ rules:
     incident_refs:
       - openai-exploitgym-2026
     owasp: [A06]
+    csa_art: ["4.10.1"]
     atlas_tactic: AML.TA0009
     kill_chain_stage: llm_layer
     ocsf_class: 2004
@@ -242,6 +264,7 @@ rules:
     incident_refs:
       - deepseek-hermes-2026
     owasp: [A07, A06]
+    csa_art: ["4.4.8", "4.6.2"]
     atlas_tactic: AML.TA0010
     kill_chain_stage: exfiltration
     ocsf_class: 2004
@@ -290,6 +313,7 @@ rules:
     incident_refs:
       - huggingface-dataset-pipeline-2026
     owasp: [A01, A03]
+    csa_art: ["4.4.2", "4.11.3"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -341,6 +365,7 @@ rules:
     incident_refs:
       - huggingface-dataset-pipeline-2026
     owasp: [A06, A09]
+    csa_art: ["4.10.1", "4.6.3"]
     atlas_tactic: AML.TA0006
     kill_chain_stage: discovery
     ocsf_class: 2004
@@ -403,6 +428,7 @@ rules:
       - aiid-lack-of-transparency
       - mit-ai-risk-7.1-goal-conflict
     owasp: [A09, A05]
+    csa_art: ["4.5.1", "4.5.4"]
     atlas_tactic: AML.TA0009
     kill_chain_stage: llm_layer
     ocsf_class: 2004
@@ -466,6 +492,7 @@ rules:
     incident_refs:
       - mit-ai-risk-7.1-goal-conflict
     owasp: [A09]
+    csa_art: ["4.2.2", "4.5.6"]
     atlas_tactic: AML.TA0009
     kill_chain_stage: llm_layer
     ocsf_class: 2004
@@ -519,6 +546,7 @@ rules:
     incident_refs:
       - owasp-a06-security-misconfiguration
     owasp: [A06]
+    csa_art: ["4.1.7", "4.12.6"]
     atlas_tactic: AML.TA0007
     kill_chain_stage: deterministic_layer
     ocsf_class: 2004
@@ -572,6 +600,7 @@ rules:
     incident_refs:
       - huggingface-dataset-pipeline-2026
     owasp: [A01]
+    csa_art: ["4.4.3", "4.11.2"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -624,6 +653,7 @@ rules:
     incident_refs:
       - huggingface-dataset-pipeline-2026
     owasp: [A05]
+    csa_art: ["4.4.8", "4.3.3"]
     atlas_tactic: AML.TA0010
     kill_chain_stage: exfiltration
     ocsf_class: 2004
@@ -676,6 +706,7 @@ rules:
     incident_refs:
       - owasp-a05-security-misconfiguration
     owasp: [A05]
+    csa_art: ["4.7.2"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -727,6 +758,7 @@ rules:
     incident_refs:
       - huggingface-dataset-pipeline-2026
     owasp: [A06]
+    csa_art: ["4.6.4", "4.4.8"]
     atlas_tactic: AML.TA0010
     kill_chain_stage: exfiltration
     ocsf_class: 2004
@@ -780,6 +812,7 @@ rules:
     incident_refs:
       - mit-ai-risk-7.3-inaccurate-risk-assessment
     owasp: [A09]
+    csa_art: ["4.5.4", "4.5.7"]
     atlas_tactic: AML.TA0009
     kill_chain_stage: deterministic_layer
     ocsf_class: 2004
@@ -850,6 +883,7 @@ rules:
     incident_refs:
       - mit-ai-risk-7.1-goal-conflict
     owasp: [A09]
+    csa_art: ["4.9.8"]
     atlas_tactic: AML.TA0009
     kill_chain_stage: llm_layer
     ocsf_class: 2004
@@ -907,6 +941,7 @@ rules:
       - owasp-ast02-supply-chain-compromise
       - cve-2025-59536
     owasp: [A05]
+    csa_art: ["4.11.1"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -961,6 +996,7 @@ rules:
       - owasp-ast05-untrusted-external-instructions
       - air-poc-agent-takeover-2026
     owasp: [A05]
+    csa_art: ["4.4.2", "4.11.2"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -1017,6 +1053,7 @@ rules:
       - owasp-ast08-poor-scanning
       - owasp-a01-broken-access-control
     owasp: [A01]
+    csa_art: ["4.4.3"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: defense_evasion
     ocsf_class: 2004
@@ -1076,6 +1113,7 @@ rules:
       - huggingface-dataset-pipeline-2026
       - owasp-a01-broken-access-control
     owasp: [A01]
+    csa_art: ["4.4.1", "4.1.1"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -1127,6 +1165,7 @@ rules:
     incident_refs:
       - owasp-agentic-a09-excessive-agency
     owasp: [A09]
+    csa_art: ["4.1.4", "4.6.5"]
     atlas_tactic: AML.TA0002
     kill_chain_stage: discovery
     ocsf_class: 2004
@@ -1177,6 +1216,7 @@ rules:
     incident_refs:
       - owasp-agentic-a10-model-dos
     owasp: [A10]
+    csa_art: ["4.10.3", "4.10.5"]
     atlas_tactic: AML.TA0015
     kill_chain_stage: impact
     ocsf_class: 2004
@@ -1227,6 +1267,7 @@ rules:
     incident_refs:
       - owasp-agentic-a02-broken-auth
     owasp: [A02]
+    csa_art: ["4.1.1", "4.1.2"]
     atlas_tactic: AML.TA0006
     kill_chain_stage: credential_access
     ocsf_class: 2004
@@ -1288,6 +1329,7 @@ rules:
       - owasp-a05-security-misconfiguration
       - nist-csf-id-ra-3
     owasp: [A05]
+    csa_art: ["4.2.1", "4.6.5"]
     atlas_tactic: AML.TA0002
     kill_chain_stage: discovery
     ocsf_class: 2004
@@ -1353,6 +1395,7 @@ rules:
       - anthropic-alignment-2026-a-mythos5-pypi
       - owasp-agentic-a09-excessive-agency
     owasp: [A09]
+    csa_art: ["4.4.8", "4.3.4"]
     atlas_tactic: AML.TA0010
     kill_chain_stage: command_and_control
     ocsf_class: 2004
@@ -1419,6 +1462,7 @@ rules:
       - aisi-inc-2026-07-28-supply-chain
       - owasp-agentic-a02-supply-chain-compromise
     owasp: [A02]
+    csa_art: ["4.11.4", "4.7.3"]
     atlas_tactic: AML.TA0002
     kill_chain_stage: collection
     ocsf_class: 2004
@@ -1482,6 +1526,7 @@ rules:
       - aisi-inc-2026-07-28-parallel-contamination
       - owasp-agentic-a05-insufficient-output-validation
     owasp: [A05]
+    csa_art: ["4.9.8", "4.5.2"]
     atlas_tactic: AML.TA0009
     kill_chain_stage: llm_layer
     ocsf_class: 2004
@@ -1552,6 +1597,7 @@ rules:
       - aisi-inc-2026-07-28-agent-targeting
       - owasp-agentic-a01-prompt-injection
     owasp: [A01, A03]
+    csa_art: ["4.9.1", "4.9.4"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -1621,6 +1667,7 @@ rules:
       - anthropic-alignment-2026-d-opus46-egress
       - owasp-agentic-a09-excessive-agency
     owasp: [A09]
+    csa_art: ["4.4.8", "4.6.2"]
     atlas_tactic: AML.TA0010
     kill_chain_stage: exfiltration
     ocsf_class: 2004
@@ -1693,6 +1740,7 @@ rules:
       - anthropic-alignment-2026-c-opus47-db
       - owasp-agentic-a09-excessive-agency
     owasp: [A09, A01]
+    csa_art: ["4.1.2", "4.6.4"]
     atlas_tactic: AML.TA0010
     kill_chain_stage: lateral_movement
     ocsf_class: 2004
@@ -1742,6 +1790,7 @@ rules:
     incident_refs:
       - ta-harden-audit-2026-08-09-rt02
     owasp: ['A01', 'A03']
+    csa_art: ["4.4.2", "4.9.9"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -1778,6 +1827,7 @@ rules:
     incident_refs:
       - ta-harden-audit-2026-08-09-rt06
     owasp: ['A02']
+    csa_art: ["4.1.5", "4.1.7"]
     atlas_tactic: AML.TA0003
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -1825,6 +1875,7 @@ rules:
       - ta-harden-audit-2026-08-14-rt02
       - ta-harden-audit-2026-08-14-rt03
     owasp: ['A03']
+    csa_art: ["4.7.1", "4.7.4"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -1875,6 +1926,7 @@ rules:
     incident_refs:
       - ta-harden-audit-2026-08-22-detect-backlog
     owasp: [A09]
+    csa_art: ["4.10.3"]
     atlas_tactic: AML.TA0010
     kill_chain_stage: impact
     ocsf_class: 2004
@@ -1926,6 +1978,7 @@ rules:
     incident_refs:
       - ta-harden-audit-2026-08-22-detect-backlog
     owasp: [A01]
+    csa_art: ["4.4.3", "4.1.1"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -1979,6 +2032,7 @@ rules:
     incident_refs:
       - supply-chain-skill-url-2026-08-30
     owasp: [A08]
+    csa_art: ["4.11.2", "4.4.2"]
     atlas_tactic: AML.TA0001
     kill_chain_stage: initial_access
     ocsf_class: 2004
@@ -2035,6 +2089,7 @@ rules:
     incident_refs:
       - stepshield-dec-category-2026-09
     owasp: [A09]
+    csa_art: ["4.5.3", "4.12.1"]
     atlas_tactic: AML.TA0009
     kill_chain_stage: impact
     ocsf_class: 2004
@@ -2106,6 +2161,7 @@ rules:
       - anthropic-alignment-2026-c-opus47-db
       - anthropic-alignment-2026-d-opus46-egress
     owasp: [A01]
+    csa_art: ["4.4.3", "4.4.7"]
     atlas_tactic: AML.TA0005
     mitre_techniques: [T1562, T1036]
     kill_chain_stage: defense_evasion
@@ -2170,6 +2226,7 @@ rules:
     incident_refs:
       - stepshield-tst-category-2026-09
     owasp: [A02]
+    csa_art: ["4.11.1", "4.7.3"]
     atlas_tactic: AML.TA0002
     kill_chain_stage: defense_evasion
     ocsf_class: 2004
@@ -2231,6 +2288,7 @@ rules:
     incident_refs:
       - AISI-INC-2026-07-28
     owasp: [A08]
+    csa_art: ["4.3.4", "4.6.2"]
     atlas_tactic: AML.TA0010
     kill_chain_stage: persistence
     ocsf_class: 2004
@@ -2289,6 +2347,7 @@ rules:
     incident_refs:
       - AISI-alignment-incident-D
     owasp: [A02, A06]
+    csa_art: ["4.1.3", "4.1.7"]
     atlas_tactic: AML.TA0007
     kill_chain_stage: credential_access
     ocsf_class: 2004
@@ -2339,6 +2398,7 @@ rules:
       patterns and MITRE ATT&CK T1606/T1528/T1550.001.
     mitre_techniques: [T1606, T1606.001, T1528, T1550.001, T1199]
     owasp: [A07]
+    csa_art: ["4.1.2", "4.9.8"]
     kill_chain_stage: credential_access
     ocsf_class: 2004
     ocsf_type_uid: 200407
@@ -2384,6 +2444,7 @@ rules:
       attack. Either condition breaks traceability: the assessment result cannot be
       attributed to an authenticated job and must not be used for compliance.
     owasp: [A02, A07]
+    csa_art: ["4.9.8", "4.12.5"]
     mitre_techniques: ["T1134", "T1550"]
     atlas_tactic: AML.TA0006
     kill_chain_stage: credential_access
@@ -2438,6 +2499,7 @@ rules:
       within the probe window. Signals: mcp_access.probe_pattern (bool),
       mcp_access.probe_pattern_arch (str), mcp_access.probe_count (int).
     owasp: [A07, A09]
+    csa_art: ["4.4.9", "4.1.4"]
     atlas_tactic: AML.TA0007
     mitre_techniques: ["T1595", "T1592"]
     kill_chain_stage: reconnaissance
@@ -2491,6 +2553,7 @@ rules:
       upon gate clearance. Signals: export.harvest_rapid_sequence (bool),
       export.harvest_count (int), export.harvest_session_archs (list).
     owasp: [A09]
+    csa_art: ["4.4.8", "4.12.3"]
     atlas_tactic: AML.TA0009
     mitre_techniques: ["T1041", "T1530"]
     kill_chain_stage: exfiltration
@@ -2545,6 +2608,7 @@ rules:
       mcp_access.path_enum_velocity (bool), mcp_access.path_enum_arch (str),
       mcp_access.path_enum_rate (float — calls/min).
     owasp: [A01, A09]
+    csa_art: ["4.1.2", "4.12.1"]
     atlas_tactic: AML.TA0007
     mitre_techniques: ["T1595", "T1598"]
     kill_chain_stage: reconnaissance
@@ -2600,6 +2664,7 @@ rules:
       against). Signals: mcp_access.caller_fingerprint_drift (bool),
       mcp_access.fingerprint_similarity (float 0–1).
     owasp: [A07, A02]
+    csa_art: ["4.9.8", "4.1.6"]
     atlas_tactic: AML.TA0006
     mitre_techniques: ["T1550", "T1134"]
     kill_chain_stage: lateral_movement
@@ -2656,6 +2721,7 @@ rules:
       export.lateral_harvest_burst (bool), export.lateral_harvest_archs (list),
       export.lateral_harvest_count (int).
     owasp: [A01, A09]
+    csa_art: ["4.4.8", "4.6.3"]
     atlas_tactic: AML.TA0009
     mitre_techniques: ["T1530", "T1213"]
     kill_chain_stage: exfiltration
@@ -2712,6 +2778,7 @@ rules:
       synthetic_queue.injection_without_gap (bool),
       synthetic_queue.injected_filename (str).
     owasp: [A03, A04]
+    csa_art: ["4.7.4", "4.7.5"]
     atlas_tactic: AML.TA0002
     mitre_techniques: ["T1608", "T1027"]
     kill_chain_stage: resource_development
@@ -2740,6 +2807,389 @@ rules:
       env var set), or (b) the gap registry was deleted by accident — restore
       from git and re-verify. Any true positive should quarantine the injected
       file and trigger a full brain integrity review before the next gym run.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-QC-010: Hallucination Chain Attack
+  #
+  # The assessment pipeline produced a chain of internally-consistent but
+  # factually incorrect claims that propagated without correction. Grounded in
+  # CSA ART §4.5 — hallucination exploitation as an attack vector.
+  #
+  # OWASP: A05  ATLAS: AML.TA0004  Kill chain: impact
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-QC-010
+    legacy_id: DETECT-049
+    name: hallucination_chain_attack
+    domain: QC
+    description: |
+      The assessment pipeline produced a chain of internally-consistent but
+      factually incorrect claims that propagated without correction. A critic
+      accepted a hallucinated technique attribution (inbound composite >= 2.0)
+      and the chain was not flagged during synthesis. Grounded in CSA ART §4.5
+      — hallucination exploitation as an attack vector where crafted inputs
+      induce confident false outputs that downstream agents act on.
+    incident_refs:
+      - csa-art-2025-4.5.2-hallucination-chain
+    owasp:
+      - A05
+    csa_art:
+      - "4.5.2"
+      - "4.5.4"
+    atlas_tactic: AML.TA0004
+    mitre_techniques:
+      - T1565
+    kill_chain_stage: impact
+    ocsf_class: 2004
+    ocsf_type_uid: 200437
+    severity: High
+    conditions:
+      - field: arch_metadata.hallucination_chain_detected
+        op: "=="
+        value: true
+      - field: aivss.inbound.composite
+        op: ">="
+        value: 2.0
+    combine: all
+    actions:
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      Requires arch_metadata.hallucination_chain_detected signal from the harness
+      (future: set when critic confidence >= 0.85 disagrees with ground-truth
+      technique set by >40%). Cross-reference aivss.inbound.composite to avoid
+      firing on low-stakes assessments. A single critic hallucination without chain
+      propagation does not satisfy the condition; both signals must be present.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-QC-011: Orchestrator State Poisoning
+  #
+  # The orchestrator's shared state was modified mid-run by an adversarial
+  # sub-agent or injected context. Grounded in CSA ART §4.9.9.
+  #
+  # OWASP: A01  ATLAS: AML.TA0005  Kill chain: defense_evasion
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-QC-011
+    legacy_id: DETECT-050
+    name: orchestrator_state_poisoning
+    domain: QC
+    description: |
+      The orchestrator's shared state was modified mid-run by an adversarial
+      sub-agent or injected context, causing subsequent pipeline stages to
+      operate on corrupted inputs. The orchestrator believes its current context
+      is clean; the poison is invisible to quality checks that inspect individual
+      outputs rather than state transitions. Grounded in CSA ART §4.9.9 —
+      multi-agent state contamination where a downstream agent retroactively
+      alters the orchestrator's working memory.
+    incident_refs:
+      - csa-art-2025-4.9.9-orchestrator-state-poison
+    owasp:
+      - A01
+    csa_art:
+      - "4.9.9"
+      - "4.8.1"
+    atlas_tactic: AML.TA0005
+    mitre_techniques:
+      - T1565
+      - T1036
+    kill_chain_stage: defense_evasion
+    ocsf_class: 2004
+    ocsf_type_uid: 200438
+    severity: Critical
+    conditions:
+      - field: exploitation.orchestrator_state_poisoned
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: block_run
+      - type: forensic_capture
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      Single boolean signal; must be set upstream in the harness (future: set
+      when orchestrator context hash changes between stages without an authorised
+      state-update call). This is a Critical rule — any firing should trigger
+      immediate forensic capture. The signal is conservative; false positives are
+      expected to be near-zero once the hash-based detector is wired.
+      Cross-reference DETECT-INJ-006 (downstream agent injection) as a common
+      precursor.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-ABU-007: Temporal Attack — Staged Submission Sequence
+  #
+  # A caller submits architectures in a staged sequence to evade rate-limiting
+  # detection. Grounded in CSA ART §4.8 — memory/context manipulation.
+  #
+  # OWASP: A04  ATLAS: AML.TA0006  Kill chain: impact
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-ABU-007
+    legacy_id: DETECT-051
+    name: temporal_attack_staged_submission
+    domain: ABU
+    description: |
+      A caller submits architectures in a temporally staged sequence: an initial
+      benign submission establishes a baseline, then subsequent submissions
+      introduce progressively more adversarial content at intervals calculated
+      to avoid rate-limiting detection. The time-separation between submissions
+      is the evasion mechanism; each submission individually looks legitimate.
+      Grounded in CSA ART §4.8 — memory/context manipulation through staged
+      context injection across multiple sessions or time windows.
+    incident_refs:
+      - csa-art-2025-4.8.4-temporal-staged-attack
+    owasp:
+      - A04
+    csa_art:
+      - "4.8.4"
+      - "4.8.2"
+    atlas_tactic: AML.TA0006
+    mitre_techniques:
+      - T1499
+    kill_chain_stage: impact
+    ocsf_class: 2004
+    ocsf_type_uid: 200439
+    severity: High
+    conditions:
+      - field: mcp_access.temporal_attack_staged
+        op: "=="
+        value: true
+      - field: mcp_access.staged_submission_count
+        op: ">="
+        value: 3
+    combine: all
+    actions:
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      Requires temporal_attack_staged signal from MCPAccessLogger (future: set
+      when inter-submission intervals follow a geometric backoff pattern across
+      3+ submissions with progressively escalating injection category scores).
+      staged_submission_count >= 3 is the minimum meaningful sequence. A caller
+      that submits 3 clean architectures daily does not satisfy this; the signal
+      requires the escalation pattern, not just the count.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-AGT-003: Permission Escalation Without Revocation Path
+  #
+  # An agentic architecture accumulates permissions with no revocation path.
+  # Grounded in CSA ART §4.1.2 and §4.1.7.
+  #
+  # OWASP: A01  ATLAS: AML.TA0004  Kill chain: privilege_escalation
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-AGT-003
+    legacy_id: DETECT-052
+    name: permission_escalation_without_revocation
+    domain: AGT
+    description: |
+      An agentic architecture accumulates permissions during operation with no
+      documented revocation path — the agent can acquire elevated access but the
+      architecture contains no mechanism to de-escalate, time-bound, or audit
+      the permission grant. The missing revocation path is the risk: an agent
+      that cannot be de-escalated is an agent that cannot be recovered. Grounded
+      in CSA ART §4.1.2 and §4.1.7 — authorization escalation without lifecycle
+      management.
+    incident_refs:
+      - csa-art-2025-4.1.2-permission-escalation-no-revocation
+    owasp:
+      - A01
+    csa_art:
+      - "4.1.2"
+      - "4.1.7"
+    atlas_tactic: AML.TA0004
+    mitre_techniques:
+      - T1548
+    kill_chain_stage: privilege_escalation
+    ocsf_class: 2004
+    ocsf_type_uid: 200440
+    severity: High
+    conditions:
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+      - field: arch_metadata.permission_escalation_detected
+        op: "=="
+        value: true
+      - field: arch_metadata.revocation_path_present
+        op: "=="
+        value: false
+    combine: all
+    actions:
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      Three-signal conjunction: is_agentic must be true (non-agentic architectures
+      are out of scope); permission_escalation_detected must be set (future: set
+      when AIVSS privilege escalation technique T1548 present with composite >=
+      3.0); revocation_path_present must be false (future: derived from
+      architecture graph — presence of AuthRevoke, TokenExpiry, or SessionBound
+      nodes). All three must be present; missing any one reduces risk below
+      threshold.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-SCT-006: Dependency Integrity Violation
+  #
+  # A pipeline dependency has a hash mismatch against its pinned manifest entry.
+  # Grounded in CSA ART §4.11 — supply chain integrity attacks.
+  #
+  # OWASP: A08  ATLAS: AML.TA0002  Kill chain: initial_access
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-SCT-006
+    legacy_id: DETECT-053
+    name: dependency_integrity_violation
+    domain: SCT
+    description: |
+      A dependency used by the assessment pipeline (Python package, model weight,
+      or skill script import) has a hash that does not match its pinned manifest
+      entry. This indicates either an in-place modification (supply chain
+      compromise) or an unpinned dependency that resolved to a different version
+      than expected. Either case represents an integrity violation that could
+      allow adversarial code to execute inside the pipeline boundary. Grounded
+      in CSA ART §4.11 — supply chain integrity attacks against model
+      dependencies and runtime packages.
+    incident_refs:
+      - csa-art-2025-4.11.2-dependency-integrity
+    owasp:
+      - A08
+    csa_art:
+      - "4.11.2"
+      - "4.11.4"
+    atlas_tactic: AML.TA0002
+    mitre_techniques:
+      - T1195
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200441
+    severity: High
+    conditions:
+      - field: identity.dependency_integrity_violated
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      Single boolean signal; set by the supply-chain integrity checker (future:
+      extend identity_checker.py to hash runtime dependencies against a pinned
+      manifest). Fires independently of DETECT-SCT-001 (critic module tamper) —
+      that rule watches Python source files; this rule watches imported packages
+      and weight files. False positives can occur during legitimate dependency
+      upgrades; check the deployment timeline against the manifest commit log.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-ABU-008: TACO Feedback Gaming
+  #
+  # Systematically crafted feedback submissions bias the TA brain's pattern layer.
+  # Grounded in CSA ART §4.7 — knowledge base poisoning.
+  #
+  # OWASP: A03  ATLAS: AML.TA0006  Kill chain: impact
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-ABU-008
+    legacy_id: DETECT-054
+    name: taco_feedback_gaming
+    domain: ABU
+    description: |
+      The TACO feedback pipeline received systematically crafted feedback
+      submissions designed to bias the TA brain's pattern layer toward incorrect
+      assessments. The submissions are individually plausible but collectively
+      form a poisoning campaign: each one nudges a specific technique score in a
+      consistent direction. The TAgym creates this surface — an adversary who
+      can observe gym outputs and submit feedback can use it to degrade
+      assessment quality over time. Grounded in CSA ART §4.7 — knowledge base
+      poisoning through systematic feedback manipulation.
+    incident_refs:
+      - csa-art-2025-4.7.4-taco-feedback-gaming
+    owasp:
+      - A03
+    csa_art:
+      - "4.7.4"
+      - "4.7.5"
+    atlas_tactic: AML.TA0006
+    mitre_techniques:
+      - T1565
+    kill_chain_stage: impact
+    ocsf_class: 2004
+    ocsf_type_uid: 200442
+    severity: High
+    conditions:
+      - field: synthetic_queue.taco_feedback_gaming
+        op: "=="
+        value: true
+      - field: synthetic_queue.gaming_submission_count
+        op: ">="
+        value: 2
+    combine: all
+    actions:
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      Two-signal conjunction: taco_feedback_gaming must be set (future: set in
+      ta_brain_taco_processor.py when >= 2 feedback submissions in a session
+      target the same technique with directionally consistent score adjustments);
+      gaming_submission_count >= 2 is the minimum meaningful pattern. A single
+      unusual feedback submission does not satisfy this — the adversarial signal
+      is the pattern across submissions. Cross-reference DETECT-ABU-001
+      (probe_pattern_requery) as a common precursor.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-MCP-006: Economic Denial of Service — Billing Amplification
+  #
+  # A caller triggers disproportionately expensive compute via crafted inputs.
+  # Grounded in CSA ART §4.10 — resource exhaustion / EDoS.
+  #
+  # OWASP: A04  ATLAS: AML.TA0006  Kill chain: impact
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-MCP-006
+    legacy_id: DETECT-055
+    name: economic_denial_of_service
+    domain: MCP
+    description: |
+      A caller is using the MCP interface to trigger disproportionately expensive
+      compute relative to the legitimate workload: submitting architectures
+      specifically crafted to maximise token consumption, critic invocations, or
+      AIVSS scoring depth. The economic impact is the threat — not a data breach
+      but a cloud billing amplification attack that makes the service unusable.
+      Grounded in CSA ART §4.10 — resource exhaustion and economic denial of
+      service against cloud-hosted agentic AI services.
+    incident_refs:
+      - csa-art-2025-4.10.5-edos-billing-amplification
+    owasp:
+      - A04
+    csa_art:
+      - "4.10.5"
+      - "4.10.2"
+    atlas_tactic: AML.TA0006
+    mitre_techniques:
+      - T1499
+    kill_chain_stage: impact
+    ocsf_class: 2004
+    ocsf_type_uid: 200443
+    severity: High
+    conditions:
+      - field: mcp_access.billing_amplification_detected
+        op: "=="
+        value: true
+      - field: mcp_access.cost_multiplier
+        op: ">="
+        value: 10
+    combine: all
+    actions:
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      Two-signal conjunction: billing_amplification_detected must be set by
+      MCPAccessLogger (future: set when per-submission token cost exceeds 10x the
+      rolling median for the caller's session); cost_multiplier >= 10 is the
+      threshold before amplification is economically meaningful. A single large
+      architecture is not an EDoS — the signal requires the multiplier to be
+      sustained across the session. Cross-reference DETECT-MCP-002 (job_flooding)
+      — that rule catches volume; this rule catches per-request cost amplification.
 
 # ─────────────────────────────────────────────────────────────────────────────
 playbooks:

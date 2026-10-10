@@ -4,6 +4,45 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 104 — 2026-10-10
+
+### Entry 210 — CSA ART grounding: csa_art tags, 7 new DETECT rules, CSA scenarios, P35 draft
+
+**Decision:** Ground TA's detection layer against the CSA Agentic AI Red Teaming Guide (Aug 2025) across five changes:
+
+1. **csa_art field added to all 48 original DETECT rules** — each rule now carries `csa_art: [...]` after `owasp:`, mapping to the 12 CSA ART vulnerability categories. Metadata updated with `csa_art_version: "2025-08-26"` and `csa_art_coverage: "9/12 categories covered"`. Framework URL added to comments.
+
+2. **7 new DETECT rules implemented** — rules 49–55, closing the three main gaps identified by the CSA mapping:
+
+| ID | Name | Severity | CSA ART |
+|---|---|---|---|
+| DETECT-QC-010 | hallucination_chain_attack | High | 4.5.2, 4.5.4 |
+| DETECT-QC-011 | orchestrator_state_poisoning | Critical | 4.9.9, 4.8.1 |
+| DETECT-ABU-007 | temporal_attack_staged_submission | High | 4.8.4, 4.8.2 |
+| DETECT-AGT-003 | permission_escalation_without_revocation | High | 4.1.2, 4.1.7 |
+| DETECT-SCT-006 | dependency_integrity_violation | High | 4.11.2, 4.11.4 |
+| DETECT-ABU-008 | taco_feedback_gaming | High | 4.7.4, 4.7.5 |
+| DETECT-MCP-006 | economic_denial_of_service | High | 4.10.5, 4.10.2 |
+
+3. **4 CSA adversarial scenarios added to incident_simulator.py** — `csa_authorization_hijack`, `csa_multi_agent_trust_bypass`, `csa_permission_escalation_boundary`, `csa_goal_instruction_manipulation`; wired to EXPECTED_RULES; 4 new test functions in test_incident_simulator.py.
+
+4. **P34 teaser paragraph** — forward-pointer to P35 added to `docs/blog/drafts/draft_2026-10-07.md`.
+
+5. **P35 draft** — "Limit, Monitor, Stop, Recover: What It Actually Looks Like Inside the Pipeline" — at `docs/blog/drafts/draft_2026-10-10.md`. Three CSA scenarios (4.9.9, 4.8.4, 4.2) walked through each layer. Honest about Recover being manual and two explicit coverage gaps (memory/context drift, untraceability).
+
+**Test count:** 457 → 502 passed (0 failed); +41 rule evaluator tests (7 new rules × ~6 each), +4 incident simulator tests.
+
+**Remaining CSA coverage gaps:**
+- 4.8 Memory/Context Manipulation (broad) — signal for cumulative context drift across long sessions not yet instrumented
+- 4.2 Checker-Out-of-Loop (structural check incomplete) — governance gate should explicitly block agentic archs with no declared oversight path for tool-executed actions
+- 4.12 Untraceability — agent that leaves no audit trail attacks the Recover layer directly; `forensic_capture` assumes traces exist
+
+**Alternatives rejected:**
+- Adding CSA scenarios to a separate test file: kept in incident_simulator.py alongside EXPECTED_RULES to maintain single source of truth for scenario→rule mapping
+- Drafting P35 as pure theory: walked three concrete scenarios to show exactly where each LMSR layer engages (or doesn't), keeping the honest-gap framing from P34 teaser
+
+---
+
 ## Session 103 — 2026-10-07
 
 ### Entry 209 — DETECT-ABU domain implemented (6 rules, 48 total)
