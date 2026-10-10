@@ -5,7 +5,7 @@ Submit a Mermaid (`.mmd`) diagram, a Git repo, or IaC files and receive a MITRE 
 ## What you get
 
 - **Threat model** — MITRE ATT&CK techniques mapped per node and hop; deterministic, no LLM required
-- **SOC signals** — 55 DETECT rules evaluated per run (grounded in OWASP, MITRE ATLAS, and CSA Agentic AI Red Teaming Guide); OCSF DetectionFinding 2004 events emitted to SIEM / Langfuse / webhook
+- **SOC signals** — 58 DETECT rules evaluated per run (grounded in OWASP, MITRE ATLAS, and CSA Agentic AI Red Teaming Guide); OCSF DetectionFinding 2004 events emitted to SIEM / Langfuse / webhook
 - **Expert review** — 5-critic MoE panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster synthesis, on demand
 - **TA Brain** — self-growing knowledge graph that predicts findings for known topology patterns and drives smart routing
 - **TAclaw** — autonomous repo assessment: point at a Git URL or directory; adapters (TF / CF / OAI / Prose / MMD) convert it to a graph and run the full pipeline; usable via REST, MCP tool, or `ta analyze` CLI
@@ -48,7 +48,7 @@ flowchart TD
 
     subgraph Outputs
         rep_o["report/ directory"]
-        ocsf_o["OCSF DetectionFindings\n55 DETECT rules"]
+        ocsf_o["OCSF DetectionFindings\n58 DETECT rules"]
         brn_o["TA Brain\n(instance · pattern · meta)"]
     end
 
@@ -178,7 +178,7 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 **MCP transport** — stdio (default) has no network exposure. Network transport (`--transport sse` / `--transport streamable-http`) requires `TM_MCP_KEY`.
 
-**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before any LLM token is spent. 55 DETECT rules emit OCSF events for SOC consumption.
+**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before any LLM token is spent. 58 DETECT rules emit OCSF events for SOC consumption.
 
 ## Go deeper
 
@@ -186,7 +186,7 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 - [`CLAUDE.md`](CLAUDE.md) — full module map, harness concepts, all check commands
 - [`mcp_server/README.md`](mcp_server/README.md) — all 18 tools, 4-step test protocol, client integration snippets
 - [`taclaw/README.md`](taclaw/README.md) — TAclaw CLI: `ta analyze`, `ta gate`, `ta export`
-- [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 55 DETECT rules with OWASP/ATLAS/CSA ART/incident provenance
+- [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 58 DETECT rules with OWASP/ATLAS/CSA ART/incident provenance
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decision log (local only, gitignored)
 
 ## Build story
@@ -229,3 +229,4 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 | 32 | [Why Security Keeps Building Gyms](https://medium.com/@breadtan/why-security-keeps-building-gyms-93fca618b169) | Three-gym taxonomy: human gym (CyberGym), technique gym (ExploitGym), instrument gym (TAgym); almost every programme has the first, some have the second, almost none have the third — the one that tells you whether the other two are working |
 | 33 | [From Ideas to Instrument: What It Takes to Build a Trustworthy AI-Assisted Threat Modeling System](https://medium.com/@breadtan/from-ideas-to-instrument-what-it-takes-to-build-a-trustworthy-ai-assisted-threat-modeling-system-dd046387f945) | Twelve engineering bricks each discovered by its absence; ground truth as a continuously challenged assumption, not a delivered artefact; why the experienced analyst moves upstream rather than disappears |
 | 34 | [Forty-Eight Rules and the Thinking Behind Each of Them](https://medium.com/@breadtan/forty-eight-detect-rules-and-the-thinking-behind-each-of-them-d867f43f4fa4) | 48 DETECT rules across 10 domains, each with a backstory — the seedling metaphor, the adversarial chapter, how a gym creates the surface that makes the abuse domain necessary |
+| 35 | [Limit, Monitor, Stop, Recover: What It Actually Looks Like Inside the Pipeline](https://medium.com/@breadtan/limit-monitor-stop-recover-what-it-actually-looks-like-inside-the-pipeline-ca65a6b58653) | Three CSA ART adversarial scenarios (orchestrator state poisoning, temporal staged submission, checker-out-of-loop) walked through every LMSR layer; verdict-first analysis of where each layer works, where it does not, and which gaps are addressable |
