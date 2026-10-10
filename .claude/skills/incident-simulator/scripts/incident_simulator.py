@@ -1415,6 +1415,30 @@ def scenario_csa_goal_instruction_manipulation() -> Dict[str, Any]:
     return sig
 
 
+def scenario_csa_checker_out_of_loop() -> Dict[str, Any]:
+    """
+    DETECT-QC-012 (High) — CSA ART 4.2 checker-out-of-loop: no oversight path
+
+    Structural gate: an agentic architecture is submitted with external tool
+    access but no human or critic oversight node declared in the diagram.
+    The governance gate fires before any model runs. The architecture is
+    blocked at BouncerStage (Check 6) before AnalysisStage executes.
+
+    Representative architecture: a multi-step AI agent with tool-calling nodes
+    (external API, file system, database) but no critic layer, human review
+    gate, or approval node anywhere in the diagram. The checker is simply
+    absent from the design — not neutralised, just not there.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 9,
+        "is_agentic": True,
+        "no_oversight_path": True,
+    }
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-INJ-001 (Critical) + DETECT-QC-002 (Critical) — adversarial input + divergence suppression"),
@@ -1519,6 +1543,8 @@ SCENARIOS = {
         "DETECT-EXF-007 (High) + DETECT-SEC-001 (High) — CSA 4.1.2/4.1.7: agentic arch with 2 cross-boundary paths + direct credential access"),
     "csa_goal_instruction_manipulation":  (scenario_csa_goal_instruction_manipulation,
         "DETECT-INJ-001 (Critical) + DETECT-QC-009 (Critical) — CSA 4.4.3/4.4.7: CRITICAL injection + SM embeds constraint-evasion language"),
+    "csa_checker_out_of_loop":            (scenario_csa_checker_out_of_loop,
+        "DETECT-QC-012 (High) — CSA 4.2: agentic arch with tool access and no declared oversight path; structural gate blocks before model runs"),
 }
 
 EXPECTED_RULES = {
@@ -1575,6 +1601,7 @@ EXPECTED_RULES = {
     "csa_multi_agent_trust_bypass":         {"DETECT-AGT-001", "DETECT-INJ-006"},
     "csa_permission_escalation_boundary":   {"DETECT-EXF-007", "DETECT-SEC-001"},
     "csa_goal_instruction_manipulation":    {"DETECT-INJ-001", "DETECT-QC-009"},
+    "csa_checker_out_of_loop":              {"DETECT-QC-012"},
 }
 
 

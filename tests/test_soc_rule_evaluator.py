@@ -118,7 +118,7 @@ class TestYAMLLoading:
 
     def test_loads_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 55
+        assert len(ev) == 56
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()

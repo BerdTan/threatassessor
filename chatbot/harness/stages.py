@@ -515,6 +515,17 @@ class BouncerStage(PipelineStage):
             _emit(ctx, "stage_complete", "bouncer", {"blocked": True, "reason": reason})
             raise BlockedPipelineError(reason, ctx)
 
+        # ── Check 6: Agentic architecture with no declared oversight path ─────
+        # Structural gate for CSA ART 4.2 (checker-out-of-loop). Blocks when
+        # arch_metadata.no_oversight_path=True — set in governance._build_signals()
+        # when the arch is agentic and no human/critic oversight control was
+        # detected in the architecture diagram. Complement to DETECT-QC-012.
+        arch_meta = ctx.get("governance_signals", {}).get("arch_metadata", {})
+        if arch_meta.get("no_oversight_path") is True:
+            reason = "agentic_architecture_no_oversight_path"
+            _emit(ctx, "stage_complete", "bouncer", {"blocked": True, "reason": reason})
+            raise BlockedPipelineError(reason, ctx)
+
         _emit(ctx, "stage_complete", "bouncer", {"blocked": False})
         return ctx
 

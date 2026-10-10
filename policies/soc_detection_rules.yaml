@@ -52,12 +52,12 @@ metadata:
   product: "ThreatAssessor"
   last_updated: "2026-10-10"
   csa_art_version: "2025-08-26"
-  csa_art_coverage: "11/12 categories covered (4.3 physical/ICS systems partial, 4.2 checker-out-of-loop partial; 4.8 memory/context gap closed by ABU-007/QC-011)"
+  csa_art_coverage: "11/12 categories covered (4.3 physical/ICS systems partial; 4.2 checker-out-of-loop: structural gate blocks via QC-012; 4.8 memory/context gap closed by ABU-007/QC-011)"
 
 # Domain index — each rule carries a `domain:` tag for grouping and future renumbering.
 # Domains are intentionally coarse: a rule belongs to its primary attack surface.
 #
-#   QC  — Quality & Confidence Manipulation   (001,002,007,008,009,015,024,026,035,049,050)  11 rules
+#   QC  — Quality & Confidence Manipulation   (001,002,007,008,009,015,024,026,035,049,050,056)  12 rules
 #   INJ — Input Injection & Evasion           (005,010,017,018,019,027,029,033)               8 rules
 #   EXF — Exfiltration & Leakage              (004,009,011,013,023,025,EXF-007)               7 rules
 #   MCP — MCP & API Abuse                     (020,021,022,030,032,055)                       6 rules
@@ -71,7 +71,7 @@ metadata:
 #
 # CSA ART coverage summary (by category, as of v1.0):
 #   4.1 Authorization/Control  → DETECT-MCP-003, DETECT-EXF-002/007, DETECT-INJ-005/008, DETECT-SEC-001/002, DETECT-ABU-003
-#   4.2 Checker-Out-of-Loop    → DETECT-QC-004, DETECT-QC-006  (PARTIAL — no SM-unavailable rule)
+#   4.2 Checker-Out-of-Loop    → DETECT-QC-004, DETECT-QC-006, DETECT-QC-012  (structural gate + partial runtime coverage)
 #   4.3 Critical System        → DETECT-EXF-006, DETECT-PER-001  (PARTIAL — physical/ICS out of scope)
 #   4.4 Goal/Instruction Manip → DETECT-INJ-001/002/003/004/005/007/008, DETECT-QC-009, DETECT-EXF-001/003/004/005/006/007, DETECT-ABU-002/005
 #   4.5 Hallucination Exploit  → DETECT-QC-001/002/003/004/008/010, DETECT-RES-004
@@ -2915,6 +2915,62 @@ rules:
       expected to be near-zero once the hash-based detector is wired.
       Cross-reference DETECT-INJ-006 (downstream agent injection) as a common
       precursor.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-QC-012: Checker-Out-of-Loop — No Declared Oversight Path
+  #
+  # Agentic architecture with external tool access has no human or critic
+  # oversight node declared in the architecture diagram. Grounded in CSA ART §4.2.
+  #
+  # OWASP: A05  ATLAS: AML.TA0006  Kill chain: initial_access
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-QC-012
+    legacy_id: DETECT-056
+    name: checker_out_of_loop_no_oversight_path
+    domain: QC
+    description: |
+      An agentic architecture was submitted that has external tool access but
+      declares no human or critic oversight path. The architecture is structurally
+      vulnerable to checker-out-of-loop: an agent that routes around, neutralises,
+      or is never connected to an oversight mechanism can complete tasks without
+      any verification layer. This is a structural gate check that fires before
+      any model runs. Grounded in CSA ART §4.2 — checker-out-of-loop, the
+      subclass where the oversight mechanism is simply absent from the design.
+    incident_refs:
+      - csa-art-2025-4.2-checker-out-of-loop-no-oversight
+    owasp:
+      - A05
+    csa_art:
+      - "4.2"
+      - "4.2.1"
+    atlas_tactic: AML.TA0006
+    mitre_techniques:
+      - T1562
+      - T1036
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200438
+    severity: High
+    conditions:
+      - field: arch_metadata.no_oversight_path
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: block_run
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      Signal is set in governance._build_signals() when arch_metadata.is_agentic=True
+      and no human_oversight control is detected in controls_present. The detection
+      relies on CONTROL_KEYWORDS["human_oversight"] in control_detection.py; add
+      keywords there if new oversight node patterns emerge. False positives are
+      possible for agentic architectures that declare oversight outside the MMD
+      (e.g., in policy documents); in those cases, add an oversight node to the
+      diagram or the BouncerStage block should be overridden via agent_governance.yaml.
+      Cross-reference DETECT-QC-002 (critic divergence suppressed) and DETECT-QC-007
+      (critic consensus collapse) as runtime complements to this structural gate.
 
   # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-ABU-007: Temporal Attack — Staged Submission Sequence

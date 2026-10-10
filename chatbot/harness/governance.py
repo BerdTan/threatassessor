@@ -899,10 +899,15 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
         meta = ground_truth.get("metadata", {})
         arch_type = meta.get("architecture_type", "") or ""
         _AGENTIC_TYPES = {"ai_system", "agentic_system", "ai_agent", "llm_agent", "rag_system"}
+        is_agentic = arch_type.lower() in _AGENTIC_TYPES
+        _controls_lower = {c.lower() for c in ground_truth.get("controls_present", [])}
         sig.arch_metadata = {
             "architecture_type": arch_type,
             "node_count": meta.get("node_count", 0),
-            "is_agentic": arch_type.lower() in _AGENTIC_TYPES,
+            "is_agentic": is_agentic,
+            # True when agentic arch has no declared human/critic oversight path.
+            # Drives DETECT-QC-012 and BouncerStage Check 6.
+            "no_oversight_path": is_agentic and "human_oversight" not in _controls_lower,
         }
 
         sig.kill_chain_coverage = ["deterministic_layer", "llm_layer"]

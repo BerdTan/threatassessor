@@ -84,6 +84,13 @@ CONTROL_KEYWORDS = {
     "prompt filtering": ["prompt filter", "prompt injection filter", "input filter"],
     "output filtering": ["output filter", "content filter", "pii detection"],
     "model access control": ["model access control", "api key rotation", "token limit"],
+
+    # Agentic Oversight Controls
+    "human_oversight": [
+        "human oversight", "human review", "human approver", "human-in-the-loop",
+        "hitl", "critic layer", "approval gate", "review gate", "ai oversight",
+        "oversight node", "oversight layer",
+    ],
 }
 
 
