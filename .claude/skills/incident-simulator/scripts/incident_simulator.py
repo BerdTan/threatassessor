@@ -1415,6 +1415,31 @@ def scenario_csa_goal_instruction_manipulation() -> Dict[str, Any]:
     return sig
 
 
+def scenario_csa_context_drift() -> Dict[str, Any]:
+    """
+    DETECT-QC-014 (Medium) — CSA ART 4.8 context window pressure: oversized input
+
+    An agentic architecture diagram was submitted with an input MMD well above
+    the corpus median (~900 chars). At this size the model's context window is
+    partially occupied by the architecture description, leaving less budget for
+    system instructions — the intra-run variant of CSA 4.8 memory manipulation.
+
+    Representative scenario: a threat actor submits a legitimate-looking but
+    deliberately padded architecture (extra nodes, verbose edge labels, long
+    description comments) to crowd out the system prompt before the analysis runs.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 34,
+        "is_agentic": True,
+        "no_oversight_path": False,
+        "trace_missing": False,
+        "context_window_pressure": True,
+    }
+    return sig
+
+
 def scenario_csa_untraceability() -> Dict[str, Any]:
     """
     DETECT-QC-013 (High) — CSA ART 4.12 untraceability: no trace sink active
@@ -1573,6 +1598,8 @@ SCENARIOS = {
         "DETECT-QC-012 (High) — CSA 4.2: agentic arch with tool access and no declared oversight path; structural gate blocks before model runs"),
     "csa_untraceability":                 (scenario_csa_untraceability,
         "DETECT-QC-013 (High) — CSA 4.12: no active trace sink; forensic_capture actions cannot write; Recover is blind"),
+    "csa_context_drift":                  (scenario_csa_context_drift,
+        "DETECT-QC-014 (Medium) — CSA 4.8: oversized agentic MMD input exceeds context window pressure threshold"),
 }
 
 EXPECTED_RULES = {
@@ -1631,6 +1658,7 @@ EXPECTED_RULES = {
     "csa_goal_instruction_manipulation":    {"DETECT-INJ-001", "DETECT-QC-009"},
     "csa_checker_out_of_loop":              {"DETECT-QC-012"},
     "csa_untraceability":                   {"DETECT-QC-013"},
+    "csa_context_drift":                    {"DETECT-QC-014"},
 }
 
 

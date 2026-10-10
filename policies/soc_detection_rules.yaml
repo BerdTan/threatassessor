@@ -52,12 +52,12 @@ metadata:
   product: "ThreatAssessor"
   last_updated: "2026-10-10"
   csa_art_version: "2025-08-26"
-  csa_art_coverage: "11/12 categories covered (4.3 physical/ICS systems partial; 4.2 checker-out-of-loop: structural gate blocks via QC-012; 4.8 memory/context gap closed by ABU-007/QC-011; 4.12 untraceability: no-sink detection via QC-013)"
+  csa_art_coverage: "11/12 categories covered (4.3 physical/ICS systems partial; 4.2: structural gate QC-012; 4.8: inter-run ABU-007/QC-011 + intra-run QC-014 context-window pressure; 4.12: no-sink QC-013)"
 
 # Domain index — each rule carries a `domain:` tag for grouping and future renumbering.
 # Domains are intentionally coarse: a rule belongs to its primary attack surface.
 #
-#   QC  — Quality & Confidence Manipulation   (001,002,007,008,009,015,024,026,035,049,050,056,057)  13 rules
+#   QC  — Quality & Confidence Manipulation   (001,002,007,008,009,015,024,026,035,049,050,056,057,058)  14 rules
 #   INJ — Input Injection & Evasion           (005,010,017,018,019,027,029,033)               8 rules
 #   EXF — Exfiltration & Leakage              (004,009,011,013,023,025,EXF-007)               7 rules
 #   MCP — MCP & API Abuse                     (020,021,022,030,032,055)                       6 rules
@@ -77,7 +77,7 @@ metadata:
 #   4.5 Hallucination Exploit  → DETECT-QC-001/002/003/004/008/010, DETECT-RES-004
 #   4.6 Impact/Blast Radius    → DETECT-EXF-001/004/005/007, DETECT-RES-002, DETECT-PER-001, DETECT-MCP-001
 #   4.7 Knowledge Base Poison  → DETECT-SCT-002/003/005/006, DETECT-RES-003, DETECT-ABU-006/008
-#   4.8 Memory/Context Manip   → DETECT-ABU-007 (staged temporal), DETECT-QC-011 (orchestrator state)
+#   4.8 Memory/Context Manip   → DETECT-ABU-007 (staged temporal), DETECT-QC-011 (orchestrator state), DETECT-QC-014 (context window pressure)
 #   4.9 Orchestration/Multi-Ag → DETECT-INJ-006/007, DETECT-QC-005/007/011, DETECT-SEC-002, DETECT-AGT-001/003, DETECT-ABU-004
 #   4.10 Resource Exhaustion   → DETECT-RES-001/002, DETECT-MCP-002/005/006
 #   4.11 Supply Chain          → DETECT-SCT-001/002/003/004/005, DETECT-INJ-002/003/004
@@ -3024,6 +3024,63 @@ rules:
       active sink; if this rule fires, the forensic_capture actions on any other
       triggered rules were not written. Cross-reference DETECT-QC-008 (deceptive
       completion reporting) for the output-side of the untraceability gap.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-QC-014: Context Window Pressure — Oversized Agentic Input
+  #
+  # An agentic architecture diagram is anomalously large, consistent with a
+  # context-filling attack. Grounded in CSA ART §4.8 — memory/context manipulation.
+  #
+  # OWASP: A04  ATLAS: AML.TA0001  Kill chain: initial_access
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-QC-014
+    legacy_id: DETECT-058
+    name: context_window_pressure_oversized_input
+    domain: QC
+    description: |
+      An agentic architecture diagram was submitted with an input MMD significantly
+      larger than typical architectures. Oversized inputs may be crafted to fill the
+      model's context window, pushing system instructions or safety constraints out
+      of the effective context and causing the model to operate with degraded
+      instruction adherence. This is the intra-run variant of CSA ART §4.8 memory
+      and context manipulation: not a staged multi-submission attack, but a
+      single-shot context-flooding submission. Corpus median is approximately 900
+      characters; any input above 6000 characters is 2× the largest legitimate
+      architecture observed and warrants inspection. Grounded in CSA ART §4.8.3 —
+      context window manipulation through crafted input volume.
+    incident_refs:
+      - csa-art-2025-4.8.3-context-window-pressure
+    owasp:
+      - A04
+    csa_art:
+      - "4.8"
+      - "4.8.3"
+    atlas_tactic: AML.TA0001
+    mitre_techniques:
+      - T1036
+      - T1027
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200440
+    severity: Medium
+    conditions:
+      - field: arch_metadata.context_window_pressure
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+    tuning_note: |
+      Signal is set in QualityStage when _raw_mmd_content length exceeds 6000 chars
+      AND arch_metadata.is_agentic=True. The threshold is calibrated against the test
+      corpus (median 900 chars, max 2833 chars); adjust _MMD_DRIFT_THRESHOLD in
+      stages.py if production architectures legitimately exceed 6000 chars. Non-agentic
+      architectures are excluded — context-window pressure attacks are only meaningful
+      when the model is acting as an agent with persistent state. Cross-reference
+      DETECT-QC-011 (orchestrator state poisoning) for the adversarial intra-run
+      counterpart, and DETECT-ABU-007 (temporal staged submission) for the inter-run
+      variant of CSA 4.8 attacks.
 
   # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-ABU-007: Temporal Attack — Staged Submission Sequence

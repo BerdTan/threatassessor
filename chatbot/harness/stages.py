@@ -590,6 +590,19 @@ class QualityStage(PipelineStage):
             _has_sinks = _broker is not None and getattr(_broker, "_enabled", False)
             _arch_meta = dict(merged.arch_metadata)
             _arch_meta["trace_missing"] = not _has_sinks
+
+            # ── CSA ART 4.8 memory/context drift — context window pressure ───
+            # An agentic architecture with an unusually large input MMD may be
+            # crafted to fill the context window and crowd out system instructions.
+            # Corpus median ~900 chars, max observed ~3000 chars; 6000 chars is
+            # 2× the largest legitimate input seen. DETECT-QC-014 reads this.
+            _MMD_DRIFT_THRESHOLD = 6000
+            _mmd_len = len(ctx.get("_raw_mmd_content", ""))
+            _arch_meta["context_window_pressure"] = (
+                _arch_meta.get("is_agentic", False)
+                and _mmd_len > _MMD_DRIFT_THRESHOLD
+            )
+
             merged.arch_metadata = _arch_meta
 
             ctx["governance_signals"] = merged.to_dict()
