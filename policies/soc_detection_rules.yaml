@@ -20,6 +20,8 @@
 #   forensic_capture — export full OCSF event stream for incident response
 #   page_soc         — emit high-priority alert (conditional on severity tier)
 #   block_run        — hard stop: abort pipeline, do not emit analysis output
+#   block_deployment — SOC label: flag architecture as unsafe to deploy (no pipeline gate)
+#   flag_for_review  — SOC label: route finding to human review queue (no pipeline gate)
 #
 # Severity tiers: Informational | Low | Medium | High | Critical
 # Kill chain stages (MITRE ATLAS-aligned):
@@ -2399,6 +2401,7 @@ rules:
     mitre_techniques: [T1606, T1606.001, T1528, T1550.001, T1199]
     owasp: [A07]
     csa_art: ["4.1.2", "4.9.8"]
+    atlas_tactic: AML.TA0006
     kill_chain_stage: credential_access
     ocsf_class: 2004
     ocsf_type_uid: 200407
