@@ -39,6 +39,14 @@ PRIORITY_STEPS = [
     (7,  35, "P35-C Opaque reasoning sub-check in DETECT-QC-009", "chatbot/harness/stages.py",       None),
     (8,  35, "P35-B TATB AI Control Maturity sub-dim",  "chatbot/modules/ta_brain_benchmarks.py",    None),
     (9,  35, "P35-A Per-action MCP Jev noul gate",      "mcp_server/server.py",                       3),
+    # Priority 37 — TA Perspective v2 (DirectorCaster + kill chain canvas; DECISIONS 211–212)
+    (11, 37, "GroupCampaignMatcher + STIX cache",              "chatbot/modules/group_campaign_matcher.py",  None),
+    (12, 37, "Hook into ground_truth Phase 3B",                "chatbot/modules/ground_truth_generator.py",  11),
+    (13, 37, "DirectorCaster (ScenarioManifest+Bounds+Pacing)","chatbot/modules/director_caster.py",         12),
+    (14, 37, "PerspectiveRunner + build_step_signals(bounds)", "chatbot/modules/perspective_runner.py",      13),
+    (15, 37, "SSE route + GET /perspective/scenarios/{arch}",  "chatbot/api/routes/perspective.py",          14),
+    (16, 37, "Kill chain canvas (D3 layered graph + agents)",  "chatbot/api/static/js/dashboard.js",         15),
+    (17, 37, "Storycaster scene_setting addition (optional)",  "chatbot/modules/agents/storycaster.py",       16),
     # Freestanding
     (10, 0,  "skill-evolve skill",                      ".claude/skills/skill-evolve/",              None),
 ]
