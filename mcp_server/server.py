@@ -5,9 +5,12 @@ Exposes ThreatAssessor capabilities to Claude Desktop and external agents
 via the Model Context Protocol (stdio transport).
 
 Security gates (in call order, all additive):
-  1. _mcp_content_trust_check — injection/governance pre-flight for analyze/modify tier
-  2. _validate_taclaw_target  — path traversal + URL safety for run_taclaw
-  3. _mcp_jev_gate            — per-action Jev noul gate for _HIGH_RISK_TOOLS (P35-A)
+  1. _mcp_content_trust_check  — injection/governance pre-flight for analyze/modify tier
+  2. _validate_taclaw_target   — path traversal + URL safety for run_taclaw
+  3. _mcp_behavioral_gate      — behavioral signals: probe_pattern / path_enum_velocity /
+                                  caller_fingerprint_drift (session-level, not gameable)
+  4. _mcp_jev_gate             — Jev noul semantic consistency check (P35-A)
+                                  catches confused agents; behavioral gate catches adversarial ones
 
 18 tools:
   1.  analyze_architecture      — submit MMD, get full threat model
@@ -149,12 +152,56 @@ def _validate_taclaw_target(target: str, target_type: str) -> str | None:
     return None
 
 
-def _mcp_jev_gate(tool_name: str, arch_name: str, operation_summary: str = "") -> str | None:
-    """Per-action Jev noul gate for high-risk MCP tool invocations (Beyond Zero P35-A).
+def _mcp_behavioral_gate(tool_name: str) -> str | None:
+    """Layer 1: behavioral signal gate using MCPAccessLogger session data.
 
-    Returns an error string if the invocation looks anomalous (noul < _JEV_GATE_THRESHOLD),
-    else None (allow). Fails open on any error: disabled Jev, circuit open, or API failure
-    all produce None so the invocation proceeds. Additive — can only deny, never bypass.
+    Checks three behavioral anomaly signals computed from the rolling call window:
+      probe_pattern           — same arch queried >3× / 1 hr (enumeration pattern)
+      path_enum_velocity      — enrich/attack-path queries >10/min / arch
+      caller_fingerprint_drift — tool-call grammar shift mid-session (identity change)
+
+    These are session-behavioral, not semantic, and not gameable by crafting a
+    legitimate-looking tool name or operation summary. Always runs before the Jev
+    semantic check; fails open on any error. Returns error string if any signal fires,
+    else None.
+    """
+    if tool_name not in _HIGH_RISK_TOOLS:
+        return None
+    try:
+        sigs = _access_log.get_signals()
+        if sigs.get("probe_pattern"):
+            arch = sigs.get("probe_pattern_arch", "")
+            return (
+                f"MCP behavioral gate: probe_pattern detected "
+                f"(arch={arch!r}, repeated high-frequency queries). "
+                f"Tool '{tool_name}' denied. Rotate session or reduce query rate."
+            )
+        if sigs.get("path_enum_velocity"):
+            rate = sigs.get("path_enum_rate", 0.0)
+            return (
+                f"MCP behavioral gate: path_enum_velocity detected "
+                f"(rate={rate:.1f}/min). "
+                f"Tool '{tool_name}' denied. Query rate exceeds enumeration threshold."
+            )
+        if sigs.get("caller_fingerprint_drift"):
+            return (
+                f"MCP behavioral gate: caller_fingerprint_drift detected — "
+                "tool-call sequence grammar shifted mid-session, indicating possible "
+                f"identity or context change. Tool '{tool_name}' denied."
+            )
+    except Exception:
+        pass
+    return None
+
+
+def _mcp_jev_gate(tool_name: str, arch_name: str, operation_summary: str = "") -> str | None:
+    """Layer 2: per-action Jev noul semantic consistency check (Beyond Zero P35-A).
+
+    Catches confused agents (semantic anomalies) rather than adversarial callers —
+    the behavioral gate (_mcp_behavioral_gate) handles adversarial patterns.
+    Returns an error string if noul < _JEV_GATE_THRESHOLD, else None.
+    Fails open: Jev disabled, circuit open, or API failure → None (allow).
+    Additive — can only deny, never bypass.
 
     Only called for tools in _HIGH_RISK_TOOLS.
     """
@@ -188,7 +235,7 @@ def _mcp_jev_gate(tool_name: str, arch_name: str, operation_summary: str = "") -
         _noul = float(_answers.get("invocation_authorized", {}).get("noul", 1.0))
         if _noul < _JEV_GATE_THRESHOLD:
             return (
-                f"MCP Jev authorization gate: invocation_authorized noul={_noul:.3f} "
+                f"MCP Jev consistency gate: invocation_authorized noul={_noul:.3f} "
                 f"< threshold {_JEV_GATE_THRESHOLD} for tool '{tool_name}'. "
                 "Tool call denied. If this is a false positive, check JEV_ENABLED and "
                 "review the operation context."
@@ -234,6 +281,9 @@ def analyze_architecture(
     if _err := _mcp_content_trust_check("analyze_architecture", mmd_content):
         _access_log.record_tool_call("analyze_architecture", success=False)
         return json.dumps({"error": _err})
+    if _err := _mcp_behavioral_gate("analyze_architecture"):
+        _access_log.record_tool_call("analyze_architecture", success=False)
+        return json.dumps({"error": _err})
     if _err := _mcp_jev_gate("analyze_architecture", "", f"ssp_profile={ssp_profile}"):
         _access_log.record_tool_call("analyze_architecture", success=False)
         return json.dumps({"error": _err})
@@ -269,6 +319,9 @@ def run_expert_review(
     Returns:
         JSON with job_id, status ('queued'), arch_name, critic_mode.
     """
+    if _err := _mcp_behavioral_gate("run_expert_review"):
+        _access_log.record_tool_call("run_expert_review", arch_name=arch_name, success=False)
+        return json.dumps({"error": _err})
     if _err := _mcp_jev_gate("run_expert_review", arch_name, f"critic_mode={critic_mode}"):
         _access_log.record_tool_call("run_expert_review", arch_name=arch_name, success=False)
         return json.dumps({"error": _err})
@@ -556,6 +609,9 @@ def export_assessment(arch_name: str, save: bool = False) -> str:
     Returns:
         JSON export bundle (ta-export/1.0).
     """
+    if _err := _mcp_behavioral_gate("export_assessment"):
+        _access_log.record_tool_call("export_assessment", arch_name=arch_name, success=False)
+        return json.dumps({"error": _err})
     if _err := _mcp_jev_gate("export_assessment", arch_name, f"save={save}"):
         _access_log.record_tool_call("export_assessment", arch_name=arch_name, success=False)
         return json.dumps({"error": _err})
@@ -704,6 +760,9 @@ def record_brain_feedback(
     Returns:
         JSON with recorded, cache_updated, feedback, topology_sig, ts.
     """
+    if _err := _mcp_behavioral_gate("record_brain_feedback"):
+        _access_log.record_tool_call("record_brain_feedback", success=False)
+        return json.dumps({"error": _err})
     if _err := _mcp_jev_gate("record_brain_feedback", arch_name or topology_signature,
                               f"feedback={feedback} mode={mode}"):
         _access_log.record_tool_call("record_brain_feedback", success=False)
@@ -753,6 +812,9 @@ def generate_synthetic_architectures(
     Returns:
         JSON with staged generation results and queue summary.
     """
+    if _err := _mcp_behavioral_gate("generate_synthetic_architectures"):
+        _access_log.record_tool_call("generate_synthetic_architectures", success=False)
+        return json.dumps({"error": _err})
     if _err := _mcp_jev_gate("generate_synthetic_architectures", "",
                               f"gap_ids={gap_ids} max_per_run={max_per_run}"):
         _access_log.record_tool_call("generate_synthetic_architectures", success=False)
@@ -856,6 +918,9 @@ def run_taclaw(
         status = get_job_status(job["job_id"], wait_for_completion=True)
     """
     if _err := _validate_taclaw_target(target, target_type):
+        _access_log.record_tool_call("run_taclaw", success=False)
+        return json.dumps({"error": _err})
+    if _err := _mcp_behavioral_gate("run_taclaw"):
         _access_log.record_tool_call("run_taclaw", success=False)
         return json.dumps({"error": _err})
     if _err := _mcp_jev_gate("run_taclaw", arch_name or target,

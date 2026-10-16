@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -30,6 +31,36 @@ from chatbot.config import get_settings
 _log = logging.getLogger(__name__)
 
 _POLICY_PATH = Path(__file__).resolve().parents[2] / "policies" / "model_routing.yaml"
+
+# Append-only calibration log: each Jev cold-start routing decision is recorded here
+# so the eventual Brier score (written by ta_brain_benchmarks) can be joined against it.
+# Format per line: {arch_name, jev_mode, jev_conf, fallback_mode, ts}
+def _jev_calibration_path() -> Path:
+    try:
+        rd = get_settings().system.report_dir
+        base = Path(rd) if Path(rd).is_absolute() else Path(__file__).resolve().parents[2] / rd
+    except Exception:
+        base = Path(__file__).resolve().parents[2] / "report"
+    return base / "brain" / "jev_routing_calibration.jsonl"
+
+
+def _record_jev_routing(arch_name: str, jev_mode: str, jev_conf: float,
+                         fallback_mode: str) -> None:
+    """Append a Jev cold-start routing decision to the calibration log. Never raises."""
+    try:
+        path = _jev_calibration_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "arch_name": arch_name,
+            "jev_mode": jev_mode,
+            "jev_conf": round(jev_conf, 4),
+            "fallback_mode": fallback_mode,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        with path.open("a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as exc:
+        _log.debug("_record_jev_routing: could not write calibration log: %s", exc)
 
 
 @dataclass
@@ -180,6 +211,7 @@ def select_mode(
                 _jev_conf = float(_answers.get("routing_mode", {}).get("confidence", 0.0))
                 if _jev_mode in ("brain_fast", "api_only", "full_moe") and _jev_conf >= 0.85:
                     _alias, _mid = _select_model(_jev_mode, "", policy)
+                    _record_jev_routing(arch_name, _jev_mode, _jev_conf, default_no_data)
                     return RoutingDecision(
                         mode=_jev_mode,
                         rationale=f"Jev cold-start choice={_jev_mode} conf={_jev_conf:.2f} (no boxing data)",

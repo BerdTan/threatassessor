@@ -1,5 +1,11 @@
 """
-Tests for _mcp_jev_gate — per-action Jev noul gate in mcp_server/server.py.
+Tests for _mcp_behavioral_gate and _mcp_jev_gate in mcp_server/server.py.
+
+_mcp_behavioral_gate: Layer 1 — session behavioral signals (probe_pattern,
+  path_enum_velocity, caller_fingerprint_drift). Not semantic; not gameable.
+
+_mcp_jev_gate: Layer 2 — Jev noul semantic consistency check. Catches
+  confused agents; behavioral gate catches adversarial ones.
 
 The mcp package is not installed in the test environment, so server.py is
 imported with a lightweight stub for mcp.server.fastmcp.
@@ -42,6 +48,8 @@ def _stub_mcp():
     class FakeLog:
         def record_tool_call(self, *a, **k):
             pass
+        def get_signals(self):
+            return {}
 
     al_mod.get_access_logger = lambda: FakeLog()
     sys.modules["mcp_server.job_client"] = jc
@@ -51,6 +59,9 @@ def _stub_mcp():
 _stub_mcp()
 
 from mcp_server import server  # noqa: E402
+
+# Import the behavioral gate too
+_mcp_behavioral_gate = server._mcp_behavioral_gate
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +77,56 @@ def reset_jev_circuit():
     except Exception:
         pass
     yield
+
+
+# ---------------------------------------------------------------------------
+# _mcp_behavioral_gate
+# ---------------------------------------------------------------------------
+
+def test_behavioral_gate_allows_read_tier():
+    assert _mcp_behavioral_gate("list_architectures") is None
+
+
+def test_behavioral_gate_allows_clean_session():
+    with patch.object(server._access_log, "get_signals", return_value={}):
+        assert _mcp_behavioral_gate("analyze_architecture") is None
+
+
+def test_behavioral_gate_denies_on_probe_pattern():
+    sigs = {"probe_pattern": True, "probe_pattern_arch": "target_arch"}
+    with patch.object(server._access_log, "get_signals", return_value=sigs):
+        result = _mcp_behavioral_gate("analyze_architecture")
+    assert result is not None
+    assert "probe_pattern" in result
+    assert "analyze_architecture" in result
+
+
+def test_behavioral_gate_denies_on_path_enum_velocity():
+    sigs = {"path_enum_velocity": True, "path_enum_rate": 15.0}
+    with patch.object(server._access_log, "get_signals", return_value=sigs):
+        result = _mcp_behavioral_gate("export_assessment")
+    assert result is not None
+    assert "path_enum_velocity" in result
+
+
+def test_behavioral_gate_denies_on_fingerprint_drift():
+    sigs = {"caller_fingerprint_drift": True}
+    with patch.object(server._access_log, "get_signals", return_value=sigs):
+        result = _mcp_behavioral_gate("run_taclaw")
+    assert result is not None
+    assert "fingerprint_drift" in result
+
+
+def test_behavioral_gate_fails_open_on_exception():
+    with patch.object(server._access_log, "get_signals", side_effect=RuntimeError("down")):
+        assert _mcp_behavioral_gate("analyze_architecture") is None
+
+
+def test_behavioral_gate_denies_all_high_risk_tools_on_probe():
+    sigs = {"probe_pattern": True, "probe_pattern_arch": "x"}
+    with patch.object(server._access_log, "get_signals", return_value=sigs):
+        for tool in server._HIGH_RISK_TOOLS:
+            assert _mcp_behavioral_gate(tool) is not None, f"Expected deny for {tool}"
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +203,7 @@ def test_gate_denies_when_noul_below_threshold():
     with patch("chatbot.modules.jev_client.get_jev_client", return_value=mock_jev):
         result = server._mcp_jev_gate("run_expert_review", "arch", "mode=parallel")
     assert result is not None
-    assert "authorization gate" in result
+    assert "consistency gate" in result
     assert "run_expert_review" in result
     assert "0.05" in result or "0.050" in result
 

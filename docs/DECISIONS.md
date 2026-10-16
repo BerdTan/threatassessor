@@ -26,6 +26,22 @@ Each sub-dimension: 25 if present, 0 if in controls_missing, 12.5 if unmentioned
 
 ---
 
+### Entry 216 — MCP gate behavioral layer + Jev routing calibration log
+
+**Decision:** Two enhancements derived from the P36 blog diagnosis ("System 1 in a System 2 Pipeline"):
+
+**1. MCP behavioral gate (Layer 1)**
+Added `_mcp_behavioral_gate()` to `mcp_server/server.py` — runs before the Jev semantic check. Reads `MCPAccessLogger.get_signals()` and blocks on three behavioral anomaly signals: `probe_pattern`, `path_enum_velocity`, `caller_fingerprint_drift`. These are session-behavioral, not semantic, and not gameable by crafting a legitimate-looking tool call. Call order in each high-risk tool: content trust → behavioral gate → Jev gate → API call.
+
+**Rationale:** The original Jev noul gate catches confused agents (semantic anomalies), not adversarial callers. Behavioral signals are the right layer for security; semantic signals are the right layer for routing. Splitting them into two explicit layers makes the distinction clear and independently testable.
+
+**2. Jev routing calibration log**
+Added `_record_jev_routing()` to `smart_router.py`. When Jev makes a cold-start routing decision (conf ≥ 0.85), appends `{arch_name, jev_mode, jev_conf, fallback_mode, ts}` to `report/brain/jev_routing_calibration.jsonl`. The fallback_mode field records what the default would have been without Jev, so the eventual Brier score can be joined against it to measure whether Jev's routing is actually calibrated. Answers the gap: "we're flying on semantic intuition without landing data."
+
+**Alternatives rejected:** Replacing Jev gate with behavioral gate entirely — behavioral signals are session-level (require history), Jev is per-call. They test different things. Both layers are needed.
+
+---
+
 ### Entry 215 — Per-action MCP Jev noul gate (P35-A)
 
 **Decision:** Added `_mcp_jev_gate()` to `mcp_server/server.py` — a per-invocation Jev noul authorization gate for the 6 high-risk MCP tools (analyze/modify tier). Gate is additive (can only deny, never bypass other checks) and fails open (Jev disabled, circuit open, or API error → allow).
