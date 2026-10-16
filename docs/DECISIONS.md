@@ -26,6 +26,22 @@ Each sub-dimension: 25 if present, 0 if in controls_missing, 12.5 if unmentioned
 
 ---
 
+### Entry 215 — Per-action MCP Jev noul gate (P35-A)
+
+**Decision:** Added `_mcp_jev_gate()` to `mcp_server/server.py` — a per-invocation Jev noul authorization gate for the 6 high-risk MCP tools (analyze/modify tier). Gate is additive (can only deny, never bypass other checks) and fails open (Jev disabled, circuit open, or API error → allow).
+
+**High-risk tools gated:** `analyze_architecture`, `run_expert_review`, `export_assessment`, `record_brain_feedback`, `generate_synthetic_architectures`, `run_taclaw`.
+
+**Gate mechanics:** reads `_HIGH_RISK_TOOLS` frozenset; builds state `{tool_name, arch_name, operation_summary, risk_tier}`; asks one noul question ("Is this invocation consistent with authorized threat assessment operations?"); blocks when `noul < 0.10` (mirrors policy_broker's 0.15 pattern but tighter for an allow/deny gate). Default on empty answer: 1.0 (allow).
+
+**Call order in each tool:** content trust check → Jev gate → API call. Gate placed after content trust check because injection-blocked calls are cheaply rejected without a Jev round-trip.
+
+**Threshold rationale:** 0.10 (not 0.15): this gate stops execution, not just routing. The extra conservatism reduces false positives — a 0.05 difference in threshold that would have blocked a legitimate call is a worse outcome than missing a compromised call that passes 0.10 but not 0.15. read tier tools are excluded; they carry no write or egress risk.
+
+**Alternatives rejected:** Blocking at 0.15 — too aggressive; 0.15 is the policy_broker threshold for skipping a critic, not for blocking execution. Per-parameter Jev enrichment (separate noul per arch_name) — adds round-trips without commensurate signal; the tool+context question covers it.
+
+---
+
 ### Entry 213 — DETECT-QC-009: opaque reasoning sub-check added (P35-C)
 
 **Decision:** Extended DETECT-QC-009 with a second signal: `sm_opaque_reasoning`. Rule now fires on either signal (`combine: any`). Rule renamed from `sm_constraint_evasion_language` → `sm_endogenous_evasion` to reflect the broader scope.

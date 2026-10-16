@@ -4,6 +4,11 @@ ThreatAssessor MCP Server
 Exposes ThreatAssessor capabilities to Claude Desktop and external agents
 via the Model Context Protocol (stdio transport).
 
+Security gates (in call order, all additive):
+  1. _mcp_content_trust_check — injection/governance pre-flight for analyze/modify tier
+  2. _validate_taclaw_target  — path traversal + URL safety for run_taclaw
+  3. _mcp_jev_gate            — per-action Jev noul gate for _HIGH_RISK_TOOLS (P35-A)
+
 18 tools:
   1.  analyze_architecture      — submit MMD, get full threat model
   2.  run_expert_review         — queue FULL_MOE, return job_id
@@ -79,6 +84,23 @@ _TOOL_RISK: dict[str, str] = {
     "run_taclaw":                      "analyze",
 }
 
+# Tools that receive a per-invocation Jev noul gate (Beyond Zero per-action authorization).
+# These are the analyze/modify tier tools where a compromised caller with a valid key
+# could trigger pipeline runs, data egress, or brain writes. The gate is additive —
+# it can only deny; it never bypasses other checks.
+_HIGH_RISK_TOOLS: frozenset[str] = frozenset({
+    "analyze_architecture",       # triggers full pipeline run
+    "run_expert_review",          # triggers expensive MoE review
+    "export_assessment",          # full TA bundle data egress
+    "record_brain_feedback",      # writes to brain confidence
+    "generate_synthetic_architectures",  # writes synthetic MMDs to brain
+    "run_taclaw",                 # autonomous repo crawl + analysis
+})
+
+# Block when noul < threshold. Set conservatively (< 0.10) to minimise false positives —
+# mirrors policy_broker's 0.15 pattern but tighter given the block-vs-allow semantics here.
+_JEV_GATE_THRESHOLD: float = 0.10
+
 
 def _mcp_content_trust_check(tool_name: str, mmd_content: str) -> str | None:
     """Return an error string if mmd_content fails the pre-flight injection check, else None.
@@ -127,6 +149,55 @@ def _validate_taclaw_target(target: str, target_type: str) -> str | None:
     return None
 
 
+def _mcp_jev_gate(tool_name: str, arch_name: str, operation_summary: str = "") -> str | None:
+    """Per-action Jev noul gate for high-risk MCP tool invocations (Beyond Zero P35-A).
+
+    Returns an error string if the invocation looks anomalous (noul < _JEV_GATE_THRESHOLD),
+    else None (allow). Fails open on any error: disabled Jev, circuit open, or API failure
+    all produce None so the invocation proceeds. Additive — can only deny, never bypass.
+
+    Only called for tools in _HIGH_RISK_TOOLS.
+    """
+    if tool_name not in _HIGH_RISK_TOOLS:
+        return None
+    try:
+        from chatbot.modules.jev_client import get_jev_client as _get_jev  # noqa: PLC0415
+        _jev = _get_jev()
+        if not _jev.is_enabled():
+            return None
+        _answers = _jev.ask(
+            state={
+                "tool_name": tool_name,
+                "arch_name": arch_name or "unknown",
+                "operation_summary": operation_summary[:400] if operation_summary else "",
+                "risk_tier": _TOOL_RISK.get(tool_name, "read"),
+            },
+            questions={
+                "invocation_authorized": {
+                    "type": "noul",
+                    "instructions": (
+                        f"Is this MCP tool invocation ({tool_name}) consistent with legitimate, "
+                        "authorized threat assessment operations? "
+                        "Score high (1.0) for normal security analysis work. "
+                        "Score low (0.0) if the target, payload, or operation pattern looks "
+                        "anomalous, out-of-scope, or inconsistent with a trusted security tool caller."
+                    ),
+                },
+            },
+        )
+        _noul = float(_answers.get("invocation_authorized", {}).get("noul", 1.0))
+        if _noul < _JEV_GATE_THRESHOLD:
+            return (
+                f"MCP Jev authorization gate: invocation_authorized noul={_noul:.3f} "
+                f"< threshold {_JEV_GATE_THRESHOLD} for tool '{tool_name}'. "
+                "Tool call denied. If this is a false positive, check JEV_ENABLED and "
+                "review the operation context."
+            )
+    except Exception:
+        pass
+    return None
+
+
 mcp = FastMCP(
     name="threatassessor",
     instructions=(
@@ -163,6 +234,9 @@ def analyze_architecture(
     if _err := _mcp_content_trust_check("analyze_architecture", mmd_content):
         _access_log.record_tool_call("analyze_architecture", success=False)
         return json.dumps({"error": _err})
+    if _err := _mcp_jev_gate("analyze_architecture", "", f"ssp_profile={ssp_profile}"):
+        _access_log.record_tool_call("analyze_architecture", success=False)
+        return json.dumps({"error": _err})
     try:
         result = api.analyze_architecture(mmd_content, ssp_profile)
         _access_log.record_tool_call("analyze_architecture")
@@ -195,6 +269,9 @@ def run_expert_review(
     Returns:
         JSON with job_id, status ('queued'), arch_name, critic_mode.
     """
+    if _err := _mcp_jev_gate("run_expert_review", arch_name, f"critic_mode={critic_mode}"):
+        _access_log.record_tool_call("run_expert_review", arch_name=arch_name, success=False)
+        return json.dumps({"error": _err})
     try:
         result = api.submit_expert_review(arch_name, critic_mode)
         _access_log.record_tool_call("run_expert_review", arch_name=arch_name)
@@ -479,6 +556,9 @@ def export_assessment(arch_name: str, save: bool = False) -> str:
     Returns:
         JSON export bundle (ta-export/1.0).
     """
+    if _err := _mcp_jev_gate("export_assessment", arch_name, f"save={save}"):
+        _access_log.record_tool_call("export_assessment", arch_name=arch_name, success=False)
+        return json.dumps({"error": _err})
     try:
         result = api.export_assessment(arch_name, save=save)
         _access_log.record_tool_call("export_assessment", arch_name=arch_name)
@@ -624,6 +704,10 @@ def record_brain_feedback(
     Returns:
         JSON with recorded, cache_updated, feedback, topology_sig, ts.
     """
+    if _err := _mcp_jev_gate("record_brain_feedback", arch_name or topology_signature,
+                              f"feedback={feedback} mode={mode}"):
+        _access_log.record_tool_call("record_brain_feedback", success=False)
+        return json.dumps({"error": _err})
     try:
         result = api.record_brain_feedback(
             feedback=feedback,
@@ -669,6 +753,10 @@ def generate_synthetic_architectures(
     Returns:
         JSON with staged generation results and queue summary.
     """
+    if _err := _mcp_jev_gate("generate_synthetic_architectures", "",
+                              f"gap_ids={gap_ids} max_per_run={max_per_run}"):
+        _access_log.record_tool_call("generate_synthetic_architectures", success=False)
+        return json.dumps({"error": _err})
     try:
         parsed_ids = [g.strip() for g in gap_ids.split(",") if g.strip()] if gap_ids else []
         result = api.generate_synthetic_architectures(
@@ -768,6 +856,10 @@ def run_taclaw(
         status = get_job_status(job["job_id"], wait_for_completion=True)
     """
     if _err := _validate_taclaw_target(target, target_type):
+        _access_log.record_tool_call("run_taclaw", success=False)
+        return json.dumps({"error": _err})
+    if _err := _mcp_jev_gate("run_taclaw", arch_name or target,
+                              f"target_type={target_type} ssp_profile={ssp_profile}"):
         _access_log.record_tool_call("run_taclaw", success=False)
         return json.dumps({"error": _err})
     try:
