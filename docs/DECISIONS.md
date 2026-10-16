@@ -6,6 +6,26 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 108 — 2026-10-16
 
+### Entry 214 — TATB AI-Control-Mature sub-dimension (P35-B)
+
+**Decision:** Added an 8th TATB scoring dimension — `ai_control_maturity` — to `taco_benchmark.py`. Returns `None` for non-agentic architectures (excluded from weighted overall); scores 0–100 for agentic archs (`ai_system`, `agentic_system`, `ai_agent`, `llm_agent`, `rag_system`).
+
+**Four sub-dimensions × 25 pts each (pure text match, no LLM):**
+- **Sandboxing** — `controls_present` contains sandbox/isolation/container/vm isolation
+- **Reasoning Auditability** — audit log/trace/logging/explainability/observability present
+- **Oversight Coverage** — human review/oversight/approval/supervisor/human-in-loop present
+- **Containment Triggers** — circuit breaker/kill switch/rate limit/abort/timeout present
+
+Each sub-dimension: 25 if present, 0 if in controls_missing, 12.5 if unmentioned (neutral).
+
+**Scoring logic:** `_dim_ai_control_maturity(gt: dict) -> Optional[float]` reads `gt["metadata"]["architecture_type"]` to gate on agentic types; inspects `controls_present` / `controls_missing`. `_compute_overall` already handles None dims via `total_w` denominator — no change needed there.
+
+**Impact on existing TATB scores:** non-agentic archs are unaffected (None excluded). Agentic archs now have a 9th weight slot (0.10) in the overall — total_w for agentic = 1.10 if all other dims present; the normalization by total_w keeps overall in 0–100.
+
+**Why not AIVSS modifier:** DECISIONS Entry 204 says "sub-dimension or AIVSS modifier" — TATB sub-dim was chosen because (a) the signal is available at score time without pipeline re-runs and (b) AIVSS already has a separate modifier path; this dimension adds persistent benchmark signal rather than per-run score inflation.
+
+---
+
 ### Entry 213 — DETECT-QC-009: opaque reasoning sub-check added (P35-C)
 
 **Decision:** Extended DETECT-QC-009 with a second signal: `sm_opaque_reasoning`. Rule now fires on either signal (`combine: any`). Rule renamed from `sm_constraint_evasion_language` → `sm_endogenous_evasion` to reflect the broader scope.

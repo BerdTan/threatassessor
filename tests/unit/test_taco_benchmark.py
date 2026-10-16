@@ -16,6 +16,7 @@ from chatbot.modules.taco_benchmark import (
     BenchmarkScore,
     TACOBenchmark,
     _compute_overall,
+    _dim_ai_control_maturity,
     _dim_confidence_calibration,
     _dim_ciso_utility,
     _dim_groundedness,
@@ -53,7 +54,8 @@ def _blank_score(**kwargs) -> BenchmarkScore:
         arch_name="test", mode="workspace",
         threat_relevant=50.0, ttp_accurate=50.0, risk_defensible=50.0,
         plan_actionable=None, groundedness=50.0,
-        confidence_calibration=50.0, ciso_utility=50.0, overall=0.0,
+        confidence_calibration=50.0, ciso_utility=50.0,
+        ai_control_maturity=None, overall=0.0,
         duration_ms=0,
     )
     defaults.update(kwargs)
@@ -68,7 +70,8 @@ def test_benchmark_score_fields_all_present():
     s = _blank_score()
     d = s.to_dict()
     for dim in ("threat_relevant", "ttp_accurate", "risk_defensible", "plan_actionable",
-                "groundedness", "confidence_calibration", "ciso_utility", "overall"):
+                "groundedness", "confidence_calibration", "ciso_utility",
+                "ai_control_maturity", "overall"):
         assert dim in d["scores"], f"missing dim: {dim}"
 
 
@@ -271,3 +274,72 @@ def test_hold_out_archs_imported():
     from chatbot.modules.ta_brain_builder import HOLD_OUT_ARCHS
     assert len(HOLD_OUT_ARCHS) == 8
     assert all(isinstance(a, str) for a in HOLD_OUT_ARCHS)
+
+
+# ---------------------------------------------------------------------------
+# Dimension: AI-Control-Maturity
+# ---------------------------------------------------------------------------
+
+def _agentic_gt(**kwargs) -> dict:
+    """Minimal agentic ground truth with configurable controls."""
+    base = {
+        "metadata": {"architecture_type": "ai_system"},
+        "controls_present": [],
+        "controls_missing": [],
+    }
+    base.update(kwargs)
+    return base
+
+
+def test_ai_control_maturity_returns_none_for_non_agentic():
+    gt = {"metadata": {"architecture_type": "web_app"}, "controls_present": [], "controls_missing": []}
+    assert _dim_ai_control_maturity(gt) is None
+
+
+def test_ai_control_maturity_returns_none_when_no_metadata():
+    assert _dim_ai_control_maturity({}) is None
+
+
+def test_ai_control_maturity_full_score_all_present():
+    gt = _agentic_gt(controls_present=[
+        "sandbox", "audit log", "human review", "circuit breaker",
+    ])
+    score = _dim_ai_control_maturity(gt)
+    assert score == 100.0
+
+
+def test_ai_control_maturity_zero_score_all_missing():
+    gt = _agentic_gt(controls_missing=[
+        "sandbox", "audit log", "human review", "circuit breaker",
+    ])
+    score = _dim_ai_control_maturity(gt)
+    assert score == 0.0
+
+
+def test_ai_control_maturity_partial_sandboxing_only():
+    gt = _agentic_gt(controls_present=["sandbox"])
+    score = _dim_ai_control_maturity(gt)
+    assert score is not None
+    assert 0.0 < score < 100.0
+    assert score >= 25.0
+
+
+def test_ai_control_maturity_score_in_range():
+    gt = _agentic_gt(controls_present=["sandbox", "logging"], controls_missing=["circuit breaker"])
+    score = _dim_ai_control_maturity(gt)
+    assert score is not None
+    assert 0.0 <= score <= 100.0
+
+
+def test_ai_control_maturity_agentic_types_covered():
+    for arch_type in ("ai_system", "agentic_system", "ai_agent", "llm_agent", "rag_system"):
+        gt = {"metadata": {"architecture_type": arch_type}, "controls_present": [], "controls_missing": []}
+        assert _dim_ai_control_maturity(gt) is not None, f"Expected non-None for {arch_type}"
+
+
+def test_ai_control_maturity_excluded_from_overall_for_non_agentic():
+    s = _blank_score(ai_control_maturity=None)
+    overall_without = _compute_overall(s)
+    s2 = _blank_score(ai_control_maturity=100.0)
+    overall_with = _compute_overall(s2)
+    assert overall_with > overall_without

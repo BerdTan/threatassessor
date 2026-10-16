@@ -1,5 +1,5 @@
 """
-taco_benchmark.py — 7-dimension TACO quality scorer.
+taco_benchmark.py — 8-dimension TACO quality scorer.
 
 Scores three TACO modes against ground_truth.json for each architecture:
 
@@ -7,7 +7,7 @@ Scores three TACO modes against ground_truth.json for each architecture:
   taco_brain — TACOminiBrain alone (pattern KG; no RAG)
   taco_rag   — brain + RAG combined (union of predictions)
 
-Seven dimensions:
+Eight dimensions:
   1. Threat-Relevant        recall of ground-truth techniques         weight 0.20
   2. TTP-Accurate           precision vs confirmed technique list      weight 0.20
   3. Risk-Defensible        control coverage of missing controls       weight 0.15
@@ -15,6 +15,11 @@ Seven dimensions:
   5. Groundedness           weighted T-ID + control coverage           weight 0.15
   6. Confidence-Calibration alignment of reported vs actual accuracy   weight 0.10
   7. CISO-Utility           five proxy signals for actionability       weight 0.10
+  8. AI-Control-Mature      agentic control posture (None if not agentic) weight 0.10
+     — 4 sub-dimensions × 25pts: Sandboxing, Reasoning Auditability,
+       Oversight Coverage, Containment Triggers
+     — Only applied for agentic arch_types; excluded from denominator otherwise.
+     — DeepMind AI Control framework signal (DECISIONS Entry 204).
 
 All scores are 0–100. overall = weighted average (None dims excluded from denominator).
 
@@ -43,7 +48,12 @@ _WEIGHTS: Dict[str, float] = {
     "groundedness":           0.15,
     "confidence_calibration": 0.10,
     "ciso_utility":           0.10,
+    "ai_control_maturity":    0.10,  # None for non-agentic archs; excluded from denominator
 }
+
+_AGENTIC_ARCH_TYPES = frozenset({
+    "ai_system", "agentic_system", "ai_agent", "llm_agent", "rag_system",
+})
 
 
 def _default_report_dir() -> Path:
@@ -70,6 +80,7 @@ class BenchmarkScore:
     groundedness: float                  # 0–100
     confidence_calibration: float        # 0–100
     ciso_utility: float                  # 0–100
+    ai_control_maturity: Optional[float] # 0–100; None for non-agentic architectures
     overall: float                       # weighted average, None dims excluded
     duration_ms: int
     hop_summary: Dict[str, Any] = field(default_factory=dict)
@@ -86,6 +97,7 @@ class BenchmarkScore:
                 "groundedness": self.groundedness,
                 "confidence_calibration": self.confidence_calibration,
                 "ciso_utility": self.ciso_utility,
+                "ai_control_maturity": self.ai_control_maturity,
                 "overall": self.overall,
             },
             "duration_ms": self.duration_ms,
@@ -219,6 +231,59 @@ def _load_plan_actionable(arch_dir: Path) -> Optional[float]:
         return None
 
 
+def _dim_ai_control_maturity(gt: dict) -> Optional[float]:
+    """
+    AI Control Maturity sub-dimension — only for agentic architectures.
+
+    Returns None for non-agentic arch_types (excluded from overall denominator).
+    For agentic archs, scores 4 sub-dimensions × 25 pts each = 0–100:
+
+      Sandboxing (25)           — isolated execution environment present
+      Reasoning Auditability (25) — reasoning chain / audit trail present
+      Oversight Coverage (25)   — human or automated oversight pathway present
+      Containment Triggers (25) — circuit breaker / kill switch / abort condition present
+
+    Signals are detected from controls_present (positive evidence) and inferred
+    from the absence of relevant terms in controls_missing (negative evidence).
+    Pure text matching — no LLM calls. DeepMind AI Control framework (DECISIONS Entry 204).
+    """
+    arch_type = (gt.get("metadata") or {}).get("architecture_type", "")
+    if arch_type.lower() not in _AGENTIC_ARCH_TYPES:
+        return None
+
+    controls_present = {c.lower() for c in (gt.get("controls_present") or [])}
+    controls_missing = {c.lower() for c in (gt.get("controls_missing") or [])}
+    all_controls = controls_present | controls_missing
+
+    # Helper: signal present if any keyword in controls_present, absent if in controls_missing
+    def _present(keywords: list) -> bool:
+        return any(k in c for k in keywords for c in controls_present)
+
+    def _missing(keywords: list) -> bool:
+        return any(k in c for k in keywords for c in controls_missing)
+
+    # Sub-dimension 1: Sandboxing
+    sandbox_kw = ["sandbox", "isolation", "container", "vm isolation", "execution isolation", "jail"]
+    sandboxing = 25.0 if _present(sandbox_kw) else (0.0 if _missing(sandbox_kw) else 12.5)
+
+    # Sub-dimension 2: Reasoning Auditability
+    audit_kw = ["audit log", "trace", "explainab", "reasoning log", "chain-of-thought", "audit trail",
+                "logging", "observab", "telemetry"]
+    auditability = 25.0 if _present(audit_kw) else (0.0 if _missing(audit_kw) else 12.5)
+
+    # Sub-dimension 3: Oversight Coverage
+    oversight_kw = ["human", "oversight", "review", "approval", "supervisor", "human-in-loop",
+                    "human in the loop", "human review"]
+    oversight = 25.0 if _present(oversight_kw) else (0.0 if _missing(oversight_kw) else 12.5)
+
+    # Sub-dimension 4: Containment Triggers
+    containment_kw = ["circuit breaker", "kill switch", "rate limit", "abort", "timeout",
+                      "stop condition", "containment", "throttl"]
+    containment = 25.0 if _present(containment_kw) else (0.0 if _missing(containment_kw) else 12.5)
+
+    return round(sandboxing + auditability + oversight + containment, 1)
+
+
 def _compute_overall(s: BenchmarkScore) -> float:
     total_w = total_s = 0.0
     for dim, w in _WEIGHTS.items():
@@ -318,12 +383,14 @@ class TACOBenchmark:
         gr = _dim_groundedness(predicted_techs, predicted_controls, gt)
         cc = 50.0   # deterministic retriever: confidence calibration not meaningful
         cu = _dim_ciso_utility(hop_summary, gt)
+        acm = _dim_ai_control_maturity(gt)
 
         s = BenchmarkScore(
             arch_name=arch_name, mode="workspace",
             threat_relevant=tr, ttp_accurate=ta, risk_defensible=rd,
             plan_actionable=pa, groundedness=gr, confidence_calibration=cc,
-            ciso_utility=cu, overall=0.0, duration_ms=duration_ms, hop_summary=hop_summary,
+            ciso_utility=cu, ai_control_maturity=acm,
+            overall=0.0, duration_ms=duration_ms, hop_summary=hop_summary,
         )
         s.overall = _compute_overall(s)
         return s
@@ -376,12 +443,14 @@ class TACOBenchmark:
         gr = _dim_groundedness(predicted_techs, predicted_controls, gt)
         cc = _dim_confidence_calibration(reported_conf, gr)
         cu = _dim_ciso_utility(hop_summary, gt)
+        acm = _dim_ai_control_maturity(gt)
 
         s = BenchmarkScore(
             arch_name=arch_name, mode="taco_brain",
             threat_relevant=tr, ttp_accurate=ta, risk_defensible=rd,
             plan_actionable=pa, groundedness=gr, confidence_calibration=cc,
-            ciso_utility=cu, overall=0.0, duration_ms=duration_ms, hop_summary=hop_summary,
+            ciso_utility=cu, ai_control_maturity=acm,
+            overall=0.0, duration_ms=duration_ms, hop_summary=hop_summary,
         )
         s.overall = _compute_overall(s)
         return s
@@ -452,12 +521,14 @@ class TACOBenchmark:
         gr = _dim_groundedness(predicted_techs, predicted_controls, gt)
         cc = _dim_confidence_calibration(reported_conf, gr)
         cu = _dim_ciso_utility(hop_summary, gt)
+        acm = _dim_ai_control_maturity(gt)
 
         s = BenchmarkScore(
             arch_name=arch_name, mode="taco_rag",
             threat_relevant=tr, ttp_accurate=ta, risk_defensible=rd,
             plan_actionable=pa, groundedness=gr, confidence_calibration=cc,
-            ciso_utility=cu, overall=0.0, duration_ms=duration_ms, hop_summary=hop_summary,
+            ciso_utility=cu, ai_control_maturity=acm,
+            overall=0.0, duration_ms=duration_ms, hop_summary=hop_summary,
         )
         s.overall = _compute_overall(s)
         return s
