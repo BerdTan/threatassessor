@@ -2074,16 +2074,30 @@ class TestDetect032RestRateLimitAbuse:
 
 
 class TestDetect039SMConstraintEvasionLanguage:
-    """Endogenous injection: SM synthesis_note or action_plan contains constraint-evasion phrases."""
+    """Endogenous evasion: SM emits constraint-evasion language OR suppresses visible reasoning (opaque reasoning)."""
 
-    def _trigger(self, phrase: str = "ignore previous instructions") -> dict:
+    def _trigger_cel(self) -> dict:
         s = _clean()
         s["sm_verdicts"] = {
             "redesign_signal": False,
             "acceptance_rate": 0.8,
             "sm_constraint_evasion_language": True,
+            "sm_opaque_reasoning": False,
         }
         return s
+
+    def _trigger_opaque(self) -> dict:
+        s = _clean()
+        s["sm_verdicts"] = {
+            "redesign_signal": False,
+            "acceptance_rate": 0.8,
+            "sm_constraint_evasion_language": False,
+            "sm_opaque_reasoning": True,
+        }
+        return s
+
+    def _trigger(self) -> dict:
+        return self._trigger_cel()
 
     def _clean_sm(self) -> dict:
         s = _clean()
@@ -2091,15 +2105,21 @@ class TestDetect039SMConstraintEvasionLanguage:
             "redesign_signal": False,
             "acceptance_rate": 0.8,
             "sm_constraint_evasion_language": False,
+            "sm_opaque_reasoning": False,
         }
         return s
 
     def test_fires_on_evasion_language(self):
         ev = RuleEvaluator()
-        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger_cel(), arch_name="a", run_id="r")]
         assert "DETECT-QC-009" in ids
 
-    def test_does_not_fire_when_language_clean(self):
+    def test_fires_on_opaque_reasoning(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger_opaque(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-009" in ids
+
+    def test_does_not_fire_when_both_clean(self):
         ev = RuleEvaluator()
         ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._clean_sm(), arch_name="a", run_id="r")]
         assert "DETECT-QC-009" not in ids
@@ -2112,7 +2132,6 @@ class TestDetect039SMConstraintEvasionLanguage:
     def test_does_not_fire_when_sm_verdicts_absent(self):
         ev = RuleEvaluator()
         s = _clean()
-        # sm_verdicts not set at all — must not raise and must not fire
         ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
         assert "DETECT-QC-009" not in ids
 

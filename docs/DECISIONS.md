@@ -4,6 +4,179 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 108 — 2026-10-16
+
+### Entry 213 — DETECT-QC-009: opaque reasoning sub-check added (P35-C)
+
+**Decision:** Extended DETECT-QC-009 with a second signal: `sm_opaque_reasoning`. Rule now fires on either signal (`combine: any`). Rule renamed from `sm_constraint_evasion_language` → `sm_endogenous_evasion` to reflect the broader scope.
+
+**Signal A (unchanged):** `sm_constraint_evasion_language` — SM synthesis_note or action_plan contains override directives. Endogenous-injection vector (Anthropic Incidents C & D).
+
+**Signal B (new):** `sm_opaque_reasoning` — SM synthesis_note is absent or < 80 chars while the pipeline ran significant critic work (retriggered critics or iterations_run > 0). Oversight-awareness vector (DeepMind framework): a monitoring-aware agent suppresses visible reasoning rather than emitting explicit override language; absence of reasoning is itself the evasion.
+
+**Implementation:**
+- `stages.py` AIVSSStage: `_opaque_reasoning` computed after `_cel_detected`; added to `sm_verdicts` dict
+- `policies/soc_detection_rules.yaml` DETECT-QC-009: second condition + `combine: any`; description updated; CSA ART 4.8.1 (transparency/observability) added; comment block updated with Signal A/B framing
+- `tests/test_soc_rule_evaluator.py`: `_trigger_cel()`/`_trigger_opaque()` helpers; `test_fires_on_opaque_reasoning` added; `_clean_sm()` includes both signals False; 9 tests pass
+
+**Alternatives rejected:** Separate DETECT-QC-015 rule for opaque reasoning — DECISIONS entry 390 explicitly says "sub-check to DETECT-QC-009, same SM output file, adjacent signal"; keeping one rule avoids fragmentation. Higher threshold (< 120 chars) — too permissive; a 79-char synthesis_note after 3 retried critics is genuinely suspicious. Lower threshold (< 40 chars) — might miss thin-but-real suppression.
+
+---
+
+## Session 107 — 2026-10-14
+
+### Entry 212 — TAPerspective v2: DirectorCaster + kill chain canvas (visual/orchestration layer)
+
+**Decision:** Extend the Entry 211 plan with a `DirectorCaster` module and a spatially-aware kill chain canvas. Entry 211's data pipeline (GroupCampaignMatcher → PerspectiveRunner → SSE) is unchanged; this entry governs the orchestration layer above it and the frontend rendering contract.
+
+**Why Entry 211 is insufficient for this UX goal:**
+- Sub-tab spec'd as a flat step table — no spatial graph, no agent animation
+- No scenario ordering or risk-ranked picker — user can't choose where to focus
+- Nothing keeps simulation bounded to the assessment's actual techniques/paths
+- Red/blue "agents" were implied but not defined as visual entities
+
+---
+
+**New module: `DirectorCaster`** (`chatbot/modules/director_caster.py`)
+
+Role: simulation orchestrator — sits between `GroupCampaignMatcher` output and `PerspectiveRunner`; does not call LLMs. Three outputs:
+
+1. **`ScenarioManifest`** — all attack paths from `ground_truth["attack_paths"]` ranked by `composite_risk_score`:
+   - `composite_risk_score = (1 - block_rate) * 0.5 + actor_confidence * 0.3 + aivss_path_weight * 0.2`
+   - Each entry: `{ path_id, path_label, composite_risk_score, block_rate_estimate, actor_overlap_pct, risk_rationale }` (rationale = short string, e.g. "3 SUCCEEDED gaps, APT29 82% match, contributes 0.31 to AIVSS")
+   - `block_rate_estimate` is a pre-flight estimate from mitigation coverage before PerspectiveRunner runs — fast, no SSE needed
+   - Ordered highest risk first; user sees this list immediately on sub-tab open
+
+2. **`SimulationBounds`** — guardrails passed to PerspectiveRunner:
+   - Technique set = union of all `per_node_techniques` for the selected path — PerspectiveRunner may only emit signals from this set
+   - Node set = `path_labels` for the selected scenario — no hallucinated nodes
+   - Prevents simulation drift: if PerspectiveRunner encounters a node with no `per_node_techniques`, it emits `UNKNOWN_NODE` event (never fabricates)
+
+3. **`PacingSignals`** — step timing hints for the frontend:
+   - `pause_at_critical: bool` per step (true when `SUCCEEDED` and technique is in actor's known toolset)
+   - `step_delay_ms: int` — nominal frontend animation interval (default 1200ms, 2400ms at critical)
+   - Enables the canvas to pause on "meaningful" moments without frontend needing domain knowledge
+
+DirectorCaster is called once per scenario selection. PerspectiveRunner receives `bounds: SimulationBounds`; any out-of-bounds signal → clamp to `UNKNOWN_NODE`, never drop.
+
+---
+
+**Storycaster sharpening (minor):** `cast_journey_story()` already gets `actor_context=None`. Add: if `actor_context` present, storycaster inserts one `"scene_setting"` sentence at the top of each step narrative — drawn from actor's known aliases/tools/target sectors. This is the only LLM-touching change; it is additive and optional.
+
+---
+
+**Kill chain canvas — frontend spec (dashboard sub-tab)**
+
+Replace the step table with a two-panel layout:
+
+*Left panel — scenario picker (25% width):*
+- Scrollable list of scenarios from `ScenarioManifest`, risk-ranked
+- Each row: path label, risk badge (CRITICAL/HIGH/MED/LOW), actor overlap %, estimated block rate
+- Hover tooltip: `risk_rationale` string from DirectorCaster
+- Click → triggers `POST /api/v1/perspective/run/{arch}` with `{ scenario_id, actor_override? }`
+- Highlight active row during simulation
+
+*Right panel — kill chain canvas (75% width):*
+- D3 force-directed graph using the **existing ArchitectureGraph node/edge data** (already available via `/api/v1/enrich`); no new graph data model
+- Nodes arranged in **four horizontal bands** (depth layers): Perimeter → Internal → Data/Crown → Identity/Admin — assigned by `node_type` tag already in `ArchitectureGraph`
+- Node visual: circle, labeled, color encodes coverage state:
+  - Grey (not yet visited) → Amber (red agent present, step in progress) → Red (SUCCEEDED — gap) → Orange (DEGRADED) → Green (BLOCKED)
+- **Red agent**: animated SVG dot that traverses edges along the selected path; moves one step per `step_delay_ms`
+- **Blue agent**: spawns at a node when DETECT fires; animates "toward" the red agent on BLOCKED/DEGRADED steps, then returns to a "home" node (entry point)
+- Edge color during traversal: Grey → Red (SUCCEEDED) / Amber (DEGRADED) / Green (BLOCKED) — persists after step completes as trail
+- Bottom strip: live step log (step #, node, technique, outcome, rule fired if any) — max 5 visible rows, scrollable
+- Pause indicator (⏸) on `pause_at_critical` steps — user must click ▶ to continue; panel shows rationale string
+
+*Actor banner (top of right panel):*
+- Matched actor name + overlap % + known tools (from GroupCampaignMatcher)
+- "Override actor" dropdown for re-running with a different actor
+
+**SSE event shape additions** (extends Entry 211's `PerspectiveStep`):
+```json
+{
+  "step": 3,
+  "node": "api_gateway",
+  "technique": "T1190",
+  "outcome": "SUCCEEDED",
+  "rule_fired": null,
+  "mitigation_present": false,
+  "pause_at_critical": true,
+  "red_position": "api_gateway",
+  "blue_position": "waf",
+  "edge_from": "internet_client",
+  "edge_to": "api_gateway",
+  "step_delay_ms": 2400,
+  "rationale": "T1190 Exploit Public-Facing App — no WAF rule, no input validation mitigation"
+}
+```
+
+---
+
+**Updated build order (supersedes Entry 211's build order):**
+
+1. `GroupCampaignMatcher` — unchanged from Entry 211
+2. Extend `ground_truth_generator.py` Phase 3B — unchanged from Entry 211
+3. **`DirectorCaster`** — `ScenarioManifest` + `SimulationBounds` + `PacingSignals`; no LLM; fully unit-testable
+4. `PerspectiveRunner` with `bounds` param — `build_step_signals()` adapter + new SSE event fields
+5. `POST /api/v1/perspective/run/{arch}` SSE route — accepts `scenario_id`; `GET /api/v1/perspective/scenarios/{arch}` for manifest pre-fetch (no SSE, instant)
+6. Dashboard kill chain canvas — D3 layered graph + agent animation + scenario picker + actor banner
+7. Storycaster `scene_setting` addition (optional, last)
+
+---
+
+**Alternatives rejected:**
+- True 3D graph (Three.js/WebGL): high complexity for marginal benefit; four horizontal depth bands in D3 give sufficient depth perception without a 3D renderer
+- LLM-driven DirectorCaster: risk scoring is fully deterministic from existing fields; no LLM needed; keeps it fast and auditable
+- Single simulation view (no scenario picker): user can't assess relative risk without seeing all paths ranked — picker is essential to the "understand why higher/lower risk" goal
+- Unbounded red agent (moves freely outside path): breaks the determinism guarantee and assessment fidelity; `SimulationBounds` is non-negotiable
+
+---
+
+## Session 106 — 2026-10-13
+
+### Entry 211 — TA Perspective: live red/blue kill chain simulation on storycaster output
+
+**Decision:** Design and plan (not yet implemented) a "TA Perspective" simulation layer that animates the existing storycaster output with real MITRE threat actor context and a live red/blue step-through of each attack path.
+
+**Three new pieces only — storycaster unchanged except one optional field:**
+
+1. **`GroupCampaignMatcher`** (`chatbot/modules/group_campaign_matcher.py`)
+   - Offline STIX cache (`enterprise-attack.json`, shipped once, ~50MB)
+   - Input: `ap["techniques"]` (already produced in Phase 3B) → output: top-3 matched Groups/Campaigns ranked by TTP overlap score: `|arch_techniques ∩ actor_techniques| / |arch_techniques|`
+   - Returns: actor name, overlap %, known aliases, typical target sectors, known tools (e.g. "APT29 — 14/17 TTPs, 0.82 confidence, targets government, uses Cobalt Strike")
+   - Called once per arch in `ground_truth_generator.py` after Phase 3B; attached as `ground_truth["threat_actor_context"]`
+   - Fully deterministic, no LLM
+
+2. **`PerspectiveRunner`** (`chatbot/modules/perspective_runner.py`)
+   - Input: journey story (from storycaster) + `ap["per_node_techniques"]` + matched actors + existing `RuleEvaluator` + `exhaustive_mitigation_mapper` output
+   - Walks `path_labels` step by step; at each node: builds synthetic signal dict → calls `RuleEvaluator.evaluate()` (no changes to evaluator) → checks mitigations present
+   - Outcome per step: **BLOCKED** (DETECT rule fires + mitigation present) / **DEGRADED** (DETECT fires, no mitigation) / **SUCCEEDED** (gap — neither fires)
+   - Yields `PerspectiveStep` events for SSE streaming
+   - Final summary: `kill_chain_block_rate`, `detect_gap_techniques` (SUCCEEDED steps), `actor_attribution`
+   - SUCCEEDED steps feed directly back into `detect-loop` flywheel
+
+3. **Route + dashboard sub-tab**
+   - `POST /api/v1/perspective/run/{arch}` — SSE stream, same shape as `/gym/start`; optional `actor_override` in body
+   - Dashboard "⟳ Perspective" sub-tab in SIP panel (beside TAgym)
+   - Shows: actor alignment card → live kill chain step table → final % blocked + gap techniques
+
+**Storycaster change:** `cast_journey_story()` gets optional `actor_context=None` param; when provided, adds `"threat_actor_context": { "matched_actors": [...], "real_incident_refs": [...] }` to the journey story dict. No breaking changes.
+
+**Build order for next session:**
+1. `GroupCampaignMatcher` + STIX cache — standalone, unit-testable
+2. Extend `ground_truth_generator.py` Phase 3B to call it
+3. `PerspectiveRunner` + `build_step_signals()` — unit-testable against existing DETECT fixtures
+4. `/api/v1/perspective/run/{arch}` SSE route
+5. Dashboard sub-tab
+
+**Alternatives rejected:**
+- LLM-driven red agent: adds cost and non-determinism; storycaster's `exploitation_chain` + `per_node_techniques` already encode the move sequence deterministically
+- Separate kill chain data model: `ap["per_node_techniques"]` + journey story `path_labels` already form a complete traversal — no new data model needed
+- Modifying `RuleEvaluator`: `build_step_signals()` adapter maps per-node technique context to the existing signal shape; evaluator untouched
+- Static HTML output: explicitly rejected in favour of SSE stream + dashboard sub-tab so gaps are immediately actionable and feed the DETECT flywheel
+
+---
+
 ## Session 104 — 2026-10-10
 
 ### Entry 210 — CSA ART grounding: csa_art tags, 7 new DETECT rules, CSA scenarios, P35 draft

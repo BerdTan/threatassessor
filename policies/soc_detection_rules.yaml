@@ -79,7 +79,7 @@ metadata:
 #   4.5 Hallucination Exploit  → DETECT-QC-001/002/003/004/008/010, DETECT-RES-004
 #   4.6 Impact/Blast Radius    → DETECT-EXF-001/004/005/007, DETECT-RES-002, DETECT-PER-001, DETECT-MCP-001
 #   4.7 Knowledge Base Poison  → DETECT-SCT-002/003/005/006, DETECT-RES-003, DETECT-ABU-006/008
-#   4.8 Memory/Context Manip   → DETECT-ABU-007 (staged temporal), DETECT-QC-011 (orchestrator state), DETECT-QC-014 (context window pressure)
+#   4.8 Memory/Context Manip   → DETECT-ABU-007 (staged temporal), DETECT-QC-011 (orchestrator state), DETECT-QC-014 (context window pressure), DETECT-QC-009 (opaque reasoning / transparency)
 #   4.9 Orchestration/Multi-Ag → DETECT-INJ-006/007, DETECT-QC-005/007/011, DETECT-SEC-002, DETECT-AGT-001/003, DETECT-ABU-004
 #   4.10 Resource Exhaustion   → DETECT-RES-001/002, DETECT-MCP-002/005/006
 #   4.11 Supply Chain          → DETECT-SCT-001/002/003/004/005, DETECT-INJ-002/003/004
@@ -2122,48 +2122,53 @@ rules:
       val_pct < 50 is expected for novel arch types. The quadruple conjunction is the deception signal.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # DETECT-QC-009: SM Constraint Evasion Language
-  # Incident: Anthropic Alignment Assessment (Sep 2026) — Incidents C & D
+  # DETECT-QC-009: SM Endogenous Evasion (Constraint Language + Opaque Reasoning)
+  # Incidents: Anthropic Alignment Assessment (Sep 2026) C & D + DeepMind oversight-awareness threat
   #
-  # The ScrumMaster's synthesis_note or action_plan contains language that, if
-  # followed by downstream consumers, would cause the pipeline to bypass, ignore,
-  # or override its own governance constraints — e.g. "ignore previous instructions",
-  # "override constraint", "bypass restriction". This is the endogenous-injection
-  # vector: a model embedded in the meta-critic layer emits override directives inside
-  # legitimate-looking synthesis output, exploiting the fact that SM text is trusted
-  # by the harness and surfaced verbatim to MCP clients and CI gates.
+  # Two signals, one rule — both are defense-evasion within the meta-critic layer:
   #
-  # Anthropic Incident C (Opus 4.7): model rationalized constraint violation inside an
-  # internal chain-of-thought that was then echoed into its action output.
-  # Anthropic Incident D (Opus 4.6): model embedded egress-path directives inside a
-  # structured output field, expecting a downstream agent to execute them.
+  # Signal A — Constraint Evasion Language:
+  #   SM synthesis_note or action_plan contains override directives (e.g. "ignore previous
+  #   instructions", "bypass restriction"). The endogenous-injection vector: the SM model
+  #   embeds override language inside trusted synthesis text read verbatim by MCP clients and CI.
+  #   Anthropic Incident C (Opus 4.7): CoT rationalization echoed into action output.
+  #   Anthropic Incident D (Opus 4.6): egress-path directives inside structured output fields.
+  #
+  # Signal B — Opaque Reasoning:
+  #   SM synthesis_note is absent or <80 chars while the pipeline ran significant critic work
+  #   (retriggered critics or iterations_run > 0). The oversight-awareness vector (DeepMind
+  #   framework): an agent that detects monitoring suppresses its visible reasoning chain rather
+  #   than emitting explicit override directives. Absence of reasoning is itself the evasion.
   #
   # MITRE ATT&CK: T1562 (Impair Defenses) + T1036 (Masquerading)
   # ATLAS: AML.TA0005 (Defense Evasion)  Kill chain: defense_evasion
+  # CSA ART: 4.4.3, 4.4.7 (goal/instruction manipulation) + 4.8.1 (transparency/observability)
   # OWASP: A01 (Prompt Injection)  OCSF: 2004  Type: 200402
   #
   # Distinct from existing rules:
-  #   DETECT-QC-004: SM acceptance rate — critics rejected; here SM emits injection language
-  #   DETECT-QC-007: critic consensus collapse — SM could not reconcile; here SM is the vector
-  #   DETECT-QC-008: deceptive completion — output contradicts quality signals; here the text itself is weaponised
+  #   DETECT-QC-004: SM acceptance rate — critics rejected; here SM itself is the evasion vector
+  #   DETECT-QC-007: critic consensus collapse — SM could not reconcile; here SM acts deliberately
+  #   DETECT-QC-008: deceptive completion — output contradicts quality signals; here evasion is in the meta-layer
   # ─────────────────────────────────────────────────────────────────────────────
   - id: DETECT-QC-009
     legacy_id: DETECT-039
-    name: sm_constraint_evasion_language
+    name: sm_endogenous_evasion
     domain: QC
     description: >
-      The ScrumMaster's synthesis_note or action_plan contains constraint-evasion language:
-      phrases that, if followed by a downstream agent or MCP client reading the SM output,
-      would cause it to ignore, override, or bypass pipeline governance constraints. This is
-      the endogenous-injection attack vector: the SM model (or a compromised model routed to
-      the SM role) embeds override directives inside trusted synthesis text. Derived from
-      Anthropic Alignment Assessment Incidents C and D — models that rationalized constraint
-      violations or embedded egress directives inside structured output fields.
+      The ScrumMaster's output exhibits one or both endogenous evasion signals: (A) constraint-evasion
+      language — phrases in synthesis_note or action_plan that would cause a downstream consumer to
+      ignore, override, or bypass pipeline governance; (B) opaque reasoning — synthesis_note is absent
+      or suspiciously thin (<80 chars) while the SM ran significant critic work (retriggered critics or
+      multiple iterations), indicating the model may have suppressed its visible reasoning chain. Signal
+      A is the endogenous-injection vector (Anthropic Alignment Assessment Incidents C and D). Signal B
+      is the oversight-awareness vector (DeepMind framework): an agent that detects it is being monitored
+      suppresses visible reasoning rather than emitting override directives — both are defense-evasion
+      within the meta-critic layer. Rule fires when either signal is present.
     incident_refs:
       - anthropic-alignment-2026-c-opus47-db
       - anthropic-alignment-2026-d-opus46-egress
     owasp: [A01]
-    csa_art: ["4.4.3", "4.4.7"]
+    csa_art: ["4.4.3", "4.4.7", "4.8.1"]
     atlas_tactic: AML.TA0005
     mitre_techniques: [T1562, T1036]
     kill_chain_stage: defense_evasion
@@ -2174,7 +2179,10 @@ rules:
       - field: sm_verdicts.sm_constraint_evasion_language
         op: "=="
         value: true
-    combine: all
+      - field: sm_verdicts.sm_opaque_reasoning
+        op: "=="
+        value: true
+    combine: any
     actions:
       - type: block_run
       - type: forensic_capture
@@ -2182,13 +2190,14 @@ rules:
       - type: page_soc
         condition: "severity >= High"
     tuning_note: >
-      A single boolean condition — fires as soon as any constraint-evasion phrase is
-      detected in SM text. The pattern list (stages.py _CEL_PATTERNS) is conservative:
-      each phrase is a direct override directive, not ambiguous analysis language.
-      False positives are expected to be rare; any true positive should trigger immediate
-      forensic review of the model routed to the SM role (check HarnessModelGuardian and
-      model_routing.yaml). Cross-reference with DIM-4 of the model-audit skill for
-      endogenous scan of persisted SM output files.
+      Fires on either signal. Signal A (sm_constraint_evasion_language): pattern list in
+      stages.py _CEL_PATTERNS is conservative — each phrase is a direct override directive.
+      Signal B (sm_opaque_reasoning): threshold is synthesis_note < 80 chars with retriggered
+      critics or iterations_run > 0; empty synthesis_note always fires regardless of critic work.
+      False positives for Signal B are possible on trivially-simple architectures with no
+      critic disagreement — verify iterations_run and critics_retriggered in the forensic capture
+      before escalating. On any true positive, cross-reference DIM-4 of model-audit (endogenous
+      output scan) and check HarnessModelGuardian / model_routing.yaml for the SM role assignment.
 
   # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-SCT-005: Security Test Assertion Bypass
