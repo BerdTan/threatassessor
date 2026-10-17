@@ -1178,6 +1178,79 @@ def refine_control_priorities(
 
 
 # ============================================================================
+# JEV PHASE 2 — ❻ TECHNIQUE APPLICABILITY FILTER
+# ============================================================================
+
+_JEV_APPLICABILITY_THRESHOLD = 0.25  # only drop clearly inapplicable techniques
+_JEV_QUESTION_CAP = 15               # max techniques per Jev call
+
+
+def _jev_filter_ap_techniques(ap: dict, nodes: dict, arch_type: str) -> None:
+    """Jev Phase 2 ❻: noul filter — removes techniques scoring below threshold.
+    Fails silently; technique assignment unchanged when Jev disabled/unreachable.
+    """
+    try:
+        from chatbot.modules.jev_client import get_jev_client
+        _jev = get_jev_client()
+        if not _jev.is_enabled():
+            return
+
+        techs = list(ap.get("techniques", []))
+        if not techs:
+            return
+
+        path = ap.get("path", [])
+        entry_label = nodes[path[0]].get("label", path[0]) if path else "entry"
+        target_label = nodes[path[-1]].get("label", path[-1]) if path else "target"
+        path_labels = " → ".join(nodes[n].get("label", n) for n in path[:8])
+
+        state = {
+            "arch_type": arch_type,
+            "path": path_labels,
+            "entry": entry_label,
+            "target": target_label,
+            "node_count": len(nodes),
+        }
+        sample = techs[:_JEV_QUESTION_CAP]
+        questions = {
+            t: {
+                "type": "noul",
+                "instructions": (
+                    f"Is technique {t} genuinely applicable to an attack path from "
+                    f"'{entry_label}' to '{target_label}' in a {arch_type} architecture?"
+                ),
+            }
+            for t in sample
+        }
+
+        answers = _jev.ask(state=state, questions=questions)
+        if not answers:
+            return
+
+        dropped = {
+            t for t in sample
+            if answers.get(t, {}).get("noul", 1.0) < _JEV_APPLICABILITY_THRESHOLD
+        }
+        if not dropped:
+            return
+
+        per_node = ap.get("per_node_techniques", {})
+        for node_id, node_techs in per_node.items():
+            per_node[node_id] = [t for t in node_techs if t not in dropped]
+
+        from chatbot.modules.per_node_ttp_mapper import get_all_techniques_from_path
+        ap["techniques"] = get_all_techniques_from_path(per_node)
+
+        ctx = ap.get("technique_context", {})
+        ctx["jev_filtered_count"] = len(dropped)
+        ctx["jev_filtered"] = sorted(dropped)
+        ap["technique_context"] = ctx
+
+    except Exception:
+        pass  # fail-open
+
+
+# ============================================================================
 # MAIN GENERATION FUNCTION
 # ============================================================================
 
@@ -1351,6 +1424,9 @@ def generate_ground_truth(
         ap["per_node_techniques"] = per_node_techniques
         ap["techniques"] = get_all_techniques_from_path(per_node_techniques)
         ap["technique_context"] = technique_context  # dimension + RAPIDS signal per technique
+
+        # Jev Phase 2 ❻: applicability noul filter (fails silently)
+        _jev_filter_ap_techniques(ap, parsed["nodes"], arch_type)
 
     # StoryCaster: co-generate edge micro-stories and journey macro-stories
     from chatbot.modules.story_caster import cast_stories, cast_journey_story, build_ap_rationale_from_story

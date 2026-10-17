@@ -151,6 +151,63 @@ def _build_governance(gov: Dict) -> Dict:
     }
 
 
+def _build_posture_signal(gt: Dict, gov: Dict) -> Optional[Dict]:
+    """Jev Phase 2 ❽: CISO risk posture noul.
+    Returns {noul, consistent, ts} or None when Jev disabled/unreachable.
+    """
+    try:
+        from chatbot.modules.jev_client import get_jev_client
+        _jev = get_jev_client()
+        if not _jev.is_enabled():
+            return None
+
+        meta = gt.get("metadata", {})
+        arch_type = meta.get("architecture_type", "generic")
+        techs = gt.get("techniques", [])
+        aps = gt.get("attack_paths", [])
+        critical_count = sum(
+            1 for ap in aps
+            if (ap.get("criticality_tier") or "").lower() in ("critical", "high")
+        )
+        aivss = gov.get("aivss", {})
+        risk_composite = aivss.get("overall", {}).get("composite")
+        risk_level = gov.get("overall_risk_level", "unknown")
+
+        state = {
+            "arch_type": arch_type,
+            "technique_count": len(techs),
+            "attack_path_count": len(aps),
+            "critical_path_count": critical_count,
+            "risk_level": risk_level,
+            "risk_composite": risk_composite,
+        }
+        answers = _jev.ask(
+            state=state,
+            questions={
+                "posture_consistent": {
+                    "type": "noul",
+                    "instructions": (
+                        f"Is this {arch_type} architecture's overall threat profile "
+                        f"({len(aps)} attack paths, {critical_count} critical/high, "
+                        f"risk level {risk_level}) consistent with an appropriate "
+                        "security posture for its deployment context?"
+                    ),
+                }
+            },
+        )
+        noul = answers.get("posture_consistent", {}).get("noul")
+        if noul is None:
+            return None
+
+        return {
+            "noul": round(float(noul), 4),
+            "consistent": float(noul) >= 0.50,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception:
+        return None
+
+
 def _build_moe_consensus(moe: Dict) -> Dict:
     if not moe:
         return {}
@@ -252,6 +309,7 @@ def build_export(
         "tatb":         _build_tatb(tatb_scores, arch_name),
         "brain_quality": brain_quality or {},
         "governance":   _build_governance(gov),
+        "posture_signal": _build_posture_signal(gt, gov),
         "moe_consensus": _build_moe_consensus(moe),
         "detect_findings": [f for f in ocsf if f.get("class_uid") == 2004],
         "security_findings": [f for f in ocsf if f.get("class_uid") == 2001],
