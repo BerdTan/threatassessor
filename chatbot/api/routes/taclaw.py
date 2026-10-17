@@ -428,23 +428,27 @@ async def _run_taclaw_job(
                 logger.warning("TAclaw: investigation agent failed (non-fatal): %s", exc)
                 investigation = {"error": str(exc)}
 
-        # Persist taclaw_result.json to disk so the report survives the 1-hr job-store TTL.
+        # Persist agent report: report/<agent_id>/<arch_name>.json
+        # Structure: one subfolder per agent; one file per triggering incident.
         try:
-            _tr_path = report_dir / "taclaw_result.json"
+            _agent_id = "taclaw_investigator" if investigation else "taclaw"
+            _agent_dir = Path(get_settings().system.report_dir) / _agent_id
+            _agent_dir.mkdir(parents=True, exist_ok=True)
+            _tr_path = _agent_dir / f"{arch_name}.json"
             _tr_data: dict = {
+                "agent_id": _agent_id,
                 "arch_name": arch_name,
                 "gate": gate,
                 "routing_mode": routing_mode,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
             }
             if gate == "BLOCK":
-                _tr_data["bouncer_reason"] = _bouncer_reason if "_blocked_exc" in dir() else "unknown"
+                _tr_data["bouncer_reason"] = _bouncer_reason
                 if investigation:
                     _tr_data["investigation"] = investigation
-            report_dir.mkdir(parents=True, exist_ok=True)
             _tr_path.write_text(_json_mod.dumps(_tr_data, indent=2))
         except Exception as _exc:
-            logger.warning("TAclaw: taclaw_result.json write failed (non-fatal): %s", _exc)
+            logger.warning("TAclaw: agent report write failed (non-fatal): %s", _exc)
 
         store.update(
             job.job_id,
