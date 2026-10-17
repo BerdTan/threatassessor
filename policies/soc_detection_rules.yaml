@@ -52,9 +52,9 @@ metadata:
   version: "1.0"
   ocsf_version: "1.1"
   product: "ThreatAssessor"
-  last_updated: "2026-10-10"
+  last_updated: "2026-10-17"
   csa_art_version: "2025-08-26"
-  csa_art_coverage: "11/12 categories covered (4.3 physical/ICS systems partial; 4.2: structural gate QC-012; 4.8: inter-run ABU-007/QC-011 + intra-run QC-014 context-window pressure; 4.12: no-sink QC-013)"
+  csa_art_coverage: "11/12 categories covered (4.3 physical/ICS systems partial; 4.2: structural gate QC-012; 4.8: inter-run ABU-007/QC-011 + intra-run QC-014 context-window pressure; 4.12: no-sink QC-013); Epherem web-app hardening: AGT-006 IDOR/4.1.2, INJ-009 SSRF/4.1.1, QC-016 debug-bypass/4.2.1"
 
 # Domain index — each rule carries a `domain:` tag for grouping and future renumbering.
 # Domains are intentionally coarse: a rule belongs to its primary attack surface.
@@ -3648,6 +3648,196 @@ rules:
       architecture is not an EDoS — the signal requires the multiplier to be
       sustained across the session. Cross-reference DETECT-MCP-002 (job_flooding)
       — that rule catches volume; this rule catches per-request cost amplification.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-AGT-006: Object Ownership Bypass (IDOR)
+  # Source: Epherem web-app hardening checklist §5 — Verify ownership and
+  #         authorization, not just login.
+  #
+  # An agentic or service component accesses a multi-tenant data store using a
+  # valid session credential without an ownership or tenancy filter, making it
+  # possible to retrieve or modify records belonging to other users. IDOR
+  # (Insecure Direct Object Reference) is distinct from unauthenticated access:
+  # the caller is logged in, but the object ownership check is missing.
+  # Detected structurally: the architecture graph has a service/agent node with
+  # a direct edge to a multi-tenant data store, no row-ownership predicate or
+  # tenancy boundary node in the path, and no declared authorization check on
+  # that edge.
+  #
+  # OWASP: A01  MITRE: T1078 / T1087  Kill chain: lateral_movement
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-AGT-006
+    legacy_id: DETECT-063
+    name: object_ownership_bypass
+    domain: AGT
+    description: |
+      A service or agentic component accesses a multi-tenant data store without
+      an ownership or tenancy filter, allowing one authenticated user's session
+      to reach another user's records by substituting object identifiers. The
+      architecture has a direct edge from the agent/service node to the data
+      store with no row-level ownership predicate, tenant isolation boundary, or
+      per-object authorization check in the path. This is a structural precondition
+      for insecure direct object reference exploitation; the absence of the filter
+      node is the signal, not an observed exploit. Grounded in Epherem's web-app
+      security hardening checklist \u00a75: verify ownership and authorization, not
+      just authentication.
+    incident_refs:
+      - epherem-webapp-hardening-2026-check5-ownership-authz
+      - owasp-a01-broken-access-control
+    owasp:
+      - A01
+    csa_art:
+      - "4.1.2"
+      - "4.1.7"
+    atlas_tactic: AML.TA0005
+    mitre_techniques:
+      - T1078
+      - T1087
+    kill_chain_stage: lateral_movement
+    ocsf_class: 2004
+    ocsf_type_uid: 200441
+    severity: High
+    conditions:
+      - field: arch_metadata.missing_ownership_check
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+    tuning_note: |
+      missing_ownership_check is set when the architecture graph contains a
+      service or agentic node with a direct access edge to a multi-tenant data
+      store (users table, documents, orders, etc.) and no ownership-predicate
+      node, tenant-isolation node, or authorization-check edge appears in the
+      path between them. Single-tenant architectures (one user, one org) do not
+      trigger this. Cross-reference DETECT-EXF-007 (authorization_boundary_ambiguity)
+      and DETECT-AGT-004 (tool_restriction_bypass): an agent that bypasses a tool
+      restriction to reach a data store and lacks an ownership check represents
+      a compound incident.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-INJ-009: Server-Side Request Forgery (SSRF)
+  # Source: Epherem web-app hardening checklist \u00a77 \u2014 Watch server-side URL
+  #         fetching for SSRF.
+  #
+  # A service or agentic component makes an outbound HTTP request to a
+  # user-supplied or agent-generated URL without a URL allowlist. This exposes
+  # internal network segments, cloud metadata endpoints (169.254.169.254), and
+  # private services to any caller that can influence the URL parameter.
+  #
+  # OWASP: A10  MITRE: T1090 / T1071.001  Kill chain: initial_access
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-INJ-009
+    legacy_id: DETECT-064
+    name: server_side_request_forgery
+    domain: INJ
+    description: |
+      A service or agentic component makes an outbound HTTP request to a URL
+      that is user-supplied or derived from external input, without a URL
+      allowlist or request-validation node in the path. This creates an SSRF
+      surface: an attacker who can influence the URL can pivot to internal
+      services, cloud metadata endpoints, or private network segments through
+      the trusted server identity. The architecture graph has a service node
+      with an outbound HTTP edge whose URL source is external, and no allowlist,
+      SSRF-filter, or proxy-with-denylist node between the service and the
+      outbound edge target. Grounded in Epherem's web-app security hardening
+      checklist \u00a77: watch server-side URL fetching for SSRF.
+    incident_refs:
+      - epherem-webapp-hardening-2026-check7-ssrf
+      - owasp-a10-ssrf
+    owasp:
+      - A10
+    csa_art:
+      - "4.1.1"
+      - "4.6.1"
+    atlas_tactic: AML.TA0002
+    mitre_techniques:
+      - T1090
+      - T1071
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200401
+    severity: High
+    conditions:
+      - field: arch_metadata.ssrf_surface
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+    tuning_note: |
+      ssrf_surface is set when the architecture graph contains a service node
+      with an outbound HTTP edge where the URL source is marked as user-controlled
+      or externally-derived (webhook handler, URL-preview feature, agent fetch
+      call) AND no URL-allowlist, SSRF-filter, or egress-proxy-with-denylist node
+      appears between the service node and the network boundary. An architecture
+      with an explicit allowlist node in the HTTP path is not flagged. Distinct
+      from DETECT-INJ-001 (adversarial injection in the MMD input itself) and
+      DETECT-EXF-003 (LLM-to-external egress without ZDR): this rule targets
+      runtime HTTP fetch surfaces, not analysis-time injection or LLM egress.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-QC-016: Debug Bypass Artifact in Production Architecture
+  # Source: Epherem web-app hardening checklist \u00a714 \u2014 Treat temporary, demo,
+  #         and bypass logic as suspicious.
+  #
+  # Architecture node labels, edge annotations, or rationale text contain
+  # debug bypass patterns (TODO, FIXME, skip_auth, BYPASS, hardcoded fallback
+  # credential, mock auth) adjacent to authentication or authorization nodes.
+  #
+  # OWASP: A07  MITRE: T1562.001 / T1036  Kill chain: defense_evasion
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-QC-016
+    legacy_id: DETECT-065
+    name: debug_bypass_artifact
+    domain: QC
+    description: |
+      Architecture node labels, edge annotations, or rationale text contain
+      debug-bypass patterns (TODO/FIXME adjacent to auth, skip_auth, BYPASS,
+      hardcoded fallback password, mock auth, commented-out authorization check)
+      in proximity to authentication or authorization nodes. These artifacts
+      indicate a safety control was temporarily disabled during development and
+      never re-enabled before the architecture was assessed. The gap is
+      structural: the bypass exists in the declared architecture, not in observed
+      runtime behavior. Grounded in Epherem's web-app hardening checklist \u00a714:
+      treat temporary, demo, and bypass logic as suspicious.
+    incident_refs:
+      - epherem-webapp-hardening-2026-check14-debug-bypass
+      - owasp-a07-identification-authentication-failures
+    owasp:
+      - A07
+    csa_art:
+      - "4.2.1"
+      - "4.2.3"
+    atlas_tactic: AML.TA0003
+    mitre_techniques:
+      - T1562
+      - T1036
+    kill_chain_stage: defense_evasion
+    ocsf_class: 2004
+    ocsf_type_uid: 200406
+    severity: Medium
+    conditions:
+      - field: arch_metadata.debug_bypass_present
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+    tuning_note: |
+      debug_bypass_present is set when the architecture description, node labels,
+      or edge annotations contain bypass patterns (case-insensitive): "TODO.*auth",
+      "FIXME.*auth", "skip_auth", "BYPASS", "mock.*auth", "auth.*disabled",
+      "hardcoded.*password", "fallback.*credential", or commented-out auth
+      patterns. Pattern must appear within 2 hops of an authentication or
+      authorization node in the graph. A stray TODO comment on a data node does
+      not trigger this. Distinct from DETECT-QC-015 (sm_reasoning_action_mismatch)
+      which fires on runtime reasoning-behavior divergence; this rule fires on
+      static structural bypass artifacts in the declared architecture.
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 playbooks:

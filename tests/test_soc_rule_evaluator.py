@@ -118,7 +118,7 @@ class TestYAMLLoading:
 
     def test_loads_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 62
+        assert len(ev) == 65
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -2728,3 +2728,120 @@ class TestDetectMCP006EconomicDoS:
         findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
         f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-MCP-006")
         assert f["finding"]["kill_chain_stage"] == "impact"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-AGT-006 — Object Ownership Bypass / IDOR (Epherem §5)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectAGT006ObjectOwnershipBypass:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("arch_metadata", {})["missing_ownership_check"] = True
+        return s
+
+    def test_fires_on_missing_ownership_check(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-AGT-006" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {})["missing_ownership_check"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-AGT-006" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-AGT-006" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-AGT-006")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_lateral_movement(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-AGT-006")
+        assert f["finding"]["kill_chain_stage"] == "lateral_movement"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-INJ-009 — Server-Side Request Forgery (Epherem §7)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectINJ009SSRF:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("arch_metadata", {})["ssrf_surface"] = True
+        return s
+
+    def test_fires_on_ssrf_surface(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-INJ-009" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {})["ssrf_surface"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-INJ-009" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-INJ-009" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-INJ-009")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_initial_access(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-INJ-009")
+        assert f["finding"]["kill_chain_stage"] == "initial_access"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-QC-016 — Debug Bypass Artifact (Epherem §14)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectQC016DebugBypassArtifact:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("arch_metadata", {})["debug_bypass_present"] = True
+        return s
+
+    def test_fires_on_debug_bypass_present(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-016" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {})["debug_bypass_present"] = False
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-QC-016" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-016" not in ids
+
+    def test_severity_is_medium(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-016")
+        assert f["severity"].upper() == "MEDIUM"
+
+    def test_kill_chain_is_defense_evasion(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-016")
+        assert f["finding"]["kill_chain_stage"] == "defense_evasion"

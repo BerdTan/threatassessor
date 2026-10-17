@@ -1606,6 +1606,69 @@ def scenario_anthropic_unscoped_write_action() -> Dict[str, Any]:
     return sig
 
 
+def scenario_idor_missing_ownership_check() -> Dict[str, Any]:
+    """
+    DETECT-AGT-006 (High) — Epherem §5: object ownership bypass (IDOR)
+
+    A service node accesses a multi-tenant data store without an ownership
+    predicate or tenancy boundary in the path. Authenticated session, but no
+    per-object authorization check — any user ID substitution reaches another
+    user's records. Representative scenario: a web API with a direct edge from
+    the service layer to a shared users/documents table, no row-level security
+    node declared in the architecture.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "web_app",
+        "node_count": 7,
+        "is_agentic": False,
+        "missing_ownership_check": True,
+    }
+    return sig
+
+
+def scenario_ssrf_user_supplied_url() -> Dict[str, Any]:
+    """
+    DETECT-INJ-009 (High) — Epherem §7: server-side request forgery
+
+    A service node makes outbound HTTP requests to a user-supplied URL with no
+    URL allowlist or SSRF filter in the architecture path. Exposes internal
+    services and cloud metadata endpoints to caller-controlled pivoting.
+    Representative scenario: a webhook handler or URL-preview service with a
+    direct external HTTP edge and no allowlist node between the service and the
+    network boundary.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "web_app",
+        "node_count": 8,
+        "is_agentic": False,
+        "ssrf_surface": True,
+    }
+    return sig
+
+
+def scenario_debug_bypass_in_architecture() -> Dict[str, Any]:
+    """
+    DETECT-QC-016 (Medium) — Epherem §14: debug bypass artifact in production
+
+    Architecture node labels or edge annotations contain bypass patterns
+    (TODO/skip_auth/BYPASS/mock_auth) adjacent to authentication nodes, indicating
+    a safety control was disabled during development and not re-enabled.
+    Representative scenario: a web app with a TODO:skip_auth annotation on the
+    authentication middleware node, persisting into the production architecture
+    description.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "web_app",
+        "node_count": 6,
+        "is_agentic": False,
+        "debug_bypass_present": True,
+    }
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-INJ-001 (Critical) + DETECT-QC-002 (Critical) — adversarial input + divergence suppression"),
@@ -1724,6 +1787,13 @@ SCENARIOS = {
         "DETECT-AGT-004 (Critical) — Anthropic 2026: agent uses injection to bypass tool restriction instead of stopping"),
     "anthropic_unscoped_write_action":    (scenario_anthropic_unscoped_write_action,
         "DETECT-AGT-005 (High) — Anthropic 2026: agent takes write/submit action without explicit write scope declared"),
+    # Epherem web-app hardening checklist grounded
+    "idor_missing_ownership_check":       (scenario_idor_missing_ownership_check,
+        "DETECT-AGT-006 (High) — Epherem §5: service accesses multi-tenant store without ownership predicate"),
+    "ssrf_user_supplied_url":             (scenario_ssrf_user_supplied_url,
+        "DETECT-INJ-009 (High) — Epherem §7: outbound HTTP to user-supplied URL with no allowlist"),
+    "debug_bypass_in_architecture":       (scenario_debug_bypass_in_architecture,
+        "DETECT-QC-016 (Medium) — Epherem §14: TODO/skip_auth/BYPASS annotation adjacent to auth node"),
 }
 
 EXPECTED_RULES = {
@@ -1788,6 +1858,10 @@ EXPECTED_RULES = {
     "anthropic_reasoning_action_mismatch":  {"DETECT-QC-015"},
     "anthropic_tool_restriction_bypass":    {"DETECT-AGT-004"},
     "anthropic_unscoped_write_action":      {"DETECT-AGT-005"},
+    # Epherem web-app hardening checklist grounded
+    "idor_missing_ownership_check":         {"DETECT-AGT-006"},
+    "ssrf_user_supplied_url":               {"DETECT-INJ-009"},
+    "debug_bypass_in_architecture":         {"DETECT-QC-016"},
 }
 
 
