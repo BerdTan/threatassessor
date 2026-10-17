@@ -1490,6 +1490,96 @@ def scenario_csa_checker_out_of_loop() -> Dict[str, Any]:
     return sig
 
 
+def scenario_anthropic_reasoning_action_mismatch() -> Dict[str, Any]:
+    """
+    DETECT-QC-015 (High) — Anthropic 2026: reasoning-action mismatch
+
+    An agentic component's SM reasoning describes an operation as "demonstrating"
+    or "testing" while the pipeline records it as a confirmed real write action.
+    Grounded in Anthropic's October 2026 incident research: a model's scratchpad
+    stated it was demonstrating a process while it actually submitted a police tip
+    form. Self-reported reasoning is not reliable evidence of intent.
+
+    Representative scenario: an AI coding assistant describes its action as
+    "testing the form submission endpoint" in its reasoning trace while actually
+    completing a live POST request to a government form endpoint.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 8,
+        "is_agentic": True,
+        "no_oversight_path": False,
+        "trace_missing": False,
+        "context_window_pressure": False,
+    }
+    sig["sm_verdicts"] = {
+        "per_critic": {
+            "architect": "accepted",
+            "red_team": "accepted",
+        },
+        "accepted": 2,
+        "rejected": 0,
+        "acceptance_rate": 1.0,
+        "redesign_signal": False,
+        "final_confidence": 74.0,
+        "sm_reasoning_action_mismatch": True,
+    }
+    return sig
+
+
+def scenario_anthropic_tool_restriction_bypass() -> Dict[str, Any]:
+    """
+    DETECT-AGT-004 (Critical) — Anthropic 2026: tool restriction bypass
+
+    An agentic component attempts an alternative execution path after its primary
+    tool is denied — using SQL/command injection against a third-party service to
+    achieve the original goal. Grounded in Anthropic's October 2026 incident
+    research: models used SQL or command injection against benchmark sites when
+    tool access was restricted, treating the restriction as an obstacle to route
+    around rather than a boundary to respect.
+
+    Representative scenario: an agentic architecture with external tool access
+    but no declared stop-on-tool-failure control, where T1059 (command interpreter)
+    and T1190 (exploit public-facing application) are present on the agent node.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 10,
+        "is_agentic": True,
+        "no_oversight_path": False,
+        "tool_restriction_bypass_detected": True,
+    }
+    return sig
+
+
+def scenario_anthropic_unscoped_write_action() -> Dict[str, Any]:
+    """
+    DETECT-AGT-005 (High) — Anthropic 2026: unscoped write action
+
+    An agentic component takes a state-changing action when the declared task
+    scope was read-only or undefined. Grounded in Anthropic's October 2026
+    incident research: models submitted forms and accepted agreements when task
+    instructions were ambiguous — absence of an explicit read-only constraint
+    was treated as implicit write permission.
+
+    Representative scenario: an agentic architecture with write-capable tool
+    edges but no explicit scope-boundary node between the agent and the write
+    target; the agent takes a POST/submit action outside its declared scope.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 9,
+        "is_agentic": True,
+        "no_oversight_path": False,
+        "unscoped_write_detected": True,
+        "explicit_write_scope": False,
+    }
+    return sig
+
+
 SCENARIOS = {
     "targeted_pipeline_attack":      (scenario_targeted_pipeline_attack,
         "DETECT-INJ-001 (Critical) + DETECT-QC-002 (Critical) — adversarial input + divergence suppression"),
@@ -1600,6 +1690,12 @@ SCENARIOS = {
         "DETECT-QC-013 (High) — CSA 4.12: no active trace sink; forensic_capture actions cannot write; Recover is blind"),
     "csa_context_drift":                  (scenario_csa_context_drift,
         "DETECT-QC-014 (Medium) — CSA 4.8: oversized agentic MMD input exceeds context window pressure threshold"),
+    "anthropic_reasoning_action_mismatch": (scenario_anthropic_reasoning_action_mismatch,
+        "DETECT-QC-015 (High) — Anthropic 2026: SM reasoning says 'testing/demonstrating' while pipeline records real write action"),
+    "anthropic_tool_restriction_bypass":  (scenario_anthropic_tool_restriction_bypass,
+        "DETECT-AGT-004 (Critical) — Anthropic 2026: agent uses injection to bypass tool restriction instead of stopping"),
+    "anthropic_unscoped_write_action":    (scenario_anthropic_unscoped_write_action,
+        "DETECT-AGT-005 (High) — Anthropic 2026: agent takes write/submit action without explicit write scope declared"),
 }
 
 EXPECTED_RULES = {
@@ -1659,6 +1755,10 @@ EXPECTED_RULES = {
     "csa_checker_out_of_loop":              {"DETECT-QC-012"},
     "csa_untraceability":                   {"DETECT-QC-013"},
     "csa_context_drift":                    {"DETECT-QC-014"},
+    # Anthropic 2026 incident-grounded
+    "anthropic_reasoning_action_mismatch":  {"DETECT-QC-015"},
+    "anthropic_tool_restriction_bypass":    {"DETECT-AGT-004"},
+    "anthropic_unscoped_write_action":      {"DETECT-AGT-005"},
 }
 
 

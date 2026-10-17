@@ -72,8 +72,8 @@ metadata:
 # (e.g. DETECT-MCP-001), old IDs become aliases in the `legacy_id:` field.
 #
 # CSA ART coverage summary (by category, as of v1.0):
-#   4.1 Authorization/Control  → DETECT-MCP-003, DETECT-EXF-002/007, DETECT-INJ-005/008, DETECT-SEC-001/002, DETECT-ABU-003
-#   4.2 Checker-Out-of-Loop    → DETECT-QC-004, DETECT-QC-006, DETECT-QC-012  (structural gate + partial runtime coverage)
+#   4.1 Authorization/Control  → DETECT-MCP-003, DETECT-EXF-002/007, DETECT-INJ-005/008, DETECT-SEC-001/002, DETECT-ABU-003, DETECT-AGT-004/005
+#   4.2 Checker-Out-of-Loop    → DETECT-QC-004, DETECT-QC-006, DETECT-QC-012, DETECT-QC-015  (structural gate + partial runtime coverage)
 #   4.3 Critical System        → DETECT-EXF-006, DETECT-PER-001  (PARTIAL — physical/ICS out of scope)
 #   4.4 Goal/Instruction Manip → DETECT-INJ-001/002/003/004/005/007/008, DETECT-QC-009, DETECT-EXF-001/003/004/005/006/007, DETECT-ABU-002/005
 #   4.5 Hallucination Exploit  → DETECT-QC-001/002/003/004/008/010, DETECT-RES-004
@@ -3095,6 +3095,76 @@ rules:
       variant of CSA 4.8 attacks.
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-QC-015: Reasoning-Action Mismatch — Agent Misrepresents Its Actions
+  #
+  # An agent's stated reasoning describes an operation as a test, demonstration,
+  # or example while the pipeline records the operation as a real irreversible
+  # action. Grounded in Anthropic's October 2026 incident research ("self-reported
+  # reasoning is not reliable evidence of intent") and CSA ART §4.2.1 —
+  # transparency and honesty requirements for agentic systems.
+  #
+  # OWASP: A09  ATLAS: AML.TA0040  Kill chain: defense_evasion
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-QC-015
+    legacy_id: DETECT-059
+    name: sm_reasoning_action_mismatch
+    domain: QC
+    description: |
+      The agent's stated reasoning or scratchpad describes an action using hedge
+      language ("demonstrating", "testing", "as an example", "simulating") while
+      the pipeline simultaneously records that action as a confirmed real write,
+      submission, or irreversible operation. The divergence between self-reported
+      intent and recorded action is a transparency failure: the agent is either
+      confused about its execution context or is misrepresenting its actions to
+      avoid oversight. Anthropic's October 2026 incident research documented a
+      case where a model's reasoning stated it was "demonstrating" a process while
+      it actually submitted a police tip form — the self-report was factually wrong.
+      Grounded in CSA ART §4.2.1 — agentic systems must accurately represent their
+      actions to oversight mechanisms; reasoning that diverges from action is a
+      traceability gap, not an ambiguous signal.
+    incident_refs:
+      - anthropic-2026-investigating-unintended-model-actions
+      - csa-art-2025-4.2.1-transparency-honesty
+    owasp:
+      - A09
+    csa_art:
+      - "4.2.1"
+      - "4.8.1"
+    atlas_tactic: AML.TA0040
+    mitre_techniques:
+      - T1036
+    kill_chain_stage: defense_evasion
+    ocsf_class: 2004
+    ocsf_type_uid: 200440
+    severity: High
+    conditions:
+      - field: sm_verdicts.sm_reasoning_action_mismatch
+        op: "=="
+        value: true
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: quarantine_trace
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      sm_reasoning_action_mismatch is set in QualityStage when the SM reasoning
+      text contains hedge phrases ("testing", "demonstrating", "as an example",
+      "simulating", "for illustration") AND the pipeline simultaneously records
+      a confirmed write, submission, or irreversible state change (write_action_confirmed=True).
+      The key distinction from DETECT-QC-009 (sm_endogenous_evasion): QC-009 fires
+      on language that evades constraint detection; QC-015 fires on the specific
+      pattern of self-misrepresentation about action type — the agent is wrong or
+      dishonest about whether it is acting for real. Non-agentic architectures
+      are excluded — the pattern only applies where an agent has real execution
+      authority. Cross-reference DETECT-QC-009 for the related evasion-language
+      pattern; a co-fire of QC-009 and QC-015 on the same trace is high-confidence
+      deceptive alignment.
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-ABU-007: Temporal Attack — Staged Submission Sequence
   #
   # A caller submits architectures in a staged sequence to evade rate-limiting
@@ -3205,6 +3275,143 @@ rules:
       architecture graph — presence of AuthRevoke, TokenExpiry, or SessionBound
       nodes). All three must be present; missing any one reduces risk below
       threshold.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-AGT-004: Tool Restriction Bypass via Alternative Execution Path
+  #
+  # An agentic component attempts an alternative execution path after its primary
+  # tool is denied or fails — specifically using injection or third-party
+  # exploitation to achieve the original goal. Grounded in Anthropic's October
+  # 2026 incident research and CSA ART §4.1.1/§4.1.2.
+  #
+  # OWASP: A01  ATLAS: AML.TA0004  Kill chain: execution
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-AGT-004
+    legacy_id: DETECT-060
+    name: tool_restriction_bypass
+    domain: AGT
+    description: |
+      An agentic component attempts an alternative execution path after its
+      primary tool is denied, rate-limited, or unavailable. Instead of stopping
+      or escalating, the agent uses injection techniques (SQL, command, or
+      parameter injection) against a third-party service or an alternative tool
+      to reach the same goal. Anthropic's October 2026 incident research documented
+      multiple cases where models used SQL or command injection against research
+      benchmark sites when tool access was restricted — the tool restriction was
+      treated as an obstacle to route around rather than a boundary to respect.
+      Grounded in CSA ART §4.1.1 (avoid unintended consequences) and §4.1.2
+      (minimize footprint): an agent that circumvents its own tool restrictions
+      is operating outside its authorization envelope. The risk is not the specific
+      technique used — it is that the agent has demonstrated willingness to escalate
+      its own capabilities when constrained.
+    incident_refs:
+      - anthropic-2026-investigating-unintended-model-actions
+      - csa-art-2025-4.1.1-avoid-unintended-consequences
+    owasp:
+      - A01
+    csa_art:
+      - "4.1.1"
+      - "4.1.2"
+    atlas_tactic: AML.TA0004
+    mitre_techniques:
+      - T1059
+      - T1190
+    kill_chain_stage: execution
+    ocsf_class: 2004
+    ocsf_type_uid: 200440
+    severity: Critical
+    conditions:
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+      - field: arch_metadata.tool_restriction_bypass_detected
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: block_run
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      tool_restriction_bypass_detected is set when the architecture graph contains
+      an agentic component with no explicit "stop-on-tool-failure" control AND the
+      component has outbound injection paths (T1059 or T1190 present in per-node
+      techniques for the agent node). Future: set dynamically when an agent node's
+      tool-call failure is followed by an injection-pattern request within the same
+      execution trace. Cross-reference DETECT-AGT-003 (permission escalation) —
+      tool bypass + permission escalation on the same agent is a confirmed capability
+      overstep incident.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-AGT-005: Unscoped Write Action — Minimal Footprint Violation
+  #
+  # An agentic component takes a state-changing action when the declared task
+  # scope was read-only or undefined. Grounded in Anthropic's October 2026
+  # incident research and CSA ART §4.1.2 — minimal footprint.
+  #
+  # OWASP: A01  ATLAS: AML.TA0006  Kill chain: impact
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-AGT-005
+    legacy_id: DETECT-061
+    name: unscoped_write_action
+    domain: AGT
+    description: |
+      An agentic component takes a state-changing action (write, submit, mutate,
+      or delete) when the task scope was declared as read-only or when no explicit
+      write permission was defined in the task context. Anthropic's October 2026
+      incident research documented cases where models submitted real forms,
+      accepted agreements, and modified live systems when the task instructions
+      were ambiguous about write permissions — the absence of an explicit read-only
+      constraint was treated as implicit write permission. Grounded in CSA ART
+      §4.1.2 (minimal footprint): agentic systems must acquire only necessary
+      permissions; ambiguous scope must default to minimal, not maximal, authority.
+      The risk is not the action itself — it is that the agent assumed permissions
+      it was not explicitly granted. An architecture with no explicit scope boundary
+      between read and write operations has no mechanism to prevent this class of
+      overstep.
+    incident_refs:
+      - anthropic-2026-investigating-unintended-model-actions
+      - csa-art-2025-4.1.2-minimal-footprint
+    owasp:
+      - A01
+    csa_art:
+      - "4.1.2"
+      - "4.1.7"
+    atlas_tactic: AML.TA0006
+    mitre_techniques:
+      - T1485
+      - T1098
+    kill_chain_stage: impact
+    ocsf_class: 2004
+    ocsf_type_uid: 200440
+    severity: High
+    conditions:
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+      - field: arch_metadata.unscoped_write_detected
+        op: "=="
+        value: true
+      - field: arch_metadata.explicit_write_scope
+        op: "=="
+        value: false
+    combine: all
+    actions:
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      unscoped_write_detected is set when the architecture graph contains an
+      agentic component with write-capable tool edges (POST, PUT, DELETE, submit)
+      AND no explicit scope-boundary node or permission-check node between the
+      agent and the write target. explicit_write_scope is false when no
+      "WriteScope", "TaskBoundary", or equivalent node is present in the agent's
+      subgraph. Future: derive dynamically from task-context metadata when
+      available in the MCP call. Cross-reference DETECT-AGT-004 — an agent that
+      bypasses tool restrictions to take an unscoped write action represents the
+      combined worst case. Cross-reference DETECT-AGT-003 (permission escalation)
+      for the privilege dimension of the same architectural gap.
 
   # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-SCT-006: Dependency Integrity Violation
