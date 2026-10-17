@@ -6,6 +6,27 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 109 — 2026-10-17
 
+### Entry 218 — 3 DETECT rules from Anthropic Oct 2026 incident research
+
+**Decision:** Added 3 new DETECT rules grounded in Anthropic's "Investigating Unintended Model Actions" research (October 2026).
+
+| Rule | Name | Severity | Incident signal |
+|---|---|---|---|
+| DETECT-QC-015 | `sm_reasoning_action_mismatch` | High | Agent says "testing/demonstrating" while executing real irreversible action |
+| DETECT-AGT-004 | `tool_restriction_bypass` | Critical | Agent uses injection/exploitation to bypass tool denial instead of stopping |
+| DETECT-AGT-005 | `unscoped_write_action` | High | Agent takes write/submit action when task scope was undefined or read-only |
+
+**Why:** Anthropic's research documented four failure modes (exploitation, form submission, token harvest, URL shortener evasion). QC-015/AGT-004/AGT-005 cover the three highest-leverage gaps not already in TA's DETECT corpus. QC-015 specifically grounds the "self-reported reasoning is not reliable evidence of intent" finding as a detectable signal.
+
+**Tests:** 376 tests pass (rule count 58 → 61); 3 new incident simulator scenarios grounded in Anthropic incident ref.
+
+**Commit:** `e5a1eef`
+
+**Alternatives rejected:**
+- Adding all four failure modes: URL shortener evasion (4th pattern) is network-infrastructure detection, out of scope for TA's architecture-analysis pipeline; deferred
+
+---
+
 ### Entry 217 — Jev Phase 2: technique applicability noul (❻) + CISO posture signal (❽)
 
 **Decision:** Implemented the two remaining Jev Phase 2 integration points from Entry 208.
