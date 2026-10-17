@@ -4,6 +4,29 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 109 — 2026-10-17
+
+### Entry 217 — Jev Phase 2: technique applicability noul (❻) + CISO posture signal (❽)
+
+**Decision:** Implemented the two remaining Jev Phase 2 integration points from Entry 208.
+
+| # | Point | File | Key details |
+|---|---|---|---|
+| ❻ | Technique applicability noul | `ground_truth_generator.py` | `_jev_filter_ap_techniques()` after per-node technique assignment; threshold 0.25; cap 15 questions/call; records filtered list in technique_context sidecar |
+| ❽ | CISO risk posture noul | `ta_exporter.py` | `_build_posture_signal()` at export time; `posture_signal` key in bundle; `consistent = noul >= 0.50` |
+
+**Both are fail-open:** Jev disabled, no key, or any exception leaves the output unchanged (❻ keeps all techniques; ❽ sets `posture_signal: null`).
+
+**Tests:** 18 new unit tests in `tests/unit/test_jev_phase2.py`; 500 unit tests pass total.
+
+**Commit:** `79ca90c`
+
+**Alternatives rejected:**
+- Per-technique-per-node individual Jev calls: too many API calls for architectures with large technique sets; one call per attack path with batched questions is cheaper and sufficient
+- Using `choice` type for posture: noul is sufficient for a binary "consistent?" signal
+
+---
+
 ## Session 108 — 2026-10-16
 
 ### Entry 214 — TATB AI-Control-Mature sub-dimension (P35-B)
