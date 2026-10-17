@@ -47,7 +47,7 @@ Model aliases (benched 2026-08-29):
     nemotron_super  nvidia/nemotron-3-super-120b-a12b:free
     glm             z-ai/glm-5.2 paid (tester=model cap)
     openrouter_free     nvidia/nemotron-3.5-lightning:free (untested)
-    nemotron_35_super   nvidia/nemotron-3.5-super-vl:free (untested)
+    nemotron_35_super   nvidia/nemotron-3.5-super-vl:free (EXCLUDED 2026-10-17)
     cohere          cohere/north-mini-code:free (untested)
 
 Gap trigger (critics mode): critic depth drop ≥ 2 pts → flagged for critic-gym.
@@ -107,7 +107,7 @@ MODEL_ALIASES = {
     "nemotron_super":   "openrouter/nvidia/nemotron-3-super-120b-a12b:free",              # 120B/12B active MoE; benched 2026-08-29
     "glm":              "openrouter/z-ai/glm-5.2",              # paid; tester=model cap (prose-wraps JSON); benched 2026-08-29
     "openrouter_free":  "openrouter/nvidia/nemotron-3.5-lightning:free",  # untested
-    "nemotron_35_super": "openrouter/nvidia/nemotron-3.5-super-vl:free",  # untested; added 2026-10-17
+    "nemotron_35_super": "openrouter/nvidia/nemotron-3.5-super-vl:free",  # EXCLUDED 2026-10-17: blackhat silent on all arches; architect/tester 0.0 (JSON parse fail); timeouts on complex arches
     "cohere":           "openrouter/cohere/north-mini-code:free",          # untested; non-thinking sparse MoE
     "gemma_4_26b":      "openrouter/google/gemma-4-26b-a4b-it:free",       # EXCLUDED; blackhat silent on all arches (2×sessions)
     "nex_pro":          "openrouter/nex-agi/nex-n2.5-pro:free",             # EXCLUDED; timed out on 17_multi_region 2026-09-11
