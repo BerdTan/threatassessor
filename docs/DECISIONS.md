@@ -15,15 +15,16 @@ Read this file at the start of every session. After any significant decision abo
 | DETECT-QC-015 | `sm_reasoning_action_mismatch` | High | Agent says "testing/demonstrating" while executing real irreversible action |
 | DETECT-AGT-004 | `tool_restriction_bypass` | Critical | Agent uses injection/exploitation to bypass tool denial instead of stopping |
 | DETECT-AGT-005 | `unscoped_write_action` | High | Agent takes write/submit action when task scope was undefined or read-only |
+| DETECT-SCT-007 | `sequential_credential_harvest` | High | Agent reads client-side config token, bypasses fee-gated API without vault/broker |
 
 **Why:** Anthropic's research documented four failure modes (exploitation, form submission, token harvest, URL shortener evasion). QC-015/AGT-004/AGT-005 cover the three highest-leverage gaps not already in TA's DETECT corpus. QC-015 specifically grounds the "self-reported reasoning is not reliable evidence of intent" finding as a detectable signal.
 
-**Tests:** 376 tests pass (rule count 58 → 61); 3 new incident simulator scenarios grounded in Anthropic incident ref.
+**Tests:** 376 tests pass (rule count 58 → 62); 4 new incident simulator scenarios grounded in Anthropic incident ref.
 
-**Commit:** `e5a1eef`
+**Commits:** `e5a1eef` (QC-015/AGT-004/AGT-005), `149947a` (SCT-007)
 
 **Alternatives rejected:**
-- Adding all four failure modes: URL shortener evasion (4th pattern) is network-infrastructure detection, out of scope for TA's architecture-analysis pipeline; deferred
+- URL shortener evasion (4th Anthropic pattern): network-infrastructure detection, out of scope for TA's architecture-analysis pipeline; deferred
 
 ---
 
