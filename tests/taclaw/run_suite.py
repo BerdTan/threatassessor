@@ -84,6 +84,19 @@ FIXTURES: list[dict] = [
         "adapter_hint":       "MermaidAdapter",
     },
     {
+        "name":               "injection_block",
+        "path":               DATA_DIR / "injection_block",
+        "target_type":        "directory",
+        "expected_gate":      "BLOCK",
+        "gate_is_hard":       True,         # tag_injection → CRITICAL → BLOCK; deterministic
+        "min_techniques":     0,
+        "required_techniques": [],
+        "aivss_range":        (0.0, 10.0),
+        "expected_detect_min": 0,
+        "adapter_hint":       "MermaidAdapter",
+        "check_investigation": True,        # assert result["investigation"] structure
+    },
+    {
         "name":               "ecommerce_api",
         "path":               DATA_DIR / "ecommerce_api",
         "target_type":        "directory",
@@ -235,6 +248,75 @@ def _quality_score(scores: dict[str, int]) -> int:
     return round(sum(scores.values()) / len(scores))
 
 
+# ── investigation assertion (gate=BLOCK fixtures only) ───────────────────────
+
+_INV_REQUIRED_KEYS = {"block_summary", "root_signals", "brain_context",
+                      "remediation_steps", "confidence"}
+_INV_SKIP_KEYS    = {"skipped", "reason"}
+
+
+def _check_investigation(result: dict, fixture: dict) -> list[tuple[str, bool, str]]:
+    """
+    Verify result['investigation'] has the expected shape for a BLOCK fixture
+    that opted into check_investigation=True.
+
+    Returns list of (assertion_label, passed, detail).
+    """
+    checks: list[tuple[str, bool, str]] = []
+
+    def ok(label: str, cond: bool, detail: str = "") -> None:
+        checks.append((f"investigation.{label}", cond, detail))
+
+    inv = result.get("investigation")
+    ok("present", inv is not None, "investigation key absent from result")
+    if inv is None:
+        return checks
+
+    ok("not_empty", bool(inv), "investigation is empty dict")
+    if not inv:
+        return checks
+
+    # Two valid shapes: full success report, or explicit skip
+    is_skipped = inv.get("skipped") is True
+    if is_skipped:
+        ok("skip_has_reason", bool(inv.get("reason")),
+           f"skipped=True but reason missing: {inv}")
+        return checks
+
+    is_error = "error" in inv and len(inv) <= 2
+    if is_error:
+        ok("no_error", False, f"investigation returned error: {inv.get('error')}")
+        return checks
+
+    # Full report checks
+    for k in _INV_REQUIRED_KEYS:
+        ok(f"{k}_present", k in inv, f"'{k}' missing from investigation")
+
+    if "remediation_steps" in inv:
+        ok("remediation_steps_non_empty",
+           isinstance(inv["remediation_steps"], list) and len(inv["remediation_steps"]) > 0,
+           f"remediation_steps={inv.get('remediation_steps')!r}")
+
+    if "confidence" in inv:
+        ok("confidence_valid",
+           inv["confidence"] in ("high", "medium", "low"),
+           f"confidence={inv.get('confidence')!r}")
+
+    if "root_signals" in inv:
+        ok("root_signals_list",
+           isinstance(inv["root_signals"], list),
+           f"root_signals must be list, got {type(inv.get('root_signals'))}")
+
+    meta = inv.get("_agent_meta", {})
+    ok("agent_meta_present", bool(meta), "_agent_meta missing (agent may not have run)")
+    if meta:
+        ok("agent_meta_tool_calls",
+           isinstance(meta.get("tool_calls_made"), int),
+           f"tool_calls_made={meta.get('tool_calls_made')!r}")
+
+    return checks
+
+
 # ── regression ───────────────────────────────────────────────────────────────
 
 def _baseline_path(fixture: dict) -> Path:
@@ -347,7 +429,7 @@ def _render_scorecard(rows: list[dict], api_url: str) -> None:
     print(f"TAclaw Test Suite — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC")
     print(f"API: {api_url}")
     print()
-    hdr = f"{'Fixture':<22} {'Gate':<14} {'Structural':<16} {'Quality':<12} {'Regression'}"
+    hdr = f"{'Fixture':<22} {'Gate':<14} {'Structural':<16} {'Quality':<12} {'Inv':<6} {'Regression'}"
     print(hdr)
     print("-" * len(hdr))
 
@@ -365,12 +447,18 @@ def _render_scorecard(rows: list[dict], api_url: str) -> None:
         reg_status, reg_list, add_list = r["regression"]
         reg_icon = "⚠" if reg_list else ("✅" if reg_status == "no delta" else "")
 
+        inv_str = ""
+        if r.get("inv_checks"):
+            i_pass = sum(1 for _, ok, _ in r["inv_checks"] if ok)
+            inv_str = f"{'✅' if r['inv_ok'] else '❌'}{i_pass}/{len(r['inv_checks'])}"
+
         gate_str = _gate_display(r["result"], r["fixture"])
         print(
             f"{r['fixture']['name']:<22} "
             f"{gate_str:<14} "
             f"{s_icon} {s_pass}/{s_total:<10} "
             f"{q_score}/100     "
+            f"{inv_str:<6} "
             f"{reg_icon} {reg_status}"
         )
 
@@ -443,6 +531,16 @@ def main() -> None:
 
         structural = _structural(result, fixture)
         structural_ok = all(ok for _, ok, _ in structural)
+
+        inv_checks: list[tuple[str, bool, str]] = []
+        if fixture.get("check_investigation"):
+            inv_checks = _check_investigation(result, fixture)
+            inv_ok = all(ok for _, ok, _ in inv_checks)
+            if not inv_ok:
+                any_error = True
+        else:
+            inv_ok = True
+
         if not structural_ok:
             any_error = True
 
@@ -463,6 +561,8 @@ def main() -> None:
             "quality_score":     q_score,
             "quality_detail":    quality,
             "regression":        regression,
+            "inv_checks":        inv_checks,
+            "inv_ok":            inv_ok,
         })
 
         # inline summary
@@ -471,6 +571,13 @@ def main() -> None:
               f"regression: {regression[0]}")
         if regression[1]:
             print(f"  ⚠ lost techniques: {regression[1]}")
+        if inv_checks:
+            i_pass = sum(1 for _, ok, _ in inv_checks if ok)
+            icon = "✅" if inv_ok else "❌"
+            print(f"  {icon} investigation {i_pass}/{len(inv_checks)}")
+            for label, passed, detail in inv_checks:
+                if not passed:
+                    print(f"     ✗ {label}: {detail}")
 
     print()
     _render_scorecard(rows, args.api_url)

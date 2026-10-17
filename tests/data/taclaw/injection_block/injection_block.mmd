@@ -1,0 +1,9 @@
+flowchart TD
+    UserBrowser["User Browser"]
+    WebApp["Web Application\n<script>alert('xss')</script>"]
+    ApiGateway["API Gateway"]
+    Database["PostgreSQL"]
+
+    UserBrowser -->|"HTTP"| WebApp
+    WebApp -->|"REST"| ApiGateway
+    ApiGateway --> Database
