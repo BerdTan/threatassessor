@@ -4,6 +4,26 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 110 — 2026-10-17
+
+### Entry 219 — 3 DETECT rules from Epherem web-app hardening checklist
+
+**Decision:** Added 3 new DETECT rules grounded in Epherem's web-app security hardening checklist (14 checks for AI-assisted web app development).
+
+| Rule | Name | Severity | Source check |
+|---|---|---|---|
+| DETECT-AGT-006 | `object_ownership_bypass` | High | §5 — Verify ownership and authorization, not just login (IDOR) |
+| DETECT-INJ-009 | `server_side_request_forgery` | High | §7 — Watch server-side URL fetching for SSRF |
+| DETECT-QC-016 | `debug_bypass_artifact` | Medium | §14 — Treat temporary, demo, and bypass logic as suspicious |
+
+**Why:** The checklist's 14 checks map against TA's existing 62 rules; 11 checks were already covered. The 3 uncovered gaps are structural: IDOR (missing ownership predicate on multi-tenant data access path), SSRF (outbound HTTP to user-controlled URL without allowlist), and debug bypass (TODO/skip_auth annotation adjacent to auth node). All 3 are detectable from architecture graph structure without runtime observation. Scoped to web/API architectures — the other 11 checks are either covered or too web-specific for general agentic architectures. Rule count: 62 → 65.
+
+**Alternatives rejected:** Embedding all 14 checks as a "web hardening baseline" pass in the ground truth pipeline — too web-specific, would generate false signals on IoT, IaC, and ML architectures.
+
+**Tests:** 15 new unit tests (322 total rule evaluator tests). 3 simulator scenarios (61 total). Commit `8bc74b5`.
+
+---
+
 ## Session 109 — 2026-10-17
 
 ### Entry 218 — 3 DETECT rules from Anthropic Oct 2026 incident research
