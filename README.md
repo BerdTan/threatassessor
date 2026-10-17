@@ -48,9 +48,16 @@ flowchart TD
 
     subgraph Outputs
         rep_o["report/ directory"]
-        ocsf_o["OCSF DetectionFindings\n58 DETECT rules"]
+        ocsf_o["OCSF DetectionFindings\n65 DETECT rules"]
         brn_o["TA Brain\n(instance · pattern · meta)"]
     end
+
+    subgraph Fleet["Fleet Layer"]
+        registry["ManagedAgentRegistry"]
+        inv_agent["TAclawInvestigationAgent\n5 tools · Jev pre-flight"]
+    end
+
+    fleet_rep["report/taclaw_investigator/\narch_name.json"]
 
     mmd_in --> rest_api
     sip_in --> adpt
@@ -70,9 +77,13 @@ flowchart TD
     an_s --> rp_s
     rp_s --> ql_s
     ql_s --> bo_s
-    bo_s -->|api_only| av_s
-    bo_s -->|full_moe| cr_s
+    bo_s -->|api_only PASS| av_s
+    bo_s -->|full_moe PASS| cr_s
+    bo_s -->|BLOCK| registry
     cr_s --> av_s
+
+    registry --> inv_agent
+    inv_agent --> fleet_rep
 
     av_s --> rep_o
     av_s --> ocsf_o
@@ -85,9 +96,17 @@ flowchart TD
     jev -.->|noul critic screen| ql_s
     jev -.->|choice adapter fallback| adpt
     jev -.->|noul TATB label| brn_o
+    jev -.->|noul investigation gate| inv_agent
+
+    style Fleet fill:#f3e8ff,stroke:#7c3aed
+    style registry fill:#ede9fe,stroke:#7c3aed
+    style inv_agent fill:#ede9fe,stroke:#7c3aed
+    style fleet_rep fill:#ede9fe,stroke:#7c3aed
 ```
 
-Three pipeline modes: **brain_fast** serves predictions from the TA Brain for known topology patterns (~50ms); **api_only** runs the deterministic analysis pipeline; **full_moe** adds the 5-critic expert panel. The Smart Router selects the mode automatically based on Brain confidence and AIVSS history. **Jev** (typesafe.ai) augments five decision points as a fast System 1 gate: governance injection detection, smart router cold-start, PolicyBroker critic pre-screening, adapter format fallback, and TATB quality labelling — all non-fatal; every point falls back silently if Jev is unavailable.
+Three pipeline modes: **brain_fast** serves predictions from the TA Brain for known topology patterns (~50ms); **api_only** runs the deterministic analysis pipeline; **full_moe** adds the 5-critic expert panel. The Smart Router selects the mode automatically based on Brain confidence and AIVSS history. **Jev** (typesafe.ai) augments six decision points as a fast System 1 gate: governance injection detection, smart router cold-start, PolicyBroker critic pre-screening, adapter format fallback, TATB quality labelling, and investigation pre-flight — all non-fatal; every point falls back silently if Jev is unavailable.
+
+On **BLOCK**, the pipeline hands off to the **Fleet Layer**: a managed agent loop where an LLM decides which tool to call next based on what the previous tool returned. `TAclawInvestigationAgent` queries five tools (block signals, brain patterns, rule detail, pipeline context, synthesis) and writes a remediation report to `report/taclaw_investigator/`. Fleet output is kept separate from pipeline output by design.
 
 ## Quick start
 
@@ -230,3 +249,5 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 | 33 | [From Ideas to Instrument: What It Takes to Build a Trustworthy AI-Assisted Threat Modeling System](https://medium.com/@breadtan/from-ideas-to-instrument-what-it-takes-to-build-a-trustworthy-ai-assisted-threat-modeling-system-dd046387f945) | Twelve engineering bricks each discovered by its absence; ground truth as a continuously challenged assumption, not a delivered artefact; why the experienced analyst moves upstream rather than disappears |
 | 34 | [Forty-Eight Rules and the Thinking Behind Each of Them](https://medium.com/@breadtan/forty-eight-detect-rules-and-the-thinking-behind-each-of-them-d867f43f4fa4) | 48 DETECT rules across 10 domains, each with a backstory — the seedling metaphor, the adversarial chapter, how a gym creates the surface that makes the abuse domain necessary |
 | 35 | [Limit, Monitor, Stop, Recover: What It Actually Looks Like Inside the Pipeline](https://medium.com/@breadtan/limit-monitor-stop-recover-what-it-actually-looks-like-inside-the-pipeline-ca65a6b58653) | Three CSA ART adversarial scenarios (orchestrator state poisoning, temporal staged submission, checker-out-of-loop) walked through every LMSR layer; verdict-first analysis of where each layer works, where it does not, and which gaps are addressable |
+| 36 | [System 1 in a System 2 Pipeline: Where Fast Thinking Earns Its Place](https://medium.com/@breadtan/system-1-in-a-system-2-pipeline-where-fast-thinking-earns-its-place-1e611b20326b) | Jev Phase 2: two new integration points (ground truth technique filter at 0.25 noul threshold; CISO posture signal at export); state quality over question type; the two points that failed the fit-for-purpose test |
+| 38 | [The Investigation That Couldn't Be Hardcoded](https://medium.com/@breadtan/the-investigation-that-couldnt-be-hardcoded-7707614cc53f) | Managed agent fleet layer above the pipeline: ManagedAgent base (4 hardening layers), ManagedAgentRegistry, TAclawInvestigationAgent; live run: 4–7 tool calls, 8–14k tokens, 4–6 remediation steps; why the BLOCK path requires judgment that a hardcoded workflow can't provide |
