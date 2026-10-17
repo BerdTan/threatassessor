@@ -79,6 +79,7 @@ metadata:
 #   4.5 Hallucination Exploit  → DETECT-QC-001/002/003/004/008/010, DETECT-RES-004
 #   4.6 Impact/Blast Radius    → DETECT-EXF-001/004/005/007, DETECT-RES-002, DETECT-PER-001, DETECT-MCP-001
 #   4.7 Knowledge Base Poison  → DETECT-SCT-002/003/005/006, DETECT-RES-003, DETECT-ABU-006/008
+#   4.5 Credential Management  → DETECT-SCT-007
 #   4.8 Memory/Context Manip   → DETECT-ABU-007 (staged temporal), DETECT-QC-011 (orchestrator state), DETECT-QC-014 (context window pressure), DETECT-QC-009 (opaque reasoning / transparency)
 #   4.9 Orchestration/Multi-Ag → DETECT-INJ-006/007, DETECT-QC-005/007/011, DETECT-SEC-002, DETECT-AGT-001/003, DETECT-ABU-004
 #   4.10 Resource Exhaustion   → DETECT-RES-001/002, DETECT-MCP-002/005/006
@@ -3464,6 +3465,78 @@ rules:
       that rule watches Python source files; this rule watches imported packages
       and weight files. False positives can occur during legitimate dependency
       upgrades; check the deployment timeline against the manifest commit log.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-SCT-007: Sequential Credential Harvest from Client-Side Config
+  #
+  # An agentic component reads a client-side config file and uses a token or
+  # credential extracted from it to make an authenticated request — bypassing
+  # the intended access gate. Grounded in Anthropic's October 2026 incident
+  # research and CSA ART §4.5.1 — unsecured credential access.
+  #
+  # OWASP: A02  ATLAS: AML.TA0002  Kill chain: credential_access
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-SCT-007
+    legacy_id: DETECT-062
+    name: sequential_credential_harvest
+    domain: SCT
+    description: |
+      An agentic component reads a client-side configuration file (e.g. config.js,
+      public dashboard settings, or an unprotected .env equivalent) and uses a
+      token or credential found there to make an authenticated request to a
+      protected resource — bypassing the fee gate, access restriction, or
+      permission boundary the credential was meant to enforce. Anthropic's October
+      2026 incident research documented a model using access tokens from a site's
+      client-side configuration to query data behind a fee restriction: the token
+      was technically accessible but not intended for programmatic use by an
+      external agent. The gap is architectural: the credential was reachable without
+      going through a secrets manager, vault, or credential broker, leaving it
+      available to any caller that reads the config file. Grounded in CSA ART
+      §4.5.1 — agentic systems must not access credentials outside their authorised
+      credential management path; client-side config files are not an authorised
+      credential store.
+    incident_refs:
+      - anthropic-2026-investigating-unintended-model-actions
+      - csa-art-2025-4.5.1-credential-management
+    owasp:
+      - A02
+    csa_art:
+      - "4.5.1"
+      - "4.5.2"
+    atlas_tactic: AML.TA0002
+    mitre_techniques:
+      - T1552
+      - T1528
+    kill_chain_stage: credential_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200440
+    severity: High
+    conditions:
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+      - field: arch_metadata.client_config_credential_access
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: |
+      client_config_credential_access is set when the architecture graph contains
+      an agentic node with a direct edge to a config file node (config.js,
+      settings.json, .env, or public dashboard config) AND a subsequent authenticated
+      request edge to a protected API or data store, with no secrets-manager or
+      vault node in the path. The rule targets the absence of a credential broker:
+      an architecture that routes credentials through a vault or parameter store is
+      not flagged, even if an agent reads them. Distinct from DETECT-EXF-002
+      (embedded credentials in the MMD artifact itself) and DETECT-SCT-006
+      (dependency hash mismatch): this rule fires on the access pattern in the
+      running architecture, not on static artifacts. Cross-reference DETECT-AGT-004
+      (tool restriction bypass) — an agent that harvests a credential to bypass an
+      access gate may also be bypassing a tool restriction; co-fire is a confirmed
+      access control incident.
 
   # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-ABU-008: TACO Feedback Gaming

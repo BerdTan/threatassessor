@@ -1490,6 +1490,32 @@ def scenario_csa_checker_out_of_loop() -> Dict[str, Any]:
     return sig
 
 
+def scenario_anthropic_sequential_credential_harvest() -> Dict[str, Any]:
+    """
+    DETECT-SCT-007 (High) — Anthropic 2026: sequential credential harvest
+
+    An agentic component reads a client-side config file and uses a token
+    extracted from it to make an authenticated request, bypassing the intended
+    access gate. Grounded in Anthropic's October 2026 incident research: a model
+    used access tokens from a site's client-side configuration to query data
+    behind a fee restriction. No secrets manager in the path between the agent
+    node and the protected API.
+
+    Representative scenario: an agentic architecture where an AI agent has a
+    direct edge to a public dashboard config node, followed by an authenticated
+    API call to a fee-gated data service, with no vault or credential broker node.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 11,
+        "is_agentic": True,
+        "no_oversight_path": False,
+        "client_config_credential_access": True,
+    }
+    return sig
+
+
 def scenario_anthropic_reasoning_action_mismatch() -> Dict[str, Any]:
     """
     DETECT-QC-015 (High) — Anthropic 2026: reasoning-action mismatch
@@ -1690,6 +1716,8 @@ SCENARIOS = {
         "DETECT-QC-013 (High) — CSA 4.12: no active trace sink; forensic_capture actions cannot write; Recover is blind"),
     "csa_context_drift":                  (scenario_csa_context_drift,
         "DETECT-QC-014 (Medium) — CSA 4.8: oversized agentic MMD input exceeds context window pressure threshold"),
+    "anthropic_sequential_credential_harvest": (scenario_anthropic_sequential_credential_harvest,
+        "DETECT-SCT-007 (High) — Anthropic 2026: agent reads client-side config token, bypasses fee-gated API without vault/broker"),
     "anthropic_reasoning_action_mismatch": (scenario_anthropic_reasoning_action_mismatch,
         "DETECT-QC-015 (High) — Anthropic 2026: SM reasoning says 'testing/demonstrating' while pipeline records real write action"),
     "anthropic_tool_restriction_bypass":  (scenario_anthropic_tool_restriction_bypass,
@@ -1756,6 +1784,7 @@ EXPECTED_RULES = {
     "csa_untraceability":                   {"DETECT-QC-013"},
     "csa_context_drift":                    {"DETECT-QC-014"},
     # Anthropic 2026 incident-grounded
+    "anthropic_sequential_credential_harvest": {"DETECT-SCT-007"},
     "anthropic_reasoning_action_mismatch":  {"DETECT-QC-015"},
     "anthropic_tool_restriction_bypass":    {"DETECT-AGT-004"},
     "anthropic_unscoped_write_action":      {"DETECT-AGT-005"},
