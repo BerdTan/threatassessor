@@ -6,6 +6,24 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 110 — 2026-10-17
 
+### Entry 220 — Managed agent fleet: base class, registry, TAclawInvestigationAgent
+
+**Decision:** Added a managed agent layer above the pipeline. Three components: `ManagedAgent` base class (tool loop + 4 hardening layers), `ManagedAgentRegistry` singleton, and `TAclawInvestigationAgent` as the first fleet member. Agent reports land at `report/<agent_id>/<arch_name>.json`, separate from pipeline output at `report/<arch_name>/`.
+
+**Why:** Post-BLOCK investigation requires judgment at each step: which tool to call depends on what the previous tool returned. A hardcoded workflow making the same 5 calls in the same order every run misses this. Live runs confirmed 4–7 tool calls per run (non-deterministic path), 8–14k tokens, confidence high/medium based on brain context. The registry pattern decouples the pipeline from individual agents — `taclaw.py` asks the registry by name, not by class.
+
+**Hardening layers (base class):** (1) context sanitization before `build_task()` — injection patterns redacted, values HTML-escaped; (2) tool result cap at 2,048 chars — limits adversarial blast radius per tool response; (3) output field scan — redacts instruction-override patterns from remediation_steps and similar fields; (4) per-run token budget 50k — prevents runaway spend.
+
+**Report structure rationale:** `report/<agent_id>/` vs `report/<arch_name>/` separates ownership. Pipeline output is deterministic and owned by the harness. Agent output is a reasoning loop result and owned by the fleet. As the fleet grows, both sides stay auditable independently.
+
+**Alternatives rejected:** Event-driven trigger (pub/sub) — added latency and complexity for no gain since investigation always follows BLOCK synchronously; hardcoded investigation script — loses the judgment-dependent path variation that makes the output useful.
+
+**Tests:** 56 pass (13 new hardening tests in `tests/test_managed_agents.py`). SIP dashboard shows 🔍 agent chip + expandable investigation panel for BLOCK+investigation jobs. Commits `0f14761` → `87e8a1e`.
+
+---
+
+## Session 110 — 2026-10-17
+
 ### Entry 219 — 3 DETECT rules from Epherem web-app hardening checklist
 
 **Decision:** Added 3 new DETECT rules grounded in Epherem's web-app security hardening checklist (14 checks for AI-assisted web app development).

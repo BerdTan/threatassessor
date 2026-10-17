@@ -79,3 +79,4 @@ security-assessment/
 # user_config.json — tracked; model values use ${ENV_VAR} references, no secrets
 .claude/codemap/
 .readme-forge/
+tests/data/taclaw/**/last_result.json
