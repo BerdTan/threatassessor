@@ -201,6 +201,7 @@ async def _run_taclaw_job(
             routing_mode = "api_only"
             logger.info("TAclaw: brain_fast → api_only (no existing report for %s)", arch_name)
 
+        _blocked_exc = None  # set if BlockedPipelineError is raised
         store.update(job.job_id, progress=55, message=f"Running TA pipeline [{routing_mode}]")
 
         if routing_mode == "brain_fast":
@@ -259,6 +260,7 @@ async def _run_taclaw_job(
                 if "BlockedPipelineError" in type(exc).__name__ or "blocked" in str(exc).lower():
                     gate = "BLOCK"
                     pipeline_result = None
+                    _blocked_exc = exc  # preserve for investigation context
                     logger.warning("TAclaw: pipeline blocked for %s: %s", arch_name, exc)
                 else:
                     store.update(job.job_id, status="failed", error=f"Pipeline failed: {exc}", progress=0)
@@ -374,6 +376,56 @@ async def _run_taclaw_job(
         except Exception as exc:
             logger.warning("TAclaw: brain ingest/infer failed (non-fatal): %s", exc)
 
+        # 9. Managed investigation agent — activates only on gate=BLOCK
+        investigation: dict = {}
+        if gate == "BLOCK":
+            store.update(job.job_id, progress=95, message="Running investigation agent")
+            try:
+                from chatbot.agents.managed.registry import get_registry
+
+                # Build investigation context from blocked exception + merged graph metadata
+                _bouncer_reason = getattr(_blocked_exc, "reason", "unknown") if _blocked_exc else "unknown"
+                _blocked_ctx    = getattr(_blocked_exc, "ctx",    None)  if _blocked_exc else None
+                _detect_summary = getattr(_blocked_ctx, "detect_summary", {}) if _blocked_ctx else {}
+                _fired_rules    = _detect_summary.get("rules_fired", [])
+                _max_sev        = next(
+                    (r.get("severity", "") for r in _fired_rules if isinstance(r, dict)),
+                    "",
+                ) if _fired_rules and isinstance(_fired_rules[0], dict) else ""
+                _fired_ids = [
+                    r["rule_id"] if isinstance(r, dict) else str(r)
+                    for r in _fired_rules
+                ]
+
+                inv_context = {
+                    "job_id":             job.job_id,
+                    "arch_name":          arch_name,
+                    "arch_type":          merged.adapter_metadata.get("primary_arch_type", ""),
+                    "gate":               "BLOCK",
+                    "bouncer_reason":     _bouncer_reason,
+                    "fired_detect_rules": _fired_ids,
+                    "max_severity":       _max_sev,
+                    "pipeline_result":    {},
+                }
+
+                investigator = get_registry().get("taclaw_investigator")
+                if investigator:
+                    inv_result = await asyncio.get_event_loop().run_in_executor(
+                        None, investigator.run, inv_context
+                    )
+                    if inv_result.success:
+                        investigation = inv_result.output
+                        investigation["_agent_meta"] = {
+                            "tool_calls_made": inv_result.tool_calls_made,
+                            "tokens_used":     inv_result.tokens_used,
+                            "jev_gate_passed": inv_result.jev_gate_passed,
+                        }
+                    else:
+                        investigation = {"skipped": True, "reason": inv_result.skip_reason}
+            except Exception as exc:
+                logger.warning("TAclaw: investigation agent failed (non-fatal): %s", exc)
+                investigation = {"error": str(exc)}
+
         store.update(
             job.job_id,
             status="completed",
@@ -392,6 +444,7 @@ async def _run_taclaw_job(
                 "export": export_data,
                 "adapter_metadata": merged.adapter_metadata,
                 "brain_insight": brain_insight,
+                "investigation": investigation,
             },
         )
 

@@ -144,6 +144,16 @@ class LLMResponse:
 
 
 @dataclass
+class ChatResponse:
+    """Response from a multi-turn chat call (tool-aware)."""
+    content: Optional[str]          # text content when stop_reason == "end_turn"
+    tool_calls: List[Dict[str, Any]]  # [{id, name, input}] when stop_reason == "tool_use"
+    stop_reason: str                # "end_turn" | "tool_use" | "max_tokens" | "error"
+    tokens_used: int
+    model: str
+
+
+@dataclass
 class LLMUsageStats:
     """Cumulative usage statistics."""
     total_requests: int = 0
@@ -554,6 +564,102 @@ Be critical but constructive."""
             provider=self.verifier_provider,
             quality="high_quality",  # Use best model for verification
             **kwargs
+        )
+
+    def chat(
+        self,
+        messages: List[Dict[str, Any]],
+        model: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.2,
+    ) -> "ChatResponse":
+        """
+        Multi-turn chat call with optional tool_use support.
+
+        Unlike generate(), accepts a full message list and returns a ChatResponse
+        that exposes tool_calls when the model requests a tool, or content when
+        it produces a final answer.  Used by ManagedAgent for its tool loop.
+
+        Args:
+            messages: Full conversation history in OpenAI message format.
+            model:    Override model (defaults to primary provider's default).
+            tools:    OpenAI-format tool schemas [{type, function: {name, description, parameters}}].
+            max_tokens: Max completion tokens (default 4096).
+            temperature: Sampling temperature (default 0.2 for agent reasoning).
+
+        Returns:
+            ChatResponse with content | tool_calls and stop_reason.
+        """
+        provider = self.primary_provider
+        config = self._get_config(provider)
+        if model is None:
+            from agentic.providers import PROVIDER_MODELS
+            model = PROVIDER_MODELS[provider]["default"]
+
+        extra: Dict[str, Any] = {}
+        if tools:
+            extra["tools"] = tools
+            extra["tool_choice"] = "auto"
+
+        start = time.time()
+        try:
+            raw = self._call_litellm(
+                messages=messages,
+                model=model,
+                config=config,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **extra,
+            )
+        except Exception as exc:
+            logger.error("chat() call failed: %s", exc)
+            return ChatResponse(
+                content=None,
+                tool_calls=[],
+                stop_reason="error",
+                tokens_used=0,
+                model=model,
+            )
+
+        msg = raw.choices[0].message
+        usage = raw.usage if hasattr(raw, "usage") else None
+        tokens = usage.total_tokens if usage else 0
+        finish = raw.choices[0].finish_reason or "end_turn"
+
+        # Normalise finish_reason → stop_reason
+        if finish in ("tool_calls", "tool_use"):
+            stop_reason = "tool_use"
+        elif finish in ("stop", "end_turn"):
+            stop_reason = "end_turn"
+        else:
+            stop_reason = finish
+
+        # Extract tool calls
+        parsed_tool_calls: List[Dict[str, Any]] = []
+        raw_tc = getattr(msg, "tool_calls", None)
+        if raw_tc:
+            import json as _json
+            for tc in raw_tc:
+                try:
+                    inp = _json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments
+                except Exception:
+                    inp = {}
+                parsed_tool_calls.append({"id": tc.id, "name": tc.function.name, "input": inp})
+
+        content = msg.content
+        if content is None and not parsed_tool_calls:
+            content = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None) or ""
+
+        logger.info("chat() done: stop=%s tool_calls=%d tokens=%d latency=%.2fs",
+                    stop_reason, len(parsed_tool_calls), tokens, time.time() - start)
+
+        return ChatResponse(
+            content=content,
+            tool_calls=parsed_tool_calls,
+            stop_reason=stop_reason,
+            tokens_used=tokens,
+            model=model,
         )
 
     def _get_config(self, provider: LLMProvider) -> ProviderConfig:
