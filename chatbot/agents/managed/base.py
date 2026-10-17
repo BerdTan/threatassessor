@@ -11,8 +11,10 @@ Adding an agent to the fleet = subclass + one line in registry._auto_register().
 
 from __future__ import annotations
 
+import html
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -20,6 +22,54 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS_DEFAULT = 8
+MAX_AGENT_TOKENS_DEFAULT = 50_000   # hard budget per run (~$0.10 at typical rates)
+_TOOL_RESULT_MAX_CHARS = 2048       # cap per tool response to limit corpus injection blast radius
+
+# Lightweight injection guard — covers the most dangerous prompt-injection patterns.
+# Intentionally a subset of governance._INJECTION_PATTERNS (no need for full harness here).
+_CONTEXT_INJECT_RE = re.compile(
+    r"ignore\s+(?:previous|all|above|prior)(?:\s+\w+){0,3}\s+(?:instructions?|prompts?|context)"
+    r"|new\s+system\s+prompt"
+    r"|override\s+system"
+    r"|disregard\s+(?:system|all)\s+(?:instructions?|prompts?)"
+    r"|<\s*script"
+    r"|</?\s*system\s*>"
+    r"|<\|im_end\|>"
+    r"|</s>"
+    r"|\[INST\]"
+    r"|<<SYS>>",
+    re.IGNORECASE,
+)
+
+# Slightly tighter output guard — prevents the agent from being used as an amplifier
+# to embed instruction-override content inside remediation_steps or similar fields.
+_OUTPUT_INJECT_RE = re.compile(
+    r"ignore\s+(?:previous|all|above|prior).*?(?:instructions?|prompts?|context)"
+    r"|new\s+system\s+prompt"
+    r"|override\s+system",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_str(value: str) -> str:
+    """Redact if injection pattern found; otherwise HTML-escape the value."""
+    if _CONTEXT_INJECT_RE.search(value):
+        logger.warning("ManagedAgent context sanitiser: injection pattern detected, value redacted")
+        return "[REDACTED: injection pattern detected]"
+    return html.escape(value, quote=True)
+
+
+def _sanitize_context(context: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a shallow copy of context with all string (and list-of-string) values sanitized."""
+    clean: Dict[str, Any] = {}
+    for k, v in context.items():
+        if isinstance(v, str):
+            clean[k] = _sanitize_str(v)
+        elif isinstance(v, list):
+            clean[k] = [_sanitize_str(i) if isinstance(i, str) else i for i in v]
+        else:
+            clean[k] = v
+    return clean
 
 
 # ── primitives ────────────────────────────────────────────────────────────────
@@ -72,6 +122,7 @@ class ManagedAgent(ABC):
     description: str = ""
     system_prompt: str = ""
     max_iterations: int = MAX_ITERATIONS_DEFAULT
+    max_total_tokens: int = MAX_AGENT_TOKENS_DEFAULT
 
     def __init__(self) -> None:
         self.tools: List[AgentTool] = []
@@ -102,6 +153,9 @@ class ManagedAgent(ABC):
 
     def run(self, context: Dict[str, Any]) -> ManagedAgentResult:
         """Execute the managed tool loop and return a structured result."""
+        # Sanitize context values before they reach build_task() or any tool.
+        context = _sanitize_context(context)
+
         ok, reason = self.should_run(context)
         if not ok:
             logger.info("ManagedAgent[%s] skipped: %s", self.agent_id, reason)
@@ -128,6 +182,12 @@ class ManagedAgent(ABC):
         tool_calls_made = 0
 
         for iteration in range(self.max_iterations):
+            if total_tokens >= self.max_total_tokens:
+                logger.warning(
+                    "ManagedAgent[%s] token budget exhausted (%d >= %d) at iteration %d",
+                    self.agent_id, total_tokens, self.max_total_tokens, iteration,
+                )
+                break
             resp = client.chat(messages=messages, tools=tools_schema)
             total_tokens += resp.tokens_used
 
@@ -143,8 +203,8 @@ class ManagedAgent(ABC):
                 )
 
             if resp.stop_reason == "end_turn":
-                # Final answer — parse structured output from content
-                output = self._parse_output(resp.content or "")
+                # Final answer — parse structured output, then scan for injection in output fields.
+                output = self._scan_output(self._parse_output(resp.content or ""))
                 return ManagedAgentResult(
                     agent_id=self.agent_id,
                     success=True,
@@ -203,11 +263,40 @@ class ManagedAgent(ABC):
             return json.dumps({"error": f"unknown tool: {name}"})
         try:
             result = handler(input_dict)
-            logger.debug("ManagedAgent[%s] tool %s → %d chars", self.agent_id, name, len(str(result)))
-            return result if isinstance(result, str) else json.dumps(result)
+            result_str = result if isinstance(result, str) else json.dumps(result)
+            if len(result_str) > _TOOL_RESULT_MAX_CHARS:
+                logger.debug(
+                    "ManagedAgent[%s] tool %s result truncated (%d → %d chars)",
+                    self.agent_id, name, len(result_str), _TOOL_RESULT_MAX_CHARS,
+                )
+                result_str = result_str[:_TOOL_RESULT_MAX_CHARS] + " ...[truncated]"
+            logger.debug("ManagedAgent[%s] tool %s → %d chars", self.agent_id, name, len(result_str))
+            return result_str
         except Exception as exc:
             logger.error("ManagedAgent[%s] tool %s error: %s", self.agent_id, name, exc)
             return json.dumps({"error": str(exc)})
+
+    def _scan_output(self, output: Dict[str, Any]) -> Dict[str, Any]:
+        """Scan output fields for instruction-override patterns; redact affected fields."""
+        if not isinstance(output, dict):
+            return output
+        clean: Dict[str, Any] = {}
+        for k, v in output.items():
+            if isinstance(v, str) and _OUTPUT_INJECT_RE.search(v):
+                logger.warning(
+                    "ManagedAgent[%s] output field '%s' contains injection pattern — redacted",
+                    self.agent_id, k,
+                )
+                clean[k] = "[REDACTED: output injection detected]"
+            elif isinstance(v, list):
+                clean[k] = [
+                    "[REDACTED: output injection detected]"
+                    if isinstance(i, str) and _OUTPUT_INJECT_RE.search(i) else i
+                    for i in v
+                ]
+            else:
+                clean[k] = v
+        return clean
 
     def _parse_output(self, content: str) -> Dict[str, Any]:
         """Parse final LLM output. Override for strict schema enforcement."""
