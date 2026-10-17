@@ -20801,30 +20801,61 @@ class Dashboard {
     async _sipLoadJobs() {
         const el = document.getElementById('sip-jobs-table');
         if (!el) return;
+        if (!this._sipExpandedJobs) this._sipExpandedJobs = new Set();
         try {
             const data = await this._apiGet('/api/v1/taclaw/jobs');
             const jobs = data.jobs || [];
-            // Stop polling when all jobs are terminal
             const anyActive = jobs.some(j => j.status === 'queued' || j.status === 'running');
             if (!anyActive) this._sipJobsAutoRefresh(false);
             if (!jobs.length) { el.innerHTML = '<span style="color:var(--text-tertiary);">No jobs yet — submit a TAclaw job above.</span>'; return; }
-            const gateBadge = g => g === 'PASS'
-                ? '<span style="color:#22c55e;font-weight:600;">PASS</span>'
-                : g === 'BLOCK'
-                ? '<span style="color:#ef4444;font-weight:600;">BLOCK</span>'
-                : '<span style="color:var(--text-tertiary);">—</span>';
-            const statusDot = s => ({
-                queued: '🟡', running: '🔵', completed: '🟢', failed: '🔴'
-            }[s] || '⚪');
+
+            const gateBadge = (g, inv) => {
+                const hasInv = inv && inv.remediation_steps && inv.remediation_steps.length > 0;
+                const invChip = hasInv ? ' <span title="Investigation agent ran" style="font-size:0.62rem;padding:0.1rem 0.35rem;border-radius:3px;background:#7c3aed18;color:#7c3aed;border:1px solid #7c3aed40;cursor:default;">🔍 agent</span>' : '';
+                if (g === 'PASS') return '<span style="color:#22c55e;font-weight:600;">PASS</span>';
+                if (g === 'BLOCK') return `<span style="color:#ef4444;font-weight:600;">BLOCK</span>${invChip}`;
+                return '<span style="color:var(--text-tertiary);">—</span>';
+            };
+            const statusDot = s => ({ queued: '🟡', running: '🔵', completed: '🟢', failed: '🔴' }[s] || '⚪');
             const brainBadge = bi => {
                 if (!bi || !bi.had_match) return '<span style="color:var(--text-tertiary);font-size:0.68rem;">—</span>';
                 const c = bi.confidence || 0;
                 const col = c >= 0.7 ? '#10b981' : c >= 0.4 ? '#f59e0b' : '#ef4444';
-                const techs = (bi.top_techniques || []).join(', ') || '—';
-                return `<span title="Top: ${techs}" style="font-size:0.68rem;padding:0.1rem 0.4rem;border-radius:3px;background:${col}20;color:${col};border:1px solid ${col}40;cursor:default;">${(c*100).toFixed(0)}%</span>`;
+                return `<span title="${(bi.top_techniques||[]).join(', ')||'—'}" style="font-size:0.68rem;padding:0.1rem 0.4rem;border-radius:3px;background:${col}20;color:${col};border:1px solid ${col}40;cursor:default;">${(c*100).toFixed(0)}%</span>`;
             };
-            const rows = jobs.map(j => `
-                <tr style="border-bottom:1px solid var(--border-color);">
+
+            const invPanel = (j) => {
+                const inv = j.investigation || {};
+                if (!inv.remediation_steps || !inv.remediation_steps.length) return '';
+                const isOpen = this._sipExpandedJobs.has(j.job_id);
+                const steps = inv.remediation_steps.map((s, i) =>
+                    `<div style="display:flex;gap:0.5rem;margin-bottom:0.3rem;">
+                        <span style="flex-shrink:0;width:1.2rem;height:1.2rem;border-radius:50%;background:#7c3aed;color:#fff;font-size:0.62rem;display:flex;align-items:center;justify-content:center;margin-top:0.05rem;">${i+1}</span>
+                        <span style="color:var(--text-color);">${this._esc(s)}</span>
+                    </div>`).join('');
+                const meta = inv.agent_meta || {};
+                const confColor = inv.confidence === 'high' ? '#10b981' : inv.confidence === 'medium' ? '#f59e0b' : '#6b7280';
+                return `<tr id="inv-row-${j.job_id}" style="display:${isOpen?'table-row':'none'};background:var(--sidebar-bg);">
+                    <td colspan="9" style="padding:0.75rem 1.2rem 0.75rem 2.5rem;border-bottom:2px solid #7c3aed40;">
+                        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;">
+                            <span style="font-weight:600;font-size:0.8rem;color:#7c3aed;">🔍 Investigation Report</span>
+                            <span style="font-size:0.68rem;padding:0.1rem 0.4rem;border-radius:3px;background:${confColor}18;color:${confColor};border:1px solid ${confColor}40;">${this._esc(inv.confidence||'—')} confidence</span>
+                            ${meta.tool_calls_made != null ? `<span style="font-size:0.68rem;color:var(--text-tertiary);">${meta.tool_calls_made} tool calls · ${(meta.tokens_used||0).toLocaleString()} tokens</span>` : ''}
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.6rem;font-style:italic;">${this._esc(inv.block_summary||'')}</div>
+                        <div style="font-size:0.75rem;font-weight:600;color:var(--text-color);margin-bottom:0.35rem;">Remediation steps</div>
+                        <div style="font-size:0.75rem;">${steps}</div>
+                    </td>
+                </tr>`;
+            };
+
+            const rows = jobs.map(j => {
+                const hasInv = (j.investigation||{}).remediation_steps?.length > 0;
+                const isOpen = this._sipExpandedJobs.has(j.job_id);
+                const rowStyle = hasInv ? 'cursor:pointer;' : '';
+                const toggleAttr = hasInv ? `onclick="window.dashboard&&window.dashboard._sipToggleInv('${j.job_id}')"` : '';
+                return `
+                <tr style="border-bottom:1px solid var(--border-color);${rowStyle}" ${toggleAttr} title="${hasInv ? 'Click to '+(isOpen?'collapse':'expand')+' investigation' : ''}">
                     <td style="padding:0.45rem 0.6rem;font-family:monospace;font-size:0.7rem;">${this._esc(j.job_id.slice(0,8))}…</td>
                     <td style="padding:0.45rem 0.6rem;">${statusDot(j.status)} ${this._esc(j.status)}</td>
                     <td style="padding:0.45rem 0.6rem;">
@@ -20835,10 +20866,13 @@ class Dashboard {
                     <td style="padding:0.45rem 0.6rem;">${this._esc(j.arch_name||'—')}</td>
                     <td style="padding:0.45rem 0.6rem;">${j.artifacts_found??'—'}</td>
                     <td style="padding:0.45rem 0.6rem;">${j.composite_nodes??'—'}</td>
-                    <td style="padding:0.45rem 0.6rem;">${gateBadge(j.gate)}</td>
+                    <td style="padding:0.45rem 0.6rem;">${gateBadge(j.gate, j.investigation)}</td>
                     <td style="padding:0.45rem 0.6rem;">${brainBadge(j.brain_insight)}</td>
                     <td style="padding:0.45rem 0.6rem;color:var(--text-tertiary);font-size:0.7rem;">${this._esc((j.message||'').slice(0,50))}</td>
-                </tr>`).join('');
+                </tr>
+                ${invPanel(j)}`;
+            }).join('');
+
             el.innerHTML = `<table style="width:100%;border-collapse:collapse;">
                 <thead><tr style="border-bottom:2px solid var(--border-color);">
                     <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Job ID</th>
@@ -20848,13 +20882,24 @@ class Dashboard {
                     <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Artifacts</th>
                     <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Nodes</th>
                     <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Gate</th>
-                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);" title="Brain inference confidence after ingest — hover for top techniques">Brain</th>
+                    <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);" title="Brain inference confidence — hover for top techniques">Brain</th>
                     <th style="padding:0.3rem 0.6rem;text-align:left;font-size:0.7rem;color:var(--text-tertiary);">Message</th>
                 </tr></thead>
                 <tbody>${rows}</tbody></table>`;
         } catch (err) {
             el.innerHTML = `<span style="color:var(--text-tertiary);">Could not load jobs (${err.message})</span>`;
         }
+    }
+
+    _sipToggleInv(jobId) {
+        if (!this._sipExpandedJobs) this._sipExpandedJobs = new Set();
+        if (this._sipExpandedJobs.has(jobId)) {
+            this._sipExpandedJobs.delete(jobId);
+        } else {
+            this._sipExpandedJobs.add(jobId);
+        }
+        const row = document.getElementById(`inv-row-${jobId}`);
+        if (row) row.style.display = this._sipExpandedJobs.has(jobId) ? 'table-row' : 'none';
     }
 
     _sipJobsAutoRefresh(enabled) {

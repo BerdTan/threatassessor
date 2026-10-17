@@ -15,8 +15,10 @@ TAclaw autonomously:
 from __future__ import annotations
 
 import asyncio
+import json as _json_mod
 import logging
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Literal, Optional
 
@@ -426,6 +428,24 @@ async def _run_taclaw_job(
                 logger.warning("TAclaw: investigation agent failed (non-fatal): %s", exc)
                 investigation = {"error": str(exc)}
 
+        # Persist taclaw_result.json to disk so the report survives the 1-hr job-store TTL.
+        try:
+            _tr_path = report_dir / "taclaw_result.json"
+            _tr_data: dict = {
+                "arch_name": arch_name,
+                "gate": gate,
+                "routing_mode": routing_mode,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if gate == "BLOCK":
+                _tr_data["bouncer_reason"] = _bouncer_reason if "_blocked_exc" in dir() else "unknown"
+                if investigation:
+                    _tr_data["investigation"] = investigation
+            report_dir.mkdir(parents=True, exist_ok=True)
+            _tr_path.write_text(_json_mod.dumps(_tr_data, indent=2))
+        except Exception as _exc:
+            logger.warning("TAclaw: taclaw_result.json write failed (non-fatal): %s", _exc)
+
         store.update(
             job.job_id,
             status="completed",
@@ -527,6 +547,17 @@ async def taclaw_jobs_list():
     """List all active TAclaw jobs (queued, running, completed, failed) within TTL window."""
     store = get_job_store()
     jobs = store.list_all()
+    def _investigation_summary(result: dict) -> dict:
+        inv = result.get("investigation", {})
+        if not inv or inv.get("skipped") or "error" in inv:
+            return {}
+        return {
+            "block_summary": inv.get("block_summary", ""),
+            "remediation_steps": inv.get("remediation_steps", []),
+            "confidence": inv.get("confidence", ""),
+            "agent_meta": inv.get("_agent_meta", {}),
+        }
+
     def _brain_summary(result: dict) -> dict:
         bi = result.get("brain_insight", {})
         if not bi or not bi.get("had_match"):
@@ -555,6 +586,7 @@ async def taclaw_jobs_list():
                 "gate": (j.result or {}).get("gate") if j.result else None,
                 "source_formats": (j.result or {}).get("source_formats", []) if j.result else [],
                 "brain_insight": _brain_summary(j.result or {}) if j.result else {},
+                "investigation": _investigation_summary(j.result or {}) if j.result else {},
                 "created_at": j.created_at,
                 "updated_at": j.updated_at,
             }
