@@ -594,7 +594,6 @@ Be critical but constructive."""
         provider = self.primary_provider
         config = self._get_config(provider)
         if model is None:
-            from agentic.providers import PROVIDER_MODELS
             model = PROVIDER_MODELS[provider]["default"]
 
         extra: Dict[str, Any] = {}
