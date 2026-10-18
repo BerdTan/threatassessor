@@ -24,10 +24,12 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
-REPORT_DIR = ROOT / "report"
-GRAPHS_DIR = ROOT / ".claude" / "graphs"
+REPORT_DIR  = ROOT / "report"
+GRAPHS_DIR  = ROOT / ".claude" / "graphs"
+DECISIONS_FILE = ROOT / "docs" / "DECISIONS.md"
 
-GRAPH_STALE_DAYS = 60
+GRAPH_STALE_DAYS     = 60
+DECISIONS_STALE_DAYS = 7
 
 # Folders that must never be deleted regardless of name pattern
 KEEP_PATTERNS = {
@@ -71,6 +73,26 @@ def find_synthetic_reports() -> list[Path]:
         d for d in REPORT_DIR.iterdir()
         if d.is_dir() and d.name.startswith("syn_")
     )
+
+
+# ── DECISIONS.md freshness ────────────────────────────────────────────────────
+
+def check_decisions_freshness() -> tuple[date | None, int]:
+    """Return (date_of_most_recent_entry, days_since). None if unparseable."""
+    try:
+        text = DECISIONS_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return None, -1
+    # Most recent entry header: "## Session NNN — YYYY-MM-DD"
+    matches = re.findall(r"^## Session \d+\s*[—–-]+\s*(\d{4}-\d{2}-\d{2})", text, re.M)
+    if not matches:
+        return None, -1
+    try:
+        latest = date.fromisoformat(matches[0])
+    except ValueError:
+        return None, -1
+    age = (date.today() - latest).days
+    return latest, age
 
 
 # ── graph staleness ───────────────────────────────────────────────────────────
@@ -129,8 +151,9 @@ def main() -> None:
         print(f"report/ not found at {REPORT_DIR}", file=sys.stderr)
         sys.exit(1)
 
-    # ── graphs check ─────────────────────────────────────────
+    # ── health checks ────────────────────────────────────────
     stale_graphs = check_graph_staleness()
+    decisions_date, decisions_age = check_decisions_freshness()
 
     if args.graphs:
         print_section("Graph staleness check")
@@ -139,6 +162,13 @@ def main() -> None:
                 print(f"  ⚠  {path.name:<30}  updated {updated}  ({age}d ago)")
         else:
             print(f"  ✓  All graphs updated within {GRAPH_STALE_DAYS} days")
+        print_section("DECISIONS.md freshness check")
+        if decisions_date is None:
+            print("  ⚠  Could not parse most recent entry date")
+        elif decisions_age > DECISIONS_STALE_DAYS:
+            print(f"  ⚠  Last entry: {decisions_date}  ({decisions_age}d ago — add an entry)")
+        else:
+            print(f"  ✓  Last entry: {decisions_date}  ({decisions_age}d ago)")
         return
 
     # ── report scan ───────────────────────────────────────────
@@ -179,6 +209,15 @@ def main() -> None:
             print(f"  ⚠  {path.name:<30}  updated {updated}  ({age}d ago — review needed)")
     else:
         print(f"  ✓  All graphs updated within {GRAPH_STALE_DAYS} days")
+
+    # DECISIONS.md
+    print_section("DECISIONS.md freshness check")
+    if decisions_date is None:
+        print("  ⚠  Could not parse most recent entry date")
+    elif decisions_age > DECISIONS_STALE_DAYS:
+        print(f"  ⚠  Last entry: {decisions_date}  ({decisions_age}d ago — add a DECISIONS entry)")
+    else:
+        print(f"  ✓  Last entry: {decisions_date}  ({decisions_age}d ago)")
 
     # Execute deletion
     if args.clean:
