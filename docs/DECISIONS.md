@@ -6,6 +6,55 @@ Read this file at the start of every session. After any significant decision abo
 
 ## Session 111 — 2026-10-18
 
+### Entry 222 — Fleet plane architecture: five-plane model for production fleet design (ADR)
+
+**Status: Design intent — structural framework for all fleet implementation decisions going forward.**
+
+**Decision (pending):** Structure the fleet across five planes, each with a single named core component responsible for that plane's concern. No plane owns another plane's concern; cross-plane communication is through defined interfaces only.
+
+| Plane | Core component | Concern |
+|---|---|---|
+| Foundation | `CoreHarness` | Control plane — lifecycle, routing, circuit breaker, stage orchestration |
+| Security | `CoreBouncer` | Security plane — adversarial monitoring, hardening, gating, budget enforcement |
+| Service | `CoreOrchestrator` | Service plane — agent execution, tool dispatch, data + endpoint transactions |
+| Report | `CoreReporter` | Observability plane — health, cost, performance, EventBroker aggregation |
+| Extension | `CoreCollaborator` | Extension plane — inbound/outbound capability beyond TA (MCP, webhooks, external SIEM) |
+
+**Current state mapped to planes:**
+
+| Plane | Already exists | Pending (Entry 221) | Gap |
+|---|---|---|---|
+| Foundation | `ManagedAgent` base, `ManagedAgentRegistry` | `ManagedAgentHarness` stages, `FleetCoordinator` | Fleet manifest, agent lifecycle state machine |
+| Security | 4 hardening layers, Jev noul gate (point 9) | `AgentPrepStage`, `AgentAuditStage`, cross-fleet gating, human-in-the-loop threshold | Fleet-level circuit breaker, adversarial pattern library for context sanitization |
+| Service | `TAclawInvestigationAgent` + 5 tools | Second agent (Perspective or TAgym), `AgentExecuteStage` | Tool versioning, per-agent tool permission set |
+| Report | `report/<agent_id>/<arch>.json`, disk persistence | Fleet manifest, EventBroker fleet events, fleet-level budget tracking | Fleet health dashboard, cost-per-fleet aggregation, cross-run pattern surfacing |
+| Extension | MCP 18 tools, TAclaw CLI, API routes | Cross-fleet signal protocol | External SIEM feed from fleet events, webhook for fleet completions, inbound trigger from external systems |
+
+**Design rules:**
+
+1. **Each plane has one core component, not many.** `CoreBouncer` is the single security authority for the fleet. Individual agents do not implement their own security logic — they call `CoreBouncer`. This is the same principle the pipeline uses: `BouncerStage` is the single gate, not a check scattered across stages.
+
+2. **Foundation plane owns the execution order.** `CoreHarness` decides when `CoreBouncer`, `CoreOrchestrator`, `CoreReporter`, and `CoreCollaborator` run. No other plane initiates execution. This mirrors `ThreatAssessorHarness` owning stage sequencing.
+
+3. **Security plane is synchronous and blocking.** `CoreBouncer` runs before `CoreOrchestrator` on every agent activation. It can halt the fleet run; it cannot be bypassed by the service layer. Budget enforcement lives here, not in the agent.
+
+4. **Report plane is always the last write.** `CoreReporter` aggregates after `CoreOrchestrator` completes. No agent writes to the report layer directly — it calls `CoreReporter`. This keeps the report namespace under one owner and makes the audit chain clean: `CoreHarness` → `CoreOrchestrator` → `CoreReporter` → `report/<agent_id>/`.
+
+5. **Extension plane is opt-in.** `CoreCollaborator` is not in the default execution path. It activates only when a run explicitly requests an external signal (inbound trigger, outbound webhook, SIEM feed). An agent that never needs external integration never touches `CoreCollaborator`.
+
+**Relationship to Entry 221:** Entry 221 defines the internal structure of `CoreHarness` (stages + circuit breaker). This entry defines the five-plane model that `CoreHarness` sits inside. Both are needed; Entry 221 is the Foundation plane implementation spec; this entry is the system-level shape all five planes must conform to.
+
+**Implementation sequence (aligned with Entry 221 recommendation):**
+1. Foundation plane: `ManagedAgentHarness` (Entry 221 step 1, triggered when second agent lands)
+2. Security plane: `CoreBouncer` formalization (extracts from base class hardening layers into named component)
+3. Service plane: second agent + tool permission model
+4. Report plane: fleet manifest + EventBroker fleet events
+5. Extension plane: last, scoped to first real external integration need
+
+**Why five planes, not fewer:** The pipeline itself implicitly has these separations (Bouncer ≠ Reporter ≠ Harness), but they are not named as planes. Naming them now, while the fleet is one agent, means every subsequent agent and every subsequent integration decision has a home without debate. "Where does cross-fleet budget enforcement live?" → Security plane, `CoreBouncer`. No ambiguity.
+
+---
+
 ### Entry 221 — Fleet harness design: reuse pipeline harness + fleet-of-fleets architecture (ADR)
 
 **Status: Design intent — not yet implemented. Captured here to set boundary conditions before the fleet grows beyond one agent.**
