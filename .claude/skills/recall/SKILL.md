@@ -52,6 +52,17 @@ python3 .claude/skills/recall/scripts/recall.py
 - No commentary after the block — the gist is the whole output
 - **After a dependency analysis session:** update `PRIORITY_STEPS` in `recall.py` to reflect the new sequence; mark completed steps with a ✅ prefix on their label
 
+## Planned enhancement — ADR-aware auto-sequencing
+
+Currently `PRIORITY_STEPS` is a manually maintained table updated after each dependency session. The planned upgrade (tracked as step 22 in `PRIORITY_STEPS`) will parse open ADRs from `DECISIONS.md` directly:
+
+1. Scan for entries with `Status: Design intent` or `Status: pending`
+2. Extract dependency language ("when X is ready", "before Y lands", "triggered when N agents")
+3. Build a dependency graph from those edges
+4. Output the sequence derived from topological sort of that graph
+
+Until that is built, the rule stays: **after any dependency analysis session, update `PRIORITY_STEPS` in `recall.py` to reflect the new chain.** The comment block above `PRIORITY_STEPS` explains the current chain and the decision points within it.
+
 ## When to use
 
 - `/recall` at session start instead of reading full MEMORY.md manually

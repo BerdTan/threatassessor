@@ -25,35 +25,55 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 # Each entry: (step, priority_num, label, file_hint, depends_on_step)
 # Update this after a dependency analysis session.
 # Mark a step done by prepending ✅ to its label.
+#
+# Dependency chain (2026-10-18):
+#   P37 (TA Perspective) — independent of fleet, clears backlog, enables blog P37
+#   Fleet Foundation (Entry 221) — ManagedAgentHarness; refactor before second agent
+#   Fleet Security (Entry 222) — CoreBouncer formalisation; after Foundation
+#   Fleet Service — second agent; lands clean into harness
+#   Fleet Report — fleet manifest + EventBroker fleet events; after Service
+#   FleetCoordinator — only when third agent is scoped
 PRIORITY_STEPS = [
-    # Priority 33 — DETECT-ABU domain
-    (1,  33, "✅ DETECT-ABU 6 rules",                    "policies/soc_detection_rules.yaml",          None),
-    (2,  33, "✅ MCPAccessLogger rolling windows + export timestamps", "mcp_server/access_logger.py", 1),
-    (3,  33, "❼ Jev noul on 6 ABU investigation questions", "chatbot/harness/rule_evaluator.py",     1),
-    (4,  33, "Dashboard ABU investigation panel",       "chatbot/api/static/index.html + dashboard.js", 2),
-    # → P34 blog: drafted after steps 1–4
-    # Priority 34 — Jev Phase 2 (❻ ❽)
-    (5,  34, "❻ GT technique applicability noul",       "chatbot/modules/ground_truth_generator.py",  3),
-    (6,  34, "❽ CISO posture noul at export",           "chatbot/modules/ta_exporter.py",             5),
-    # Priority 35 — Beyond Zero (independent items can run parallel with 5–6)
-    (7,  35, "P35-C Opaque reasoning sub-check in DETECT-QC-009", "chatbot/harness/stages.py",       None),
-    (8,  35, "P35-B TATB AI Control Maturity sub-dim",  "chatbot/modules/ta_brain_benchmarks.py",    None),
-    (9,  35, "P35-A Per-action MCP Jev noul gate",      "mcp_server/server.py",                       3),
-    # Priority 37 — TA Perspective v2 (DirectorCaster + kill chain canvas; DECISIONS 211–212)
-    (11, 37, "GroupCampaignMatcher + STIX cache",              "chatbot/modules/group_campaign_matcher.py",  None),
-    (12, 37, "Hook into ground_truth Phase 3B",                "chatbot/modules/ground_truth_generator.py",  11),
-    (13, 37, "DirectorCaster (ScenarioManifest+Bounds+Pacing)","chatbot/modules/director_caster.py",         12),
-    (14, 37, "PerspectiveRunner + build_step_signals(bounds)", "chatbot/modules/perspective_runner.py",      13),
-    (15, 37, "SSE route + GET /perspective/scenarios/{arch}",  "chatbot/api/routes/perspective.py",          14),
-    (16, 37, "Kill chain canvas (D3 layered graph + agents)",  "chatbot/api/static/js/dashboard.js",         15),
-    (17, 37, "Storycaster scene_setting addition (optional)",  "chatbot/modules/agents/storycaster.py",       16),
+    # ── Priority 33/34/35 — DONE ─────────────────────────────────────────────
+    (1,  33, "✅ DETECT-ABU 6 rules + MCPAccessLogger",  "policies/soc_detection_rules.yaml",         None),
+    (2,  34, "✅ Jev Phase 2: GT noul ❻ + CISO posture ❽", "ground_truth_generator.py + ta_exporter.py", 1),
+    (3,  35, "✅ Per-action MCP Jev noul gate ❾",        "mcp_server/server.py",                      None),
+    # ── Priority 37 — TA Perspective (DECISIONS 211) ─────────────────────────
+    (4,  37, "GroupCampaignMatcher + STIX cache",              "chatbot/modules/group_campaign_matcher.py",  None),
+    (5,  37, "Hook into ground_truth Phase 3B",                "chatbot/modules/ground_truth_generator.py",  4),
+    (6,  37, "PerspectiveRunner + build_step_signals(bounds)", "chatbot/modules/perspective_runner.py",      5),
+    (7,  37, "SSE route + GET /perspective/scenarios/{arch}",  "chatbot/api/routes/perspective.py",          6),
+    (8,  37, "Kill chain canvas (D3 layered graph + agents)",  "chatbot/api/static/js/dashboard.js",         7),
+    # ── Fleet Foundation — ManagedAgentHarness (DECISIONS 221) ───────────────
+    # Triggered when second agent is scoped; refactor before it lands
+    (9,  40, "AgentPrepStage — context sanitize + Jev noul gate", "chatbot/agents/managed/harness.py",  None),
+    (10, 40, "AgentExecuteStage — extract tool loop from ManagedAgent.run()", "chatbot/agents/managed/harness.py", 9),
+    (11, 40, "AgentAuditStage — output scan + token budget check", "chatbot/agents/managed/harness.py", 10),
+    (12, 40, "AgentSynthStage — write report + signal EventBroker", "chatbot/agents/managed/harness.py", 11),
+    (13, 40, "ManagedAgentHarness circuit breaker + BlockedAgentError", "chatbot/agents/managed/harness.py", 12),
+    # ── Fleet Security — CoreBouncer (DECISIONS 222) ─────────────────────────
+    # Formalise hardening layers as named component; agents call CoreBouncer, not base class
+    (14, 41, "CoreBouncer: extract hardening layers from ManagedAgent base", "chatbot/agents/managed/bouncer.py", 13),
+    (15, 41, "Cross-fleet gating rule: report-layer-only signal between fleets", "chatbot/agents/managed/bouncer.py", 14),
+    (16, 41, "Human-in-the-loop threshold (confidence < 0.7 → queue for approval)", "chatbot/agents/managed/bouncer.py", 15),
+    # ── Fleet Service — second agent ─────────────────────────────────────────
+    # Scope depends on P37 outcome: PerspectiveRunner judgment path → fleet agent,
+    # else TAgym synthetic data selection agent
+    (17, 42, "Second fleet agent (scope after P37 ships)",   "chatbot/agents/managed/",               16),
+    # ── Fleet Report — CoreReporter (DECISIONS 222) ───────────────────────────
+    (18, 43, "Fleet manifest: report/fleet/<fleet_id>/manifest.json", "chatbot/agents/managed/reporter.py", 17),
+    (19, 43, "EventBroker: fleet_started/agent_triggered/fleet_blocked events", "chatbot/harness/event_broker.py", 18),
+    (20, 43, "Fleet-level token budget (sum across agent runs per pipeline trigger)", "chatbot/agents/managed/reporter.py", 19),
+    # ── FleetCoordinator — only when third agent scoped (DECISIONS 221/222) ──
+    (21, 44, "FleetCoordinator: routes trigger type → correct fleet", "chatbot/agents/managed/coordinator.py", 20),
     # Freestanding
-    (10, 0,  "skill-evolve skill",                      ".claude/skills/skill-evolve/",              None),
+    (22, 0,  "recall skill: auto-sequence open ADRs from DECISIONS.md dependency language", ".claude/skills/recall/scripts/recall.py", None),
 ]
 
 BLOG_GATES = {
-    34: "P34 blog — draft after steps 1–4 live",
-    35: "P35 blog — draft after steps 7–9 live",
+    37: "P37 blog — draft after steps 4–8 live",
+    40: "P38 blog done ✅; P39 blog — draft after second fleet agent (step 17) ships",
+    44: "P40 blog — fleet governance story; draft after FleetCoordinator (step 21) ships",
 }
 
 # ── helpers ───────────────────────────────────────────────────────────────────
