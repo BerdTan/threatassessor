@@ -4,6 +4,65 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 111 — 2026-10-18
+
+### Entry 221 — Fleet harness design: reuse pipeline harness + fleet-of-fleets architecture (ADR)
+
+**Status: Design intent — not yet implemented. Captured here to set boundary conditions before the fleet grows beyond one agent.**
+
+**Decision (pending):** Build a `ManagedAgentHarness` that mirrors `ThreatAssessorHarness` — reusing the same stage lifecycle, circuit breaker, and async wrapper patterns rather than letting agent orchestration logic accumulate inside `ManagedAgent.run()`. Introduce a `FleetCoordinator` routing layer above individual fleets for the fleet-of-fleets production shape.
+
+**Why now:** The first agent (TAclawInvestigationAgent) works but its orchestration is self-contained inside `run()`. At one agent that is fine. At three or four agents, each with its own ad-hoc lifecycle, the fleet becomes a maintenance and governance problem. Defining the harness shape while the fleet is still small avoids retrofitting it onto agents that have already diverged.
+
+**Proposed harness stage decomposition:**
+
+| Stage | Responsibility | Maps from current code |
+|---|---|---|
+| `AgentPrepStage` | Context sanitization + Jev pre-flight noul gate | Hardening layer 1 + `should_run()` |
+| `AgentExecuteStage` | Tool loop: call model, execute tools, feed results back | `ManagedAgent.run()` inner loop |
+| `AgentAuditStage` | Output field scan + per-run token budget check | Hardening layers 3 + 4 |
+| `AgentSynthStage` | Write report to disk + signal EventBroker | `_write_report()` + future sink |
+
+Each stage has the same pass/fail/block semantics as pipeline stages. `BlockedAgentError` mirrors `BlockedPipelineError`. Circuit breaker on consecutive agent failures (threshold TBD, 3 is the pipeline default).
+
+**Fleet-of-fleets shape:**
+
+```
+Pipeline
+    |
+    v (BLOCK)
+FleetCoordinator          ← routes trigger type → correct fleet
+    |
+    +-- Investigation Fleet (TAclawInvestigationAgent, ...)
+    +-- Synthetic Data Fleet (future: which gap to fill?)
+    +-- Perspective Fleet  (future: red/blue kill chain)
+```
+
+`FleetCoordinator` mirrors `PolicyBroker`: reads trigger type + governance signals → selects fleet → hands off. Pipeline never reaches individual agents or fleets directly.
+
+**Design constraints to enforce before second agent:**
+
+1. **Cross-fleet triggering is gated, not direct.** Fleet A cannot call Fleet B. It can only write to `report/<agent_id>/` and signal the coordinator. The coordinator decides if a second fleet activates. This prevents self-triggering loops (the exact failure mode the pipeline detects in external agentic architectures).
+
+2. **Blast radius ceiling per fleet.** Maximum concurrent agents per fleet per pipeline run must be defined before it is needed. Proposed default: 3. Beyond that, the coordinator queues, not blocks.
+
+3. **Report layer ownership by namespace.** `report/<agent_id>/<arch>.json` is already in place. As the fleet grows, add a `report/fleet/<fleet_id>/manifest.json` that records which agents ran, in what order, with what inputs. Audit chain: pipeline trigger → fleet manifest → agent report. Each hop is independently traceable.
+
+4. **Budget is fleet-level, not only agent-level.** Current: 50k tokens per agent run. Fleet-level budget: sum of all agent runs within one pipeline trigger. Prevents a fleet from consuming unbounded tokens across multiple agents even if each individual agent stays within its per-run budget.
+
+5. **EventBroker extension.** Fleet events (`fleet_started`, `agent_triggered`, `agent_blocked`, `fleet_completed`) should flow through the existing EventBroker sinks (SIEM/Langfuse/Webhook), not a separate fleet logger. This keeps observability in one place.
+
+**Human-in-the-loop threshold:** Any cross-fleet trigger above a confidence threshold (proposed: agent confidence < 0.7 OR prior pattern count = 0) surfaces as a pending action requiring approval before execution. Below that threshold, the coordinator can auto-activate. This mirrors how the pipeline's OutboundGate works for FULL_MOE runs.
+
+**Alternatives rejected:**
+- Event-driven pub/sub between fleets: adds latency, obscures causality, makes audit harder. The report layer as a passive shared state is simpler and already in place.
+- Single universal agent that handles all trigger types: loses the clean registry boundary; harder to test, gate, and govern independently.
+- Extending `ThreatAssessorHarness` directly to cover agents: pipeline and fleet have different stage semantics; cleaner to subclass or compose than to overload the existing harness.
+
+**Next concrete step:** When the second agent is ready to land, implement `AgentPrepStage` + `AgentExecuteStage` + `AgentAuditStage` + `AgentSynthStage` as the first pass of `ManagedAgentHarness`. `FleetCoordinator` follows when the third agent is scoped. The governance constraints above apply from the first multi-agent run, not from when the coordinator exists.
+
+---
+
 ## Session 110 — 2026-10-17
 
 ### Entry 220 — Managed agent fleet: base class, registry, TAclawInvestigationAgent
