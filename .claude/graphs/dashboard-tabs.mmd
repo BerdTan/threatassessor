@@ -1,82 +1,104 @@
 ---
 title: ThreatAssessor — Dashboard Tabs (JS function → API endpoint → Python module)
-updated: 2026-07-18
-note: "dashboard.js 16k LOC — tab → JS function → API route → Python module. Find the right function before opening the file."
+updated: 2026-10-18
+note: "dashboard.js ~20k LOC — tab → JS function → API route → Python module. Tabs grouped by nav section: Assessment / Security / Platform / Reporting / Workspace / Settings."
 ---
 graph LR
     %% ── API routers ─────────────────────────────────────────
     subgraph ROUTES["API routes (chatbot/api/routes/)"]
-        AR1["reports.py<br/>/api/v1/reports/*<br/>add-to-adr · rescore-aivss<br/>download · summary"]
+        AR1["reports.py<br/>/api/v1/reports/*<br/>add-to-adr · rescore-aivss<br/>detect-trend · export"]
         AR2["streaming.py<br/>/api/v1/analyze-stream<br/>/api/v1/expert-review<br/>/api/v1/run-critic"]
         AR3["broker.py<br/>/api/v1/broker/config<br/>/api/v1/broker/status"]
         AR4["workspaces.py<br/>/api/v1/workspaces/*"]
         AR5["config.py<br/>/api/v1/config<br/>llm-check · reset"]
-        AR6["ta_wiz.py<br/>/api/v1/ask"]
+        AR6["brain.py<br/>/api/v1/brain/*<br/>infer · gaps · patterns · explain"]
+        AR7["gym.py<br/>/api/v1/gym/start<br/>/api/v1/gym/status<br/>/api/v1/gym/stop"]
+        AR8["taclaw.py · enrich.py · artifact.py<br/>/api/v1/taclaw/run+jobs<br/>/api/v1/enrich · /api/v1/analyze/artifact"]
+        AR9["mcp_sim.py<br/>/api/v1/sim/stream<br/>/api/v1/mcp/access-signals<br/>/api/v1/jobs/snapshot"]
     end
 
-    %% ── Tabs ────────────────────────────────────────────────
-    subgraph TABS["Dashboard tabs (dashboard.js)"]
+    %% ── Tabs (grouped by nav section) ───────────────────────
+    subgraph ASSESSMENT["Assessment tabs"]
         direction TB
+        T1["Overview<br/>renderOverviewDashboard()<br/>→ ground_truth.json<br/>→ 07_moe_orchestrator.json"]
+        T2["Threat Paths (attacks)<br/>loadAttacksTab()<br/>→ ground_truth.json"]
+        T3["Mitigations (controls)<br/>loadControlsTab()<br/>→ ground_truth.json"]
+        T4["Visualise (hardening)<br/>loadHarnessTab()<br/>→ /api/v1/analyze-stream<br/>→ before/after .mmd files"]
+        T5["Insights<br/>loadInsightsTab()<br/>→ governance_signals.json<br/>→ ground_truth.json"]
+        T6["TATB (benchmark)<br/>loadBenchmarkTab()<br/>→ /api/v1/tatb-corpus"]
+    end
 
-        T1["Overview<br/>renderOverviewDashboard()<br/>→ ground_truth.json<br/>→ 07_moe_orchestrator.json<br/>→ 06_red_team_critique.json"]
+    subgraph SECURITY["Security tabs"]
+        direction TB
+        T7["SOC (soc-kg)<br/>loadSocKgTab()<br/>→ /api/v1/detect-rules<br/>→ rule dependency graph"]
+        T8["MCP<br/>loadMcpTab()<br/>→ /api/v1/mcp/access-signals<br/>→ /api/v1/sim/stream (SSE)"]
+        T9["Brain<br/>loadBrainTab()<br/>→ /api/v1/brain/status<br/>→ /api/v1/brain/gaps<br/>→ /api/v1/brain/patterns<br/>sub-tabs: Status · Patterns · Gaps · Synthetic"]
+    end
 
-        T2["Threat Model<br/>loadThreatModelTab()<br/>→ ground_truth.json<br/>→ 08_scrum_master.json"]
+    subgraph PLATFORM["Platform tabs"]
+        direction TB
+        T10["SIP (platform)<br/>loadPlatformTab()<br/>→ /api/v1/adapters<br/>→ /api/v1/taclaw/jobs<br/>→ /api/v1/gym/status<br/>sub-tabs: Adapters · TAclaw · TAgym · Enrichment"]
+    end
 
-        T3["Controls<br/>loadControlsTab()<br/>→ ground_truth.json<br/>→ 07_moe_orchestrator.json<br/>→ 06_red_team_critique.json"]
+    subgraph REPORTING["Reporting tabs"]
+        direction TB
+        T11["Reports<br/>loadReportsTab()<br/>→ /api/v1/reports<br/>→ /api/v1/techniques"]
+        T12["Benchmarks (bench)<br/>loadBenchTab()<br/>→ /api/v1/brain/bench<br/>→ model radar diff"]
+        T13["Boxing<br/>loadBoxingTab()<br/>→ /api/v1/boxing/*<br/>→ report/*_boxing_bot/"]
+    end
 
-        T4["MITRE<br/>loadMitreTab()<br/>→ /api/v1/techniques<br/>→ /api/v1/technique-mitigations<br/>→ /api/v1/mitigations"]
-
-        T5["Expert Review<br/>loadExpertReviewTab()<br/>→ 07_moe_orchestrator.json<br/>→ 08_scrum_master.json<br/>→ 10_adr_report.md (ADR state)"]
-
-        T6["ScrumMaster<br/>loadScrumMasterTab()<br/>→ 08_scrum_master.json<br/>→ 10_adr_report.md (ADR state)"]
-
-        T7["Hardening (Visualise)<br/>loadHarnessTab()<br/>→ /api/v1/analyze-stream<br/>→ /api/v1/expert-review<br/>→ before/after .mmd files"]
-
-        T8["Reports<br/>loadReportsTab()<br/>→ /api/v1/reports<br/>→ /api/v1/techniques"]
-
-        T9["Insights<br/>loadInsightsTab()<br/>→ /api/v1/reports<br/>→ governance_signals.json<br/>→ ground_truth.json"]
-
-        T10["Workspace<br/>loadWorkspaceTab()<br/>→ /api/v1/workspaces<br/>→ /api/v1/reports"]
-
-        T11["Traces<br/>loadTracesTab()<br/>→ /api/v1/broker/config<br/>→ /api/v1/broker/status"]
-
-        T12["Benchmark<br/>loadBenchmarkTab()<br/>→ /api/v1/tatb-corpus"]
-
-        T13["Config<br/>loadConfigTab()<br/>→ /api/v1/config<br/>→ settings.yaml"]
+    subgraph WORKSPACE["Workspace + Settings tabs"]
+        direction TB
+        T14["Workspace<br/>loadWorkspaceTab()<br/>→ /api/v1/workspaces<br/>→ /api/v1/ask (TA-Wiz)"]
+        T15["Harness<br/>loadHarnessSettingsTab()<br/>→ /api/v1/harness/status"]
+        T16["Traces<br/>loadTracesTab()<br/>→ /api/v1/broker/config<br/>→ /api/v1/broker/status"]
     end
 
     %% ── Python modules serving each route ───────────────────
     subgraph PYTHON["Python modules"]
         P1["ground_truth_generator.py<br/>scoring.py · mitre.py"]
         P2["moe_orchestrator.py<br/>+ critic JSONs"]
-        P3["ScrumMasterCritic<br/>improvement_summary_generator.py"]
-        P4["harness/controller.py<br/>→ stages → pipeline"]
-        P5["governance.py<br/>harness_aivss.py"]
-        P6["mitre.py<br/>(technique library)"]
-        P7["event_broker.py<br/>sinks.py"]
+        P3["harness/controller.py<br/>→ stages → pipeline"]
+        P4["governance.py · harness_aivss.py"]
+        P5["ta_brain_builder.py<br/>ta_brain_query.py (TACO)"]
+        P6["gym.py route → GymSession<br/>ta_brain_builder.py (ingest)"]
+        P7["event_broker.py · sinks.py"]
+        P8["adapters/ · taclaw/ · enrich.py"]
+        P9["mcp_server/client_sim.py<br/>access_logger.py"]
     end
 
     %% ── Tab → Route connections ─────────────────────────────
     T1 & T2 & T3 --> AR1
-    T1 & T3 --> P1
-    T1 & T5 --> P2
-    T5 & T6 --> AR1
-    T6 -->|"SM data"| P3
-    T7 --> AR2
-    AR2 --> P4
-    T8 & T9 & T10 --> AR1
-    T9 --> P5
-    T11 --> AR3
+    T1 & T2 & T3 --> P1
+    T4 --> AR2
+    AR2 --> P3
+    T5 --> P4
+    T5 --> AR1
+    T6 --> AR1
+    T7 --> AR1
+    T8 --> AR9
+    AR9 --> P9
+    T9 --> AR6
+    AR6 --> P5
+    T9 --> AR7
+    AR7 --> P6
+    T10 --> AR8
+    AR8 --> P8
+    T11 --> AR1
+    T12 --> AR6
+    T14 --> AR4
+    T15 --> AR3
+    T16 --> AR3
     AR3 --> P7
-    T10 --> AR4
-    T13 --> AR5
-    T4 --> P6
-    T12 --> AR1
 
     %% ── Styles ─────────────────────────────────────────────
     classDef tab    fill:#1e293b,stroke:#475569,color:#e2e8f0,font-size:11px
     classDef route  fill:#0c4a6e,stroke:#0ea5e9,color:#e0f2fe,font-size:11px
     classDef python fill:#14532d,stroke:#16a34a,color:#dcfce7,font-size:11px
-    class T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11,T12,T13 tab
-    class AR1,AR2,AR3,AR4,AR5,AR6 route
-    class P1,P2,P3,P4,P5,P6,P7 python
+    class T1,T2,T3,T4,T5,T6 tab
+    class T7,T8,T9 tab
+    class T10 tab
+    class T11,T12,T13 tab
+    class T14,T15,T16 tab
+    class AR1,AR2,AR3,AR4,AR5,AR6,AR7,AR8,AR9 route
+    class P1,P2,P3,P4,P5,P6,P7,P8,P9 python

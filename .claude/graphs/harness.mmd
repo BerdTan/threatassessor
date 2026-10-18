@@ -1,7 +1,7 @@
 ---
 title: ThreatAssessor — Harness (pipeline controller + governance + observability)
-updated: 2026-07-18
-note: "Harness wraps the pipeline. New stage: subclass BaseStage in stages.py. New sink: subclass BaseSink in sinks.py. Governance blocks critics; EventBroker fires after each stage."
+updated: 2026-10-18
+note: "Harness wraps the pipeline. Stage order: Analysis→Report→Quality→Bouncer→AIVSS (API_ONLY); +Critics→SM→OutboundGate (FULL_MOE). PolicyBroker runs after QualityStage. ManagedAgentHarness mirrors this pattern for the fleet. New stage: subclass BaseStage in stages.py. New sink: subclass BaseSink in sinks.py."
 ---
 flowchart TD
     %% ── Entry point ────────────────────────────────────────
@@ -10,8 +10,9 @@ flowchart TD
     %% ── Controller ─────────────────────────────────────────
     subgraph CTRL["controller.py"]
         C1["ThreatAssessorHarness<br/>(run, scenario config)"]
-        C2["PipelineContext<br/>(arch name, artifacts, settings)"]
-        C3["ScenarioConfig<br/>(full_moe | api_only | sm_only)"]
+        C2["PipelineRequest/Response<br/>(typed v2 interface)"]
+        C3["AsyncThreatAssessorHarness<br/>(asyncio.to_thread wrapper)"]
+        C4["BlockedPipelineError<br/>(raised by BouncerStage)"]
     end
 
     %% ── Stages (run in order) ───────────────────────────────
@@ -19,11 +20,19 @@ flowchart TD
         direction TB
         S1["1. AnalysisStage<br/>→ ThreatAnalysisService<br/>→ ground_truth.json"]
         S2["2. ReportStage<br/>→ threat_report.py<br/>→ 01/02/03/09/10 files"]
-        S3["3. CriticStage<br/>→ moe_orchestrator.py<br/>→ 04/05/06 critic JSONs"]
-        S4["4. ScrumMasterStage<br/>→ ScrumMasterCritic<br/>→ improvement_summary_generator<br/>→ 07/08 files"]
-        S5["5. QualityStage<br/>→ governance.py (guardrail check)<br/>→ harness_aivss.py (AIVSS score)"]
-        S6["6. AIVSSStage<br/>→ harness_aivss.py<br/>→ governance_signals.json"]
-        S1 --> S2 --> S3 --> S4 --> S5 --> S6
+        S3["3. QualityStage<br/>→ governance.py guardrail check"]
+        S4["4. BouncerStage  ← required=True<br/>reads exploitation.blocked + kill_switch<br/>raises BlockedPipelineError → API 400"]
+        S5["5. CriticStage  (FULL_MOE only)<br/>→ moe_orchestrator.py<br/>→ 04/05/06 critic JSONs"]
+        S6["6. ScrumMasterStage  (FULL_MOE only)<br/>→ ScrumMasterCritic<br/>→ 07/08 files"]
+        S7["7. AIVSSStage<br/>→ harness_aivss.py<br/>→ governance_signals.json"]
+        S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
+    end
+
+    %% ── PolicyBroker (dynamic routing) ─────────────────────
+    subgraph PB["policy_broker.py  (runs after QualityStage)"]
+        PB1["PolicyBroker.decide()<br/>reads GovernanceSignals live"]
+        PB2["BrokerDecision<br/>(adjusts blocked_agents<br/>+ model routing before critics)"]
+        PB1 --> PB2
     end
 
     %% ── Registry (critic gating) ────────────────────────────
@@ -59,34 +68,53 @@ flowchart TD
         SK3["WebhookSink<br/>→ POST to URL<br/>(all events)"]
     end
 
+    %% ── Managed Agent Fleet (mirror pattern) ────────────────
+    subgraph FLEET["agents/managed/  (ManagedAgentHarness — DECISIONS 221)"]
+        direction LR
+        FA["AgentPrepStage<br/>(context sanitize + Jev gate)"]
+        FB["AgentExecuteStage<br/>(tool loop)"]
+        FC["AgentAuditStage<br/>(output scan + token budget)"]
+        FD["AgentSynthStage<br/>(write report + signal EventBroker)"]
+        FA --> FB --> FC --> FD
+    end
+
     %% ── Flow ────────────────────────────────────────────────
     API --> CTRL
     CTRL --> STAGES
-    REG -->|"gates which critics run"| S3
-    GOV -->|"blocks on policy violation"| S5
+    S3 -->|"signals"| PB
+    PB -->|"adjusts routing before critics"| S5
+    REG -->|"gates which critics run"| S5
+    GOV -->|"blocks on policy violation"| S3
     STAGES -->|"emits events"| EB
     EB --> SINKS
+    FLEET -.->|"mirrors harness pattern"| CTRL
 
     %% ── Tests ───────────────────────────────────────────────
     subgraph TESTS["Tests"]
         direction LR
-        TG["test_harness_governance.py<br/>58 tests → governance.py"]
-        TE["test_harness_event_broker.py<br/>48 tests → event_broker + sinks"]
+        TG["test_harness_governance.py<br/>56 tests → governance.py"]
+        TE["test_harness_event_broker.py<br/>60 tests → event_broker + sinks"]
         TA["test_harness_aivss.py<br/>39 tests → harness_aivss"]
+        TF["test_managed_agent.py<br/>56 tests → agents/managed/"]
     end
 
     GOV -.->|"covered by"| TG
     EB -.->|"covered by"| TE
-    S6 -.->|"covered by"| TA
+    S7 -.->|"covered by"| TA
+    FLEET -.->|"covered by"| TF
 
     %% ── Styles ─────────────────────────────────────────────
-    classDef stage fill:#1e293b,stroke:#475569,color:#e2e8f0
-    classDef gov   fill:#3b0764,stroke:#7c3aed,color:#f3e8ff
-    classDef event fill:#0c4a6e,stroke:#0ea5e9,color:#e0f2fe
-    classDef sink  fill:#14532d,stroke:#16a34a,color:#dcfce7
-    classDef test  fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    classDef stage  fill:#1e293b,stroke:#475569,color:#e2e8f0
+    classDef broker fill:#1c1917,stroke:#d97706,color:#fef3c7
+    classDef gov    fill:#3b0764,stroke:#7c3aed,color:#f3e8ff
+    classDef event  fill:#0c4a6e,stroke:#0ea5e9,color:#e0f2fe
+    classDef sink   fill:#14532d,stroke:#16a34a,color:#dcfce7
+    classDef fleet  fill:#1a2e1a,stroke:#4ade80,color:#bbf7d0,font-size:11px
+    classDef test   fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     class CTRL,STAGES,REG stage
+    class PB broker
     class GOV gov
     class EB event
     class SINKS sink
+    class FLEET fleet
     class TESTS test

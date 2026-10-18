@@ -1,16 +1,16 @@
 ---
 title: ThreatAssessor — System Map
-updated: 2026-07-18
-note: Master overview. Each domain has its own graph in .claude/graphs/. Numbers = test counts.
+updated: 2026-10-18
+note: Master overview. Each domain has its own graph in .claude/graphs/. Numbers = approximate test counts.
 ---
 flowchart TD
     %% ── Input ──────────────────────────────────────────────
     IN[/"📄 before.mmd<br/>(architecture diagram)"/]
 
-    %% ── Six domains ────────────────────────────────────────
+    %% ── Seven domains ────────────────────────────────────────
     subgraph PIPELINE["🔁 Analysis Pipeline"]
         direction TB
-        P1["ground_truth_generator<br/>(parse + score + techniques)"]
+        P1["ground_truth_generator<br/>(parse + score + techniques + Jev filter)"]
         P2["moe_orchestrator<br/>(MoE critics + synthesis)"]
         P3["report generators<br/>(10 output files)"]
         P1 --> P2 --> P3
@@ -18,42 +18,51 @@ flowchart TD
 
     subgraph HARNESS["⚙️ Harness (pipeline controller)"]
         direction TB
-        H1["controller.py<br/>(PipelineContext, run)"]
-        H2["stages.py<br/>(6 stages in sequence)"]
-        H3["registry.py<br/>(CriticRegistry + governance)"]
+        H1["controller.py<br/>(PipelineRequest, run_typed)"]
+        H2["stages.py<br/>(Analysis→Report→Quality→Bouncer→AIVSS)"]
+        H3["policy_broker.py<br/>(dynamic routing after QualityStage)"]
         H4["event_broker.py<br/>+ sinks (SIEM/Langfuse/Webhook)"]
         H1 --> H2 --> H3
         H2 -.->|"side-effects"| H4
     end
 
+    subgraph FLEET["🤖 Managed Agent Fleet"]
+        direction TB
+        F1["ManagedAgent base<br/>(4 hardening layers: sanitize/cap/scan/budget)"]
+        F2["TAclawInvestigationAgent<br/>(gate=BLOCK trigger, 5 tools)"]
+        F3["ManagedAgentRegistry<br/>(registry + disk persistence)"]
+        F1 --> F2 & F3
+    end
+
     subgraph API["🌐 REST API  (FastAPI)"]
         direction TB
-        A1["/api/v1/analyze-stream<br/>(SSE analysis)"]
-        A2["/api/v1/expert-review<br/>(SSE MoE + SM)"]
-        A3["/api/v1/reports/*<br/>(serve + add-to-adr)"]
-        A4["/api/v1/workspaces<br/>tatb-corpus · broker · config"]
-        A5["/api/v1/graph/query<br/>GraphRAG structural search"]
+        A1["/api/v1/analyze-stream · expert-review<br/>(streaming.py — SSE)"]
+        A2["/api/v1/reports/* · detect-trend<br/>(reports.py)"]
+        A3["/api/v1/gym/* · brain/*<br/>(gym.py · brain.py)"]
+        A4["/api/v1/taclaw/* · enrich · artifact<br/>(taclaw.py · enrich.py · artifact.py)"]
+        A5["/api/v1/workspaces · broker · config<br/>(workspaces.py · broker.py · config.py)"]
     end
 
-    subgraph DASHBOARD["📊 Dashboard  (dashboard.js 16k LOC)"]
+    subgraph DASHBOARD["📊 Dashboard  (dashboard.js ~20k LOC)"]
         direction TB
-        D1["Overview · Threat Model<br/>Controls · MITRE"]
-        D2["Expert Review · ScrumMaster<br/>Hardening"]
-        D3["Reports · Insights · Workspace<br/>Traces · Benchmark · Config"]
-        D4["Workspace: TA-Wiz chat<br/>+ Graph Search panel"]
+        D1["Assessment: Overview · Threats · Controls<br/>Visualise · Insights · TATB"]
+        D2["Security: SOC · MCP · Brain"]
+        D3["Platform: SIP (TAclaw · adapters · enrichment)"]
+        D4["Reporting: Reports · Benchmarks · Boxing"]
+        D5["Workspace: TA-Wiz chat + Graph Search<br/>Harness · Traces"]
     end
 
-    subgraph SKILLS["🛠 Skills  (23 skills, 6 clusters)"]
+    subgraph SKILLS["🛠 Skills  (75+ skills, 8 clusters)"]
         direction LR
-        S1["Analysis<br/>rerun-corpus<br/>backfill-aivss<br/>update-data"]
-        S2["ER Workflow<br/>run-er → review-unsure<br/>→ adr-patch · summarise-er"]
-        S3["Quality<br/>tatb-score/loop/corpus<br/>aivss-score/gate"]
-        S4["Dev/Health<br/>quick-test · codemap · mmd<br/>check-* · docs-health"]
+        S1["Analysis<br/>rerun-corpus · update-data<br/>qualify-corpus · regen-reports"]
+        S2["Quality<br/>tatb-score/loop · check-detect<br/>check-governance · check-jev"]
+        S3["Security<br/>mcp-audit · harden-audit<br/>detect-loop · detect-trend"]
+        S4["Dev/Health<br/>docs-health · codemap · mmd<br/>recall · gen-blog"]
     end
 
     subgraph REPORTS["📁 Report Files (per architecture)"]
-        R1["00 Executive Dashboard<br/>01 Exec Summary  02 Technical<br/>03 Action Plan   09 Threat Model<br/>10 ADR Report"]
-        R2["04–06 Critic JSONs<br/>07 MoE Orchestrator<br/>08 SM + Improvement<br/>before/after .mmd"]
+        R1["00 Exec Dashboard  01 Exec Summary<br/>02 Technical  03 Action Plan<br/>09 Threat Model  10 ADR Report"]
+        R2["report/brain/ — ta_brain.json + instances<br/>report/taclaw/ — TAclaw investigation JSONs<br/>report/<agent_id>/ — fleet agent reports"]
     end
 
     %% ── Cross-domain connections ────────────────────────────
@@ -62,24 +71,29 @@ flowchart TD
     HARNESS -->|"triggers"| PIPELINE
     PIPELINE -->|"produces"| REPORTS
     API -->|"calls"| HARNESS
+    API -->|"triggers"| FLEET
+    FLEET -->|"writes"| REPORTS
     DASHBOARD -->|"fetches"| API
     DASHBOARD -->|"reads"| REPORTS
     SKILLS -->|"invoke via API / Python"| API
     SKILLS -->|"read/patch"| REPORTS
 
     %% ── Test coverage table (embedded) ─────────────────────
-    subgraph TESTS["🧪 Tests  (181 total)"]
+    subgraph TESTS["🧪 Tests  (~500 total)"]
         direction LR
-        T1["test_harness_governance   58<br/>test_harness_event_broker  48<br/>test_harness_aivss         39"]
-        T2["test_mmd_cleaner          21<br/>test_mitre                  8<br/>test_services_concurrent    6<br/>test_control_detection      1"]
+        T1["test_harness_governance   56<br/>test_harness_event_broker  60<br/>test_harness_aivss         39"]
+        T2["test_managed_agent        56<br/>test_mmd_cleaner           21<br/>test_mitre / concurrent / detect ~325"]
     end
 
     HARNESS -.->|"covered by"| TESTS
+    FLEET -.->|"covered by"| TESTS
 
     %% ── Styles ──────────────────────────────────────────────
     classDef domain fill:#1e1e2e,stroke:#7c3aed,color:#e2e8f0
     classDef file   fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     classDef input  fill:#0c4a6e,stroke:#0ea5e9,color:#e0f2fe
+    classDef fleet  fill:#1a2e1a,stroke:#4ade80,color:#bbf7d0
     class PIPELINE,HARNESS,API,DASHBOARD,SKILLS,REPORTS,TESTS domain
+    class FLEET fleet
     class R1,R2,T1,T2 file
     class IN input
