@@ -1274,6 +1274,8 @@
                         style="padding:0.45rem 1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:0.78rem;">Artifact Analysis</button>
                     <button id="sip-subtab-gym"       onclick="window.dashboard&&window.dashboard._sipSubTab('gym')"
                         style="padding:0.45rem 1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:0.78rem;">⟳ TAgym</button>
+                    <button id="sip-subtab-perspective" onclick="window.dashboard&&window.dashboard._sipSubTab('perspective')"
+                        style="padding:0.45rem 1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:0.78rem;">🎯 Perspective</button>
                 </div>
 
                 <!-- Sub-panel: Adapters -->
@@ -1456,6 +1458,40 @@
                     <div style="flex:1;overflow-y:auto;padding:0.75rem 1.5rem;">
                         <div style="font-weight:600;font-size:0.8rem;margin-bottom:0.5rem;color:var(--text-secondary);">Iterations</div>
                         <div id="gym-iterations-table" style="font-size:0.75rem;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sub-panel: Perspective -->
+            <div id="sip-sub-perspective" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+                <!-- Actor banner -->
+                <div id="persp-actor-banner" style="flex-shrink:0;display:flex;align-items:center;gap:1rem;padding:0.5rem 1.25rem;background:var(--sidebar-bg);border-bottom:1px solid var(--border-color);font-size:0.78rem;min-height:2.25rem;">
+                    <span style="color:var(--text-tertiary);">Select an architecture and scenario to begin simulation</span>
+                </div>
+                <!-- Main canvas area -->
+                <div style="flex:1;display:flex;overflow:hidden;">
+                    <!-- Left: scenario picker (25%) -->
+                    <div style="width:25%;flex-shrink:0;border-right:1px solid var(--border-color);display:flex;flex-direction:column;overflow:hidden;">
+                        <div style="padding:0.6rem 0.85rem;border-bottom:1px solid var(--border-color);display:flex;gap:0.5rem;align-items:center;">
+                            <select id="persp-arch-select" style="flex:1;padding:0.3rem 0.45rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.75rem;" onchange="window.dashboard&&window.dashboard._perspLoadArch(this.value)">
+                                <option value="">— select architecture —</option>
+                            </select>
+                            <select id="persp-actor-override" title="Override threat actor" style="width:7rem;padding:0.3rem 0.45rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.75rem;">
+                                <option value="">auto actor</option>
+                            </select>
+                        </div>
+                        <div id="persp-scenario-list" style="flex:1;overflow-y:auto;padding:0.4rem 0;"></div>
+                    </div>
+                    <!-- Right: kill chain canvas (75%) -->
+                    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+                        <div id="persp-canvas-wrap" style="flex:1;position:relative;overflow:hidden;background:var(--main-bg);">
+                            <svg id="persp-canvas" width="100%" height="100%" style="display:block;"></svg>
+                            <div id="persp-pause-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;">
+                                <button onclick="window.dashboard&&window.dashboard._perspResume()" style="padding:0.6rem 1.4rem;border:none;border-radius:8px;background:#f59e0b;color:#000;font-weight:700;font-size:0.9rem;cursor:pointer;">▶ Continue</button>
+                            </div>
+                        </div>
+                        <!-- Step log strip -->
+                        <div id="persp-step-log" style="flex-shrink:0;height:6.5rem;overflow-y:auto;border-top:1px solid var(--border-color);background:var(--sidebar-bg);padding:0.35rem 0.75rem;font-size:0.7rem;font-family:monospace;color:var(--text-secondary);"></div>
                     </div>
                 </div>
             </div>

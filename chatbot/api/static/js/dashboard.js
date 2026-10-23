@@ -20754,18 +20754,362 @@ class Dashboard {
 
     _sipSubTab(name) {
         this._sipActiveSubTab = name;
-        ['adapters', 'jobs', 'enrich', 'artifact', 'gym'].forEach(n => {
+        ['adapters', 'jobs', 'enrich', 'artifact', 'gym', 'perspective'].forEach(n => {
             const btn  = document.getElementById(`sip-subtab-${n}`);
             const pane = document.getElementById(`sip-sub-${n}`);
             const active = n === name;
             if (btn)  { btn.style.borderBottomColor = active ? '#f59e0b' : 'transparent';
                         btn.style.color = active ? '#f59e0b' : 'var(--text-secondary)';
                         btn.style.fontWeight = active ? '600' : '400'; }
-            if (pane) { pane.style.display = active ? (n === 'jobs' || n === 'gym' ? 'flex' : 'block') : 'none'; }
+            if (pane) { pane.style.display = active ? (['jobs','gym','perspective'].includes(n) ? 'flex' : 'block') : 'none'; }
         });
-        if (name === 'adapters') this._sipLoadAdapters();
-        if (name === 'jobs')     this._sipLoadJobs();
-        if (name === 'gym')      this._gymPoll();
+        if (name === 'adapters')    this._sipLoadAdapters();
+        if (name === 'jobs')        this._sipLoadJobs();
+        if (name === 'gym')         this._gymPoll();
+        if (name === 'perspective') this._perspInit();
+    }
+
+    // ── TA Perspective ────────────────────────────────────────────────────────
+
+    _perspInit() {
+        if (this._perspInitDone) return;
+        this._perspInitDone = true;
+        this._perspStream  = null;
+        this._perspPaused  = false;
+        this._perspResumeQ = null;
+        this._perspNodes   = {};
+        this._perspEdges   = [];
+        this._perspSvg     = null;
+        this._perspSim     = null;
+        // Populate arch selector from existing report list
+        this._apiGet('/api/v1/reports').then(data => {
+            const sel = document.getElementById('persp-arch-select');
+            if (!sel) return;
+            (data.reports || []).forEach(r => {
+                const o = document.createElement('option');
+                o.value = r.name; o.textContent = r.name;
+                sel.appendChild(o);
+            });
+        }).catch(() => {});
+    }
+
+    async _perspLoadArch(arch) {
+        if (!arch) return;
+        this._perspCurrentArch = arch;
+        const list = document.getElementById('persp-scenario-list');
+        if (list) list.innerHTML = '<div style="padding:0.75rem;color:var(--text-tertiary);font-size:0.75rem;">Loading…</div>';
+        try {
+            const data = await this._apiGet(`/api/v1/perspective/scenarios/${encodeURIComponent(arch)}`);
+            this._perspManifest = data;
+            this._perspNodes = data.nodes || {};
+            this._perspEdges = data.edges || [];
+            this._perspDrawCanvas();
+            this._perspRenderPicker(data.scenarios || [], data.arch_actors || []);
+            // Populate actor override dropdown
+            const ovSel = document.getElementById('persp-actor-override');
+            if (ovSel) {
+                ovSel.innerHTML = '<option value="">auto actor</option>';
+                (data.arch_actors || []).forEach(a => {
+                    const o = document.createElement('option');
+                    o.value = a.group_id;
+                    o.textContent = `${a.name} (${(a.overlap_pct*100).toFixed(0)}%)`;
+                    ovSel.appendChild(o);
+                });
+            }
+        } catch(e) {
+            if (list) list.innerHTML = `<div style="padding:0.75rem;color:#ef4444;font-size:0.75rem;">Error: ${e.message||e}</div>`;
+        }
+    }
+
+    _perspRenderPicker(scenarios, archActors) {
+        const list = document.getElementById('persp-scenario-list');
+        if (!list) return;
+        if (!scenarios.length) {
+            list.innerHTML = '<div style="padding:0.75rem;color:var(--text-tertiary);font-size:0.75rem;">No scenarios — run analysis first.</div>';
+            return;
+        }
+        const BADGE_COLOR = { CRITICAL:'#ef4444', HIGH:'#f97316', MED:'#f59e0b', LOW:'#22c55e' };
+        list.innerHTML = scenarios.map((s,i) => `
+            <div class="persp-scenario-row" data-sid="${s.scenario_id}"
+                 onclick="window.dashboard&&window.dashboard._perspRunScenario('${s.scenario_id}')"
+                 title="${s.risk_rationale}"
+                 style="padding:0.5rem 0.85rem;cursor:pointer;border-bottom:1px solid var(--border-color);transition:background 0.15s;">
+                <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.2rem;">
+                    <span style="font-size:0.65rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;background:${BADGE_COLOR[s.risk_badge]||'#6b7280'};color:#fff;">${s.risk_badge}</span>
+                    <span style="font-size:0.72rem;font-weight:600;color:var(--text-color);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.path_label}</span>
+                </div>
+                <div style="display:flex;gap:0.75rem;font-size:0.67rem;color:var(--text-tertiary);">
+                    <span>risk ${(s.composite_risk_score*100).toFixed(0)}%</span>
+                    ${s.actor_name ? `<span>🎭 ${s.actor_name} ${(s.actor_overlap_pct*100).toFixed(0)}%</span>` : ''}
+                    <span>blocked ${(100-s.block_rate_estimate*100).toFixed(0)}% open</span>
+                </div>
+            </div>`).join('');
+    }
+
+    _perspBand(nodeId, nodeData) {
+        // Assign node to one of four horizontal depth bands
+        const label = ((nodeData && nodeData.label) || nodeId).toLowerCase();
+        const type  = ((nodeData && nodeData.node_type) || '').toLowerCase();
+        if (/internet|cdn|cloudflare|waf|gateway|load.?bal|external|edge|proxy|ingress/.test(label+type)) return 0;
+        if (/auth|iam|ldap|active.dir|identity|keycloak|cognito|okta|sso|saml/.test(label+type))          return 3;
+        if (/db|database|storage|s3|blob|redis|mongo|postgres|mysql|dynamo|vault/.test(label+type))       return 2;
+        return 1; // internal / app / service default
+    }
+
+    _perspDrawCanvas() {
+        const svg = document.getElementById('persp-canvas');
+        if (!svg) return;
+        const wrap = document.getElementById('persp-canvas-wrap');
+        const W = wrap ? wrap.clientWidth  || 600 : 600;
+        const H = wrap ? wrap.clientHeight || 400 : 400;
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+        // Clear
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+        const nodes = this._perspNodes || {};
+        const edges = this._perspEdges || [];
+
+        if (!Object.keys(nodes).length) return;
+
+        // Build band x-positions (4 bands)
+        const BANDS = 4;
+        const bandX = i => (W / BANDS) * i + (W / BANDS) / 2;
+
+        // Assign positions
+        const bandNodes = [[], [], [], []];
+        Object.entries(nodes).forEach(([id, nd]) => {
+            bandNodes[this._perspBand(id, nd)].push({ id, ...nd });
+        });
+
+        const nodePos = {};
+        bandNodes.forEach((bnodes, bi) => {
+            const x = bandX(bi);
+            bnodes.forEach((n, ni) => {
+                const y = H * 0.1 + (H * 0.8) * (ni + 1) / (bnodes.length + 1);
+                nodePos[n.id] = { x, y, data: n };
+            });
+        });
+        this._perspNodePos = nodePos;
+
+        // Draw band labels
+        const bandLabels = ['Perimeter', 'Internal', 'Data / Crown', 'Identity'];
+        bandLabels.forEach((lbl, i) => {
+            const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            t.setAttribute('x', bandX(i));
+            t.setAttribute('y', 18);
+            t.setAttribute('text-anchor', 'middle');
+            t.setAttribute('fill', '#6b7280');
+            t.setAttribute('font-size', '10');
+            t.textContent = lbl;
+            svg.appendChild(t);
+        });
+
+        // Draw band separator lines
+        for (let i = 1; i < BANDS; i++) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', bandX(i) - (W/BANDS)/2);
+            line.setAttribute('x2', bandX(i) - (W/BANDS)/2);
+            line.setAttribute('y1', 0); line.setAttribute('y2', H);
+            line.setAttribute('stroke', '#374151'); line.setAttribute('stroke-width', '0.5');
+            line.setAttribute('stroke-dasharray', '4 4');
+            svg.appendChild(line);
+        }
+
+        // Draw edges
+        edges.forEach(e => {
+            const src = nodePos[e.source || e.from];
+            const tgt = nodePos[e.target || e.to];
+            if (!src || !tgt) return;
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', src.x); line.setAttribute('y1', src.y);
+            line.setAttribute('x2', tgt.x); line.setAttribute('y2', tgt.y);
+            line.setAttribute('stroke', '#374151'); line.setAttribute('stroke-width', '1');
+            line.setAttribute('id', `persp-edge-${e.source||e.from}-${e.target||e.to}`);
+            svg.appendChild(line);
+        });
+
+        // Draw nodes
+        Object.entries(nodePos).forEach(([id, pos]) => {
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('id', `persp-node-${id}`);
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', pos.x); circle.setAttribute('cy', pos.y);
+            circle.setAttribute('r', 14);
+            circle.setAttribute('fill', '#1f2937'); circle.setAttribute('stroke', '#4b5563');
+            circle.setAttribute('stroke-width', '1.5');
+            circle.setAttribute('id', `persp-node-circle-${id}`);
+            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            label.setAttribute('x', pos.x); label.setAttribute('y', pos.y + 26);
+            label.setAttribute('text-anchor', 'middle');
+            label.setAttribute('fill', '#9ca3af'); label.setAttribute('font-size', '9');
+            label.textContent = (pos.data.label || id).slice(0, 14);
+            g.appendChild(circle); g.appendChild(label);
+            svg.appendChild(g);
+        });
+
+        // Red agent dot
+        const red = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        red.setAttribute('r', 7); red.setAttribute('fill', '#ef4444');
+        red.setAttribute('id', 'persp-red-agent'); red.setAttribute('display', 'none');
+        svg.appendChild(red);
+
+        // Blue agent dot
+        const blue = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        blue.setAttribute('r', 6); blue.setAttribute('fill', '#3b82f6');
+        blue.setAttribute('id', 'persp-blue-agent'); blue.setAttribute('display', 'none');
+        svg.appendChild(blue);
+    }
+
+    _perspNodeColor(outcome) {
+        return { BLOCKED:'#22c55e', DEGRADED:'#f97316', SUCCEEDED:'#ef4444', UNKNOWN_NODE:'#6b7280' }[outcome] || '#6b7280';
+    }
+
+    _perspApplyStep(step) {
+        const pos = this._perspNodePos || {};
+        const rp = pos[step.red_position];
+        const bp = pos[step.blue_position];
+
+        // Move red agent
+        const red = document.getElementById('persp-red-agent');
+        if (red && rp) {
+            red.setAttribute('cx', rp.x); red.setAttribute('cy', rp.y);
+            red.setAttribute('display', '');
+        }
+        // Move blue agent
+        const blue = document.getElementById('persp-blue-agent');
+        if (blue && bp) {
+            blue.setAttribute('cx', bp.x + 8); blue.setAttribute('cy', bp.y - 8);
+            blue.setAttribute('display', step.outcome !== 'SUCCEEDED' ? '' : 'none');
+        }
+
+        // Color edge trail
+        const edgeId = `persp-edge-${step.edge_from}-${step.edge_to}`;
+        const edge = document.getElementById(edgeId);
+        if (edge) {
+            const TRAIL = { BLOCKED:'#22c55e', DEGRADED:'#f97316', SUCCEEDED:'#ef4444', UNKNOWN_NODE:'#6b7280' };
+            edge.setAttribute('stroke', TRAIL[step.outcome] || '#6b7280');
+            edge.setAttribute('stroke-width', '2.5');
+        }
+
+        // Color node circle
+        const circle = document.getElementById(`persp-node-circle-${step.node}`);
+        if (circle) {
+            circle.setAttribute('fill', this._perspNodeColor(step.outcome));
+            circle.setAttribute('stroke', '#fff');
+        }
+
+        // Append to step log
+        const log = document.getElementById('persp-step-log');
+        if (log) {
+            const ICONS = { BLOCKED:'🟢', DEGRADED:'🟠', SUCCEEDED:'🔴', UNKNOWN_NODE:'⬜' };
+            const line = document.createElement('div');
+            line.textContent = `${ICONS[step.outcome]||'?'} Step ${step.step} · ${step.node} · ${step.technique} · ${step.outcome}${step.rule_fired ? ' ← '+step.rule_fired : ''}`;
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+        }
+    }
+
+    async _perspRunScenario(scenarioId) {
+        if (!this._perspCurrentArch) return;
+        // Highlight active row
+        document.querySelectorAll('.persp-scenario-row').forEach(r => {
+            r.style.background = r.dataset.sid === scenarioId ? 'var(--nav-hover-bg)' : '';
+        });
+
+        // Abort any running stream
+        if (this._perspStream) { this._perspStream.abort(); this._perspStream = null; }
+        this._perspPaused = false;
+        const overlay = document.getElementById('persp-pause-overlay');
+        if (overlay) overlay.style.display = 'none';
+
+        // Reset canvas + log
+        this._perspDrawCanvas();
+        const log = document.getElementById('persp-step-log');
+        if (log) log.innerHTML = '';
+
+        const actorOverride = (document.getElementById('persp-actor-override') || {}).value || null;
+
+        // Start SSE
+        const controller = new AbortController();
+        this._perspStream = controller;
+        this._perspResumeQ = null;
+
+        try {
+            const resp = await fetch(`/api/v1/perspective/run/${encodeURIComponent(this._perspCurrentArch)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-API-Key': this._apiKey || '' },
+                body: JSON.stringify({ scenario_id: scenarioId, actor_override: actorOverride || undefined }),
+                signal: controller.signal,
+            });
+            if (!resp.ok) { const t = await resp.text(); throw new Error(t); }
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                const lines = buf.split('\n');
+                buf = lines.pop();
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const evt = JSON.parse(line.slice(6));
+                        if (evt.event === 'manifest') {
+                            this._perspUpdateBanner(evt.scenario);
+                        } else if (evt.event === 'step') {
+                            this._perspApplyStep(evt);
+                            if (evt.pause_at_critical) {
+                                await this._perspPauseUntilResume(overlay);
+                            } else {
+                                await new Promise(r => setTimeout(r, Math.min(evt.step_delay_ms || 1200, 1200)));
+                            }
+                        } else if (evt.event === 'done') {
+                            this._perspShowSummary(evt.summary);
+                        }
+                    } catch(_) {}
+                }
+            }
+        } catch(e) {
+            if (e.name !== 'AbortError') console.warn('Perspective stream error', e);
+        }
+    }
+
+    _perspUpdateBanner(scenario) {
+        const banner = document.getElementById('persp-actor-banner');
+        if (!banner || !scenario) return;
+        banner.innerHTML = `
+            <span style="font-weight:700;color:var(--text-color);">${scenario.path_label}</span>
+            <span style="padding:0.1rem 0.4rem;border-radius:3px;background:#374151;font-size:0.67rem;">${scenario.risk_badge}</span>
+            ${scenario.actor_name ? `<span style="color:#f59e0b;">🎭 ${scenario.actor_name} · ${(scenario.actor_overlap_pct*100).toFixed(0)}% TTP overlap</span>` : ''}
+            <span style="color:var(--text-tertiary);font-size:0.7rem;margin-left:auto;">${scenario.risk_rationale}</span>`;
+    }
+
+    _perspShowSummary(summary) {
+        const log = document.getElementById('persp-step-log');
+        if (!log || !summary) return;
+        const pct = summary.block_rate !== undefined ? (summary.block_rate*100).toFixed(0) : '?';
+        const line = document.createElement('div');
+        line.style.marginTop = '0.35rem';
+        line.style.fontWeight = '700';
+        line.style.color = summary.block_rate >= 0.5 ? '#22c55e' : '#ef4444';
+        line.textContent = `── Simulation complete · ${summary.blocked||0} blocked · ${summary.degraded||0} degraded · ${summary.succeeded||0} succeeded · ${pct}% block rate ──`;
+        log.appendChild(line);
+        log.scrollTop = log.scrollHeight;
+    }
+
+    _perspPauseUntilResume(overlay) {
+        if (overlay) { overlay.style.display = 'flex'; }
+        return new Promise(resolve => { this._perspResumeQ = resolve; this._perspPaused = true; });
+    }
+
+    _perspResume() {
+        this._perspPaused = false;
+        const overlay = document.getElementById('persp-pause-overlay');
+        if (overlay) overlay.style.display = 'none';
+        if (this._perspResumeQ) { this._perspResumeQ(); this._perspResumeQ = null; }
     }
 
     async _sipLoadAdapters() {

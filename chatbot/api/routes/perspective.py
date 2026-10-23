@@ -150,4 +150,9 @@ async def perspective_scenarios(architecture_name: str):
     ground_truth = _load_ground_truth(architecture_name)
     dc = DirectorCaster(ground_truth)
     manifest = dc.build_manifest()
-    return manifest.to_dict()
+    result = manifest.to_dict()
+    # Include graph data for canvas rendering (avoids a second round-trip)
+    meta = ground_truth.get("metadata", {})
+    result["nodes"] = meta.get("parsed_nodes", {})
+    result["edges"] = meta.get("parsed_edges", [])
+    return result
