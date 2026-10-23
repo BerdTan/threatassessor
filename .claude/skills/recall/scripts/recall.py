@@ -38,12 +38,12 @@ PRIORITY_STEPS = [
     (1,  33, "✅ DETECT-ABU 6 rules + MCPAccessLogger",  "policies/soc_detection_rules.yaml",         None),
     (2,  34, "✅ Jev Phase 2: GT noul ❻ + CISO posture ❽", "ground_truth_generator.py + ta_exporter.py", 1),
     (3,  35, "✅ Per-action MCP Jev noul gate ❾",        "mcp_server/server.py",                      None),
-    # ── Priority 37 — TA Perspective (DECISIONS 211) ─────────────────────────
-    (4,  37, "GroupCampaignMatcher + STIX cache",              "chatbot/modules/group_campaign_matcher.py",  None),
-    (5,  37, "Hook into ground_truth Phase 3B",                "chatbot/modules/ground_truth_generator.py",  4),
-    (6,  37, "PerspectiveRunner + build_step_signals(bounds)", "chatbot/modules/perspective_runner.py",      5),
-    (7,  37, "SSE route + GET /perspective/scenarios/{arch}",  "chatbot/api/routes/perspective.py",          6),
-    (8,  37, "Kill chain canvas (D3 layered graph + agents)",  "chatbot/api/static/js/dashboard.js",         7),
+    # ── Priority 37 — TA Perspective (DECISIONS 211) — DONE b26db65…6a03b41 ──
+    (4,  37, "✅ GroupCampaignMatcher + STIX cache",              "chatbot/modules/group_campaign_matcher.py",  None),
+    (5,  37, "✅ Hook into ground_truth Phase 3B",                "chatbot/modules/ground_truth_generator.py",  4),
+    (6,  37, "✅ PerspectiveRunner + build_step_signals(bounds)", "chatbot/modules/perspective_runner.py",      5),
+    (7,  37, "✅ SSE route + GET /perspective/scenarios/{arch}",  "chatbot/api/routes/perspective.py",          6),
+    (8,  37, "✅ Kill chain canvas (D3 layered graph + agents)",  "chatbot/api/static/js/dashboard.js",         7),
     # ── Fleet Foundation — ManagedAgentHarness (DECISIONS 221) ───────────────
     # Triggered when second agent is scoped; refactor before it lands
     (9,  40, "AgentPrepStage — context sanitize + Jev noul gate", "chatbot/agents/managed/harness.py",  None),
@@ -71,7 +71,7 @@ PRIORITY_STEPS = [
 ]
 
 BLOG_GATES = {
-    37: "P37 blog — draft after steps 4–8 live",
+    37: "📝 P37 blog — steps 4–8 done (6a03b41); draft now unblocked",
     40: "P38 blog done ✅; P39 blog — draft after second fleet agent (step 17) ships",
     44: "P40 blog — fleet governance story; draft after FleetCoordinator (step 21) ships",
 }
