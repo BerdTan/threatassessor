@@ -1428,6 +1428,23 @@ def generate_ground_truth(
         # Jev Phase 2 ❻: applicability noul filter (fails silently)
         _jev_filter_ap_techniques(ap, parsed["nodes"], arch_type)
 
+    # Phase 3B: Threat actor matching via GroupCampaignMatcher (STIX TTP overlap, no LLM)
+    logger.info("Phase 3B: Matching threat actors via STIX TTP overlap...")
+    _top_actors: list = []
+    try:
+        from chatbot.modules.group_campaign_matcher import get_matcher as _get_gcm
+        _gcm = _get_gcm()
+        _arch_ttps: set = set()
+        for ap in attack_paths:
+            _arch_ttps.update(ap.get("techniques", []))
+        _top_actors = [a.to_dict() for a in _gcm.match(_arch_ttps, top_n=3)]
+        for ap in attack_paths:
+            _path_ttps = set(ap.get("techniques", []))
+            ap["matched_actors"] = [a.to_dict() for a in _gcm.match(_path_ttps, top_n=3)]
+        logger.info(f"Threat actors matched: {[a['name'] for a in _top_actors]}")
+    except Exception:
+        logger.debug("Threat actor matching skipped (fail-open)")
+
     # StoryCaster: co-generate edge micro-stories and journey macro-stories
     from chatbot.modules.story_caster import cast_stories, cast_journey_story, build_ap_rationale_from_story
 
@@ -1524,6 +1541,7 @@ def generate_ground_truth(
         "controls_missing": controls_missing_names,
         "control_recommendations": control_recommendations,  # Full details with confidence
         "expected_attack_paths": attack_paths,
+        "threat_actors": _top_actors,
         "expected_risk_score": risk_score,
         "expected_defensibility": defensibility_score,
         "rapids_assessment": rapids_assessment,

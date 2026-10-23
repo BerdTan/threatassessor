@@ -4,6 +4,85 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 226 — ManagedAgentHarness: shared knowledge system defense-in-depth constraints
+
+**Status:** Design constraint — build when ManagedAgentHarness is sequenced (after P37)
+
+**What:** Three design constraints for the ManagedAgentHarness derived from shared knowledge system risks. TA Brain is the shared knowledge layer for the managed agent fleet; the four existing hardening layers (context sanitize, tool cap, output scan, token budget) cover agent I/O but not knowledge at rest.
+
+**Three constraints:**
+1. **Ingest gate** — scan `ta_brain_instances.jsonl` entries for PII tokens (hostnames, IP ranges, org names) + injection phrases at write time. Current `ta_brain_builder.py` ingests arch_description text from user MMDs without a sanitisation pass.
+2. **Bounded context enforcement** — agents declare their `arch_type` scope at registration; `query_brain()` rejects units outside that scope. The arch_type routing table already exists; enforcement is the missing step.
+3. **TTL signal** — `query_brain()` accepts a `max_age_days` param; units older than threshold are included at degraded confidence (flag `stale: true`), not silently. `ingested_at` already exists on instances.
+
+**Why now (as design constraint, not build):** ManagedAgentHarness is pending (Entry 222 fleet planes + managed agent fleet done). If the harness is built without these constraints, retrofitting them later is harder — bounded context enforcement in particular requires changes to the registry interface. Record the constraints before the interface is set.
+
+**Risk if skipped:**
+- Adversarially crafted MMD → arch_description text in brain corpus → instruction injection into agent context at query time
+- Stale IoT patterns silently influencing cloud architecture assessments
+- No PII boundary → user-submitted internal network topology in shared knowledge
+
+**Alternatives rejected:**
+- Full isolation per agent (separate brain per agent) — defeats the purpose of shared knowledge; bounded context tagging is the right granularity
+- Post-ingest scanning only — injection risk exists at write time; gate at ingest is the right layer
+
+---
+
+### Entry 225 — skill-master: multi-location skill oversight coordinator
+
+**Status:** Design intent — build after P37 Perspective + ta-export version-stamp (Entry 224)
+
+**What:** A new `skill-master` skill that acts as coordinator above `check-skills` + `skill-audit`. Those two audit one skill location at a time; `skill-master` owns the full picture across all locations where skills can be loaded.
+
+**Five responsibilities:**
+1. **Multi-location inventory** — scan `~/.claude/skills/`, `.claude/skills/`, and any paths in `TA_SKILL_PATHS` env var; produce a unified skill manifest with location tags
+2. **Override detection** — when the same skill name exists in multiple locations, flag which takes precedence (user > project) and whether the versions differ (silent substitution = supply chain risk)
+3. **Change-triggered re-scan** — compute corpus SHA across all locations; if delta vs last scan, automatically invoke `check-skills` + `skill-audit` on changed files
+4. **Evidence stamp** — add `skills_context: { corpus_sha, scan_ts, location_count, conflict_count }` to ta-export bundle (same pass as Entry 224's model routing stamp)
+5. **Scan log** — append to `report/skill_master/scan_log.jsonl` (gitignored); each entry: timestamp, locations scanned, corpus_sha, delta_files, conflicts
+
+**Why:** `check-skills` has SHA256 + git integrity + URL audit but only covers `.claude/skills/`. User-level skills (`~/.claude/`) silently override project-level ones without any detection. A compromised user-level skill that shadows a clean project skill is invisible to the current audit surface. Incident response can't answer "which skill version influenced this run."
+
+**Shared root fix (Entry 224 + 225):** Both the open-factory reproducibility gap and the skill supply chain evidence gap are solved by the same ta-export bundle change — stamp `{ model_id, routing_mode, skills_context }` once. Build as one unit.
+
+**Blog angle (P40):** "Skills Are Dependencies. Start Treating Them That Way." — what `check-skills`/`skill-audit`/`aisurface-audit` already cover, where multi-location inventory and version tracing still fail, and how `skill-master` closes both.
+
+**Alternatives rejected:**
+- Extending `check-skills` to be multi-location aware — `check-skills` is a point-in-time auditor; the coordinator role (change detection, cross-location conflict, log maintenance) is structurally different and warrants a separate entry point
+- Running `check-skills` + `skill-audit` on every harness run — too expensive; change-triggered is the right cadence
+
+---
+
+## Session 113 — 2026-10-23
+
+### Entry 224 — "Open Factory" framework: transparency/reproducibility/interoperability/ecosystem-reuse applied to TA
+
+**Status:** Design intent — P39 blog candidate + reproducibility gap to close
+
+**What:** Mapped the four-pillar "open factory" framework to ThreatAssessor. TA scores well on two pillars, partially on two.
+
+**Strong (✅):**
+- **Transparency** — harness stages emit observable artifacts (GovernanceSignals, BouncerStage decisions, event broker → SIEM/Langfuse); DETECT rules are declarative YAML; PolicyBroker decisions are logged. Gap: LLM critic reasoning is opaque — verdicts are visible, not reasoning chains.
+- **Ecosystem reuse** — skills authored in Claude Code, evaluated via ta-boxing/check-detect, run independently; MCP + openapi.yaml enable external consumption; TAgym is a closed flywheel that reuses the full stack without duplicating it.
+
+**Partial (⚠️):**
+- **Reproducibility** — ta-export/1.0 bundles the assessment snapshot; TATB corpus is append-only. Gap: model versions are not pinned per-run; brain evolves; smart_router re-routes dynamically → cold-replay is not guaranteed same-model.
+- **Interoperability** — brain patterns (JSON) and DETECT rules (YAML) are model-independent; harness swaps backends. Gap: prompt templates are pipeline-coupled — switching harnesses loses the critic chain. MCP exposes results, not pipeline primitives.
+
+**Weakest pillar: reproducibility.** "Retained context and local test environments make replay meaningful" — TA has the context (export bundles) but not pinned execution context.
+
+**Concrete gap to close:** Version-stamp the model routing decision (model_id + provider + routing_mode) into the ta-export/1.0 bundle at assessment time. This costs nothing and makes reproducibility claims honest.
+
+**Connection to ManagedAgentHarness:** A harness that mirrors ThreatAssessorHarness improves interoperability — pipeline primitives become portable, not just results.
+
+**Blog angle (P39):** "Four Questions for Every AI Security Factory" — TA as the worked example for each pillar. Can be written after P37 Perspective ships (one more concrete surface to show under ecosystem reuse).
+
+**Alternatives rejected:**
+- Full prompt-template portability — too large a refactor for the gain; the critic chain is intentionally tightly coupled to the harness lifecycle
+- Pinning models per-run as a hard constraint — routing is dynamic by design; version-stamping in the export is the right level of reproducibility guarantee
+
+---
+
 ## Session 112 — 2026-10-18
 
 ### Entry 223 — report-prune skill: automated report folder and graph staleness maintenance
