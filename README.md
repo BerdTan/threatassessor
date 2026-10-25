@@ -5,7 +5,7 @@ Submit a Mermaid (`.mmd`) diagram, a Git repo, or IaC files and receive a MITRE 
 ## What you get
 
 - **Threat model** — MITRE ATT&CK techniques mapped per node and hop; deterministic, no LLM required
-- **SOC signals** — 58 DETECT rules evaluated per run (grounded in OWASP, MITRE ATLAS, and CSA Agentic AI Red Teaming Guide); OCSF DetectionFinding 2004 events emitted to SIEM / Langfuse / webhook
+- **SOC signals** — 65 DETECT rules evaluated per run (grounded in OWASP, MITRE ATLAS, and CSA Agentic AI Red Teaming Guide); OCSF DetectionFinding 2004 events emitted to SIEM / Langfuse / webhook
 - **Expert review** — 5-critic MoE panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster synthesis, on demand
 - **TA Brain** — self-growing knowledge graph that predicts findings for known topology patterns and drives smart routing
 - **TAclaw** — autonomous repo assessment: point at a Git URL or directory; adapters (TF / CF / OAI / Prose / MMD) convert it to a graph and run the full pipeline; usable via REST, MCP tool, or `ta analyze` CLI
@@ -59,6 +59,8 @@ flowchart TD
 
     fleet_rep["report/taclaw_investigator/\narch_name.json"]
 
+    persp["TA Perspective\nGroupCampaignMatcher · DirectorCaster\nPerspectiveRunner · D3 canvas"]
+
     mmd_in --> rest_api
     sip_in --> adpt
     adpt --> rest_api
@@ -97,14 +99,19 @@ flowchart TD
     jev -.->|choice adapter fallback| adpt
     jev -.->|noul TATB label| brn_o
     jev -.->|noul investigation gate| inv_agent
+    jev -.->|noul technique filter| an_s
+    jev -.->|noul posture signal| rep_o
+
+    dash_ui --> persp
 
     style Fleet fill:#f3e8ff,stroke:#7c3aed
     style registry fill:#ede9fe,stroke:#7c3aed
     style inv_agent fill:#ede9fe,stroke:#7c3aed
     style fleet_rep fill:#ede9fe,stroke:#7c3aed
+    style persp fill:#ecfdf5,stroke:#059669
 ```
 
-Three pipeline modes: **brain_fast** serves predictions from the TA Brain for known topology patterns (~50ms); **api_only** runs the deterministic analysis pipeline; **full_moe** adds the 5-critic expert panel. The Smart Router selects the mode automatically based on Brain confidence and AIVSS history. **Jev** (typesafe.ai) augments six decision points as a fast System 1 gate: governance injection detection, smart router cold-start, PolicyBroker critic pre-screening, adapter format fallback, TATB quality labelling, and investigation pre-flight — all non-fatal; every point falls back silently if Jev is unavailable.
+Three pipeline modes: **brain_fast** serves predictions from the TA Brain for known topology patterns (~50ms); **api_only** runs the deterministic analysis pipeline; **full_moe** adds the 5-critic expert panel. The Smart Router selects the mode automatically based on Brain confidence and AIVSS history. **Jev** (typesafe.ai) augments eight decision points as a fast System 1 gate: governance injection detection, smart router cold-start, PolicyBroker critic pre-screening, adapter format fallback, TATB quality labelling, investigation pre-flight, technique applicability filtering, and CISO posture signal at export — all non-fatal; every point falls back silently if Jev is unavailable.
 
 On **BLOCK**, the pipeline hands off to the **Fleet Layer**: a managed agent loop where an LLM decides which tool to call next based on what the previous tool returned. `TAclawInvestigationAgent` queries five tools (block signals, brain patterns, rule detail, pipeline context, synthesis) and writes a remediation report to `report/taclaw_investigator/`. Fleet output is kept separate from pipeline output by design.
 
@@ -197,7 +204,7 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 **MCP transport** — stdio (default) has no network exposure. Network transport (`--transport sse` / `--transport streamable-http`) requires `TM_MCP_KEY`.
 
-**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before any LLM token is spent. 58 DETECT rules emit OCSF events for SOC consumption.
+**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before any LLM token is spent. 65 DETECT rules emit OCSF events for SOC consumption.
 
 ## Go deeper
 
@@ -205,12 +212,12 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 - [`CLAUDE.md`](CLAUDE.md) — full module map, harness concepts, all check commands
 - [`mcp_server/README.md`](mcp_server/README.md) — all 18 tools, 4-step test protocol, client integration snippets
 - [`taclaw/README.md`](taclaw/README.md) — TAclaw CLI: `ta analyze`, `ta gate`, `ta export`
-- [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 58 DETECT rules with OWASP/ATLAS/CSA ART/incident provenance
+- [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 65 DETECT rules with OWASP/ATLAS/CSA ART/incident provenance
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decision log (local only, gitignored)
 
 ## Build story
 
-34 parts on Medium — from diagram to detection layer, with every design decision exposed:
+38 parts on Medium — from diagram to detection layer, with every design decision exposed:
 
 | # | Title | What it covers |
 |---|---|---|
