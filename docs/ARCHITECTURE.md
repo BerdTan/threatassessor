@@ -1,14 +1,14 @@
 # ARCHITECTURE
 
-**Version:** 1.1  
-**Date:** 2026-10-03  
-**Status:** Active — reflects Harness v2 + TA-SIP + TA Brain + TAgym + Engine Items 1–17 + Jev 5-point integration
+**Version:** 1.2  
+**Date:** 2026-10-25  
+**Status:** Active — reflects Harness v2 + TA-SIP + TA Brain + TAgym + Engine Items 1–17 + Jev 8-point integration + Managed Agent Fleet + TA Perspective
 
 ---
 
 ## Purpose
 
-ThreatAssessor turns an architecture diagram (or a whole repository) into an actionable threat model. It parses structure, maps MITRE ATT&CK techniques, applies five expert-review critics, scores the output against four quality rubrics, fires 42 SOC detection rules, and exports a signed assessment bundle — all through a single REST call, an MCP tool, or a CLI command.
+ThreatAssessor turns an architecture diagram (or a whole repository) into an actionable threat model. It parses structure, maps MITRE ATT&CK techniques, applies five expert-review critics, scores the output against four quality rubrics, fires 65 SOC detection rules, and exports a signed assessment bundle — all through a single REST call, an MCP tool, or a CLI command.
 
 The system is designed around one invariant: **every analysis path converges on the same Harness gate before any result leaves the system**. The path may be fast (brain pattern match) or full (multi-model MoE critics), but the governance check, AIVSS scoring, and ta-export bundle are non-negotiable steps on all paths.
 
@@ -23,12 +23,14 @@ The system is designed around one invariant: **every analysis path converges on 
 | **TA Brain** | `chatbot/modules/ta_brain_*.py` | 181-instance KG; TACO query; routing signals |
 | **Smart Router** | `chatbot/harness/smart_router.py` | `select_mode()` → brain_fast / api_only / full_moe |
 | **Analysis Pipeline** | `chatbot/modules/ground_truth_generator.py` + `moe_orchestrator` | Deterministic threat mapping + LLM expert review → 16 report files |
-| **Harness v2** | `chatbot/harness/` | Stage sequencing, governance gate, 42 DETECT rules, EventBroker |
+| **Harness v2** | `chatbot/harness/` | Stage sequencing, governance gate, 65 DETECT rules, EventBroker |
 | **Export** | `chatbot/modules/ta_exporter.py`, `chatbot/schemas/ta_export_v1.json` | `ta-export/1.0` bundle (gate + OTM + OCSF + TATB + provenance) |
 | **REST API** | `chatbot/api/routes/` | FastAPI surface: SSE streams, async job layer, admin (72 paths) |
 | **MCP Server** | `mcp_server/` | 18 tools via stdio — for Claude Desktop and coding agents |
 | **TAclaw** | `taclaw/`, `chatbot/api/routes/taclaw.py` | Autonomous repo assessment: crawl → adapt → merge → harness → export |
 | **TAgym** | `chatbot/api/routes/gym.py`, `taclaw/cli.py` | Instrument gym flywheel: continuous TAclaw loop → Brier snapshot per iteration → calibration signal; `ta gym start/status/stop` CLI |
+| **Managed Agent Fleet** | `chatbot/agents/managed/` | `ManagedAgent` base (4 hardening layers: context sanitize, tool cap 2k, output scan, token budget 50k) + `ManagedAgentRegistry` + `TAclawInvestigationAgent` (BLOCK-triggered, 5 tools, disk persistence) |
+| **TA Perspective** | `chatbot/api/routes/perspective.py` | Live red/blue kill-chain simulation from STIX campaign data; `GroupCampaignMatcher` + `DirectorCaster` + `PerspectiveRunner`; per-technique attacker/defender framing; D3 canvas with pause/resume |
 | **MCP Connector** | `mcp_connector/` | Typed SDK (`TAExportBundle`, `enrich_finding()`) for downstream integrations |
 | **Dashboard** | `chatbot/api/static/` | 7-tab browser UI |
 | **Policies** | `policies/` | Runtime governance config: DETECT rules, agent governance, model routing |
@@ -66,7 +68,7 @@ flowchart TD
         HS["Stages\nAnalysis → Report → Quality\n→ Bouncer → PolicyBroker\n→ AIVSS · Critics · SM"]
         HG["governance.py\n9 injection + 3 evasion checks"]
         HE["EventBroker\nSIEM · Langfuse · Webhook"]
-        HD["rule_evaluator.py\n40 SOC DETECT rules"]
+        HD["rule_evaluator.py\n65 SOC DETECT rules"]
         HC --> HS --> HG
         HS -.->|side-effects| HE & HD
     end
@@ -88,6 +90,15 @@ flowchart TD
         E6["CI/CD\nGitHub Actions ta-review.yml\nta gate exits 1 on BLOCK"]
     end
 
+    subgraph AGENTS["Managed Agent Fleet  chatbot/agents/managed/"]
+        MA1["ManagedAgent base\n4 hardening layers\ncontext sanitize · tool cap · output scan · token budget"]
+        MA2["ManagedAgentRegistry"]
+        MA3["TAclawInvestigationAgent\nBLOCK-triggered · 5 tools\n4–7 tool calls · 8–14k tokens/run"]
+        MA1 --> MA2 --> MA3
+    end
+
+    PERSP["TA Perspective  routes/perspective.py\nGroupCampaignMatcher · DirectorCaster · PerspectiveRunner\nSTIX → red/blue kill-chain  D3 canvas"]
+
     JEV["Jev  typesafe.ai\nSystem 1 gate\nnoul · choice · circuit breaker"]
 
     AG --> HARNESS
@@ -95,12 +106,17 @@ flowchart TD
     HARNESS --> PIPELINE
     PIPELINE --> E1
     E1 --> E2 & E3 & E4 & E5 & E6
+    E1 --> AGENTS
+    E1 --> PERSP
 
     JEV -.->|❶ noul  governance pre-flight| HG
     JEV -.->|❷ choice  adapter fallback| AG
     JEV -.->|❸ choice  cold-start routing| SR
     JEV -.->|❹ noul  critic pre-screen| HS
     JEV -.->|❺ noul  TATB quality label| B1
+    JEV -.->|❻ noul  MCP per-action gate| E2
+    JEV -.->|❼ noul  technique applicability| P1
+    JEV -.->|❽ noul  CISO posture signal| P4
 ```
 
 ---
@@ -133,7 +149,7 @@ All three paths share the same Harness gate (Bouncer) and ta-export output. See 
 | `choice` | `criteria` dict `{key: description}` | `.choice` string + `.confidence` + `.probabilities` | Smart router cold-start, adapter fallback |
 | `score` | `criteria` list of strings | `.score` float | Not used — returns 0.500 (prior only) for bare technique identifiers |
 
-**Five integration points (all non-fatal — every caller falls back silently if Jev returns `{}`):**
+**Eight integration points (all non-fatal — every caller falls back silently if Jev returns `{}`):**
 
 | # | Point | File | Type | Threshold |
 |---|---|---|---|---|
@@ -142,6 +158,9 @@ All three paths share the same Harness gate (Bouncer) and ta-export output. See 
 | ❸ | Smart router cold-start | `chatbot/harness/smart_router.py` | choice | 0.85 to override yaml default |
 | ❹ | PolicyBroker critic pre-screen | `chatbot/harness/policy_broker.py` | noul | 0.15 to skip critic |
 | ❺ | TATB quality labeller | `chatbot/modules/ta_brain_jev_labeller.py` | noul | Brier-validated |
+| ❻ | MCP per-action gate (Layer 2) | `mcp_server/server.py` | noul | after behavioural gate |
+| ❼ | Technique applicability filter | `chatbot/modules/ground_truth_generator.py` | noul | 0.25 threshold, cap 15 q/call, fail-open |
+| ❽ | CISO posture signal at export | `chatbot/modules/ta_exporter.py` | noul | consistent = noul ≥ 0.50; `posture_signal` key in bundle |
 
 **Enable/disable:** `JEV_ENABLED=0` or absent `JEV_API_KEY` disables all five points; pipeline behaviour reverts to pre-Jev logic at each point. See `check-jev` skill for the 6-check benchmark.
 
