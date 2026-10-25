@@ -4,6 +4,44 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 227 — Recursive improvement flywheel: Propose + Monitor + Red-team loop (ADR)
+
+**Date:** 2026-10-25
+**Status:** Design intent
+**Trigger:** Harness² (Google Research) recursive harnessing framework + METR red-team of OpenAI agent monitoring (2026-10-22). Both point to the same gap in TA: the pipeline is strong and the measurement signals exist, but the observation → decision → action loop still requires a human session in between.
+
+**What:**
+Four capabilities to close the loop end-to-end:
+
+1. **GymProposer** — when a TAgym iteration produces a Brier delta worse than threshold (or SUCCEEDED gap count rises), auto-generate a targeted harness edit candidate (prompt patch, synonym expansion, detection rule candidate) and stage it for human approval rather than waiting for a human to diagnose the cause. Harness² calls this the Propose step; TA's gym already has Probe (run) and a partial Compose (brain ingest) but no Propose.
+
+2. **Monitor context parity** — verify that GovernanceSignals checks always read the same context the critic received, not a post-compaction summary. METR found that serialisation differences between agent-context and monitor-context caused monitors to miss trajectories. In TA's terms: confirm `_outbound_blocked` and `exploitation.blocked` evaluate against raw critic output in `BouncerStage`, not a summarised view. Add a context-hash check: critic input hash → governance check input hash must match.
+
+3. **Continuous red-team harness** — a lightweight scheduled scenario suite that runs a fixed set of known-evasion patterns (prompt injection, checker-out-of-loop, untraceability) against the live pipeline and checks that the expected DETECT rules fire. Different from the regression suite (which tests rule logic in isolation): this tests the full pipeline end-to-end with adversarial inputs. Outcome: a pass/fail signal per rule per week, not just on-demand.
+
+4. **SUCCEEDED gap auto-staging** — when PerspectiveRunner emits SUCCEEDED outcomes for a technique that has no DETECT rule coverage, automatically open a synthetic MMD candidate in the queue rather than relying on a human to notice the gap in the So What panel. Closes the Perspective → DETECT flywheel that currently requires a manual step.
+
+**Why:**
+- The static pipeline is solid but the learning loop is human-paced. Each improvement requires a session to notice, decide, and implement.
+- Harness² shows recursive harnessing (without model weight changes) produces measurable benchmark gains from the Propose step alone.
+- METR shows that monitors with coverage gaps and context-parity issues miss real threats even when the detection logic is correct. TA's per-stage EventBroker is ahead of OpenAI's end-of-turn design, but the context-hash gap is unverified.
+- The SUCCEEDED → DETECT gap exists today: Perspective surfaces it visually but does not close it programmatically.
+
+**Build sequence (proposed):**
+- Step A: Context-hash check in BouncerStage (low effort, high safety value)
+- Step B: SUCCEEDED auto-staging from PerspectiveRunner → synthetic MMD queue (medium effort, closes existing Perspective → DETECT gap)
+- Step C: Continuous red-team harness (medium effort, builds on check-detect skill)
+- Step D: GymProposer (highest effort, requires Propose logic + approval gate)
+
+**Alternatives rejected:**
+- Model fine-tuning: Harness² explicitly keeps weights fixed; same principle applies here. The harness is the variable, not the model.
+- Fully autonomous promotion: all candidates require human approval gate before landing in brain or rule set. Automation accelerates proposal, not decision.
+- Single monolithic improvement agent: decomposed into four named capabilities so each can ship and deliver value independently.
+
+**Blog:** P39 candidate — "The Loop That Learns": recursive harnessing, monitor parity, continuous red-team as a flywheel rather than a checklist.
+
+---
+
 ### Entry 226 — ManagedAgentHarness: shared knowledge system defense-in-depth constraints
 
 **Status:** Design constraint — build when ManagedAgentHarness is sequenced (after P37)
