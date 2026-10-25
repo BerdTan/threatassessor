@@ -26,54 +26,55 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 # Update this after a dependency analysis session.
 # Mark a step done by prepending ✅ to its label.
 #
-# Dependency chain (2026-10-18):
-#   P37 (TA Perspective) — independent of fleet, clears backlog, enables blog P37
-#   Fleet Foundation (Entry 221) — ManagedAgentHarness; refactor before second agent
-#   Fleet Security (Entry 222) — CoreBouncer formalisation; after Foundation
+# Dependency chain (2026-10-25):
+#   P37 (TA Perspective) — DONE (6f1f39b); blog P37 published
+#   P38 (Managed agent fleet) — DONE (87e8a1e); blog P38 published
+#   Fleet Foundation (Entry 221) — ManagedAgentHarness steps 9–13; refactor before second agent
+#   Fleet Security (Entry 222) — CoreBouncer; after Foundation
 #   Fleet Service — second agent; lands clean into harness
 #   Fleet Report — fleet manifest + EventBroker fleet events; after Service
 #   FleetCoordinator — only when third agent is scoped
+#   Recursive flywheel (Entry 227) — Steps A–D; independent of fleet, starts with context-hash
 PRIORITY_STEPS = [
     # ── Priority 33/34/35 — DONE ─────────────────────────────────────────────
     (1,  33, "✅ DETECT-ABU 6 rules + MCPAccessLogger",  "policies/soc_detection_rules.yaml",         None),
     (2,  34, "✅ Jev Phase 2: GT noul ❻ + CISO posture ❽", "ground_truth_generator.py + ta_exporter.py", 1),
     (3,  35, "✅ Per-action MCP Jev noul gate ❾",        "mcp_server/server.py",                      None),
-    # ── Priority 37 — TA Perspective (DECISIONS 211) — DONE b26db65…6a03b41 ──
+    # ── Priority 37 — TA Perspective — DONE (6f1f39b) ────────────────────────
     (4,  37, "✅ GroupCampaignMatcher + STIX cache",              "chatbot/modules/group_campaign_matcher.py",  None),
     (5,  37, "✅ Hook into ground_truth Phase 3B",                "chatbot/modules/ground_truth_generator.py",  4),
-    (6,  37, "✅ PerspectiveRunner + build_step_signals(bounds)", "chatbot/modules/perspective_runner.py",      5),
+    (6,  37, "✅ PerspectiveRunner + vocabulary gap fix",         "chatbot/modules/perspective_runner.py",      5),
     (7,  37, "✅ SSE route + GET /perspective/scenarios/{arch}",  "chatbot/api/routes/perspective.py",          6),
-    (8,  37, "✅ Kill chain canvas (D3 layered graph + agents)",  "chatbot/api/static/js/dashboard.js",         7),
-    # ── Fleet Foundation — ManagedAgentHarness (DECISIONS 221) ───────────────
-    # Triggered when second agent is scoped; refactor before it lands
+    (8,  37, "✅ Kill chain canvas + pause/resume toolbar",       "chatbot/api/static/js/dashboard.js",         7),
+    # ── Priority 40 — ManagedAgentHarness (DECISIONS 221) ────────────────────
     (9,  40, "AgentPrepStage — context sanitize + Jev noul gate", "chatbot/agents/managed/harness.py",  None),
     (10, 40, "AgentExecuteStage — extract tool loop from ManagedAgent.run()", "chatbot/agents/managed/harness.py", 9),
     (11, 40, "AgentAuditStage — output scan + token budget check", "chatbot/agents/managed/harness.py", 10),
     (12, 40, "AgentSynthStage — write report + signal EventBroker", "chatbot/agents/managed/harness.py", 11),
     (13, 40, "ManagedAgentHarness circuit breaker + BlockedAgentError", "chatbot/agents/managed/harness.py", 12),
     # ── Fleet Security — CoreBouncer (DECISIONS 222) ─────────────────────────
-    # Formalise hardening layers as named component; agents call CoreBouncer, not base class
-    (14, 41, "CoreBouncer: extract hardening layers from ManagedAgent base", "chatbot/agents/managed/bouncer.py", 13),
-    (15, 41, "Cross-fleet gating rule: report-layer-only signal between fleets", "chatbot/agents/managed/bouncer.py", 14),
-    (16, 41, "Human-in-the-loop threshold (confidence < 0.7 → queue for approval)", "chatbot/agents/managed/bouncer.py", 15),
-    # ── Fleet Service — second agent ─────────────────────────────────────────
-    # Scope depends on P37 outcome: PerspectiveRunner judgment path → fleet agent,
-    # else TAgym synthetic data selection agent
-    (17, 42, "Second fleet agent (scope after P37 ships)",   "chatbot/agents/managed/",               16),
-    # ── Fleet Report — CoreReporter (DECISIONS 222) ───────────────────────────
-    (18, 43, "Fleet manifest: report/fleet/<fleet_id>/manifest.json", "chatbot/agents/managed/reporter.py", 17),
-    (19, 43, "EventBroker: fleet_started/agent_triggered/fleet_blocked events", "chatbot/harness/event_broker.py", 18),
-    (20, 43, "Fleet-level token budget (sum across agent runs per pipeline trigger)", "chatbot/agents/managed/reporter.py", 19),
-    # ── FleetCoordinator — only when third agent scoped (DECISIONS 221/222) ──
-    (21, 44, "FleetCoordinator: routes trigger type → correct fleet", "chatbot/agents/managed/coordinator.py", 20),
+    (14, 40, "CoreBouncer: extract hardening layers from ManagedAgent base", "chatbot/agents/managed/bouncer.py", 13),
+    (15, 40, "Cross-fleet gating rule: report-layer-only signal between fleets", "chatbot/agents/managed/bouncer.py", 14),
+    (16, 40, "Human-in-the-loop threshold (confidence < 0.7 → queue for approval)", "chatbot/agents/managed/bouncer.py", 15),
+    # ── Fleet Service + Report + Coordinator ─────────────────────────────────
+    (17, 40, "Second fleet agent (scope TBD)",                    "chatbot/agents/managed/",               16),
+    (18, 40, "Fleet manifest: report/fleet/<fleet_id>/manifest.json", "chatbot/agents/managed/reporter.py", 17),
+    (19, 40, "EventBroker: fleet_started/agent_triggered/fleet_blocked", "chatbot/harness/event_broker.py", 18),
+    (20, 40, "Fleet-level token budget across agent runs",         "chatbot/agents/managed/reporter.py",    19),
+    (21, 40, "FleetCoordinator: routes trigger type → correct fleet", "chatbot/agents/managed/coordinator.py", 20),
+    # ── Priority 41 — Recursive improvement flywheel (DECISIONS 227) ─────────
+    # Independent of fleet; start with Step A (safety value, low effort)
+    (23, 41, "Step A — BouncerStage context-hash parity check",  "chatbot/harness/stages.py",             None),
+    (24, 41, "Step B — SUCCEEDED auto-staging → synthetic MMD queue", "chatbot/modules/perspective_runner.py", 23),
+    (25, 41, "Step C — Continuous red-team harness (known-evasion scenarios, live pipeline)", ".claude/skills/check-detect/scripts/check-detect.py", 23),
+    (26, 41, "Step D — GymProposer: Brier-triggered harness edit candidates", "chatbot/api/routes/gym.py", 25),
     # Freestanding
     (22, 0,  "recall skill: auto-sequence open ADRs from DECISIONS.md dependency language", ".claude/skills/recall/scripts/recall.py", None),
 ]
 
 BLOG_GATES = {
-    37: "📝 P37 blog — steps 4–8 done (6a03b41); draft now unblocked",
-    40: "P38 blog done ✅; P39 blog — draft after second fleet agent (step 17) ships",
-    44: "P40 blog — fleet governance story; draft after FleetCoordinator (step 21) ships",
+    40: "📝 P39 blog — 'The Loop That Learns': draft after flywheel Steps A–B ship (steps 23–24)",
+    41: "📝 P40 blog — fleet governance + skill-master story; draft after FleetCoordinator (step 21) + GymProposer (step 26)",
 }
 
 # ── helpers ───────────────────────────────────────────────────────────────────
