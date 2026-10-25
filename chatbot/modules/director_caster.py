@@ -49,6 +49,8 @@ class ScenarioEntry:
     actor_overlap_pct: float    # top matched actor's overlap (0 if none)
     actor_name: str             # top matched actor name (empty if none)
     risk_rationale: str         # short explanatory string for hover tooltip
+    path_nodes: list            # ordered node IDs along the path
+    per_node_techniques: dict   # node_id → [technique_ids]
 
     def to_dict(self) -> dict:
         return {
@@ -60,6 +62,8 @@ class ScenarioEntry:
             "actor_overlap_pct": round(self.actor_overlap_pct, 4),
             "actor_name": self.actor_name,
             "risk_rationale": self.risk_rationale,
+            "path_nodes": self.path_nodes,
+            "per_node_techniques": self.per_node_techniques,
         }
 
 
@@ -115,6 +119,60 @@ class PacingSignals:
         return None
 
 
+# ── Infrastructure → security-control synonym map ─────────────────────────────
+# controls_present often carries infrastructure vocabulary (waf, firewall, cdn…)
+# while control_recommendations use security-practice vocabulary (least privilege,
+# mfa, logging…).  This map expands each infra token to its practice equivalents
+# so the block-rate estimator can match across the vocabulary gap.
+
+_INFRA_SYNONYMS: dict[str, set[str]] = {
+    "waf":                  {"web application firewall", "input validation", "rate limiting",
+                             "ids/ips", "web filtering", "http filtering"},
+    "firewall":             {"network segmentation", "ids/ips", "network filtering",
+                             "egress filtering", "packet filtering"},
+    "api gateway":          {"rate limiting", "authentication", "api security",
+                             "throttling", "least privilege", "input validation"},
+    "audit log":            {"logging", "monitoring", "siem", "audit logging",
+                             "log management", "log collection"},
+    "cdn":                  {"rate limiting", "ddos protection", "caching",
+                             "web filtering", "content delivery"},
+    "network segmentation": {"network segmentation", "micro-segmentation", "vlan",
+                             "zero trust", "isolation"},
+    "secrets management":   {"secrets management", "credential protection",
+                             "key management", "vault", "privileged access"},
+    "load balancer":        {"availability", "redundancy", "health check",
+                             "failover", "high availability"},
+    "mfa":                  {"mfa", "multi-factor authentication", "2fa",
+                             "strong authentication"},
+    "sso":                  {"sso", "single sign-on", "federation",
+                             "identity provider", "least privilege"},
+    "encryption":           {"encryption", "tls", "data encryption",
+                             "disk encryption", "transit encryption"},
+    "patching":             {"patching", "vulnerability management",
+                             "patch management", "software updates"},
+    "dlp":                  {"dlp", "data loss prevention", "data classification",
+                             "data exfiltration protection"},
+    "edr":                  {"edr", "endpoint detection", "antivirus",
+                             "behavioral analysis", "endpoint protection"},
+    "ids":                  {"ids/ips", "intrusion detection", "network detection"},
+    "ips":                  {"ids/ips", "intrusion prevention", "network detection"},
+    "ids/ips":              {"ids/ips", "intrusion detection", "intrusion prevention"},
+    "siem":                 {"siem", "logging", "monitoring", "log management"},
+    "zero trust":           {"zero trust", "least privilege", "network segmentation",
+                             "identity verification"},
+    "vulnerability scanning": {"vulnerability management", "patching",
+                               "security scanning", "vulnerability scanning"},
+}
+
+
+def _expand_controls(controls_present: set[str]) -> set[str]:
+    """Return controls_present plus all synonym expansions for infra tokens."""
+    expanded = set(controls_present)
+    for ctrl in controls_present:
+        expanded.update(_INFRA_SYNONYMS.get(ctrl, set()))
+    return expanded
+
+
 # ── Block-rate estimator ───────────────────────────────────────────────────────
 
 def _estimate_block_rate(ap: dict, controls_present: set[str], control_recommendations: list[dict]) -> float:
@@ -122,7 +180,7 @@ def _estimate_block_rate(ap: dict, controls_present: set[str], control_recommend
     Fraction of this path's techniques that have at least one present mitigation.
 
     A technique is "blocked" when any recommendation covers it AND that
-    recommendation's control is in controls_present.
+    recommendation's control is in controls_present (after synonym expansion).
     """
     path_techs = set(ap.get("techniques", []))
     if not path_techs:
@@ -137,8 +195,8 @@ def _estimate_block_rate(ap: dict, controls_present: set[str], control_recommend
         for t in rec.get("techniques", []):
             tech_to_controls.setdefault(t, set()).add(ctrl)
 
-    # Normalise controls_present for case-insensitive match
-    cp_lower = {c.lower().strip() for c in controls_present}
+    # Expand infrastructure tokens → security-practice vocabulary, then normalise
+    cp_lower = _expand_controls({c.lower().strip() for c in controls_present})
 
     blocked = sum(
         1 for t in path_techs
@@ -221,6 +279,8 @@ class DirectorCaster:
 
             rationale = _build_rationale(ap, block_rate, actor_name, actor_confidence, score)
 
+            per_node_techniques: dict = ap.get("per_node_techniques", {})
+
             entries.append(ScenarioEntry(
                 scenario_id=ap_id,
                 path_label=path_label,
@@ -230,6 +290,8 @@ class DirectorCaster:
                 actor_overlap_pct=round(actor_confidence, 4),
                 actor_name=actor_name,
                 risk_rationale=rationale,
+                path_nodes=path_nodes,
+                per_node_techniques=per_node_techniques,
             ))
 
         entries.sort(key=lambda e: e.composite_risk_score, reverse=True)

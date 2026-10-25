@@ -20754,6 +20754,12 @@ class Dashboard {
 
     _sipSubTab(name) {
         this._sipActiveSubTab = name;
+        // Perspective gets its own full-bleed toolbar — hide both the header bar and sub-tab strip
+        const isPerspective = name === 'perspective';
+        const hdr   = document.getElementById('sip-header-bar');
+        const strip = document.getElementById('sip-sub-tab-strip');
+        if (hdr)   hdr.style.display   = isPerspective ? 'none' : '';
+        if (strip) strip.style.display = isPerspective ? 'none' : '';
         ['adapters', 'jobs', 'enrich', 'artifact', 'gym', 'perspective'].forEach(n => {
             const btn  = document.getElementById(`sip-subtab-${n}`);
             const pane = document.getElementById(`sip-sub-${n}`);
@@ -20770,194 +20776,372 @@ class Dashboard {
     }
 
     // ── TA Perspective ────────────────────────────────────────────────────────
+    // Fixed viewBox canvas (1000×340) scales to any window size.
+    // Path-focused: shows only the selected scenario's attack chain as a
+    // horizontal node sequence. Red/Blue feeds split below.
 
     _perspInit() {
         if (this._perspInitDone) return;
         this._perspInitDone = true;
         this._perspStream  = null;
-        this._perspPaused  = false;
-        this._perspResumeQ = null;
-        this._perspNodes   = {};
-        this._perspEdges   = [];
-        this._perspSvg     = null;
-        this._perspSim     = null;
-        // Populate arch selector from existing report list
+        this._perspPaused      = false;
+        this._perspResumeQ     = null;
+        this._perspUserPaused  = false;
+        this._perspUserResumeQ = null;
+        this._perspManifest = null;
+        this._perspSelectedId = null;
+        this._perspNodeOutcomes = {};   // node_id → outcome string
+        // Load arch list
         this._apiGet('/api/v1/reports').then(data => {
             const sel = document.getElementById('persp-arch-select');
             if (!sel) return;
-            (data.reports || []).forEach(r => {
+            sel.innerHTML = '<option value="">— select architecture —</option>';
+            const valid = (data.architectures || data.reports || []).filter(r => r.has_perspective);
+            if (!valid.length) {
+                sel.innerHTML = '<option value="" disabled>— run analysis first —</option>';
+                this._perspSetStatus('No analysed architectures found');
+                return;
+            }
+            valid.forEach(r => {
                 const o = document.createElement('option');
                 o.value = r.name; o.textContent = r.name;
                 sel.appendChild(o);
             });
-        }).catch(() => {});
+            this._perspSetStatus(`${valid.length} architecture${valid.length > 1 ? 's' : ''} available`);
+        }).catch(e => {
+            console.error('Perspective arch load error:', e);
+            const msg = e.message.includes('401')
+                ? '⚠ API key required — set it in ⚙ Settings'
+                : `⚠ Failed to load: ${e.message}`;
+            this._perspSetStatus(msg);
+        });
+    }
+
+    _perspSetStatus(html) {
+        const el = document.getElementById('persp-status');
+        if (el) el.innerHTML = html;
     }
 
     async _perspLoadArch(arch) {
         if (!arch) return;
         this._perspCurrentArch = arch;
-        const list = document.getElementById('persp-scenario-list');
-        if (list) list.innerHTML = '<div style="padding:0.75rem;color:var(--text-tertiary);font-size:0.75rem;">Loading…</div>';
+        this._perspManifest = null;
+        this._perspNodeOutcomes = {};
+        ['persp-from-select','persp-to-select'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '<option value="">Loading…</option>';
+        });
+        this._perspSetStatus('Loading scenarios…');
         try {
+            this._perspClearCanvas('Loading scenarios…');
             const data = await this._apiGet(`/api/v1/perspective/scenarios/${encodeURIComponent(arch)}`);
             this._perspManifest = data;
-            this._perspNodes = data.nodes || {};
-            this._perspEdges = data.edges || [];
-            this._perspDrawCanvas();
-            this._perspRenderPicker(data.scenarios || [], data.arch_actors || []);
-            // Populate actor override dropdown
-            const ovSel = document.getElementById('persp-actor-override');
-            if (ovSel) {
-                ovSel.innerHTML = '<option value="">auto actor</option>';
-                (data.arch_actors || []).forEach(a => {
+            const scenarios = data.scenarios || [];
+
+            // Populate FROM / TO selects (unique first/last nodes)
+            const fromSel = document.getElementById('persp-from-select');
+            const toSel   = document.getElementById('persp-to-select');
+            if (fromSel && toSel) {
+                const froms = [...new Set(scenarios.map(s => (s.path_nodes||[])[0]).filter(Boolean))];
+                const tos   = [...new Set(scenarios.map(s => { const n=s.path_nodes||[]; return n[n.length-1]; }).filter(Boolean))];
+                fromSel.innerHTML = '<option value="">any source</option>' +
+                    froms.map(n => `<option value="${n}">${n}</option>`).join('');
+                toSel.innerHTML = '<option value="">any target</option>' +
+                    tos.map(n => `<option value="${n}">${n}</option>`).join('');
+            }
+
+            // Populate actor dropdown with suggested actors from manifest
+            const actorSel = document.getElementById('persp-actor-override');
+            if (actorSel) {
+                const actors = new Map();
+                (data.arch_actors || []).forEach(a => { if (a.name) actors.set(a.name, a); });
+                scenarios.forEach(s => { if (s.actor_name) actors.set(s.actor_name, { name: s.actor_name, overlap_pct: s.actor_overlap_pct }); });
+                actorSel.innerHTML = '<option value="">auto actor</option>';
+                actors.forEach((a, name) => {
                     const o = document.createElement('option');
-                    o.value = a.group_id;
-                    o.textContent = `${a.name} (${(a.overlap_pct*100).toFixed(0)}%)`;
-                    ovSel.appendChild(o);
+                    o.value = name;
+                    const pct = a.overlap_pct ? ` (${Math.round((a.overlap_pct||0)*100)}% TTP)` : '';
+                    o.textContent = `🎭 ${name}${pct}`;
+                    actorSel.appendChild(o);
                 });
             }
+
+            this._perspUpdateMatchCount();
+            this._perspClearCanvas(`${scenarios.length} paths loaded — pick source / target and click ▶ Run All`);
         } catch(e) {
-            if (list) list.innerHTML = `<div style="padding:0.75rem;color:#ef4444;font-size:0.75rem;">Error: ${e.message||e}</div>`;
+            console.error('Perspective load error:', e);
+            const msg = e.message.includes('401')
+                ? '⚠ API key required — set it in ⚙ Settings'
+                : `⚠ ${e.message}`;
+            this._perspSetStatus(msg);
+            try { this._perspClearCanvas(msg); } catch(_) {}
         }
     }
 
-    _perspRenderPicker(scenarios, archActors) {
-        const list = document.getElementById('persp-scenario-list');
-        if (!list) return;
-        if (!scenarios.length) {
-            list.innerHTML = '<div style="padding:0.75rem;color:var(--text-tertiary);font-size:0.75rem;">No scenarios — run analysis first.</div>';
-            return;
+    _perspScenarioSelected(scenarioId) { /* superseded by from/to filter */ }
+
+    _perspGetMatchingScenarios() {
+        if (!this._perspManifest) return [];
+        const from = (document.getElementById('persp-from-select') || {}).value || '';
+        const to   = (document.getElementById('persp-to-select')   || {}).value || '';
+        return (this._perspManifest.scenarios || []).filter(s => {
+            const nodes = s.path_nodes || [];
+            if (from && nodes[0] !== from) return false;
+            if (to   && nodes[nodes.length - 1] !== to) return false;
+            return true;
+        });
+    }
+
+    _perspUpdateMatchCount() {
+        const matching = this._perspGetMatchingScenarios();
+        const n = matching.length;
+        const total = (this._perspManifest?.scenarios || []).length;
+        const el = document.getElementById('persp-match-count');
+        if (el) el.textContent = n ? `${n} path${n !== 1 ? 's' : ''}` : (this._perspManifest ? '0 paths' : '');
+        if (this._perspManifest) {
+            this._perspSetStatus(n
+                ? `${n} of ${total} path${total !== 1 ? 's' : ''} match — click ▶ Run All`
+                : 'No matching paths — try "any source" or "any target"');
         }
-        const BADGE_COLOR = { CRITICAL:'#ef4444', HIGH:'#f97316', MED:'#f59e0b', LOW:'#22c55e' };
-        list.innerHTML = scenarios.map((s,i) => `
-            <div class="persp-scenario-row" data-sid="${s.scenario_id}"
-                 onclick="window.dashboard&&window.dashboard._perspRunScenario('${s.scenario_id}')"
-                 title="${s.risk_rationale}"
-                 style="padding:0.5rem 0.85rem;cursor:pointer;border-bottom:1px solid var(--border-color);transition:background 0.15s;">
-                <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.2rem;">
-                    <span style="font-size:0.65rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;background:${BADGE_COLOR[s.risk_badge]||'#6b7280'};color:#fff;">${s.risk_badge}</span>
-                    <span style="font-size:0.72rem;font-weight:600;color:var(--text-color);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.path_label}</span>
-                </div>
-                <div style="display:flex;gap:0.75rem;font-size:0.67rem;color:var(--text-tertiary);">
-                    <span>risk ${(s.composite_risk_score*100).toFixed(0)}%</span>
-                    ${s.actor_name ? `<span>🎭 ${s.actor_name} ${(s.actor_overlap_pct*100).toFixed(0)}%</span>` : ''}
-                    <span>blocked ${(100-s.block_rate_estimate*100).toFixed(0)}% open</span>
-                </div>
-            </div>`).join('');
+        if (n > 0) {
+            this._perspNodeOutcomes = {};
+            if (n > 1) {
+                this._perspDrawAllPaths(matching);
+            } else {
+                this._perspDrawPath(matching[0], {});
+            }
+        }
     }
 
-    _perspBand(nodeId, nodeData) {
-        // Assign node to one of four horizontal depth bands
-        const label = ((nodeData && nodeData.label) || nodeId).toLowerCase();
-        const type  = ((nodeData && nodeData.node_type) || '').toLowerCase();
-        if (/internet|cdn|cloudflare|waf|gateway|load.?bal|external|edge|proxy|ingress/.test(label+type)) return 0;
-        if (/auth|iam|ldap|active.dir|identity|keycloak|cognito|okta|sso|saml/.test(label+type))          return 3;
-        if (/db|database|storage|s3|blob|redis|mongo|postgres|mysql|dynamo|vault/.test(label+type))       return 2;
-        return 1; // internal / app / service default
-    }
-
-    _perspDrawCanvas() {
+    // Draw the kill chain path for a scenario (no outcomes yet)
+    _perspDrawPath(scenario, outcomes) {
         const svg = document.getElementById('persp-canvas');
         if (!svg) return;
-        const wrap = document.getElementById('persp-canvas-wrap');
-        const W = wrap ? wrap.clientWidth  || 600 : 600;
-        const H = wrap ? wrap.clientHeight || 400 : 400;
-        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-        // Clear
         while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-        const nodes = this._perspNodes || {};
-        const edges = this._perspEdges || [];
-
-        if (!Object.keys(nodes).length) return;
-
-        // Build band x-positions (4 bands)
-        const BANDS = 4;
-        const bandX = i => (W / BANDS) * i + (W / BANDS) / 2;
-
-        // Assign positions
-        const bandNodes = [[], [], [], []];
-        Object.entries(nodes).forEach(([id, nd]) => {
-            bandNodes[this._perspBand(id, nd)].push({ id, ...nd });
-        });
-
-        const nodePos = {};
-        bandNodes.forEach((bnodes, bi) => {
-            const x = bandX(bi);
-            bnodes.forEach((n, ni) => {
-                const y = H * 0.1 + (H * 0.8) * (ni + 1) / (bnodes.length + 1);
-                nodePos[n.id] = { x, y, data: n };
-            });
-        });
-        this._perspNodePos = nodePos;
-
-        // Draw band labels
-        const bandLabels = ['Perimeter', 'Internal', 'Data / Crown', 'Identity'];
-        bandLabels.forEach((lbl, i) => {
-            const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            t.setAttribute('x', bandX(i));
-            t.setAttribute('y', 18);
-            t.setAttribute('text-anchor', 'middle');
-            t.setAttribute('fill', '#6b7280');
-            t.setAttribute('font-size', '10');
-            t.textContent = lbl;
-            svg.appendChild(t);
-        });
-
-        // Draw band separator lines
-        for (let i = 1; i < BANDS; i++) {
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', bandX(i) - (W/BANDS)/2);
-            line.setAttribute('x2', bandX(i) - (W/BANDS)/2);
-            line.setAttribute('y1', 0); line.setAttribute('y2', H);
-            line.setAttribute('stroke', '#374151'); line.setAttribute('stroke-width', '0.5');
-            line.setAttribute('stroke-dasharray', '4 4');
-            svg.appendChild(line);
+        const ns = 'http://www.w3.org/2000/svg';
+        const VW = 1000, VH = 340;
+        const nodes = scenario.path_nodes || [];
+        if (!nodes.length) {
+            this._perspClearCanvas('No path nodes in this scenario');
+            return;
         }
 
-        // Draw edges
-        edges.forEach(e => {
-            const src = nodePos[e.source || e.from];
-            const tgt = nodePos[e.target || e.to];
-            if (!src || !tgt) return;
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', src.x); line.setAttribute('y1', src.y);
-            line.setAttribute('x2', tgt.x); line.setAttribute('y2', tgt.y);
-            line.setAttribute('stroke', '#374151'); line.setAttribute('stroke-width', '1');
-            line.setAttribute('id', `persp-edge-${e.source||e.from}-${e.target||e.to}`);
+        const NW = 120, NH = 52, RX = 8;
+        const N = nodes.length;
+        const spacing = Math.min(160, (VW - 60) / N);
+        const startX = (VW - (N - 1) * spacing - NW) / 2;
+        const nodeY = VH / 2 - NH / 2 - 20;
+
+        const pnt = scenario.per_node_techniques || {};
+        const actorTechs = new Set(
+            ((this._perspManifest && this._perspManifest.arch_actors && this._perspManifest.arch_actors[0]) || {}).matched_techniques || []
+        );
+
+        // Store node positions for agent animation
+        this._perspPathPositions = nodes.map((id, i) => ({
+            id,
+            cx: startX + i * spacing + NW / 2,
+            cy: nodeY + NH / 2,
+        }));
+
+        // Defs: arrowhead + glow filter
+        const defs = document.createElementNS(ns, 'defs');
+        const filt = document.createElementNS(ns, 'filter');
+        filt.setAttribute('id', 'pglow'); filt.setAttribute('x', '-50%'); filt.setAttribute('y', '-50%');
+        filt.setAttribute('width', '200%'); filt.setAttribute('height', '200%');
+        const fe = document.createElementNS(ns, 'feDropShadow');
+        fe.setAttribute('dx', '0'); fe.setAttribute('dy', '0'); fe.setAttribute('stdDeviation', '4');
+        fe.setAttribute('flood-color', '#ef4444'); fe.setAttribute('flood-opacity', '0.7');
+        filt.appendChild(fe); defs.appendChild(filt);
+
+        const mkr = document.createElementNS(ns, 'marker');
+        mkr.setAttribute('id', 'parrow'); mkr.setAttribute('markerWidth', '10');
+        mkr.setAttribute('markerHeight', '7'); mkr.setAttribute('refX', '9');
+        mkr.setAttribute('refY', '3.5'); mkr.setAttribute('orient', 'auto');
+        const mpoly = document.createElementNS(ns, 'polygon');
+        mpoly.setAttribute('points', '0 0, 10 3.5, 0 7'); mpoly.setAttribute('fill', '#4b5563');
+        mkr.appendChild(mpoly); defs.appendChild(mkr); svg.appendChild(defs);
+
+        // Background
+        const bg = document.createElementNS(ns, 'rect');
+        bg.setAttribute('width', VW); bg.setAttribute('height', VH); bg.setAttribute('fill', '#0d1117');
+        svg.appendChild(bg);
+
+        // Title row
+        const title = document.createElementNS(ns, 'text');
+        title.setAttribute('x', VW / 2); title.setAttribute('y', 22);
+        title.setAttribute('text-anchor', 'middle'); title.setAttribute('fill', '#6b7280');
+        title.setAttribute('font-size', '11');
+        const shortLabel = (scenario.path_label || '').length > 60
+            ? (scenario.path_label || '').slice(0, 58) + '…'
+            : (scenario.path_label || '');
+        title.textContent = shortLabel;
+        svg.appendChild(title);
+
+        // Edges (draw first, behind nodes)
+        nodes.forEach((id, i) => {
+            if (i === N - 1) return;
+            const x1 = startX + i * spacing + NW;
+            const x2 = startX + (i + 1) * spacing;
+            const cy2 = nodeY + NH / 2;
+            const line = document.createElementNS(ns, 'line');
+            line.setAttribute('x1', x1 + 2); line.setAttribute('y1', cy2);
+            line.setAttribute('x2', x2 - 2); line.setAttribute('y2', cy2);
+            line.setAttribute('stroke', '#2d3748'); line.setAttribute('stroke-width', '2');
+            line.setAttribute('marker-end', 'url(#parrow)');
+            line.setAttribute('id', `persp-edge-${i}`);
             svg.appendChild(line);
         });
 
-        // Draw nodes
-        Object.entries(nodePos).forEach(([id, pos]) => {
-            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        // Nodes
+        const OUTCOME_COL = { BLOCKED:'#166534', DEGRADED:'#7c2d12', SUCCEEDED:'#7f1d1d', UNKNOWN_NODE:'#1f2937' };
+        const OUTCOME_STROKE = { BLOCKED:'#22c55e', DEGRADED:'#f97316', SUCCEEDED:'#ef4444', UNKNOWN_NODE:'#374151' };
+
+        nodes.forEach((id, i) => {
+            const x = startX + i * spacing;
+            const o = outcomes[id];
+            const fill = OUTCOME_COL[o] || '#1e2433';
+            const stroke = OUTCOME_STROKE[o] || '#374151';
+            const isCrit = (pnt[id] || []).some(t => actorTechs.has(t));
+            const techs = pnt[id] || [];
+            const techStr = techs.slice(0, 2).join(', ') + (techs.length > 2 ? '…' : '');
+
+            const g = document.createElementNS(ns, 'g');
             g.setAttribute('id', `persp-node-${id}`);
-            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            circle.setAttribute('cx', pos.x); circle.setAttribute('cy', pos.y);
-            circle.setAttribute('r', 14);
-            circle.setAttribute('fill', '#1f2937'); circle.setAttribute('stroke', '#4b5563');
-            circle.setAttribute('stroke-width', '1.5');
-            circle.setAttribute('id', `persp-node-circle-${id}`);
-            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            label.setAttribute('x', pos.x); label.setAttribute('y', pos.y + 26);
-            label.setAttribute('text-anchor', 'middle');
-            label.setAttribute('fill', '#9ca3af'); label.setAttribute('font-size', '9');
-            label.textContent = (pos.data.label || id).slice(0, 14);
-            g.appendChild(circle); g.appendChild(label);
+            g.style.cursor = 'pointer';
+
+            const rect = document.createElementNS(ns, 'rect');
+            rect.setAttribute('x', x); rect.setAttribute('y', nodeY);
+            rect.setAttribute('width', NW); rect.setAttribute('height', NH);
+            rect.setAttribute('rx', RX); rect.setAttribute('fill', fill);
+            rect.setAttribute('stroke', stroke); rect.setAttribute('stroke-width', isCrit ? '2.5' : '1.5');
+            if (isCrit && !o) rect.setAttribute('stroke-dasharray', '5 3');
+            rect.setAttribute('id', `persp-node-rect-${id}`);
+            g.appendChild(rect);
+
+            // Outcome badge (top-right corner)
+            if (o) {
+                const BADGE = { BLOCKED:'BLOCKED', DEGRADED:'DEGRADED', SUCCEEDED:'BREACHED', UNKNOWN_NODE:'UNKNOWN' };
+                const badgeRect = document.createElementNS(ns, 'rect');
+                badgeRect.setAttribute('x', x + NW - 52); badgeRect.setAttribute('y', nodeY - 1);
+                badgeRect.setAttribute('width', 52); badgeRect.setAttribute('height', 14);
+                badgeRect.setAttribute('rx', 3); badgeRect.setAttribute('fill', stroke);
+                g.appendChild(badgeRect);
+                const badgeTxt = document.createElementNS(ns, 'text');
+                badgeTxt.setAttribute('x', x + NW - 26); badgeTxt.setAttribute('y', nodeY + 10);
+                badgeTxt.setAttribute('text-anchor', 'middle'); badgeTxt.setAttribute('fill', '#fff');
+                badgeTxt.setAttribute('font-size', '7.5'); badgeTxt.setAttribute('font-weight', '700');
+                badgeTxt.textContent = BADGE[o] || o;
+                g.appendChild(badgeTxt);
+            }
+
+            // Node name
+            const nodeLbl = id.length > 13 ? id.slice(0, 12) + '…' : id;
+            const nameT = document.createElementNS(ns, 'text');
+            nameT.setAttribute('x', x + NW / 2); nameT.setAttribute('y', nodeY + 20);
+            nameT.setAttribute('text-anchor', 'middle'); nameT.setAttribute('fill', '#e5e7eb');
+            nameT.setAttribute('font-size', '11'); nameT.setAttribute('font-weight', '600');
+            nameT.setAttribute('pointer-events', 'none');
+            nameT.textContent = nodeLbl;
+            g.appendChild(nameT);
+
+            // Technique hint
+            if (techStr) {
+                const techT = document.createElementNS(ns, 'text');
+                techT.setAttribute('x', x + NW / 2); techT.setAttribute('y', nodeY + 33);
+                techT.setAttribute('text-anchor', 'middle'); techT.setAttribute('fill', '#6b7280');
+                techT.setAttribute('font-size', '8'); techT.setAttribute('pointer-events', 'none');
+                techT.textContent = techStr;
+                g.appendChild(techT);
+            }
+
+            // Critical marker
+            if (isCrit) {
+                const critT = document.createElementNS(ns, 'text');
+                critT.setAttribute('x', x + NW / 2); critT.setAttribute('y', nodeY + 45);
+                critT.setAttribute('text-anchor', 'middle'); critT.setAttribute('fill', '#f59e0b');
+                critT.setAttribute('font-size', '8'); critT.setAttribute('pointer-events', 'none');
+                critT.textContent = '⚡ actor TTP';
+                g.appendChild(critT);
+            }
+
+            // Hover tooltip
+            g.addEventListener('mouseenter', ev => {
+                const tip = document.getElementById('persp-node-tip');
+                const wrap = document.getElementById('persp-canvas-wrap');
+                if (!tip || !wrap) return;
+                const wRect = wrap.getBoundingClientRect();
+                const gRect = g.getBoundingClientRect();
+                const tipX = Math.min(gRect.left - wRect.left + 10, wRect.width - 240);
+                const tipY = Math.max(gRect.top - wRect.top - 80, 4);
+                tip.style.left = tipX + 'px'; tip.style.top = tipY + 'px';
+                const allTechs = (pnt[id] || []).join(', ') || '—';
+                const outcomeStr = o ? `<br><span style="color:${stroke};font-weight:700;">${o}</span>` : '';
+                tip.innerHTML = `<strong style="color:#f9fafb;">${id}</strong>${outcomeStr}<br>
+                    <span style="color:#9ca3af;">Techniques: ${allTechs}</span>${isCrit ? '<br><span style="color:#f59e0b;">⚡ Known actor TTP</span>' : ''}`;
+                tip.style.display = 'block';
+            });
+            g.addEventListener('mouseleave', () => {
+                const tip = document.getElementById('persp-node-tip');
+                if (tip) tip.style.display = 'none';
+            });
+
             svg.appendChild(g);
         });
 
-        // Red agent dot
-        const red = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        red.setAttribute('r', 7); red.setAttribute('fill', '#ef4444');
+        // Step labels below nodes
+        nodes.forEach((id, i) => {
+            const t = document.createElementNS(ns, 'text');
+            t.setAttribute('x', startX + i * spacing + NW / 2);
+            t.setAttribute('y', nodeY + NH + 16);
+            t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', '#4b5563');
+            t.setAttribute('font-size', '9');
+            t.textContent = `step ${i + 1}`;
+            svg.appendChild(t);
+        });
+
+        // Legend (bottom-right corner)
+        const legend = [['#22c55e','BLOCKED'], ['#f97316','DEGRADED'], ['#ef4444','BREACHED'], ['#f59e0b','⚡ actor TTP']];
+        legend.forEach(([col, lbl], i) => {
+            const lt = document.createElementNS(ns, 'text');
+            lt.setAttribute('x', VW - 10); lt.setAttribute('y', VH - 12 - i * 15);
+            lt.setAttribute('text-anchor', 'end'); lt.setAttribute('fill', col);
+            lt.setAttribute('font-size', '9'); lt.textContent = lbl;
+            svg.appendChild(lt);
+        });
+
+        // Red agent (animated circle, hidden initially)
+        const red = document.createElementNS(ns, 'circle');
+        red.setAttribute('r', '9'); red.setAttribute('fill', '#ef4444');
+        red.setAttribute('stroke', '#fff'); red.setAttribute('stroke-width', '2');
         red.setAttribute('id', 'persp-red-agent'); red.setAttribute('display', 'none');
+        red.setAttribute('filter', 'url(#pglow)');
         svg.appendChild(red);
 
-        // Blue agent dot
-        const blue = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        blue.setAttribute('r', 6); blue.setAttribute('fill', '#3b82f6');
+        // Blue agent
+        const blue = document.createElementNS(ns, 'circle');
+        blue.setAttribute('r', '7'); blue.setAttribute('fill', '#3b82f6');
+        blue.setAttribute('stroke', '#fff'); blue.setAttribute('stroke-width', '2');
         blue.setAttribute('id', 'persp-blue-agent'); blue.setAttribute('display', 'none');
         svg.appendChild(blue);
+    }
+
+    _perspClearCanvas(msg) {
+        const svg = document.getElementById('persp-canvas');
+        if (!svg) return;
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+        const ns = 'http://www.w3.org/2000/svg';
+        const bg = document.createElementNS(ns, 'rect');
+        bg.setAttribute('width', '1000'); bg.setAttribute('height', '340'); bg.setAttribute('fill', '#0d1117');
+        svg.appendChild(bg);
+        if (msg) {
+            const t = document.createElementNS(ns, 'text');
+            t.setAttribute('x', '500'); t.setAttribute('y', '175');
+            t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', '#374151');
+            t.setAttribute('font-size', '13'); t.textContent = msg;
+            svg.appendChild(t);
+        }
     }
 
     _perspNodeColor(outcome) {
@@ -20965,56 +21149,267 @@ class Dashboard {
     }
 
     _perspApplyStep(step) {
-        const pos = this._perspNodePos || {};
-        const rp = pos[step.red_position];
-        const bp = pos[step.blue_position];
+        const positions = this._perspPathPositions || [];
 
-        // Move red agent
+        // Find position for red agent (current node)
+        const rPos = positions.find(p => p.id === step.red_position);
         const red = document.getElementById('persp-red-agent');
-        if (red && rp) {
-            red.setAttribute('cx', rp.x); red.setAttribute('cy', rp.y);
+        if (red && rPos) {
+            red.setAttribute('cx', rPos.cx); red.setAttribute('cy', rPos.cy - 28);
             red.setAttribute('display', '');
         }
-        // Move blue agent
+
+        // Blue agent at previous node (blue holds where it blocked)
+        const bPos = step.blue_position ? positions.find(p => p.id === step.blue_position) : null;
         const blue = document.getElementById('persp-blue-agent');
-        if (blue && bp) {
-            blue.setAttribute('cx', bp.x + 8); blue.setAttribute('cy', bp.y - 8);
-            blue.setAttribute('display', step.outcome !== 'SUCCEEDED' ? '' : 'none');
+        if (blue && bPos && step.outcome !== 'SUCCEEDED') {
+            blue.setAttribute('cx', bPos.cx + 18); blue.setAttribute('cy', bPos.cy - 28);
+            blue.setAttribute('display', '');
         }
 
-        // Color edge trail
-        const edgeId = `persp-edge-${step.edge_from}-${step.edge_to}`;
-        const edge = document.getElementById(edgeId);
-        if (edge) {
-            const TRAIL = { BLOCKED:'#22c55e', DEGRADED:'#f97316', SUCCEEDED:'#ef4444', UNKNOWN_NODE:'#6b7280' };
-            edge.setAttribute('stroke', TRAIL[step.outcome] || '#6b7280');
-            edge.setAttribute('stroke-width', '2.5');
+        // Color the edge leading to this node
+        const nodeIdx = positions.findIndex(p => p.id === step.node);
+        if (nodeIdx > 0) {
+            const edgeId = this._perspMultiMode
+                ? `persp-edge-AP${this._perspActiveScIdx}-${nodeIdx - 1}`
+                : `persp-edge-${nodeIdx - 1}`;
+            const edge = document.getElementById(edgeId);
+            if (edge) {
+                const ECOL = { BLOCKED:'#22c55e', DEGRADED:'#f97316', SUCCEEDED:'#ef4444', UNKNOWN_NODE:'#4b5563' };
+                edge.setAttribute('stroke', ECOL[step.outcome] || '#4b5563');
+                edge.setAttribute('stroke-width', '3');
+            }
         }
 
-        // Color node circle
-        const circle = document.getElementById(`persp-node-circle-${step.node}`);
-        if (circle) {
-            circle.setAttribute('fill', this._perspNodeColor(step.outcome));
-            circle.setAttribute('stroke', '#fff');
+        // Update node rect
+        const RCOL = { BLOCKED:'#166534', DEGRADED:'#7c2d12', SUCCEEDED:'#7f1d1d', UNKNOWN_NODE:'#1f2937' };
+        const RSTROKE = { BLOCKED:'#22c55e', DEGRADED:'#f97316', SUCCEEDED:'#ef4444', UNKNOWN_NODE:'#374151' };
+        const rectId = this._perspMultiMode
+            ? `persp-node-rect-AP${this._perspActiveScIdx}-${step.node}`
+            : `persp-node-rect-${step.node}`;
+        const rect = document.getElementById(rectId);
+        if (rect) {
+            rect.setAttribute('fill', RCOL[step.outcome] || '#1f2937');
+            rect.setAttribute('stroke', RSTROKE[step.outcome] || '#374151');
+            rect.setAttribute('stroke-width', '2.5');
+            rect.setAttribute('stroke-dasharray', '');
         }
 
-        // Append to step log
-        const log = document.getElementById('persp-step-log');
-        if (log) {
-            const ICONS = { BLOCKED:'🟢', DEGRADED:'🟠', SUCCEEDED:'🔴', UNKNOWN_NODE:'⬜' };
-            const line = document.createElement('div');
-            line.textContent = `${ICONS[step.outcome]||'?'} Step ${step.step} · ${step.node} · ${step.technique} · ${step.outcome}${step.rule_fired ? ' ← '+step.rule_fired : ''}`;
-            log.appendChild(line);
-            log.scrollTop = log.scrollHeight;
+        // Append to red feed
+        const rf = document.getElementById('persp-red-feed');
+        if (rf) {
+            const d = document.createElement('div');
+            const RICO = { BLOCKED:'', DEGRADED:'~', SUCCEEDED:'✗', UNKNOWN_NODE:'?' };
+            d.style.color = step.outcome === 'SUCCEEDED' ? '#fca5a5' : '#6b7280';
+            d.textContent = `${RICO[step.outcome]||''} ${step.node}${step.technique ? ' · ' + step.technique : ''}`;
+            rf.appendChild(d); rf.scrollTop = rf.scrollHeight;
         }
+
+        // Append to blue feed — all outcomes including SUCCEEDED (gaps), with mitigation context
+        const bf = document.getElementById('persp-blue-feed');
+        if (bf && step.outcome !== 'UNKNOWN_NODE') {
+            const d = document.createElement('div');
+            if (step.outcome === 'SUCCEEDED') {
+                const mitTag = step.mitigation_present ? '[partial]' : '[∅ no mit]';
+                d.style.color = '#fca5a5';
+                d.textContent = `⚠ GAP ${mitTag} ${step.node}${step.technique ? ' · ' + step.technique : ''}`;
+            } else if (step.outcome === 'BLOCKED') {
+                const mitTag = step.mitigation_present ? 'mit+det' : 'det only';
+                d.style.color = '#86efac';
+                d.textContent = `✓ BLOCKED [${mitTag}] ${step.node}${step.rule_fired ? ' ← ' + step.rule_fired : ''}`;
+            } else if (step.outcome === 'DEGRADED') {
+                const mitTag = step.mitigation_present ? 'mit, no det' : 'det, no mit';
+                d.style.color = '#fbbf24';
+                d.textContent = `~ DEGRADED [${mitTag}] ${step.node}${step.rule_fired ? ' ← ' + step.rule_fired : ''}`;
+            }
+            if (step.rationale && step.outcome !== 'BLOCKED') {
+                const r = document.createElement('div');
+                r.style.cssText = 'color:#4b5563;font-size:0.63rem;padding-left:0.7rem;margin-bottom:0.1rem;';
+                r.textContent = `  ↳ ${step.rationale}`;
+                bf.appendChild(d); bf.appendChild(r); bf.scrollTop = bf.scrollHeight;
+            } else if (d.textContent) {
+                bf.appendChild(d); bf.scrollTop = bf.scrollHeight;
+            }
+        }
+
+        // Update toolbar step counter
+        const TICO = { BLOCKED:'🟢', DEGRADED:'🟠', SUCCEEDED:'🔴', UNKNOWN_NODE:'⬜' };
+        this._perspSetStatus(`Step ${step.step} · ${TICO[step.outcome]||''} ${step.outcome} at ${step.node}`);
+    }
+
+    async _perspRunSelected() {
+        await this._perspRunAll();
+    }
+
+    async _perspRunAll() {
+        if (!this._perspCurrentArch) {
+            this._perspSetStatus('⚠ Select an architecture first');
+            return;
+        }
+        const matching = this._perspGetMatchingScenarios();
+        if (!matching.length) {
+            this._perspSetStatus('⚠ No matching paths — adjust source / target');
+            return;
+        }
+        const actor = (document.getElementById('persp-actor-override') || {}).value || '';
+
+        // Hide so-what overlay, clear feeds, reset toggle button
+        const soWhat = document.getElementById('persp-so-what');
+        if (soWhat) soWhat.style.display = 'none';
+        const sumBtn = document.getElementById('persp-summary-btn');
+        if (sumBtn) sumBtn.style.display = 'none';
+        ['persp-red-feed','persp-blue-feed'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.innerHTML = '';
+        });
+
+        const btn = document.getElementById('persp-run-btn');
+        if (btn) btn.disabled = true;
+        this._perspUserPaused = false;
+        this._perspUserResumeQ = null;
+        const pauseBtn = document.getElementById('persp-user-pause-btn');
+        if (pauseBtn) { pauseBtn.textContent = '⏸ Pause'; pauseBtn.style.display = ''; }
+
+        this._perspAllResults = [];
+        this._perspMultiMode = matching.length > 1;
+        this._perspActiveScIdx = 0;
+
+        // For multi-AP: draw all paths on canvas at once, then highlight per-AP during simulation
+        if (this._perspMultiMode) {
+            this._perspDrawAllPaths(matching);
+            await new Promise(r => setTimeout(r, 400));
+        }
+
+        for (let i = 0; i < matching.length; i++) {
+            const sc = matching[i];
+            const BC = { CRITICAL:'🔴', HIGH:'🟠', MED:'🟡', LOW:'🟢' };
+            this._perspSetStatus(`${BC[sc.risk_badge]||'⬜'} Scenario ${i + 1} of ${matching.length} · ${sc.scenario_id} ${sc.risk_badge} · ${sc.path_label}`);
+
+            await this._perspFadeTransition(sc);
+
+            // Divider header in both feeds
+            const header = `── ${sc.scenario_id} · ${sc.risk_badge} · ${sc.path_label} ──`;
+            ['persp-red-feed','persp-blue-feed'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const d = document.createElement('div');
+                d.style.cssText = 'color:#374151;margin:0.2rem 0;border-top:1px solid #1f2937;padding-top:0.25rem;font-size:0.65rem;';
+                d.textContent = header;
+                el.appendChild(d); el.scrollTop = el.scrollHeight;
+            });
+
+            const result = await this._perspRunScenarioAsync(sc, actor);
+            this._perspAllResults.push({ scenario: sc, ...result });
+
+            if (i < matching.length - 1) await new Promise(r => setTimeout(r, 700));
+        }
+
+        if (btn) btn.disabled = false;
+        if (pauseBtn) pauseBtn.style.display = 'none';
+        this._perspUserPaused = false;
+        if (this._perspUserResumeQ) { this._perspUserResumeQ(); this._perspUserResumeQ = null; }
+
+        const breached = this._perspAllResults.filter(r => {
+            const last = (r.scenario.path_nodes || []).slice(-1)[0];
+            return (r.nodeOutcomes || {})[last] === 'SUCCEEDED';
+        }).length;
+        this._perspSetStatus(`✓ Complete · ${matching.length} path${matching.length !== 1 ? 's' : ''} · ${breached} HVT breach${breached !== 1 ? 'es' : ''}`);
+
+        setTimeout(() => this._perspShowSoWhat(this._perspAllResults), 500);
+    }
+
+    async _perspFadeTransition(sc) {
+        if (this._perspMultiMode && this._perspAllPathPositions) {
+            const matching = this._perspGetMatchingScenarios();
+            const activeIdx = matching.findIndex(s => s.scenario_id === sc.scenario_id);
+            this._perspActiveScIdx = activeIdx >= 0 ? activeIdx : 0;
+            // Highlight active row, dim others
+            matching.forEach((_, i) => {
+                const row = document.getElementById(`persp-ap-row-${i}`);
+                if (row) row.setAttribute('opacity', i === this._perspActiveScIdx ? '1' : '0.15');
+            });
+            // Set positions for agent animation from the pre-computed array
+            this._perspPathPositions = (this._perspAllPathPositions || [])[this._perspActiveScIdx] || [];
+            this._perspNodeOutcomes = {};
+            await new Promise(r => setTimeout(r, 150));
+        } else {
+            const svg = document.getElementById('persp-canvas');
+            if (svg) svg.style.opacity = '0.12';
+            await new Promise(r => setTimeout(r, 250));
+            this._perspNodeOutcomes = {};
+            this._perspDrawPath(sc, {});
+            if (svg) svg.style.opacity = '1';
+            await new Promise(r => setTimeout(r, 150));
+        }
+    }
+
+    async _perspRunScenarioAsync(sc, actor) {
+        return new Promise(resolve => {
+            const arch    = this._perspCurrentArch;
+            const apiKey  = localStorage.getItem('tm_api_key') || '';
+            const nodeOutcomes = {};
+            let   summary = null;
+
+            if (this._perspStream) { try { this._perspStream.abort(); } catch(_) {} }
+            const ctrl = new AbortController();
+            this._perspStream = ctrl;
+
+            const overlay = document.getElementById('persp-pause-overlay');
+            if (overlay) overlay.style.display = 'none';
+            this._perspPaused = false;
+
+            fetch(`/api/v1/perspective/run/${encodeURIComponent(arch)}`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json', 'TM-API-KEY': apiKey },
+                body:    JSON.stringify({ scenario_id: sc.scenario_id, actor_override: actor || undefined }),
+                signal:  ctrl.signal,
+            }).then(async resp => {
+                if (!resp.ok) { resolve({ nodeOutcomes, summary, error: `HTTP ${resp.status}` }); return; }
+                const reader  = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let buf = '';
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buf += decoder.decode(value, { stream: true });
+                    const lines = buf.split('\n'); buf = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            const evt = JSON.parse(line.slice(6));
+                            if (evt.event === 'step') {
+                                nodeOutcomes[evt.node] = evt.outcome;
+                                this._perspApplyStep(evt);
+                                if (evt.pause_at_critical) {
+                                    await this._perspPauseUntilResume(overlay);
+                                } else {
+                                    await new Promise(r => setTimeout(r, Math.min(evt.step_delay_ms || 1200, 1400)));
+                                }
+                                await this._perspWaitIfUserPaused();
+                            } else if (evt.event === 'done') {
+                                summary = evt.summary;
+                                this._perspShowSummary(evt.summary);
+                            }
+                        } catch(_) {}
+                    }
+                }
+                resolve({ nodeOutcomes, summary });
+            }).catch(e => {
+                if (e.name !== 'AbortError') {
+                    console.warn('Perspective SSE error:', e);
+                    this._perspSetStatus(`<span style="color:#ef4444;">⚠ ${e.message}</span>`);
+                }
+                resolve({ nodeOutcomes, summary });
+            });
+        });
     }
 
     async _perspRunScenario(scenarioId) {
         if (!this._perspCurrentArch) return;
-        // Highlight active row
-        document.querySelectorAll('.persp-scenario-row').forEach(r => {
-            r.style.background = r.dataset.sid === scenarioId ? 'var(--nav-hover-bg)' : '';
-        });
+        this._perspSelectedId = scenarioId;
+
+        // Sync the scenario select dropdown
+        const sscSel = document.getElementById('persp-scenario-select');
+        if (sscSel && sscSel.value !== scenarioId) sscSel.value = scenarioId;
 
         // Abort any running stream
         if (this._perspStream) { this._perspStream.abort(); this._perspStream = null; }
@@ -21022,49 +21417,64 @@ class Dashboard {
         const overlay = document.getElementById('persp-pause-overlay');
         if (overlay) overlay.style.display = 'none';
 
-        // Reset canvas + log
-        this._perspDrawCanvas();
-        const log = document.getElementById('persp-step-log');
-        if (log) log.innerHTML = '';
+        // Redraw path from manifest (resets colors)
+        const sc = this._perspManifest && (this._perspManifest.scenarios || []).find(s => s.scenario_id === scenarioId);
+        this._perspNodeOutcomes = {};
+        if (sc) this._perspDrawPath(sc, {});
+        const rf = document.getElementById('persp-red-feed');
+        const bf = document.getElementById('persp-blue-feed');
+        if (rf) rf.innerHTML = '';
+        if (bf) bf.innerHTML = '';
 
         const actorOverride = (document.getElementById('persp-actor-override') || {}).value || null;
+        this._perspSetStatus('▶ Simulation running…');
 
-        // Start SSE
+        // SSE stream
         const controller = new AbortController();
         this._perspStream = controller;
         this._perspResumeQ = null;
 
         try {
-            const resp = await fetch(`/api/v1/perspective/run/${encodeURIComponent(this._perspCurrentArch)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-API-Key': this._apiKey || '' },
-                body: JSON.stringify({ scenario_id: scenarioId, actor_override: actorOverride || undefined }),
-                signal: controller.signal,
-            });
+            const resp = await fetch(
+                `/api/v1/perspective/run/${encodeURIComponent(this._perspCurrentArch)}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'TM-API-KEY': localStorage.getItem('tm_api_key') || '' },
+                    body: JSON.stringify({ scenario_id: scenarioId, actor_override: actorOverride || undefined }),
+                    signal: controller.signal,
+                }
+            );
             if (!resp.ok) { const t = await resp.text(); throw new Error(t); }
 
             const reader = resp.body.getReader();
             const decoder = new TextDecoder();
             let buf = '';
-
             while (true) {
                 const { value, done } = await reader.read();
                 if (done) break;
                 buf += decoder.decode(value, { stream: true });
-                const lines = buf.split('\n');
-                buf = lines.pop();
+                const lines = buf.split('\n'); buf = lines.pop();
                 for (const line of lines) {
                     if (!line.startsWith('data: ')) continue;
                     try {
                         const evt = JSON.parse(line.slice(6));
                         if (evt.event === 'manifest') {
-                            this._perspUpdateBanner(evt.scenario);
+                            // Update status with actor info
+                            const scn = evt.scenario || {};
+                            const BC = { CRITICAL:'#ef4444', HIGH:'#f97316', MED:'#f59e0b', LOW:'#22c55e' };
+                            const bc = BC[scn.risk_badge] || '#6b7280';
+                            this._perspSetStatus(
+                                `<span style="font-weight:700;">${scn.path_label||''}</span>&nbsp;` +
+                                `<span style="background:${bc};color:#fff;padding:0.1rem 0.35rem;border-radius:3px;font-size:0.68rem;">${scn.risk_badge||''}</span>&nbsp;` +
+                                `${scn.actor_name ? '🎭 ' + scn.actor_name : ''}&nbsp;` +
+                                `<span id="persp-step-counter" style="color:var(--text-tertiary);">▶ running…</span>`
+                            );
                         } else if (evt.event === 'step') {
                             this._perspApplyStep(evt);
                             if (evt.pause_at_critical) {
                                 await this._perspPauseUntilResume(overlay);
                             } else {
-                                await new Promise(r => setTimeout(r, Math.min(evt.step_delay_ms || 1200, 1200)));
+                                await new Promise(r => setTimeout(r, Math.min(evt.step_delay_ms || 1200, 1500)));
                             }
                         } else if (evt.event === 'done') {
                             this._perspShowSummary(evt.summary);
@@ -21073,31 +21483,416 @@ class Dashboard {
                 }
             }
         } catch(e) {
-            if (e.name !== 'AbortError') console.warn('Perspective stream error', e);
+            if (e.name !== 'AbortError') {
+                console.warn('Perspective stream error:', e);
+                this._perspSetStatus(`<span style="color:#ef4444;">⚠ ${e.message}</span>`);
+            }
         }
     }
 
-    _perspUpdateBanner(scenario) {
-        const banner = document.getElementById('persp-actor-banner');
-        if (!banner || !scenario) return;
-        banner.innerHTML = `
-            <span style="font-weight:700;color:var(--text-color);">${scenario.path_label}</span>
-            <span style="padding:0.1rem 0.4rem;border-radius:3px;background:#374151;font-size:0.67rem;">${scenario.risk_badge}</span>
-            ${scenario.actor_name ? `<span style="color:#f59e0b;">🎭 ${scenario.actor_name} · ${(scenario.actor_overlap_pct*100).toFixed(0)}% TTP overlap</span>` : ''}
-            <span style="color:var(--text-tertiary);font-size:0.7rem;margin-left:auto;">${scenario.risk_rationale}</span>`;
+    _perspShowSummary(summary) {
+        if (!summary) return;
+        const blk  = summary.blocked  || 0;
+        const deg  = summary.degraded || 0;
+        const succ = summary.succeeded || 0;
+        const total = blk + deg + succ || 1;
+        const detPct = Math.round((blk + deg) / total * 100);
+        const blkPct = Math.round(blk / total * 100);
+
+        // Status: red if any breach, amber if detected-not-blocked, green if fully blocked
+        const color = succ > 0 ? '#ef4444' : (blkPct < 50 ? '#fbbf24' : '#22c55e');
+        const label = succ > 0
+            ? `${succ} breached · det:${detPct}% blk:${blkPct}%`
+            : `det:${detPct}% · blk:${blkPct}%`;
+
+        const ctr = document.getElementById('persp-step-counter');
+        if (ctr) { ctr.style.color = color; ctr.textContent = label; }
+
+        const rf = document.getElementById('persp-red-feed');
+        const bf = document.getElementById('persp-blue-feed');
+        const summary_line = (el, txt, col) => {
+            if (!el) return;
+            const d = document.createElement('div');
+            d.style.cssText = `color:${col};font-weight:700;border-top:1px solid #30363d;margin-top:0.3rem;padding-top:0.3rem;`;
+            d.textContent = txt; el.appendChild(d); el.scrollTop = el.scrollHeight;
+        };
+        summary_line(rf, `✗ ${succ} breached · ~ ${deg} degraded · ✓ ${blk} blocked`, succ > 0 ? '#fca5a5' : '#6b7280');
+        const blueMsg = succ > 0
+            ? `⚠ ${succ} node${succ!==1?'s':''} breached — det:${detPct}% blk:${blkPct}%`
+            : deg > 0 && blk === 0
+                ? `🟡 All detected, none blocked — add mitigations · det:${detPct}% blk:${blkPct}%`
+                : `✓ det:${detPct}% · blk:${blkPct}% · ${blk} blocked · ${deg} degraded`;
+        summary_line(bf, blueMsg, color);
     }
 
-    _perspShowSummary(summary) {
-        const log = document.getElementById('persp-step-log');
-        if (!log || !summary) return;
-        const pct = summary.block_rate !== undefined ? (summary.block_rate*100).toFixed(0) : '?';
-        const line = document.createElement('div');
-        line.style.marginTop = '0.35rem';
-        line.style.fontWeight = '700';
-        line.style.color = summary.block_rate >= 0.5 ? '#22c55e' : '#ef4444';
-        line.textContent = `── Simulation complete · ${summary.blocked||0} blocked · ${summary.degraded||0} degraded · ${summary.succeeded||0} succeeded · ${pct}% block rate ──`;
-        log.appendChild(line);
-        log.scrollTop = log.scrollHeight;
+    _perspShowSoWhat(results) {
+        if (!results || !results.length) return;
+        const soWhat = document.getElementById('persp-so-what');
+        if (!soWhat) return;
+
+        const BC = { CRITICAL:'🔴', HIGH:'🟠', MED:'🟡', LOW:'🟢' };
+
+        // ── Per-AP classification ─────────────────────────────────────────────
+        const classify = ({ scenario, nodeOutcomes, summary }) => {
+            const nodes   = scenario.path_nodes || [];
+            const last    = nodes.slice(-1)[0];
+            const oc      = nodeOutcomes || {};
+            const vals    = nodes.map(n => oc[n]).filter(Boolean);
+            const succ    = vals.filter(v => v === 'SUCCEEDED').length;
+            const blk     = vals.filter(v => v === 'BLOCKED').length;
+            const deg     = vals.filter(v => v === 'DEGRADED').length;
+            const total   = vals.length || 1;
+            const detPct  = Math.round((blk + deg) / total * 100);
+            const blkPct  = Math.round(blk / total * 100);
+            const hvt     = !!(last && oc[last] === 'SUCCEEDED');
+            const partial = !hvt && succ > 0;
+
+            let status, sColor, sBg;
+            if (hvt)          { status='🔴 HVT REACHED';    sColor='#ef4444'; sBg='#1f0505'; }
+            else if (partial) { status='🟠 PARTIAL BREACH';  sColor='#f97316'; sBg='#1a0e05'; }
+            else if (blk===0 && deg>0) { status='🟡 DETECTED ONLY'; sColor='#fbbf24'; sBg='#1a150a'; }
+            else if (deg>0)   { status='🟡 MIXED';           sColor='#fbbf24'; sBg='#0f1508'; }
+            else if (blk>0)   { status='🟢 FULLY BLOCKED';   sColor='#22c55e'; sBg='#051a0a'; }
+            else              { status='⬜ UNKNOWN';          sColor='#6b7280'; sBg=''; }
+
+            return { succ, blk, deg, total, detPct, blkPct, hvt, partial, status, sColor, sBg };
+        };
+
+        const classified = results.map(r => ({ ...r, cls: classify(r) }));
+
+        // ── Aggregate stats ───────────────────────────────────────────────────
+        const hvtCount     = classified.filter(r => r.cls.hvt).length;
+        const partialCount = classified.filter(r => r.cls.partial).length;
+        const detOnlyCount = classified.filter(r => !r.cls.hvt && !r.cls.partial && r.cls.blk === 0 && r.cls.deg > 0).length;
+        const blockedCount = classified.filter(r => r.cls.blk > 0 && !r.cls.hvt && !r.cls.partial).length;
+        const allSucc      = classified.reduce((s, r) => s + r.cls.succ, 0);
+        const allBlk       = classified.reduce((s, r) => s + r.cls.blk,  0);
+        const allDeg       = classified.reduce((s, r) => s + r.cls.deg,  0);
+        const allTotal     = classified.reduce((s, r) => s + r.cls.total, 0) || 1;
+        const overallDet   = Math.round((allBlk + allDeg) / allTotal * 100);
+        const overallBlk   = Math.round(allBlk / allTotal * 100);
+        const avgRisk      = (results.reduce((s, r) => s + (r.scenario.composite_risk_score || 0), 0) / results.length).toFixed(2);
+        const highestConcern = classified.reduce((best, r) =>
+            (!best || (r.scenario.composite_risk_score||0) > (best.scenario.composite_risk_score||0)) ? r : best, null);
+
+        // ── Technique gaps: SUCCEEDED + DEGRADED, weighted ───────────────────
+        const techGaps = {};
+        classified.forEach(({ scenario, nodeOutcomes }) => {
+            const pnt = scenario.per_node_techniques || {};
+            Object.entries(pnt).forEach(([node, techs]) => {
+                const o = (nodeOutcomes || {})[node];
+                if (o === 'SUCCEEDED' || o === 'DEGRADED') {
+                    (techs || []).forEach(t => {
+                        if (!techGaps[t]) techGaps[t] = { breach: 0, degraded: 0 };
+                        if (o === 'SUCCEEDED') techGaps[t].breach++;
+                        else techGaps[t].degraded++;
+                    });
+                }
+            });
+        });
+        const topTechs = Object.entries(techGaps)
+            .sort((a, b) => (b[1].breach * 3 + b[1].degraded) - (a[1].breach * 3 + a[1].degraded))
+            .slice(0, 8);
+
+        // ── Action guidance ───────────────────────────────────────────────────
+        let actionMsg, actionColor;
+        if (hvtCount > 0) {
+            actionMsg  = `${hvtCount} path${hvtCount>1?'s':''} reached the HVT — immediate remediation required. Prioritise controls for breached nodes.`;
+            actionColor = '#ef4444';
+        } else if (detOnlyCount === results.length) {
+            actionMsg  = 'All paths detected but none fully blocked. Detection is in place — add mitigations to the top techniques to upgrade DEGRADED → BLOCKED.';
+            actionColor = '#fbbf24';
+        } else if (detOnlyCount > 0) {
+            actionMsg  = `${detOnlyCount} path${detOnlyCount>1?'s':''} detected without mitigation. Add controls for the listed techniques.`;
+            actionColor = '#fbbf24';
+        } else if (blockedCount === results.length) {
+            actionMsg  = 'All paths fully blocked. Review degraded nodes for hardening opportunities.';
+            actionColor = '#22c55e';
+        } else {
+            actionMsg  = 'Mixed posture — focus on paths with lowest block rate first.';
+            actionColor = '#f97316';
+        }
+
+        // ── AP rows ───────────────────────────────────────────────────────────
+        const apRows = classified.map(({ scenario, cls }) => {
+            const isConcern = highestConcern && scenario.scenario_id === highestConcern.scenario.scenario_id;
+            const score     = scenario.composite_risk_score ? scenario.composite_risk_score.toFixed(2) : '–';
+            const nodeTally = `${cls.blk}✓ ${cls.deg}~ ${cls.succ}✗`;
+            return `<div style="padding:0.4rem 0.7rem;border-bottom:1px solid #161e2e;${isConcern?'background:'+cls.sBg+';':''}" title="${scenario.risk_rationale||''}">
+                <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:nowrap;">
+                    <span style="font-size:0.7rem;font-weight:700;color:#6b7280;min-width:2.8rem;flex-shrink:0;">${scenario.scenario_id}</span>
+                    <span style="font-size:0.67rem;font-weight:700;padding:0.05rem 0.35rem;border-radius:3px;background:${cls.sColor}22;color:${cls.sColor};white-space:nowrap;flex-shrink:0;">${cls.status}</span>
+                    <span style="flex:1;font-size:0.68rem;color:#8b949e;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;" title="${scenario.path_label}">${scenario.path_label}</span>
+                    <span style="font-size:0.63rem;color:#4b5563;white-space:nowrap;flex-shrink:0;">${BC[scenario.risk_badge]||''} ${score}</span>
+                </div>
+                <div style="display:flex;gap:0.6rem;margin-top:0.18rem;padding-left:3.2rem;font-size:0.63rem;color:#4b5563;">
+                    <span title="blocked / degraded / breached nodes">${nodeTally}</span>
+                    <span title="detection coverage">det:${cls.detPct}%</span>
+                    <span title="full-stop rate" style="color:${cls.blkPct>50?'#22c55e':cls.blkPct>0?'#fbbf24':'#ef444488'}">blk:${cls.blkPct}%</span>
+                    ${isConcern ? '<span style="color:#f59e0b;">★ highest risk</span>' : ''}
+                </div>
+            </div>`;
+        }).join('');
+
+        // ── Technique rows ────────────────────────────────────────────────────
+        const techRows = topTechs.length
+            ? topTechs.map(([t, g]) => {
+                const bTag = g.breach  ? `<span style="color:#ef4444;font-size:0.62rem;">${g.breach}✗</span>` : '';
+                const dTag = g.degraded ? `<span style="color:#fbbf24;font-size:0.62rem;">${g.degraded}~</span>` : '';
+                return `<div style="display:flex;align-items:baseline;gap:0.35rem;padding:0.18rem 0;font-size:0.68rem;border-bottom:1px solid #0d1424;">
+                    <span style="color:#fca5a5;font-family:monospace;min-width:5.2rem;flex-shrink:0;">${t}</span>
+                    ${bTag}${dTag}
+                    <span style="flex:1;color:#374151;font-size:0.62rem;">${g.breach?'breached':'no mitigation'}</span>
+                </div>`;
+            }).join('')
+            : '<div style="font-size:0.67rem;color:#22c55e;padding:0.3rem 0;">✓ No unmitigated techniques</div>';
+
+        // ── Coverage summary bar ──────────────────────────────────────────────
+        const coverageHtml = `
+            <div style="margin-top:0.55rem;padding:0.4rem 0.5rem;background:#0d1117;border:1px solid #1a2035;border-radius:4px;">
+                <div style="font-size:0.63rem;font-weight:700;color:#6b7280;margin-bottom:0.25rem;letter-spacing:0.04em;">COVERAGE (all paths)</div>
+                <div style="display:flex;gap:0.8rem;font-size:0.68rem;">
+                    <span title="nodes detected / total"><span style="color:#60a5fa;">det</span> <span style="color:#c9d1d9;">${overallDet}%</span></span>
+                    <span title="nodes fully blocked / total"><span style="color:#4ade80;">blk</span> <span style="color:${overallBlk>50?'#4ade80':overallBlk>0?'#fbbf24':'#f87171'}">${overallBlk}%</span></span>
+                    <span title="avg composite risk score"><span style="color:#a78bfa;">risk</span> <span style="color:#c9d1d9;">${avgRisk}</span></span>
+                </div>
+            </div>`;
+
+        // ── Action card ───────────────────────────────────────────────────────
+        const actionHtml = `
+            <div style="margin-top:0.55rem;padding:0.4rem 0.5rem;background:${actionColor}11;border:1px solid ${actionColor}33;border-radius:4px;">
+                <div style="font-size:0.63rem;font-weight:700;color:${actionColor};margin-bottom:0.18rem;letter-spacing:0.04em;">RECOMMENDED ACTION</div>
+                <div style="font-size:0.65rem;color:#9ca3af;line-height:1.5;">${actionMsg}</div>
+            </div>`;
+
+        // ── Actors ────────────────────────────────────────────────────────────
+        const actorHtml = (() => {
+            const actors = [...new Set(results.map(r => r.scenario.actor_name).filter(Boolean))];
+            return actors.length
+                ? `<div style="margin-top:0.45rem;font-size:0.63rem;color:#4b5563;">🎭 ${actors.join(' · ')}</div>`
+                : '';
+        })();
+
+        // ── Header stats ──────────────────────────────────────────────────────
+        const headerStats = [
+            hvtCount     ? `<span style="color:#ef4444;font-weight:700;">${hvtCount} HVT reached</span>` : '',
+            partialCount ? `<span style="color:#f97316;">${partialCount} partial</span>` : '',
+            detOnlyCount ? `<span style="color:#fbbf24;">${detOnlyCount} det-only</span>` : '',
+            blockedCount ? `<span style="color:#22c55e;">${blockedCount} blocked</span>` : '',
+        ].filter(Boolean).join('<span style="color:#374151;"> · </span>') ||
+            `<span style="color:#6b7280;">${results.length} path${results.length>1?'s':''}</span>`;
+
+        soWhat.innerHTML = `
+            <div id="persp-sowhat-inner" style="display:flex;height:100%;min-height:0;overflow:hidden;">
+                <div id="persp-sowhat-left" style="flex:1;min-width:8rem;display:flex;flex-direction:column;overflow:hidden;">
+                    <div style="flex-shrink:0;padding:0.35rem 0.7rem;background:#111827;border-bottom:1px solid #1a2035;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                        <span style="font-size:0.67rem;font-weight:700;color:#f59e0b;letter-spacing:0.04em;flex-shrink:0;">SIMULATION COMPLETE</span>
+                        <span style="font-size:0.65rem;">${headerStats}</span>
+                        <button onclick="window.dashboard&&window.dashboard._perspCloseSoWhat()" style="margin-left:auto;background:transparent;border:1px solid #374151;border-radius:3px;color:#6b7280;font-size:0.62rem;padding:0.08rem 0.4rem;cursor:pointer;line-height:1.4;flex-shrink:0;">← paths</button>
+                    </div>
+                    <div style="flex:1;overflow-y:auto;">${apRows}</div>
+                </div>
+                <div id="persp-sowhat-resize" title="Drag to resize"
+                     style="flex-shrink:0;width:6px;cursor:ew-resize;background:transparent;border-left:2px solid #1a2035;transition:border-color 0.15s;"
+                     onmouseenter="this.style.borderColor='#f59e0b'" onmouseleave="this.style.borderColor='#1a2035'"
+                     onmousedown="window.dashboard&&window.dashboard._perspSoWhatResizeStart(event)"></div>
+                <div id="persp-sowhat-right" style="width:16rem;min-width:8rem;max-width:55%;flex-shrink:0;display:flex;flex-direction:column;overflow-y:auto;padding:0.5rem 0.65rem;background:#0a0e16;">
+                    <div style="font-size:0.63rem;font-weight:700;color:#f59e0b;letter-spacing:0.04em;margin-bottom:0.3rem;">DEFENCE GAPS</div>
+                    ${techRows}
+                    ${coverageHtml}
+                    ${actionHtml}
+                    ${actorHtml}
+                </div>
+            </div>`;
+
+        soWhat.style.display = 'block';
+        // Show the toggle button now that results exist
+        const btn = document.getElementById('persp-summary-btn');
+        if (btn) { btn.style.display = ''; btn.textContent = '🗺 Diagram'; }
+    }
+
+    _perspCloseSoWhat() {
+        const soWhat = document.getElementById('persp-so-what');
+        if (soWhat) soWhat.style.display = 'none';
+        this._perspMultiMode = false;
+        const btn = document.getElementById('persp-summary-btn');
+        if (btn) btn.textContent = '📊 Summary';
+    }
+
+    _perspToggleSoWhat() {
+        const soWhat = document.getElementById('persp-so-what');
+        if (!soWhat) return;
+        const btn = document.getElementById('persp-summary-btn');
+        if (soWhat.style.display === 'none' || !soWhat.style.display) {
+            // Re-show summary from stored results
+            if (this._perspAllResults && this._perspAllResults.length) {
+                this._perspShowSoWhat(this._perspAllResults);
+            }
+        } else {
+            this._perspCloseSoWhat();
+        }
+    }
+
+    _perspFeedResizeStart(e) {
+        e.preventDefault();
+        const container = document.getElementById('persp-feed-container');
+        if (!container) return;
+        const startY = e.clientY;
+        const startH = container.offsetHeight;
+        const onMove = ev => {
+            // drag up = taller feed; drag down = shorter feed
+            const newH = Math.max(48, Math.min(500, startH - (ev.clientY - startY)));
+            container.style.height = newH + 'px';
+        };
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }
+
+    _perspSoWhatResizeStart(e) {
+        e.preventDefault();
+        const right = document.getElementById('persp-sowhat-right');
+        const inner = document.getElementById('persp-sowhat-inner');
+        if (!right || !inner) return;
+        const startX = e.clientX;
+        const startW = right.offsetWidth;
+        const totalW = inner.offsetWidth;
+        const onMove = ev => {
+            // drag left = wider right panel; drag right = narrower
+            const newW = Math.max(96, Math.min(totalW * 0.75, startW - (ev.clientX - startX)));
+            right.style.width = newW + 'px';
+        };
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }
+
+    _perspDrawAllPaths(scenarios) {
+        const svg = document.getElementById('persp-canvas');
+        if (!svg) return;
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+        const ns = 'http://www.w3.org/2000/svg';
+        const VW = 1000;
+        const N = scenarios.length;
+        if (!N) return;
+
+        const ROW_H = Math.max(56, Math.min(90, Math.floor(300 / N)));
+        const VH = Math.max(340, N * ROW_H + 30);
+        svg.setAttribute('viewBox', `0 0 ${VW} ${VH}`);
+
+        const AP_COLORS = ['#38bdf8','#f472b6','#fbbf24','#a3e635','#fb923c','#c084fc','#2dd4bf'];
+        const NW = 100, NH = 40, RX = 6;
+        const maxNodes = Math.max(...scenarios.map(s => (s.path_nodes || []).length), 1);
+        const spacing = Math.min(150, (VW - 80) / maxNodes);
+
+        const defs = document.createElementNS(ns, 'defs');
+        scenarios.forEach((_, si) => {
+            const col = AP_COLORS[si % AP_COLORS.length];
+            const mkr = document.createElementNS(ns, 'marker');
+            mkr.setAttribute('id', `parrow-AP${si}`);
+            mkr.setAttribute('markerWidth', '8'); mkr.setAttribute('markerHeight', '6');
+            mkr.setAttribute('refX', '7'); mkr.setAttribute('refY', '3');
+            mkr.setAttribute('orient', 'auto');
+            const mpoly = document.createElementNS(ns, 'polygon');
+            mpoly.setAttribute('points', '0 0, 8 3, 0 6'); mpoly.setAttribute('fill', col);
+            mkr.appendChild(mpoly); defs.appendChild(mkr);
+        });
+        svg.appendChild(defs);
+
+        const bg = document.createElementNS(ns, 'rect');
+        bg.setAttribute('width', VW); bg.setAttribute('height', VH); bg.setAttribute('fill', '#0d1117');
+        svg.appendChild(bg);
+
+        this._perspAllPathPositions = [];
+
+        scenarios.forEach((sc, si) => {
+            const nodes = sc.path_nodes || [];
+            if (!nodes.length) { this._perspAllPathPositions.push([]); return; }
+            const col = AP_COLORS[si % AP_COLORS.length];
+            const rowTopY = 15 + si * ROW_H;
+            const nodeY = rowTopY + (ROW_H - NH) / 2;
+            const startX = (VW - (nodes.length - 1) * spacing - NW) / 2;
+
+            const grp = document.createElementNS(ns, 'g');
+            grp.setAttribute('id', `persp-ap-row-${si}`);
+            svg.appendChild(grp);
+
+            // AP id badge
+            const badge = document.createElementNS(ns, 'text');
+            badge.setAttribute('x', '6'); badge.setAttribute('y', rowTopY + ROW_H / 2 + 4);
+            badge.setAttribute('fill', col); badge.setAttribute('font-size', '9');
+            badge.setAttribute('font-weight', '700'); badge.setAttribute('font-family', 'monospace');
+            badge.textContent = sc.scenario_id;
+            grp.appendChild(badge);
+
+            // Edges
+            nodes.forEach((id, i) => {
+                if (i === nodes.length - 1) return;
+                const x1 = startX + i * spacing + NW;
+                const x2 = startX + (i + 1) * spacing;
+                const cy = nodeY + NH / 2;
+                const line = document.createElementNS(ns, 'line');
+                line.setAttribute('x1', x1 + 2); line.setAttribute('y1', cy);
+                line.setAttribute('x2', x2 - 2); line.setAttribute('y2', cy);
+                line.setAttribute('stroke', '#2d3748'); line.setAttribute('stroke-width', '2');
+                line.setAttribute('marker-end', `url(#parrow-AP${si})`);
+                line.setAttribute('id', `persp-edge-AP${si}-${i}`);
+                grp.appendChild(line);
+            });
+
+            // Nodes
+            const pnt = sc.per_node_techniques || {};
+            nodes.forEach((id, i) => {
+                const x = startX + i * spacing;
+                const rect = document.createElementNS(ns, 'rect');
+                rect.setAttribute('x', x); rect.setAttribute('y', nodeY);
+                rect.setAttribute('width', NW); rect.setAttribute('height', NH);
+                rect.setAttribute('rx', RX); rect.setAttribute('fill', '#1e2433');
+                rect.setAttribute('stroke', '#374151'); rect.setAttribute('stroke-width', '1.5');
+                rect.setAttribute('id', `persp-node-rect-AP${si}-${id}`);
+                grp.appendChild(rect);
+
+                const lbl = id.length > 12 ? id.slice(0, 11) + '…' : id;
+                const t = document.createElementNS(ns, 'text');
+                t.setAttribute('x', x + NW / 2); t.setAttribute('y', nodeY + 15);
+                t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', '#e5e7eb');
+                t.setAttribute('font-size', '10'); t.setAttribute('font-weight', '600');
+                t.setAttribute('pointer-events', 'none');
+                t.textContent = lbl;
+                grp.appendChild(t);
+
+                const techs = (pnt[id] || []).slice(0, 2);
+                if (techs.length) {
+                    const t2 = document.createElementNS(ns, 'text');
+                    t2.setAttribute('x', x + NW / 2); t2.setAttribute('y', nodeY + 28);
+                    t2.setAttribute('text-anchor', 'middle'); t2.setAttribute('fill', '#4b5563');
+                    t2.setAttribute('font-size', '7'); t2.setAttribute('pointer-events', 'none');
+                    t2.textContent = techs.join(' ') + ((pnt[id]||[]).length > 2 ? '…' : '');
+                    grp.appendChild(t2);
+                }
+            });
+
+            this._perspAllPathPositions.push(nodes.map((id, i) => ({
+                id, cx: startX + i * spacing + NW / 2, cy: nodeY + NH / 2,
+            })));
+        });
+
+        // Red/blue agents (shared, float above all rows)
+        const rAgent = document.createElementNS(ns, 'circle');
+        rAgent.setAttribute('id', 'persp-red-agent'); rAgent.setAttribute('r', '8');
+        rAgent.setAttribute('fill', '#ef4444'); rAgent.setAttribute('display', 'none');
+        svg.appendChild(rAgent);
+        const bAgent = document.createElementNS(ns, 'circle');
+        bAgent.setAttribute('id', 'persp-blue-agent'); bAgent.setAttribute('r', '8');
+        bAgent.setAttribute('fill', '#3b82f6'); bAgent.setAttribute('display', 'none');
+        svg.appendChild(bAgent);
     }
 
     _perspPauseUntilResume(overlay) {
@@ -21110,6 +21905,23 @@ class Dashboard {
         const overlay = document.getElementById('persp-pause-overlay');
         if (overlay) overlay.style.display = 'none';
         if (this._perspResumeQ) { this._perspResumeQ(); this._perspResumeQ = null; }
+    }
+
+    _perspToggleUserPause() {
+        const btn = document.getElementById('persp-user-pause-btn');
+        if (this._perspUserPaused) {
+            this._perspUserPaused = false;
+            if (this._perspUserResumeQ) { this._perspUserResumeQ(); this._perspUserResumeQ = null; }
+            if (btn) btn.textContent = '⏸ Pause';
+        } else {
+            this._perspUserPaused = true;
+            if (btn) btn.textContent = '▶ Continue';
+        }
+    }
+
+    _perspWaitIfUserPaused() {
+        if (!this._perspUserPaused) return Promise.resolve();
+        return new Promise(resolve => { this._perspUserResumeQ = resolve; });
     }
 
     async _sipLoadAdapters() {

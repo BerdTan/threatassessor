@@ -126,11 +126,13 @@ async def list_architectures():
         if files:  # Only include if has report files
             # Read ssp_profile from ground_truth metadata
             ssp_profile = None
+            has_perspective = False
             gt_path = arch_dir / "ground_truth.json"
             if gt_path.exists():
                 try:
                     gt = json.loads(gt_path.read_text())
                     ssp_profile = (gt.get("metadata") or {}).get("ssp_profile")
+                    has_perspective = bool(gt.get("attack_paths"))
                 except Exception:
                     pass
             # Count SM reruns (subdirs named sm\d+)
@@ -147,6 +149,7 @@ async def list_architectures():
                 "has_scrum_master": (arch_dir / "08_scrum_master.json").exists(),
                 "sm_run_count": len(sm_runs),
                 "sm_runs": sm_runs,
+                "has_perspective": has_perspective,
             })
 
     # Sort newest first

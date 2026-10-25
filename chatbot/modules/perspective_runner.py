@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Generator, Optional
 
-from chatbot.modules.director_caster import PacingSignals, SimulationBounds
+from chatbot.modules.director_caster import PacingSignals, SimulationBounds, _expand_controls
 
 log = logging.getLogger(__name__)
 
@@ -165,8 +165,8 @@ def _has_mitigation(
     controls_present: set[str],
     control_recs: list[dict],
 ) -> bool:
-    """True if any present control covers this technique."""
-    cp_lower = {c.lower().strip() for c in controls_present}
+    """True if any present control (after infra→practice synonym expansion) covers this technique."""
+    cp_lower = _expand_controls({c.lower().strip() for c in controls_present})
     for rec in control_recs:
         if technique in rec.get("techniques", []):
             ctrl = rec.get("control", "").lower().strip()
