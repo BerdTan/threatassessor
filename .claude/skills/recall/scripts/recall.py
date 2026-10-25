@@ -68,13 +68,16 @@ PRIORITY_STEPS = [
     (24, 41, "Step B — SUCCEEDED auto-staging → synthetic MMD queue", "chatbot/modules/perspective_runner.py", 23),
     (25, 41, "Step C — Continuous red-team harness (known-evasion scenarios, live pipeline)", ".claude/skills/check-detect/scripts/check-detect.py", 23),
     (26, 41, "Step D — GymProposer: Brier-triggered harness edit candidates", "chatbot/api/routes/gym.py", 25),
-    # Freestanding
-    (22, 0,  "recall skill: auto-sequence open ADRs from DECISIONS.md dependency language", ".claude/skills/recall/scripts/recall.py", None),
+    # ── Freestanding: ta-export + skill-master (Entry 224/225) ──────────────────
+    (27, 0,  "ta-export version-stamp: {model_id, routing_mode, skills_context} into bundle", "chatbot/modules/ta_exporter.py", None),
+    (28, 0,  "skill-master: multi-location inventory + override detection + change-triggered re-scan (Entry 225)", ".claude/skills/skill-master/", 27),
+    # ── Freestanding: recall ADR auto-sequencing (Step 22) ───────────────────
+    (22, 0,  "✅ recall skill: ADR auto-scan now live — open design-intent entries surface automatically", ".claude/skills/recall/scripts/recall.py", None),
 ]
 
 BLOG_GATES = {
-    40: "📝 P39 blog — 'The Loop That Learns': draft after flywheel Steps A–B ship (steps 23–24)",
-    41: "📝 P40 blog — fleet governance + skill-master story; draft after FleetCoordinator (step 21) + GymProposer (step 26)",
+    40: "📝 P39 blog — 'The Loop That Learns' + Open Factory (Entries 224+227): draft after flywheel Steps A–B (steps 23–24)",
+    41: "📝 P40 blog — fleet governance + skill-master story: draft after FleetCoordinator (step 21) + GymProposer (step 26) + skill-master (step 28)",
 }
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -133,6 +136,41 @@ def extract_recent_decisions(decisions: str, max_sessions: int = 2) -> list[str]
     return open_items
 
 
+def extract_open_adrs(decisions: str) -> list[tuple[int, str, str]]:
+    """
+    Return (entry_num, title, status) for every entry whose Status line
+    contains 'design intent', 'pending', or 'design constraint'.
+    """
+    open_adrs = []
+    entries = re.split(r"(?=^### Entry \d+)", decisions, flags=re.M)
+    for block in entries:
+        m = re.match(r"^### Entry (\d+) — (.+)", block)
+        if not m:
+            continue
+        num = int(m.group(1))
+        title = m.group(2).strip()
+        status_m = re.search(r"^\*\*Status:\*\*\s*(.+)", block, re.M)
+        if not status_m:
+            continue
+        status = status_m.group(1).strip()
+        low = status.lower()
+        if any(kw in low for kw in ("design intent", "pending", "design constraint")):
+            open_adrs.append((num, title, status))
+    return open_adrs
+
+
+def adr_in_sequence(entry_num: int) -> bool:
+    """True if this ADR entry number is already represented in PRIORITY_STEPS."""
+    # Check labels for the entry number as a string reference
+    entry_str = str(entry_num)
+    for _, _, label, _, _ in PRIORITY_STEPS:
+        if f"Entry {entry_str}" in label or f"({entry_str})" in label:
+            return True
+    # Also check against known mapped entry numbers
+    MAPPED = {221, 222, 224, 225, 226, 227}
+    return entry_num in MAPPED
+
+
 def in_priorities(text: str, priorities: list[tuple[int, str, bool]]) -> bool:
     low = text.lower()
     for _, p_text, _ in priorities:
@@ -156,6 +194,7 @@ def main() -> None:
 
     priorities = extract_priorities(memory)
     decision_items = extract_recent_decisions(decisions, max_sessions=2)
+    open_adrs = extract_open_adrs(decisions)
 
     done = [(n, t) for n, t, d in priorities if d]
     open_pnums = {n for n, _, d in priorities if not d}
@@ -181,6 +220,7 @@ def main() -> None:
         current_pnum = None
         for step, pnum, label, hint, dep in open_steps:
             done_marker = "✅" if label.startswith("✅") else "⬜"
+            label = label.lstrip("✅").strip()
             # Group header when priority changes
             if pnum != current_pnum:
                 p_label = f"Priority {pnum}" if pnum else "Freestanding"
@@ -202,7 +242,18 @@ def main() -> None:
         if gates_shown:
             lines.append("")
             for pnum in sorted(gates_shown):
-                lines.append(f"  📝 {BLOG_GATES[pnum]}")
+                lines.append(f"  {BLOG_GATES[pnum]}")
+
+    # Open ADRs from DECISIONS.md (design intent / pending / design constraint)
+    if open_adrs:
+        lines.append("\n**Open ADRs (design intent / pending):**")
+        for num, title, status in open_adrs:
+            in_seq = adr_in_sequence(num)
+            tag = "  ✓ in sequence" if in_seq else "  ⚠ not yet sequenced"
+            # Truncate long status lines
+            short_status = status if len(status) <= 70 else status[:67] + "…"
+            lines.append(f"  Entry {num} — {title}")
+            lines.append(f"           Status: {short_status}{tag}")
 
     # New from DECISIONS not yet in memory
     if new_items:
