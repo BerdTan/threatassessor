@@ -1,8 +1,10 @@
 """
-Platform endpoints — adapter registry + SIP health.
+Platform endpoints — adapter registry + SIP health + agent fleet posture.
 
-GET /api/v1/adapters    — list registered input adapters + supported formats
-GET /api/v1/sip/health  — health check for all SIP endpoints
+GET /api/v1/adapters           — list registered input adapters + supported formats
+GET /api/v1/sip/health         — health check for all SIP endpoints
+GET /api/v1/agents/fleet-posture — CISO-readable managed agent fleet governance posture
+GET /api/v1/agents/tools       — full fleet tool catalog with risk metadata
 """
 
 from __future__ import annotations
@@ -76,3 +78,30 @@ async def sip_health():
 
     overall = all(v.get("ok", False) for v in checks.values())
     return {"ok": overall, "checks": checks}
+
+
+@router.get("/agents/fleet-posture")
+async def agent_fleet_posture():
+    """
+    CISO-readable managed agent fleet governance posture.
+    Returns tool count, risk distribution, per-agent risk ceiling, write/credential/network
+    flags, and any policy conflicts. Posture is CLEAN / WARN / ELEVATED / VIOLATION / EMPTY.
+    """
+    try:
+        from chatbot.agents.managed.tool_registry import get_tool_registry
+        from chatbot.agents.managed.registry import get_registry
+        posture = get_tool_registry().get_fleet_posture(agent_registry=get_registry())
+        return posture
+    except Exception as exc:
+        return {"posture": "ERROR", "error": str(exc)}
+
+
+@router.get("/agents/tools")
+async def agent_fleet_tools():
+    """Full fleet tool catalog — name, risk tier, write/credential/network flags, permitted agents, CSA ART tags."""
+    try:
+        from chatbot.agents.managed.tool_registry import get_tool_registry
+        tools = get_tool_registry().list_tools()
+        return {"tools": tools, "total": len(tools)}
+    except Exception as exc:
+        return {"tools": [], "total": 0, "error": str(exc)}

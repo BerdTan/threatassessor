@@ -4,6 +4,37 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 229 — Fleet tool registry: governance catalog for the managed agent fleet
+
+**Date:** 2026-10-26  
+**Status:** Implemented  
+**Trigger:** Entry 228 closed the enforcement layer (supervisor, circuit breaker, fail-closed pre-flight). The missing layer was governance visibility: a CISO looking at the managed agent fleet today would need to read Python source to know what tools exist, what they can do, and which agents are authorized to use them. The tool registry makes the fleet auditable without reading code.
+
+**What:**  
+`chatbot/agents/managed/tool_registry.py` — `ManagedToolRegistry` singleton with:
+
+- **`ToolRegistration`** — governance metadata per tool: `risk_tier` (read_only / write / credential_use / external_network), `write_side_effects`, `credential_required`, `external_network`, `permitted_agents` (None = any; list = explicit allowlist), `csa_art` tags
+- **Fleet-wide enforcement** — `_execute_tool()` now runs two supervisor checks: (1) per-agent `allowed_tools`, (2) fleet registry `is_permitted(tool_name, agent_id)`. Either check failing triggers the existing violation/circuit-breaker path
+- **Policy prover extension** — `_prove_agent()` in registry cross-checks each `allowed_tools` entry against the fleet registry: warns if unregistered (no governance metadata), errors if explicitly denied by `permitted_agents`
+- **`get_fleet_posture()`** — CISO summary: total tools, risk distribution, per-agent risk ceiling, write/credential/network flags, policy conflicts, and a single `posture` label (CLEAN / WARN / ELEVATED / VIOLATION / EMPTY)
+- **`TAclawInvestigationAgent`** — all 5 tools declared with `ToolRegistration`: all `read_only`, `permitted_agents=["taclaw_investigator"]`, CSA ART tags on each
+
+**Two new API endpoints:**
+- `GET /api/v1/agents/fleet-posture` — CISO posture summary
+- `GET /api/v1/agents/tools` — full tool catalog with risk metadata
+
+**`_add_tool()` signature change:** optional `policy: ToolRegistration = None` parameter; passing it auto-registers with the fleet registry at agent init time. Zero changes needed in existing test code.
+
+**Current fleet state:** posture=`CLEAN` — 5 tools, all `read_only`, no write side-effects, no credentials, no external network, explicit `permitted_agents` on each.
+
+**Integration with DETECT-AGT-004:** `tool_restriction_bypass_detected` can now be set from supervisor violations (Entry 228) + fleet registry deny events. The registry provides the authoritative "what was the declared boundary" signal that AGT-004 needs to distinguish a bypass attempt from a legitimate unknown tool.
+
+**What this means for CISO trust:** Fleet posture is now a first-class API response, not an artifact of reading source. A CISO can call one endpoint and get: how many tools exist, what risk tier they operate at, which agents are authorized for each, and whether any policy conflicts exist. This, combined with AIVSS scores, DETECT rule coverage, and governance signals, makes the agent fleet auditable end-to-end.
+
+**Blog:** P39 candidate — "The Four Primitives: What NVIDIA's OpenShell Teaches TA About Rogue Agents." Arc: OpenShell distilled (sandbox / supervisor / gateway / prover) → the gap in TA (no enforcement layer, no fleet governance) → what we built (software-only, no kernel) → what CISO sees at the end (fleet-posture endpoint, CLEAN, read-only, explicit allowlists). Closing angle: the gap between "we have a threat model" and "I can prove the pipeline respects it" is where agent trust actually lives.
+
+---
+
 ### Entry 228 — OpenShell-inspired supervisor model for managed agents (software-only)
 
 **Date:** 2026-10-26  

@@ -75,6 +75,32 @@ def _prove_agent(agent: "ManagedAgent") -> None:
                 aid, external,
             )
 
+    # ── Fleet tool registry cross-check ───────────────────────────────────────
+    # Each tool in allowed_tools should be registered in the fleet catalog.
+    # Tools not in the registry lack governance metadata (risk tier, permitted_agents);
+    # the CISO posture summary will reflect them as unclassified.
+    if agent.allowed_tools:
+        try:
+            from chatbot.agents.managed.tool_registry import get_tool_registry
+            fleet = get_tool_registry()
+            for tname in agent.allowed_tools:
+                if not fleet.is_registered(tname):
+                    logger.warning(
+                        "PROVER[%s]: tool %r in allowed_tools is NOT registered in the "
+                        "fleet tool registry — governance metadata missing. "
+                        "Pass policy=ToolRegistration(...) when calling _add_tool().",
+                        aid, tname,
+                    )
+                else:
+                    permitted, reason = fleet.is_permitted(tname, aid)
+                    if not permitted:
+                        logger.error(
+                            "PROVER[%s]: tool %r in allowed_tools is DENIED by fleet registry: %s",
+                            aid, tname, reason,
+                        )
+        except Exception as exc:
+            logger.warning("PROVER[%s]: fleet registry check failed: %s", aid, exc)
+
 
 class ManagedAgentRegistry:
     def __init__(self) -> None:

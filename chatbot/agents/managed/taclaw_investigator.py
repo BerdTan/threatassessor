@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from chatbot.agents.managed.base import AgentTool, ManagedAgent
+from chatbot.agents.managed.tool_registry import ToolRegistration
 
 logger = logging.getLogger(__name__)
 
@@ -120,83 +121,128 @@ When you are ready to produce the final report, call synthesize_remediation with
 Your final answer after calling synthesize_remediation should be the JSON output from that tool, unchanged."""
 
     def _register_tools(self) -> None:
-        self._add_tool(AgentTool(
-            name="get_block_signals",
-            description="Returns the Bouncer check that fired and any Critical/High DETECT rules from the TAclaw result.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "job_id": {"type": "string", "description": "TAclaw job ID"},
-                },
-                "required": ["job_id"],
-            },
-            handler=self._tool_get_block_signals,
-        ))
-        self._add_tool(AgentTool(
-            name="query_brain_patterns",
-            description="Look up historical threat patterns in the TA Brain for a given architecture type and optional signal key.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "arch_type": {"type": "string", "description": "Architecture type, e.g. 'agentic_ai', 'microservices'"},
-                    "signal_key": {"type": "string", "description": "Optional DETECT rule id or Bouncer check key to filter patterns"},
-                },
-                "required": ["arch_type"],
-            },
-            handler=self._tool_query_brain_patterns,
-        ))
-        self._add_tool(AgentTool(
-            name="get_rule_detail",
-            description="Get full details for a DETECT rule: description, kill chain stage, MITRE techniques, CSA ART tags, remediation tuning note.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "rule_id": {"type": "string", "description": "DETECT rule id, e.g. 'DETECT-QC-001'"},
-                },
-                "required": ["rule_id"],
-            },
-            handler=self._tool_get_rule_detail,
-        ))
-        self._add_tool(AgentTool(
-            name="get_pipeline_context",
-            description="Returns AIVSS score, quality score, critic verdicts, and governance signals for the blocked job.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "job_id": {"type": "string", "description": "TAclaw job ID"},
-                },
-                "required": ["job_id"],
-            },
-            handler=self._tool_get_pipeline_context,
-        ))
-        self._add_tool(AgentTool(
-            name="synthesize_remediation",
-            description="Produce the final structured remediation report. Call this once you have gathered sufficient context.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "block_summary": {"type": "string", "description": "One sentence: what blocked and why"},
-                    "root_signals": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of rule IDs or Bouncer check keys that are the root cause",
+        self._add_tool(
+            AgentTool(
+                name="get_block_signals",
+                description="Returns the Bouncer check that fired and any Critical/High DETECT rules from the TAclaw result.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "job_id": {"type": "string", "description": "TAclaw job ID"},
                     },
-                    "brain_context": {"type": "string", "description": "What brain patterns revealed (or 'no prior patterns found')"},
-                    "remediation_steps": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Ordered list of specific remediation actions",
-                    },
-                    "confidence": {
-                        "type": "string",
-                        "enum": ["high", "medium", "low"],
-                        "description": "Confidence in the remediation plan given available signal",
-                    },
+                    "required": ["job_id"],
                 },
-                "required": ["block_summary", "root_signals", "brain_context", "remediation_steps", "confidence"],
-            },
-            handler=self._tool_synthesize_remediation,
-        ))
+                handler=self._tool_get_block_signals,
+            ),
+            policy=ToolRegistration(
+                name="get_block_signals",
+                description="Read pipeline block signals from in-memory context. No I/O, no credentials.",
+                risk_tier="read_only",
+                permitted_agents=["taclaw_investigator"],
+                csa_art=["4.1", "4.3"],
+            ),
+        )
+        self._add_tool(
+            AgentTool(
+                name="query_brain_patterns",
+                description="Look up historical threat patterns in the TA Brain for a given architecture type and optional signal key.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "arch_type": {"type": "string", "description": "Architecture type, e.g. 'agentic_ai', 'microservices'"},
+                        "signal_key": {"type": "string", "description": "Optional DETECT rule id or Bouncer check key to filter patterns"},
+                    },
+                    "required": ["arch_type"],
+                },
+                handler=self._tool_query_brain_patterns,
+            ),
+            policy=ToolRegistration(
+                name="query_brain_patterns",
+                description="Read TA Brain JSON file for pattern matching. Local file read only.",
+                risk_tier="read_only",
+                permitted_agents=["taclaw_investigator"],
+                csa_art=["4.3"],
+            ),
+        )
+        self._add_tool(
+            AgentTool(
+                name="get_rule_detail",
+                description="Get full details for a DETECT rule: description, kill chain stage, MITRE techniques, CSA ART tags, remediation tuning note.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "rule_id": {"type": "string", "description": "DETECT rule id, e.g. 'DETECT-QC-001'"},
+                    },
+                    "required": ["rule_id"],
+                },
+                handler=self._tool_get_rule_detail,
+            ),
+            policy=ToolRegistration(
+                name="get_rule_detail",
+                description="Read DETECT rule metadata from local YAML. No write, no credentials.",
+                risk_tier="read_only",
+                permitted_agents=["taclaw_investigator"],
+                csa_art=["4.1", "4.3"],
+            ),
+        )
+        self._add_tool(
+            AgentTool(
+                name="get_pipeline_context",
+                description="Returns AIVSS score, quality score, critic verdicts, and governance signals for the blocked job.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "job_id": {"type": "string", "description": "TAclaw job ID"},
+                    },
+                    "required": ["job_id"],
+                },
+                handler=self._tool_get_pipeline_context,
+            ),
+            policy=ToolRegistration(
+                name="get_pipeline_context",
+                description="Read AIVSS/quality/critic/governance context from in-memory pipeline result.",
+                risk_tier="read_only",
+                permitted_agents=["taclaw_investigator"],
+                csa_art=["4.1"],
+            ),
+        )
+        self._add_tool(
+            AgentTool(
+                name="synthesize_remediation",
+                description="Produce the final structured remediation report. Call this once you have gathered sufficient context.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "block_summary": {"type": "string", "description": "One sentence: what blocked and why"},
+                        "root_signals": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of rule IDs or Bouncer check keys that are the root cause",
+                        },
+                        "brain_context": {"type": "string", "description": "What brain patterns revealed (or 'no prior patterns found')"},
+                        "remediation_steps": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Ordered list of specific remediation actions",
+                        },
+                        "confidence": {
+                            "type": "string",
+                            "enum": ["high", "medium", "low"],
+                            "description": "Confidence in the remediation plan given available signal",
+                        },
+                    },
+                    "required": ["block_summary", "root_signals", "brain_context", "remediation_steps", "confidence"],
+                },
+                handler=self._tool_synthesize_remediation,
+            ),
+            policy=ToolRegistration(
+                name="synthesize_remediation",
+                description="Assemble structured remediation report from gathered signals. In-memory only, no I/O.",
+                risk_tier="read_only",
+                permitted_agents=["taclaw_investigator"],
+                csa_art=["4.3"],
+            ),
+        )
 
     # ── tool handlers ─────────────────────────────────────────────────────────
 

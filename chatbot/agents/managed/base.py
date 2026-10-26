@@ -190,9 +190,14 @@ class ManagedAgent(ABC):
     def _register_tools(self) -> None:
         """Populate self.tools and keep self._tool_map in sync."""
 
-    def _add_tool(self, tool: AgentTool) -> None:
+    def _add_tool(self, tool: AgentTool, policy: "Optional[ToolRegistration]" = None) -> None:
         self.tools.append(tool)
         self._tool_map[tool.name] = tool.handler
+        if policy is not None:
+            if not policy.registered_by:
+                policy.registered_by = self.agent_id
+            from chatbot.agents.managed.tool_registry import get_tool_registry
+            get_tool_registry().register(policy)
 
     @abstractmethod
     def build_task(self, context: Dict[str, Any]) -> str:
@@ -388,27 +393,43 @@ class ManagedAgent(ABC):
             supervisor_violations=self._supervisor_violations,
         )
 
-    def _execute_tool(self, name: str, input_dict: Dict[str, Any]) -> str:
-        # ── Supervisor allowlist check ──────────────────────────────────────────
-        # If allowed_tools is declared (non-empty), the tool name must be in it.
-        # An unlisted call is a supervisor violation; three violations freeze the agent.
-        if self.allowed_tools and name not in self.allowed_tools:
-            self._supervisor_violations += 1
+    def _supervisor_block(self, tool_name: str, reason: str) -> str:
+        """Record a supervisor violation, trip circuit breaker if threshold reached."""
+        self._supervisor_violations += 1
+        logger.error(
+            "ManagedAgent[%s] SUPERVISOR VIOLATION #%d: %s",
+            self.agent_id, self._supervisor_violations, reason,
+        )
+        if self._supervisor_violations >= _SUPERVISOR_VIOLATION_THRESHOLD:
+            self._frozen = True
             logger.error(
-                "ManagedAgent[%s] SUPERVISOR VIOLATION #%d: tool %r not in allowed_tools %s",
-                self.agent_id, self._supervisor_violations, name, self.allowed_tools,
+                "ManagedAgent[%s] circuit breaker OPEN — agent frozen after %d violations",
+                self.agent_id, self._supervisor_violations,
             )
-            if self._supervisor_violations >= _SUPERVISOR_VIOLATION_THRESHOLD:
-                self._frozen = True
-                logger.error(
-                    "ManagedAgent[%s] circuit breaker OPEN — agent frozen after %d violations",
-                    self.agent_id, self._supervisor_violations,
-                )
-            return json.dumps({
-                "error": f"supervisor: tool {name!r} not in allowed_tools",
-                "violations": self._supervisor_violations,
-            })
-        # ───────────────────────────────────────────────────────────────────────
+        return json.dumps({
+            "error": f"supervisor blocked: {reason}",
+            "violations": self._supervisor_violations,
+        })
+
+    def _execute_tool(self, name: str, input_dict: Dict[str, Any]) -> str:
+        # ── Supervisor checks (per-agent allowlist + fleet registry) ────────────
+        # Layer 1: per-agent allowed_tools declaration
+        if self.allowed_tools and name not in self.allowed_tools:
+            return self._supervisor_block(name, f"tool {name!r} not in allowed_tools")
+
+        # Layer 2: fleet tool registry — tool must be registered AND agent must be permitted
+        try:
+            from chatbot.agents.managed.tool_registry import get_tool_registry
+            registry = get_tool_registry()
+            if registry.is_registered(name):
+                permitted, reason = registry.is_permitted(name, self.agent_id)
+                if not permitted:
+                    return self._supervisor_block(name, f"fleet registry denied: {reason}")
+            # Tool not in fleet registry is a warning, not a hard block —
+            # tools registered without policy= are allowed through (prover already warned).
+        except Exception as exc:
+            logger.warning("ManagedAgent[%s] fleet registry check error for %r: %s", self.agent_id, name, exc)
+        # ────────────────────────────────────────────────────────────────────────
 
         handler = self._tool_map.get(name)
         if handler is None:
