@@ -52,9 +52,13 @@ flowchart TD
         brn_o["TA Brain\n(instance · pattern · meta)"]
     end
 
-    subgraph Fleet["Fleet Layer"]
+    subgraph Fleet["Fleet Layer  (OpenShell-inspired supervisor)"]
+        supervisor["ManagedAgent supervisor\nallowed_tools/allowed_endpoints contract\ncircuit breaker ≥3→frozen · RunCredentials per-run\nconfirm_isolation() fail-closed"]
+        tool_reg["ManagedToolRegistry\nfleet catalog · risk tiers · permitted_agents\nget_fleet_posture() → CLEAN/WARN/…"]
         registry["ManagedAgentRegistry"]
-        inv_agent["TAclawInvestigationAgent\n5 tools · Jev pre-flight"]
+        inv_agent["TAclawInvestigationAgent\n5 read_only tools · Jev pre-flight"]
+        supervisor --> tool_reg
+        supervisor --> registry
     end
 
     fleet_rep["report/taclaw_investigator/\narch_name.json"]
@@ -81,7 +85,7 @@ flowchart TD
     ql_s --> bo_s
     bo_s -->|api_only PASS| av_s
     bo_s -->|full_moe PASS| cr_s
-    bo_s -->|BLOCK| registry
+    bo_s -->|BLOCK| supervisor
     cr_s --> av_s
 
     registry --> inv_agent
@@ -105,6 +109,8 @@ flowchart TD
     dash_ui --> persp
 
     style Fleet fill:#f3e8ff,stroke:#7c3aed
+    style supervisor fill:#ede9fe,stroke:#7c3aed
+    style tool_reg fill:#ede9fe,stroke:#7c3aed
     style registry fill:#ede9fe,stroke:#7c3aed
     style inv_agent fill:#ede9fe,stroke:#7c3aed
     style fleet_rep fill:#ede9fe,stroke:#7c3aed

@@ -1,6 +1,6 @@
 ---
 title: ThreatAssessor — System Map
-updated: 2026-10-18
+updated: 2026-10-26
 note: Master overview. Each domain has its own graph in .claude/graphs/. Numbers = approximate test counts.
 ---
 flowchart TD
@@ -26,12 +26,14 @@ flowchart TD
         H2 -.->|"side-effects"| H4
     end
 
-    subgraph FLEET["🤖 Managed Agent Fleet"]
+    subgraph FLEET["🤖 Managed Agent Fleet  (OpenShell-inspired supervisor)"]
         direction TB
-        F1["ManagedAgent base<br/>(4 hardening layers: sanitize/cap/scan/budget)"]
-        F2["TAclawInvestigationAgent<br/>(gate=BLOCK trigger, 5 tools)"]
+        F1["ManagedAgent base<br/>(allowed_tools/allowed_endpoints contract<br/>supervisor relay · circuit breaker ≥3→frozen<br/>RunCredentials per-run · confirm_isolation() fail-closed)"]
+        F2["TAclawInvestigationAgent<br/>(gate=BLOCK trigger · 5 read_only tools<br/>explicit permitted_agents)"]
         F3["ManagedAgentRegistry<br/>(registry + disk persistence)"]
+        F4["ManagedToolRegistry<br/>(fleet catalog · ToolRegistration · risk tiers<br/>permitted_agents · CSA ART tags<br/>get_fleet_posture() → CLEAN/WARN/ELEVATED/VIOLATION)"]
         F1 --> F2 & F3
+        F1 --> F4
     end
 
     subgraph API["🌐 REST API  (FastAPI)"]
@@ -41,6 +43,7 @@ flowchart TD
         A3["/api/v1/gym/* · brain/*<br/>(gym.py · brain.py)"]
         A4["/api/v1/taclaw/* · enrich · artifact<br/>(taclaw.py · enrich.py · artifact.py)"]
         A5["/api/v1/workspaces · broker · config<br/>(workspaces.py · broker.py · config.py)"]
+        A6["/api/v1/agents/fleet-posture · /agents/tools<br/>(platform.py — CISO fleet governance view)"]
     end
 
     subgraph DASHBOARD["📊 Dashboard  (dashboard.js ~20k LOC)"]
@@ -82,7 +85,7 @@ flowchart TD
     subgraph TESTS["🧪 Tests  (~500 total)"]
         direction LR
         T1["test_harness_governance   56<br/>test_harness_event_broker  60<br/>test_harness_aivss         39"]
-        T2["test_managed_agent        56<br/>test_mmd_cleaner           21<br/>test_mitre / concurrent / detect ~325"]
+        T2["test_managed_agent        56<br/>check-managed-agents skill 29 checks (PASS CLEAN)<br/>test_mmd_cleaner           21<br/>test_mitre / concurrent / detect ~325"]
     end
 
     HARNESS -.->|"covered by"| TESTS

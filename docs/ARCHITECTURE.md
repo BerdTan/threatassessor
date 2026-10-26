@@ -1,8 +1,8 @@
 # ARCHITECTURE
 
-**Version:** 1.2  
-**Date:** 2026-10-25  
-**Status:** Active — reflects Harness v2 + TA-SIP + TA Brain + TAgym + Engine Items 1–17 + Jev 8-point integration + Managed Agent Fleet + TA Perspective
+**Version:** 1.3  
+**Date:** 2026-10-26  
+**Status:** Active — reflects Harness v2 + TA-SIP + TA Brain + TAgym + Engine Items 1–17 + Jev 8-point integration + Managed Agent Fleet + TA Perspective + OpenShell supervisor model + fleet tool registry (Entries 228–230)
 
 ---
 
@@ -29,7 +29,7 @@ The system is designed around one invariant: **every analysis path converges on 
 | **MCP Server** | `mcp_server/` | 18 tools via stdio — for Claude Desktop and coding agents |
 | **TAclaw** | `taclaw/`, `chatbot/api/routes/taclaw.py` | Autonomous repo assessment: crawl → adapt → merge → harness → export |
 | **TAgym** | `chatbot/api/routes/gym.py`, `taclaw/cli.py` | Instrument gym flywheel: continuous TAclaw loop → Brier snapshot per iteration → calibration signal; `ta gym start/status/stop` CLI |
-| **Managed Agent Fleet** | `chatbot/agents/managed/` | `ManagedAgent` base (4 hardening layers: context sanitize, tool cap 2k, output scan, token budget 50k) + `ManagedAgentRegistry` + `TAclawInvestigationAgent` (BLOCK-triggered, 5 tools, disk persistence) |
+| **Managed Agent Fleet** | `chatbot/agents/managed/` | `ManagedAgent` base (OpenShell-inspired supervisor: `allowed_tools`/`allowed_endpoints` contract, supervisor relay in `_execute_tool()`, circuit breaker ≥3 violations→frozen, `RunCredentials` per-run scoping, `confirm_isolation()` fail-closed pre-flight) + `ManagedToolRegistry` (fleet catalog: `ToolRegistration` with `risk_tier`/`permitted_agents`/`csa_art`; `get_fleet_posture()` → CLEAN/WARN/ELEVATED/VIOLATION; GET `/api/v1/agents/fleet-posture` + `/agents/tools`) + `ManagedAgentRegistry` + `TAclawInvestigationAgent` (5 `read_only` tools, explicit `permitted_agents`) |
 | **TA Perspective** | `chatbot/api/routes/perspective.py` | Live red/blue kill-chain simulation from STIX campaign data; `GroupCampaignMatcher` + `DirectorCaster` + `PerspectiveRunner`; per-technique attacker/defender framing; D3 canvas with pause/resume |
 | **MCP Connector** | `mcp_connector/` | Typed SDK (`TAExportBundle`, `enrich_finding()`) for downstream integrations |
 | **Dashboard** | `chatbot/api/static/` | 7-tab browser UI |
@@ -181,6 +181,8 @@ These hold across all execution paths and all callers (REST, MCP, TAclaw, CLI):
 5. **Governance signals flow through** — `GovernanceSignals` are computed from the analysis output and stamped to `ta_export.json.provenance`. Every DETECT rule fires against this substrate, not re-computed on read.
 
 6. **Policies are the runtime control plane** — no routing logic or governance threshold is hardcoded. `policies/model_routing.yaml`, `policies/agent_governance.yaml`, and `policies/soc_detection_rules.yaml` are the single source of truth for all runtime decisions.
+
+7. **Agent supervisor enforces fleet-wide capability contracts** — every `ManagedAgent` subclass declares `allowed_tools` and `allowed_endpoints` before the LLM loop starts; `confirm_isolation()` fail-closes if those declarations are absent or the governance yaml is unreadable. The supervisor relay enforces the per-agent allowlist and the fleet `ManagedToolRegistry` as two independent layers in `_execute_tool()`. Three violations freeze the agent. Fleet posture is always queryable at `GET /api/v1/agents/fleet-posture` without requiring an active agent run.
 
 ---
 

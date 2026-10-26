@@ -1,7 +1,7 @@
 ---
 title: ThreatAssessor — Harness (pipeline controller + governance + observability)
-updated: 2026-10-18
-note: "Harness wraps the pipeline. Stage order: Analysis→Report→Quality→Bouncer→AIVSS (API_ONLY); +Critics→SM→OutboundGate (FULL_MOE). PolicyBroker runs after QualityStage. ManagedAgentHarness mirrors this pattern for the fleet. New stage: subclass BaseStage in stages.py. New sink: subclass BaseSink in sinks.py."
+updated: 2026-10-26
+note: "Harness wraps the pipeline. Stage order: Analysis→Report→Quality→Bouncer→AIVSS (API_ONLY); +Critics→SM→OutboundGate (FULL_MOE). PolicyBroker runs after QualityStage. ManagedAgentHarness mirrors this pattern for the fleet (stages planned — Entry 221). New stage: subclass BaseStage in stages.py. New sink: subclass BaseSink in sinks.py."
 ---
 flowchart TD
     %% ── Entry point ────────────────────────────────────────
@@ -68,14 +68,17 @@ flowchart TD
         SK3["WebhookSink<br/>→ POST to URL<br/>(all events)"]
     end
 
-    %% ── Managed Agent Fleet (mirror pattern) ────────────────
-    subgraph FLEET["agents/managed/  (ManagedAgentHarness — DECISIONS 221)"]
-        direction LR
-        FA["AgentPrepStage<br/>(context sanitize + Jev gate)"]
-        FB["AgentExecuteStage<br/>(tool loop)"]
-        FC["AgentAuditStage<br/>(output scan + token budget)"]
-        FD["AgentSynthStage<br/>(write report + signal EventBroker)"]
-        FA --> FB --> FC --> FD
+    %% ── Managed Agent Fleet ─────────────────────────────────
+    subgraph FLEET["agents/managed/  (OpenShell supervisor live · ManagedAgentHarness stages planned — Entry 221)"]
+        direction TB
+        FS["ManagedAgent supervisor  ✅ live<br/>(allowed_tools/allowed_endpoints · supervisor relay<br/>circuit breaker ≥3→frozen · RunCredentials per-run<br/>confirm_isolation() fail-closed)"]
+        FT["ManagedToolRegistry  ✅ live<br/>(fleet catalog · ToolRegistration · risk tiers<br/>permitted_agents · get_fleet_posture())"]
+        FA["AgentPrepStage  ⬜ planned"]
+        FB["AgentExecuteStage  ⬜ planned"]
+        FC["AgentAuditStage  ⬜ planned"]
+        FD["AgentSynthStage  ⬜ planned"]
+        FS --> FT
+        FS --> FA --> FB --> FC --> FD
     end
 
     %% ── Flow ────────────────────────────────────────────────
