@@ -26,7 +26,7 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 # Update this after a dependency analysis session.
 # Mark a step done by prepending ✅ to its label.
 #
-# Dependency chain (2026-10-26):
+# Dependency chain (2026-10-26, reordered 2026-10-26):
 #   P37 (TA Perspective) — DONE (6f1f39b); blog P37 published
 #   P38 (Managed agent fleet) — DONE (87e8a1e); blog P38 published
 #   OpenShell supervisor + fleet tool registry (Entries 228–230) — DONE (1a8cfd9, 48c083f, 083fb38)
@@ -34,11 +34,13 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 #     fleet tool registry + CISO posture endpoint live; check-managed-agents skill 29/29 PASS
 #   Fleet Foundation (Entry 221) — ManagedAgentHarness harness.py steps 9–13 still needed
 #     (circuit breaker + confirm_isolation already landed in base; harness.py wraps them as stages)
-#   Fleet Security (Entry 222) — CoreBouncer; after Foundation
+#   Recursive flywheel (Entry 227) — Steps A–D; starts after step 13 (harness exists)
+#     Step A (BouncerStage context-hash) only needs existing BouncerStage — no fleet layer required
+#     Runs in parallel with CoreBouncer track (14–16) and fleet build (17–21)
+#   Fleet Security (Entry 222) — CoreBouncer; after Foundation (step 13)
 #   Fleet Service — second agent; lands clean into harness
 #   Fleet Report — fleet manifest + EventBroker fleet events; after Service
 #   FleetCoordinator — only when third agent is scoped
-#   Recursive flywheel (Entry 227) — Steps A–D; independent of fleet, starts with context-hash
 PRIORITY_STEPS = [
     # ── Priority 33/34/35 — DONE ─────────────────────────────────────────────
     (1,  33, "✅ DETECT-ABU 6 rules + MCPAccessLogger",  "policies/soc_detection_rules.yaml",         None),
@@ -63,6 +65,13 @@ PRIORITY_STEPS = [
     (11, 40, "AgentAuditStage — output scan + token budget + credential expiry", "chatbot/agents/managed/harness.py", 10),
     (12, 40, "AgentSynthStage — write report + signal EventBroker", "chatbot/agents/managed/harness.py", 11),
     (13, 40, "ManagedAgentHarness stage pipeline + BlockedAgentError (circuit breaker already in base)", "chatbot/agents/managed/harness.py", 12),
+    # ── Priority 41 — Recursive improvement flywheel (Entry 227) ─────────────
+    # Starts after step 13 (harness exists); runs in parallel with CoreBouncer + fleet build.
+    # Step A only needs existing BouncerStage — no fleet layer required.
+    (23, 41, "Step A — BouncerStage context-hash parity check",  "chatbot/harness/stages.py",             13),
+    (24, 41, "Step B — SUCCEEDED auto-staging → synthetic MMD queue", "chatbot/modules/perspective_runner.py", 23),
+    (25, 41, "Step C — Continuous red-team harness (known-evasion scenarios, live pipeline)", ".claude/skills/check-detect/scripts/check-detect.py", 23),
+    (26, 41, "Step D — GymProposer: Brier-triggered harness edit candidates", "chatbot/api/routes/gym.py", 25),
     # ── Fleet Security — CoreBouncer (Entry 222) ──────────────────────────────
     (14, 40, "CoreBouncer: extract hardening layers from ManagedAgent base", "chatbot/agents/managed/bouncer.py", 13),
     (15, 40, "Cross-fleet gating rule: report-layer-only signal between fleets", "chatbot/agents/managed/bouncer.py", 14),
@@ -73,12 +82,6 @@ PRIORITY_STEPS = [
     (19, 40, "EventBroker: fleet_started/agent_triggered/fleet_blocked", "chatbot/harness/event_broker.py", 18),
     (20, 40, "Fleet-level token budget across agent runs",         "chatbot/agents/managed/reporter.py",    19),
     (21, 40, "FleetCoordinator: routes trigger type → correct fleet", "chatbot/agents/managed/coordinator.py", 20),
-    # ── Priority 41 — Recursive improvement flywheel (Entry 227) ─────────────
-    # Independent of fleet; start with Step A (safety value, low effort)
-    (23, 41, "Step A — BouncerStage context-hash parity check",  "chatbot/harness/stages.py",             None),
-    (24, 41, "Step B — SUCCEEDED auto-staging → synthetic MMD queue", "chatbot/modules/perspective_runner.py", 23),
-    (25, 41, "Step C — Continuous red-team harness (known-evasion scenarios, live pipeline)", ".claude/skills/check-detect/scripts/check-detect.py", 23),
-    (26, 41, "Step D — GymProposer: Brier-triggered harness edit candidates", "chatbot/api/routes/gym.py", 25),
     # ── Freestanding: ta-export + skill-master (Entry 224/225) ───────────────
     (27, 0,  "ta-export version-stamp: {model_id, routing_mode, skills_context} into bundle", "chatbot/modules/ta_exporter.py", None),
     (28, 0,  "skill-master: multi-location inventory + override detection + change-triggered re-scan (Entry 225)", ".claude/skills/skill-master/", 27),
