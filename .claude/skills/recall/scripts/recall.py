@@ -53,15 +53,17 @@ PRIORITY_STEPS = [
     # ── Priority 40 — OpenShell supervisor model (Entries 228–230) — DONE ────
     (29, 40, "✅ OpenShell supervisor: allowed_tools/allowed_endpoints/supervisor relay/circuit breaker/RunCredentials/confirm_isolation (Entry 228)", "chatbot/agents/managed/base.py + registry.py", None),
     (30, 40, "✅ Fleet tool registry + CISO posture endpoint + check-managed-agents skill 29/29 (Entries 229–230)", "chatbot/agents/managed/tool_registry.py + platform.py", 29),
-    # ── Priority 40 — ManagedAgentHarness harness.py (DECISIONS 221) ─────────
+    # Blog P39 is now unblocked — step 30 is done
+    (31, 40, "📝 Draft P39 blog — 'The Four Primitives: What OpenShell Teaches TA About Rogue Agents'", "docs/blog/drafts/", 30),
+    # ── Priority 40 — ManagedAgentHarness harness.py (Entry 221) ─────────────
     # circuit breaker + RunCredentials + confirm_isolation are already in base.py (step 29);
     # harness.py wraps them into formal stage objects for the fleet pipeline.
-    (9,  40, "AgentPrepStage — policy load + credential provisioning (confirm_isolation wired)", "chatbot/agents/managed/harness.py",  30),
+    (9,  40, "AgentPrepStage — policy load + credential provisioning (confirm_isolation wired)", "chatbot/agents/managed/harness.py",  31),
     (10, 40, "AgentExecuteStage — extract tool loop from ManagedAgent.run(); supervisor relay reused", "chatbot/agents/managed/harness.py", 9),
     (11, 40, "AgentAuditStage — output scan + token budget + credential expiry", "chatbot/agents/managed/harness.py", 10),
     (12, 40, "AgentSynthStage — write report + signal EventBroker", "chatbot/agents/managed/harness.py", 11),
     (13, 40, "ManagedAgentHarness stage pipeline + BlockedAgentError (circuit breaker already in base)", "chatbot/agents/managed/harness.py", 12),
-    # ── Fleet Security — CoreBouncer (DECISIONS 222) ─────────────────────────
+    # ── Fleet Security — CoreBouncer (Entry 222) ──────────────────────────────
     (14, 40, "CoreBouncer: extract hardening layers from ManagedAgent base", "chatbot/agents/managed/bouncer.py", 13),
     (15, 40, "Cross-fleet gating rule: report-layer-only signal between fleets", "chatbot/agents/managed/bouncer.py", 14),
     (16, 40, "Human-in-the-loop threshold (confidence < 0.7 → queue for approval)", "chatbot/agents/managed/bouncer.py", 15),
@@ -71,22 +73,35 @@ PRIORITY_STEPS = [
     (19, 40, "EventBroker: fleet_started/agent_triggered/fleet_blocked", "chatbot/harness/event_broker.py", 18),
     (20, 40, "Fleet-level token budget across agent runs",         "chatbot/agents/managed/reporter.py",    19),
     (21, 40, "FleetCoordinator: routes trigger type → correct fleet", "chatbot/agents/managed/coordinator.py", 20),
-    # ── Priority 41 — Recursive improvement flywheel (DECISIONS 227) ─────────
+    # ── Priority 41 — Recursive improvement flywheel (Entry 227) ─────────────
     # Independent of fleet; start with Step A (safety value, low effort)
     (23, 41, "Step A — BouncerStage context-hash parity check",  "chatbot/harness/stages.py",             None),
     (24, 41, "Step B — SUCCEEDED auto-staging → synthetic MMD queue", "chatbot/modules/perspective_runner.py", 23),
     (25, 41, "Step C — Continuous red-team harness (known-evasion scenarios, live pipeline)", ".claude/skills/check-detect/scripts/check-detect.py", 23),
     (26, 41, "Step D — GymProposer: Brier-triggered harness edit candidates", "chatbot/api/routes/gym.py", 25),
-    # ── Freestanding: ta-export + skill-master (Entry 224/225) ──────────────────
+    # ── Freestanding: ta-export + skill-master (Entry 224/225) ───────────────
     (27, 0,  "ta-export version-stamp: {model_id, routing_mode, skills_context} into bundle", "chatbot/modules/ta_exporter.py", None),
     (28, 0,  "skill-master: multi-location inventory + override detection + change-triggered re-scan (Entry 225)", ".claude/skills/skill-master/", 27),
+    # Blog P40 unblocked after flywheel D + skill-master
+    (32, 0,  "📝 Draft P40 blog — recursive flywheel + skill-master + CISO-as-partner story", "docs/blog/drafts/", 28),
+    # ── Freestanding: Open Factory (Entry 224) — needs sequencing ────────────
+    (33, 0,  "Open Factory (Entry 224): define ta-export reproducibility gap + interoperability steps", "docs/DECISIONS.md", 27),
     # ── Freestanding: recall ADR auto-sequencing (Step 22) ───────────────────
     (22, 0,  "✅ recall skill: ADR auto-scan now live — open design-intent entries surface automatically", ".claude/skills/recall/scripts/recall.py", None),
 ]
 
-BLOG_GATES = {
-    40: "📝 P39 blog — 'The Four Primitives: What OpenShell Teaches TA About Rogue Agents' (Entries 228–230): draft ready now",
-    41: "📝 P40 blog — recursive flywheel + skill-master story: draft after GymProposer (step 26) + skill-master (step 28)",
+# Maps DECISIONS entry number → list of step numbers that implement it.
+# Used to cross-reference the ADR panel with the build sequence.
+ADR_TO_STEPS: dict[int, list[int]] = {
+    221: [9, 10, 11, 12, 13],   # ManagedAgentHarness stages
+    222: [14, 15, 16],           # CoreBouncer
+    224: [33],                   # Open Factory (step = define implementation)
+    225: [27, 28],               # ta-export version-stamp + skill-master
+    226: [9],                    # shared knowledge constraints → harness step
+    227: [23, 24, 25, 26],       # recursive flywheel Steps A–D
+    228: [29],                   # OpenShell supervisor (done)
+    229: [30],                   # fleet tool registry (done)
+    230: [30],                   # check-managed-agents (done)
 }
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -168,16 +183,32 @@ def extract_open_adrs(decisions: str) -> list[tuple[int, str, str]]:
     return open_adrs
 
 
-def adr_in_sequence(entry_num: int) -> bool:
-    """True if this ADR entry number is already represented in PRIORITY_STEPS."""
-    # Check labels for the entry number as a string reference
-    entry_str = str(entry_num)
-    for _, _, label, _, _ in PRIORITY_STEPS:
-        if f"Entry {entry_str}" in label or f"({entry_str})" in label:
-            return True
-    # Also check against known mapped entry numbers
-    MAPPED = {221, 222, 224, 225, 226, 227}
-    return entry_num in MAPPED
+def adr_step_ref(entry_num: int) -> tuple[bool, str]:
+    """
+    Return (in_sequence, display_ref) for an ADR.
+    display_ref is a short string like "steps 9–13" or "step 33 (needs sequencing)".
+    """
+    steps = ADR_TO_STEPS.get(entry_num)
+    if steps is None:
+        # Fall back to label scan
+        entry_str = str(entry_num)
+        for _, _, label, _, _ in PRIORITY_STEPS:
+            if f"Entry {entry_str}" in label or f"({entry_str})" in label:
+                return True, "in sequence (label ref)"
+        return False, "no steps defined yet"
+
+    if len(steps) == 1:
+        ref = f"step {steps[0]}"
+    elif steps[-1] == steps[0] + len(steps) - 1:
+        ref = f"steps {steps[0]}–{steps[-1]}"
+    else:
+        ref = "steps " + ", ".join(str(s) for s in steps)
+
+    # Check whether all mapped steps are done (have ✅ prefix)
+    done_set = {s for s, _, lbl, _, _ in PRIORITY_STEPS if lbl.startswith("✅")}
+    all_done = all(s in done_set for s in steps)
+    marker = "✅ done" if all_done else "⬜ open"
+    return True, f"{ref} [{marker}]"
 
 
 def in_priorities(text: str, priorities: list[tuple[int, str, bool]]) -> bool:
@@ -244,34 +275,20 @@ def main() -> None:
                 p_label = f"Priority {pnum}" if pnum else "Freestanding"
                 lines.append(f"\n  [{p_label}]")
                 current_pnum = pnum
-                # Insert blog gate note if this priority has one
-                if pnum in BLOG_GATES and step > 1:
-                    # Only show gate at the start of the priority block
-                    pass
+                pass  # blog steps are now explicit ⬜ steps in PRIORITY_STEPS
             dep_note = f"  ← needs step {dep}" if dep else ""
             lines.append(f"  Step {step:2d} {done_marker} {label}{dep_note}")
             lines.append(f"           → {hint}")
 
-        # Blog gates
-        gates_shown = set()
-        for step, pnum, label, hint, dep in open_steps:
-            if pnum in BLOG_GATES and pnum not in gates_shown:
-                gates_shown.add(pnum)
-        if gates_shown:
-            lines.append("")
-            for pnum in sorted(gates_shown):
-                lines.append(f"  {BLOG_GATES[pnum]}")
-
-    # Open ADRs from DECISIONS.md (design intent / pending / design constraint)
+    # Open ADRs from DECISIONS.md — compact reference panel with step cross-refs
     if open_adrs:
-        lines.append("\n**Open ADRs (design intent / pending):**")
+        lines.append("\n**Open ADRs:**")
         for num, title, status in open_adrs:
-            in_seq = adr_in_sequence(num)
-            tag = "  ✓ in sequence" if in_seq else "  ⚠ not yet sequenced"
-            # Truncate long status lines
-            short_status = status if len(status) <= 70 else status[:67] + "…"
-            lines.append(f"  Entry {num} — {title}")
-            lines.append(f"           Status: {short_status}{tag}")
+            in_seq, step_ref = adr_step_ref(num)
+            tag = f"→ {step_ref}" if in_seq else "⚠ no steps yet — needs sequencing"
+            short_title = title if len(title) <= 65 else title[:62] + "…"
+            lines.append(f"  Entry {num}  {short_title}")
+            lines.append(f"           {tag}")
 
     # New from DECISIONS not yet in memory
     if new_items:
