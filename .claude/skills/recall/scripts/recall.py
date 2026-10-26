@@ -26,10 +26,14 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 # Update this after a dependency analysis session.
 # Mark a step done by prepending ✅ to its label.
 #
-# Dependency chain (2026-10-25):
+# Dependency chain (2026-10-26):
 #   P37 (TA Perspective) — DONE (6f1f39b); blog P37 published
 #   P38 (Managed agent fleet) — DONE (87e8a1e); blog P38 published
-#   Fleet Foundation (Entry 221) — ManagedAgentHarness steps 9–13; refactor before second agent
+#   OpenShell supervisor + fleet tool registry (Entries 228–230) — DONE (1a8cfd9, 48c083f, 083fb38)
+#     supervisor relay / circuit breaker / RunCredentials / confirm_isolation now in base.py
+#     fleet tool registry + CISO posture endpoint live; check-managed-agents skill 29/29 PASS
+#   Fleet Foundation (Entry 221) — ManagedAgentHarness harness.py steps 9–13 still needed
+#     (circuit breaker + confirm_isolation already landed in base; harness.py wraps them as stages)
 #   Fleet Security (Entry 222) — CoreBouncer; after Foundation
 #   Fleet Service — second agent; lands clean into harness
 #   Fleet Report — fleet manifest + EventBroker fleet events; after Service
@@ -46,12 +50,17 @@ PRIORITY_STEPS = [
     (6,  37, "✅ PerspectiveRunner + vocabulary gap fix",         "chatbot/modules/perspective_runner.py",      5),
     (7,  37, "✅ SSE route + GET /perspective/scenarios/{arch}",  "chatbot/api/routes/perspective.py",          6),
     (8,  37, "✅ Kill chain canvas + pause/resume toolbar",       "chatbot/api/static/js/dashboard.js",         7),
-    # ── Priority 40 — ManagedAgentHarness (DECISIONS 221) ────────────────────
-    (9,  40, "AgentPrepStage — context sanitize + Jev noul gate", "chatbot/agents/managed/harness.py",  None),
-    (10, 40, "AgentExecuteStage — extract tool loop from ManagedAgent.run()", "chatbot/agents/managed/harness.py", 9),
-    (11, 40, "AgentAuditStage — output scan + token budget check", "chatbot/agents/managed/harness.py", 10),
+    # ── Priority 40 — OpenShell supervisor model (Entries 228–230) — DONE ────
+    (29, 40, "✅ OpenShell supervisor: allowed_tools/allowed_endpoints/supervisor relay/circuit breaker/RunCredentials/confirm_isolation (Entry 228)", "chatbot/agents/managed/base.py + registry.py", None),
+    (30, 40, "✅ Fleet tool registry + CISO posture endpoint + check-managed-agents skill 29/29 (Entries 229–230)", "chatbot/agents/managed/tool_registry.py + platform.py", 29),
+    # ── Priority 40 — ManagedAgentHarness harness.py (DECISIONS 221) ─────────
+    # circuit breaker + RunCredentials + confirm_isolation are already in base.py (step 29);
+    # harness.py wraps them into formal stage objects for the fleet pipeline.
+    (9,  40, "AgentPrepStage — policy load + credential provisioning (confirm_isolation wired)", "chatbot/agents/managed/harness.py",  30),
+    (10, 40, "AgentExecuteStage — extract tool loop from ManagedAgent.run(); supervisor relay reused", "chatbot/agents/managed/harness.py", 9),
+    (11, 40, "AgentAuditStage — output scan + token budget + credential expiry", "chatbot/agents/managed/harness.py", 10),
     (12, 40, "AgentSynthStage — write report + signal EventBroker", "chatbot/agents/managed/harness.py", 11),
-    (13, 40, "ManagedAgentHarness circuit breaker + BlockedAgentError", "chatbot/agents/managed/harness.py", 12),
+    (13, 40, "ManagedAgentHarness stage pipeline + BlockedAgentError (circuit breaker already in base)", "chatbot/agents/managed/harness.py", 12),
     # ── Fleet Security — CoreBouncer (DECISIONS 222) ─────────────────────────
     (14, 40, "CoreBouncer: extract hardening layers from ManagedAgent base", "chatbot/agents/managed/bouncer.py", 13),
     (15, 40, "Cross-fleet gating rule: report-layer-only signal between fleets", "chatbot/agents/managed/bouncer.py", 14),
@@ -76,8 +85,8 @@ PRIORITY_STEPS = [
 ]
 
 BLOG_GATES = {
-    40: "📝 P39 blog — 'The Loop That Learns' + Open Factory (Entries 224+227): draft after flywheel Steps A–B (steps 23–24)",
-    41: "📝 P40 blog — fleet governance + skill-master story: draft after FleetCoordinator (step 21) + GymProposer (step 26) + skill-master (step 28)",
+    40: "📝 P39 blog — 'The Four Primitives: What OpenShell Teaches TA About Rogue Agents' (Entries 228–230): draft ready now",
+    41: "📝 P40 blog — recursive flywheel + skill-master story: draft after GymProposer (step 26) + skill-master (step 28)",
 }
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -208,11 +217,20 @@ def main() -> None:
     if done:
         lines.append(f"**Done ({len(done)}):** " + ", ".join(str(n) for n, _ in done))
 
-    # Open priorities — expanded into build steps, in sequence order
+    # Open priorities — expanded into build steps, in sequence order.
+    # Include a step when: its priority is open OR it is not yet done (no ✅ prefix),
+    # so that undone sub-steps under a "done" parent priority still surface.
     open_steps = [
         (step, pnum, label, hint, dep)
         for step, pnum, label, hint, dep in PRIORITY_STEPS
-        if pnum in open_pnums or pnum == 0  # 0 = freestanding
+        if pnum in open_pnums or pnum == 0 or not label.startswith("✅")
+    ]
+    # Drop steps that are individually marked done (✅) AND whose priority is closed,
+    # to avoid re-listing already-finished work.
+    open_steps = [
+        (step, pnum, label, hint, dep)
+        for step, pnum, label, hint, dep in open_steps
+        if not (label.startswith("✅") and pnum not in open_pnums and pnum != 0)
     ]
 
     if open_steps:
