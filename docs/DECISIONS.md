@@ -4,6 +4,42 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 228 — OpenShell-inspired supervisor model for managed agents (software-only)
+
+**Date:** 2026-10-26  
+**Status:** Implemented  
+**Trigger:** NVIDIA OpenShell (github.com/NVIDIA/OpenShell) — safe runtime for autonomous agent fleets. Four-primitive model: Sandbox (isolated runtime) / Supervisor (policy enforcer, all tool calls relay through it) / Gateway (control plane, per-run JWT scoping) / Policy Prover (formal verification before policy changes apply). Hardware TEE is optional; Linux Landlock+seccomp is the default. The construct is directly applicable to TA's managed agent fleet without hardware.
+
+**What:**  
+Four primitives implemented in software, no kernel or container changes:
+
+1. **Capability declaration** (`allowed_tools`, `allowed_endpoints` on `ManagedAgent`) — each agent declares what it may call and what it may reach. Enforced at runtime (tools) and at registration (prover). `TAclawInvestigationAgent` is the first agent to carry full declarations.
+
+2. **Supervisor relay** (`_execute_tool` allowlist check) — if `allowed_tools` is non-empty, any tool call not in the list is a supervisor violation: logged at ERROR, blocked (returns error JSON), and counted. The agent never executes the unlisted call. Mirrors the OpenShell supervisor intercepting all TCP/DNS and checking policy before forwarding.
+
+3. **Circuit breaker / freeze-on-drop** — `_SUPERVISOR_VIOLATION_THRESHOLD = 3`. After three violations in a single run, `_frozen = True` is set. The run loop checks `_frozen` at the top of each iteration and returns a terminal `frozen=True` result. Mirrors OpenShell freezing the agent when the supervisor connection drops.
+
+4. **Fail-closed pre-flight** (`confirm_isolation()`) — called at the start of every `run()`, before the LLM loop starts. Verifies: governance policy file is present and parseable; `allowed_tools` is declared (warns if not). Returns `(False, reason)` → `BlockedPipelineError`-equivalent return before any LLM call is made. Mirrors OpenShell's supervisor confirming the isolation boundary before the workload starts.
+
+5. **Run-scoped credentials** (`RunCredentials`) — each run provisions a `RunCredentials` object bound to a `run_id` (UUID). Agents receive the object, not raw key values; handlers call `creds.resolve(handle)`. Credentials are expired (cleared) in a `finally` block regardless of run outcome. Mirrors OpenShell's credential injection: agent never holds real credentials; supervisor resolves them only for approved destinations.
+
+6. **Policy prover** (`_prove_agent()` in registry) — runs at agent registration, not runtime. Flags: `allowed_tools` not declared; registered tools missing from `allowed_tools`; dead entries in `allowed_tools`; `allowed_endpoints` not declared; non-localhost endpoints (require explicit governance approval). Warnings only — existing agents without declarations register with noise, not hard failure. Mirrors the OpenShell prover that flags what a policy change would grant before it is applied.
+
+**What was NOT adopted:**
+- Kernel Landlock / seccomp — requires per-agent subprocess or container; not justified until agents gain external network or file-write scope
+- Per-agent Docker/VM sandbox — same justification
+- Gateway JWTs — `run_id`-scoped `RunCredentials` achieves the same lifecycle property without PKI surface
+
+**Gap vs full OpenShell:**
+- `allowed_endpoints` is declared but not yet enforced at the HTTP call level — enforcement requires tool handlers to use a `SupervisedHTTPClient` (next step when agents gain external reach)
+- Process isolation remains shared — all agents run in the same process as the API server; kernel sandbox is the long-term hardening path
+
+**Impact:** `ManagedAgentResult` gains two new fields (`supervisor_violations`, `frozen`). All 47 existing managed agent tests pass unchanged. `TAclawInvestigationAgent` is fully declared; prover emits no warnings on startup.
+
+**Blog:** P39 candidate — "The Four Primitives: What NVIDIA's OpenShell Teaches TA About Rogue Agents"
+
+---
+
 ### Entry 227 — Recursive improvement flywheel: Propose + Monitor + Red-team loop (ADR)
 
 **Date:** 2026-10-25

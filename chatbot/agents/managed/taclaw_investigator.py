@@ -91,6 +91,18 @@ class TAclawInvestigationAgent(ManagedAgent):
     description = "Investigates gate=BLOCK outcomes: identifies root signals, queries brain patterns, produces remediation plan."
     max_iterations = 8
 
+    # Supervisor capability declaration — enforced at runtime by ManagedAgent._execute_tool().
+    # Tools are read-only local lookups; no network calls, no credential use, no write side-effects.
+    allowed_tools = [
+        "get_block_signals",
+        "query_brain_patterns",
+        "get_rule_detail",
+        "get_pipeline_context",
+        "synthesize_remediation",
+    ]
+    # All access is to the local TA REST API — no external endpoints.
+    allowed_endpoints = ["http://localhost:8000/api/v1/"]
+
     system_prompt = """You are a security investigation agent for ThreatAssessor.
 
 A TAclaw threat model assessment has been BLOCKED by the pipeline's Bouncer gate or a Critical DETECT rule.

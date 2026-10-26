@@ -21,13 +21,72 @@ logger = logging.getLogger(__name__)
 _registry: Optional["ManagedAgentRegistry"] = None
 
 
+def _prove_agent(agent: "ManagedAgent") -> None:
+    """
+    Lightweight policy prover — runs at registration, not at runtime.
+    Flags capability declaration gaps and risky endpoint patterns.
+    Mirrors the OpenShell policy prover that checks what a policy change would grant
+    before it is applied. Findings are warnings, not hard blocks, so existing agents
+    that predate the contract can still register (with noise).
+    """
+    aid = agent.agent_id
+
+    # ── Capability declaration completeness ───────────────────────────────────
+    if not agent.allowed_tools:
+        logger.warning(
+            "PROVER[%s]: allowed_tools not declared — supervisor enforcement disabled. "
+            "Declare allowed_tools to enable per-tool allowlist enforcement.",
+            aid,
+        )
+    else:
+        # Flag tools declared on the agent but missing from allowed_tools
+        registered = {t.name for t in agent.tools}
+        undeclared = registered - set(agent.allowed_tools)
+        if undeclared:
+            logger.warning(
+                "PROVER[%s]: tools registered but NOT in allowed_tools (will be blocked at runtime): %s",
+                aid, sorted(undeclared),
+            )
+        extra = set(agent.allowed_tools) - registered
+        if extra:
+            logger.warning(
+                "PROVER[%s]: allowed_tools names not matched by any registered tool (dead entries): %s",
+                aid, sorted(extra),
+            )
+
+    if not agent.allowed_endpoints:
+        logger.warning(
+            "PROVER[%s]: allowed_endpoints not declared — no HTTP endpoint policy for this agent.",
+            aid,
+        )
+    else:
+        # Flag endpoints that are not local — potential external data exfiltration surface.
+        external = [
+            ep for ep in agent.allowed_endpoints
+            if not any(ep.startswith(prefix) for prefix in (
+                "http://localhost", "http://127.0.0.1",
+                "https://localhost", "https://127.0.0.1",
+            ))
+        ]
+        if external:
+            logger.warning(
+                "PROVER[%s]: allowed_endpoints includes non-localhost destinations — "
+                "requires explicit governance approval: %s",
+                aid, external,
+            )
+
+
 class ManagedAgentRegistry:
     def __init__(self) -> None:
         self._agents: Dict[str, "ManagedAgent"] = {}
 
     def register(self, agent: "ManagedAgent") -> None:
+        _prove_agent(agent)
         self._agents[agent.agent_id] = agent
-        logger.info("ManagedAgentRegistry: registered '%s'", agent.agent_id)
+        logger.info(
+            "ManagedAgentRegistry: registered '%s' (tools=%d, allowed_tools=%d, allowed_endpoints=%d)",
+            agent.agent_id, len(agent.tools), len(agent.allowed_tools), len(agent.allowed_endpoints),
+        )
 
     def get(self, agent_id: str) -> Optional["ManagedAgent"]:
         return self._agents.get(agent_id)
