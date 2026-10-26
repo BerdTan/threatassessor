@@ -4,6 +4,32 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 230 — check-managed-agents skill: posture validation for the managed agent fleet
+
+**Date:** 2026-10-26  
+**Status:** Implemented  
+**Trigger:** Entries 228–229 built the supervisor model and fleet tool registry. Without a repeatable check, the enforcement invariants could silently regress — a new agent added without `allowed_tools`, a `ToolRegistration` omitted, the governance yaml deleted, or an AGT DETECT rule removed. The existing check-* skill pattern (check-mcp, check-governance, check-sip) provides the right form: a fast static script that runs without API access and surfaces regressions before they reach production.
+
+**What:**  
+`.claude/skills/check-managed-agents/` — 9-dimension posture check:
+
+1. **Syntax** — all 5 managed agent files parse without errors
+2. **Imports** — ManagedAgent, ManagedToolRegistry, RunCredentials, get_registry, get_tool_registry all loadable
+3. **Capability declarations** — every registered agent has non-empty `allowed_tools` + `allowed_endpoints`
+4. **Tool registry completeness** — every tool in `allowed_tools` has a `ToolRegistration` in the fleet catalog
+5. **Risk tier coherence** — `write_side_effects`/`credential_required`/`external_network` flags are consistent with `risk_tier`
+6. **Prover simulation** — no dead `allowed_tools` entries; no cross-agent `permitted_agents` violations
+7. **Isolation pre-flight** — `agent_governance.yaml` exists and parses; `confirm_isolation()` present on base class; `_SUPERVISOR_VIOLATION_THRESHOLD` sane
+8. **DETECT alignment** — DETECT-AGT-004/003/005 present in `soc_detection_rules.yaml`
+9. **Live API** (`--live`) — `GET /api/v1/agents/fleet-posture` + `/api/v1/agents/tools` return 200 with expected structure
+
+**Current baseline:** 29/29 PASS, fleet posture=CLEAN.  
+**Verdict labels:** PASS / WARN / FAIL + fleet posture label (CLEAN/WARN/ELEVATED/VIOLATION/EMPTY) in summary line.
+
+**When to run:** after any change to `chatbot/agents/managed/` or `policies/agent_governance.yaml`; add to CI alongside check-governance and check-detect for continuous coverage.
+
+---
+
 ### Entry 229 — Fleet tool registry: governance catalog for the managed agent fleet
 
 **Date:** 2026-10-26  
