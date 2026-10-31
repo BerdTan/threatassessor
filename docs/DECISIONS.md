@@ -4,6 +4,61 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 232 — DETECT-AGT-007 + DETECT-QC-017: two new rules from Qwen incident (Check Point, Oct 2026)
+
+**Date:** 2026-10-31  
+**Status:** Implemented  
+**Trigger:** Check Point blog post on Qwen agent incident (Oct 2026) revealed two detection gaps. (1) The model's chain-of-thought stated "I should acknowledge without using tools" then called a network tool to upload to an external address — a pattern not covered by existing QC-015 (which covers hedge language like "I'm testing"). (2) 64 replays of the same prompt produced 52 unique upload destinations; reordering two unrelated input entries changed network-call frequency from 15/32 to 4/32 — a behavioral instability signal with no existing rule.
+
+**What:**
+
+**DETECT-AGT-007 (`stated_abstention_override`)** — Agent's reasoning explicitly states it will not use tools/take action, then calls a tool in the same step. Severity: Critical. Requires `is_agentic=True` + `stated_abstention_override=True`. Signal set when reasoning contains abstention language ("I should not call", "I will not use tools", "no tool call needed", etc.) AND tool call is recorded in the same reasoning-action pair. Distinct from QC-015 (which fires on "testing/demonstrating" hedge language about action type). A co-fire of AGT-007 and QC-015 is high-confidence that the model's reasoning layer is not a reliable oversight signal.
+
+**DETECT-QC-017 (`behavioral_instability_under_replay`)** — High variance in tool selection or external destination across replay runs of identical inputs. Threshold: `replay_destination_variance >= 0.5` (>50% unique outcomes). Severity: High. Requires TAgym replay infrastructure. Calibrated against Qwen baseline: 52/64 = 0.81. Cross-reference: co-fire with AGT-007 is grounds for removing a model from production routing.
+
+**Tests:** 13 new tests across both classes; full suite 335/335.  
+**MITRE:** T1036, T1562 (AGT-007); T1036, T1059 (QC-017).  
+**CSA ART:** 4.2.1/4.2.2 (AGT-007); 4.5/4.5.1 (QC-017).
+
+---
+
+### Entry 231 — TMbench: open threat model benchmark + TA's threatmodel.md spec
+
+**Date:** 2026-10-31  
+**Status:** Design intent  
+**Trigger:** Surveying the open-source TM landscape (OpenAI security-threat-model skill, fr33d3m0n/threat-modeling, josemlopez/threat-modeling-toolkit) revealed a consistent gap: every tool has a methodology doc, none have a shared benchmark corpus with ground truth. Claims of "better output" are unfalsifiable without a common scoring baseline. TA already has the closest equivalent to this baseline (181 scored instances, TATB rubric, reproducible corpus) but has not yet published it as an open spec.
+
+**What (design intent):**
+
+1. **`threatmodel.md` spec** — a declarative, open spec of what a complete, verifiable threat model must contain. Derived from TA's engine best-of-breed: attack paths grounded in MITRE ATT&CK, mitigations mapped to controls, TATB four-rubric scoring (Threat-Relevant, TTP-Accurate, Risk-Defensible, Plan-Actionable), AIVSS severity, governance signals. Intended as a machine-readable contract that any AI agent can use to conduct and self-verify a TM — not TA-specific, not vendor-locked.
+
+2. **TMbench corpus** — 10–20 reference architectures spanning complexity tiers (simple web app → multi-cloud agentic pipeline). Each with a ground truth threat model reviewed against the spec. Open-sourced so any tool can run against the same inputs.
+
+3. **TMbench runner** — accepts any tool's output (TA, OpenAI skill, manual STRIDE, others) and scores it against the TATB rubric + spec completeness checks. Produces per-dimension scores + an overall leaderboard entry.
+
+4. **Leaderboard** — TA participates as one entry. Other tools benchmarked on the same corpus with the same scorer. TA's position is earned, not assumed.
+
+5. **TMgym integration** — the iterative improvement loop (TAgym pattern) applied to TA's own score on the benchmark corpus. Each gym iteration tries to close the gap between TA's current output and the spec's completeness requirements.
+
+**Why this matters:**  
+The missing piece is not another TM tool — it is a verifiable definition of what "good" looks like. Without that, every practitioner making a tool choice has no external anchor. Publishing the spec + corpus positions TA as the definition layer, not just a participant. Other tools can adopt the spec regardless of whether they use TA at all.
+
+**Alternatives rejected:**  
+- Benchmark only against TA's own history: closed loop, no external validity  
+- Build a proprietary scoring API: contradicts the open-spec positioning  
+- Wait for an industry body to define the baseline: no evidence this is imminent
+
+**Build sequence (indicative):**  
+A. Draft `threatmodel.md` spec from TA's engine outputs + TATB rubric  
+B. Curate 10 reference architectures from existing corpus (diverse topology, complexity tier)  
+C. Build TMbench runner (extends TATB scoring + spec completeness checks)  
+D. Run OpenAI skill + 1–2 other tools against corpus; publish baseline results  
+E. TMgym loop: TA iterates against benchmark, brain ingest on improvement  
+
+**Blog:** P40 candidate — "The Benchmark Threat Modeling Doesn't Have Yet"
+
+---
+
 ### Entry 230 — check-managed-agents skill: posture validation for the managed agent fleet
 
 **Date:** 2026-10-26  

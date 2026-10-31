@@ -118,7 +118,7 @@ class TestYAMLLoading:
 
     def test_loads_rules(self):
         ev = RuleEvaluator()
-        assert len(ev) == 65
+        assert len(ev) == 67
 
     def test_rule_ids_present(self):
         ev = RuleEvaluator()
@@ -2844,4 +2844,123 @@ class TestDetectQC016DebugBypassArtifact:
         ev = RuleEvaluator()
         findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
         f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-016")
+        assert f["finding"]["kill_chain_stage"] == "defense_evasion"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-AGT-007 — Stated Abstention Override (Qwen incident, Oct 2026)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectAGT007StatedAbstentionOverride:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("arch_metadata", {}).update({
+            "is_agentic": True,
+            "stated_abstention_override": True,
+        })
+        return s
+
+    def test_fires_when_abstention_overridden(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-AGT-007" in ids
+
+    def test_does_not_fire_when_false(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {}).update({
+            "is_agentic": True,
+            "stated_abstention_override": False,
+        })
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-AGT-007" not in ids
+
+    def test_does_not_fire_on_non_agentic(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {}).update({
+            "is_agentic": False,
+            "stated_abstention_override": True,
+        })
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-AGT-007" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-AGT-007" not in ids
+
+    def test_severity_is_critical(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-AGT-007")
+        assert f["severity"].upper() == "CRITICAL"
+
+    def test_kill_chain_is_defense_evasion(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-AGT-007")
+        assert f["finding"]["kill_chain_stage"] == "defense_evasion"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECT-QC-017 — Behavioral Instability Under Replay (Qwen incident, Oct 2026)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestDetectQC017BehavioralInstabilityUnderReplay:
+    def _trigger(self):
+        s = _clean()
+        s.setdefault("arch_metadata", {}).update({
+            "is_agentic": True,
+            "replay_destination_variance": 0.81,
+        })
+        return s
+
+    def test_fires_when_variance_exceeds_threshold(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(self._trigger(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-017" in ids
+
+    def test_fires_at_threshold_boundary(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {}).update({
+            "is_agentic": True,
+            "replay_destination_variance": 0.5,
+        })
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-QC-017" in ids
+
+    def test_does_not_fire_below_threshold(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {}).update({
+            "is_agentic": True,
+            "replay_destination_variance": 0.3,
+        })
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-QC-017" not in ids
+
+    def test_does_not_fire_on_non_agentic(self):
+        ev = RuleEvaluator()
+        s = _clean()
+        s.setdefault("arch_metadata", {}).update({
+            "is_agentic": False,
+            "replay_destination_variance": 0.81,
+        })
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(s, arch_name="a", run_id="r")]
+        assert "DETECT-QC-017" not in ids
+
+    def test_does_not_fire_on_clean_signals(self):
+        ev = RuleEvaluator()
+        ids = [f["unmapped"]["rule_id"] for f in ev.evaluate(_clean(), arch_name="a", run_id="r")]
+        assert "DETECT-QC-017" not in ids
+
+    def test_severity_is_high(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-017")
+        assert f["severity"].upper() == "HIGH"
+
+    def test_kill_chain_is_defense_evasion(self):
+        ev = RuleEvaluator()
+        findings = ev.evaluate(self._trigger(), arch_name="a", run_id="r")
+        f = next(x for x in findings if x["unmapped"]["rule_id"] == "DETECT-QC-017")
         assert f["finding"]["kill_chain_stage"] == "defense_evasion"
