@@ -13,5 +13,5 @@
   "bonus_agentic": 0,
   "total": 13,
   "confidence": "Solid",
-  "notes": "Ground truth TM — all dimensions max. T3 complexity tier: 15 components, 8 attack paths meeting minimum. AD CS ESC1 and DCSync are the primary risk drivers. Severity appropriately differentiated across critical/high/medium/low findings."
+  "notes": "Ground truth TM — 25 components, 8 attack paths covering ESC abuse, Golden Ticket, Golden SAML, AADConnect hash sync; Critical/Critical/High/High/Medium/Medium/Low/Informational severity spread."
 }

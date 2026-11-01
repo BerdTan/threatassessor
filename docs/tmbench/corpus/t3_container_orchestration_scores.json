@@ -13,5 +13,5 @@
   "bonus_agentic": 0,
   "total": 13,
   "confidence": "Solid",
-  "notes": "Ground truth TM — all dimensions max. T3 complexity tier: 7 components but k8s-specific attack surface (etcd, RBAC, service mesh) justifies T3 classification. 8 attack paths meeting minimum. etcd unencrypted and RBAC misconfiguration are the primary risk drivers."
+  "notes": "Ground truth TM — 21 components, 8 attack paths covering K8s API abuse, container escape, supply chain, secret exposure; Critical/High/High/Medium/Medium/Low/Informational spread."
 }

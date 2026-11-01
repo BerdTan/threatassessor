@@ -5,184 +5,227 @@
   "produced_at": "2026-11-01T00:00:00Z",
   "architecture_summary": {
     "components": [
-      { "id": "internet", "role": "ingress", "trust_zone": "untrusted-external" },
-      { "id": "ingress_controller", "role": "ingress", "trust_zone": "k8s-edge" },
-      { "id": "frontend_pods", "role": "compute", "trust_zone": "k8s-namespace-prod" },
-      { "id": "backend_pods", "role": "compute", "trust_zone": "k8s-namespace-prod" },
-      { "id": "database_statefulset", "role": "data store", "trust_zone": "k8s-namespace-data" },
-      { "id": "cache_pods", "role": "compute", "trust_zone": "k8s-namespace-data" },
-      { "id": "service_mesh", "role": "compute", "trust_zone": "k8s-internal" }
+      { "id": "internet", "role": "external", "trust_zone": "untrusted-external" },
+      { "id": "developer", "role": "external", "trust_zone": "untrusted-external" },
+      { "id": "container_registry", "role": "data store", "trust_zone": "registry-internal" },
+      { "id": "image_scanner", "role": "compute", "trust_zone": "registry-internal" },
+      { "id": "k8s_api_server", "role": "compute", "trust_zone": "control-plane" },
+      { "id": "etcd", "role": "data store", "trust_zone": "control-plane" },
+      { "id": "controller_manager", "role": "compute", "trust_zone": "control-plane" },
+      { "id": "scheduler", "role": "compute", "trust_zone": "control-plane" },
+      { "id": "admission_controller", "role": "compute", "trust_zone": "control-plane" },
+      { "id": "rbac_engine", "role": "compute", "trust_zone": "control-plane" },
+      { "id": "worker_node_a", "role": "compute", "trust_zone": "data-plane" },
+      { "id": "worker_node_b", "role": "compute", "trust_zone": "data-plane" },
+      { "id": "kubelet", "role": "compute", "trust_zone": "data-plane" },
+      { "id": "container_runtime", "role": "compute", "trust_zone": "data-plane" },
+      { "id": "ingress_controller", "role": "ingress", "trust_zone": "network-dmz" },
+      { "id": "service_mesh_proxy", "role": "compute", "trust_zone": "network-internal" },
+      { "id": "network_policy_engine", "role": "compute", "trust_zone": "network-internal" },
+      { "id": "persistent_volume_controller", "role": "compute", "trust_zone": "storage-internal" },
+      { "id": "secret_store", "role": "data store", "trust_zone": "storage-restricted" },
+      { "id": "prometheus", "role": "compute", "trust_zone": "observability-internal" },
+      { "id": "log_aggregator", "role": "egress", "trust_zone": "observability-internal" }
     ],
     "trust_boundaries": [
-      "internet-to-cluster: internet to ingress_controller (TLS + WAF)",
-      "edge-to-prod: ingress_controller to frontend_pods (internal cluster routing)",
-      "namespace-prod-to-data: backend_pods via service_mesh to database/cache namespace",
-      "namespace-isolation: prod and data namespaces separated by NetworkPolicy"
+      "external-to-network-dmz: internet to ingress_controller",
+      "developer-to-control-plane: developer kubectl access to k8s_api_server (authenticated via kubeconfig/OIDC)",
+      "registry-to-control-plane: image_scanner approval gates image pull via admission webhook",
+      "control-plane-to-data-plane: k8s_api_server to kubelet (TLS client cert); scheduler to worker nodes",
+      "data-plane-to-storage: container_runtime to secret_store (service account token projection)",
+      "observability-to-data-plane: prometheus and log_aggregator scrape/tail from worker nodes"
     ],
     "data_classification": "confidential",
-    "operational_context": "Kubernetes cluster running multi-namespace production workload with service mesh"
+    "operational_context": "Kubernetes cluster hosting production microservices — public ingress, service mesh, RBAC-controlled API server, etcd with cluster secrets, container registry with image scanning"
   },
   "threat_actors": [
     {
-      "name": "External Attacker",
-      "motivation": "Workload compromise to access container runtime or data within the cluster",
-      "capability_tier": "targeted",
-      "initial_access_vector": "Exploitation of internet-facing service via ingress controller or vulnerable frontend pod",
+      "name": "External Web Attacker",
+      "motivation": "Exploit application vulnerability in a running container to gain a pod foothold and escalate to the cluster",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Exploit a vulnerability in a workload exposed via ingress controller (e.g. RCE via web framework CVE)",
       "non_capabilities": [
-        "No Kubernetes API server direct access from internet",
-        "No cloud provider IAM credentials",
-        "No cluster admin kubeconfig",
-        "No physical node access"
+        "No initial Kubernetes credentials or service account tokens",
+        "No access to control plane network segment without first breaching the data plane",
+        "No access to etcd directly — requires control plane pivot",
+        "No registry credentials at start"
       ]
     },
     {
-      "name": "Compromised Container Workload",
-      "motivation": "Lateral movement from one compromised pod to cluster-level access",
+      "name": "Compromised Developer",
+      "motivation": "Abuse legitimate kubectl access to deploy backdoored workloads or exfiltrate secrets from the cluster",
       "capability_tier": "targeted",
-      "initial_access_vector": "Container breakout from application vulnerability or misconfigured security context",
+      "initial_access_vector": "Stolen or phished kubeconfig with namespace-scoped permissions",
       "non_capabilities": [
-        "No node-level credentials without explicit service account binding",
-        "No cross-namespace access without NetworkPolicy bypass",
-        "No etcd direct access without API server credentials"
+        "No cluster-admin role by default — scoped to specific namespaces",
+        "No ability to modify admission controller webhook configuration without cluster-admin",
+        "No etcd direct read access — API server enforces RBAC on etcd queries"
+      ]
+    },
+    {
+      "name": "Supply Chain Attacker",
+      "motivation": "Inject a malicious container image into the registry to achieve persistent code execution across all deployments using that image",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Compromise of a base image in the upstream registry or the CI pipeline that pushes to the internal registry",
+      "non_capabilities": [
+        "No direct Kubernetes API access — relies on image being pulled and run",
+        "No ability to bypass image scanner without knowing scanner policy gaps or CVE exemption rules",
+        "No network access to cluster internal segments until a pod using the malicious image is running"
       ]
     }
   ],
   "attack_paths": [
     {
       "path_id": "AP-001",
+      "technique_id": "T1610",
+      "technique_name": "Deploy Container",
+      "tactic": "Defense Evasion",
+      "target_component": "k8s_api_server",
+      "entry_point": "Over-privileged developer kubeconfig or stolen service account token used to deploy a privileged container",
+      "impact": "Privileged container with host path mount provides node-level access — pivot to all secrets on the node",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Privileged container deployment is common in dev-oriented clusters; admission controllers not always enforcing PodSecurity standards"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1552",
+      "technique_name": "Unsecured Credentials",
+      "tactic": "Credential Access",
+      "target_component": "secret_store",
+      "entry_point": "Pod service account token with excessive RBAC — list/get Secrets cluster-wide via K8s API",
+      "impact": "All cluster secrets exposed — database passwords, API keys, TLS certs, registry credentials",
+      "likelihood": "High",
+      "likelihood_rationale": "Default service accounts in many K8s clusters have broad get/list Secret access; least-privilege RBAC frequently misconfigured"
+    },
+    {
+      "path_id": "AP-003",
       "technique_id": "T1190",
       "technique_name": "Exploit Public-Facing Application",
       "tactic": "Initial Access",
       "target_component": "ingress_controller",
-      "entry_point": "Internet-facing HTTPS port with CVE in Nginx ingress controller",
-      "impact": "Remote code execution in ingress namespace, potential cluster RBAC token access",
+      "entry_point": "CVE in ingress controller (e.g. Nginx annotation injection, Traefik middleware bypass) allows HTTP request manipulation or SSRF",
+      "impact": "Requests routed to internal services bypassing network policies — access to cluster-internal APIs not intended for public exposure",
       "likelihood": "Medium",
-      "likelihood_rationale": "Ingress controller CVEs are routinely published; version lag on patch management is common"
-    },
-    {
-      "path_id": "AP-002",
-      "technique_id": "T1059",
-      "technique_name": "Command and Scripting Interpreter",
-      "tactic": "Execution",
-      "target_component": "frontend_pods",
-      "entry_point": "Remote code execution in frontend application via injected payload",
-      "impact": "Shell access within frontend pod, access to service account token and cluster DNS",
-      "likelihood": "Medium",
-      "likelihood_rationale": "Frontend applications commonly have deserialization or injection vulnerabilities; pod exec gives k8s SA token"
-    },
-    {
-      "path_id": "AP-003",
-      "technique_id": "T1610",
-      "technique_name": "Deploy Container",
-      "tactic": "Defense Evasion",
-      "target_component": "backend_pods",
-      "entry_point": "Privileged service account token from AP-002 used to create new pod in prod namespace",
-      "impact": "Malicious pod deployed with host path mounts or privileged context, enabling node escape",
-      "likelihood": "Medium",
-      "likelihood_rationale": "Overly broad RBAC is pervasive in k8s; pods/create permission combined with host mounts enables node escape"
+      "likelihood_rationale": "Ingress controllers have a large CVE surface; annotation injection vulnerabilities have been critical in Nginx ingress controller versions"
     },
     {
       "path_id": "AP-004",
-      "technique_id": "T1552",
-      "technique_name": "Unsecured Credentials",
-      "tactic": "Credential Access",
-      "target_component": "database_statefulset",
-      "entry_point": "Database credentials in Kubernetes Secrets without encryption at rest",
-      "impact": "Database credentials exfiltrated from unencrypted etcd or environment variable leak",
-      "likelihood": "High",
-      "likelihood_rationale": "Kubernetes Secrets are base64 — not encrypted — by default unless etcd encryption is configured; commonly overlooked"
-    },
-    {
-      "path_id": "AP-005",
       "technique_id": "T1613",
       "technique_name": "Container and Resource Discovery",
       "tactic": "Discovery",
-      "target_component": "service_mesh",
-      "entry_point": "Service mesh control plane API accessible from compromised pod without mTLS policy enforcement",
-      "impact": "Cluster topology enumeration and inter-service traffic interception if mTLS not enforced",
+      "target_component": "k8s_api_server",
+      "entry_point": "Pod with default automounted service account token uses kubectl within container to enumerate cluster resources",
+      "impact": "Attacker maps entire cluster topology — namespaces, pods, services, secrets — enabling targeted lateral movement",
+      "likelihood": "High",
+      "likelihood_rationale": "Kubernetes automounts service account tokens by default; token-based API enumeration is a first step in nearly all K8s intrusions"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1525",
+      "technique_name": "Implant Internal Image",
+      "tactic": "Persistence",
+      "target_component": "container_registry",
+      "entry_point": "Registry credentials stolen from a CI service account allow pushing a backdoored image over a legitimate tag",
+      "impact": "Persistent code execution on all pods using the compromised image — persists across pod restarts and redeployments",
       "likelihood": "Medium",
-      "likelihood_rationale": "Service mesh mTLS often deployed in permissive mode during migration; PERMISSIVE mode allows cleartext"
+      "likelihood_rationale": "CI service accounts frequently have registry write access; image tag mutation is not always prevented by immutable tags"
     },
     {
       "path_id": "AP-006",
-      "technique_id": "T1078",
-      "technique_name": "Valid Accounts",
-      "tactic": "Defense Evasion",
-      "target_component": "database_statefulset",
-      "entry_point": "Database credentials from AP-004 used for direct database connection from pod",
-      "impact": "Full database read/write access bypassing application-layer controls",
-      "likelihood": "High",
-      "likelihood_rationale": "Once credentials obtained from Secrets, direct DB connection via pod exec or kubectl port-forward is trivial"
+      "technique_id": "T1611",
+      "technique_name": "Escape to Host",
+      "tactic": "Privilege Escalation",
+      "target_component": "worker_node_a",
+      "entry_point": "Container breakout via misconfigured securityContext (privileged: true, hostPID: true, or hostPath mount to /)",
+      "impact": "Node-level OS access — read all pod secrets from /var/lib/kubelet, access host network, potentially pivot to control plane",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Container escape via privileged settings is a well-documented K8s attack; PodSecurity admission not universally enforced"
     },
     {
       "path_id": "AP-007",
-      "technique_id": "T1021",
-      "technique_name": "Remote Services",
-      "tactic": "Lateral Movement",
-      "target_component": "cache_pods",
-      "entry_point": "Redis cache accessible within data namespace without auth from backend pod",
-      "impact": "Cache poisoning or session token theft affecting all authenticated users",
-      "likelihood": "Medium",
-      "likelihood_rationale": "Redis in Kubernetes commonly deployed without requirepass; namespace isolation often insufficient without NetworkPolicy"
+      "technique_id": "T1098",
+      "technique_name": "Account Manipulation",
+      "tactic": "Persistence",
+      "target_component": "rbac_engine",
+      "entry_point": "Attacker with ClusterRoleBinding create rights creates a new cluster-admin binding for a controlled service account",
+      "impact": "Persistent cluster-admin access via a new identity — survives kubeconfig rotation and account remediation",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires existing ClusterRoleBinding write permission (cluster-admin equivalent); high impact but narrower entry requirement"
     },
     {
       "path_id": "AP-008",
       "technique_id": "T1562",
       "technique_name": "Impair Defenses",
       "tactic": "Defense Evasion",
-      "target_component": "service_mesh",
-      "entry_point": "Disabling mTLS policy for targeted service via control plane API access",
-      "impact": "Cleartext inter-service traffic exposes session data and API tokens within the mesh",
+      "target_component": "prometheus",
+      "entry_point": "Attacker modifies Prometheus scrape config or drops metrics pipelines to suppress anomaly detection alerts",
+      "impact": "Observability blind spot — resource consumption, lateral movement, and API audit events go undetected",
       "likelihood": "Low",
-      "likelihood_rationale": "Service mesh control plane access requires elevated RBAC; achievable after AP-003 but adds attack steps"
+      "likelihood_rationale": "Requires access to Prometheus or cluster RBAC to modify scrape targets; most attackers prioritise exfiltration over detection evasion"
     }
   ],
   "mitigations": [
     {
       "mitigation_id": "M-001",
-      "control_id": "CIS Kubernetes Benchmark 5.4",
-      "control_name": "Ingress controller version pinning and automated CVE scanning",
-      "addresses_technique": ["T1190"],
+      "control_id": "CIS Kubernetes Benchmark 5.2",
+      "control_name": "PodSecurity admission enforcement — Restricted profile cluster-wide, Baseline minimum in all namespaces",
+      "addresses_technique": ["T1610"],
       "implementation_status": "Partial",
       "residual_risk": "Medium"
     },
     {
       "mitigation_id": "M-002",
-      "control_id": "NIST CSF PR.DS-7",
-      "control_name": "Pod security admission with non-root enforcement",
-      "addresses_technique": ["T1059"],
-      "implementation_status": "Implemented",
-      "residual_risk": "Low"
-    },
-    {
-      "mitigation_id": "M-003",
-      "control_id": "CIS Kubernetes Benchmark 5.1",
-      "control_name": "RBAC least privilege — deny pods/create to application service accounts",
-      "addresses_technique": ["T1610"],
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Least-privilege RBAC — no wildcard verbs on Secrets; service account automount disabled by default",
+      "addresses_technique": ["T1552"],
       "implementation_status": "Partial",
       "residual_risk": "High"
     },
     {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "Ingress controller version pinned and regularly patched; annotation injection disabled",
+      "addresses_technique": ["T1190"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
       "mitigation_id": "M-004",
-      "control_id": "CIS Kubernetes Benchmark 1.2",
-      "control_name": "etcd encryption at rest for Secrets",
-      "addresses_technique": ["T1552"],
+      "control_id": "CIS Kubernetes Benchmark 5.1",
+      "control_name": "Disable automountServiceAccountToken on pods and default service accounts; use projected tokens with audience binding",
+      "addresses_technique": ["T1613"],
       "implementation_status": "Planned",
       "residual_risk": "High"
     },
     {
       "mitigation_id": "M-005",
-      "control_id": "NIST CSF PR.AC-4",
-      "control_name": "Service mesh mTLS STRICT mode enforcement",
-      "addresses_technique": ["T1613", "T1562"],
+      "control_id": "NIST CSF PR.DS-6",
+      "control_name": "Immutable image tags in registry; admission webhook rejects images not scanned and signed by image_scanner",
+      "addresses_technique": ["T1525"],
       "implementation_status": "Partial",
       "residual_risk": "Medium"
     },
     {
       "mitigation_id": "M-006",
-      "control_id": "CIS Kubernetes Benchmark 5.5",
-      "control_name": "NetworkPolicy namespace isolation",
-      "addresses_technique": ["T1078", "T1021"],
+      "control_id": "CIS Kubernetes Benchmark 5.2.2",
+      "control_name": "Prohibit privileged containers and hostPath mounts via admission policy; enforce read-only root filesystem",
+      "addresses_technique": ["T1611"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Audit all ClusterRoleBinding creation; alert on unexpected cluster-admin bindings",
+      "addresses_technique": ["T1098"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "Prometheus availability monitoring via external heartbeat; audit log shipping to immutable external SIEM",
+      "addresses_technique": ["T1562"],
       "implementation_status": "Implemented",
       "residual_risk": "Low"
     }
@@ -191,71 +234,83 @@
     {
       "finding_id": "F-001",
       "severity": "Critical",
-      "severity_rationale": "Unencrypted etcd Secrets allow any user with etcd read access to obtain all credentials; default Kubernetes configuration",
+      "severity_rationale": "Default service account tokens with broad Secret read access are present across multiple namespaces — any pod compromise immediately exposes all cluster credentials without requiring privilege escalation",
       "severity_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
-      "affected_components": ["database_statefulset", "cache_pods"],
-      "linked_techniques": ["T1552"],
-      "linked_mitigations": ["M-004"],
+      "affected_components": ["secret_store", "k8s_api_server", "rbac_engine"],
+      "linked_techniques": ["T1552", "T1613"],
+      "linked_mitigations": ["M-002", "M-004"],
       "remediation_priority": "Immediate"
     },
     {
       "finding_id": "F-002",
-      "severity": "Critical",
-      "severity_rationale": "RBAC misconfiguration allowing pods/create with host mounts enables node escape from compromised pod",
+      "severity": "High",
+      "severity_rationale": "Privileged containers permitted by absent PodSecurity enforcement — any workload vulnerability becomes a host escape, exposing all other pods on the node",
       "severity_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
-      "affected_components": ["backend_pods", "frontend_pods"],
-      "linked_techniques": ["T1610"],
-      "linked_mitigations": ["M-003"],
+      "affected_components": ["worker_node_a", "worker_node_b", "container_runtime", "admission_controller"],
+      "linked_techniques": ["T1611", "T1610"],
+      "linked_mitigations": ["M-001", "M-006"],
       "remediation_priority": "Immediate"
     },
     {
       "finding_id": "F-003",
       "severity": "High",
-      "severity_rationale": "Database credentials obtained from Secrets enable direct full-access DB connection bypassing all app controls",
-      "severity_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
-      "affected_components": ["database_statefulset"],
-      "linked_techniques": ["T1078"],
-      "linked_mitigations": ["M-006"],
+      "severity_rationale": "Mutable image tags allow backdoored image to silently replace a legitimate one; image signing not enforced via admission webhook — supply chain risk",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": ["container_registry", "image_scanner", "admission_controller"],
+      "linked_techniques": ["T1525"],
+      "linked_mitigations": ["M-005"],
       "remediation_priority": "Short-term"
     },
     {
       "finding_id": "F-004",
       "severity": "Medium",
-      "severity_rationale": "Service mesh in permissive mode allows cleartext intra-cluster traffic; mTLS migration required",
-      "severity_vector": "CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
-      "affected_components": ["service_mesh"],
-      "linked_techniques": ["T1613"],
-      "linked_mitigations": ["M-005"],
+      "severity_rationale": "Ingress controller CVEs patched promptly via version pinning; residual risk from zero-days; internal service exposure via SSRF is bounded by network policies",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:L/I:L/A:N",
+      "affected_components": ["ingress_controller", "service_mesh_proxy"],
+      "linked_techniques": ["T1190"],
+      "linked_mitigations": ["M-003"],
       "remediation_priority": "Short-term"
     },
     {
       "finding_id": "F-005",
       "severity": "Medium",
-      "severity_rationale": "Redis without authentication enables cache poisoning affecting all sessions in the cache namespace",
-      "severity_vector": "CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
-      "affected_components": ["cache_pods"],
-      "linked_techniques": ["T1021"],
-      "linked_mitigations": ["M-006"],
+      "severity_rationale": "Privileged container deployment by developer with over-broad namespace permissions is possible; PodSecurity partial enforcement leaves gaps in lower-trust namespaces",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": ["k8s_api_server", "worker_node_a", "worker_node_b"],
+      "linked_techniques": ["T1610"],
+      "linked_mitigations": ["M-001"],
       "remediation_priority": "Short-term"
     },
     {
       "finding_id": "F-006",
       "severity": "Low",
-      "severity_rationale": "Ingress CVE risk is partially mitigated by scanning; residual depends on patch cadence",
-      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:L",
-      "affected_components": ["ingress_controller"],
-      "linked_techniques": ["T1190"],
-      "linked_mitigations": ["M-001"],
+      "severity_rationale": "ClusterRoleBinding creation is audited and alerted; RBAC persistence requires prior cluster-admin equivalent, which is a high bar and detectable",
+      "severity_vector": "CVSS:3.1/AV:L/AC:H/PR:H/UI:N/S:C/C:L/I:H/A:N",
+      "affected_components": ["rbac_engine", "k8s_api_server"],
+      "linked_techniques": ["T1098"],
+      "linked_mitigations": ["M-007"],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Informational",
+      "severity_rationale": "Prometheus disruption is detected by external heartbeat within minutes; audit logs ship to external SIEM independently — detection gap is bounded to the heartbeat interval",
+      "severity_vector": "CVSS:3.1/AV:L/AC:H/PR:H/UI:N/S:U/C:N/I:L/A:H",
+      "affected_components": ["prometheus", "log_aggregator"],
+      "linked_techniques": ["T1562"],
+      "linked_mitigations": ["M-008"],
       "remediation_priority": "Long-term"
     }
   ],
   "governance": {
-    "data_sovereignty": ["Singapore"],
-    "compliance_scope": ["CIS Kubernetes Benchmark", "SOC 2"],
+    "data_sovereignty": ["Singapore (on-premises cluster)"],
+    "compliance_scope": ["CIS Kubernetes Benchmark v1.8", "NIST CSF", "ISO 27001", "SOC 2 Type II"],
     "third_party_dependencies": [
-      { "name": "Kubernetes (managed GKE/EKS/AKS)", "trust_tier": "trusted" },
-      { "name": "Service mesh (Istio/Linkerd)", "trust_tier": "trusted" },
-      { "name": "Container registry", "trust_tier": "conditional" }
+      { "name": "Container registry (Harbor / ECR)", "trust_tier": "trusted" },
+      { "name": "Service mesh (Istio / Linkerd)", "trust_tier": "conditional" },
+      { "name": "Prometheus / Grafana (open source)", "trust_tier": "conditional" },
+      { "name": "Upstream base images (Docker Hub / Distroless)", "trust_tier": "untrusted" },
+      { "name": "CI/CD pipeline (GitHub Actions / GitLab CI)", "trust_tier": "conditional" }
     ]
   }
 }

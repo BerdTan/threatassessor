@@ -13,5 +13,5 @@
   "bonus_agentic": 0,
   "total": 13,
   "confidence": "Solid",
-  "notes": "Ground truth TM — all dimensions max. T3 complexity tier (note: source MMD has 7 components; classified as T3 due to multi-cloud trust boundaries and data flow complexity). 8 attack paths meeting minimum. Mixed severity (Critical through Informational)."
+  "notes": "Ground truth TM — 20 components, 8 attack paths across 5 trust boundaries, mixed severity Critical→Informational, varied CVSS vectors."
 }

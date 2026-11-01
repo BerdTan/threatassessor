@@ -1,25 +1,82 @@
 flowchart TB
-    Internet((Internet))
-    
-    subgraph Kubernetes_Cluster
-        Ingress[Ingress Controller]
-        
-        subgraph Namespace_Prod
-            FrontendPod[Frontend Pods]
-            BackendPod[Backend Pods]
-        end
-        
-        subgraph Namespace_Data
-            DatabasePod[(Database StatefulSet)]
-            CachePod[Cache Pods]
-        end
-        
-        ServiceMesh[Service Mesh]
+
+    subgraph External[External]
+        internet((Internet))
+        developer([Developer / CI Agent])
     end
-    
-    Internet --> Ingress
-    Ingress --> FrontendPod
-    FrontendPod --> ServiceMesh
-    ServiceMesh --> BackendPod
-    BackendPod --> DatabasePod
-    BackendPod --> CachePod
+
+    subgraph Registry[Container Registry]
+        container_registry[Container Registry]
+        image_scanner[Image Scanner]
+    end
+
+    subgraph Control_Plane[Kubernetes Control Plane]
+        k8s_api_server[K8s API Server]
+        etcd[(etcd - Cluster State)]
+        controller_manager[Controller Manager]
+        scheduler[Scheduler]
+        admission_controller[Admission Controller]
+        rbac_engine[RBAC Engine]
+    end
+
+    subgraph Node_Tier[Worker Nodes]
+        worker_node_a[Worker Node A]
+        worker_node_b[Worker Node B]
+        kubelet[Kubelet]
+        container_runtime[Container Runtime]
+    end
+
+    subgraph Networking[Cluster Networking]
+        ingress_controller[Ingress Controller]
+        service_mesh_proxy[Service Mesh Proxy]
+        network_policy_engine[Network Policy Engine]
+    end
+
+    subgraph Storage[Cluster Storage]
+        persistent_volume_controller[Persistent Volume Controller]
+        secret_store[Secret Store]
+    end
+
+    subgraph Observability[Observability]
+        prometheus[Prometheus]
+        log_aggregator[Log Aggregator]
+    end
+
+    internet --> ingress_controller
+    developer --> k8s_api_server
+    developer --> container_registry
+
+    container_registry --> image_scanner
+    image_scanner --> k8s_api_server
+
+    k8s_api_server --> admission_controller
+    admission_controller --> rbac_engine
+    k8s_api_server --> etcd
+    k8s_api_server --> controller_manager
+    k8s_api_server --> scheduler
+    k8s_api_server --> kubelet
+
+    scheduler --> worker_node_a
+    scheduler --> worker_node_b
+    controller_manager --> worker_node_a
+    controller_manager --> worker_node_b
+
+    worker_node_a --> kubelet
+    worker_node_b --> kubelet
+    kubelet --> container_runtime
+    container_runtime --> secret_store
+
+    ingress_controller --> service_mesh_proxy
+    service_mesh_proxy --> network_policy_engine
+    network_policy_engine --> worker_node_a
+    network_policy_engine --> worker_node_b
+
+    persistent_volume_controller --> worker_node_a
+    persistent_volume_controller --> worker_node_b
+    secret_store --> k8s_api_server
+
+    prometheus --> worker_node_a
+    prometheus --> worker_node_b
+    prometheus --> k8s_api_server
+    log_aggregator --> worker_node_a
+    log_aggregator --> worker_node_b

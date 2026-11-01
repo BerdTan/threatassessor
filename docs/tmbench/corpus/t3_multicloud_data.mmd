@@ -1,28 +1,69 @@
-flowchart LR
-    DataSources((Data Sources))
-    
-    subgraph Ingestion
-        KafkaCluster[Kafka Cluster]
+flowchart TB
+
+    subgraph External[External Data Sources]
+        kinesis_producer[Kinesis Producer]
+        pubsub_connector[GCP Pub/Sub Connector]
+        sftp_ingest[SFTP Ingest Gateway]
+        api_webhook[API Webhook Receiver]
     end
-    
-    subgraph Processing
-        SparkCluster[Spark Cluster]
+
+    subgraph Ingestion[Ingestion Tier]
+        kafka_cluster[Kafka Cluster]
+        schema_registry[Schema Registry]
+        kafka_connect[Kafka Connect]
     end
-    
-    subgraph Storage
-        DataLake[(Data Lake)]
-        DataWarehouse[(Data Warehouse)]
+
+    subgraph Processing[Processing Tier]
+        flink_cluster[Flink Streaming Cluster]
+        spark_batch[Spark Batch Processor]
+        data_quality_checker[Data Quality Checker]
     end
-    
-    subgraph Analytics
-        BI[BI Dashboard]
-        ML[ML Models]
+
+    subgraph Storage[Storage Tier]
+        data_lake_raw[(Data Lake - Raw Zone)]
+        data_lake_curated[(Data Lake - Curated Zone)]
+        data_warehouse[(Data Warehouse)]
+        feature_store[(Feature Store)]
     end
-    
-    DataSources --> KafkaCluster
-    KafkaCluster --> SparkCluster
-    SparkCluster --> DataLake
-    SparkCluster --> DataWarehouse
-    DataLake --> ML
-    DataWarehouse --> BI
-    ML --> BI
+
+    subgraph Serving[Serving Tier]
+        ml_model_registry[ML Model Registry]
+        ml_serving_endpoint[ML Serving Endpoint]
+        bi_dashboard[BI Dashboard]
+    end
+
+    subgraph Platform[Platform Services]
+        data_catalog[Data Catalog]
+        airflow_orchestrator[Airflow Orchestrator]
+        iam_service[IAM Service]
+    end
+
+    kinesis_producer --> kafka_cluster
+    pubsub_connector --> kafka_cluster
+    sftp_ingest --> kafka_connect
+    api_webhook --> kafka_cluster
+
+    kafka_cluster --> schema_registry
+    kafka_connect --> kafka_cluster
+    kafka_cluster --> flink_cluster
+    kafka_cluster --> spark_batch
+
+    flink_cluster --> data_quality_checker
+    spark_batch --> data_quality_checker
+    data_quality_checker --> data_lake_raw
+
+    data_lake_raw --> data_lake_curated
+    data_lake_curated --> data_warehouse
+    data_lake_curated --> feature_store
+
+    feature_store --> ml_model_registry
+    ml_model_registry --> ml_serving_endpoint
+    data_warehouse --> bi_dashboard
+
+    data_catalog --> data_lake_raw
+    data_catalog --> data_lake_curated
+    airflow_orchestrator --> spark_batch
+    airflow_orchestrator --> flink_cluster
+    iam_service --> kafka_cluster
+    iam_service --> data_lake_raw
+    iam_service --> data_warehouse

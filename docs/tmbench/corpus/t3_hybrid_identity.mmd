@@ -1,66 +1,90 @@
-flowchart LR
+flowchart TB
 
-subgraph External[External]
-    Attacker([Attacker])
-end
+    subgraph External[External]
+        attacker([External Attacker])
+        remote_user([Remote User])
+    end
 
-subgraph Endpoint_Layer[Endpoint Layer]
-    WS01[WS01]
-    AdminWS[Admin Workstation]
-end
+    subgraph Endpoint_Layer[Endpoint Layer]
+        workstation[Domain Workstation]
+        admin_ws[Admin Workstation]
+        vpn_client[VPN Client]
+    end
 
-subgraph On_Prem_AD[On-Premises AD]
-    DC01[(Domain Controller)]
-    NTDS[(Credential Store)]
-    KRBTGT[krbtgt]
-end
+    subgraph On_Prem_AD[On-Premises Active Directory]
+        dc01[(Domain Controller DC01)]
+        dc02[(Domain Controller DC02)]
+        ntds[(NTDS Credential Store)]
+        krbtgt[krbtgt Service Account]
+    end
 
-subgraph AD_CS[AD Certificate Services]
-    ADCS[AD CS Server]
-    CertTemplate[Certificate Templates]
-    EnrollmentSvc[Enrollment Service]
-    IssuingCA[(Issuing CA)]
-    RootCA[(Root CA)]
-    CRL[CRL Distribution Point]
-end
+    subgraph AD_CS[AD Certificate Services]
+        adcs_server[ADCS CA Server]
+        cert_template[Certificate Templates]
+        enrollment_svc[Web Enrollment Service]
+        issuing_ca[(Issuing CA)]
+        root_ca[(Root CA)]
+        crl_point[CRL Distribution Point]
+    end
 
-subgraph Cloud_Identity[Cloud Identity]
-    EntraID[Entra ID]
-    AADConnect[Azure AD Connect]
-    HybridAgent[Hybrid Join Agent]
-end
+    subgraph Hybrid_Bridge[Hybrid Identity Bridge]
+        aad_connect[Azure AD Connect]
+        hybrid_agent[Hybrid Join Agent]
+        federation_proxy[Federation Proxy]
+        scim_provisioner[SCIM Provisioner]
+    end
 
-%% Initial access
-Attacker --> WS01
-Attacker --> AdminWS
+    subgraph Cloud_Identity[Cloud Identity - Entra ID]
+        entra_id[Entra ID / Azure AD]
+        mfa_gateway[MFA Gateway]
+        conditional_access[Conditional Access Policy Engine]
+        pam_vault[PAM Vault]
+    end
 
-%% Endpoint to domain
-WS01 --> DC01
-WS01 --> EnrollmentSvc
-AdminWS --> DC01
-AdminWS --> ADCS
+    subgraph Security_Ops[Security Operations]
+        siem_connector[SIEM Connector]
+        audit_log[(Audit Log Store)]
+    end
 
-%% Domain controller hub
-DC01 --> NTDS
-DC01 --> KRBTGT
-DC01 --> ADCS
-DC01 <--> EntraID
+    attacker --> workstation
+    attacker --> enrollment_svc
+    remote_user --> vpn_client
+    vpn_client --> dc01
 
-%% AD CS internal structure (ESC attack paths via misconfigured templates)
-ADCS --> CertTemplate
-ADCS --> EnrollmentSvc
-ADCS --> IssuingCA
-IssuingCA --> RootCA
-IssuingCA --> CRL
-EnrollmentSvc --> IssuingCA
+    workstation --> dc01
+    workstation --> enrollment_svc
+    admin_ws --> dc01
+    admin_ws --> adcs_server
+    admin_ws --> pam_vault
 
-%% Hybrid identity sync paths
-AADConnect --> DC01
-AADConnect --> EntraID
-HybridAgent --> DC01
-HybridAgent --> EntraID
+    dc01 --> ntds
+    dc01 --> krbtgt
+    dc01 <--> dc02
+    dc01 --> adcs_server
+    dc01 <--> entra_id
 
-%% Attacker template abuse (ESC1/ESC4/ESC8)
-WS01 -.-> CertTemplate
-WS01 -.-> IssuingCA
-AdminWS --> RootCA
+    adcs_server --> cert_template
+    adcs_server --> enrollment_svc
+    adcs_server --> issuing_ca
+    issuing_ca --> root_ca
+    issuing_ca --> crl_point
+    enrollment_svc --> issuing_ca
+
+    aad_connect --> dc01
+    aad_connect --> entra_id
+    hybrid_agent --> dc01
+    hybrid_agent --> entra_id
+    federation_proxy --> dc01
+    federation_proxy --> entra_id
+    scim_provisioner --> entra_id
+    scim_provisioner --> dc01
+
+    entra_id --> mfa_gateway
+    entra_id --> conditional_access
+    mfa_gateway --> conditional_access
+    conditional_access --> pam_vault
+
+    dc01 --> siem_connector
+    entra_id --> siem_connector
+    adcs_server --> siem_connector
+    siem_connector --> audit_log
