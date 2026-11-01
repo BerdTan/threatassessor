@@ -1,0 +1,570 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t3_hybrid_identity",
+  "produced_by": "hetzner v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "attacker",
+        "role": "external_actor",
+        "trust_zone": "External"
+      },
+      {
+        "id": "remote_user",
+        "role": "internal_actor",
+        "trust_zone": "External"
+      },
+      {
+        "id": "workstation",
+        "role": "endpoint",
+        "trust_zone": "Endpoint_Layer"
+      },
+      {
+        "id": "admin_ws",
+        "role": "privileged_endpoint",
+        "trust_zone": "Endpoint_Layer"
+      },
+      {
+        "id": "vpn_client",
+        "role": "ingress",
+        "trust_zone": "Endpoint_Layer"
+      },
+      {
+        "id": "dc01",
+        "role": "compute",
+        "trust_zone": "On_Prem_AD"
+      },
+      {
+        "id": "dc02",
+        "role": "compute",
+        "trust_zone": "On_Prem_AD"
+      },
+      {
+        "id": "ntds",
+        "role": "data_store",
+        "trust_zone": "On_Prem_AD"
+      },
+      {
+        "id": "krbtgt",
+        "role": "service_account",
+        "trust_zone": "On_Prem_AD"
+      },
+      {
+        "id": "adcs_server",
+        "role": "compute",
+        "trust_zone": "AD_CS"
+      },
+      {
+        "id": "cert_template",
+        "role": "configuration",
+        "trust_zone": "AD_CS"
+      },
+      {
+        "id": "enrollment_svc",
+        "role": "ingress",
+        "trust_zone": "AD_CS"
+      },
+      {
+        "id": "issuing_ca",
+        "role": "data_store",
+        "trust_zone": "AD_CS"
+      },
+      {
+        "id": "root_ca",
+        "role": "data_store",
+        "trust_zone": "AD_CS"
+      },
+      {
+        "id": "crl_point",
+        "role": "egress",
+        "trust_zone": "AD_CS"
+      },
+      {
+        "id": "aad_connect",
+        "role": "agent",
+        "trust_zone": "Hybrid_Bridge"
+      },
+      {
+        "id": "hybrid_agent",
+        "role": "agent",
+        "trust_zone": "Hybrid_Bridge"
+      },
+      {
+        "id": "federation_proxy",
+        "role": "ingress",
+        "trust_zone": "Hybrid_Bridge"
+      },
+      {
+        "id": "scim_provisioner",
+        "role": "agent",
+        "trust_zone": "Hybrid_Bridge"
+      },
+      {
+        "id": "entra_id",
+        "role": "compute",
+        "trust_zone": "Cloud_Identity"
+      },
+      {
+        "id": "mfa_gateway",
+        "role": "compute",
+        "trust_zone": "Cloud_Identity"
+      },
+      {
+        "id": "conditional_access",
+        "role": "compute",
+        "trust_zone": "Cloud_Identity"
+      },
+      {
+        "id": "pam_vault",
+        "role": "data_store",
+        "trust_zone": "Cloud_Identity"
+      },
+      {
+        "id": "siem_connector",
+        "role": "agent",
+        "trust_zone": "Security_Ops"
+      },
+      {
+        "id": "audit_log",
+        "role": "data_store",
+        "trust_zone": "Security_Ops"
+      }
+    ],
+    "trust_boundaries": [
+      "External to Endpoint Layer (VPN/Internet)",
+      "Endpoint Layer to On-Prem AD",
+      "On-Prem AD to AD Certificate Services",
+      "On-Prem AD to Hybrid Identity Bridge",
+      "Hybrid Identity Bridge to Cloud Identity",
+      "Cloud Identity to Security Ops"
+    ],
+    "data_classification": "restricted",
+    "operational_context": "Hybrid Identity Infrastructure (On-Prem AD + Azure AD/Entra ID) with Certificate Services and PAM integration"
+  },
+  "threat_actors": [
+    {
+      "name": "External Attacker",
+      "motivation": "Data theft, ransomware deployment, or disruption of identity services",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Exploiting vulnerabilities in ADCS Enrollment Service or phishing remote users",
+      "non_capabilities": [
+        "No physical access to on-premises data centers",
+        "No pre-existing domain admin credentials",
+        "Cannot bypass MFA without social engineering or credential theft"
+      ]
+    },
+    {
+      "name": "Insider (Malicious Admin)",
+      "motivation": "Sabotage, data exfiltration, or privilege escalation for personal gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate access via Admin Workstation",
+      "non_capabilities": [
+        "No physical access to hardware security modules (if used for Root CA)",
+        "Cannot bypass PAM vault approval workflows without compromising the PAM system itself"
+      ]
+    },
+    {
+      "name": "Adversarial Agent (AI/ML)",
+      "motivation": "Goal hijacking or data poisoning if AI components are used for anomaly detection",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Input manipulation to SIEM/Analytics pipeline",
+      "non_capabilities": [
+        "No direct control over network infrastructure",
+        "Cannot modify code in the PAM vault"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1556.004",
+      "technique_name": "Modify Certificate Templates",
+      "tactic": "Persistence",
+      "target_component": "adcs_server",
+      "entry_point": "admin_ws",
+      "impact": "Attacker can request certificates that authenticate as any user, including Domain Admins, bypassing MFA and PAM controls",
+      "likelihood": "High",
+      "likelihood_rationale": "ADCS misconfigurations are common; admin_ws has high privileges to modify templates."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1552.004",
+      "technique_name": "Private Keys",
+      "tactic": "Credential Access",
+      "target_component": "ntds",
+      "entry_point": "dc01",
+      "impact": "Dumping NTDS.dit allows offline cracking of hashes and extraction of krbtgt hash for Golden Ticket attacks",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Requires initial access to DC; mitigated by LSA protection and restricted admin mode."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "enrollment_svc",
+      "entry_point": "attacker",
+      "impact": "Remote code execution on ADCS server, leading to full compromise of certificate infrastructure",
+      "likelihood": "High",
+      "likelihood_rationale": "Enrollment Service is often internet-facing and historically vulnerable to CVEs (e.g., Zerologon, ADCS exploits)."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1550.002",
+      "technique_name": "Use Alternate Authentication Material: Pass the Hash",
+      "tactic": "Lateral Movement",
+      "target_component": "entra_id",
+      "entry_point": "aad_connect",
+      "impact": "Lateral movement from on-prem DC to Cloud Identity using stolen NTLM hashes",
+      "likelihood": "Medium",
+      "likelihood_rationale": "AAD Connect syncs credentials; if on-prem is compromised, cloud identity is at risk unless password hash sync is disabled or MFA is enforced."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1078.004",
+      "technique_name": "Valid Accounts: Cloud Accounts",
+      "tactic": "Initial Access",
+      "target_component": "entra_id",
+      "entry_point": "remote_user",
+      "impact": "Compromise of user account via credential stuffing or phishing, bypassing on-prem security",
+      "likelihood": "High",
+      "likelihood_rationale": "Remote users are primary targets for phishing; MFA is a control but not infallible."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1556.005",
+      "technique_name": "Modify Identity Infrastructure: Certificate Services",
+      "tactic": "Defense Evasion",
+      "target_component": "issuing_ca",
+      "entry_point": "adcs_server",
+      "impact": "Attacker modifies CA settings to issue rogue certificates or disable CRL checking",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Requires admin access to ADCS; mitigated by separation of duties."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1558.003",
+      "technique_name": "Steal or Forge Kerberos Tickets: Golden Ticket",
+      "tactic": "Persistence",
+      "target_component": "krbtgt",
+      "entry_point": "dc01",
+      "impact": "Creation of forged TGTs to access any resource in the domain without detection",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires krbtgt hash; mitigated by regular password rotation and LSA protection."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1136.003",
+      "technique_name": "Create Account: Cloud Account",
+      "tactic": "Persistence",
+      "target_component": "entra_id",
+      "entry_point": "entra_id",
+      "impact": "Attacker creates a new admin account in Entra ID for persistent access",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If global admin credentials are compromised, attacker can create backdoors."
+    },
+    {
+      "path_id": "AP-009",
+      "technique_id": "T1059.001",
+      "technique_name": "Command and Scripting Interpreter: PowerShell",
+      "tactic": "Execution",
+      "target_component": "hybrid_agent",
+      "entry_point": "hybrid_agent",
+      "impact": "Execution of malicious scripts on the hybrid agent to exfiltrate data or modify sync rules",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Agents often run with high privileges; script execution is a common abuse vector."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-5",
+      "control_name": "Network Integrity Checks",
+      "addresses_technique": [
+        "T1556.004"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.DS-5",
+      "control_name": "Data Protection",
+      "addresses_technique": [
+        "T1552.004"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 11",
+      "control_name": "Email and Web Browser Protections",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Authentication for Authorization",
+      "addresses_technique": [
+        "T1550.002"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.IP-12",
+      "control_name": "Security Testing",
+      "addresses_technique": [
+        "T1078.004"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Access Control",
+      "addresses_technique": [
+        "T1556.005"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Security Attributes",
+      "addresses_technique": [
+        "T1558.003"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF PR.AC-5",
+      "control_name": "Network Integrity Checks",
+      "addresses_technique": [
+        "T1136.003"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "NIST CSF PR.AC-8",
+      "control_name": "Remote Access",
+      "addresses_technique": [
+        "T1059.001"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "Compromise of ADCS allows full domain takeover via certificate forgery, bypassing all other controls.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "adcs_server",
+        "issuing_ca",
+        "root_ca"
+      ],
+      "linked_techniques": [
+        "T1556.004"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Dumping NTDS.dit allows offline cracking of all domain passwords and krbtgt hash.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "ntds",
+        "dc01"
+      ],
+      "linked_techniques": [
+        "T1552.004"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Public-facing ADCS service is a high-value target for initial access.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "enrollment_svc",
+        "adcs_server"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Lateral movement from on-prem to cloud via AAD Connect is a critical hybrid risk.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "aad_connect",
+        "entra_id"
+      ],
+      "linked_techniques": [
+        "T1550.002"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Phishing is a common initial access vector for remote users.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "remote_user",
+        "entra_id"
+      ],
+      "linked_techniques": [
+        "T1078.004"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "Modifying CA settings can disable security controls.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "issuing_ca",
+        "adcs_server"
+      ],
+      "linked_techniques": [
+        "T1556.005"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Critical",
+      "severity_rationale": "Golden Ticket allows persistent, undetectable domain admin access.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "krbtgt",
+        "dc01"
+      ],
+      "linked_techniques": [
+        "T1558.003"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "High",
+      "severity_rationale": "Creating cloud admin accounts provides persistent access to cloud resources.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "entra_id"
+      ],
+      "linked_techniques": [
+        "T1136.003"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "Medium",
+      "severity_rationale": "Script execution on hybrid agents can lead to data exfiltration.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "hybrid_agent"
+      ],
+      "linked_techniques": [
+        "T1059.001"
+      ],
+      "linked_mitigations": [
+        "M-009"
+      ],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US",
+      "EU"
+    ],
+    "compliance_scope": [
+      "SOC 2",
+      "ISO 27001",
+      "GDPR",
+      "PCI-DSS"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "Microsoft Azure",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Microsoft Entra ID",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Microsoft ADCS",
+        "trust_tier": "trusted"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "supervised",
+      "tool_call_scope": [
+        "SCIM Provisioning API",
+        "Hybrid Join Agent Commands",
+        "Federation Proxy Configuration"
+      ],
+      "blast_radius": "Compromise of hybrid agents could lead to identity sync manipulation, unauthorized account creation, or credential theft from on-prem to cloud.",
+      "human_oversight_points": [
+        "PAM Vault approval for privileged access",
+        "Conditional Access Policy review",
+        "ADCS Certificate Template modification approval"
+      ],
+      "model_provenance": {
+        "provider": "Microsoft",
+        "model_id": "N/A (Rule-based Identity Infrastructure)",
+        "fine_tuned": false
+      }
+    }
+  }
+}

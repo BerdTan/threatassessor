@@ -1,0 +1,352 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_saas_integration",
+  "produced_by": "hetzner v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "EndUser",
+        "role": "ingress",
+        "trust_zone": "Untrusted"
+      },
+      {
+        "id": "ExternalSaaS",
+        "role": "egress",
+        "trust_zone": "Untrusted"
+      },
+      {
+        "id": "OAuthProxy",
+        "role": "ingress",
+        "trust_zone": "DMZ"
+      },
+      {
+        "id": "WebhookReceiver",
+        "role": "ingress",
+        "trust_zone": "DMZ"
+      },
+      {
+        "id": "RateLimiter",
+        "role": "compute",
+        "trust_zone": "DMZ"
+      },
+      {
+        "id": "EventQueue",
+        "role": "compute",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "Transformer",
+        "role": "compute",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "IntegrationDB",
+        "role": "data_store",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "AuditLog",
+        "role": "data_store",
+        "trust_zone": "Internal"
+      }
+    ],
+    "trust_boundaries": [
+      "EndUser to OAuthProxy",
+      "ExternalSaaS to WebhookReceiver",
+      "DMZ to Internal (RateLimiter/EventQueue)",
+      "Internal to Data Layer (IntegrationDB/AuditLog)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "SaaS Integration Platform"
+  },
+  "threat_actors": [
+    {
+      "name": "External Attacker",
+      "motivation": "Data theft or service disruption",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Exploiting OAuth misconfiguration or Webhook signature validation failure",
+      "non_capabilities": [
+        "No physical access to data center",
+        "No pre-existing valid OAuth tokens",
+        "No access to internal network segments without initial compromise"
+      ]
+    },
+    {
+      "name": "Malicious Insider",
+      "motivation": "Data exfiltration or sabotage",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Abuse of legitimate credentials or internal API access",
+      "non_capabilities": [
+        "No ability to bypass hardware security modules if implemented",
+        "No ability to alter audit logs without detection if WORM storage is used"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "WebhookReceiver",
+      "entry_point": "HTTP Endpoint",
+      "impact": "Unauthorized data injection into EventQueue",
+      "likelihood": "High",
+      "likelihood_rationale": "Webhooks are internet-facing and often lack robust signature verification in early stages."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "OAuthProxy",
+      "entry_point": "OAuth Flow",
+      "impact": "Impersonation of legitimate users to access protected resources",
+      "likelihood": "Medium",
+      "likelihood_rationale": "OAuth flows are complex and prone to misconfiguration, but standard libraries reduce risk."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1059",
+      "technique_name": "Command and Scripting Interpreter",
+      "tactic": "Execution",
+      "target_component": "Transformer",
+      "entry_point": "Data Processing Logic",
+      "impact": "Remote Code Execution via malicious payload in transformed data",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If input sanitization is insufficient, malicious scripts in data can execute."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1530",
+      "technique_name": "Data from Cloud Storage",
+      "tactic": "Collection",
+      "target_component": "IntegrationDB",
+      "entry_point": "Database Credentials",
+      "impact": "Exfiltration of sensitive customer data",
+      "likelihood": "Low",
+      "likelihood_rationale": "Database is internal and protected by network segmentation and IAM."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1498",
+      "technique_name": "Network Denial of Service",
+      "tactic": "Impact",
+      "target_component": "RateLimiter",
+      "entry_point": "API Traffic",
+      "impact": "Service degradation or denial of service",
+      "likelihood": "High",
+      "likelihood_rationale": "Rate limiters can be bypassed or overwhelmed by distributed attacks."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1071",
+      "technique_name": "Application Layer Protocol",
+      "tactic": "Command and Control",
+      "target_component": "EventQueue",
+      "entry_point": "Message Broker",
+      "impact": "Covert communication channel for C2 traffic",
+      "likelihood": "Low",
+      "likelihood_rationale": "Internal message queues are not typically monitored for C2 traffic."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-5",
+      "control_name": "Authentication and Authorization",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Use of Authentication for Access",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 16",
+      "control_name": "Application Software Security",
+      "addresses_technique": [
+        "T1059"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.DS-5",
+      "control_name": "Data Integrity",
+      "addresses_technique": [
+        "T1530"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.IP-12",
+      "control_name": "Traffic Filtering",
+      "addresses_technique": [
+        "T1498"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF DE.CM-8",
+      "control_name": "Malicious Code Detection",
+      "addresses_technique": [
+        "T1071"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Webhook receiver is internet-facing and currently lacks robust signature verification, allowing easy injection.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "WebhookReceiver"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Medium",
+      "severity_rationale": "OAuth flow is implemented but complex configurations may lead to token leakage.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "OAuthProxy"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Transformer executes code on untrusted data, leading to potential RCE.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Transformer"
+      ],
+      "linked_techniques": [
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Database credentials may be exposed if not rotated or if logs are verbose.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "IntegrationDB"
+      ],
+      "linked_techniques": [
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Rate limiter can be bypassed, leading to DoS.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": [
+        "RateLimiter"
+      ],
+      "linked_techniques": [
+        "T1498"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Low",
+      "severity_rationale": "Internal message queue is not monitored for C2 traffic.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+      "affected_components": [
+        "EventQueue"
+      ],
+      "linked_techniques": [
+        "T1071"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US",
+      "EU"
+    ],
+    "compliance_scope": [
+      "SOC 2",
+      "GDPR"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "External SaaS Provider",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "OAuth Provider",
+        "trust_tier": "trusted"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "supervised",
+      "tool_call_scope": [
+        "Read IntegrationDB",
+        "Write AuditLog",
+        "Send Webhook"
+      ],
+      "blast_radius": "Data corruption in IntegrationDB or AuditLog",
+      "human_oversight_points": [
+        "Approval for bulk data exports",
+        "Review of failed transformations"
+      ],
+      "model_provenance": {
+        "provider": "Internal",
+        "model_id": "Transformer-v1",
+        "fine_tuned": false
+      }
+    }
+  }
+}

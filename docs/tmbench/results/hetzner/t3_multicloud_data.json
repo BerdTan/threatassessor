@@ -1,0 +1,487 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t3_multicloud_data",
+  "produced_by": "hetzner v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "kinesis_producer",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "pubsub_connector",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "sftp_ingest",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "api_webhook",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "kafka_cluster",
+        "role": "compute",
+        "trust_zone": "ingestion"
+      },
+      {
+        "id": "schema_registry",
+        "role": "compute",
+        "trust_zone": "ingestion"
+      },
+      {
+        "id": "kafka_connect",
+        "role": "agent",
+        "trust_zone": "ingestion"
+      },
+      {
+        "id": "flink_cluster",
+        "role": "compute",
+        "trust_zone": "processing"
+      },
+      {
+        "id": "spark_batch",
+        "role": "compute",
+        "trust_zone": "processing"
+      },
+      {
+        "id": "data_quality_checker",
+        "role": "agent",
+        "trust_zone": "processing"
+      },
+      {
+        "id": "data_lake_raw",
+        "role": "data_store",
+        "trust_zone": "storage"
+      },
+      {
+        "id": "data_lake_curated",
+        "role": "data_store",
+        "trust_zone": "storage"
+      },
+      {
+        "id": "data_warehouse",
+        "role": "data_store",
+        "trust_zone": "storage"
+      },
+      {
+        "id": "feature_store",
+        "role": "data_store",
+        "trust_zone": "storage"
+      },
+      {
+        "id": "ml_model_registry",
+        "role": "data_store",
+        "trust_zone": "serving"
+      },
+      {
+        "id": "ml_serving_endpoint",
+        "role": "compute",
+        "trust_zone": "serving"
+      },
+      {
+        "id": "bi_dashboard",
+        "role": "egress",
+        "trust_zone": "serving"
+      },
+      {
+        "id": "data_catalog",
+        "role": "compute",
+        "trust_zone": "platform"
+      },
+      {
+        "id": "airflow_orchestrator",
+        "role": "agent",
+        "trust_zone": "platform"
+      },
+      {
+        "id": "iam_service",
+        "role": "compute",
+        "trust_zone": "platform"
+      }
+    ],
+    "trust_boundaries": [
+      "External to Ingestion (kafka_cluster)",
+      "Ingestion to Processing (flink_cluster, spark_batch)",
+      "Processing to Storage (data_lake_raw)",
+      "Storage to Serving (feature_store, data_warehouse)",
+      "Platform to All (iam_service)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "hybrid"
+  },
+  "threat_actors": [
+    {
+      "name": "Insider Data Exfiltrator",
+      "motivation": "Financial gain via selling PII",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Compromised analyst credentials",
+      "non_capabilities": [
+        "No physical access to data centers",
+        "Cannot bypass MFA without existing session token",
+        "No zero-day exploits available"
+      ]
+    },
+    {
+      "name": "External Attacker",
+      "motivation": "Disruption or data theft",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Exploiting misconfigured SFTP or API Webhook",
+      "non_capabilities": [
+        "No pre-existing valid credentials",
+        "Cannot interact with internal IAM directly without initial foothold"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "api_webhook",
+      "entry_point": "Public HTTPS endpoint",
+      "impact": "Remote Code Execution on ingestion layer",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Web applications are common targets; rate limiting may mitigate brute force but not logic flaws."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "sftp_ingest",
+      "entry_point": "SFTP credentials",
+      "impact": "Unauthorized file upload (malicious payload)",
+      "likelihood": "Medium",
+      "likelihood_rationale": "SFTP often uses static keys; credential stuffing or theft is feasible."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "kafka_cluster",
+      "entry_point": "Kafka SASL/SCRAM credentials",
+      "impact": "Data injection or consumption",
+      "likelihood": "Low",
+      "likelihood_rationale": "Internal service; requires lateral movement or credential theft first."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1059",
+      "technique_name": "Command and Scripting Interpreter",
+      "tactic": "Execution",
+      "target_component": "flink_cluster",
+      "entry_point": "Flink Job Submission API",
+      "impact": "Arbitrary code execution in processing tier",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If job submission is not strictly authenticated/authorized, attackers can deploy malicious UDFs."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1112",
+      "technique_name": "Modify Registry",
+      "tactic": "Persistence",
+      "target_component": "schema_registry",
+      "entry_point": "Schema Registry API",
+      "impact": "Malicious schema enforcement bypassing validation",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires high privileges; impact is subtle but long-lasting."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1530",
+      "technique_name": "Data from Cloud Storage Object",
+      "tactic": "Collection",
+      "target_component": "data_lake_raw",
+      "entry_point": "S3/MinIO API",
+      "impact": "Exfiltration of raw PII",
+      "likelihood": "High",
+      "likelihood_rationale": "Raw data is often less protected; bucket misconfigurations are common."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1136",
+      "technique_name": "Create Account",
+      "tactic": "Persistence",
+      "target_component": "iam_service",
+      "entry_point": "IAM Console/API",
+      "impact": "Backdoor access for future attacks",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If IAM is not strictly governed, insider or compromised user can create service accounts."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1059.004",
+      "technique_name": "Unix Shell",
+      "tactic": "Execution",
+      "target_component": "spark_batch",
+      "entry_point": "Spark Submit",
+      "impact": "Data exfiltration via Spark jobs",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Spark jobs run with user privileges; malicious jobs can read/write sensitive data."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-5",
+      "control_name": "Network Integrity",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Authentication",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 16.1",
+      "control_name": "API Security",
+      "addresses_technique": [
+        "T1059"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.DS-5",
+      "control_name": "Data Integrity",
+      "addresses_technique": [
+        "T1112"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.AC-8",
+      "control_name": "Data-at-Rest Protection",
+      "addresses_technique": [
+        "T1530"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Access Control",
+      "addresses_technique": [
+        "T1136"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "CIS Control 5.1",
+      "control_name": "Inventory of Software",
+      "addresses_technique": [
+        "T1059.004"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF PR.IP-12",
+      "control_name": "Secure Configuration",
+      "addresses_technique": [
+        "T1190",
+        "T1059"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Public API is a high-value target with potential for full system compromise.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "api_webhook"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Medium",
+      "severity_rationale": "SFTP credentials are a common attack vector but internal network limits impact.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "sftp_ingest"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Kafka is critical infrastructure; compromise allows data poisoning.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "kafka_cluster"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Code execution in processing tier allows data exfiltration and persistence.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "flink_cluster"
+      ],
+      "linked_techniques": [
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Schema manipulation can bypass validation, leading to downstream issues.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "schema_registry"
+      ],
+      "linked_techniques": [
+        "T1112"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Critical",
+      "severity_rationale": "Raw data contains PII; exfiltration leads to major regulatory breach.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "data_lake_raw"
+      ],
+      "linked_techniques": [
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "High",
+      "severity_rationale": "IAM compromise provides persistent access to all components.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "iam_service"
+      ],
+      "linked_techniques": [
+        "T1136"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Medium",
+      "severity_rationale": "Spark job execution allows data access but is constrained by user permissions.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "spark_batch"
+      ],
+      "linked_techniques": [
+        "T1059.004"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "EU",
+      "US"
+    ],
+    "compliance_scope": [
+      "GDPR",
+      "SOC 2"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "AWS Kinesis",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "GCP Pub/Sub",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Hetzner Cloud",
+        "trust_tier": "trusted"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "supervised",
+      "tool_call_scope": [
+        "spark_submit",
+        "flink_submit",
+        "s3_put"
+      ],
+      "blast_radius": "Data corruption in storage tier",
+      "human_oversight_points": [
+        "Airflow approval gates for production jobs"
+      ],
+      "model_provenance": {
+        "provider": "Internal",
+        "model_id": "none",
+        "fine_tuned": false
+      }
+    }
+  }
+}

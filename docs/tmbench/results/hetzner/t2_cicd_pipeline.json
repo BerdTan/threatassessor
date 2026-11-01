@@ -1,0 +1,452 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_cicd_pipeline",
+  "produced_by": "hetzner v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Developer",
+        "role": "agent",
+        "trust_zone": "External"
+      },
+      {
+        "id": "GitHub",
+        "role": "ingress",
+        "trust_zone": "Source_Control"
+      },
+      {
+        "id": "BranchProtection",
+        "role": "control",
+        "trust_zone": "Source_Control"
+      },
+      {
+        "id": "ActionsRunner",
+        "role": "compute",
+        "trust_zone": "CI_Layer"
+      },
+      {
+        "id": "SecretManager",
+        "role": "data_store",
+        "trust_zone": "CI_Layer"
+      },
+      {
+        "id": "SAST",
+        "role": "compute",
+        "trust_zone": "Artifact_Layer"
+      },
+      {
+        "id": "Artifactory",
+        "role": "data_store",
+        "trust_zone": "Artifact_Layer"
+      },
+      {
+        "id": "StagingEnv",
+        "role": "compute",
+        "trust_zone": "Deploy_Layer"
+      },
+      {
+        "id": "ProdEnv",
+        "role": "compute",
+        "trust_zone": "Deploy_Layer"
+      },
+      {
+        "id": "DeployKey",
+        "role": "data_store",
+        "trust_zone": "Deploy_Layer"
+      }
+    ],
+    "trust_boundaries": [
+      "External to Source Control (Developer -> GitHub)",
+      "Source Control to CI Layer (GitHub -> ActionsRunner)",
+      "CI Layer to Artifact Layer (ActionsRunner/SAST -> Artifactory)",
+      "Artifact Layer to Deploy Layer (Artifactory -> Staging/Prod)",
+      "Deploy Key Store to Production (DeployKey -> ProdEnv)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted SaaS CI/CD pipeline using GitHub Actions, with staged deployment to internal staging and production environments."
+  },
+  "threat_actors": [
+    {
+      "name": "External Attacker (Supply Chain)",
+      "motivation": "Compromise software supply chain to inject malicious code or steal intellectual property.",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Exploiting vulnerable dependencies or compromised third-party GitHub Actions.",
+      "non_capabilities": [
+        "No physical access to on-premise hardware",
+        "No direct access to production database credentials without prior compromise",
+        "Cannot bypass MFA on developer accounts without social engineering"
+      ]
+    },
+    {
+      "name": "Malicious Insider",
+      "motivation": "Sabotage production environment or steal sensitive secrets.",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Abusing developer privileges or stolen credentials.",
+      "non_capabilities": [
+        "No access to hardware security modules (HSM) if used for key signing",
+        "Cannot bypass network segmentation between Staging and Prod without lateral movement"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1195.002",
+      "technique_name": "Supply Compromise: Compromise Software Supply Chain",
+      "tactic": "Initial Access",
+      "target_component": "ActionsRunner",
+      "entry_point": "GitHub Repository (via compromised third-party Action)",
+      "impact": "Execution of arbitrary code within the CI environment, leading to secret theft or artifact tampering.",
+      "likelihood": "High",
+      "likelihood_rationale": "Third-party actions are widely used and often lack rigorous security auditing; supply chain attacks are prevalent."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1530",
+      "technique_name": "Data from Cloud Storage",
+      "tactic": "Collection",
+      "target_component": "SecretManager",
+      "entry_point": "ActionsRunner (via compromised CI job)",
+      "impact": "Exfiltration of secrets (API keys, DB credentials) stored in the Secrets Manager.",
+      "likelihood": "High",
+      "likelihood_rationale": "If the CI runner is compromised (AP-001), secrets are often accessible in environment variables or mounted volumes."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1059",
+      "technique_name": "Command and Scripting Interpreter",
+      "tactic": "Execution",
+      "target_component": "ProdEnv",
+      "entry_point": "Deploy Key Store (via stolen deploy key)",
+      "impact": "Remote code execution on production servers via malicious deployment scripts.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Requires prior compromise of deploy keys, but impact is critical."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "GitHub",
+      "entry_point": "Developer Credentials (via phishing)",
+      "impact": "Unauthorized push to main branch, bypassing branch protection if rules are misconfigured.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Phishing is a common initial access vector for developer accounts."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1567",
+      "technique_name": "Exfiltration Over Web Service",
+      "tactic": "Exfiltration",
+      "target_component": "Artifactory",
+      "entry_point": "ActionsRunner (via malicious build script)",
+      "impact": "Uploading backdoored artifacts to the registry for distribution.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If CI is compromised, attacker can modify build process to inject malware."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1048",
+      "technique_name": "Exfiltration Over Alternative Protocol",
+      "tactic": "Exfiltration",
+      "target_component": "SecretManager",
+      "entry_point": "ActionsRunner (via DNS tunneling)",
+      "impact": "Stealing secrets from the CI environment using covert channels.",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires specific network configuration to allow DNS tunneling; often blocked by egress filters."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1098",
+      "technique_name": "Account Manipulation",
+      "tactic": "Persistence",
+      "target_component": "GitHub",
+      "entry_point": "Repository Settings (via compromised admin account)",
+      "impact": "Adding backdoor collaborators or modifying branch protection rules.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If an admin account is compromised, persistence mechanisms can be established easily."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1552",
+      "technique_name": "Unsecured Credentials",
+      "tactic": "Credential Access",
+      "target_component": "ActionsRunner",
+      "entry_point": "Logs or Environment Variables",
+      "impact": "Discovery of plaintext secrets in CI logs or environment variables.",
+      "likelihood": "High",
+      "likelihood_rationale": "Developers often accidentally log secrets; CI systems may retain logs with sensitive data."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-5",
+      "control_name": "Identity Management, Authentication, and Access Control",
+      "addresses_technique": [
+        "T1195.002",
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.DS-5",
+      "control_name": "Protect Data at Rest",
+      "addresses_technique": [
+        "T1530",
+        "T1552"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 16",
+      "control_name": "Application Software Security",
+      "addresses_technique": [
+        "T1059",
+        "T1567"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "Baseline Configuration",
+      "addresses_technique": [
+        "T1098"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.AC-8",
+      "control_name": "Data-Derived Permissions and Authorizations",
+      "addresses_technique": [
+        "T1048"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 13",
+      "control_name": "Data Recovery",
+      "addresses_technique": [
+        "T1059"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Access Control",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Data-In-Transit Protection",
+      "addresses_technique": [
+        "T1048"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "Compromise of CI runner allows full access to secrets and ability to tamper with artifacts, impacting entire pipeline integrity.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "ActionsRunner",
+        "SecretManager",
+        "Artifactory"
+      ],
+      "linked_techniques": [
+        "T1195.002",
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Exfiltration of secrets leads to unauthorized access to downstream systems and data breaches.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "SecretManager"
+      ],
+      "linked_techniques": [
+        "T1530",
+        "T1552"
+      ],
+      "linked_mitigations": [
+        "M-002",
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Critical",
+      "severity_rationale": "Direct RCE on production environment via compromised deploy keys or scripts.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "ProdEnv",
+        "DeployKey"
+      ],
+      "linked_techniques": [
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Phishing leading to repo compromise allows bypassing branch protection and injecting malicious code.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "GitHub",
+        "BranchProtection"
+      ],
+      "linked_techniques": [
+        "T1078",
+        "T1098"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "Backdoored artifacts in registry can be deployed to multiple environments, causing widespread compromise.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "Artifactory",
+        "StagingEnv",
+        "ProdEnv"
+      ],
+      "linked_techniques": [
+        "T1567"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "DNS tunneling allows covert exfiltration, but is often mitigated by network controls.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "SecretManager",
+        "ActionsRunner"
+      ],
+      "linked_techniques": [
+        "T1048"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Medium",
+      "severity_rationale": "Account manipulation allows persistence but requires initial access.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "GitHub"
+      ],
+      "linked_techniques": [
+        "T1098"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "High",
+      "severity_rationale": "Unsecured credentials in logs are a common source of secret leakage.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "ActionsRunner"
+      ],
+      "linked_techniques": [
+        "T1552"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US",
+      "EU"
+    ],
+    "compliance_scope": [
+      "SOC 2",
+      "ISO 27001"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "GitHub",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Artifactory",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "SAST Scanner Vendor",
+        "trust_tier": "conditional"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "supervised",
+      "tool_call_scope": [
+        "git push",
+        "docker build",
+        "kubectl apply"
+      ],
+      "blast_radius": "Compromise of CI runner can lead to secret theft, artifact tampering, and production RCE.",
+      "human_oversight_points": [
+        "Manual approval for production deployments",
+        "Branch protection rules require PR review"
+      ],
+      "model_provenance": {
+        "provider": "N/A",
+        "model_id": "N/A",
+        "fine_tuned": false
+      }
+    }
+  }
+}

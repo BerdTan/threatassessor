@@ -1,0 +1,438 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_microservices",
+  "produced_by": "hetzner v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Users",
+        "role": "ingress",
+        "trust_zone": "External"
+      },
+      {
+        "id": "APIGateway",
+        "role": "ingress",
+        "trust_zone": "DMZ"
+      },
+      {
+        "id": "UserService",
+        "role": "compute",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "OrderService",
+        "role": "compute",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "PaymentService",
+        "role": "compute",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "InventoryService",
+        "role": "compute",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "MessageQueue",
+        "role": "agent",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "UserDB",
+        "role": "data_store",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "OrderDB",
+        "role": "data_store",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "PaymentDB",
+        "role": "data_store",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "InventoryDB",
+        "role": "data_store",
+        "trust_zone": "Internal"
+      }
+    ],
+    "trust_boundaries": [
+      "External to DMZ (Users to APIGateway)",
+      "DMZ to Internal (APIGateway to Microservices)",
+      "Internal Compute to Internal Data (Services to Databases)",
+      "Internal Compute to Internal Agent (Services to MessageQueue)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "cloud"
+  },
+  "threat_actors": [
+    {
+      "name": "External Attacker",
+      "motivation": "Financial gain via data theft or service disruption",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Exploiting API Gateway vulnerabilities or credential stuffing",
+      "non_capabilities": [
+        "No physical access to data centers",
+        "No pre-existing insider knowledge of internal network topology",
+        "No access to private keys for internal service-to-service mTLS"
+      ]
+    },
+    {
+      "name": "Malicious Insider",
+      "motivation": "Data exfiltration or sabotage",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Abusing legitimate credentials for OrderService or PaymentService",
+      "non_capabilities": [
+        "No ability to bypass hardware security modules (HSMs) if used for key storage",
+        "No direct network access to the management plane without multi-factor authentication"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "APIGateway",
+      "entry_point": "HTTPS Endpoint",
+      "impact": "Unauthorized access to internal microservices",
+      "likelihood": "High",
+      "likelihood_rationale": "API Gateways are common targets for OWASP Top 10 vulnerabilities like injection and broken object level authorization."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "UserService",
+      "entry_point": "Authentication API",
+      "impact": "Impersonation of legitimate users to access personal data",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Credential stuffing is common, but rate limiting and MFA may mitigate this."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1059",
+      "technique_name": "Command and Scripting Interpreter",
+      "tactic": "Execution",
+      "target_component": "OrderService",
+      "entry_point": "Order Processing Logic",
+      "impact": "Remote Code Execution leading to lateral movement",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If input validation is weak, attackers can inject commands via order parameters."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1048",
+      "technique_name": "Exfiltration Over Alternative Protocol",
+      "tactic": "Exfiltration",
+      "target_component": "MessageQueue",
+      "entry_point": "Queue Consumer",
+      "impact": "Data exfiltration via covert channels in message payloads",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires compromise of a service that consumes from the queue and ability to encode data in messages."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1071",
+      "technique_name": "Application Layer Protocol",
+      "tactic": "Command and Control",
+      "target_component": "PaymentService",
+      "entry_point": "Payment Webhook",
+      "impact": "Establishing C2 channel through legitimate payment provider callbacks",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Webhooks are often trusted; attackers may spoof payment provider signatures."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1530",
+      "technique_name": "Data from Cloud Storage Object",
+      "tactic": "Collection",
+      "target_component": "PaymentDB",
+      "entry_point": "Database Credentials",
+      "impact": "Direct theft of sensitive payment card data",
+      "likelihood": "High",
+      "likelihood_rationale": "Databases are high-value targets; weak access controls or leaked credentials pose significant risk."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1499",
+      "technique_name": "Endpoint Denial of Service",
+      "tactic": "Impact",
+      "target_component": "APIGateway",
+      "entry_point": "High Volume Traffic",
+      "impact": "Service disruption preventing users from placing orders",
+      "likelihood": "High",
+      "likelihood_rationale": "DDoS attacks are frequent and can overwhelm API gateways if rate limiting is insufficient."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1098",
+      "technique_name": "Account Manipulation",
+      "tactic": "Persistence",
+      "target_component": "InventoryService",
+      "entry_point": "Admin API",
+      "impact": "Creating backdoor accounts to maintain access to inventory data",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If admin APIs are not strictly secured, attackers can create persistent access."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-5",
+      "control_name": "Network Integrity Monitoring",
+      "addresses_technique": [
+        "T1190",
+        "T1499"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Authentication Mechanisms",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 16.1",
+      "control_name": "Input Validation",
+      "addresses_technique": [
+        "T1059"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Data-in-Transit Protection",
+      "addresses_technique": [
+        "T1048"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.IP-12",
+      "control_name": "Webhook Signature Verification",
+      "addresses_technique": [
+        "T1071"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.AC-8",
+      "control_name": "Database Access Control",
+      "addresses_technique": [
+        "T1530"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.DS-5",
+      "control_name": "Data Recovery",
+      "addresses_technique": [
+        "T1499"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Access Enforcement",
+      "addresses_technique": [
+        "T1098"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "API Gateway is the primary entry point; exploitation leads to full system compromise.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Medium",
+      "severity_rationale": "Credential stuffing is mitigated by MFA but still poses a risk to user accounts.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "UserService"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "RCE in OrderService allows lateral movement to other services and databases.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "OrderService"
+      ],
+      "linked_techniques": [
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Low",
+      "severity_rationale": "Exfiltration via message queue is difficult due to encryption and monitoring.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:N",
+      "affected_components": [
+        "MessageQueue"
+      ],
+      "linked_techniques": [
+        "T1048"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Webhook spoofing can lead to unauthorized actions in PaymentService.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "PaymentService"
+      ],
+      "linked_techniques": [
+        "T1071"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Critical",
+      "severity_rationale": "Direct database access allows theft of sensitive payment data.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "PaymentDB"
+      ],
+      "linked_techniques": [
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "High",
+      "severity_rationale": "DDoS on API Gateway disrupts all user-facing services.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": [
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1499"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-007"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Medium",
+      "severity_rationale": "Account manipulation in InventoryService allows persistent access.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "InventoryService"
+      ],
+      "linked_techniques": [
+        "T1098"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US",
+      "EU"
+    ],
+    "compliance_scope": [
+      "PCI-DSS",
+      "GDPR",
+      "SOC 2"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "Payment Provider API",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Cloud Provider (Hetzner)",
+        "trust_tier": "trusted"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "supervised",
+      "tool_call_scope": [
+        "Database Queries",
+        "Message Queue Publish/Subscribe"
+      ],
+      "blast_radius": "Data leakage or corruption in internal databases",
+      "human_oversight_points": [
+        "Payment approval workflow",
+        "Admin API access"
+      ],
+      "model_provenance": {
+        "provider": "N/A",
+        "model_id": "N/A",
+        "fine_tuned": false
+      }
+    }
+  }
+}
