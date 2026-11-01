@@ -1,0 +1,177 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t1_rest_api",
+  "produced_by": "ThreatAssessor TMbench ground truth v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      { "id": "api_client", "role": "ingress", "trust_zone": "untrusted-external" },
+      { "id": "api_gateway", "role": "ingress", "trust_zone": "dmz" },
+      { "id": "auth_service", "role": "compute", "trust_zone": "internal" },
+      { "id": "redis", "role": "data store", "trust_zone": "internal" },
+      { "id": "app_server", "role": "compute", "trust_zone": "internal" }
+    ],
+    "trust_boundaries": [
+      "external-to-dmz: api_client to api_gateway (TLS 1.3)",
+      "dmz-to-internal: api_gateway to auth_service and app_server",
+      "internal: auth_service to redis (no encryption on loopback)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud REST API with token-based authentication and session caching"
+  },
+  "threat_actors": [
+    {
+      "name": "API Abuser",
+      "motivation": "Extract user data or impersonate other users for financial fraud",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Public API endpoint enumeration using automated tools",
+      "non_capabilities": [
+        "No access to internal network — must reach services through API gateway only",
+        "No physical hardware access",
+        "No knowledge of token signing secrets",
+        "No zero-day budget"
+      ]
+    },
+    {
+      "name": "Targeted Credential Attacker",
+      "motivation": "Account takeover of high-value users for data or pivot",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Phishing or credential database from prior breach",
+      "non_capabilities": [
+        "No direct Redis or App Server network access",
+        "No ability to intercept TLS without CA compromise",
+        "No insider access to auth_service configuration"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1110",
+      "technique_name": "Brute Force",
+      "tactic": "Credential Access",
+      "target_component": "auth_service",
+      "entry_point": "POST /auth/token endpoint via api_gateway",
+      "impact": "Valid JWT acquisition for any user lacking rate limiting",
+      "likelihood": "High",
+      "likelihood_rationale": "No rate limiting at gateway layer confirmed; auth endpoints are high-value brute-force targets"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Defense Evasion",
+      "target_component": "app_server",
+      "entry_point": "Bearer token in Authorization header from AP-001 or credential stuffing",
+      "impact": "Authenticated access to all resources owned by compromised account",
+      "likelihood": "High",
+      "likelihood_rationale": "Credential stuffing success rates consistently 1-5% against poorly protected endpoints"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1040",
+      "technique_name": "Network Sniffing",
+      "tactic": "Credential Access",
+      "target_component": "redis",
+      "entry_point": "Internal network between auth_service and redis (unencrypted)",
+      "impact": "Session token harvest for active sessions — no decryption required",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires prior internal network foothold; opportunistic attacker unlikely to reach this layer"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1134",
+      "technique_name": "Access Token Manipulation",
+      "tactic": "Privilege Escalation",
+      "target_component": "app_server",
+      "entry_point": "Forged or replayed JWT token if signing secret is weak",
+      "impact": "Privilege escalation to admin role if JWT lacks role binding or expiry enforcement",
+      "likelihood": "Medium",
+      "likelihood_rationale": "JWT misconfiguration (none alg, weak secret) is common; depends on implementation quality"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Authentication rate limiting and account lockout",
+      "addresses_technique": ["T1110"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 6.3",
+      "control_name": "Multi-factor Authentication",
+      "addresses_technique": ["T1078"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Encrypt data in transit — TLS on Redis",
+      "addresses_technique": ["T1040"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "JWT strong signing with RS256 and expiry enforcement",
+      "addresses_technique": ["T1134"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "No brute-force protection on auth endpoint; automated tools can achieve token acquisition in minutes",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": ["auth_service", "api_gateway"],
+      "linked_techniques": ["T1110"],
+      "linked_mitigations": ["M-001"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Credential stuffing is viable without MFA; account takeover probability scales with prior breach data availability",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:L/A:N",
+      "affected_components": ["auth_service", "app_server"],
+      "linked_techniques": ["T1078"],
+      "linked_mitigations": ["M-002"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Low",
+      "severity_rationale": "Redis sniffing requires prior internal access; exposure is real but constrained by network position requirement",
+      "severity_vector": "CVSS:3.1/AV:A/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": ["redis", "auth_service"],
+      "linked_techniques": ["T1040"],
+      "linked_mitigations": ["M-003"],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "JWT none algorithm or weak HMAC misconfiguration is a known class of issue; partial implementation suggests incomplete hardening",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": ["app_server", "auth_service"],
+      "linked_techniques": ["T1134"],
+      "linked_mitigations": ["M-004"],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": ["Singapore"],
+    "compliance_scope": ["PDPA"],
+    "third_party_dependencies": [
+      { "name": "Redis OSS", "trust_tier": "trusted" },
+      { "name": "JWT library (PyJWT)", "trust_tier": "trusted" }
+    ]
+  }
+}

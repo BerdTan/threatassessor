@@ -1,0 +1,58 @@
+flowchart TB
+    Users((Users))
+
+    subgraph Frontend_Layer[Frontend Layer]
+        WebUI[Web UI / Chat Interface]
+    end
+
+    subgraph Agent_Orchestration[Agent Orchestration Layer]
+        AgentOrchestrator[Agent Orchestrator]
+        PromptManager[Prompt Manager]
+        ToolRegistry[Tool Registry]
+    end
+
+    subgraph AI_Services[AI Services]
+        LLMGateway[LLM API Gateway]
+        OpenAI[OpenAI API]
+        Anthropic[Anthropic API]
+        LocalLLM[Local LLM]
+    end
+
+    subgraph Knowledge_Layer[Knowledge Layer]
+        VectorDB[(Vector Database)]
+        DocumentStore[(Document Store)]
+        EmbeddingService[Embedding Service]
+    end
+
+    subgraph Tools_Layer[Tools & Integrations]
+        WebSearch[Web Search Tool]
+        CodeExecution[Code Execution Sandbox]
+        DatabaseTool[Database Tool]
+        APIIntegrations[External API Integrations]
+    end
+
+    subgraph Data_Layer[Data Layer]
+        UserDB[(User Database)]
+        SessionStore[(Session Store)]
+        AuditLog[(Audit Log)]
+    end
+
+    Users --> WebUI
+    WebUI --> AgentOrchestrator
+    AgentOrchestrator --> PromptManager
+    AgentOrchestrator --> ToolRegistry
+    PromptManager --> LLMGateway
+    LLMGateway --> OpenAI
+    LLMGateway --> Anthropic
+    LLMGateway --> LocalLLM
+    AgentOrchestrator --> VectorDB
+    AgentOrchestrator --> EmbeddingService
+    EmbeddingService --> VectorDB
+    EmbeddingService --> DocumentStore
+    ToolRegistry --> WebSearch
+    ToolRegistry --> CodeExecution
+    ToolRegistry --> DatabaseTool
+    ToolRegistry --> APIIntegrations
+    AgentOrchestrator --> UserDB
+    AgentOrchestrator --> SessionStore
+    AgentOrchestrator --> AuditLog

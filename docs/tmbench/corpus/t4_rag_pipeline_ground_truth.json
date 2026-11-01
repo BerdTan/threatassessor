@@ -1,0 +1,354 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_rag_pipeline",
+  "produced_by": "ThreatAssessor TMbench ground truth v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      { "id": "users", "role": "ingress", "trust_zone": "untrusted-external" },
+      { "id": "web_ui", "role": "ingress", "trust_zone": "dmz" },
+      { "id": "agent_orchestrator", "role": "agent", "trust_zone": "internal-agentic" },
+      { "id": "prompt_manager", "role": "compute", "trust_zone": "internal-agentic" },
+      { "id": "tool_registry", "role": "compute", "trust_zone": "internal-agentic" },
+      { "id": "llm_gateway", "role": "compute", "trust_zone": "internal-agentic" },
+      { "id": "openai_api", "role": "egress", "trust_zone": "external-provider" },
+      { "id": "anthropic_api", "role": "egress", "trust_zone": "external-provider" },
+      { "id": "local_llm", "role": "compute", "trust_zone": "internal-ml" },
+      { "id": "vector_db", "role": "data store", "trust_zone": "internal-ml" },
+      { "id": "document_store", "role": "data store", "trust_zone": "internal-restricted" },
+      { "id": "embedding_service", "role": "compute", "trust_zone": "internal-ml" },
+      { "id": "web_search_tool", "role": "egress", "trust_zone": "external-untrusted" },
+      { "id": "code_execution", "role": "compute", "trust_zone": "internal-sandbox" },
+      { "id": "database_tool", "role": "egress", "trust_zone": "internal-restricted" },
+      { "id": "api_integrations", "role": "egress", "trust_zone": "external-untrusted" },
+      { "id": "user_db", "role": "data store", "trust_zone": "internal-restricted" },
+      { "id": "session_store", "role": "data store", "trust_zone": "internal" },
+      { "id": "audit_log", "role": "data store", "trust_zone": "internal-restricted" }
+    ],
+    "trust_boundaries": [
+      "external-to-dmz: users to web_ui (TLS)",
+      "dmz-to-agentic: web_ui to agent_orchestrator",
+      "agentic-to-llm-providers: llm_gateway to openai_api/anthropic_api (external)",
+      "agentic-to-tools: tool_registry to web_search, code_execution, database_tool, api_integrations",
+      "agentic-to-data: agent_orchestrator to vector_db, document_store, user_db",
+      "sandbox: code_execution isolated from host filesystem"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Agentic AI system with multi-LLM RAG pipeline, tool calling, and code execution sandbox"
+  },
+  "threat_actors": [
+    {
+      "name": "Adversarial User",
+      "motivation": "Prompt injection to hijack agent behaviour, exfiltrate other users' data, or abuse tool calling",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Chat interface — crafted prompts designed to manipulate agent_orchestrator",
+      "non_capabilities": [
+        "No direct API access beyond the chat UI",
+        "No access to system prompts or prompt_manager configuration",
+        "No credentials for vector_db or document_store",
+        "No ability to modify tool_registry configuration"
+      ]
+    },
+    {
+      "name": "Malicious External Content",
+      "motivation": "Indirect prompt injection via poisoned documents ingested into vector_db or retrieved by web_search",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Content injected into indexed documents or served from web search results",
+      "non_capabilities": [
+        "No direct system access — influence limited to content the agent retrieves",
+        "No access to audit_log or session_store",
+        "No ability to modify tool_registry directly"
+      ]
+    },
+    {
+      "name": "External Model Provider Compromise",
+      "motivation": "Supply chain attack — backdoored or manipulated responses from external LLM provider",
+      "capability_tier": "nation-state",
+      "initial_access_vector": "Provider API compromise or targeted backdoor in model deployment",
+      "non_capabilities": [
+        "Cannot access internal data stores directly",
+        "Cannot execute code on internal infrastructure",
+        "Influence limited to LLM response content processed by agent_orchestrator"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "AML.T0051",
+      "technique_name": "LLM Prompt Injection",
+      "tactic": "ML Attack Staging",
+      "target_component": "agent_orchestrator",
+      "entry_point": "User-supplied prompt containing instruction override via chat interface",
+      "impact": "Agent executes attacker-directed actions — data exfiltration, tool misuse, or confidentiality violation",
+      "likelihood": "High",
+      "likelihood_rationale": "Prompt injection is the primary attack vector for agentic systems; agent_orchestrator processes all user input"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "AML.T0043",
+      "technique_name": "Craft Adversarial Data",
+      "tactic": "ML Attack Staging",
+      "target_component": "vector_db",
+      "entry_point": "Adversarial instructions embedded in documents ingested into vector_db",
+      "impact": "Indirect prompt injection — retrieved context contains malicious instructions agent follows",
+      "likelihood": "Medium",
+      "likelihood_rationale": "RAG retrieval of adversarial documents is a known attack; requires attacker-controlled document to enter corpus"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "AML.T0040",
+      "technique_name": "ML Model Inference API Access",
+      "tactic": "ML Attack Staging",
+      "target_component": "llm_gateway",
+      "entry_point": "API key leakage from agent_orchestrator environment or logs",
+      "impact": "Unauthorized LLM inference at attacker scale, cost hijacking, potential model probe for jailbreak",
+      "likelihood": "Medium",
+      "likelihood_rationale": "LLM API keys frequently leaked in logs or environment variables; high-value for cost and abuse"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1059",
+      "technique_name": "Command and Scripting Interpreter",
+      "tactic": "Execution",
+      "target_component": "code_execution",
+      "entry_point": "Agent instructed via AP-001 to execute attacker-controlled code in sandbox",
+      "impact": "Sandbox escape or data exfiltration via code execution capabilities of the agent",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Code execution tools are high-value targets; sandbox escape techniques depend on isolation quality"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "document_store",
+      "entry_point": "Agent directed via AP-001 to retrieve and summarise sensitive documents",
+      "impact": "Exfiltration of confidential documents via agent's summarisation and output to attacker",
+      "likelihood": "High",
+      "likelihood_rationale": "Document retrieval is a primary agent function; prompt injection that redirects retrieval is straightforward"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "AML.T0048",
+      "technique_name": "Model Backdoor",
+      "tactic": "ML Model Compromise",
+      "target_component": "local_llm",
+      "entry_point": "Compromised model weights in local_llm via supply chain or model repository",
+      "impact": "Backdoored local model produces attacker-controlled outputs on specific trigger inputs",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires compromise of model supply chain; high sophistication but significant impact for a locally deployed LLM"
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Defense Evasion",
+      "target_component": "user_db",
+      "entry_point": "Session token theft from session_store via agent-mediated access or injection",
+      "impact": "Account impersonation enabling access to other users' conversation history and documents",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Session tokens in session_store accessible to agent; injection-driven session theft is an escalation of AP-001"
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1562",
+      "technique_name": "Impair Defenses",
+      "tactic": "Defense Evasion",
+      "target_component": "audit_log",
+      "entry_point": "Agent instructed via AP-001 to suppress logging of its own actions",
+      "impact": "Agent actions during attack are not recorded; investigation and detection is impaired",
+      "likelihood": "Low",
+      "likelihood_rationale": "Audit log writes typically go through a separate pathway; depends on whether agent has write access to audit_log"
+    },
+    {
+      "path_id": "AP-009",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "web_ui",
+      "entry_point": "XSS or CSRF vulnerability in chat web interface",
+      "impact": "Session hijacking or forced agent actions on behalf of victim user",
+      "likelihood": "Low",
+      "likelihood_rationale": "Standard web vulnerabilities apply; modern frameworks reduce likelihood but not eliminate"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "CSA ART 4.2",
+      "control_name": "Prompt injection detection and input sanitisation layer",
+      "addresses_technique": ["AML.T0051"],
+      "implementation_status": "Partial",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CSA ART 4.1",
+      "control_name": "Document ingestion scanning for embedded instructions",
+      "addresses_technique": ["AML.T0043"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "LLM API key rotation and secrets management",
+      "addresses_technique": ["AML.T0040"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CSA ART 3.3",
+      "control_name": "Code execution sandbox hardening with syscall filtering",
+      "addresses_technique": ["T1059"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Document access control — per-user scoping for agent retrieval",
+      "addresses_technique": ["T1041"],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CSA ART 2.2",
+      "control_name": "Model provenance verification and integrity checks for local_llm",
+      "addresses_technique": ["AML.T0048"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Session token binding and short TTL",
+      "addresses_technique": ["T1078"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "Immutable audit log — agent cannot modify its own audit trail",
+      "addresses_technique": ["T1562"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Content Security Policy and CSRF tokens on web_ui",
+      "addresses_technique": ["T1190"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "Prompt injection without effective guardrails gives attacker full agent control; tool_registry access means real-world actions beyond conversation",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:L",
+      "affected_components": ["agent_orchestrator", "tool_registry"],
+      "linked_techniques": ["AML.T0051"],
+      "linked_mitigations": ["M-001"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "No per-user document scoping means agent can retrieve any document in the store for any user via injection",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": ["document_store", "agent_orchestrator"],
+      "linked_techniques": ["T1041"],
+      "linked_mitigations": ["M-005"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Adversarial RAG documents create indirect injection channel; document ingestion without scanning makes this persistent",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": ["vector_db", "embedding_service"],
+      "linked_techniques": ["AML.T0043"],
+      "linked_mitigations": ["M-002"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Code execution sandbox provides escalation path if prompt injection succeeds; sandbox escape has high impact",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": ["code_execution"],
+      "linked_techniques": ["T1059"],
+      "linked_mitigations": ["M-004"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Session token theft is secondary to injection; partial session binding limits scope",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": ["session_store", "user_db"],
+      "linked_techniques": ["T1078"],
+      "linked_mitigations": ["M-007"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "Local LLM backdoor is low probability but high impact; model integrity verification not in place",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": ["local_llm"],
+      "linked_techniques": ["AML.T0048"],
+      "linked_mitigations": ["M-006"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Low",
+      "severity_rationale": "LLM API key leakage risk mitigated by rotation; residual risk is cost hijacking, not data breach",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:N",
+      "affected_components": ["llm_gateway"],
+      "linked_techniques": ["AML.T0040"],
+      "linked_mitigations": ["M-003"],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": ["Singapore", "US (OpenAI/Anthropic APIs)"],
+    "compliance_scope": ["PDPA", "AI Verify (IMDA)"],
+    "third_party_dependencies": [
+      { "name": "OpenAI API", "trust_tier": "conditional" },
+      { "name": "Anthropic API", "trust_tier": "conditional" },
+      { "name": "Web search tool", "trust_tier": "untrusted" },
+      { "name": "External API integrations", "trust_tier": "untrusted" }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "semi-autonomous",
+      "tool_call_scope": [
+        "web_search_tool",
+        "code_execution",
+        "database_tool",
+        "api_integrations",
+        "vector_db read",
+        "document_store read"
+      ],
+      "blast_radius": "User document exfiltration, external API calls to untrusted services, code execution in sandbox with potential escape, external web requests to attacker-controlled URLs",
+      "human_oversight_points": [
+        "Document ingestion approval not implemented — automated",
+        "Tool call approval not implemented — agent executes autonomously",
+        "Audit log review — post-hoc only"
+      ],
+      "model_provenance": {
+        "provider": "OpenAI / Anthropic (external); local deployment (internal)",
+        "model_id": "gpt-4o / claude-3-5-sonnet / local-llm-v1",
+        "fine_tuned": false
+      }
+    }
+  }
+}

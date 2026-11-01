@@ -1,0 +1,34 @@
+flowchart TB
+    Developer((Developer))
+
+    subgraph Source_Control[Source Control]
+        GitHub[GitHub Repository]
+        BranchProtection[Branch Protection Rules]
+    end
+
+    subgraph CI_Layer[CI Layer]
+        ActionsRunner[GitHub Actions Runner]
+        SecretManager[Secrets Manager]
+    end
+
+    subgraph Artifact_Layer[Artifact Layer]
+        Artifactory[Artifactory Registry]
+        SAST[SAST Scanner]
+    end
+
+    subgraph Deploy_Layer[Deploy Layer]
+        StagingEnv[Staging Environment]
+        ProdEnv[Production Environment]
+        DeployKey[Deploy Key Store]
+    end
+
+    Developer --> GitHub
+    GitHub --> BranchProtection
+    BranchProtection --> ActionsRunner
+    ActionsRunner --> SecretManager
+    ActionsRunner --> SAST
+    SAST --> Artifactory
+    ActionsRunner --> Artifactory
+    Artifactory --> StagingEnv
+    StagingEnv --> ProdEnv
+    DeployKey --> ProdEnv

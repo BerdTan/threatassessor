@@ -1,0 +1,17 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_agent_fleet",
+  "scored_at": "2026-11-01T00:00:00Z",
+  "scored_by": "TMbench ground truth panel v1.0",
+  "tatb": {
+    "threat_relevant": 3,
+    "ttp_accurate": 3,
+    "risk_defensible": 3,
+    "plan_actionable": 3
+  },
+  "bonus_completeness": 1,
+  "bonus_agentic": 1,
+  "total": 13,
+  "confidence": "Solid",
+  "notes": "Ground truth TM — all dimensions max. T4 agentic tier: 15 components, 9 attack paths (above minimum of 8). ATLAS techniques present: AML.T0051 (Prompt Injection), AML.T0043 (Adversarial Data), AML.T0040 (Inference API Access), AML.T0048 (Model Backdoor). Full agentic governance block with multi-tenant isolation assessment. bonus_agentic=1 awarded."
+}

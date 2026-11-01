@@ -1,0 +1,25 @@
+flowchart TB
+    Internet((Internet))
+    
+    subgraph Kubernetes_Cluster
+        Ingress[Ingress Controller]
+        
+        subgraph Namespace_Prod
+            FrontendPod[Frontend Pods]
+            BackendPod[Backend Pods]
+        end
+        
+        subgraph Namespace_Data
+            DatabasePod[(Database StatefulSet)]
+            CachePod[Cache Pods]
+        end
+        
+        ServiceMesh[Service Mesh]
+    end
+    
+    Internet --> Ingress
+    Ingress --> FrontendPod
+    FrontendPod --> ServiceMesh
+    ServiceMesh --> BackendPod
+    BackendPod --> DatabasePod
+    BackendPod --> CachePod

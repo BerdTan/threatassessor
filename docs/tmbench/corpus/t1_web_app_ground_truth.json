@@ -1,0 +1,177 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t1_web_app",
+  "produced_by": "ThreatAssessor TMbench ground truth v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      { "id": "browser", "role": "ingress", "trust_zone": "untrusted-external" },
+      { "id": "nginx", "role": "ingress", "trust_zone": "dmz" },
+      { "id": "flask_api", "role": "compute", "trust_zone": "internal" },
+      { "id": "postgresql", "role": "data store", "trust_zone": "internal-restricted" }
+    ],
+    "trust_boundaries": [
+      "internet-to-dmz: browser to nginx (TLS termination)",
+      "dmz-to-internal: nginx to flask_api (HTTP upstream)",
+      "internal-to-data: flask_api to postgresql (TCP/5432)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted 3-tier web application serving authenticated users"
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Credential theft, data exfiltration, or defacement for financial gain",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Automated web scanning tools targeting common CVEs on publicly exposed nginx and Flask endpoints",
+      "non_capabilities": [
+        "No physical access to hosting infrastructure",
+        "No pre-existing valid credentials",
+        "No zero-day budget — limited to public CVEs and common misconfigurations",
+        "No insider knowledge of internal network topology"
+      ]
+    },
+    {
+      "name": "Authenticated Insider Threat",
+      "motivation": "Data exfiltration for personal or competitive gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate application credentials via phishing or credential sharing",
+      "non_capabilities": [
+        "No direct database network access — must go through Flask API",
+        "No server-level OS access",
+        "No access to nginx configuration or TLS certificates"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "nginx",
+      "entry_point": "Internet-facing HTTPS port 443",
+      "impact": "Remote code execution on nginx host, pivot to Flask API internal network",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Nginx CVEs require specific versions; opportunistic scanners hit this regularly"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "flask_api",
+      "entry_point": "Proxied HTTP requests from nginx",
+      "impact": "SQL injection or SSRF into PostgreSQL from Flask application logic",
+      "likelihood": "High",
+      "likelihood_rationale": "Flask apps commonly lack parameterised queries; direct DB access path is high-value"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Defense Evasion",
+      "target_component": "flask_api",
+      "entry_point": "Application login endpoint",
+      "impact": "Authenticated access to user data, ability to escalate via application RBAC flaws",
+      "likelihood": "High",
+      "likelihood_rationale": "Credential stuffing is highly automated; no MFA assumed on this architecture"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "postgresql",
+      "entry_point": "Flask API executing attacker-controlled SQL via AP-002",
+      "impact": "Full database dump of user PII and application data",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Requires successful AP-002; exfil volume limited by query rate and logging"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.PT-3",
+      "control_name": "Principle of Least Functionality — nginx hardening",
+      "addresses_technique": ["T1190"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 16.4",
+      "control_name": "Encrypt or Hash all Authentication Credentials",
+      "addresses_technique": ["T1078"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Data-at-rest protection — parameterised queries",
+      "addresses_technique": ["T1190"],
+      "implementation_status": "Partial",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "Network monitoring — anomalous DB query volume",
+      "addresses_technique": ["T1041"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "SQL injection directly into PostgreSQL allows full data dump; no parameterised query controls confirmed in place",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:L",
+      "affected_components": ["flask_api", "postgresql"],
+      "linked_techniques": ["T1190"],
+      "linked_mitigations": ["M-003"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "No MFA on application login; credential stuffing is automated and highly scalable against this endpoint",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N",
+      "affected_components": ["flask_api"],
+      "linked_techniques": ["T1078"],
+      "linked_mitigations": ["M-002"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Nginx version exposure increases exploitability; patching policy not confirmed",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:L",
+      "affected_components": ["nginx"],
+      "linked_techniques": ["T1190"],
+      "linked_mitigations": ["M-001"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Exfiltration path exists if AP-002 succeeds; no anomaly detection on query volume",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": ["postgresql"],
+      "linked_techniques": ["T1041"],
+      "linked_mitigations": ["M-004"],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": ["Singapore"],
+    "compliance_scope": ["PDPA"],
+    "third_party_dependencies": [
+      { "name": "Nginx OSS", "trust_tier": "trusted" },
+      { "name": "Flask framework", "trust_tier": "trusted" },
+      { "name": "PostgreSQL", "trust_tier": "trusted" }
+    ]
+  }
+}

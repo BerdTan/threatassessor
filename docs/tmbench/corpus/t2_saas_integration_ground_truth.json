@@ -1,0 +1,221 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_saas_integration",
+  "produced_by": "ThreatAssessor TMbench ground truth v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      { "id": "external_saas", "role": "egress", "trust_zone": "untrusted-external" },
+      { "id": "end_user", "role": "ingress", "trust_zone": "untrusted-external" },
+      { "id": "webhook_receiver", "role": "ingress", "trust_zone": "dmz" },
+      { "id": "oauth_proxy", "role": "compute", "trust_zone": "dmz" },
+      { "id": "event_queue", "role": "compute", "trust_zone": "internal" },
+      { "id": "transformer", "role": "compute", "trust_zone": "internal" },
+      { "id": "rate_limiter", "role": "compute", "trust_zone": "internal" },
+      { "id": "integration_db", "role": "data store", "trust_zone": "internal" },
+      { "id": "audit_log", "role": "data store", "trust_zone": "internal-restricted" }
+    ],
+    "trust_boundaries": [
+      "external-to-dmz: external_saas webhooks and end_user OAuth to dmz components",
+      "dmz-to-internal: webhook_receiver/oauth_proxy to event_queue and rate_limiter",
+      "internal: event_queue to transformer to integration_db and audit_log"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "SaaS integration hub receiving events from external providers and routing to internal systems"
+  },
+  "threat_actors": [
+    {
+      "name": "Malicious SaaS Event Source",
+      "motivation": "Inject malicious payloads via webhooks to compromise integration pipeline",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Forged or replay webhook events to webhook_receiver endpoint",
+      "non_capabilities": [
+        "No direct access to event_queue or internal components",
+        "No OAuth tokens for end_user flows",
+        "No access to audit_log for covering tracks",
+        "No ability to modify transformer logic directly"
+      ]
+    },
+    {
+      "name": "Compromised End User",
+      "motivation": "Data access beyond authorised scope via OAuth token misuse",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Stolen OAuth token from client-side exposure or phishing",
+      "non_capabilities": [
+        "No direct database access",
+        "No access to webhook_receiver admin configuration",
+        "No ability to modify audit_log entries"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "webhook_receiver",
+      "entry_point": "Unauthenticated or weakly authenticated webhook endpoint",
+      "impact": "Event injection into integration pipeline; SSRF or payload injection into transformer",
+      "likelihood": "High",
+      "likelihood_rationale": "Webhook HMAC signature verification is often missing or disabled; publicly documented attack pattern"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Defense Evasion",
+      "target_component": "oauth_proxy",
+      "entry_point": "Stolen OAuth 2.0 access token from end_user session",
+      "impact": "Authorised API calls beyond user's intended scope if token scopes are overly broad",
+      "likelihood": "Medium",
+      "likelihood_rationale": "OAuth token theft via client-side exposure is common; overly broad scopes amplify impact"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1059",
+      "technique_name": "Command and Scripting Interpreter",
+      "tactic": "Execution",
+      "target_component": "transformer",
+      "entry_point": "Template injection or expression evaluation in payload transformation logic",
+      "impact": "Code execution within transformer service, access to integration_db",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Template injection in data transformation is common (Jinja2, OGNL); requires specific transformer implementation"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1562",
+      "technique_name": "Impair Defenses",
+      "tactic": "Defense Evasion",
+      "target_component": "rate_limiter",
+      "entry_point": "Rate limiter bypass via distributed source IPs or header manipulation",
+      "impact": "Flood of malicious events overwhelming transformer and integration_db",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Rate limiter bypass techniques are well-known; distributed attack tools are commodity"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1083",
+      "technique_name": "File and Directory Discovery",
+      "tactic": "Discovery",
+      "target_component": "integration_db",
+      "entry_point": "Authorised queries via transformer exposing schema structure",
+      "impact": "Database schema enumeration revealing sensitive data structures for targeted follow-on attack",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires AP-003 or AP-002 first; schema exposure is lower severity but enables more precise attacks"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "integration_db",
+      "entry_point": "Bulk data read via compromised transformer (AP-003)",
+      "impact": "Mass exfiltration of integration data including third-party access tokens stored in DB",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires AP-003 success; exfil of stored OAuth tokens would be highest-impact outcome"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Webhook HMAC signature verification with replay prevention",
+      "addresses_technique": ["T1190"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "OAuth scope minimisation and token rotation",
+      "addresses_technique": ["T1078"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-7",
+      "control_name": "Input sanitisation and safe template rendering",
+      "addresses_technique": ["T1059"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CSA ART 2.4",
+      "control_name": "Distributed rate limiting with source IP reputation scoring",
+      "addresses_technique": ["T1562"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Database access control — query row limits and read-only service accounts",
+      "addresses_technique": ["T1083", "T1041"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Missing webhook signature verification allows any party to inject events; high external attack surface exposure",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:L",
+      "affected_components": ["webhook_receiver", "event_queue"],
+      "linked_techniques": ["T1190"],
+      "linked_mitigations": ["M-001"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Template injection in transformer provides code execution; stored OAuth tokens in integration_db are high-value exfiltration target",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L",
+      "affected_components": ["transformer", "integration_db"],
+      "linked_techniques": ["T1059"],
+      "linked_mitigations": ["M-003"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "OAuth scope creep enables access beyond intent; mitigated partially by planned minimisation",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": ["oauth_proxy"],
+      "linked_techniques": ["T1078"],
+      "linked_mitigations": ["M-002"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Stored tokens in integration_db are exfiltration-ready if DB access is obtained; no encryption at field level",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": ["integration_db"],
+      "linked_techniques": ["T1041", "T1083"],
+      "linked_mitigations": ["M-005"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Low",
+      "severity_rationale": "Rate limiter bypass is mitigated by IP reputation; residual distributed attack risk remains but impact is availability, not data",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": ["rate_limiter", "transformer"],
+      "linked_techniques": ["T1562"],
+      "linked_mitigations": ["M-004"],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": ["US (SaaS provider)", "Singapore (integration DB)"],
+    "compliance_scope": ["SOC 2", "PDPA"],
+    "third_party_dependencies": [
+      { "name": "External SaaS provider webhooks", "trust_tier": "conditional" },
+      { "name": "OAuth 2.0 identity provider", "trust_tier": "trusted" }
+    ]
+  }
+}

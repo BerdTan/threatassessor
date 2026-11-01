@@ -1,0 +1,17 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t3_hybrid_identity",
+  "scored_at": "2026-11-01T00:00:00Z",
+  "scored_by": "TMbench ground truth panel v1.0",
+  "tatb": {
+    "threat_relevant": 3,
+    "ttp_accurate": 3,
+    "risk_defensible": 3,
+    "plan_actionable": 3
+  },
+  "bonus_completeness": 1,
+  "bonus_agentic": 0,
+  "total": 13,
+  "confidence": "Solid",
+  "notes": "Ground truth TM — all dimensions max. T3 complexity tier: 15 components, 8 attack paths meeting minimum. AD CS ESC1 and DCSync are the primary risk drivers. Severity appropriately differentiated across critical/high/medium/low findings."
+}

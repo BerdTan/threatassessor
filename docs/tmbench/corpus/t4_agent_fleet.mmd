@@ -1,0 +1,44 @@
+flowchart TB
+    Users((Tenant Users))
+
+    subgraph Ingress_Layer[Ingress Layer]
+        APIGateway[API Gateway]
+        TenantRouter[Tenant Router]
+        RateLimiter[Rate Limiter]
+    end
+
+    subgraph LLM_Layer[LLM Service Layer]
+        LLMOrchestrator[LLM Orchestrator]
+        PromptGuard[Prompt Guard]
+        ResponseFilter[Response Filter]
+        ModelRouter[Model Router]
+    end
+
+    subgraph Model_Backends[Model Backends]
+        OpenAI[OpenAI API]
+        Anthropic[Anthropic API]
+        SelfHostedLLM[Self-Hosted LLM]
+    end
+
+    subgraph Data_Layer[Data Layer]
+        TenantDB[(Tenant Config DB)]
+        ConversationStore[(Conversation Store)]
+        VectorDB[(Vector Database)]
+        AuditLog[(Audit Log)]
+    end
+
+    Users --> APIGateway
+    APIGateway --> RateLimiter
+    RateLimiter --> TenantRouter
+    TenantRouter --> LLMOrchestrator
+    LLMOrchestrator --> PromptGuard
+    PromptGuard --> ModelRouter
+    ModelRouter --> OpenAI
+    ModelRouter --> Anthropic
+    ModelRouter --> SelfHostedLLM
+    LLMOrchestrator --> ResponseFilter
+    LLMOrchestrator --> VectorDB
+    LLMOrchestrator --> ConversationStore
+    TenantRouter --> TenantDB
+    LLMOrchestrator --> AuditLog
+    PromptGuard --> AuditLog

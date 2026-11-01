@@ -1,0 +1,20 @@
+flowchart TB
+    Client((API Client))
+
+    subgraph Gateway_Layer[Gateway Layer]
+        APIGateway[API Gateway]
+    end
+
+    subgraph Auth_Layer[Auth Layer]
+        AuthService[Auth Service]
+        Redis[(Redis Cache)]
+    end
+
+    subgraph App_Layer[App Layer]
+        AppServer[App Server]
+    end
+
+    Client --> APIGateway
+    APIGateway --> AuthService
+    AuthService --> Redis
+    APIGateway --> AppServer

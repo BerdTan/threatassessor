@@ -1,0 +1,233 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_cicd_pipeline",
+  "produced_by": "ThreatAssessor TMbench ground truth v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      { "id": "developer", "role": "ingress", "trust_zone": "untrusted-developer" },
+      { "id": "github_repo", "role": "egress", "trust_zone": "external-saas" },
+      { "id": "branch_protection", "role": "compute", "trust_zone": "external-saas" },
+      { "id": "actions_runner", "role": "compute", "trust_zone": "ci-internal" },
+      { "id": "secrets_manager", "role": "data store", "trust_zone": "ci-restricted" },
+      { "id": "sast_scanner", "role": "compute", "trust_zone": "ci-internal" },
+      { "id": "artifactory", "role": "data store", "trust_zone": "internal" },
+      { "id": "staging_env", "role": "compute", "trust_zone": "staging" },
+      { "id": "prod_env", "role": "compute", "trust_zone": "production-restricted" },
+      { "id": "deploy_key_store", "role": "data store", "trust_zone": "production-restricted" }
+    ],
+    "trust_boundaries": [
+      "developer-to-scm: developer code push to github_repo",
+      "scm-to-ci: github webhook triggers actions_runner",
+      "ci-to-artifact: actions_runner publishes to artifactory",
+      "artifact-to-staging: automated deployment to staging_env",
+      "staging-to-prod: gated promotion with deploy_key_store"
+    ],
+    "data_classification": "restricted",
+    "operational_context": "Cloud CI/CD pipeline for software delivery with production deployment"
+  },
+  "threat_actors": [
+    {
+      "name": "Malicious Contributor",
+      "motivation": "Supply chain compromise — inject malicious code into production",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Developer account takeover or malicious PR submission",
+      "non_capabilities": [
+        "No direct access to production infrastructure",
+        "No access to secrets_manager without CI pipeline execution",
+        "No access to deploy_key_store directly",
+        "No ability to modify branch protection rules without admin privileges"
+      ]
+    },
+    {
+      "name": "External Supply Chain Attacker",
+      "motivation": "Inject malware into software artifacts for downstream victims",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Compromise of GitHub Actions runner or dependency poisoning",
+      "non_capabilities": [
+        "No physical access to runner infrastructure",
+        "No GitHub admin credentials",
+        "No access to Artifactory admin interface without CI credentials"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1195",
+      "technique_name": "Supply Chain Compromise",
+      "tactic": "Initial Access",
+      "target_component": "actions_runner",
+      "entry_point": "Malicious GitHub Actions workflow file committed to repository",
+      "impact": "Arbitrary code execution on CI runner with access to all secrets",
+      "likelihood": "Medium",
+      "likelihood_rationale": "GitHub Actions workflow injection is well-documented; requires branch protection bypass or PR approval"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1552",
+      "technique_name": "Unsecured Credentials",
+      "tactic": "Credential Access",
+      "target_component": "secrets_manager",
+      "entry_point": "Environment variables or build logs exposing secrets during AP-001 execution",
+      "impact": "Production credentials exfiltrated enabling direct prod_env access",
+      "likelihood": "High",
+      "likelihood_rationale": "Secrets leakage in CI logs is extremely common; debug logging frequently exposes env vars"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1505",
+      "technique_name": "Server Software Component",
+      "tactic": "Persistence",
+      "target_component": "artifactory",
+      "entry_point": "Malicious artifact published by compromised runner (AP-001)",
+      "impact": "Backdoored software artifact propagated to all downstream deployments",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Artifact signing not confirmed; malicious artifacts would be deployed without signature verification"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Defense Evasion",
+      "target_component": "prod_env",
+      "entry_point": "Exfiltrated deploy_key_store credentials from AP-002",
+      "impact": "Direct access to production environment bypassing staging gate",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires AP-002 success; deploy keys may be scoped to prevent direct use outside pipeline"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1562",
+      "technique_name": "Impair Defenses",
+      "tactic": "Defense Evasion",
+      "target_component": "sast_scanner",
+      "entry_point": "Workflow modification to skip or suppress SAST scan results",
+      "impact": "Malicious code bypasses security scanning gate before artifact publication",
+      "likelihood": "Medium",
+      "likelihood_rationale": "SAST bypass is common in pipelines without enforced quality gates; workflow modification is trivial with repo write access"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1098",
+      "technique_name": "Account Manipulation",
+      "tactic": "Persistence",
+      "target_component": "github_repo",
+      "entry_point": "Compromised GitHub account used to modify branch protection rules",
+      "impact": "Removal of code review requirements, enabling single-actor code injection",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires GitHub admin-level compromise; high value but harder to achieve without targeted attack"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "CSA ART 4.1",
+      "control_name": "Pin GitHub Actions to commit SHA; require PR review",
+      "addresses_technique": ["T1195"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Secrets management with masked outputs and no-log directives",
+      "addresses_technique": ["T1552"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CSA ART 3.1",
+      "control_name": "Artifact signing with Sigstore/cosign and signature verification at deploy",
+      "addresses_technique": ["T1505"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Deploy key rotation and scoped permissions",
+      "addresses_technique": ["T1078"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "Required SAST gate with enforcement — non-bypassable step",
+      "addresses_technique": ["T1562"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 5.1",
+      "control_name": "MFA and privileged access management for repository admins",
+      "addresses_technique": ["T1098"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "Secrets leakage from CI logs gives attacker production credentials; impact extends beyond CI to all systems the credentials access",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": ["secrets_manager", "prod_env"],
+      "linked_techniques": ["T1552"],
+      "linked_mitigations": ["M-002"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Unsigned artifact in Artifactory can be replaced or backdoored; every downstream deployment inherits the compromise",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:L",
+      "affected_components": ["artifactory", "staging_env", "prod_env"],
+      "linked_techniques": ["T1505"],
+      "linked_mitigations": ["M-003"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Runner workflow injection enables arbitrary code execution in CI with full secrets access",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": ["actions_runner"],
+      "linked_techniques": ["T1195"],
+      "linked_mitigations": ["M-001"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "SAST gate bypass allows malicious code to pass security screening undetected",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:H/A:N",
+      "affected_components": ["sast_scanner", "artifactory"],
+      "linked_techniques": ["T1562"],
+      "linked_mitigations": ["M-005"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Low",
+      "severity_rationale": "Branch protection manipulation requires admin compromise which is separately mitigated; residual risk is low with MFA enforced",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:L/I:H/A:N",
+      "affected_components": ["github_repo", "branch_protection"],
+      "linked_techniques": ["T1098"],
+      "linked_mitigations": ["M-006"],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": ["US (GitHub)"],
+    "compliance_scope": ["SOC 2"],
+    "third_party_dependencies": [
+      { "name": "GitHub Actions", "trust_tier": "conditional" },
+      { "name": "Artifactory", "trust_tier": "trusted" },
+      { "name": "SAST scanner (Semgrep)", "trust_tier": "trusted" }
+    ]
+  }
+}

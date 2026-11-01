@@ -1,0 +1,18 @@
+flowchart TB
+    Browser((Browser))
+
+    subgraph Edge_Layer[Edge Layer]
+        Nginx[Nginx Reverse Proxy]
+    end
+
+    subgraph App_Layer[App Layer]
+        FlaskAPI[Flask API Server]
+    end
+
+    subgraph Data_Layer[Data Layer]
+        PostgreSQL[(PostgreSQL DB)]
+    end
+
+    Browser --> Nginx
+    Nginx --> FlaskAPI
+    FlaskAPI --> PostgreSQL

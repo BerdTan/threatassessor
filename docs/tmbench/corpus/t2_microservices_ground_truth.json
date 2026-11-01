@@ -1,0 +1,233 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_microservices",
+  "produced_by": "ThreatAssessor TMbench ground truth v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      { "id": "users", "role": "ingress", "trust_zone": "untrusted-external" },
+      { "id": "api_gateway", "role": "ingress", "trust_zone": "dmz" },
+      { "id": "user_service", "role": "compute", "trust_zone": "internal" },
+      { "id": "order_service", "role": "compute", "trust_zone": "internal" },
+      { "id": "payment_service", "role": "compute", "trust_zone": "internal-restricted" },
+      { "id": "inventory_service", "role": "compute", "trust_zone": "internal" },
+      { "id": "message_queue", "role": "compute", "trust_zone": "internal" },
+      { "id": "user_db", "role": "data store", "trust_zone": "internal" },
+      { "id": "order_db", "role": "data store", "trust_zone": "internal" },
+      { "id": "payment_db", "role": "data store", "trust_zone": "internal-restricted" },
+      { "id": "inventory_db", "role": "data store", "trust_zone": "internal" }
+    ],
+    "trust_boundaries": [
+      "external-to-dmz: users to api_gateway (TLS)",
+      "dmz-to-internal: api_gateway to all services",
+      "internal-to-restricted: services to payment_service/payment_db (mTLS required)",
+      "async: order_service and payment_service to message_queue to inventory_service"
+    ],
+    "data_classification": "restricted",
+    "operational_context": "Cloud-hosted e-commerce microservices platform with payment processing"
+  },
+  "threat_actors": [
+    {
+      "name": "External Attacker",
+      "motivation": "Payment data theft, order manipulation for financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "API endpoint exploitation via exposed gateway — OWASP API Top 10 vectors",
+      "non_capabilities": [
+        "No direct database network access — all access via service APIs",
+        "No physical infrastructure access",
+        "No pre-existing insider credentials",
+        "No mTLS certificates for payment tier"
+      ]
+    },
+    {
+      "name": "Compromised Service Account",
+      "motivation": "Lateral movement after gaining foothold in one microservice",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Service-to-service API token compromise via one vulnerable service",
+      "non_capabilities": [
+        "No OS-level access outside compromised container",
+        "No admin credentials for message queue broker",
+        "No access to secrets manager directly"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "api_gateway",
+      "entry_point": "Public-facing HTTPS API endpoint",
+      "impact": "API gateway bypass or exploitation to reach internal services directly",
+      "likelihood": "Medium",
+      "likelihood_rationale": "API gateways are high-value targets; exploit complexity is moderate if versioning lags"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Defense Evasion",
+      "target_component": "user_service",
+      "entry_point": "Compromised user credentials via phishing or prior breach",
+      "impact": "User account takeover, PII exposure from user_db",
+      "likelihood": "High",
+      "likelihood_rationale": "No MFA assumption; credential stuffing is highly automated"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1059",
+      "technique_name": "Command and Scripting Interpreter",
+      "tactic": "Execution",
+      "target_component": "order_service",
+      "entry_point": "Deserialization or injection in order processing logic",
+      "impact": "Code execution within order_service container, access to order_db and message_queue",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Deserialization vulnerabilities are common in Java/Node microservices; requires finding specific endpoint"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1505",
+      "technique_name": "Server Software Component",
+      "tactic": "Persistence",
+      "target_component": "payment_service",
+      "entry_point": "Malicious message injected via message_queue after AP-003",
+      "impact": "Persistent access to payment_service, exposure of payment card data in payment_db",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires chained exploit (AP-003 first); payment tier has additional mTLS controls"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "payment_db",
+      "entry_point": "Access via compromised payment_service from AP-004",
+      "impact": "Mass exfiltration of payment card records",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires AP-003 and AP-004 success; high detection probability during exfil volume"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1098",
+      "technique_name": "Account Manipulation",
+      "tactic": "Persistence",
+      "target_component": "user_service",
+      "entry_point": "Admin API endpoint after AP-002 account takeover",
+      "impact": "Creation of backdoor admin account for persistent access",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Admin API endpoints are commonly insufficiently protected in microservices without centralised RBAC"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "API Gateway access controls and WAF",
+      "addresses_technique": ["T1190"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 6.3",
+      "control_name": "Multi-factor Authentication for user accounts",
+      "addresses_technique": ["T1078"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-7",
+      "control_name": "Input validation and secure deserialization",
+      "addresses_technique": ["T1059"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CSA ART 1.3",
+      "control_name": "Message queue authentication and message signing",
+      "addresses_technique": ["T1505"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "Data loss prevention and egress monitoring",
+      "addresses_technique": ["T1041"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Centralised RBAC with audit logging for admin operations",
+      "addresses_technique": ["T1098"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "Payment card data is reachable via chained exploit through message queue; PCI-DSS scope makes this a regulatory-grade finding",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:L",
+      "affected_components": ["payment_service", "payment_db"],
+      "linked_techniques": ["T1505", "T1041"],
+      "linked_mitigations": ["M-004", "M-005"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "No MFA means any credential stuffing campaign can compromise user accounts at scale",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N",
+      "affected_components": ["user_service", "user_db"],
+      "linked_techniques": ["T1078"],
+      "linked_mitigations": ["M-002"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Deserialization in order service provides direct code execution path; common and exploitable in microservice frameworks",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L",
+      "affected_components": ["order_service", "order_db"],
+      "linked_techniques": ["T1059"],
+      "linked_mitigations": ["M-003"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Admin account creation is possible after account takeover; lacks RBAC gate preventing self-elevation",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:H/A:N",
+      "affected_components": ["user_service"],
+      "linked_techniques": ["T1098"],
+      "linked_mitigations": ["M-006"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "API gateway WAF is partial; specific bypass techniques exist for common WAF deployments",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:L",
+      "affected_components": ["api_gateway"],
+      "linked_techniques": ["T1190"],
+      "linked_mitigations": ["M-001"],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": ["Singapore"],
+    "compliance_scope": ["PCI-DSS", "PDPA"],
+    "third_party_dependencies": [
+      { "name": "API Gateway (Kong)", "trust_tier": "trusted" },
+      { "name": "Message Queue (RabbitMQ)", "trust_tier": "trusted" },
+      { "name": "Payment processor API", "trust_tier": "conditional" }
+    ]
+  }
+}

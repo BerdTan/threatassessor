@@ -1,0 +1,300 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t3_multicloud_data",
+  "produced_by": "ThreatAssessor TMbench ground truth v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      { "id": "data_sources", "role": "ingress", "trust_zone": "untrusted-external" },
+      { "id": "kafka_cluster", "role": "compute", "trust_zone": "ingestion-internal" },
+      { "id": "spark_cluster", "role": "compute", "trust_zone": "processing-internal" },
+      { "id": "data_lake", "role": "data store", "trust_zone": "storage-restricted" },
+      { "id": "data_warehouse", "role": "data store", "trust_zone": "storage-restricted" },
+      { "id": "bi_dashboard", "role": "egress", "trust_zone": "analytics-internal" },
+      { "id": "ml_models", "role": "compute", "trust_zone": "analytics-internal" }
+    ],
+    "trust_boundaries": [
+      "external-to-ingestion: data_sources to kafka_cluster (mixed trust — some sources untrusted)",
+      "ingestion-to-processing: kafka_cluster to spark_cluster (internal)",
+      "processing-to-storage: spark_cluster to data_lake and data_warehouse",
+      "storage-to-analytics: data_lake/data_warehouse to ml_models and bi_dashboard"
+    ],
+    "data_classification": "restricted",
+    "operational_context": "Multi-cloud streaming data pipeline from external sources through Kafka/Spark to analytics"
+  },
+  "threat_actors": [
+    {
+      "name": "Compromised Data Source",
+      "motivation": "Data poisoning — inject manipulated records to corrupt downstream analytics and ML models",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Compromise of one of the external data source connectors feeding Kafka",
+      "non_capabilities": [
+        "No direct access to Spark, data lake, or data warehouse",
+        "No Kafka admin credentials",
+        "No ability to modify ML model weights directly",
+        "No access to BI dashboard configuration"
+      ]
+    },
+    {
+      "name": "Insider Data Analyst",
+      "motivation": "Exfiltrate sensitive datasets from data warehouse for competitive intelligence",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate BI dashboard credentials with query access to data warehouse",
+      "non_capabilities": [
+        "No Spark job submission access",
+        "No Kafka producer access",
+        "No direct data lake object storage access — only through BI layer"
+      ]
+    },
+    {
+      "name": "External Attacker",
+      "motivation": "Access sensitive data at rest in data lake or warehouse",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Misconfigured storage bucket or exposed Spark UI",
+      "non_capabilities": [
+        "No valid credentials for any tier",
+        "No zero-day budget",
+        "No physical infrastructure access",
+        "No network access without exploiting a public-facing component first"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "kafka_cluster",
+      "entry_point": "Kafka broker port or management UI exposed to external data source network",
+      "impact": "Unauthorized topic access or message injection into pipeline",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Kafka clusters commonly misconfigured with no authentication on internal segments exposed to producer networks"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1059",
+      "technique_name": "Command and Scripting Interpreter",
+      "tactic": "Execution",
+      "target_component": "spark_cluster",
+      "entry_point": "Malicious Spark job submitted via compromised Kafka message or API",
+      "impact": "Code execution on Spark cluster nodes, access to all data transiting through processing layer",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Spark arbitrary code execution via job submission is a known attack vector; cluster API often insufficiently protected"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1485",
+      "technique_name": "Data Destruction",
+      "tactic": "Impact",
+      "target_component": "data_lake",
+      "entry_point": "Spark job with write permissions to data lake (AP-002)",
+      "impact": "Deletion or overwrite of raw data in data lake, causing analytics pipeline failure",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires AP-002 success; Spark jobs typically have scoped write permissions but rarely least-privilege"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "data_warehouse",
+      "entry_point": "Over-privileged BI dashboard query interface or direct JDBC access",
+      "impact": "Mass export of aggregated sensitive records from data warehouse",
+      "likelihood": "Medium",
+      "likelihood_rationale": "BI tools frequently allow bulk export; data warehouse access controls often permissive for analyst usability"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1496",
+      "technique_name": "Resource Hijacking",
+      "tactic": "Impact",
+      "target_component": "spark_cluster",
+      "entry_point": "Cryptomining payload injected via malicious Spark job",
+      "impact": "Cluster resource exhaustion causing pipeline SLA breaches",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Large compute clusters are high-value cryptomining targets; impact is operational rather than data-focused"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1583",
+      "technique_name": "Acquire Infrastructure",
+      "tactic": "Resource Development",
+      "target_component": "ml_models",
+      "entry_point": "Poisoned training data injected via compromised data source (AP-001)",
+      "impact": "Model output manipulation — adversarial data skews ML predictions affecting business decisions",
+      "likelihood": "Low",
+      "likelihood_rationale": "Data poisoning requires sustained injection over multiple pipeline runs to affect model training"
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Defense Evasion",
+      "target_component": "data_warehouse",
+      "entry_point": "Stolen analyst credentials used to run ad-hoc export queries",
+      "impact": "Authorised but unauthorised-intent bulk data export",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Analyst credentials are high-value; credential theft via phishing is common for privileged technical users"
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1562",
+      "technique_name": "Impair Defenses",
+      "tactic": "Defense Evasion",
+      "target_component": "kafka_cluster",
+      "entry_point": "Disabling audit logging on Kafka broker via admin API compromise",
+      "impact": "Removes visibility into message injection attacks, allowing sustained data poisoning undetected",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires admin-level Kafka access; high impact to detection but harder to achieve"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Kafka SASL/TLS authentication and ACL-based topic access control",
+      "addresses_technique": ["T1190"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CSA ART 1.3",
+      "control_name": "Spark job signing and submission whitelist",
+      "addresses_technique": ["T1059"],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Immutable data lake with versioning and object-lock",
+      "addresses_technique": ["T1485"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "DLP monitoring on BI export operations",
+      "addresses_technique": ["T1041"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "Spark cluster resource quotas and job isolation",
+      "addresses_technique": ["T1496"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF DE.CM-3",
+      "control_name": "Training data provenance tracking and anomaly detection",
+      "addresses_technique": ["T1583"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "CIS Control 6.3",
+      "control_name": "MFA for analyst accounts accessing data warehouse",
+      "addresses_technique": ["T1078"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF PR.PT-1",
+      "control_name": "Kafka audit log immutability and offsite shipping",
+      "addresses_technique": ["T1562"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "Spark cluster without job signing allows arbitrary code execution across entire processing layer with data lake write access",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": ["spark_cluster", "data_lake", "data_warehouse"],
+      "linked_techniques": ["T1059"],
+      "linked_mitigations": ["M-002"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Bulk export from data warehouse via BI tool is possible without DLP; restricted data at scale",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": ["data_warehouse", "bi_dashboard"],
+      "linked_techniques": ["T1041", "T1078"],
+      "linked_mitigations": ["M-004", "M-007"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Kafka authentication gap allows message injection from compromised data source network",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:L",
+      "affected_components": ["kafka_cluster"],
+      "linked_techniques": ["T1190"],
+      "linked_mitigations": ["M-001"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Data poisoning through compromised source is low probability per run but cumulative effect on ML models is significant over time",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": ["ml_models", "kafka_cluster"],
+      "linked_techniques": ["T1583"],
+      "linked_mitigations": ["M-006"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Low",
+      "severity_rationale": "Data lake destruction requires AP-002 first; object lock mitigates to recoverable impact",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:H",
+      "affected_components": ["data_lake"],
+      "linked_techniques": ["T1485"],
+      "linked_mitigations": ["M-003"],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Low",
+      "severity_rationale": "Resource hijacking for cryptomining is mitigated by existing resource quotas; availability impact only",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": ["spark_cluster"],
+      "linked_techniques": ["T1496"],
+      "linked_mitigations": ["M-005"],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Informational",
+      "severity_rationale": "Audit log tampering is already mitigated by immutable offsite shipping; residual risk is negligible",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:N/I:L/A:N",
+      "affected_components": ["kafka_cluster"],
+      "linked_techniques": ["T1562"],
+      "linked_mitigations": ["M-008"],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": ["Singapore", "US (cloud provider)"],
+    "compliance_scope": ["PDPA", "ISO 27001"],
+    "third_party_dependencies": [
+      { "name": "Apache Kafka (managed)", "trust_tier": "trusted" },
+      { "name": "Apache Spark (managed)", "trust_tier": "trusted" },
+      { "name": "External data source APIs", "trust_tier": "conditional" },
+      { "name": "BI tool (Tableau/PowerBI)", "trust_tier": "conditional" }
+    ]
+  }
+}

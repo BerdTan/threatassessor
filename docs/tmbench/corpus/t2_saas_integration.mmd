@@ -1,0 +1,28 @@
+flowchart TB
+    ExternalSaaS((External SaaS))
+    EndUser((End User))
+
+    subgraph Ingress_Layer[Ingress Layer]
+        WebhookReceiver[Webhook Receiver]
+        OAuthProxy[OAuth 2.0 Proxy]
+    end
+
+    subgraph Integration_Layer[Integration Layer]
+        EventQueue[Event Queue]
+        Transformer[Data Transformer]
+        RateLimiter[Rate Limiter]
+    end
+
+    subgraph Data_Layer[Data Layer]
+        IntegrationDB[(Integration DB)]
+        AuditLog[(Audit Log)]
+    end
+
+    EndUser --> OAuthProxy
+    ExternalSaaS --> WebhookReceiver
+    OAuthProxy --> RateLimiter
+    WebhookReceiver --> EventQueue
+    RateLimiter --> EventQueue
+    EventQueue --> Transformer
+    Transformer --> IntegrationDB
+    Transformer --> AuditLog

@@ -1,0 +1,338 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_agent_fleet",
+  "produced_by": "ThreatAssessor TMbench ground truth v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      { "id": "tenant_users", "role": "ingress", "trust_zone": "untrusted-external" },
+      { "id": "api_gateway", "role": "ingress", "trust_zone": "dmz" },
+      { "id": "rate_limiter", "role": "compute", "trust_zone": "dmz" },
+      { "id": "tenant_router", "role": "compute", "trust_zone": "dmz" },
+      { "id": "llm_orchestrator", "role": "agent", "trust_zone": "internal-agentic" },
+      { "id": "prompt_guard", "role": "compute", "trust_zone": "internal-agentic" },
+      { "id": "response_filter", "role": "compute", "trust_zone": "internal-agentic" },
+      { "id": "model_router", "role": "compute", "trust_zone": "internal-agentic" },
+      { "id": "openai_api", "role": "egress", "trust_zone": "external-provider" },
+      { "id": "anthropic_api", "role": "egress", "trust_zone": "external-provider" },
+      { "id": "self_hosted_llm", "role": "compute", "trust_zone": "internal-ml" },
+      { "id": "tenant_config_db", "role": "data store", "trust_zone": "internal-restricted" },
+      { "id": "conversation_store", "role": "data store", "trust_zone": "internal" },
+      { "id": "vector_db", "role": "data store", "trust_zone": "internal-ml" },
+      { "id": "audit_log", "role": "data store", "trust_zone": "internal-restricted" }
+    ],
+    "trust_boundaries": [
+      "external-to-dmz: tenant_users to api_gateway/rate_limiter",
+      "dmz-to-internal: tenant_router to llm_orchestrator",
+      "agentic-to-llm-providers: model_router to external APIs",
+      "agentic-to-data: llm_orchestrator to tenant_config_db, conversation_store, vector_db",
+      "tenant-isolation: tenant_router enforces tenant separation at routing layer"
+    ],
+    "data_classification": "restricted",
+    "operational_context": "Multi-tenant SaaS LLM platform with prompt guard, response filtering, and per-tenant model routing"
+  },
+  "threat_actors": [
+    {
+      "name": "Malicious Tenant User",
+      "motivation": "Cross-tenant data access, prompt guard bypass, or API cost abuse at other tenants' expense",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate tenant API key with crafted prompts designed to bypass prompt_guard or exploit tenant routing",
+      "non_capabilities": [
+        "No access to other tenants' API keys",
+        "No admin access to tenant_router configuration",
+        "No direct database access — only through orchestrator",
+        "No access to audit_log entries for other tenants"
+      ]
+    },
+    {
+      "name": "External API Attacker",
+      "motivation": "Exploit public API surface to bypass rate limiting and exhaust model quotas",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Public API endpoint abuse using rotated IPs and stolen API keys",
+      "non_capabilities": [
+        "No valid tenant credentials initially",
+        "No direct backend network access",
+        "No knowledge of internal tenant_config_db schema",
+        "No zero-day budget"
+      ]
+    },
+    {
+      "name": "Nation-State / Advanced Persistent Threat",
+      "motivation": "Persistent access to all tenant conversations — intelligence value of aggregated LLM interactions at scale",
+      "capability_tier": "nation-state",
+      "initial_access_vector": "Supply chain attack on self_hosted_llm weights or compromise of external model provider",
+      "non_capabilities": [
+        "Cannot directly modify application logic without code-level access",
+        "Influence limited to model response content",
+        "No direct tenant data access without model-level exfiltration technique"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "AML.T0051",
+      "technique_name": "LLM Prompt Injection",
+      "tactic": "ML Attack Staging",
+      "target_component": "prompt_guard",
+      "entry_point": "Crafted prompt designed to bypass prompt_guard detection via obfuscation or encoding",
+      "impact": "Injection reaches llm_orchestrator unfiltered, enabling goal hijacking or data exfiltration commands",
+      "likelihood": "High",
+      "likelihood_rationale": "Prompt guard bypass is active research area; no guard is 100% effective against adversarial prompts"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Defense Evasion",
+      "target_component": "tenant_router",
+      "entry_point": "Stolen tenant API key used to access platform as legitimate tenant",
+      "impact": "Full access to victim tenant's conversation_store and vector_db context",
+      "likelihood": "Medium",
+      "likelihood_rationale": "API key theft via client-side exposure or phishing is common; platform-wide impact limited to single tenant unless router bypass possible"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "AML.T0043",
+      "technique_name": "Craft Adversarial Data",
+      "tactic": "ML Attack Staging",
+      "target_component": "vector_db",
+      "entry_point": "Tenant-uploaded documents containing adversarial instructions in vector_db corpus",
+      "impact": "Persistent indirect injection — all future RAG retrievals for this tenant carry attacker-controlled context",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Tenant document ingestion creates persistent poisoning opportunity; shared vector_db namespace could affect cross-tenant retrieval"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "api_gateway",
+      "entry_point": "API gateway CVE or authentication bypass in tenant routing logic",
+      "impact": "Cross-tenant access — attacker requests routed to different tenant's llm_orchestrator context",
+      "likelihood": "Low",
+      "likelihood_rationale": "Multi-tenant routing bugs are high-impact; likelihood depends on isolation implementation quality"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1562",
+      "technique_name": "Impair Defenses",
+      "tactic": "Defense Evasion",
+      "target_component": "prompt_guard",
+      "entry_point": "Model-level confusion attack causing prompt_guard to score malicious content as safe",
+      "impact": "Prompt guard reliability degraded; sustained injection attacks succeed with lower obfuscation effort",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Adversarial examples against ML-based classifiers are well-documented; prompt guard is itself an ML model"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "AML.T0040",
+      "technique_name": "ML Model Inference API Access",
+      "tactic": "ML Attack Staging",
+      "target_component": "model_router",
+      "entry_point": "API key enumeration or rate limit bypass to directly hit external model APIs",
+      "impact": "API key abuse for cost hijacking or model probing beyond intended tenant quota",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Rate limiter bypass techniques exist; API key reuse across tenants creates shared exposure"
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "conversation_store",
+      "entry_point": "Prompt injection directing orchestrator to retrieve and output other tenants' conversations",
+      "impact": "Cross-tenant conversation data exfiltration — confidential user interactions exposed",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If tenant isolation in conversation_store is query-parameter based rather than schema/row-level, injection can cross tenant boundaries"
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "AML.T0048",
+      "technique_name": "Model Backdoor",
+      "tactic": "ML Model Compromise",
+      "target_component": "self_hosted_llm",
+      "entry_point": "Compromised model weights for self_hosted_llm via model supply chain",
+      "impact": "Backdoor triggers on specific tenant inputs, exfiltrating or manipulating responses for targeted tenants",
+      "likelihood": "Low",
+      "likelihood_rationale": "Nation-state capability required; self-hosted models avoid external provider risk but introduce supply chain exposure"
+    },
+    {
+      "path_id": "AP-009",
+      "technique_id": "T1083",
+      "technique_name": "File and Directory Discovery",
+      "tactic": "Discovery",
+      "target_component": "tenant_config_db",
+      "entry_point": "Orchestrator instructed via AP-001 to enumerate tenant configuration details",
+      "impact": "Tenant configuration exposed — API keys, model preferences, and custom system prompts for all tenants",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires AP-001 success and orchestrator having DB query capability; configuration access typically restricted"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "CSA ART 4.2",
+      "control_name": "Multi-layer prompt injection detection with adversarial training",
+      "addresses_technique": ["AML.T0051"],
+      "implementation_status": "Implemented",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "API key rotation, MFA for tenant admin, and key scoping per tenant",
+      "addresses_technique": ["T1078"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CSA ART 4.1",
+      "control_name": "Document ingestion scanning with adversarial instruction detection",
+      "addresses_technique": ["AML.T0043"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Tenant isolation — row-level security and schema separation in conversation_store",
+      "addresses_technique": ["T1190", "T1041"],
+      "implementation_status": "Partial",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "CSA ART 2.1",
+      "control_name": "Prompt guard adversarial testing and red-team programme",
+      "addresses_technique": ["T1562", "AML.T0051"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Per-tenant API quota enforcement at model_router",
+      "addresses_technique": ["AML.T0040"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "CSA ART 2.2",
+      "control_name": "Model supply chain integrity — hash verification on self_hosted_llm weights",
+      "addresses_technique": ["AML.T0048"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Principle of least privilege for orchestrator DB access — read-only, tenant-scoped",
+      "addresses_technique": ["T1083"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "Cross-tenant conversation access via prompt injection is a platform-level data breach; affects all tenants simultaneously",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": ["llm_orchestrator", "conversation_store"],
+      "linked_techniques": ["AML.T0051", "T1041"],
+      "linked_mitigations": ["M-001", "M-004"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "Tenant isolation in conversation_store is partial; a single query parameter bypass exposes all tenants' data",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N",
+      "affected_components": ["tenant_router", "conversation_store"],
+      "linked_techniques": ["T1190"],
+      "linked_mitigations": ["M-004"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Persistent adversarial documents in vector_db create an ongoing injection channel; no ingestion scanning deployed",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": ["vector_db"],
+      "linked_techniques": ["AML.T0043"],
+      "linked_mitigations": ["M-003"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Prompt guard is ML-based and adversarially bypassable; residual risk remains High even with implementation",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": ["prompt_guard"],
+      "linked_techniques": ["T1562"],
+      "linked_mitigations": ["M-005"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Stolen tenant API key provides access to that tenant's data; MFA for admin partially mitigates",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N",
+      "affected_components": ["tenant_router", "api_gateway"],
+      "linked_techniques": ["T1078"],
+      "linked_mitigations": ["M-002"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "Model backdoor in self-hosted LLM requires supply chain compromise but impacts all tenants using that model",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": ["self_hosted_llm"],
+      "linked_techniques": ["AML.T0048"],
+      "linked_mitigations": ["M-007"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Low",
+      "severity_rationale": "API quota enforcement is implemented; cost hijacking residual risk is bounded per tenant",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": ["model_router"],
+      "linked_techniques": ["AML.T0040"],
+      "linked_mitigations": ["M-006"],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": ["US (OpenAI/Anthropic)", "Tenant-defined (multi-region)"],
+    "compliance_scope": ["SOC 2 Type II", "GDPR (EU tenants)", "PDPA (SG tenants)"],
+    "third_party_dependencies": [
+      { "name": "OpenAI API", "trust_tier": "conditional" },
+      { "name": "Anthropic API", "trust_tier": "conditional" },
+      { "name": "Self-hosted LLM weights (HuggingFace)", "trust_tier": "conditional" }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "supervised",
+      "tool_call_scope": [
+        "vector_db read (tenant-scoped)",
+        "conversation_store read/write (tenant-scoped)",
+        "external model APIs (via model_router)"
+      ],
+      "blast_radius": "All tenant conversation data in conversation_store, vector_db poisoning affecting all tenants using shared namespace, external API cost exhaustion at model_router",
+      "human_oversight_points": [
+        "Response filter — automated, not human",
+        "Prompt guard — automated, not human",
+        "Audit log review — post-hoc; no real-time human oversight on individual requests"
+      ],
+      "model_provenance": {
+        "provider": "OpenAI / Anthropic (external); self-hosted (internal)",
+        "model_id": "gpt-4o / claude-3-5-sonnet / self-hosted-llm-v2",
+        "fine_tuned": false
+      }
+    }
+  }
+}

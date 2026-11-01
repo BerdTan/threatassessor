@@ -1,0 +1,17 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_cicd_pipeline",
+  "scored_at": "2026-11-01T00:00:00Z",
+  "scored_by": "TMbench ground truth panel v1.0",
+  "tatb": {
+    "threat_relevant": 3,
+    "ttp_accurate": 3,
+    "risk_defensible": 3,
+    "plan_actionable": 3
+  },
+  "bonus_completeness": 1,
+  "bonus_agentic": 0,
+  "total": 13,
+  "confidence": "Solid",
+  "notes": "Ground truth TM — all dimensions max. T2 complexity tier: 10 components, 6 attack paths (above minimum of 5). Supply chain focus: secrets leakage and artifact signing are the primary risk drivers. Severity appropriately differentiated."
+}
