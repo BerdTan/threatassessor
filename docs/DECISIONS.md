@@ -4,6 +4,22 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 114 — 2026-11-01
+
+### TMbench Steps 35–37 complete
+
+TMbench corpus (10 reference architectures, T1–T4), runner (`tmbench_runner.py`), and baseline results published.
+
+**Key findings from Step 37:**
+- hetzner (Qwen3.6-35B): 12.10/13 mean, 10/10 PASS — TATB all 3/3; only gap is agentic governance block over-generated for non-agentic archs (triggers ATLAS requirement → no bonus)
+- Axios THREATMODEL.md (human-authored): 6/13 Reject — TR=3 RD=3 but TA=0 (no ATT&CK IDs) and PA=0 (no control references)
+- OpenAI security-threat-model skill: 6/13 Reject — same pattern as Axios
+- **Universal pattern**: TR and RD are table stakes across all approaches; TA and PA require deliberate spec compliance investment
+
+Commits: 53467c9 (corpus), 84c5441 (runner), dae1495 (hetzner baseline), 4a89cb4 (external comparison)
+
+---
+
 ### Entry 234 — TMagent: model-swappable TM generation agent for TMbench leaderboard
 
 **Date:** 2026-11-01  

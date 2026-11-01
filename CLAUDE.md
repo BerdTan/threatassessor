@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
 **Version:** 3.0  
-**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 56 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph) + TAgym (instrument gym flywheel)
+**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 67 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph) + TAgym (instrument gym flywheel)
 
 ---
 
@@ -214,4 +214,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-10-03
+**Last Updated:** 2026-11-01
