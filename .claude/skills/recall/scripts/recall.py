@@ -26,21 +26,22 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 # Update this after a dependency analysis session.
 # Mark a step done by prepending ✅ to its label.
 #
-# Dependency chain (2026-10-26, reordered 2026-10-26):
+# Dependency chain (2026-11-01, reordered for three-tier benchmarking system Entry 233):
 #   P37 (TA Perspective) — DONE (6f1f39b); blog P37 published
 #   P38 (Managed agent fleet) — DONE (87e8a1e); blog P38 published
+#   P39 (OpenShell primitives blog) — DONE + PUBLISHED
 #   OpenShell supervisor + fleet tool registry (Entries 228–230) — DONE (1a8cfd9, 48c083f, 083fb38)
-#     supervisor relay / circuit breaker / RunCredentials / confirm_isolation now in base.py
-#     fleet tool registry + CISO posture endpoint live; check-managed-agents skill 29/29 PASS
-#   Fleet Foundation (Entry 221) — ManagedAgentHarness harness.py steps 9–13 still needed
+#   TMbench (Entry 231) — freestanding; spec+corpus are writing tasks; moved before harness
+#     Steps 34–38: spec → corpus → runner → run tools → TMgym integration
+#     Blog P40: "The Benchmark Threat Modeling Doesn't Have Yet"
+#   Fleet Foundation (Entry 221) — ManagedAgentHarness harness.py steps 9–13
 #     (circuit breaker + confirm_isolation already landed in base; harness.py wraps them as stages)
-#   Recursive flywheel (Entry 227) — Steps A–D; starts after step 13 (harness exists)
-#     Step A (BouncerStage context-hash) only needs existing BouncerStage — no fleet layer required
-#     Runs in parallel with CoreBouncer track (14–16) and fleet build (17–21)
+#   AgentBench (Entry 233) — after step 13; TA's managed fleet is the entry; P39 primitives = seed
+#     Steps 39–42: corpus → scorer → run frameworks → leaderboard entry
+#     Blog P41: "How to Compare Agent Frameworks Before You Trust One"
+#   Recursive flywheel (Entry 227) — Steps A–D; starts after step 13
 #   Fleet Security (Entry 222) — CoreBouncer; after Foundation (step 13)
-#   Fleet Service — second agent; lands clean into harness
-#   Fleet Report — fleet manifest + EventBroker fleet events; after Service
-#   FleetCoordinator — only when third agent is scoped
+#   Fleet Service/Report/Coordinator — steps 17–21
 PRIORITY_STEPS = [
     # ── Priority 33/34/35 — DONE ─────────────────────────────────────────────
     (1,  33, "✅ DETECT-ABU 6 rules + MCPAccessLogger",  "policies/soc_detection_rules.yaml",         None),
@@ -55,19 +56,34 @@ PRIORITY_STEPS = [
     # ── Priority 40 — OpenShell supervisor model (Entries 228–230) — DONE ────
     (29, 40, "✅ OpenShell supervisor: allowed_tools/allowed_endpoints/supervisor relay/circuit breaker/RunCredentials/confirm_isolation (Entry 228)", "chatbot/agents/managed/base.py + registry.py", None),
     (30, 40, "✅ Fleet tool registry + CISO posture endpoint + check-managed-agents skill 29/29 (Entries 229–230)", "chatbot/agents/managed/tool_registry.py + platform.py", 29),
-    # Blog P39 is now unblocked — step 30 is done
-    (31, 40, "📝 Draft P39 blog — 'The Four Primitives: What OpenShell Teaches TA About Rogue Agents'", "docs/blog/drafts/", 30),
+    (31, 40, "✅ Blog P39 published — 'Four Primitives, One Honest Gap'", "docs/blog/drafts/", 30),
+    # ── TMbench (Entry 231) — freestanding, before harness ───────────────────
+    # Spec + corpus are writing tasks; runner + gym integration come after.
+    # TMgym integration (step 38) benefits from mature TAgym but is not blocked on it.
+    (34, 43, "TMbench Step A — Draft threatmodel.md spec (TATB-derived, vendor-neutral)", "docs/tmbench/threatmodel.md", None),
+    (35, 43, "TMbench Step B — Curate 10 reference architectures with ground truth", "docs/tmbench/corpus/", 34),
+    (36, 43, "TMbench Step C — Build TMbench runner (TATB rubric + spec completeness)", ".claude/skills/tmbench/scripts/tmbench-run.py", 35),
+    (37, 43, "TMbench Step D — Run OpenAI skill + 1-2 other tools against corpus; publish baseline", "docs/tmbench/results/", 36),
+    (38, 43, "TMbench Step E — TMgym integration: TA iterates against benchmark score", "chatbot/api/routes/gym.py", 37),
+    # Blog P40 unblocked after TMbench Step D (results exist to write about)
+    (40, 43, "📝 Draft P40 blog — 'The Benchmark Threat Modeling Doesn't Have Yet'", "docs/blog/drafts/", 37),
     # ── Priority 40 — ManagedAgentHarness harness.py (Entry 221) ─────────────
     # circuit breaker + RunCredentials + confirm_isolation are already in base.py (step 29);
     # harness.py wraps them into formal stage objects for the fleet pipeline.
-    (9,  40, "AgentPrepStage — policy load + credential provisioning (confirm_isolation wired)", "chatbot/agents/managed/harness.py",  31),
+    (9,  40, "AgentPrepStage — policy load + credential provisioning (confirm_isolation wired)", "chatbot/agents/managed/harness.py",  None),
     (10, 40, "AgentExecuteStage — extract tool loop from ManagedAgent.run(); supervisor relay reused", "chatbot/agents/managed/harness.py", 9),
     (11, 40, "AgentAuditStage — output scan + token budget + credential expiry", "chatbot/agents/managed/harness.py", 10),
     (12, 40, "AgentSynthStage — write report + signal EventBroker", "chatbot/agents/managed/harness.py", 11),
     (13, 40, "ManagedAgentHarness stage pipeline + BlockedAgentError (circuit breaker already in base)", "chatbot/agents/managed/harness.py", 12),
+    # ── AgentBench (Entry 233) — after step 13 ───────────────────────────────
+    # TA's managed fleet is the entry; P39 primitives table = seed corpus.
+    # Scorer: binary per-primitive + structural gap classification (achieved/near-term/deployment/structural).
+    (39, 44, "AgentBench Step A — Define 4-primitive corpus (P39 seed + 4 other frameworks)", "docs/agentbench/corpus/", 13),
+    (41, 44, "AgentBench Step B — Build primitive scorer (binary coverage + gap classification)", ".claude/skills/agentbench/scripts/agentbench-run.py", 39),
+    (42, 44, "AgentBench Step C — Run 5 frameworks; produce leaderboard entry for TA fleet", "docs/agentbench/results/", 41),
+    (43, 44, "AgentBench Step D — Publish leaderboard + TA entry; P41 blog draft", "docs/blog/drafts/", 42),
     # ── Priority 41 — Recursive improvement flywheel (Entry 227) ─────────────
     # Starts after step 13 (harness exists); runs in parallel with CoreBouncer + fleet build.
-    # Step A only needs existing BouncerStage — no fleet layer required.
     (23, 41, "Step A — BouncerStage context-hash parity check",  "chatbot/harness/stages.py",             13),
     (24, 41, "Step B — SUCCEEDED auto-staging → synthetic MMD queue", "chatbot/modules/perspective_runner.py", 23),
     (25, 41, "Step C — Continuous red-team harness (known-evasion scenarios, live pipeline)", ".claude/skills/check-detect/scripts/check-detect.py", 23),
@@ -85,8 +101,8 @@ PRIORITY_STEPS = [
     # ── Freestanding: ta-export + skill-master (Entry 224/225) ───────────────
     (27, 0,  "ta-export version-stamp: {model_id, routing_mode, skills_context} into bundle", "chatbot/modules/ta_exporter.py", None),
     (28, 0,  "skill-master: multi-location inventory + override detection + change-triggered re-scan (Entry 225)", ".claude/skills/skill-master/", 27),
-    # Blog P40 unblocked after flywheel D + skill-master
-    (32, 0,  "📝 Draft P40 blog — recursive flywheel + skill-master + CISO-as-partner story", "docs/blog/drafts/", 28),
+    # Blog P42 (synthesis): three-tier confidence stack — unblocked after AgentBench + flywheel
+    (44, 0,  "📝 Draft P42 blog — 'Three Benchmarks, One Confidence Claim' (TAgym + AgentBench + TMbench)", "docs/blog/drafts/", 43),
     # ── Freestanding: Open Factory (Entry 224) — needs sequencing ────────────
     (33, 0,  "Open Factory (Entry 224): define ta-export reproducibility gap + interoperability steps", "docs/DECISIONS.md", 27),
     # ── Freestanding: recall ADR auto-sequencing (Step 22) ───────────────────
@@ -105,6 +121,8 @@ ADR_TO_STEPS: dict[int, list[int]] = {
     228: [29],                   # OpenShell supervisor (done)
     229: [30],                   # fleet tool registry (done)
     230: [30],                   # check-managed-agents (done)
+    231: [34, 35, 36, 37, 38],   # TMbench A–E
+    233: [39, 41, 42, 43],       # AgentBench A–D (Entry 233 = three-tier system)
 }
 
 # ── helpers ───────────────────────────────────────────────────────────────────

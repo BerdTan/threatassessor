@@ -4,6 +4,53 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 233 — Three-tier benchmarking system: TAgym / AgentBench / TMbench
+
+**Date:** 2026-11-01  
+**Status:** Design intent  
+**Trigger:** Reviewing the open build sequence revealed that TAgym (internal), the primitives comparison in P39 (cross-framework), and TMbench (external) are three independent confidence signals that form a coherent system when named together. Each tier answers a different question about TA's trustworthiness.
+
+**What (design intent):**
+
+Three tiers, three distinct confidence claims:
+
+| Tier | Name | Measures | Confidence claim |
+|---|---|---|---|
+| Internal | **TAgym** | TA vs TA-previous (Brier trend) | "We are improving" |
+| Cross | **AgentBench** | TA agent fleet vs other frameworks (OpenShell, LangGraph, etc.) on primitive coverage | "Our agent layer is structurally trustworthy" |
+| External | **TMbench** | TA TM output vs other TM tools on a neutral corpus | "Our output beats the field on ground truth" |
+
+**Why this matters:**  
+TAgym already exists and proves relative improvement. Without TMbench, there is no external anchor — a tool can pass its own gym and still be mediocre in absolute terms. Without AgentBench, the agent layer that *generates* the TM has no structural comparison to other frameworks. Together the three tiers provide a full confidence stack: correctness over time (TAgym), structural trustworthiness of the agent layer (AgentBench), and output quality against the field (TMbench).
+
+**AgentBench design (new, distinct from TMbench):**  
+- P39's primitives table (Prover/Gateway/Supervisor/Sandbox) is the seed corpus — one architecture's primitive coverage breakdown.  
+- Corpus: 5–10 agent frameworks (OpenShell, LangGraph, CrewAI, AutoGen, TA managed fleet) evaluated against the same four-primitive rubric.  
+- Scorer: binary per-primitive (present / partial / absent) + structural gap classification (achieved / near-term / deployment dependency / structural gap).  
+- TA participates as one entry; earns its position by scoring, not by owning the scorer.  
+- Dependency: ManagedAgentHarness (steps 9–13) must be complete so TA's agent stack is formally defined before its AgentBench entry is submitted.
+
+**Confidence stack for TM leaderboard:**  
+High TAgym Brier improvement + strong AgentBench primitive coverage + top TMbench leaderboard position = a three-way independently verifiable claim that TA is correct, structurally safe, and externally competitive.
+
+**Build order:**  
+1. TMbench (Entry 231, steps A–E) — freestanding, start now; spec + corpus are writing tasks  
+2. ManagedAgentHarness (steps 9–13) — completes TA's agent stack definition  
+3. AgentBench (after step 13) — TA's managed fleet is the entry; P39 primitives table = seed  
+4. Flywheel (steps 23–26) — continuous improvement; TAgym matures for TMgym integration  
+
+**Blog candidates:**  
+- P40: TMbench — "The Benchmark Threat Modeling Doesn't Have Yet"  
+- P41: AgentBench — "How to Compare Agent Frameworks Before You Trust One"  
+- P42 (synthesis): "Three Benchmarks, One Confidence Claim"
+
+**Alternatives rejected:**  
+- Single unified benchmark: conflates TM output quality with agent structural safety — different signals, different audiences  
+- TAgym as the only benchmark: closed loop, no external validity, unfalsifiable to outsiders  
+- AgentBench before harness is complete: TA's entry would be based on an incomplete agent stack
+
+---
+
 ### Entry 232 — DETECT-AGT-007 + DETECT-QC-017: two new rules from Qwen incident (Check Point, Oct 2026)
 
 **Date:** 2026-10-31  
