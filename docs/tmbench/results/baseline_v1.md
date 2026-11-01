@@ -8,10 +8,23 @@
 
 ## Leaderboard
 
-| Tool | Archs | Mean | Pass rate | Δ vs GT |
-|---|---|---|---|---|
-| hetzner (Qwen3.6-35B) | 10/10 | 12.10/13 | 10/10 | −0.90 |
-| Ground truth ceiling | 10/10 | 13.00/13 | 10/10 | 0 |
+| Tool | Type | Archs | Mean | Pass rate | Δ vs GT |
+|---|---|---|---|---|---|
+| Ground truth ceiling | corpus GT | 10/10 | 13.00/13 | 10/10 | 0 |
+| hetzner (Qwen3.6-35B) | LLM → threatmodel/0.1 | 10/10 | 12.10/13 | 10/10 | −0.90 |
+| axios THREATMODEL.md | human-authored Markdown | 1/1 | 6/13 | 0/1 | n/a |
+| openai/skills security-threat-model | skill → Markdown | 1/1 | 6/13 | 0/1 | n/a |
+
+### TATB breakdown
+
+| Tool | TR | TA | RD | PA | Bonus | Total |
+|---|---|---|---|---|---|---|
+| Ground truth | 3 | 3 | 3 | 3 | +1 | **13** |
+| hetzner | 3 | 3 | 3 | 3 | +0 | **12** |
+| axios THREATMODEL.md | 3 | 0 | 3 | 0 | +0 | **6** |
+| openai/skills TM skill | 3 | 0 | 3 | 0 | +0 | **6** |
+
+**Pattern:** Every approach scores TR=3 and RD=3 — threat reasoning and risk calibration are table stakes. The differentiator is TA (ATT&CK grounding) and PA (control references). Neither real-world TM documents nor the OpenAI skill output include ATT&CK IDs or NIST/CIS control references — the two dimensions that require deliberate spec compliance investment.
 
 ---
 

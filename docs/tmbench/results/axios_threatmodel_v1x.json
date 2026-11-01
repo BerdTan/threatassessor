@@ -1,0 +1,281 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "axios_v1x",
+  "produced_by": "axios THREATMODEL.md (human-authored, v1.x)",
+  "produced_at": "2024-01-01T00:00:00Z",
+  "_source": "https://github.com/axios/axios/blob/v1.x/THREATMODEL.md",
+  "_adapter_note": "Adapted from Markdown to threatmodel/0.1. Fields present in source are mapped; fields not present in source are omitted or marked N/A. No ATT&CK IDs in original — left empty.",
+  "architecture_summary": {
+    "components": [
+      { "id": "caller",         "role": "ingress",    "trust_zone": "trusted" },
+      { "id": "axios_runtime",  "role": "compute",    "trust_zone": "internal" },
+      { "id": "network",        "role": "egress",     "trust_zone": "untrusted" },
+      { "id": "env_vars",       "role": "config",     "trust_zone": "internal" },
+      { "id": "interceptors",   "role": "compute",    "trust_zone": "conditional" },
+      { "id": "npm_registry",   "role": "egress",     "trust_zone": "conditional" },
+      { "id": "github_actions", "role": "compute",    "trust_zone": "conditional" },
+      { "id": "maintainer_ws",  "role": "compute",    "trust_zone": "trusted" },
+      { "id": "runtime_deps",   "role": "compute",    "trust_zone": "conditional" }
+    ],
+    "trust_boundaries": [
+      "Caller to axios: fully trusted — malicious callers are a non-goal",
+      "Axios to network: everything past the socket is untrusted",
+      "Environment variables (proxy settings): trusted but pivot in CI/container scenarios",
+      "Caller-supplied hooks (interceptors, transforms, adapters): full privilege, not sandboxed"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "npm library — runtime (applications importing axios) + project/SDLC (package build and publish pipeline)"
+  },
+  "threat_actors": [
+    {
+      "name": "Malicious server / on-path attacker",
+      "motivation": "Credential theft, data exfiltration, SSRF pivot to internal network",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Control of upstream server or network path",
+      "non_capabilities": [
+        "Cannot control the caller process",
+        "Cannot modify axios source at runtime without supply chain compromise",
+        "No physical access to caller environment"
+      ]
+    },
+    {
+      "name": "Drive-by contributor",
+      "motivation": "Inject malicious code into npm package via PR",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Fork and pull request to public GitHub repo",
+      "non_capabilities": [
+        "No write access to main branch without review",
+        "No access to npm publish token or maintainer secrets",
+        "Cannot bypass OIDC publish flow without GitHub Actions compromise"
+      ]
+    },
+    {
+      "name": "Compromised maintainer account",
+      "motivation": "Publish malicious package version, supply chain compromise",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Phishing, credential theft, or workstation compromise",
+      "non_capabilities": [
+        "Cannot bypass npm provenance attestation without GitHub Actions control",
+        "Cannot retroactively alter published provenance attestations"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "T-R1",
+      "technique_id": "",
+      "technique_name": "SSRF via caller-controlled URL",
+      "tactic": "Initial Access",
+      "target_component": "network",
+      "entry_point": "caller-supplied URL parameter",
+      "impact": "Pivot to internal network, access metadata services, scan internal hosts",
+      "likelihood": "High",
+      "likelihood_rationale": "Caller fully controls URL; axios does not validate URL safety"
+    },
+    {
+      "path_id": "T-R2",
+      "technique_id": "",
+      "technique_name": "Credential leak on cross-origin redirect",
+      "tactic": "Credential Access",
+      "target_component": "network",
+      "entry_point": "HTTP redirect response from server",
+      "impact": "Authorization headers sent to attacker-controlled redirect target",
+      "likelihood": "Medium",
+      "likelihood_rationale": "follow-redirects strips headers; sensitiveHeaders config available but not default"
+    },
+    {
+      "path_id": "T-R3",
+      "technique_id": "",
+      "technique_name": "CRLF header injection",
+      "tactic": "Defense Evasion",
+      "target_component": "axios_runtime",
+      "entry_point": "caller-supplied header values",
+      "impact": "HTTP request smuggling, log injection",
+      "likelihood": "Low",
+      "likelihood_rationale": "Residual risk very low after GHSA-445q-vr5w-6q77 fix"
+    },
+    {
+      "path_id": "T-R4",
+      "technique_id": "",
+      "technique_name": "Prototype pollution via merge helpers",
+      "tactic": "Execution",
+      "target_component": "axios_runtime",
+      "entry_point": "Attacker-controlled config or response object",
+      "impact": "Property injection affecting downstream code behavior",
+      "likelihood": "Low",
+      "likelihood_rationale": "Key filtering in merge helpers; hasOwnProp guards on config reads"
+    },
+    {
+      "path_id": "T-R8",
+      "technique_id": "",
+      "technique_name": "Sensitive data in error objects and logs",
+      "tactic": "Collection",
+      "target_component": "axios_runtime",
+      "entry_point": "Uncaught axios error propagated to application logger",
+      "impact": "Credentials, tokens, or request bodies exposed in error logs",
+      "likelihood": "High",
+      "likelihood_rationale": "Documented known risk; config object included in errors by design"
+    },
+    {
+      "path_id": "T-S1",
+      "technique_id": "",
+      "technique_name": "Malicious code in contributor PR",
+      "tactic": "Initial Access",
+      "target_component": "github_actions",
+      "entry_point": "Fork pull request to public repository",
+      "impact": "Malicious code merged to main branch, eventually published in npm release",
+      "likelihood": "High",
+      "likelihood_rationale": "Single maintainer — no two-person review; dist/ hard to review"
+    },
+    {
+      "path_id": "T-S2",
+      "technique_id": "",
+      "technique_name": "Dev dependency compromise of maintainer workstation",
+      "tactic": "Supply Chain Compromise",
+      "target_component": "maintainer_ws",
+      "entry_point": "Malicious update to Rollup, Babel, Vitest, or ESLint plugin",
+      "impact": "Build process executes attacker code with full maintainer privileges; npm credentials exfiltrated",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Build-tool plugins execute during local builds; not isolated"
+    },
+    {
+      "path_id": "T-S3",
+      "technique_id": "",
+      "technique_name": "Phishing to maintainer account takeover",
+      "tactic": "Initial Access",
+      "target_component": "maintainer_ws",
+      "entry_point": "Phishing email targeting maintainer",
+      "impact": "Full control of GitHub repo and npm publish capability",
+      "likelihood": "High",
+      "likelihood_rationale": "Hardware key policy not verifiable from repo; backup keys needed"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-01",
+      "control_id": "",
+      "control_name": "sensitiveHeaders config to strip headers on redirect",
+      "addresses_technique": ["T-R2"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-02",
+      "control_id": "",
+      "control_name": "Key filtering in merge helpers + hasOwnProp guards",
+      "addresses_technique": ["T-R4"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-03",
+      "control_id": "",
+      "control_name": "npm ci --ignore-scripts in CI; project .npmrc ignore-scripts=true",
+      "addresses_technique": ["T-S2"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-04",
+      "control_id": "",
+      "control_name": "OIDC publishing with no NPM_TOKEN; npm provenance attestations",
+      "addresses_technique": ["T-S2", "T-S3"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-05",
+      "control_id": "",
+      "control_name": "SHA-pinned GitHub Actions; minimal workflow permissions; zizmor linting",
+      "addresses_technique": ["T-S6"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-06",
+      "control_id": "",
+      "control_name": "Dependabot with 7-day cooldown; tag protection rules",
+      "addresses_technique": ["T-S4", "T-S7"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-07",
+      "control_id": "",
+      "control_name": "CRLF injection fix (GHSA-445q-vr5w-6q77)",
+      "addresses_technique": ["T-R3"],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-08",
+      "control_id": "",
+      "control_name": "Document sensitive data in errors as known risk; no automated redaction",
+      "addresses_technique": ["T-R8"],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "SSRF is high likelihood (caller controls URL) and high impact (internal network pivot). Axios explicitly treats this as caller responsibility — residual risk is substantial.",
+      "severity_vector": "",
+      "affected_components": ["network", "axios_runtime"],
+      "linked_techniques": ["T-R1"],
+      "linked_mitigations": [],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Sensitive data in errors: high likelihood (errors are common), medium-high impact (credentials in logs). Documented but no automated fix.",
+      "severity_vector": "",
+      "affected_components": ["axios_runtime"],
+      "linked_techniques": ["T-R8"],
+      "linked_mitigations": ["M-08"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Critical",
+      "severity_rationale": "Malicious contributor PR: high likelihood (public repo, single maintainer), critical impact (supply chain compromise affecting all axios consumers).",
+      "severity_vector": "",
+      "affected_components": ["github_actions", "npm_registry"],
+      "linked_techniques": ["T-S1"],
+      "linked_mitigations": [],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Critical",
+      "severity_rationale": "Dev dependency workstation compromise: medium likelihood, critical impact (full build-time code execution with npm publish access).",
+      "severity_vector": "",
+      "affected_components": ["maintainer_ws", "npm_registry"],
+      "linked_techniques": ["T-S2"],
+      "linked_mitigations": ["M-03", "M-04"],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "Credential leak on redirect: medium likelihood, high impact if auth headers reach attacker server.",
+      "severity_vector": "",
+      "affected_components": ["network"],
+      "linked_techniques": ["T-R2"],
+      "linked_mitigations": ["M-01"],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [],
+    "compliance_scope": [],
+    "third_party_dependencies": [
+      { "name": "follow-redirects", "trust_tier": "conditional" },
+      { "name": "form-data",        "trust_tier": "conditional" },
+      { "name": "proxy-from-env",   "trust_tier": "conditional" },
+      { "name": "https-proxy-agent","trust_tier": "conditional" }
+    ]
+  }
+}

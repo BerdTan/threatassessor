@@ -1,0 +1,122 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "openai_skill_estimate",
+  "produced_by": "openai/skills security-threat-model (Markdown output, estimated adaptation)",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "_source": "https://github.com/openai/skills/blob/main/skills/.curated/security-threat-model/SKILL.md",
+  "_adapter_note": "Representative adaptation of OpenAI's security-threat-model skill output for a canonical web app. The skill produces Markdown — this JSON represents a best-effort conversion. The skill has no structured schema, no ATT&CK IDs, no CVSS vectors, and no control framework references in its output contract. Fields not present in the skill's output contract are left empty.",
+  "architecture_summary": {
+    "components": [
+      { "id": "web_frontend",  "role": "ingress",   "trust_zone": "untrusted" },
+      { "id": "api_server",    "role": "compute",   "trust_zone": "internal" },
+      { "id": "database",      "role": "data_store","trust_zone": "internal" },
+      { "id": "auth_service",  "role": "compute",   "trust_zone": "internal" }
+    ],
+    "trust_boundaries": [
+      "Internet to API: auth required, TLS enforced",
+      "API to database: internal only, no direct external access"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted web application with authenticated user sessions"
+  },
+  "threat_actors": [
+    {
+      "name": "External attacker",
+      "motivation": "Data theft, account takeover, service disruption",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Public-facing API endpoints",
+      "non_capabilities": [
+        "No physical access",
+        "No insider knowledge of codebase"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "",
+      "technique_name": "SQL injection via unsanitized input",
+      "tactic": "Initial Access",
+      "target_component": "database",
+      "entry_point": "API query parameters",
+      "impact": "Data exfiltration, authentication bypass",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Common vulnerability class; depends on ORM usage"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "",
+      "technique_name": "Authentication bypass via weak session tokens",
+      "tactic": "Credential Access",
+      "target_component": "auth_service",
+      "entry_point": "Login endpoint",
+      "impact": "Account takeover",
+      "likelihood": "Low",
+      "likelihood_rationale": "Industry-standard session libraries assumed"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "",
+      "technique_name": "Sensitive data exposure in API responses",
+      "tactic": "Collection",
+      "target_component": "api_server",
+      "entry_point": "Authenticated API endpoints",
+      "impact": "PII or credential leakage",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Over-exposure in API responses is common"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-01",
+      "control_id": "",
+      "control_name": "Use parameterized queries / ORM",
+      "addresses_technique": ["AP-001"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-02",
+      "control_id": "",
+      "control_name": "Enforce strong session management and token rotation",
+      "addresses_technique": ["AP-002"],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-03",
+      "control_id": "",
+      "control_name": "Implement response filtering and field-level access control",
+      "addresses_technique": ["AP-003"],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "SQL injection can result in full database compromise",
+      "severity_vector": "",
+      "affected_components": ["database", "api_server"],
+      "linked_techniques": ["AP-001"],
+      "linked_mitigations": ["M-01"],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Medium",
+      "severity_rationale": "Data exposure depends on sensitivity of fields returned",
+      "severity_vector": "",
+      "affected_components": ["api_server"],
+      "linked_techniques": ["AP-003"],
+      "linked_mitigations": ["M-03"],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [],
+    "compliance_scope": [],
+    "third_party_dependencies": []
+  }
+}
