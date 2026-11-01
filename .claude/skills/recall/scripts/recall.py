@@ -32,7 +32,7 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 #   P39 (OpenShell primitives blog) — DONE + PUBLISHED
 #   OpenShell supervisor + fleet tool registry (Entries 228–230) — DONE (1a8cfd9, 48c083f, 083fb38)
 #   TMbench (Entry 231) — freestanding; spec+corpus are writing tasks; moved before harness
-#     Steps 34–38: spec → corpus → runner → run tools → TMgym integration
+#     Steps 34–38: spec → corpus → runner → run tools → TMagent (model-swappable leaderboard entry, Entry 234)
 #     Blog P40: "The Benchmark Threat Modeling Doesn't Have Yet"
 #   Fleet Foundation (Entry 221) — ManagedAgentHarness harness.py steps 9–13
 #     (circuit breaker + confirm_isolation already landed in base; harness.py wraps them as stages)
@@ -59,12 +59,12 @@ PRIORITY_STEPS = [
     (31, 40, "✅ Blog P39 published — 'Four Primitives, One Honest Gap'", "docs/blog/drafts/", 30),
     # ── TMbench (Entry 231) — freestanding, before harness ───────────────────
     # Spec + corpus are writing tasks; runner + gym integration come after.
-    # TMgym integration (step 38) benefits from mature TAgym but is not blocked on it.
+    # TMagent (step 38) — TA's leaderboard entry; model-swappable like TAmoe; not blocked on anything.
     (34, 43, "TMbench Step A — Draft threatmodel.md spec (TATB-derived, vendor-neutral)", "docs/tmbench/threatmodel.md", None),
     (35, 43, "TMbench Step B — Curate 10 reference architectures with ground truth", "docs/tmbench/corpus/", 34),
     (36, 43, "TMbench Step C — Build TMbench runner (TATB rubric + spec completeness)", ".claude/skills/tmbench/scripts/tmbench-run.py", 35),
     (37, 43, "TMbench Step D — Run OpenAI skill + 1-2 other tools against corpus; publish baseline", "docs/tmbench/results/", 36),
-    (38, 43, "TMbench Step E — TMgym integration: TA iterates against benchmark score", "chatbot/api/routes/gym.py", 37),
+    (38, 43, "TMbench Step E — TMagent: model-swappable TM generation agent (Entry 234); TA's leaderboard entry; model variants: hetzner/claude/gpt4o/ta_full_moe", "chatbot/agents/tmagent.py", 37),
     # Blog P40 unblocked after TMbench Step D (results exist to write about)
     (40, 43, "📝 Draft P40 blog — 'The Benchmark Threat Modeling Doesn't Have Yet'", "docs/blog/drafts/", 37),
     # ── Priority 40 — ManagedAgentHarness harness.py (Entry 221) ─────────────
@@ -121,8 +121,9 @@ ADR_TO_STEPS: dict[int, list[int]] = {
     228: [29],                   # OpenShell supervisor (done)
     229: [30],                   # fleet tool registry (done)
     230: [30],                   # check-managed-agents (done)
-    231: [34, 35, 36, 37, 38],   # TMbench A–E
+    231: [34, 35, 36, 37, 38],   # TMbench A–E (step 38 = TMagent, Entry 234)
     233: [39, 41, 42, 43],       # AgentBench A–D (Entry 233 = three-tier system)
+    234: [38],                    # TMagent — model-swappable TM generation agent
 }
 
 # ── helpers ───────────────────────────────────────────────────────────────────

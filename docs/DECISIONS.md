@@ -4,6 +4,53 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 234 — TMagent: model-swappable TM generation agent for TMbench leaderboard
+
+**Date:** 2026-11-01  
+**Status:** Design intent (later stage — after Step 37 baseline)  
+**Trigger:** After TMbench corpus and runner are live, TA needs its own leaderboard entry. The scorer (tmbench-check) is vendor-neutral; TA should participate as a contestant, not as scorer. TAmoe showed that model routing variations produce measurably different output quality — the same pattern applies to TM generation.
+
+**What (design intent):**
+
+TMagent is a standalone agent that:
+1. Accepts an architecture input (MMD / Terraform / prose) — same inputs as TA's existing analysis pipeline
+2. Produces a threat model JSON conforming to `threatmodel/0.1` schema
+3. Is parameterised by model at runtime — any model via `LLM_PROVIDER` / OpenRouter, same pattern as TAmoe's `select_mode()`
+4. Its output is scored by `tmbench-check --score` — the same scorer every other tool faces
+
+**Why model-swappable matters:**
+- TAmoe showed Hetzner (Qwen3.6-35B) vs GPT-4o vs Claude produce structurally different outputs (different ATT&CK coverage, different severity calibration)
+- TMbench gives a ground-truth corpus to measure those differences objectively — not just "model A said X, model B said Y" but "model A scored 10/13, model B scored 8/13 on the same architecture"
+- This produces a model selection signal for TM generation specifically, separate from TAmoe's routing signal (which was for analysis quality, not TM output format compliance)
+
+**Design sketch:**
+```
+TMagent(arch_input, model=None)
+  → prompt: "Produce a threat model for this architecture conforming to spec v0.1"
+  → include spec schema + verification checklist in system prompt
+  → parse JSON output → validate against schema → write to results/
+  → tmbench-check --score <output.json>
+```
+
+Model variants to test once baseline is established:
+- `hetzner` (Qwen3.6-35B) — current primary
+- `claude_sonnet` — structured output quality
+- `gpt4o` — ATT&CK coverage breadth
+- `ta_full_moe` — TA's own pipeline as a contestant (uses full harness output → convert to v0.1 schema)
+
+**Relationship to existing work:**
+- `ta_full_moe` variant = ta_exporter.py output converted to `threatmodel/0.1` — this is TA's first-party entry
+- Separate from AgentBench (which tests the agent *execution layer*, not TM output quality)
+- Scorer stays vendor-neutral — TMagent earns its position by scoring well, not by owning the scorer
+
+**Build order:** after Step 37 (baseline external tool scores published) — TMagent is Step 38 in the TMbench sequence.
+
+**Alternatives rejected:**
+- "Just use TA's existing output as the entry" — TA's output format (ta-export/1.0) is not the same as `threatmodel/0.1`; a thin conversion layer + model router is cleaner and more testable than a one-shot conversion
+- "Make TMagent the scorer" — breaks vendor-neutrality; TA earns standing by scoring well, not by controlling the rubric
+
+---
+
 ### Entry 233 — Three-tier benchmarking system: TAgym / AgentBench / TMbench
 
 **Date:** 2026-11-01  
