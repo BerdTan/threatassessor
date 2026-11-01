@@ -292,8 +292,7 @@ A TMbench runner scores a submission as follows:
 | TTP-Accurate | 3 | TATB rubric §2.2 |
 | Risk-Defensible | 3 | TATB rubric §2.3 |
 | Plan-Actionable | 3 | TATB rubric §2.4 |
-| Completeness bonus | +1 | All checklist items pass |
-| Agentic coverage bonus | +1 | ATLAS technique + agentic block present (if applicable) |
+| Completeness bonus | +1 | All checklist items pass; for agentic architectures this bonus is earned by satisfying both completeness AND agentic coverage (ATLAS + agentic gov block) — they combine to +1, not +2 |
 | **Total** | **13** | |
 
 **Pass threshold:** ≥ 8 with no TATB dimension at 0.  

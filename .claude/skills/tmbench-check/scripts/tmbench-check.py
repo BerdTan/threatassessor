@@ -372,7 +372,10 @@ def score_tm(tm: dict, arch_id: str | None = None) -> dict:
     comp_bonus, comp_note = bonus_completeness(tm, gaps)
     ag_bonus, ag_note = bonus_agentic(tm)
 
-    total = tr_score + tta_score + rd_score + pa_score + comp_bonus + ag_bonus
+    # Agentic bonus subsumes completeness bonus — both bonuses combined are worth +1 max.
+    # This keeps the universal ceiling at 13 (12 base + 1 bonus).
+    effective_bonus = min(comp_bonus + ag_bonus, 1)
+    total = tr_score + tta_score + rd_score + pa_score + effective_bonus
     max_score = 13
     any_zero = any(s == 0 for s in [tr_score, tta_score, rd_score, pa_score])
     status = "PASS" if total >= PASS_THRESHOLD and not any_zero else "FAIL"
