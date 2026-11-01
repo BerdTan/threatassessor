@@ -45,6 +45,7 @@ A compliant threat model MUST contain all six sections. A section is present if 
 
 **Required fields:**
 - At least one threat actor with: motivation, capability tier (opportunistic / targeted / nation-state), likely initial access vector
+- `non_capabilities`: explicit list of what this actor cannot do in this context (e.g. no physical access, no pre-existing insider knowledge, no zero-day budget). Required because severity ratings must reflect actual attacker constraints — omitting this field leads to inflated severity across the board.
 - For agentic architectures: at least one adversarial agent scenario (prompt injection, goal hijacking, tool misuse)
 
 **Minimum coverage:** At least one external and one insider threat actor for non-trivial architectures (> 3 components).
@@ -168,6 +169,7 @@ An AI agent completing a TM can self-verify by checking each item. A TMbench run
 **Section completeness:**
 - [ ] Architecture summary present with all required fields
 - [ ] At least one threat actor with motivation, capability tier, and initial access vector
+- [ ] Every threat actor has a non_capabilities list (prevents severity inflation)
 - [ ] Attack path count meets minimum coverage threshold for architecture size
 - [ ] Every trust boundary crossing has at least one attack path
 - [ ] Every attack path has at least one mitigation
@@ -216,7 +218,8 @@ A TM produced for TMbench scoring MUST be serialisable to the following JSON str
       "name": "<string>",
       "motivation": "<string>",
       "capability_tier": "<opportunistic|targeted|nation-state>",
-      "initial_access_vector": "<string>"
+      "initial_access_vector": "<string>",
+      "non_capabilities": ["<string — what this actor cannot do in this context>"]
     }
   ],
   "attack_paths": [
