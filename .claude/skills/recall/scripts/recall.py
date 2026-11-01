@@ -60,9 +60,9 @@ PRIORITY_STEPS = [
     # ── TMbench (Entry 231) — freestanding, before harness ───────────────────
     # Spec + corpus are writing tasks; runner + gym integration come after.
     # TMagent (step 38) — TA's leaderboard entry; model-swappable like TAmoe; not blocked on anything.
-    (34, 43, "TMbench Step A — Draft threatmodel.md spec (TATB-derived, vendor-neutral)", "docs/tmbench/threatmodel.md", None),
-    (35, 43, "TMbench Step B — Curate 10 reference architectures with ground truth", "docs/tmbench/corpus/", 34),
-    (36, 43, "TMbench Step C — Build TMbench runner (TATB rubric + spec completeness)", ".claude/skills/tmbench/scripts/tmbench-run.py", 35),
+    (34, 43, "✅ TMbench Step A — Draft threatmodel.md spec (TATB-derived, vendor-neutral)", "docs/tmbench/threatmodel.md", None),
+    (35, 43, "✅ TMbench Step B — Curate 10 reference architectures with ground truth", "docs/tmbench/corpus/", 34),
+    (36, 43, "✅ TMbench Step C — Batch runner + GT comparison (tmbench_runner.py)", "scripts/tmbench/tmbench_runner.py", 35),
     (37, 43, "TMbench Step D — Run OpenAI skill + 1-2 other tools against corpus; publish baseline", "docs/tmbench/results/", 36),
     (38, 43, "TMbench Step E — TMagent: model-swappable TM generation agent (Entry 234); TA's leaderboard entry; model variants: hetzner/claude/gpt4o/ta_full_moe", "chatbot/agents/tmagent.py", 37),
     # Blog P40 unblocked after TMbench Step D (results exist to write about)
