@@ -63,7 +63,7 @@ PRIORITY_STEPS = [
     (34, 43, "✅ TMbench Step A — Draft threatmodel.md spec (TATB-derived, vendor-neutral)", "docs/tmbench/threatmodel.md", None),
     (35, 43, "✅ TMbench Step B — Curate 10 reference architectures with ground truth", "docs/tmbench/corpus/", 34),
     (36, 43, "✅ TMbench Step C — Batch runner + GT comparison (tmbench_runner.py)", "scripts/tmbench/tmbench_runner.py", 35),
-    (37, 43, "TMbench Step D — Run OpenAI skill + 1-2 other tools against corpus; publish baseline", "docs/tmbench/results/", 36),
+    (37, 43, "✅ TMbench Step D — hetzner baseline 10/10; 12.10/13 mean; agentic-overgen gap documented", "docs/tmbench/results/baseline_v1.md", 36),
     (38, 43, "TMbench Step E — TMagent: model-swappable TM generation agent (Entry 234); TA's leaderboard entry; model variants: hetzner/claude/gpt4o/ta_full_moe", "chatbot/agents/tmagent.py", 37),
     # Blog P40 unblocked after TMbench Step D (results exist to write about)
     (40, 43, "📝 Draft P40 blog — 'The Benchmark Threat Modeling Doesn't Have Yet'", "docs/blog/drafts/", 37),
