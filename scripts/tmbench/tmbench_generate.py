@@ -72,11 +72,6 @@ TOOL_CONFIGS = {
         "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
         "env_key": "OPENROUTER_API_KEY",
     },
-    "gpt4o": {
-        "provider": "openrouter",
-        "model": "openrouter/openai/gpt-4o",
-        "env_key": "OPENROUTER_API_KEY",
-    },
     "ta_v3": {
         "provider": "ta_api",
         "model": "ta-pipeline-v3",
