@@ -276,7 +276,7 @@ def base_url_for(provider_name: str) -> str:
     override_env = m.get("base_url_env")
     if override_env and os.getenv(override_env):
         return os.getenv(override_env).rstrip("/")
-    return m.get("base_url", "").rstrip("/")
+    return (m.get("base_url") or "").rstrip("/")
 
 
 def resolve_api_key(provider_name: str) -> Optional[str]:

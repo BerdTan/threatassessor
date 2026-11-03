@@ -432,11 +432,14 @@ class LLMClient:
         for attempt_provider in providers_to_try:
             attempt_config = self._get_config(attempt_provider)
 
-            # Use OpenRouter fallback models if applicable
-            if attempt_provider == LLMProvider.OPENROUTER and attempt_provider == provider:
+            # Primary provider: use the caller's model list.
+            # Fallback providers: look up PROVIDER_MODELS (skip if not registered as active).
+            if attempt_provider == provider:
                 attempt_models = models_to_try
-            else:
+            elif attempt_provider in PROVIDER_MODELS:
                 attempt_models = [PROVIDER_MODELS[attempt_provider][quality]]
+            else:
+                continue
 
             # Try each model for this provider
             for attempt_model in attempt_models:
