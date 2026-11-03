@@ -2,9 +2,11 @@
 
 Generate a complete, verifiable threat model for any architecture input,
 conforming to the **threatmodel/0.1** open spec. Output is valid JSON
-that any `tmbench-check`-compatible scorer can evaluate.
+scoreable by the bundled `tmbench-check` scorer.
 
-**No vendor lock-in.** Works with any LLM via Claude Code.
+**No vendor lock-in.** Works with any LLM via Claude Code, no external dependencies.  
+**Self-contained.** Spec and scorer are bundled — the full ThreatAssessor repo is not required.  
+**TA-enhanced.** When the TA repo is present, uses the full harness for richer output.  
 Spec license: CC BY 4.0 (see `spec/threatmodel.md`).
 
 ---
@@ -12,118 +14,186 @@ Spec license: CC BY 4.0 (see `spec/threatmodel.md`).
 ## Usage
 
 ```
-/threat-model <path-to-architecture>
 /threat-model path/to/arch.mmd
 /threat-model path/to/main.tf
 /threat-model path/to/architecture.md
 ```
 
-Outputs `threatmodel.json` in the same directory as the input file,
-or prints to stdout with `--stdout`.
-
-To score the output:
-```bash
-python3 .claude/skills/tmbench-check/scripts/tmbench-check.py --score threatmodel.json
-```
+Outputs `threatmodel.json` in the same directory as the input file.
 
 ---
 
-## What it produces
+## Bundled files
 
-A `threatmodel/0.1` JSON with six required sections:
+| File | Purpose |
+|------|---------|
+| `spec/threatmodel.md` | threatmodel/0.1 spec (CC BY 4.0) — the generation contract |
+| `scripts/tmbench-check.py` | Scorer — validates and scores the output JSON |
 
-1. **Architecture Summary** — component inventory, trust boundaries, data classification
-2. **Threat Actor Profile** — at least one actor with motivation, capability tier, non_capabilities
-3. **Attack Paths** — MITRE ATT&CK technique IDs, target component, impact, likelihood
-4. **Mitigations** — control framework references (NIST CSF / CIS / CSA ART), residual risk
-5. **Risk Assessment** — CVSS or AIVSS severity vectors, remediation priority
-6. **Governance Signals** — data sovereignty, compliance scope, third-party dependencies
-
-For agentic architectures (LLM components, autonomous agents, tool-calling pipelines),
-the output also includes MITRE ATLAS techniques and an agentic governance block.
-
-Pass threshold: **≥ 8/13** on the TATB rubric with no dimension at 0.
-
----
-
-## Run
-
-```bash
-SKILL_DIR="$(git rev-parse --show-toplevel)/.claude/skills/threat-model"
-```
-
-Claude Code reads the architecture file and the spec, then generates the TM JSON.
+Both files work standalone. The TA repo is not required.
 
 ---
 
 ## Instructions for Claude
 
-When this skill is invoked:
+### Step 0 — Detect mode
 
-1. **Read the spec** from `spec/threatmodel.md` in this skill's directory.
-   Focus on §1 (Required Sections), §3 (Verification Checklist), and §4 (Output Schema).
+Check whether the ThreatAssessor repo is available:
 
-2. **Read the architecture input** from the path provided as argument.
-   Auto-detect format:
-   - Mermaid (`.mmd`, starts with `graph`/`flowchart`/`sequenceDiagram`)
-   - Terraform (`.tf`, contains `resource "..."`)
-   - Prose (`.md`, `.txt`, or any other — treat as architecture description)
+```bash
+# TA repo present if any of these exist:
+test -f chatbot/harness/controller.py && echo "ta_mode" || echo "standalone"
+command -v ta && echo "ta_mode" || echo "standalone"
+```
 
-3. **Determine architecture size** for minimum attack path coverage:
-   - ≤ 5 components → at least 3 attack paths
-   - 6–15 components → at least 5 attack paths
-   - > 15 components → at least 8 attack paths
-   Count components in the architecture before writing attack paths.
-
-4. **Detect if the architecture is agentic** (contains an LLM, autonomous agent,
-   or tool-calling component). If so:
-   - Include at least one MITRE ATLAS technique (AML.T0043, AML.T0048, etc.)
-   - Populate the `agentic` block in governance
-
-5. **Generate the threat model** as a JSON object conforming to the §4 Output Schema.
-   Rules:
-   - Output ONLY valid JSON — no markdown fences, no commentary
-   - Every MITRE ATT&CK technique ID must be real and match its technique name and tactic
-   - Every threat actor must have a non-empty `non_capabilities` list (at least 2 entries)
-   - Every attack path must have at least one mitigation and one finding
-   - High and Critical findings require a CVSS 3.1 vector string
-   - Set `spec_version` to `"threatmodel/0.1"`
-   - Set `produced_by` to `"threat-model-skill/0.1"`
-   - Set `produced_at` to the current ISO 8601 datetime
-
-6. **Self-verify** using the §3 Verification Checklist before writing output.
-   For each checklist item, confirm it passes. If any item fails, fix the TM before outputting.
-
-7. **Write the output**:
-   - Default: write to `threatmodel.json` in the same directory as the input file
-   - With `--stdout`: print to stdout
-
-8. **Report** to the user:
-   ```
-   threatmodel.json written
-   Architecture: <arch_id>
-   Components: N  |  Attack paths: N  |  Findings: N
-   Agentic: yes/no
-   
-   To score: python3 .claude/skills/tmbench-check/scripts/tmbench-check.py --score threatmodel.json
-   ```
+- **standalone** (default): generate using this skill's spec + prompt; score with bundled `scripts/tmbench-check.py`
+- **ta_enhanced**: TA repo or `ta` CLI found → use `ta tm run <path>` for generation; score with `ta tm run --score` or tmbench-check
 
 ---
 
-## Spec bundled here
+### Step 1 — Read the spec
 
-`spec/threatmodel.md` is included in this skill directory so it works without
-the full ThreatAssessor repository. It is identical to `docs/tmbench/threatmodel.md`
-in the TA repo and versioned together with it.
+Read `spec/threatmodel.md` from this skill's directory.  
+Focus on: §1 (Required Sections), §3 (Verification Checklist), §4 (Output Schema).
 
-If you want to validate the skill's output as part of a CI pipeline, the scorer
-(`tmbench-check`) is also in the TA repository under `.claude/skills/tmbench-check/`.
+Locate this skill's directory:
+```bash
+# The skill lives next to this SKILL.md file
+SKILL_DIR="$(dirname "$(realpath "$0")")"
+# or find it:
+find .claude/skills/threat-model -name SKILL.md -maxdepth 1 | head -1 | xargs dirname
+```
 
 ---
 
-## Relationship to TMAgent
+### Step 2 — Read the architecture input
 
-`TMAgent` (`chatbot/agents/tmagent.py`) is the full TA implementation of this skill:
-same spec, same prompt contract, but wired into the TA harness (AIVSS scoring,
-DETECT rules, MoE routing, brain pattern matching). If you have the TA API running,
-use `ta tm run <path>` for the enriched output. This skill is the standalone version.
+Read the file at the path given as argument. Auto-detect format from content:
+- **Mermaid**: starts with `graph`, `flowchart`, or `sequenceDiagram`; or `.mmd` extension
+- **Terraform**: contains `resource "…"` blocks; or `.tf` extension
+- **Prose**: anything else — treat as a natural-language architecture description
+
+---
+
+### Step 3 — Determine coverage requirements
+
+Count the components in the architecture before writing attack paths:
+- ≤ 5 components → at least 3 attack paths
+- 6–15 components → at least 5 attack paths
+- > 15 components → at least 8 attack paths
+
+Detect if the architecture is **agentic** (contains an LLM, autonomous agent, tool-calling component,
+or RAG pipeline). If so: include at least one MITRE ATLAS technique and populate the `agentic`
+governance block.
+
+---
+
+### Step 4 — Generate the threat model (standalone mode)
+
+Produce a JSON object conforming to the §4 Output Schema from `spec/threatmodel.md`.
+
+Rules:
+- Output ONLY valid JSON — no markdown fences, no commentary, no preamble
+- Every MITRE ATT&CK technique ID must be real, correctly named, and tactic-matched
+- Every threat actor must have a `non_capabilities` list with at least 2 entries
+- Every attack path must have at least one mitigation and one finding
+- High and Critical findings require a CVSS 3.1 vector string
+- Set `spec_version` to `"threatmodel/0.1"`
+- Set `produced_by` to `"threat-model-skill/0.1"`
+- Set `produced_at` to the current ISO 8601 datetime
+
+**TA-enhanced mode**: instead of generating directly, run:
+```bash
+ta tm run <path> --out threatmodel.json
+```
+This uses the full TA harness (AIVSS scoring, brain patterns, MoE routing).
+
+---
+
+### Step 5 — Self-verify
+
+Before writing, check every item in the §3 Verification Checklist from `spec/threatmodel.md`.
+Fix any failing item. A TM that fails self-verification must not be written as-is.
+
+---
+
+### Step 6 — Write and score
+
+Write the TM JSON:
+```bash
+# standalone: write to file next to architecture input
+```
+
+Then score it with the bundled scorer:
+```bash
+python3 <skill_dir>/scripts/tmbench-check.py --score threatmodel.json
+```
+
+If `tmbench-check` is not importable (missing `jsonschema` or similar), fall back to
+Claude's own checklist-based verification and report it as "self-scored".
+
+---
+
+### Step 7 — Report to the user
+
+```
+threatmodel.json written  [standalone | ta_enhanced]
+Architecture: <arch_id>
+Components: N  |  Attack paths: N  |  Findings: N
+Agentic: yes/no
+
+Score: N/13  [PASS | FAIL]
+  TR=N  TA=N  RD=N  PA=N
+
+Gaps (if any):
+  [severity] description
+```
+
+If scoring failed: report "self-scored (no scorer available)" and list the checklist result instead.
+
+---
+
+## Installing this skill
+
+**Standalone install** (no TA repo needed):
+
+```bash
+mkdir -p ~/.claude/skills/threat-model
+cp -r .claude/skills/threat-model/* ~/.claude/skills/threat-model/
+```
+
+Or clone just the skill:
+```bash
+# From the ThreatAssessor repo, export the two bundled files:
+# spec/threatmodel.md   — the spec
+# scripts/tmbench-check.py — the scorer
+```
+
+The skill is self-contained once those three items are in place:
+`SKILL.md`, `spec/threatmodel.md`, `scripts/tmbench-check.py`.
+
+---
+
+## TA-enhanced features (when TA repo is present)
+
+| Feature | Standalone | TA-enhanced |
+|---------|-----------|-------------|
+| TM generation | Claude prompt | `ta tm run` → harness pipeline |
+| Scoring | Bundled `scripts/tmbench-check.py` | Same + AIVSS + brain patterns |
+| MITRE validation | Best-effort (model knowledge) | Validated against technique DB |
+| DETECT rules | None | 65 SOC detection rules evaluated |
+| Export | `threatmodel.json` | `ta-export/1.0` bundle + `threatmodel.json` |
+
+---
+
+## Spec and scorer version
+
+The `spec/threatmodel.md` and `scripts/tmbench-check.py` bundled here are copies of:
+- `docs/tmbench/threatmodel.md` — spec source
+- `.claude/skills/tmbench-check/scripts/tmbench-check.py` — scorer source
+
+When the TA repo is updated, re-export to keep the bundle in sync:
+```bash
+cp docs/tmbench/threatmodel.md .claude/skills/threat-model/spec/threatmodel.md
+cp .claude/skills/tmbench-check/scripts/tmbench-check.py .claude/skills/threat-model/scripts/tmbench-check.py
+```
