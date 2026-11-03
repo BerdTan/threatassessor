@@ -4,6 +4,28 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 115 — 2026-11-03
+
+### Entry 235 — TMAgent built (Step 38); portable skill design clarified
+
+**Date:** 2026-11-03  
+**Status:** Done — commit 70ff8de
+
+**What:** `chatbot/agents/tmagent.py` — `TMAgent` class + `TMResult` dataclass.  
+Accepts MMD / Terraform / prose (auto-detected). Model-swappable via constructor (`hetzner`, `claude`, `gpt4o`, `ta_full_moe`, or any OpenRouter id). `ta_full_moe` variant converts ta-export/1.0 → threatmodel/0.1. Auto-scores via tmbench-check after generation. `ta tm run <path>` CLI command added to taclaw.
+
+**Why TMAgent instead of extending tmbench_generate.py:**  
+`tmbench_generate.py` is a corpus runner script — it reads from the fixed corpus, ingests results, and has no reuse surface. `TMAgent` is a class with a clean `run(arch_input, arch_id) → TMResult` interface usable from the harness, the CLI, and future leaderboard automation.
+
+**Two-layer design settled:**  
+- `TMAgent` = TA's implementation layer (harness-wired, scoreable, model-swappable)  
+- Portable `threat-model` SKILL.md = extraction of TMAgent's prompt + spec ref, no TA internals — planned after TMAgent is proven on the full corpus  
+- Relationship to OpenAI skills / Axios THREATMODEL.md: both score 6/13 Reject on tmbench (TR/RD strong, TA/PA 0 — no ATT&CK IDs or control references). Portable skill's differentiation is spec-first: SKILL.md references `threatmodel.md` explicitly; output is tmbench-check validatable.
+
+**Next:** Run TMAgent across all 10 corpus archs with `--all` flag to produce TA's leaderboard entry; then extract portable SKILL.md.
+
+---
+
 ## Session 114 — 2026-11-01
 
 ### TMbench Steps 35–37 complete
