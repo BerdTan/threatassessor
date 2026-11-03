@@ -43,23 +43,35 @@ _SCORER_PATH = _ROOT / ".claude" / "skills" / "tmbench-check" / "scripts" / "tmb
 
 SPEC_VERSION = "threatmodel/0.1"
 
-# Canonical model configs — extend as new providers are onboarded.
+# Canonical model configs — aligned with policies/model_routing.yaml confirmed/partial entries.
+# Model IDs are full LiteLLM strings passed to LLMClient.generate(model=...).
 MODEL_CONFIGS: dict[str, dict] = {
     "hetzner": {
         "provider": "hetzner",
-        "model": "Qwen/Qwen3-235B-A22B",
+        "model": "openai/Qwen/Qwen3.6-35B-A3B-FP8",
         "env_key": "HETZNER_API_KEY",
         "extra_body": {"enable_thinking": False},
     },
-    "claude": {
-        "provider": "anthropic",
-        "model": "claude-sonnet-4-6",
-        "env_key": "ANTHROPIC_API_KEY",
+    "hetzner_27b": {
+        "provider": "hetzner",
+        "model": "openai/Qwen3.8-27B",
+        "env_key": "HETZNER_API_KEY",
+        "extra_body": {"enable_thinking": False},
+    },
+    "gemini_flash": {
+        "provider": "gemini",
+        "model": "gemini/gemini-3.6-flash",
+        "env_key": "GEMINI_API_KEY",
+    },
+    "nemotron_super": {
+        "provider": "openrouter",
+        "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "env_key": "OPENROUTER_API_KEY",
     },
     "gpt4o": {
-        "provider": "openai",
-        "model": "gpt-4o",
-        "env_key": "OPENAI_API_KEY",
+        "provider": "openrouter",
+        "model": "openrouter/openai/gpt-4o",
+        "env_key": "OPENROUTER_API_KEY",
     },
     "ta_full_moe": {
         "provider": "ta_api",
@@ -212,19 +224,24 @@ class TMAgent:
 
         try:
             sys.path.insert(0, str(_ROOT))
-            from agentic.llm_client import generate_response_with_system
+            from agentic.llm_client import LLMClient, LLMProvider
 
+            client = LLMClient()
+            provider = LLMProvider(config["provider"])
             extra_kwargs = {}
             if config.get("extra_body"):
                 extra_kwargs["extra_body"] = config["extra_body"]
 
-            raw = generate_response_with_system(
-                user,
-                system,
+            resp = client.generate(
+                prompt=user,
+                system_message=system,
+                provider=provider,
+                model=config["model"],
                 max_tokens=14000,
                 temperature=0.1,
                 **extra_kwargs,
             )
+            raw = resp.content
             return _parse_json_response(raw, arch_id)
         except Exception as exc:
             logger.exception("TMAgent generation failed for %s/%s", self.model, arch_id)

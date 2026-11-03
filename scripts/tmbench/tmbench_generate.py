@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-tmbench_generate.py — TMbench Step 37: generate TM JSON from corpus arch using any LLM.
+tmbench_generate.py — TMbench: generate TM JSON from corpus arch using any LLM.
 
 Usage:
   python3 scripts/tmbench/tmbench_generate.py --tool hetzner --arch t1_web_app
-  python3 scripts/tmbench/tmbench_generate.py --tool claude_sonnet --all
+  python3 scripts/tmbench/tmbench_generate.py --tool gemini_flash --all
   python3 scripts/tmbench/tmbench_generate.py --tool gpt4o --arch t2_microservices --dry-run
 
-Tools map to LLM_PROVIDER values + model overrides:
-  hetzner        → LLM_PROVIDER=hetzner (Qwen3.6-35B)
-  claude_sonnet  → provider=anthropic, model=claude-sonnet-4-6
-  gpt4o          → provider=openai, model=gpt-4o
-  ta_v3          → calls TA API + converts ta-export/1.0 → threatmodel/0.1 (requires running API)
+Tools (aligned with model_routing.yaml confirmed/partial models):
+  hetzner        → Qwen3.6-35B-A3B-FP8 via Hetzner   (HETZNER_API_KEY)
+  hetzner_27b    → Qwen3.8-27B via Hetzner             (HETZNER_API_KEY, high_quality tier)
+  gemini_flash   → gemini-3.6-flash via Gemini AI      (GEMINI_API_KEY)
+  nemotron_super → nvidia/nemotron-3-super-120b:free    (OPENROUTER_API_KEY, slow ~10min/arch)
+  gpt4o          → openai/gpt-4o via OpenRouter         (OPENROUTER_API_KEY, external comparison)
+  ta_v3          → TA full harness API → threatmodel/0.1 (TA_API_URL, requires running API)
 
 After generation, auto-ingests with tmbench_runner.py --ingest.
 """
@@ -45,21 +47,35 @@ CORPUS_ARCHS = [
     "t4_rag_pipeline", "t4_agent_fleet",
 ]
 
+# Model IDs are the full LiteLLM strings passed directly to LLMClient.generate(model=...).
+# Aligned with policies/model_routing.yaml confirmed/partial entries.
 TOOL_CONFIGS = {
     "hetzner": {
         "provider": "hetzner",
-        "model": "Qwen/Qwen3-235B-A22B",
+        "model": "openai/Qwen/Qwen3.6-35B-A3B-FP8",
         "env_key": "HETZNER_API_KEY",
+        "extra_body": {"enable_thinking": False},
     },
-    "claude_sonnet": {
-        "provider": "anthropic",
-        "model": "claude-sonnet-4-6",
-        "env_key": "ANTHROPIC_API_KEY",
+    "hetzner_27b": {
+        "provider": "hetzner",
+        "model": "openai/Qwen3.8-27B",
+        "env_key": "HETZNER_API_KEY",
+        "extra_body": {"enable_thinking": False},
+    },
+    "gemini_flash": {
+        "provider": "gemini",
+        "model": "gemini/gemini-3.6-flash",
+        "env_key": "GEMINI_API_KEY",
+    },
+    "nemotron_super": {
+        "provider": "openrouter",
+        "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "env_key": "OPENROUTER_API_KEY",
     },
     "gpt4o": {
-        "provider": "openai",
-        "model": "gpt-4o",
-        "env_key": "OPENAI_API_KEY",
+        "provider": "openrouter",
+        "model": "openrouter/openai/gpt-4o",
+        "env_key": "OPENROUTER_API_KEY",
     },
     "ta_v3": {
         "provider": "ta_api",
@@ -113,7 +129,7 @@ def load_mmd(arch_id: str) -> str:
 
 
 def call_llm_client(tool: str, arch_id: str, dry_run: bool = False) -> dict | None:
-    """Call TA's LLMClient for supported providers."""
+    """Call TA's LLMClient with explicit provider + model routing."""
     config = TOOL_CONFIGS[tool]
     env_key = config["env_key"]
     if env_key and not os.environ.get(env_key):
@@ -122,12 +138,13 @@ def call_llm_client(tool: str, arch_id: str, dry_run: bool = False) -> dict | No
 
     spec_excerpt = load_spec_excerpt()
     mmd = load_mmd(arch_id)
-    system = SYSTEM_PROMPT.format(tool_name=tool)
+    produced_by = f"{tool} v1.0"
+    system = SYSTEM_PROMPT.format(tool_name=produced_by)
     user = USER_PROMPT_TEMPLATE.format(
         spec_excerpt=spec_excerpt,
         arch_id=arch_id,
         mmd=mmd,
-        tool_name=tool,
+        tool_name=produced_by,
     )
 
     if dry_run:
@@ -142,20 +159,24 @@ def call_llm_client(tool: str, arch_id: str, dry_run: bool = False) -> dict | No
         sys.path.insert(0, str(ROOT))
         import dotenv
         dotenv.load_dotenv(ROOT / ".env")
-        from agentic.llm_client import generate_response_with_system
+        from agentic.llm_client import LLMClient, LLMProvider
 
-        # Qwen3 (hetzner) supports enable_thinking=False for clean JSON output
+        client = LLMClient()
+        provider = LLMProvider(config["provider"])
         extra_kwargs = {}
-        if config["provider"] == "hetzner":
-            extra_kwargs["extra_body"] = {"enable_thinking": False}
+        if config.get("extra_body"):
+            extra_kwargs["extra_body"] = config["extra_body"]
 
-        raw = generate_response_with_system(
-            user, system,
+        resp = client.generate(
+            prompt=user,
+            system_message=system,
+            provider=provider,
+            model=config["model"],
             max_tokens=14000,
             temperature=0.1,
             **extra_kwargs,
         )
-        raw = raw.strip()
+        raw = resp.content.strip()
         # Strip markdown fences if present
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1]
@@ -322,7 +343,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="TMbench generator — Step 37")
     parser.add_argument("--tool", required=True,
                         choices=list(TOOL_CONFIGS.keys()),
-                        help="Tool to run")
+                        help=f"Tool to run: {', '.join(TOOL_CONFIGS)}")
     parser.add_argument("--arch", help="Single architecture ID to run")
     parser.add_argument("--all", action="store_true",
                         help="Run all 10 corpus architectures")
