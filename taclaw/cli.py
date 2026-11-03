@@ -13,6 +13,7 @@ Usage:
   ta gym status
   ta gym start --targets <path> [--max-iterations N]
   ta gym stop
+  ta tm run <path> [--model hetzner|claude|gpt4o|ta_full_moe] [--out output.json] [--no-score]
   ta serve
   ta configure
 """
@@ -44,6 +45,9 @@ app.add_typer(brain_app, name="brain")
 
 gym_app = typer.Typer(help="TAgym autonomous assessment loop.")
 app.add_typer(gym_app, name="gym")
+
+tm_app = typer.Typer(help="TMAgent — spec-driven threat model generation.")
+app.add_typer(tm_app, name="tm")
 
 console = Console()
 
@@ -645,6 +649,57 @@ def gym_stop():
     else:
         sid = (data.get("session_id") or "")[:8]
         rprint(f"[green]TAgym stopped[/green]  session={sid}")
+
+
+# ── tm ────────────────────────────────────────────────────────────────────────
+
+@tm_app.command("run")
+def tm_run(
+    path: Path = typer.Argument(..., help="Architecture input file (.mmd, .tf, .txt, or prose .md)."),
+    model: str = typer.Option("hetzner", "--model", "-m", help="Model: hetzner | claude | gpt4o | ta_full_moe | <openrouter-id>"),
+    arch_id: Optional[str] = typer.Option(None, "--arch-id", help="Architecture identifier (defaults to filename stem)."),
+    out: Optional[Path] = typer.Option(None, "--out", "-o", help="Write TM JSON to this path."),
+    no_score: bool = typer.Option(False, "--no-score", help="Skip tmbench-check scoring after generation."),
+):
+    """Generate a threatmodel/0.1 JSON from an architecture file using TMAgent."""
+    if not path.exists():
+        _err(f"File not found: {path}")
+
+    arch_input = path.read_text(encoding="utf-8")
+    aid = arch_id or path.stem
+
+    try:
+        root = Path(__file__).resolve().parents[1]
+        sys.path.insert(0, str(root))
+
+        # Load .env so provider API keys are available
+        try:
+            import dotenv
+            dotenv.load_dotenv(root / ".env")
+        except ImportError:
+            pass
+
+        from chatbot.agents.tmagent import TMAgent
+    except ImportError as exc:
+        _err(f"Cannot import TMAgent: {exc}")
+
+    rprint(f"[bold]TMAgent[/bold]  arch={aid}  model={model}")
+    agent = TMAgent(model=model, score_after=not no_score)
+    result = agent.run(arch_input=arch_input, arch_id=aid)
+
+    if result.error:
+        _err(f"Generation failed: {result.error}")
+
+    if out:
+        out.write_text(result.to_json(), encoding="utf-8")
+        rprint(f"[green]Written →[/green] {out}")
+    else:
+        rprint(result.to_json())
+
+    if result.score is not None:
+        tatb_str = "  ".join(f"{k}={v}" for k, v in (result.tatb or {}).items())
+        status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
+        rprint(f"\n{status}  score={result.score}/13  {tatb_str}")
 
 
 # ── serve ─────────────────────────────────────────────────────────────────────
