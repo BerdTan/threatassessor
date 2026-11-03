@@ -1,0 +1,276 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t1_web_app",
+  "produced_by": "hetzner_27b v1.0 v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Browser",
+        "role": "Client",
+        "trust_zone": "Untrusted"
+      },
+      {
+        "id": "Nginx",
+        "role": "Ingress",
+        "trust_zone": "Edge"
+      },
+      {
+        "id": "FlaskAPI",
+        "role": "Compute",
+        "trust_zone": "Application"
+      },
+      {
+        "id": "PostgreSQL",
+        "role": "Data Store",
+        "trust_zone": "Data"
+      }
+    ],
+    "trust_boundaries": [
+      "Browser to Nginx (Internet to Edge)",
+      "Nginx to FlaskAPI (Edge to Application)",
+      "FlaskAPI to PostgreSQL (Application to Data)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted web application with a standard three-tier architecture (Edge, App, Data)."
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Financial gain, data theft, or establishing a foothold for further attacks.",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Exploiting unpatched vulnerabilities in the Nginx reverse proxy or Flask API.",
+      "non_capabilities": [
+        "No physical access to data centers",
+        "No pre-existing insider knowledge of the codebase",
+        "No budget for zero-day exploits"
+      ]
+    },
+    {
+      "name": "Insider Threat",
+      "motivation": "Malicious intent or negligence leading to data exfiltration or service disruption.",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Valid credentials for the Flask API or direct database access.",
+      "non_capabilities": [
+        "Cannot bypass network segmentation if properly implemented",
+        "Cannot modify hardware components"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "Nginx",
+      "entry_point": "Public-facing Nginx reverse proxy",
+      "impact": "Attacker gains initial access to the edge layer, potentially leading to lateral movement to the application layer.",
+      "likelihood": "High",
+      "likelihood_rationale": "Nginx is a common target for opportunistic attackers due to its widespread use and public exposure."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1059.004",
+      "technique_name": "Command and Scripting Interpreter: Unix Shell",
+      "tactic": "Execution",
+      "target_component": "FlaskAPI",
+      "entry_point": "Flask API server",
+      "impact": "Attacker executes arbitrary commands on the application server, leading to full compromise of the application layer.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Requires successful initial access and exploitation of a vulnerability in the Flask API."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "FlaskAPI",
+      "entry_point": "Flask API server",
+      "impact": "Attacker exploits a vulnerability in the Flask API to gain initial access to the application layer.",
+      "likelihood": "High",
+      "likelihood_rationale": "Flask applications are frequently targeted due to their popularity and potential for misconfigurations."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1005",
+      "technique_name": "Data from Local System",
+      "tactic": "Collection",
+      "target_component": "PostgreSQL",
+      "entry_point": "PostgreSQL database",
+      "impact": "Attacker exfiltrates sensitive data from the database, leading to data breach and potential regulatory penalties.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Requires successful compromise of the application layer and access to the database."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "FlaskAPI",
+      "entry_point": "Flask API server",
+      "impact": "Attacker exfiltrates data from the application server to an external command and control server.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Requires successful compromise of the application layer and establishment of a C2 channel."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "Vulnerability Management",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 5.1",
+      "control_name": "Secure Configuration of Network Devices",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Access Control",
+      "addresses_technique": [
+        "T1059.004",
+        "T1190"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 12.1",
+      "control_name": "Data Protection",
+      "addresses_technique": [
+        "T1005"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Data at Rest Protection",
+      "addresses_technique": [
+        "T1041"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Exploitation of Nginx vulnerabilities can lead to initial access and lateral movement, posing a significant risk to the entire architecture.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Nginx"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Execution of arbitrary commands on the Flask API server can lead to full compromise of the application layer and potential data exfiltration.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "FlaskAPI"
+      ],
+      "linked_techniques": [
+        "T1059.004"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Exploitation of Flask API vulnerabilities can lead to initial access and potential data exfiltration.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "FlaskAPI"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Critical",
+      "severity_rationale": "Exfiltration of sensitive data from the PostgreSQL database can lead to a data breach and significant regulatory penalties.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "PostgreSQL"
+      ],
+      "linked_techniques": [
+        "T1005"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "Exfiltration of data from the Flask API server to an external C2 server can lead to data breach and potential regulatory penalties.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "FlaskAPI"
+      ],
+      "linked_techniques": [
+        "T1041"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Immediate"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "EU"
+    ],
+    "compliance_scope": [
+      "GDPR",
+      "ISO 27001"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "Cloud Provider",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Flask Framework",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "PostgreSQL",
+        "trust_tier": "trusted"
+      }
+    ]
+  }
+}

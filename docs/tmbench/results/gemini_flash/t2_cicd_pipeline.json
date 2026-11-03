@@ -1,0 +1,309 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_cicd_pipeline",
+  "produced_by": "gemini_flash v1.0 v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Developer",
+        "role": "user",
+        "trust_zone": "Untrusted External"
+      },
+      {
+        "id": "GitHub",
+        "role": "ingress",
+        "trust_zone": "SaaS Source Control"
+      },
+      {
+        "id": "BranchProtection",
+        "role": "governance",
+        "trust_zone": "SaaS Source Control"
+      },
+      {
+        "id": "ActionsRunner",
+        "role": "compute",
+        "trust_zone": "CI Execution Zone"
+      },
+      {
+        "id": "SecretManager",
+        "role": "data store",
+        "trust_zone": "CI Execution Zone"
+      },
+      {
+        "id": "SAST",
+        "role": "agent",
+        "trust_zone": "Artifact Analysis Zone"
+      },
+      {
+        "id": "Artifactory",
+        "role": "data store",
+        "trust_zone": "Artifact Analysis Zone"
+      },
+      {
+        "id": "StagingEnv",
+        "role": "compute",
+        "trust_zone": "Pre-Production Zone"
+      },
+      {
+        "id": "ProdEnv",
+        "role": "compute",
+        "trust_zone": "Production Zone"
+      },
+      {
+        "id": "DeployKey",
+        "role": "data store",
+        "trust_zone": "Production Zone"
+      }
+    ],
+    "trust_boundaries": [
+      "Developer Workstation -> SaaS Source Control",
+      "SaaS Source Control -> CI Execution Zone",
+      "CI Execution Zone -> Artifact Analysis Zone",
+      "Artifact Analysis Zone -> Pre-Production Zone",
+      "Pre-Production Zone -> Production Zone"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted hybrid CI/CD deployment pipeline with managed artifact repositories and automated staging to production progression."
+  },
+  "threat_actors": [
+    {
+      "name": "External Supply Chain Adversary",
+      "motivation": "Financial gain, target organization compromise via tainted dependencies/code injection",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Compromised developer credentials or rogue pull request submission",
+      "non_capabilities": [
+        "No direct access to AWS/GCP cloud management console",
+        "No physical access to self-hosted CI build hardware",
+        "No root access to Secrets Manager KMS hardware security module"
+      ]
+    },
+    {
+      "name": "Malicious Insider / Disgruntled Developer",
+      "motivation": "Sabotage, data theft, backdooring production deployment",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Authorized source control repository write access and valid developer credentials",
+      "non_capabilities": [
+        "No administrative override permissions on branch protection enforcement rules",
+        "No direct network connectivity to production environment compute instances"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1195.001",
+      "technique_name": "Supply Chain Compromise: Compromise Software Dependencies",
+      "tactic": "Initial Access",
+      "target_component": "GitHub",
+      "entry_point": "Developer submit malicious pull request with compromised third-party library",
+      "impact": "Injected malicious code bypassed peer code review and executes within downstream CI/CD runners.",
+      "likelihood": "High",
+      "likelihood_rationale": "External dependency hijacking and public repository PR submissions are common threat vectors."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1552.004",
+      "technique_name": "Unsecured Credentials: Private Keys",
+      "tactic": "Credential Access",
+      "target_component": "SecretManager",
+      "entry_point": "ActionsRunner environment variable inspection or unmasked logs in GitHub Actions workflow",
+      "impact": "Exfiltration of SecretManager API tokens or deployment keys enabling direct production infrastructure access.",
+      "likelihood": "High",
+      "likelihood_rationale": "Actions workflow configurations frequently expose credentials via improperly scoped environment variables."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1565.002",
+      "technique_name": "Data Manipulation: Transmitted Data Manipulation",
+      "tactic": "Impact",
+      "target_component": "Artifactory",
+      "entry_point": "Compromised GitHub Actions Runner uploading tampered build artifacts directly to Artifactory registry",
+      "impact": "Production environment deploys compromised binary payload that bypassed SAST analysis.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Requires compromised CI execution environment or stolen Artifactory write token."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1078.004",
+      "technique_name": "Valid Accounts: Cloud Accounts",
+      "tactic": "Initial Access",
+      "target_component": "ProdEnv",
+      "entry_point": "Exfiltrated DeployKey stored in plain text or shared across staging and production environments",
+      "impact": "Direct unauthorized SSH or administrative access to Production Environment compute nodes.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Keys shared between environments present high risk of unauthorized lateral access if staging is breached."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1553.006",
+      "technique_name": "Subvert Trust Controls: Code Signing",
+      "tactic": "Defense Evasion",
+      "target_component": "BranchProtection",
+      "entry_point": "Force push or emergency bypass of branch protection rules by privileged user account",
+      "impact": "Unreviewed or unverified code pushed directly to release branch without passing automated checks.",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires admin account credentials, but failure of governance settings leads to severe exposure."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.DS-6",
+      "control_name": "Software Supply Chain Integrity Verification",
+      "addresses_technique": [
+        "T1195.001"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 6.8",
+      "control_name": "Secrets Management and Ephemeral Credential Injection",
+      "addresses_technique": [
+        "T1552.004"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Artifact Provenance and Cryptographic Signing (Cosign / SLSA Level 3)",
+      "addresses_technique": [
+        "T1565.002"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 4.1",
+      "control_name": "Short-Lived Ephemeral Deployment Credentials (OIDC Identity Federation)",
+      "addresses_technique": [
+        "T1078.004"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "CSA LOG-04",
+      "control_name": "Strict Enforce-Mode Branch Protection and Mandatory Governance Overrides Audit",
+      "addresses_technique": [
+        "T1553.006"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Compromise of third-party software dependencies during pull request processing allows arbitrary code execution on CI runners.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "GitHub",
+        "ActionsRunner"
+      ],
+      "linked_techniques": [
+        "T1195.001"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "Secrets leakage in CI/CD log outputs or unisolated execution environments can expose high-privilege credentials.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "ActionsRunner",
+        "SecretManager"
+      ],
+      "linked_techniques": [
+        "T1552.004"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Tampering with built container images between build phase and release registry exposes production to unauthorized software.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "Artifactory",
+        "SAST"
+      ],
+      "linked_techniques": [
+        "T1565.002"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Static long-lived deploy keys risk lateral movement from lower trust environments into production.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "DeployKey",
+        "ProdEnv"
+      ],
+      "linked_techniques": [
+        "T1078.004"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Low",
+      "severity_rationale": "Bypassing branch protection enforcement rules could allow unauthorized code commits into production branches.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "BranchProtection",
+        "GitHub"
+      ],
+      "linked_techniques": [
+        "T1553.006"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US-East",
+      "EU-Central"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "ISO 27001",
+      "SLSA Level 3"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "GitHub Actions SaaS",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "JFrog Artifactory Cloud",
+        "trust_tier": "trusted"
+      }
+    ]
+  }
+}

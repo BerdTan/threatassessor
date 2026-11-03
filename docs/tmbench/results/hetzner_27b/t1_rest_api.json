@@ -1,0 +1,265 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t1_rest_api",
+  "produced_by": "hetzner_27b v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "APIGateway",
+        "role": "ingress",
+        "trust_zone": "public"
+      },
+      {
+        "id": "AuthService",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "Redis",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "AppServer",
+        "role": "compute",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "Client to APIGateway (Public to DMZ)",
+      "APIGateway to AuthService (DMZ to Internal)",
+      "APIGateway to AppServer (DMZ to Internal)",
+      "AuthService to Redis (Internal to Data Store)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted REST API with stateless authentication and session caching"
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Financial gain through data theft or service disruption",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Unauthenticated API endpoints or misconfigured gateway rules",
+      "non_capabilities": [
+        "No physical access to data centers",
+        "No pre-existing valid credentials",
+        "No zero-day exploit budget",
+        "No insider knowledge of internal network topology"
+      ]
+    },
+    {
+      "name": "Insider Threat",
+      "motivation": "Malicious data exfiltration or sabotage",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Valid employee credentials and access to internal management interfaces",
+      "non_capabilities": [
+        "No ability to bypass hardware security modules",
+        "No access to source code repositories without separate authorization",
+        "Limited to the scope of their assigned role permissions"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "APIGateway",
+      "entry_point": "Public API endpoints",
+      "impact": "Unauthorized access to internal services or data exfiltration",
+      "likelihood": "High",
+      "likelihood_rationale": "API gateways are high-value targets for automated scanning and exploitation of known vulnerabilities."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "AuthService",
+      "entry_point": "Authentication endpoints",
+      "impact": "Session hijacking or privilege escalation via compromised credentials",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Credential stuffing and phishing are common vectors for compromising valid accounts."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1557",
+      "technique_name": "Adversary-in-the-Middle",
+      "tactic": "Credential Access",
+      "target_component": "APIGateway",
+      "entry_point": "Network traffic between Client and APIGateway",
+      "impact": "Interception of sensitive data in transit, including tokens and PII",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If TLS is misconfigured or downgraded, traffic can be intercepted by network-level attackers."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1530",
+      "technique_name": "Data from Information Repositories",
+      "tactic": "Collection",
+      "target_component": "Redis",
+      "entry_point": "Internal network access to Redis cache",
+      "impact": "Exfiltration of cached session tokens or sensitive user data",
+      "likelihood": "Low",
+      "likelihood_rationale": "Redis is typically isolated, but lateral movement from compromised internal services could expose it."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1499",
+      "technique_name": "Endpoint Denial of Service",
+      "tactic": "Impact",
+      "target_component": "AppServer",
+      "entry_point": "High-volume API requests",
+      "impact": "Service unavailability due to resource exhaustion",
+      "likelihood": "High",
+      "likelihood_rationale": "Distributed Denial of Service (DDoS) attacks are a common threat to public-facing API servers."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.PT-3",
+      "control_name": "Network integrity and monitoring",
+      "addresses_technique": [
+        "T1190",
+        "T1557"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 5.1",
+      "control_name": "Manage account credentials",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Data at rest is protected",
+      "addresses_technique": [
+        "T1530"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 13.1",
+      "control_name": "Deny, filter, or drop network traffic by default",
+      "addresses_technique": [
+        "T1499"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Exploitation of public-facing API vulnerabilities can lead to direct compromise of internal services.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Medium",
+      "severity_rationale": "Compromised valid accounts can lead to session hijacking, but multi-factor authentication reduces risk.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "AuthService"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Interception of data in transit can expose sensitive user information and authentication tokens.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1557"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Access to Redis cache could expose session data, but network isolation limits exposure.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "Redis"
+      ],
+      "linked_techniques": [
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "DDoS attacks can cause significant service disruption, impacting business operations.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": [
+        "AppServer"
+      ],
+      "linked_techniques": [
+        "T1499"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Immediate"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "EU",
+      "US"
+    ],
+    "compliance_scope": [
+      "GDPR",
+      "SOC 2"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "Cloud Provider API Gateway",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Redis Managed Service",
+        "trust_tier": "trusted"
+      }
+    ]
+  }
+}

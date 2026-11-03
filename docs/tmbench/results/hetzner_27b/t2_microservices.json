@@ -1,0 +1,321 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_microservices",
+  "produced_by": "hetzner_27b v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "APIGateway",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "UserService",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "OrderService",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PaymentService",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "InventoryService",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "MessageQueue",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "UserDB",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "OrderDB",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PaymentDB",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "InventoryDB",
+        "role": "data_store",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "External Internet to API Gateway",
+      "API Gateway to Internal Microservices",
+      "Microservices to Message Queue",
+      "Microservices to Databases"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted microservices architecture with message-driven communication"
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Financial gain through data theft or service disruption",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Exploiting unpatched vulnerabilities in the API Gateway or public-facing endpoints",
+      "non_capabilities": [
+        "No physical access to data centers",
+        "No pre-existing insider knowledge of internal network topology",
+        "No budget for zero-day exploits"
+      ]
+    },
+    {
+      "name": "Insider Threat",
+      "motivation": "Malicious intent or negligence leading to data exfiltration",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Valid credentials for internal services or database access",
+      "non_capabilities": [
+        "Cannot bypass hardware security modules if implemented",
+        "Cannot access physical infrastructure without authorization"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "APIGateway",
+      "entry_point": "Public API endpoints",
+      "impact": "Compromise of API Gateway leading to lateral movement to internal services",
+      "likelihood": "High",
+      "likelihood_rationale": "API Gateway is the primary entry point and often targeted by automated scanners"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "UserService",
+      "entry_point": "User authentication endpoints",
+      "impact": "Unauthorized access to user data and potential privilege escalation",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Credential stuffing or phishing attacks are common against user-facing services"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1021",
+      "technique_name": "Remote Services",
+      "tactic": "Lateral Movement",
+      "target_component": "MessageQueue",
+      "entry_point": "Internal network access to message queue",
+      "impact": "Interception or manipulation of messages between services",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If an attacker gains access to one service, they can pivot to the message queue"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1560",
+      "technique_name": "Archive Collected Data",
+      "tactic": "Collection",
+      "target_component": "PaymentDB",
+      "entry_point": "Database access via compromised service",
+      "impact": "Exfiltration of sensitive payment data",
+      "likelihood": "High",
+      "likelihood_rationale": "Payment data is a high-value target for attackers"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1486",
+      "technique_name": "Data Encrypted for Impact",
+      "tactic": "Impact",
+      "target_component": "OrderDB",
+      "entry_point": "Database access via compromised service",
+      "impact": "Denial of service through encryption of order data",
+      "likelihood": "Low",
+      "likelihood_rationale": "Ransomware attacks are less common against microservices but possible"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "APIGateway",
+      "entry_point": "Outbound traffic from compromised service",
+      "impact": "Data exfiltration to external attacker infrastructure",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Compromised services can use the API Gateway to exfiltrate data"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Access Control",
+      "addresses_technique": [
+        "T1190",
+        "T1078"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 5.1",
+      "control_name": "Network Segmentation",
+      "addresses_technique": [
+        "T1021"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Data-at-Rest Protection",
+      "addresses_technique": [
+        "T1560",
+        "T1486"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 13.1",
+      "control_name": "Network Traffic Monitoring",
+      "addresses_technique": [
+        "T1041"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "API Gateway is a critical entry point and compromise could lead to widespread lateral movement",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Medium",
+      "severity_rationale": "Valid account attacks are common but mitigated by access controls",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "UserService"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Message queue compromise could allow manipulation of critical business processes",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "MessageQueue"
+      ],
+      "linked_techniques": [
+        "T1021"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Critical",
+      "severity_rationale": "Payment data exfiltration has severe financial and regulatory implications",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "PaymentDB"
+      ],
+      "linked_techniques": [
+        "T1560"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Data encryption for impact could disrupt business operations but is less likely",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": [
+        "OrderDB"
+      ],
+      "linked_techniques": [
+        "T1486"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "High",
+      "severity_rationale": "Data exfiltration over C2 channel could lead to significant data loss",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1041"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Immediate"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "EU",
+      "US"
+    ],
+    "compliance_scope": [
+      "GDPR",
+      "PCI-DSS"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "Cloud Provider",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Payment Processor",
+        "trust_tier": "conditional"
+      }
+    ]
+  }
+}

@@ -1,0 +1,496 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_rag_pipeline",
+  "produced_by": "hetzner_27b v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "WebUI",
+        "role": "ingress",
+        "trust_zone": "untrusted"
+      },
+      {
+        "id": "AgentOrchestrator",
+        "role": "agent",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PromptManager",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "ToolRegistry",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "LLMGateway",
+        "role": "egress",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "OpenAI",
+        "role": "external_service",
+        "trust_zone": "external"
+      },
+      {
+        "id": "Anthropic",
+        "role": "external_service",
+        "trust_zone": "external"
+      },
+      {
+        "id": "LocalLLM",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "VectorDB",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "DocumentStore",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "EmbeddingService",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "WebSearch",
+        "role": "tool",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "CodeExecution",
+        "role": "compute",
+        "trust_zone": "sandboxed"
+      },
+      {
+        "id": "DatabaseTool",
+        "role": "tool",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "APIIntegrations",
+        "role": "egress",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "UserDB",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "SessionStore",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "AuditLog",
+        "role": "data_store",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "User to WebUI (Untrusted to Internal)",
+      "WebUI to AgentOrchestrator (Untrusted to Internal)",
+      "AgentOrchestrator to LLMGateway (Internal to External)",
+      "LLMGateway to OpenAI/Anthropic (Internal to External)",
+      "AgentOrchestrator to VectorDB/DocumentStore (Internal to Data Store)",
+      "ToolRegistry to CodeExecution (Internal to Sandboxed)",
+      "ToolRegistry to APIIntegrations (Internal to External)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Hybrid Cloud SaaS with Agentic Pipeline"
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Financial gain, data theft, or disruption",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Web UI injection or credential stuffing",
+      "non_capabilities": [
+        "No physical access to data centers",
+        "No pre-existing insider knowledge of internal network topology",
+        "No budget for zero-day exploits",
+        "Cannot bypass hardware security modules"
+      ]
+    },
+    {
+      "name": "Insider Threat",
+      "motivation": "Malicious intent or negligence",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Valid employee credentials",
+      "non_capabilities": [
+        "Cannot modify immutable audit logs without detection",
+        "Cannot access air-gapped backup systems",
+        "Limited to their assigned role permissions"
+      ]
+    },
+    {
+      "name": "Adversarial Agent",
+      "motivation": "Goal hijacking or data exfiltration via prompt injection",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Malicious user input or poisoned document in DocumentStore",
+      "non_capabilities": [
+        "Cannot directly execute code outside the CodeExecution sandbox",
+        "Cannot modify the LLM weights directly",
+        "Cannot access the UserDB directly without tool invocation"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "AML.T0051",
+      "technique_name": "Prompt Injection",
+      "tactic": "Initial Access",
+      "target_component": "AgentOrchestrator",
+      "entry_point": "WebUI User Input",
+      "impact": "Agent executes unintended actions, potentially exfiltrating data or modifying system state",
+      "likelihood": "High",
+      "likelihood_rationale": "LLM-based systems are inherently susceptible to prompt injection if input sanitization is insufficient."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "WebUI",
+      "entry_point": "Web UI",
+      "impact": "Remote Code Execution or Session Hijacking",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Web UIs are common targets for automated scanning and exploitation of known vulnerabilities."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "AML.T0043",
+      "technique_name": "Craft Adversarial Data",
+      "tactic": "Initial Access",
+      "target_component": "DocumentStore",
+      "entry_point": "Document Upload",
+      "impact": "Poisoning of RAG context leading to biased or malicious outputs",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If document ingestion lacks validation, attackers can inject malicious content into the knowledge base."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1059.004",
+      "technique_name": "Command and Scripting Interpreter: Unix Shell",
+      "tactic": "Execution",
+      "target_component": "CodeExecution",
+      "entry_point": "ToolRegistry",
+      "impact": "Arbitrary code execution in the sandbox, potential escape to host",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Code execution sandboxes are high-value targets for escape attempts if isolation is weak."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "APIIntegrations",
+      "entry_point": "External API Calls",
+      "impact": "Data exfiltration via legitimate API channels",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires prior compromise and knowledge of API endpoints, but possible if egress filtering is absent."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "UserDB",
+      "entry_point": "Authentication Service",
+      "impact": "Access to user data and session tokens",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Credential stuffing or phishing can lead to valid account compromise."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "AML.T0048",
+      "technique_name": "Model Backdoor",
+      "tactic": "Impact",
+      "target_component": "LocalLLM",
+      "entry_point": "Model Update Pipeline",
+      "impact": "Malicious behavior triggered by specific inputs in the local model",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires access to the model training or update process, which is typically restricted."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1566.001",
+      "technique_name": "Phishing: Spearphishing Attachment",
+      "tactic": "Initial Access",
+      "target_component": "WebUI",
+      "entry_point": "User Email",
+      "impact": "Compromise of user credentials or session",
+      "likelihood": "High",
+      "likelihood_rationale": "Phishing remains a primary vector for initial access in SaaS environments."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.PT-3",
+      "control_name": "Input Validation and Sanitization",
+      "addresses_technique": [
+        "AML.T0051",
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 5.1",
+      "control_name": "Manage Software Vulnerabilities",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Data Integrity Verification",
+      "addresses_technique": [
+        "AML.T0043"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 12.1",
+      "control_name": "Isolate and Protect Critical Assets",
+      "addresses_technique": [
+        "T1059.004"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Network Access Control",
+      "addresses_technique": [
+        "T1041"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 5.3",
+      "control_name": "Manage User Accounts",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "Model Integrity and Provenance",
+      "addresses_technique": [
+        "AML.T0048"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "CIS Control 14.6",
+      "control_name": "User Awareness Training",
+      "addresses_technique": [
+        "T1566.001"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Prompt injection can lead to data exfiltration or system compromise, and current input validation is only partial.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "AgentOrchestrator",
+        "WebUI"
+      ],
+      "linked_techniques": [
+        "AML.T0051"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Medium",
+      "severity_rationale": "Web UI vulnerabilities are mitigated by regular patching, but residual risk remains due to the public-facing nature.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "WebUI"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Lack of data integrity verification in document ingestion allows for RAG poisoning, which can lead to persistent malicious outputs.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "DocumentStore",
+        "VectorDB"
+      ],
+      "linked_techniques": [
+        "AML.T0043"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Code execution sandbox is isolated, but escape attempts could lead to host compromise if isolation is bypassed.",
+      "severity_vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "CodeExecution"
+      ],
+      "linked_techniques": [
+        "T1059.004"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Egress filtering is partial, allowing potential data exfiltration via API integrations.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "APIIntegrations"
+      ],
+      "linked_techniques": [
+        "T1041"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "Valid account compromise is mitigated by strong authentication, but credential stuffing remains a risk.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "UserDB"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "High",
+      "severity_rationale": "Model backdoor risk is high due to lack of integrity verification in the model update pipeline.",
+      "severity_vector": "CVSS:3.1/AV:L/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "LocalLLM"
+      ],
+      "linked_techniques": [
+        "AML.T0048"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Medium",
+      "severity_rationale": "Phishing risk is mitigated by user training, but social engineering remains a persistent threat.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "WebUI"
+      ],
+      "linked_techniques": [
+        "T1566.001"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US",
+      "EU"
+    ],
+    "compliance_scope": [
+      "SOC 2",
+      "GDPR",
+      "ISO 27001"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "OpenAI API",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Anthropic API",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Web Search Provider",
+        "trust_tier": "untrusted"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "semi-autonomous",
+      "tool_call_scope": [
+        "WebSearch",
+        "CodeExecution",
+        "DatabaseTool",
+        "APIIntegrations"
+      ],
+      "blast_radius": "Potential compromise of user data, session tokens, and external API credentials. Could lead to data exfiltration or unauthorized actions in integrated systems.",
+      "human_oversight_points": [
+        "User approval for sensitive tool calls",
+        "Audit log review"
+      ],
+      "model_provenance": {
+        "provider": "OpenAI/Anthropic/Local",
+        "model_id": "gpt-4/claude-3/local-llama",
+        "fine_tuned": false
+      }
+    }
+  }
+}

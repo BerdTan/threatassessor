@@ -1,0 +1,494 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_rag_pipeline",
+  "produced_by": "gemini_flash v1.0 v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "WebUI",
+        "role": "ingress",
+        "trust_zone": "DMZ"
+      },
+      {
+        "id": "AgentOrchestrator",
+        "role": "agent",
+        "trust_zone": "Core Orchestration Zone"
+      },
+      {
+        "id": "PromptManager",
+        "role": "compute",
+        "trust_zone": "Core Orchestration Zone"
+      },
+      {
+        "id": "ToolRegistry",
+        "role": "compute",
+        "trust_zone": "Core Orchestration Zone"
+      },
+      {
+        "id": "LLMGateway",
+        "role": "egress",
+        "trust_zone": "AI Services Zone"
+      },
+      {
+        "id": "OpenAI",
+        "role": "egress",
+        "trust_zone": "External Third-Party SaaS"
+      },
+      {
+        "id": "Anthropic",
+        "role": "egress",
+        "trust_zone": "External Third-Party SaaS"
+      },
+      {
+        "id": "LocalLLM",
+        "role": "compute",
+        "trust_zone": "AI Services Zone"
+      },
+      {
+        "id": "VectorDB",
+        "role": "data store",
+        "trust_zone": "Knowledge Layer Zone"
+      },
+      {
+        "id": "DocumentStore",
+        "role": "data store",
+        "trust_zone": "Knowledge Layer Zone"
+      },
+      {
+        "id": "EmbeddingService",
+        "role": "compute",
+        "trust_zone": "Knowledge Layer Zone"
+      },
+      {
+        "id": "WebSearch",
+        "role": "egress",
+        "trust_zone": "Tools & Integrations Zone"
+      },
+      {
+        "id": "CodeExecution",
+        "role": "compute",
+        "trust_zone": "Isolated Sandbox Zone"
+      },
+      {
+        "id": "DatabaseTool",
+        "role": "compute",
+        "trust_zone": "Tools & Integrations Zone"
+      },
+      {
+        "id": "APIIntegrations",
+        "role": "egress",
+        "trust_zone": "Tools & Integrations Zone"
+      },
+      {
+        "id": "UserDB",
+        "role": "data store",
+        "trust_zone": "Data Layer Zone"
+      },
+      {
+        "id": "SessionStore",
+        "role": "data store",
+        "trust_zone": "Data Layer Zone"
+      },
+      {
+        "id": "AuditLog",
+        "role": "data store",
+        "trust_zone": "Data Layer Zone"
+      }
+    ],
+    "trust_boundaries": [
+      "Public Internet -> DMZ (Users to WebUI)",
+      "DMZ -> Core Orchestration Zone (WebUI to AgentOrchestrator)",
+      "Core Orchestration Zone -> External Third-Party SaaS (LLMGateway to OpenAI/Anthropic)",
+      "Core Orchestration Zone -> Isolated Sandbox Zone (ToolRegistry to CodeExecution)",
+      "Core Orchestration Zone -> Knowledge/Data Layer (AgentOrchestrator to VectorDB/UserDB)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Hybrid cloud multi-tenant agentic Retrieval-Augmented Generation (RAG) pipeline leveraging external LLM APIs and dynamic tool invocation."
+  },
+  "threat_actors": [
+    {
+      "name": "External Unauthenticated Attacker",
+      "motivation": "Financial gain, service disruption, and unauthorized data exfiltration",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Public-facing Web UI web application endpoints and input forms",
+      "non_capabilities": [
+        "No internal network access to backend VPC",
+        "No direct access to database credentials or API keys",
+        "No ability to bypass cloud provider edge protections without exploit"
+      ]
+    },
+    {
+      "name": "Adversarial Prompt Injection Specialist",
+      "motivation": "Agent manipulation, goal hijacking, and data exfiltration via indirect prompt injection",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Crafting malicious content indexed by Web Search or stored in Vector Database Documents",
+      "non_capabilities": [
+        "No direct command-line access to internal server infrastructure",
+        "No ability to modify system prompt templates directly at rest",
+        "No physical access to infrastructure"
+      ]
+    },
+    {
+      "name": "Malicious Insider / Compromised Developer",
+      "motivation": "Intellectual property theft, sabotage, and persistence",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Valid internal user credentials, code repository access, or internal management consoles",
+      "non_capabilities": [
+        "No administrative access to external third-party LLM provider infrastructure",
+        "No access to customer environment secrets stored in hardware security modules"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "AML.T0051",
+      "technique_name": "LLM Prompt Injection",
+      "tactic": "Execution",
+      "target_component": "AgentOrchestrator",
+      "entry_point": "Web UI input or indirect content via WebSearch tool",
+      "impact": "Agent goal hijacking leading to unauthorized execution of administrative tool calls and sensitive context extraction",
+      "likelihood": "High",
+      "likelihood_rationale": "RAG models processing external untrusted content are highly vulnerable to indirect prompt injection."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1059.004",
+      "technique_name": "Command and Scripting Interpreter: Unix Shell",
+      "tactic": "Execution",
+      "target_component": "CodeExecution",
+      "entry_point": "Agent Orchestrator invoking Code Execution Sandbox tool with untrusted code",
+      "impact": "Remote code execution within code sandbox container, potentially escaping into host environment",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Dynamic execution of generated code presents significant risk if sandbox isolation is misconfigured."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "AML.T0043",
+      "technique_name": "Craft Adversarial Data",
+      "tactic": "ML Attack Techniques",
+      "target_component": "VectorDB",
+      "entry_point": "Ingestion of malicious document payloads into DocumentStore and EmbeddingService",
+      "impact": "Poisoning of vector search results to hijack agent decision pathways and cause wrong data retrieval",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Untrusted external document ingest pipelines can accept specially crafted text to skew vector embeddings."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "WebUI",
+      "entry_point": "HTTP/HTTPS requests to public Web UI endpoint",
+      "impact": "Unauthorized access to session tokens, web application compromise, and lateral movement to AgentOrchestrator",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Web UI is exposed to the public internet and susceptible to standard web vulnerabilities."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1552.001",
+      "technique_name": "Unsecured Credentials: Credentials In Files",
+      "tactic": "Credential Access",
+      "target_component": "LLMGateway",
+      "entry_point": "Misconfigured environment variables or configuration files accessible to LLMGateway",
+      "impact": "Exfiltration of third-party API keys (OpenAI, Anthropic), enabling unmetered quota consumption and data theft",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires configuration exposure or file read vulnerability in LLM Gateway."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "AML.T0054",
+      "technique_name": "LLM Data Leakage",
+      "tactic": "Exfiltration",
+      "target_component": "LLMGateway",
+      "entry_point": "Agent prompt context containing proprietary document data sent to external cloud APIs",
+      "impact": "Confidential internal enterprise knowledge leaked to third-party model providers or logged in third-party services",
+      "likelihood": "High",
+      "likelihood_rationale": "RAG architecture automatically includes retrieved document contexts into external LLM API payloads."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "DatabaseTool",
+      "entry_point": "AgentOrchestrator executing database queries using overly privileged database credentials",
+      "impact": "Unauthorized modification or exfiltration of UserDB records and persistent account compromise",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If the agent database tool uses excessive privileges, prompt injection can lead to unauthorized SQL execution."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1499",
+      "technique_name": "Endpoint Denial of Service",
+      "tactic": "Impact",
+      "target_component": "LocalLLM",
+      "entry_point": "Complex, recursive, or extremely long prompt inputs submitted to Local LLM inference server",
+      "impact": "Resource exhaustion (GPU VRAM / CPU), leading to failure of local inference capabilities and application denial of service",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Local LLMs have finite hardware compute limits and are vulnerable to expensive token generation requests."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "CSA ART-04.1",
+      "control_name": "Dual-LLM Prompt Sanitization and Output Guardrails",
+      "addresses_technique": [
+        "AML.T0051"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 2.7",
+      "control_name": "Container Sandboxing and Ephemeral Runtime Execution",
+      "addresses_technique": [
+        "T1059.004"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-6",
+      "control_name": "Vector Store Ingestion Validation and Data Integrity Integrity Checks",
+      "addresses_technique": [
+        "AML.T0043"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 16.1",
+      "control_name": "Web Application Firewall (WAF) and Strict Input Validation",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Centralized Secrets Manager Integration and IAM Identity Mapping",
+      "addresses_technique": [
+        "T1552.001"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CSA ART-01.2",
+      "control_name": "Data Masking and Private Data Anonymization Filter Prior to External Dispatch",
+      "addresses_technique": [
+        "AML.T0054"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Least Privilege Database Roles and Read-Only Tool Enforcement",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "Rate Limiting, Max Token Caps, and Concurrent Request Throttling",
+      "addresses_technique": [
+        "T1499"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "Indirect prompt injection via external tools could allow an attacker to bypass access controls and execute arbitrary agent actions.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "AgentOrchestrator",
+        "PromptManager"
+      ],
+      "linked_techniques": [
+        "AML.T0051"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Untrusted agent-generated code executed in the CodeExecution sandbox could break isolation if container boundaries are insufficient.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "CodeExecution"
+      ],
+      "linked_techniques": [
+        "T1059.004"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Malicious vector payload insertion can degrade RAG accuracy and induce improper LLM output context.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "VectorDB",
+        "EmbeddingService"
+      ],
+      "linked_techniques": [
+        "AML.T0043"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Public Web UI exposed to standard web app vulnerabilities requiring perimeter defenses.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "WebUI"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Low",
+      "severity_rationale": "Potential hardcoded credentials in deployment scripts or gateway configurations.",
+      "severity_vector": "CVSS:3.1/AV:L/AC:H/PR:H/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "LLMGateway"
+      ],
+      "linked_techniques": [
+        "T1552.001"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "High",
+      "severity_rationale": "Transmitting sensitive retrieved documents to third-party APIs (OpenAI/Anthropic) risks policy compliance violations.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "LLMGateway",
+        "OpenAI",
+        "Anthropic"
+      ],
+      "linked_techniques": [
+        "AML.T0054"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Medium",
+      "severity_rationale": "Database tool executed by agent could query unauthorized data without fine-grained scoping.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N",
+      "affected_components": [
+        "DatabaseTool",
+        "UserDB"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Low",
+      "severity_rationale": "Unbounded prompt generation against Local LLM can cause temporary local service unresponsiveness.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+      "affected_components": [
+        "LocalLLM"
+      ],
+      "linked_techniques": [
+        "T1499"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US-East (AWS)",
+      "EU-Central (Germany - Local Processing Node)"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "GDPR",
+      "ISO/IEC 27001"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "OpenAI API",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Anthropic API",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "External Web Search API",
+        "trust_tier": "untrusted"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "semi-autonomous",
+      "tool_call_scope": [
+        "WebSearch.query",
+        "CodeExecution.run_python",
+        "DatabaseTool.select_query",
+        "APIIntegrations.http_request"
+      ],
+      "blast_radius": "Execution of unauthorized external API queries, sandbox resource exhaustion, read access to vector and relational database stores.",
+      "human_oversight_points": [
+        "Human approval required for DatabaseTool write/update operations",
+        "Human approval required for external high-privilege APIIntegrations execution"
+      ],
+      "model_provenance": {
+        "provider": "OpenAI / Anthropic / Self-Hosted",
+        "model_id": "gpt-4o / claude-3-5-sonnet / llama-3.1-70b",
+        "fine_tuned": false
+      }
+    }
+  }
+}

@@ -1,0 +1,450 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_cicd_pipeline",
+  "produced_by": "deepseek_flash v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "developer",
+        "role": "Human developer / external actor",
+        "trust_zone": "External"
+      },
+      {
+        "id": "github",
+        "role": "Source code repository",
+        "trust_zone": "Source Control"
+      },
+      {
+        "id": "branch_protection",
+        "role": "Branch protection policy enforcement",
+        "trust_zone": "Source Control"
+      },
+      {
+        "id": "actions_runner",
+        "role": "CI compute runner",
+        "trust_zone": "CI Layer"
+      },
+      {
+        "id": "secret_manager",
+        "role": "Secrets storage and retrieval",
+        "trust_zone": "CI Layer"
+      },
+      {
+        "id": "artifactory",
+        "role": "Artifact registry / data store",
+        "trust_zone": "Artifact Layer"
+      },
+      {
+        "id": "sast",
+        "role": "Static application security testing scanner",
+        "trust_zone": "Artifact Layer"
+      },
+      {
+        "id": "staging_env",
+        "role": "Staging deployment environment",
+        "trust_zone": "Deploy Layer"
+      },
+      {
+        "id": "prod_env",
+        "role": "Production deployment environment",
+        "trust_zone": "Deploy Layer"
+      },
+      {
+        "id": "deploy_key_store",
+        "role": "Deploy key storage",
+        "trust_zone": "Deploy Layer"
+      }
+    ],
+    "trust_boundaries": [
+      "Developer workstation to Source Control",
+      "Source Control to CI Layer",
+      "CI Layer to Secrets Manager",
+      "CI Layer to Artifact Layer",
+      "Artifact Layer to Deploy Layer",
+      "Deploy Key Store to Production",
+      "Staging to Production"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted CI/CD pipeline with GitHub source control, GitHub Actions CI, Artifactory artifact registry, and staged deployment to production."
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Financial gain through credential theft and unauthorized access",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Phishing or leaked developer credentials for GitHub",
+      "non_capabilities": [
+        "No physical access to facilities",
+        "No pre-existing insider knowledge",
+        "No zero-day budget",
+        "Cannot bypass MFA without stolen session or token",
+        "No direct network access to internal CI runners"
+      ]
+    },
+    {
+      "name": "Targeted Supply Chain Attacker",
+      "motivation": "Espionage or sabotage via software supply chain compromise",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Compromised third-party GitHub Action or dependency",
+      "non_capabilities": [
+        "No physical access",
+        "No pre-existing insider credentials",
+        "Limited knowledge of internal secret naming and deployment approvals",
+        "Cannot directly reach production without first compromising CI or artifacts"
+      ]
+    },
+    {
+      "name": "Malicious Insider Developer",
+      "motivation": "Revenge or financial gain using legitimate repository access",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate developer account with repository write permissions",
+      "non_capabilities": [
+        "No physical access to cloud provider infrastructure",
+        "Cannot unilaterally alter branch protection without approval",
+        "No zero-day budget",
+        "Limited to granted repository and CI permissions",
+        "Cannot access production deploy keys without additional compromise"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "P-001",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "github",
+      "entry_point": "Developer GitHub account credentials",
+      "impact": "Unauthorized code commits and pipeline manipulation",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Developer accounts are internet-facing and credential phishing is common, but MFA reduces success."
+    },
+    {
+      "path_id": "P-002",
+      "technique_id": "T1195.002",
+      "technique_name": "Compromise Software Supply Chain",
+      "tactic": "Initial Access",
+      "target_component": "actions_runner",
+      "entry_point": "Third-party GitHub Action or dependency fetched during workflow",
+      "impact": "Arbitrary code execution in CI with access to secrets and artifacts",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Workflows commonly consume unpinned third-party actions, and allowlisting is only partially implemented."
+    },
+    {
+      "path_id": "P-003",
+      "technique_id": "T1552.001",
+      "technique_name": "Credentials In Files",
+      "tactic": "Credential Access",
+      "target_component": "secret_manager",
+      "entry_point": "CI job logs, environment variables, or workspace files",
+      "impact": "Exfiltration of cloud and deployment secrets",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Secrets may be exposed through verbose logs or misconfigured workflow steps, and OIDC adoption is partial."
+    },
+    {
+      "path_id": "P-004",
+      "technique_id": "T1565.001",
+      "technique_name": "Stored Data Manipulation",
+      "tactic": "Impact",
+      "target_component": "artifactory",
+      "entry_point": "Compromised CI token or runner writing to artifact registry",
+      "impact": "Tampered build artifacts distributed to downstream environments",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Registry write tokens are available to CI jobs, and artifact signing is not fully enforced."
+    },
+    {
+      "path_id": "P-005",
+      "technique_id": "T1195.002",
+      "technique_name": "Compromise Software Supply Chain",
+      "tactic": "Initial Access",
+      "target_component": "staging_env",
+      "entry_point": "Poisoned artifact pulled from Artifactory",
+      "impact": "Compromise of staging environment and potential pivot to production",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Staging deploys artifacts from the registry, and provenance verification is only partial."
+    },
+    {
+      "path_id": "P-006",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "prod_env",
+      "entry_point": "Stolen deploy key from Deploy Key Store",
+      "impact": "Unauthorized production deployment or configuration change",
+      "likelihood": "Low",
+      "likelihood_rationale": "Deploy keys are stored in a dedicated store with rotation, but key theft would bypass normal approval."
+    },
+    {
+      "path_id": "P-007",
+      "technique_id": "T1040",
+      "technique_name": "Network Sniffing",
+      "tactic": "Credential Access",
+      "target_component": "prod_env",
+      "entry_point": "Network segment between staging and production",
+      "impact": "Interception of deployment credentials or sensitive data in transit",
+      "likelihood": "Low",
+      "likelihood_rationale": "Traffic is encrypted with mTLS and segmented, but legacy endpoints may still exist."
+    },
+    {
+      "path_id": "P-008",
+      "technique_id": "T1562.001",
+      "technique_name": "Disable or Modify Tools",
+      "tactic": "Defense Evasion",
+      "target_component": "sast",
+      "entry_point": "CI workflow configuration or runner environment",
+      "impact": "Security scanning bypassed, allowing vulnerable code to reach artifacts",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Workflow files are code and can be modified by developers, and SAST enforcement is partial."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "MFA and conditional access for source control accounts",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 16.1",
+      "control_name": "Pin and allowlist third-party GitHub Actions",
+      "addresses_technique": [
+        "T1195.002"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Short-lived OIDC secrets and CI secret scanning",
+      "addresses_technique": [
+        "T1552.001"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.DS-6",
+      "control_name": "Artifact signing and immutable registry",
+      "addresses_technique": [
+        "T1565.001"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.IP-3",
+      "control_name": "Verify artifact provenance before staging deploy",
+      "addresses_technique": [
+        "T1195.002"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Hardware-backed deploy keys with rotation and least privilege",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "mTLS and network segmentation for staging-to-production traffic",
+      "addresses_technique": [
+        "T1040"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "SAST enforcement as required status check and tamper-evident logs",
+      "addresses_technique": [
+        "T1562.001"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Valid developer account compromise enables unauthorized commits that can alter pipeline behavior and reach production.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "github",
+        "branch_protection"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Unpinned third-party action execution gives an attacker code execution in CI with access to secrets and artifacts.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "actions_runner",
+        "secret_manager",
+        "artifactory"
+      ],
+      "linked_techniques": [
+        "T1195.002"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Secrets exposed in CI logs or workspace can be used to access cloud and deployment systems.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "secret_manager",
+        "actions_runner"
+      ],
+      "linked_techniques": [
+        "T1552.001"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Tampered artifacts in the registry can propagate malicious code to staging and production.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "artifactory",
+        "staging_env",
+        "prod_env"
+      ],
+      "linked_techniques": [
+        "T1565.001"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "A poisoned artifact deployed to staging can compromise staging and provide a pivot toward production.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "staging_env",
+        "artifactory"
+      ],
+      "linked_techniques": [
+        "T1195.002"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "High",
+      "severity_rationale": "A stolen deploy key enables unauthorized production deployment bypassing normal approval.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "deploy_key_store",
+        "prod_env"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Medium",
+      "severity_rationale": "Unencrypted or weakly segmented staging-to-production traffic could expose deployment credentials.",
+      "severity_vector": "CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "staging_env",
+        "prod_env"
+      ],
+      "linked_techniques": [
+        "T1040"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Medium",
+      "severity_rationale": "Disabling or modifying SAST allows vulnerable code to bypass security gates.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "sast",
+        "actions_runner"
+      ],
+      "linked_techniques": [
+        "T1562.001"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US"
+    ],
+    "compliance_scope": [
+      "SOC 2",
+      "ISO 27001"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "GitHub Actions Marketplace",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Artifactory",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Secrets Manager",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "SAST Scanner",
+        "trust_tier": "trusted"
+      }
+    ]
+  }
+}

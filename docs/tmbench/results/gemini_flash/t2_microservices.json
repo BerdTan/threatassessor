@@ -1,0 +1,310 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_microservices",
+  "produced_by": "gemini_flash v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Users",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "APIGateway",
+        "role": "ingress",
+        "trust_zone": "dmz"
+      },
+      {
+        "id": "UserService",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "OrderService",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PaymentService",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "InventoryService",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "MessageQueue",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "UserDB",
+        "role": "data store",
+        "trust_zone": "restricted"
+      },
+      {
+        "id": "OrderDB",
+        "role": "data store",
+        "trust_zone": "restricted"
+      },
+      {
+        "id": "PaymentDB",
+        "role": "data store",
+        "trust_zone": "restricted"
+      },
+      {
+        "id": "InventoryDB",
+        "role": "data store",
+        "trust_zone": "restricted"
+      }
+    ],
+    "trust_boundaries": [
+      "Users -> APIGateway (Public Internet Boundary)",
+      "APIGateway -> Microservices (DMZ / Internal Network Boundary)",
+      "Microservices -> Databases (Application / Data Store Boundary)",
+      "Microservices -> MessageQueue (Async Messaging Bus Boundary)"
+    ],
+    "data_classification": "restricted",
+    "operational_context": "Cloud-native microservices architecture with asynchronous message-driven inventory processing"
+  },
+  "threat_actors": [
+    {
+      "name": "External Cybercriminal Group",
+      "motivation": "Financial gain through PII and payment data exfiltration",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Exploitation of public-facing API Gateway vulnerabilities or API abuse",
+      "non_capabilities": [
+        "No direct physical access to cloud data centers",
+        "No pre-existing internal service credentials",
+        "No ability to modify cloud IAM root policies"
+      ]
+    },
+    {
+      "name": "Malicious Insider / Compromised Developer",
+      "motivation": "Data theft, internal sabotage, or privilege escalation",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Compromised internal developer credentials or workstation access",
+      "non_capabilities": [
+        "No access to payment processor HSM private keys",
+        "No physical hardware tampering capability"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "APIGateway",
+      "entry_point": "Users -> APIGateway HTTP endpoint",
+      "impact": "Unauthorised remote execution or route manipulation on API Gateway, breaching the public trust boundary.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "API Gateway is directly exposed to public internet traffic."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "UserService",
+      "entry_point": "APIGateway -> UserService internal interface",
+      "impact": "Compromise of internal service account allows unauthorized access to PII in UserDB.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Weak or hardcoded service account credentials shared across internal microservices."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1557",
+      "technique_name": "Adversary-in-the-Middle",
+      "tactic": "Credential Access",
+      "target_component": "MessageQueue",
+      "entry_point": "OrderService / PaymentService -> MessageQueue bus connection",
+      "impact": "Eavesdropping or tampering with unencrypted asynchronous payment and order messages in transit.",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires adversary to already possess foothold inside the internal microservices network segment."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1005",
+      "technique_name": "Data from Local System",
+      "tactic": "Collection",
+      "target_component": "PaymentDB",
+      "entry_point": "PaymentService -> PaymentDB database connection",
+      "impact": "Exfiltration of sensitive payment data at rest due to compromised PaymentService layer access.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "PaymentDB contains high-value financial data accessible directly if PaymentService microservice is compromised."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1021",
+      "technique_name": "Remote Services",
+      "tactic": "Lateral Movement",
+      "target_component": "InventoryService",
+      "entry_point": "MessageQueue -> InventoryService consumer loop",
+      "impact": "Malicious message injection into MessageQueue leading to unauthorized modification of InventoryDB.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "MessageQueue lacks strict payload schema verification and publisher authorization."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST SP 800-53 SI-10",
+      "control_name": "API Gateway Web Application Firewall and Input Validation",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST SP 800-53 IA-2",
+      "control_name": "Mutual TLS (mTLS) and Service-to-Service IAM Authentication",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 3.10",
+      "control_name": "Transport Layer Encryption for Internal Message Queue (TLS 1.3)",
+      "addresses_technique": [
+        "T1557"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 3.11",
+      "control_name": "Encryption of Sensitive Data at Rest (AES-256 for PaymentDB)",
+      "addresses_technique": [
+        "T1005"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST SP 800-53 SC-8",
+      "control_name": "Message Queue Signature Verification and Payload Schema Validation",
+      "addresses_technique": [
+        "T1021"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "API Gateway exposure to public traffic without full WAF enforcement presents direct compromise vector to microservices.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Absence of enforced service-to-service mTLS allows compromised accounts to move laterally to UserService and UserDB.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "UserService",
+        "UserDB"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Potential eavesdropping on internal message queue traffic could disclose transaction metadata.",
+      "severity_vector": "CVSS:3.1/AV:A/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "MessageQueue",
+        "OrderService",
+        "PaymentService"
+      ],
+      "linked_techniques": [
+        "T1557"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Critical",
+      "severity_rationale": "Unencrypted payment records at rest in PaymentDB pose severe financial exposure and regulatory violation risks.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "PaymentDB",
+        "PaymentService"
+      ],
+      "linked_techniques": [
+        "T1005"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Unauthenticated message insertion into MessageQueue allows unauthorized state changes in InventoryDB.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "MessageQueue",
+        "InventoryService",
+        "InventoryDB"
+      ],
+      "linked_techniques": [
+        "T1021"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US-East",
+      "EU-Central"
+    ],
+    "compliance_scope": [
+      "PCI-DSS v4.0",
+      "SOC 2 Type II",
+      "GDPR"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "External Payment Gateway Provider API",
+        "trust_tier": "conditional"
+      }
+    ]
+  }
+}

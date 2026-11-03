@@ -1,0 +1,241 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t1_rest_api",
+  "produced_by": "gemini_flash v1.0 v1.0",
+  "produced_at": "2026-03-30T10:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Client",
+        "role": "ingress",
+        "trust_zone": "Untrusted Public Internet"
+      },
+      {
+        "id": "APIGateway",
+        "role": "ingress",
+        "trust_zone": "DMZ / Gateway Layer"
+      },
+      {
+        "id": "AuthService",
+        "role": "compute",
+        "trust_zone": "Internal Auth Layer"
+      },
+      {
+        "id": "Redis",
+        "role": "data store",
+        "trust_zone": "Internal Auth Layer"
+      },
+      {
+        "id": "AppServer",
+        "role": "compute",
+        "trust_zone": "Internal Application Layer"
+      }
+    ],
+    "trust_boundaries": [
+      "Public Internet to API Gateway Boundary",
+      "API Gateway to Auth Layer Boundary",
+      "API Gateway to App Layer Boundary",
+      "Auth Service to Redis Cache Boundary"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted multi-tier REST API platform servicing external public clients via an API Gateway routing layer."
+  },
+  "threat_actors": [
+    {
+      "name": "External Cybercrime Group",
+      "motivation": "Financial gain through unauthorized access to user accounts, data theft, and API abuse.",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Publicly exposed API Gateway endpoints via credential stuffing or web application vulnerability exploitation.",
+      "non_capabilities": [
+        "No direct access to internal VPC networks",
+        "No physical access to cloud datacenter infrastructure",
+        "No access to internal source code repositories or CI/CD pipelines"
+      ]
+    },
+    {
+      "name": "Malicious Insider",
+      "motivation": "Data exfiltration, corporate espionage, or operational disruption.",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Direct network access to internal Auth Service, Redis, or App Server from within the internal network segment.",
+      "non_capabilities": [
+        "No root control over cloud infrastructure hypervisor",
+        "No access to underlying cloud provider global control plane"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "APIGateway",
+      "entry_point": "Client",
+      "impact": "Exploitation of API Gateway vulnerabilities leading to unauthorized request routing bypass or remote code execution.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "API Gateway is directly reachable over the public internet and processes untrusted incoming HTTP requests."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "AuthService",
+      "entry_point": "APIGateway",
+      "impact": "Attacker leverages compromised credentials against AuthService to issue valid session tokens and gain unauthorized API access.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Authentication endpoints are publicly accessible through the API Gateway, exposing them to credential stuffing."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1552",
+      "technique_name": "Unsecured Credentials",
+      "tactic": "Credential Access",
+      "target_component": "Redis",
+      "entry_point": "AuthService",
+      "impact": "Exfiltration of session tokens, authentication secrets, or cached user data stored unencrypted in Redis.",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires lateral movement into the Auth Layer or an unauthenticated Redis instance on internal networks."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1557",
+      "technique_name": "Adversary-in-the-Middle",
+      "tactic": "Credential Access",
+      "target_component": "AppServer",
+      "entry_point": "APIGateway",
+      "impact": "Interception and tampering of unencrypted internal traffic between API Gateway and App Server.",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires positioning on the internal network path between the API Gateway and App Server."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Web Application Firewall and API Security Gateway",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Multi-Factor Authentication and Rate Limiting on Auth Endpoints",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 3.10",
+      "control_name": "Redis Access Authentication, Network Isolation, and Encryption at Rest",
+      "addresses_technique": [
+        "T1552"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Internal Mutual TLS (mTLS) between Gateway and Backend Services",
+      "addresses_technique": [
+        "T1557"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Publicly exposed API Gateway vulnerabilities can allow direct access to internal network components.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Lack of robust rate limiting or MFA on AuthService allows account takeover via credential stuffing.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "AuthService"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Unauthenticated or unencrypted Redis instances risk token compromise if internal perimeter is breached.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "Redis"
+      ],
+      "linked_techniques": [
+        "T1552"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Unencrypted communication between internal API Gateway and App Server permits network eavesdropping.",
+      "severity_vector": "CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "APIGateway",
+        "AppServer"
+      ],
+      "linked_techniques": [
+        "T1557"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US-East (AWS)"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "ISO 27001",
+      "GDPR"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "Cloud Managed Redis Service",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Cloud Identity Provider / OAuth Service",
+        "trust_tier": "trusted"
+      }
+    ]
+  }
+}

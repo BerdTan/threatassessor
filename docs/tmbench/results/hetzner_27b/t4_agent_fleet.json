@@ -1,0 +1,450 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_agent_fleet",
+  "produced_by": "hetzner_27b v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "APIGateway",
+        "role": "ingress",
+        "trust_zone": "public"
+      },
+      {
+        "id": "RateLimiter",
+        "role": "ingress",
+        "trust_zone": "public"
+      },
+      {
+        "id": "TenantRouter",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "LLMOrchestrator",
+        "role": "agent",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PromptGuard",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "ModelRouter",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "ResponseFilter",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "OpenAI",
+        "role": "egress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "Anthropic",
+        "role": "egress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "SelfHostedLLM",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "TenantDB",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "ConversationStore",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "VectorDB",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "AuditLog",
+        "role": "data_store",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "Public Internet to Ingress Layer (API Gateway/Rate Limiter)",
+      "Ingress Layer to Internal Compute (Tenant Router/LLM Orchestrator)",
+      "Internal Compute to External Model Providers (OpenAI/Anthropic)",
+      "Internal Compute to Data Stores (Tenant DB/Conversation Store/Vector DB)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Multi-tenant SaaS platform with agentic LLM orchestration, hybrid model deployment (cloud APIs and self-hosted), and vector-based retrieval."
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Financial gain through data exfiltration or service disruption",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Exploiting unpatched vulnerabilities in the API Gateway or Rate Limiter",
+      "non_capabilities": [
+        "No physical access to data centers",
+        "No pre-existing insider credentials",
+        "No budget for zero-day exploits",
+        "Cannot bypass hardware security modules"
+      ]
+    },
+    {
+      "name": "Insider Threat (Malicious Admin)",
+      "motivation": "Sabotage or unauthorized data access for personal gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Abuse of administrative privileges to access Tenant DB or Audit Logs",
+      "non_capabilities": [
+        "Cannot modify immutable audit logs if WORM storage is enforced",
+        "Cannot access external model provider accounts directly",
+        "Limited by multi-factor authentication for critical actions"
+      ]
+    },
+    {
+      "name": "Adversarial Agent (Prompt Injection)",
+      "motivation": "Goal hijacking to exfiltrate data or execute malicious tools",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Crafted user input or retrieved document content containing injection payloads",
+      "non_capabilities": [
+        "Cannot directly access network infrastructure",
+        "Cannot modify model weights",
+        "Cannot bypass network egress filters"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "APIGateway",
+      "entry_point": "Public API endpoints",
+      "impact": "Unauthorized access to internal services, potential lateral movement",
+      "likelihood": "High",
+      "likelihood_rationale": "API Gateway is the primary public entry point and a common target for automated scanning."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "AML.T0051",
+      "technique_name": "Prompt Injection",
+      "tactic": "Initial Access",
+      "target_component": "PromptGuard",
+      "entry_point": "User input or retrieved vector data",
+      "impact": "Bypass of safety filters, execution of unintended agent actions, data exfiltration",
+      "likelihood": "High",
+      "likelihood_rationale": "LLM systems are inherently vulnerable to prompt injection, especially with RAG pipelines."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "TenantRouter",
+      "entry_point": "Compromised tenant credentials",
+      "impact": "Access to tenant-specific data and configuration",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Credential stuffing or phishing can compromise tenant accounts."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "Users",
+      "entry_point": "Email or social engineering",
+      "impact": "Compromise of user credentials leading to API access",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Users are a common target for credential theft."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "ModelRouter",
+      "entry_point": "Outbound API calls to OpenAI/Anthropic",
+      "impact": "Exfiltration of sensitive data via model API requests",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Data sent to external LLMs can be intercepted or logged by the provider."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1530",
+      "technique_name": "Data from Information Repositories",
+      "tactic": "Collection",
+      "target_component": "VectorDB",
+      "entry_point": "Compromised LLM Orchestrator",
+      "impact": "Access to sensitive vector embeddings and source documents",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Vector DBs often contain sensitive business data used for RAG."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1098",
+      "technique_name": "Account Manipulation",
+      "tactic": "Persistence",
+      "target_component": "TenantDB",
+      "entry_point": "Compromised admin account",
+      "impact": "Creation of backdoor accounts or modification of tenant configurations",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires high-level access, but possible if admin credentials are compromised."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "AML.T0043",
+      "technique_name": "Craft Adversarial Data",
+      "tactic": "Impact",
+      "target_component": "SelfHostedLLM",
+      "entry_point": "Training data or fine-tuning pipeline",
+      "impact": "Model behavior manipulation, backdoor insertion",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires access to the model training or fine-tuning process."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.PT-3",
+      "control_name": "Network Infrastructure and Software are Protected",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 13.1",
+      "control_name": "Protect Against Social Engineering",
+      "addresses_technique": [
+        "AML.T0051",
+        "T1566"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Access to local, remote, and mobile assets is managed",
+      "addresses_technique": [
+        "T1078",
+        "T1098"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 12.6",
+      "control_name": "Outbound traffic is monitored and controlled",
+      "addresses_technique": [
+        "T1041"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Data at rest is protected",
+      "addresses_technique": [
+        "T1530"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 11.4",
+      "control_name": "Data is backed up, stored in a separate geographic location, and protected",
+      "addresses_technique": [
+        "AML.T0043"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "API Gateway is a critical entry point; compromise leads to full system access.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "Prompt injection can lead to data exfiltration and unauthorized actions, bypassing safety controls.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "PromptGuard",
+        "LLMOrchestrator"
+      ],
+      "linked_techniques": [
+        "AML.T0051"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Credential compromise allows access to tenant data, but is mitigated by MFA and access controls.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "TenantRouter"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Phishing can compromise user credentials, leading to API access.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "Users"
+      ],
+      "linked_techniques": [
+        "T1566"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "Data exfiltration via external LLM APIs is a significant risk, especially if egress controls are not in place.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:N/A:N",
+      "affected_components": [
+        "ModelRouter",
+        "OpenAI",
+        "Anthropic"
+      ],
+      "linked_techniques": [
+        "T1041"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "Vector DB compromise exposes sensitive business data, but is mitigated by encryption at rest.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "VectorDB"
+      ],
+      "linked_techniques": [
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Low",
+      "severity_rationale": "Account manipulation requires high-level access, which is mitigated by strong access controls.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "TenantDB"
+      ],
+      "linked_techniques": [
+        "T1098"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Medium",
+      "severity_rationale": "Adversarial data can manipulate model behavior, but requires access to the training pipeline.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "SelfHostedLLM"
+      ],
+      "linked_techniques": [
+        "AML.T0043"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US",
+      "EU"
+    ],
+    "compliance_scope": [
+      "SOC 2",
+      "GDPR",
+      "ISO 27001"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "OpenAI API",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Anthropic API",
+        "trust_tier": "conditional"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "semi-autonomous",
+      "tool_call_scope": [
+        "VectorDB Query",
+        "ConversationStore Read/Write",
+        "External API Calls (OpenAI/Anthropic)"
+      ],
+      "blast_radius": "Compromise of the LLM Orchestrator could lead to data exfiltration from VectorDB and ConversationStore, and unauthorized calls to external LLM APIs.",
+      "human_oversight_points": [
+        "User approval for sensitive actions",
+        "Audit log review"
+      ],
+      "model_provenance": {
+        "provider": "OpenAI, Anthropic, Self-Hosted",
+        "model_id": "GPT-4, Claude-3, Llama-3",
+        "fine_tuned": false
+      }
+    }
+  }
+}

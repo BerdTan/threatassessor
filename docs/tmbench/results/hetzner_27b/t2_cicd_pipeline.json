@@ -1,0 +1,337 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_cicd_pipeline",
+  "produced_by": "hetzner_27b v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "GitHub",
+        "role": "Source Control / Ingress",
+        "trust_zone": "External"
+      },
+      {
+        "id": "BranchProtection",
+        "role": "Access Control / Policy Enforcement",
+        "trust_zone": "External"
+      },
+      {
+        "id": "ActionsRunner",
+        "role": "Compute / CI Execution",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "SecretManager",
+        "role": "Data Store / Secrets",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "SAST",
+        "role": "Compute / Security Analysis",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "Artifactory",
+        "role": "Data Store / Artifact Registry",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "StagingEnv",
+        "role": "Compute / Testing Environment",
+        "trust_zone": "Internal"
+      },
+      {
+        "id": "ProdEnv",
+        "role": "Compute / Production Environment",
+        "trust_zone": "Restricted"
+      },
+      {
+        "id": "DeployKey",
+        "role": "Data Store / Credentials",
+        "trust_zone": "Restricted"
+      }
+    ],
+    "trust_boundaries": [
+      "External to Internal: GitHub to ActionsRunner",
+      "Internal to Restricted: StagingEnv to ProdEnv",
+      "Internal to Restricted: DeployKey to ProdEnv"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted CI/CD pipeline with external source control and internal build/deploy infrastructure"
+  },
+  "threat_actors": [
+    {
+      "name": "External Supply Chain Attacker",
+      "motivation": "Compromise production systems via poisoned build artifacts or stolen credentials",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Malicious pull request or dependency injection into GitHub repository",
+      "non_capabilities": [
+        "No physical access to data centers",
+        "No pre-existing valid accounts in the organization",
+        "No zero-day exploits for GitHub or Artifactory"
+      ]
+    },
+    {
+      "name": "Insider Threat",
+      "motivation": "Data exfiltration or sabotage of production systems",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Valid developer credentials with access to GitHub and CI/CD pipeline",
+      "non_capabilities": [
+        "No ability to bypass hardware security modules",
+        "No access to production database backups",
+        "No ability to modify immutable audit logs"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1195.002",
+      "technique_name": "Supply Chain Compromise: Compromise Software Supply Chain",
+      "tactic": "Initial Access",
+      "target_component": "GitHub",
+      "entry_point": "Malicious code committed to a public or private repository",
+      "impact": "Execution of malicious code in CI/CD pipeline, leading to compromised artifacts",
+      "likelihood": "High",
+      "likelihood_rationale": "Open-source dependencies and public repositories are frequent targets for supply chain attacks"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1552.001",
+      "technique_name": "Unsecured Credentials: Credentials In Files",
+      "tactic": "Credential Access",
+      "target_component": "SecretManager",
+      "entry_point": "Exfiltration of secrets from CI/CD environment variables or configuration files",
+      "impact": "Compromise of production credentials, allowing unauthorized access to production systems",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Secrets are often stored in environment variables or configuration files that may be exposed in logs or error messages"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "ActionsRunner",
+      "entry_point": "Use of compromised developer credentials to trigger malicious CI/CD workflows",
+      "impact": "Execution of arbitrary code in the CI/CD pipeline, leading to lateral movement and data exfiltration",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Developers often have broad access to CI/CD systems, and credential theft is a common initial access vector"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1195.002",
+      "technique_name": "Supply Chain Compromise: Compromise Software Supply Chain",
+      "tactic": "Initial Access",
+      "target_component": "Artifactory",
+      "entry_point": "Upload of malicious artifacts to the artifact registry",
+      "impact": "Deployment of compromised software to staging and production environments",
+      "likelihood": "High",
+      "likelihood_rationale": "Artifact registries are trusted sources for deployment, and malicious artifacts can bypass security checks"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1021.001",
+      "technique_name": "Remote Services: Remote Desktop Protocol",
+      "tactic": "Lateral Movement",
+      "target_component": "ProdEnv",
+      "entry_point": "Use of compromised deploy keys to access production systems",
+      "impact": "Full compromise of production systems, including data exfiltration and service disruption",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Deploy keys are often stored in insecure locations and may be reused across environments"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "target_component": "ActionsRunner",
+      "entry_point": "Exfiltration of sensitive data from CI/CD environment to external servers",
+      "impact": "Loss of confidential data, including source code, secrets, and customer data",
+      "likelihood": "Medium",
+      "likelihood_rationale": "CI/CD environments often have outbound network access, making data exfiltration feasible"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "Software and services are procured and maintained to incorporate appropriate security features",
+      "addresses_technique": [
+        "T1195.002"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 5.1",
+      "control_name": "Manage non-local privileged accounts",
+      "addresses_technique": [
+        "T1552.001"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Access to local and remote systems is managed",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 11.4",
+      "control_name": "Ensure that all software is signed and verified",
+      "addresses_technique": [
+        "T1195.002"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Network access is managed",
+      "addresses_technique": [
+        "T1021.001"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 13.1",
+      "control_name": "Monitor and alert on anomalous outbound network activity",
+      "addresses_technique": [
+        "T1041"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Supply chain compromise can lead to widespread deployment of malicious code",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "GitHub",
+        "Artifactory"
+      ],
+      "linked_techniques": [
+        "T1195.002"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Exfiltration of secrets can lead to compromise of production systems",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "SecretManager"
+      ],
+      "linked_techniques": [
+        "T1552.001"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Use of valid accounts can lead to unauthorized access to CI/CD systems",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "ActionsRunner"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Malicious artifacts in the registry can lead to deployment of compromised software",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Artifactory"
+      ],
+      "linked_techniques": [
+        "T1195.002"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "Compromise of deploy keys can lead to full compromise of production systems",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "ProdEnv",
+        "DeployKey"
+      ],
+      "linked_techniques": [
+        "T1021.001"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "Data exfiltration from CI/CD environment can lead to loss of confidential data",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "ActionsRunner"
+      ],
+      "linked_techniques": [
+        "T1041"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US"
+    ],
+    "compliance_scope": [
+      "SOC 2",
+      "ISO 27001"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "GitHub",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Artifactory",
+        "trust_tier": "trusted"
+      }
+    ],
+    "agentic": null
+  }
+}

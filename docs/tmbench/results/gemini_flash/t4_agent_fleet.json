@@ -1,0 +1,348 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_agent_fleet",
+  "produced_by": "gemini_flash v1.0 v1.0",
+  "produced_at": "2026-11-02T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "APIGateway",
+        "role": "ingress",
+        "trust_zone": "Ingress Layer"
+      },
+      {
+        "id": "RateLimiter",
+        "role": "ingress",
+        "trust_zone": "Ingress Layer"
+      },
+      {
+        "id": "TenantRouter",
+        "role": "ingress",
+        "trust_zone": "Ingress Layer"
+      },
+      {
+        "id": "LLMOrchestrator",
+        "role": "agent",
+        "trust_zone": "LLM Service Layer"
+      },
+      {
+        "id": "PromptGuard",
+        "role": "agent",
+        "trust_zone": "LLM Service Layer"
+      },
+      {
+        "id": "ResponseFilter",
+        "role": "agent",
+        "trust_zone": "LLM Service Layer"
+      },
+      {
+        "id": "ModelRouter",
+        "role": "compute",
+        "trust_zone": "LLM Service Layer"
+      },
+      {
+        "id": "OpenAI",
+        "role": "egress",
+        "trust_zone": "Model Backends"
+      },
+      {
+        "id": "Anthropic",
+        "role": "egress",
+        "trust_zone": "Model Backends"
+      },
+      {
+        "id": "SelfHostedLLM",
+        "role": "compute",
+        "trust_zone": "Model Backends"
+      },
+      {
+        "id": "TenantDB",
+        "role": "data store",
+        "trust_zone": "Data Layer"
+      },
+      {
+        "id": "ConversationStore",
+        "role": "data store",
+        "trust_zone": "Data Layer"
+      },
+      {
+        "id": "VectorDB",
+        "role": "data store",
+        "trust_zone": "Data Layer"
+      },
+      {
+        "id": "AuditLog",
+        "role": "data store",
+        "trust_zone": "Data Layer"
+      }
+    ],
+    "trust_boundaries": [
+      "Public Internet -> Ingress Layer (Tenant Users to API Gateway)",
+      "Ingress Layer -> LLM Service Layer / Data Layer (Tenant Router boundary)",
+      "LLM Service Layer -> External Model Backends (Egress to OpenAI and Anthropic)",
+      "LLM Service Layer -> Internal Data Layer (Orchestrator to VectorDB, ConversationStore, AuditLog)"
+    ],
+    "data_classification": "restricted",
+    "operational_context": "Multi-tenant cloud SaaS deployment orchestrating agentic LLM context retrieval and third-party model backend integrations."
+  },
+  "threat_actors": [
+    {
+      "name": "Malicious SaaS Tenant / External Attacker",
+      "motivation": "Cross-tenant data theft, indirect prompt injection, tool hijacking, and service abuse",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Public REST API endpoints via API Gateway",
+      "non_capabilities": [
+        "No direct access to cloud virtual networks or database subnets",
+        "No administrative access to Kubernetes infrastructure or secret stores",
+        "No direct source code modification rights"
+      ]
+    },
+    {
+      "name": "Compromised Context Vector / Data Poisoner",
+      "motivation": "Poison vector embeddings to hijack LLM workflow logic and alter model output",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Document ingestion pipeline or shared VectorDB index",
+      "non_capabilities": [
+        "No ability to bypass API Gateway authentication controls",
+        "No direct shell access to LLM Orchestrator nodes",
+        "No pre-existing administrative database access"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "AML.T0051.000",
+      "technique_name": "LLM Prompt Injection: Indirect",
+      "tactic": "Execution",
+      "target_component": "LLMOrchestrator",
+      "entry_point": "VectorDB",
+      "impact": "Malicious context retrieved from VectorDB overrides agent system prompts and triggers unauthorized tool execution.",
+      "likelihood": "High",
+      "likelihood_rationale": "Retrieved vector content is merged into orchestrator prompts without secondary verification."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078.004",
+      "technique_name": "Valid Accounts: Cloud Accounts",
+      "tactic": "Defense Evasion",
+      "target_component": "TenantRouter",
+      "entry_point": "APIGateway",
+      "impact": "Exploitation of weak tenant context propagation allows cross-tenant query execution against TenantDB and ConversationStore.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Routing headers or tokens passing through TenantRouter could be forged or manipulated if scope validation fails."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1048.002",
+      "technique_name": "Exfiltration Over Alternative Protocol: Exfiltration Over Asymmetric Encrypted Non-C2 Protocol",
+      "tactic": "Exfiltration",
+      "target_component": "ModelRouter",
+      "entry_point": "LLMOrchestrator",
+      "impact": "Unredacted tenant PII and proprietary context are transmitted to external third-party API endpoints (OpenAI/Anthropic).",
+      "likelihood": "High",
+      "likelihood_rationale": "ModelRouter automatically redirects raw user inputs to third-party endpoints based on performance policies."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "AML.T0043.000",
+      "technique_name": "Craft Adversarial Data",
+      "tactic": "ML Attack Staging",
+      "target_component": "VectorDB",
+      "entry_point": "APIGateway",
+      "impact": "Adversarial text embeddings injected into VectorDB alter similarity search distances, blinding RAG retrieval.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Document ingestion APIs permit tenant uploads without semantic distance anomaly checks."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1070.004",
+      "technique_name": "Indicator Removal: File Deletion",
+      "tactic": "Defense Evasion",
+      "target_component": "AuditLog",
+      "entry_point": "LLMOrchestrator",
+      "impact": "An attacker with execution access on LLMOrchestrator suppresses or alters audit log entries to conceal exploitation activity.",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires compromise of orchestrator process with write privilege over the AuditLog data store."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "CSA ART 4.2",
+      "control_name": "Dual-Layer Prompt Input/Output Sanitization and Context Boundary Enforcer",
+      "addresses_technique": [
+        "AML.T0051.000"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Cryptographic Tenant Isolation and Router Scope Attestation",
+      "addresses_technique": [
+        "T1078.004"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 3.11",
+      "control_name": "Data Masking and Automatic PII Redaction at Model Router Egress",
+      "addresses_technique": [
+        "T1048.002"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST SP 800-53 SI-10",
+      "control_name": "Vector Embedding Semantic Validation and Outlier Detection",
+      "addresses_technique": [
+        "AML.T0043.000"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "CIS Control 8.3",
+      "control_name": "Append-Only Immutable Audit Log Store with WORM Policies",
+      "addresses_technique": [
+        "T1070.004"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Indirect prompt injection via RAG vector context allows attackers to hijack agent execution logic and perform unauthorized actions.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "LLMOrchestrator",
+        "VectorDB",
+        "PromptGuard"
+      ],
+      "linked_techniques": [
+        "AML.T0051.000"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Medium",
+      "severity_rationale": "Potential multi-tenant scope confusion in TenantRouter could permit cross-tenant data leaks across shared database tiers.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "TenantRouter",
+        "TenantDB",
+        "ConversationStore"
+      ],
+      "linked_techniques": [
+        "T1078.004"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Unmasked sensitive data egress to public LLM API backends introduces significant regulatory and confidentiality exposure.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "ModelRouter",
+        "OpenAI",
+        "Anthropic"
+      ],
+      "linked_techniques": [
+        "T1048.002"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Medium",
+      "severity_rationale": "Adversarial embedding injection in VectorDB degrades context retrieval and corrupts agent response accuracy.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "VectorDB"
+      ],
+      "linked_techniques": [
+        "AML.T0043.000"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Low",
+      "severity_rationale": "Audit log modification risks are minimized by append-only policies but depend on orchestrator credential isolation.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:N/I:L/A:N",
+      "affected_components": [
+        "AuditLog"
+      ],
+      "linked_techniques": [
+        "T1070.004"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US",
+      "EU"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "GDPR",
+      "ISO 27001"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "OpenAI API",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Anthropic API",
+        "trust_tier": "conditional"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "semi-autonomous",
+      "tool_call_scope": [
+        "VectorDB Context Search",
+        "Model Backend Routing",
+        "Conversation Store Write"
+      ],
+      "blast_radius": "Unauthorized disclosure of cross-tenant conversation logs and corrupted LLM context output across active user sessions.",
+      "human_oversight_points": [
+        "Human-in-the-loop approval required for administrative database mutations",
+        "Real-time security auditing on PromptGuard and ResponseFilter flag triggers"
+      ],
+      "model_provenance": {
+        "provider": "Multi-provider (OpenAI, Anthropic, Self-Hosted)",
+        "model_id": "gpt-4o / claude-3-5-sonnet / Llama-3-70B",
+        "fine_tuned": false
+      }
+    }
+  }
+}
