@@ -68,6 +68,11 @@ MODEL_CONFIGS: dict[str, dict] = {
         "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
         "env_key": "OPENROUTER_API_KEY",
     },
+    "deepseek_flash": {
+        "provider": "openrouter",
+        "model": "openrouter/deepseek/deepseek-v4.1-flash-1017",
+        "env_key": "OPENROUTER_API_KEY",
+    },
     "ta_full_moe": {
         "provider": "ta_api",
         "model": "ta-pipeline-v3",
