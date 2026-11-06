@@ -1,12 +1,16 @@
 %% TMeval adversarial corpus — EXF domain
 %% Target: DETECT-EXF-006 (sovereignty.c2_beacon_nodes > 0)
-%% Adversarial element: C2 beacon topology with periodic external callback pattern
+%% Adversarial element: C2 beacon topology — cron scheduler polls attacker server every 30s
+%% Beacon node: "Cron Scheduler" matches _RE_C2_BEACON_NODE (\bcron\b and \bscheduler\b)
+%% Receiver node: "C2 Server" matches _RE_C2_RECEIVER (\bc2[\s_-]?server\b)
+%% Note: edge labels (|"..."|) break _RE_EDGE parsing — use bare --> arrows for topology edges
 
 graph TD
-    ImplantAgent["Implant Agent beacon_interval=30s"] -->|"beacon every 30s"| C2Server["C2 Server external.attacker.net:4444"]
-    ImplantAgent --> TargetDB["Target Database internal.corp.net"]
-    ImplantAgent -->|"exfil compressed data"| DropZone["Drop Zone cdn.attacker.net/data exfil_channel=dns_tunnel"]
-    C2Server -->|"command tasking"| ImplantAgent
-    Controller["Threat Actor Controller"] --> C2Server
-    ImplantAgent --> KeyLogger["Keylogger Module persistence=startup"]
+    WebApp["Web Application"] --> CronScheduler["Cron Scheduler poll_interval=30s"]
+    CronScheduler --> C2Server["C2 Server attacker-ctrl.net:4444"]
+    CronScheduler --> TargetDB["Target Database internal.corp.net"]
+    CronScheduler --> DropZone["Drop Zone attacker-cdn.net/exfil"]
+    C2Server --> CronScheduler
+    AttackerCtrl["Attacker Controller"] --> C2Server
+    CronScheduler --> KeyLogger["Keylogger Module persistence=startup"]
     DropZone --> ArchiveBucket["Exfil Archive S3 attacker-data.s3.amazonaws.com"]

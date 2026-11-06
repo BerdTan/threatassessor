@@ -134,6 +134,13 @@ class GovernanceSignals:
         # Union blocked_agents lists
         self.blocked_agents = list(set(self.blocked_agents) | set(other.blocked_agents))
 
+        # Merge arch_metadata: other's values fill in missing keys (check_artifact populates
+        # is_agentic, architecture_type, etc. which check_input leaves empty)
+        if other.arch_metadata:
+            merged_meta = dict(other.arch_metadata)
+            merged_meta.update(self.arch_metadata)
+            self.arch_metadata = merged_meta
+
         return self
 
 

@@ -155,7 +155,7 @@ def run_phase1(api_url: str, dry_run: bool = False, timeout: int = 180) -> Tuple
     cases_path = _CASES_DIR / "phase1_cases.yaml"
     cases = _load_yaml(cases_path).get("cases", [])
 
-    api_key = os.getenv("TA_API_KEY", "dev-key-local")
+    api_key = os.getenv("TM_API_KEY") or os.getenv("TA_API_KEY", "dev-key-local")
     endpoint = f"{api_url.rstrip('/')}/api/v1/analyze-stream"
 
     # Collect total rules per domain for coverage matrix
@@ -184,11 +184,12 @@ def run_phase1(api_url: str, dry_run: bool = False, timeout: int = 180) -> Tuple
         return total, total
 
     for case in cases:
-        name        = case["name"]
-        mmd_path    = _TMEVAL_DIR / case["file"]
-        expected    = set(case.get("expected_rules", []))
-        must_not    = set(case.get("must_not_fire", []))
-        tags        = case.get("tags", [])
+        name             = case["name"]
+        mmd_path         = _TMEVAL_DIR / case["file"]
+        expected         = set(case.get("expected_rules", []))
+        must_not         = set(case.get("must_not_fire", []))
+        tags             = case.get("tags", [])
+        expect_blocked   = case.get("expected_blocked", False)
 
         if not mmd_path.exists():
             print(_fail(f"{name:<28} — corpus file missing: {mmd_path.name}"))
@@ -200,7 +201,7 @@ def run_phase1(api_url: str, dry_run: bool = False, timeout: int = 180) -> Tuple
             with mmd_path.open("rb") as f:
                 resp = requests.post(
                     endpoint,
-                    headers={"TA-API-KEY": api_key},
+                    headers={"TM-API-KEY": api_key},
                     files={"architecture_file": (mmd_path.name, f, "text/plain")},
                     data={
                         "ssp_profile": "low_risk_cloud",
@@ -219,12 +220,32 @@ def run_phase1(api_url: str, dry_run: bool = False, timeout: int = 180) -> Tuple
             failed_cases.append(name)
             continue
 
+        # Handle expected_blocked cases before HTTP error check: 400 is the SUCCESS signal
+        if expect_blocked:
+            if resp.status_code == 400 and "blocked" in resp.text.lower():
+                print(_pass(f"{name:<28} {_DIM}pipeline correctly blocked{_RST}"))
+                passed += 1
+            elif resp.status_code == 200:
+                # Consume SSE to check for in-stream block signal
+                gov_signals, err = _consume_sse(resp)
+                if err and "blocked" in err.lower():
+                    print(_pass(f"{name:<28} {_DIM}pipeline correctly blocked (SSE){_RST}"))
+                    passed += 1
+                else:
+                    print(_fail(f"{name:<28} — expected pipeline block but it passed"))
+                    failed_cases.append(name)
+            else:
+                print(_fail(f"{name:<28} — HTTP {resp.status_code} (expected 400 block): {resp.text[:60]}"))
+                failed_cases.append(name)
+            continue
+
         if resp.status_code != 200:
             print(_fail(f"{name:<28} — HTTP {resp.status_code}: {resp.text[:80]}"))
             failed_cases.append(name)
             continue
 
         gov_signals, err = _consume_sse(resp)
+
         if err:
             print(_fail(f"{name:<28} — SSE error: {err[:80]}"))
             failed_cases.append(name)
