@@ -156,13 +156,14 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
     "hetzner": {
         "model_prefix":  "openai/",
         "api_key_env":   "HETZNER_API_KEY",
-        "base_url":      "https://inference.hetzner.com/api/v1",
+        "base_url":      "https://inference.hetzner.com/v1",  # old /api/v1 breaks 2026-11-10
         "base_url_env":  "HETZNER_BASE_URL",
         "region_env":    None,
         "extra_headers": {},
         "litellm_kwargs": {},
         "models": {
             # HETZNER_MODEL overrides default/fast; high_quality stays pinned
+            # NOTE: Qwen models are NOT in Hetzner's official product — replace once new models are announced
             "default":      os.getenv("HETZNER_MODEL", "openai/Qwen/Qwen3.6-35B-A3B-FP8"),
             "high_quality": "openai/Qwen3.8-27B",
             "fast":         os.getenv("HETZNER_MODEL", "openai/Qwen/Qwen3.6-35B-A3B-FP8"),
@@ -170,9 +171,9 @@ PROVIDER_MANIFEST: Dict[str, Dict[str, Any]] = {
         "cost_per_1k": None,
         "active": True,
         "env_example": (
-            "# Hetzner Inference — https://experiments.hetzner.com/docs/inference\n"
+            "# Hetzner Inference — https://inference.hetzner.com/v1\n"
             "HETZNER_API_KEY=your-key-here\n"
-            "# Models: Qwen/Qwen3.6-35B-A3B-FP8 | Qwen3.8-27B\n"
+            "# Models: TBD — Qwen models not in official product; set HETZNER_MODEL when known\n"
         ),
     },
 

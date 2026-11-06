@@ -47,14 +47,14 @@ tiers:
 tested_models:
   hetzner:
     model_id: "openai/Qwen/Qwen3.6-35B-A3B-FP8"
-    status: "confirmed"
+    status: "confirmed"      # NOTE: Qwen model not in Hetzner official product — set HETZNER_MODEL when new ID known; flip to excluded after Dec 2026
     provider: "hetzner"
-    notes: "Primary provider. Best depth for agentic_ai (11.0). Best defensibility (5.38)."
+    notes: "Primary provider. Best depth for agentic_ai (11.0). Best defensibility (5.38). Qwen deprecated from Hetzner official product (Entry 236)."
   gemini_flash:
     model_id: "gemini/gemini-3.6-flash"
     status: "confirmed"
     provider: "gemini"
-    notes: "Fast (200-450s). Best depth for cloud (9.7). Good breadth."
+    notes: "Fast (200-450s). Best depth for cloud (9.7). Good breadth. Primary fallback when hetzner unavailable."
   minimax:
     model_id: "openrouter/minimax/minimax-m3:free"
     status: "excluded"
@@ -62,9 +62,9 @@ tested_models:
     notes: "Was free tier — may have moved to paid. Do not route until re-verified. Bench scores (breadth 30-39, 128-216s) remain valid as historical reference."
   hetzner_27b:
     model_id: "openai/Qwen3.8-27B"
-    status: "confirmed"
+    status: "confirmed"      # NOTE: Qwen model not in Hetzner official product — flip to excluded after Dec 2026
     provider: "hetzner"
-    notes: "Larger Qwen variant. Good depth but slower (585-1200s)."
+    notes: "Larger Qwen variant. Good depth but slower (585-1200s). Qwen deprecated from Hetzner official product (Entry 236)."
   nemotron_nano:
     model_id: "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
     status: "partial"
@@ -121,14 +121,16 @@ model_selection:
   # full_moe: critics run — model quality matters most
   # minimax excluded (no longer free) — nemotron_super interim for breadth-heavy arches
   # gemma_4_26b: promote here once bench confirms quality (replace nemotron_super)
+  # hetzner: Qwen models deprecated from official product (Entry 236) — gemini_flash is now the
+  #   clean fallback; runtime LLM_FALLBACK_PROVIDERS=gemini,openrouter handles API failures
   full_moe:
     agentic:       { primary: hetzner,        fallback: gemini_flash }   # best depth+defens for security-critical
     agentic_ai:    { primary: hetzner,        fallback: gemini_flash }   # near-tie; hetzner wins depth+defens for AI arches
     cloud:         { primary: nemotron_super, fallback: gemini_flash }   # interim; replace with gemma_4_26b after bench
-    microservices: { primary: nemotron_super, fallback: hetzner }        # interim; replace with gemma_4_26b after bench
+    microservices: { primary: nemotron_super, fallback: gemini_flash }   # was hetzner fallback; gemini_flash safer post-Qwen-deprecation
     generic:       { primary: hetzner,        fallback: gemini_flash }
-    web_app:       { primary: nemotron_super, fallback: hetzner }        # interim; replace with gemma_4_26b after bench
-    iot:           { primary: gemini_flash,   fallback: hetzner }
+    web_app:       { primary: nemotron_super, fallback: gemini_flash }   # was hetzner fallback; gemini_flash safer post-Qwen-deprecation
+    iot:           { primary: gemini_flash,   fallback: nemotron_super } # was hetzner fallback; hetzner uncertain post-Dec-2026
     default:       { primary: hetzner,        fallback: gemini_flash }
   # api_only: deterministic engine + report only; speed favoured over depth
   api_only:
