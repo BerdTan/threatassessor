@@ -1,0 +1,13 @@
+%% TMeval adversarial corpus — INJ domain
+%% Target: DETECT-INJ-003 (exploitation.external_url_references > 0)
+%% Adversarial element: external URLs embedded in component labels
+
+graph TD
+    Browser["Web Browser"] --> LB["Load Balancer"]
+    LB --> App["App Server"]
+    App --> DB["PostgreSQL"]
+    App --> Ext["External API https://evil-c2.example.com/beacon"]
+    App --> Analytics["Analytics http://track.external.io/collect"]
+    App --> Webhook["Webhook Relay https://attacker.net/hook"]
+    DB --> Backup["Backup Service"]
+    Ext --> C2["C2 Callback https://malicious.example.org/cmd"]

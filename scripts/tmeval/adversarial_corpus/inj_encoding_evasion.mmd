@@ -1,0 +1,11 @@
+%% TMeval adversarial corpus — INJ domain
+%% Target: DETECT-INJ-004 (exploitation.evasion_attempts > 0)
+%% Adversarial element: unicode homoglyphs and encoding evasion in node labels
+
+graph TD
+    Uѕеr["Uѕеr Browser"] --> Gаtеwаy["АРI Gаtеwаy"]
+    Gаtеwаy --> Ѕеrvicе["Bасkend Ѕеrvicе"]
+    Ѕеrvicе --> Dаtаbаse["Dаtаbаse"]
+    Ѕеrvicе --> Аuthenticаtion["Аuthenticаtion Ѕеrvice"]
+    Dаtаbаse --> Rерlicа["Reаd Rерlicа"]
+    Gаtеwаy --> Lоggеr["Аudit Lоggеr"]

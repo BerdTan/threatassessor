@@ -1,0 +1,18 @@
+%% TMeval adversarial corpus — clean baseline (false-positive check)
+%% Expected: zero DETECT rules should fire
+%% Standard 3-tier web application with proper security controls
+
+graph TD
+    Browser["Web Browser"] --> CDN["CloudFront CDN"]
+    CDN --> WAF["Web Application Firewall"]
+    WAF --> LB["Application Load Balancer"]
+    LB --> WebApp["Web Application ECS"]
+    WebApp --> Cache["Redis ElastiCache"]
+    WebApp --> DB["PostgreSQL RDS Multi-AZ"]
+    WebApp --> Queue["SQS Queue"]
+    Queue --> Worker["Background Worker ECS"]
+    Worker --> DB
+    WebApp --> Auth["Auth Service Cognito"]
+    Auth --> DB
+    WebApp --> Secrets["AWS Secrets Manager"]
+    DB --> Backup["Automated Backups S3"]

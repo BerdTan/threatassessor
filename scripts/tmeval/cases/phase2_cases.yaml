@@ -1,0 +1,317 @@
+# TMeval Phase 2 — inside-out fault injection cases
+# Each case injects crafted governance_signals directly into RuleEvaluator
+# or BouncerStage, bypassing the full pipeline. No API needed.
+#
+# Signal values are derived from the actual rule conditions in
+# policies/soc_detection_rules.yaml — values must match the evaluator's
+# op/value semantics exactly (some fields are boolean flags, some are counts,
+# some are string enum values like 'FULL').
+#
+# Fields:
+#   name:             case identifier
+#   description:      what signal is being injected and why
+#   threat_actor:     qa | external | assumed_breach | insider
+#   signals:          governance_signals dict to inject
+#   expected_rules:   DETECT rule IDs that MUST fire
+#   expected_blocked: true if BouncerStage should raise BlockedPipelineError
+#   tags:             domain labels for coverage matrix
+
+cases:
+  # ══════════════════════════════════════════════════════════════════════════
+  # QC domain — critic manipulation signals
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - name: qc_confidence_swing
+    description: "Confidence swing without reversal — critic manipulation signal"
+    threat_actor: qa
+    signals:
+      manipulation:
+        confidence_swing_detected: true
+        confidence_swing: 18.0          # >= 15.0 threshold
+        synthesis_quality: "FULL"       # string enum, not float
+    expected_rules: [DETECT-QC-001]
+    expected_blocked: false
+    tags: [QC]
+
+  - name: qc_divergence_suppressed
+    description: "Critic divergence suppressed — high score despite low synthesis quality"
+    threat_actor: qa
+    signals:
+      manipulation:
+        divergence_detected: true
+        critic_divergence_score: 25     # >= 20 threshold
+        synthesis_quality: "FULL"       # string enum
+    expected_rules: [DETECT-QC-002]
+    expected_blocked: false
+    tags: [QC]
+
+  - name: qc_sm_low_acceptance
+    description: "SM acceptance rate anomalously low — rubber-stamping bad outputs (fires on low rate)"
+    threat_actor: qa
+    signals:
+      sm_verdicts:
+        acceptance_rate: 0.35           # <= 0.6 threshold fires the rule
+        redesign_signal: false
+    expected_rules: [DETECT-QC-004]
+    expected_blocked: false
+    tags: [QC]
+
+  - name: qc_sm_evasion_constraint_language
+    description: "SM constraint-evasion language detected — endogenous override directive"
+    threat_actor: assumed_breach
+    signals:
+      sm_verdicts:
+        sm_constraint_evasion_language: true
+        sm_opaque_reasoning: false
+    expected_rules: [DETECT-QC-009]
+    expected_blocked: false
+    tags: [QC]
+
+  - name: qc_sm_opaque_reasoning
+    description: "SM opaque reasoning — synthesis suppressed during active critic work"
+    threat_actor: assumed_breach
+    signals:
+      sm_verdicts:
+        sm_constraint_evasion_language: false
+        sm_opaque_reasoning: true
+    expected_rules: [DETECT-QC-009]
+    expected_blocked: false
+    tags: [QC]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # MCP domain — access pattern signals
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - name: mcp_recon_sequence
+    description: "MCP recon probe sequence — systematic governance arch enumeration"
+    threat_actor: external
+    signals:
+      mcp_access:
+        recon_sequence: true
+        recon_gov_archs: 4              # >= 3 threshold
+    expected_rules: [DETECT-MCP-001]
+    expected_blocked: false
+    tags: [MCP]
+
+  - name: mcp_job_flooding
+    description: "MCP job flood — rapid submission batch exceeds threshold"
+    threat_actor: external
+    signals:
+      mcp_access:
+        job_flood: true
+        job_flood_submissions: 10       # >= 3 threshold
+    expected_rules: [DETECT-MCP-002]
+    expected_blocked: false
+    tags: [MCP]
+
+  - name: mcp_auth_probing
+    description: "MCP repeated auth failure probing — boolean flag (not count)"
+    threat_actor: external
+    signals:
+      mcp_access:
+        auth_failures: true             # boolean == True, not a count
+    expected_rules: [DETECT-MCP-003]
+    expected_blocked: false
+    tags: [MCP]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # SCT domain — supply chain signals
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - name: sct_supply_chain_tamper
+    description: "Supply chain modification — skill module checksum mismatch (length_gt 0)"
+    threat_actor: insider
+    signals:
+      identity:
+        supply_chain_modified_modules: ["skill-threat-model", "skill-detect-loop"]
+    expected_rules: [DETECT-SCT-001]
+    expected_blocked: false
+    tags: [SCT]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # ABU domain — abuse signals
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - name: abu_probe_pattern
+    description: "Repeated arch requery probe — boolean flag"
+    threat_actor: external
+    signals:
+      mcp_access:
+        probe_pattern: true
+    expected_rules: [DETECT-ABU-001]
+    expected_blocked: false
+    tags: [ABU]
+
+  - name: abu_path_enum_velocity
+    description: "Path enumeration velocity — boolean flag (not velocity count)"
+    threat_actor: external
+    signals:
+      mcp_access:
+        path_enum_velocity: true        # boolean == True, not a count
+    expected_rules: [DETECT-ABU-003]
+    expected_blocked: false
+    tags: [ABU]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # AGT domain — identity signals
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - name: agt_identity_spoofing
+    description: "Agent passport validation failure — identity forgery attempt"
+    threat_actor: external
+    signals:
+      identity:
+        agent_passport_invalid: true
+    expected_rules: [DETECT-AGT-001]
+    expected_blocked: false
+    tags: [AGT]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Bouncer gate tests
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - name: bouncer_exploitation_blocked
+    description: "CRITICAL injection — BouncerStage Check 1: exploitation.blocked=True must halt pipeline"
+    threat_actor: assumed_breach
+    signals:
+      exploitation:
+        blocked: true
+        severity: "CRITICAL"
+        injection_patterns: ["sql_injection", "prompt_injection"]
+    expected_rules: []
+    expected_blocked: true
+    tags: [BOUNCER]
+
+  - name: bouncer_no_oversight_path
+    description: "Agentic arch with no oversight path — BouncerStage Check 6 (CSA ART 4.2)"
+    threat_actor: assumed_breach
+    signals:
+      arch_metadata:
+        is_agentic: true
+        no_oversight_path: true
+    expected_rules: [DETECT-QC-012]
+    expected_blocked: true
+    tags: [BOUNCER, AGT]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Evasion cases — signals crafted to avoid detection (assumed breach)
+  # Verify that threshold boundaries hold and masking doesn't suppress rules.
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - name: evasion_threshold_graze_qc001
+    description: "Signals just below DETECT-QC-001 threshold (swing=14.9 < 15.0) — rule must NOT fire"
+    threat_actor: assumed_breach
+    signals:
+      manipulation:
+        confidence_swing_detected: true
+        confidence_swing: 14.9          # just below >= 15.0 threshold
+        synthesis_quality: "FULL"
+    expected_rules: []                  # rule should NOT fire — boundary holds
+    expected_blocked: false
+    tags: [QC, EVASION]
+
+  - name: evasion_threshold_graze_mcp001
+    description: "MCP recon with 2 arches (< 3 threshold) — DETECT-MCP-001 must NOT fire"
+    threat_actor: assumed_breach
+    signals:
+      mcp_access:
+        recon_sequence: true
+        recon_gov_archs: 2              # just below >= 3 threshold
+    expected_rules: []
+    expected_blocked: false
+    tags: [MCP, EVASION]
+
+  - name: evasion_signal_masking_qc002
+    description: "Bad divergence score masked by clean-looking synthesis_quality — rule MUST still fire"
+    threat_actor: assumed_breach
+    signals:
+      manipulation:
+        divergence_detected: true
+        critic_divergence_score: 22     # above threshold
+        synthesis_quality: "FULL"       # attacker cannot mask this — both conditions required
+    expected_rules: [DETECT-QC-002]
+    expected_blocked: false
+    tags: [QC, EVASION]
+
+  - name: evasion_drip_mcp_recon
+    description: "Single MCP recon call (recon_sequence=False) below recon threshold — no fire (drip works)"
+    threat_actor: assumed_breach
+    signals:
+      mcp_access:
+        recon_sequence: false           # attacker stays below threshold per call
+        recon_gov_archs: 2              # and below arch count threshold
+    expected_rules: []
+    expected_blocked: false
+    tags: [MCP, EVASION]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Insider threat cases — privileged signal manipulation
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - name: insider_bouncer_signal_suppress
+    description: "Exploitation signals look clean but evasion language is present — Bouncer uses exploitation.blocked flag only"
+    threat_actor: insider
+    signals:
+      exploitation:
+        blocked: false                  # insider suppresses this flag
+        severity: "High"
+        injection_patterns: ["prompt_injection"]
+      sm_verdicts:
+        sm_constraint_evasion_language: true  # still fires DETECT-QC-009
+    expected_rules: [DETECT-QC-009]
+    expected_blocked: false             # Bouncer won't block since blocked=False
+    tags: [BOUNCER, QC, INSIDER]
+
+  - name: insider_quality_suppression
+    description: "SM signals crafted to pass acceptance check while evasion language present — QC-009 still fires"
+    threat_actor: insider
+    signals:
+      sm_verdicts:
+        acceptance_rate: 0.75           # above <= 0.6 threshold — QC-004 won't fire
+        redesign_signal: true
+        sm_constraint_evasion_language: true   # QC-009 fires regardless of other SM signals
+        sm_opaque_reasoning: false
+    expected_rules: [DETECT-QC-009]
+    expected_blocked: false
+    tags: [QC, INSIDER]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Clean baseline — zero rules, no block
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - name: clean_signal_baseline
+    description: "Clean governance signals — no rules should fire, pipeline should not block"
+    threat_actor: qa
+    signals:
+      manipulation:
+        confidence_swing_detected: false
+        divergence_detected: false
+        synthesis_quality: "PARTIAL"    # not "FULL" — won't satisfy QC-001/002 conditions
+        confidence_swing: 5.0           # below threshold
+        critic_divergence_score: 10     # below threshold
+      arch_metadata:
+        is_agentic: false
+        no_oversight_path: false
+        permission_escalation_detected: false
+        tool_restriction_bypass_detected: false
+      mcp_access:
+        recon_sequence: false
+        auth_failures: false
+        job_flood: false
+        probe_pattern: false
+        path_enum_velocity: false
+        recon_gov_archs: 1
+      exploitation:
+        blocked: false
+        severity: "Low"
+      sm_verdicts:
+        acceptance_rate: 0.75           # above <= 0.6 — QC-004 won't fire
+        sm_constraint_evasion_language: false
+        sm_opaque_reasoning: false
+        redesign_signal: false
+      identity:
+        agent_passport_invalid: false
+        supply_chain_modified_modules: []
+    expected_rules: []
+    expected_blocked: false
+    tags: [FP_CHECK]

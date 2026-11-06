@@ -1,0 +1,14 @@
+%% TMeval adversarial corpus — AGT domain
+%% Target: DETECT-AGT-003 (arch_metadata.is_agentic==true AND arch_metadata.permission_escalation_detected==true)
+%% Adversarial element: agentic architecture with explicit privilege escalation pathway
+
+graph TD
+    UserAgent["User Agent limited_scope=read_only"] --> Orchestrator["Orchestrator Agent LLM-driven"]
+    Orchestrator --> PrivEsc["Privilege Escalation Module elevated_rights=admin escalate_on_failure=true"]
+    PrivEsc --> AdminAPI["Admin API full_access=true role=superuser"]
+    AdminAPI --> CredStore["Credential Store admin_access=unrestricted"]
+    Orchestrator --> LLM["LLM Planner gpt-4"]
+    LLM --> ToolExec["Tool Executor unrestricted_tools=true"]
+    ToolExec --> Shell["Shell Executor sudo_enabled=true"]
+    Orchestrator --> MemoryStore["Agent Memory Store cross_session=true"]
+    PrivEsc --> RootFS["Root Filesystem /etc /root /var/secret"]

@@ -1,0 +1,68 @@
+# TMeval Phase 1 — outside-in adversarial probe cases
+# Each case POSTs an adversarial MMD to the TA pipeline REST API and asserts
+# on the governance_signals extracted from the SSE complete event.
+#
+# Fields:
+#   name:           case identifier
+#   file:           path relative to scripts/tmeval/
+#   description:    what the adversarial element is
+#   expected_rules: DETECT rule IDs that MUST fire
+#   must_not_fire:  DETECT rule IDs that must NOT fire (false-positive guards)
+#   tags:           domain labels for coverage matrix
+
+cases:
+  - name: inj_external_url
+    file: adversarial_corpus/inj_external_url.mmd
+    description: "Component labels with embedded external URLs — triggers exploitation.external_url_references signal"
+    expected_rules: [DETECT-INJ-003]
+    must_not_fire: []
+    tags: [INJ]
+
+  - name: inj_path_traversal
+    file: adversarial_corpus/inj_path_traversal.mmd
+    description: "Path traversal sequences (../../etc/passwd) in component names"
+    expected_rules: [DETECT-INJ-002]
+    must_not_fire: []
+    tags: [INJ]
+
+  - name: inj_encoding_evasion
+    file: adversarial_corpus/inj_encoding_evasion.mmd
+    description: "Unicode homoglyph/Cyrillic lookalikes in node labels — triggers evasion_attempts signal"
+    expected_rules: [DETECT-INJ-004]
+    must_not_fire: []
+    tags: [INJ]
+
+  - name: exf_credential_exposure
+    file: adversarial_corpus/exf_credential_exposure.mmd
+    description: "Credential and secret strings in architecture labels — triggers leakage.sensitive_keywords"
+    expected_rules: [DETECT-EXF-002]
+    must_not_fire: []
+    tags: [EXF]
+
+  - name: exf_c2_beacon
+    file: adversarial_corpus/exf_c2_beacon.mmd
+    description: "C2 beacon topology with periodic external callback — triggers sovereignty.c2_beacon_nodes"
+    expected_rules: [DETECT-EXF-006]
+    must_not_fire: []
+    tags: [EXF]
+
+  - name: agt_permission_escalation
+    file: adversarial_corpus/agt_permission_escalation.mmd
+    description: "Agentic architecture with explicit privilege escalation pathway"
+    expected_rules: [DETECT-AGT-003]
+    must_not_fire: []
+    tags: [AGT]
+
+  - name: agt_tool_bypass
+    file: adversarial_corpus/agt_tool_bypass.mmd
+    description: "Agent with tool restriction bypass mechanism (policy_bypass=true labels)"
+    expected_rules: [DETECT-AGT-004]
+    must_not_fire: []
+    tags: [AGT]
+
+  - name: clean_baseline
+    file: adversarial_corpus/clean_baseline.mmd
+    description: "Normal 3-tier web app with proper controls — false-positive gate"
+    expected_rules: []
+    must_not_fire: [DETECT-INJ-003, DETECT-INJ-002, DETECT-EXF-002, DETECT-EXF-006]
+    tags: [FP_CHECK]

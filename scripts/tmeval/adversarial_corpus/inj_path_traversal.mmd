@@ -1,0 +1,12 @@
+%% TMeval adversarial corpus — INJ domain
+%% Target: DETECT-INJ-002 (exploitation.path_traversal == true)
+%% Adversarial element: path traversal sequences in component names and labels
+
+graph TD
+    Client["Client"] --> API["API Gateway"]
+    API --> FileService["File Service ../../../etc/passwd"]
+    FileService --> Storage["Object Storage /var/data/../../secrets"]
+    API --> AuthService["Auth Service"]
+    AuthService --> LDAP["LDAP ../admin/shadow"]
+    FileService --> TmpDir["Temp Dir ../../../../tmp/evil"]
+    API --> ConfigLoader["Config Loader ../../config/secrets.yaml"]

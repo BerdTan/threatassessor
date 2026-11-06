@@ -1,0 +1,15 @@
+%% TMeval adversarial corpus — AGT domain
+%% Target: DETECT-AGT-004 (arch_metadata.is_agentic==true AND arch_metadata.tool_restriction_bypass_detected==true)
+%% Adversarial element: agent with explicit tool restriction bypass mechanism
+
+graph TD
+    Agent["Autonomous Agent LLM-driven"] --> ToolRouter["Tool Router policy_enforcement=soft"]
+    ToolRouter -->|"allowed"| SearchTool["Search Tool approved"]
+    ToolRouter -->|"bypass restriction"| FileSystemTool["File System Tool policy_bypass=true restricted=false override=admin"]
+    ToolRouter -->|"policy override"| NetworkTool["Network Tool firewall_bypass=true unrestricted_egress=true"]
+    Agent --> LLM["LLM Planner tool_restriction_bypass=enabled"]
+    LLM --> ToolRouter
+    FileSystemTool --> SensitiveFiles["Sensitive Files /etc/shadow /var/secret/ /root/.ssh/"]
+    NetworkTool --> ExternalEndpoint["External Endpoint unrestricted outbound_filter=none"]
+    Agent --> PolicyOverride["Policy Override Module bypass_acl=true ignore_restrictions=true"]
+    PolicyOverride --> ToolRouter

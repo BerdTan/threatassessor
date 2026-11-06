@@ -4,6 +4,41 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 116 — 2026-11-06
+
+### Entry 237 — TMeval: outside-in + inside-out red-team harness for TA
+
+**Date:** 2026-11-06
+**Status:** Done — `scripts/tmeval/`
+
+**What:** `scripts/tmeval/tmeval_run.py` — two-phase red-team harness.
+- Phase 1 (outside-in): 8 adversarial MMDs covering INJ/EXF/AGT domains → REST API → governance_signals assertion via RuleEvaluator. FAIL runs write to `report/brain/synthetic_queue/` for brain flywheel.
+- Phase 2 (inside-out): 20 injection cases covering QC/MCP/SCT/ABU/AGT/BOUNCER domains. Direct `RuleEvaluator.evaluate()` + `BouncerStage.run()` with crafted signals. No API needed.
+- Phase 2 models three threat actors: **external** (probe/flood attacks), **assumed breach** (compromised pipeline component injecting crafted signals), **insider** (privileged signal suppression). Evasion cases verify threshold boundaries hold (threshold-graze cases) and that signal masking doesn't suppress rules.
+
+**Why before ManagedAgentHarness:** no dependency on new stages; probes the existing pipeline now. Gives structured signal-level coverage before the fleet grows. Discovering a gap in RuleEvaluator logic is cheaper before adding new stages that depend on it.
+
+**Signal value correctness note:** `synthesis_quality` is a string enum (`"FULL"` / `"PARTIAL"`), `confidence_swing` is a count ≥ 15 (not a 0–1 float), `auth_failures` and `path_enum_velocity` are boolean flags (not counts). Phase 2 cases encode the actual evaluator semantics from `rule_evaluator.py`.
+
+**Blog angle:** "The Red Team That Knows Your Internals" — outside-in probes find surface misses; inside-out injection finds logic gaps. Three actors: external attacker (Phase 1 MMD corpus), assumed breach (Phase 2 crafted signals), insider threat (Phase 2 signal suppression). Two complementary attack vectors, one harness.
+
+---
+
+### Entry 236 — Hetzner base URL migration; Qwen model deprecation
+
+**Date:** 2026-11-06  
+**Status:** Done — `agentic/providers.py` updated
+
+**What:** Hetzner breaking change on 2026-11-10: old base URL `https://inference.hetzner.com/api/v1` → `https://inference.hetzner.com/v1`. Fixed in `providers.py`. Experiment ends 2026-12-08.
+
+**Qwen impact:** Hetzner confirmed Qwen models will NOT be in their official product. Current defaults (`Qwen3.6-35B-A3B-FP8`, `Qwen3.8-27B`) will stop working after experiment sunset. Model IDs for the official product TBA. Set `HETZNER_MODEL` env var to override when new models are announced.
+
+**Fallback chain wired:** `LLM_FALLBACK_PROVIDERS=gemini,openrouter` — when any hetzner call throws (model 404 or API down), `llm_client` automatically retries with gemini then openrouter. Routing fallbacks in `model_routing.yaml` also updated — entries that previously listed `hetzner` as fallback now point to `gemini_flash` or `nemotron_super`.
+
+**Action required before 2026-12-08:** When Hetzner announces official product models, set `HETZNER_MODEL=<new-id>` in `.env` and update `providers.py` defaults + `model_routing.yaml` `hetzner`/`hetzner_27b` entries. Flip their `status` from `confirmed` → `excluded` or update `model_id` accordingly.
+
+---
+
 ## Session 115 — 2026-11-03
 
 ### Entry 235 — TMAgent built (Step 38); portable skill design clarified
