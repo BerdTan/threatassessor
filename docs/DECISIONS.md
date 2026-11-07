@@ -4,6 +4,34 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 119 — 2026-11-07
+
+### Entry 241 — TMbench leaderboard complete (5 tools); nemotron_super retired
+
+**Date:** 2026-11-07
+**Status:** Done — `docs/tmbench/results/`
+
+**What:** TMbench leaderboard finalized with 5 tools × 10 arches each. deepseek_flash leads at 13.00/13 (perfect across all arches). nemotron_super (free tier) retired — OpenRouter removed the free slug; replaced with nemotron_ultra (nvidia/nemotron-3-ultra-550b-a55b:free), which scores 12.80 but drops 1pt on two agentic arches (t2_saas_integration, t3_container_orchestration) due to missing MITRE ATLAS techniques. ta_full_moe (TA pipeline entry) still pending — requires API running. Generator fix: raised max_tokens 14000→24000 per-tool config and added strip_thinking flag for deepseek.
+
+Final standings: deepseek_flash 13.00 · hetzner_27b 12.80 · nemotron_ultra 12.80 · gemini_flash 12.40 · hetzner 12.10
+
+**Why:** Leaderboard is the external validation layer for the threatmodel/0.1 spec — proves the spec is scoreable by any model, not just TA's own pipeline. nemotron_ultra ATLAS gap is a concrete finding: 550B model misses AI/ML-specific techniques on agentic arches that smaller models catch.
+
+**Alternatives rejected:** Waiting for ta_full_moe before closing — ta_v3 is a separate entry (TA pipeline vs external models); leaderboard is complete without it.
+
+### Entry 242 — ta_v3 leaderboard entry complete; TA pipeline lands 5th
+
+**Date:** 2026-11-07
+**Status:** Done — `docs/tmbench/results/ta_v3/`
+
+**What:** TA pipeline (ta_v3) scored against threatmodel/0.1 spec across all 10 corpus arches. 10/10 pass, mean 12.30, -0.70 Δ vs GT. Lands 5th of 6 tools. Two structural gaps consistent across arches: (1) attack path count below spec minimum (TA generates 2–4 paths; spec requires ≥ component_count/2 minimum); (2) MITRE ATLAS techniques absent on agentic arches (t3/t4) — same blind spot as nemotron_ultra. Agentic governance fields (agent_autonomy_level, blast_radius, human_oversight_points) not surfaced from TA's export schema.
+
+**Why:** ta_v3 entry closes the leaderboard and answers the core question: does TA's own pipeline produce threatmodel/0.1-compliant output? Answer: mostly yes (all 10 pass), but external models like deepseek_flash produce fuller coverage against the spec. The gaps are concrete improvement targets, not converter artifacts.
+
+**Alternatives rejected:** Treating the gap as a converter problem — the attack path count and ATLAS gaps are genuine TA output limitations, not mapping issues.
+
+---
+
 ## Session 118 — 2026-11-07
 
 ### Entry 240 — TMeval packaged as /tmeval skill
