@@ -4,6 +4,21 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 118 — 2026-11-07
+
+### Entry 240 — TMeval packaged as /tmeval skill
+
+**Date:** 2026-11-07
+**Status:** Done — `.claude/skills/tmeval/SKILL.md`
+
+**What:** TMeval red-team harness (`scripts/tmeval/tmeval_run.py`) packaged as a first-class `/tmeval` skill alongside `/check-detect` and `/check-governance`. Added to the SOC detection check block in CLAUDE.md. Blog P40 updated with a post-publish note describing the skill.
+
+**Why:** Packaging as a skill makes the two-phase probe part of the standard session-start protocol rather than a one-off script invocation. CI callers get a consistent exit-code contract (0 = all pass, 1 = any failure). Failed cases already write synthetic queue entries — the skill registration closes the loop from red-team finding to brain ingest.
+
+**Alternatives rejected:** Keeping it as a raw script reference in CLAUDE.md — works but doesn't surface it via `/tmeval` and excludes it from skill inventory tooling (`/check-skills`, docs-health).
+
+---
+
 ## Session 117 — 2026-11-06
 
 ### Entry 239 — GovernanceSignals.merge() arch_metadata bug fix
