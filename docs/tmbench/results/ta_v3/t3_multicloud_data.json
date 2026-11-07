@@ -1,0 +1,541 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t3_multicloud_data",
+  "produced_by": "ta_v3 v1.0",
+  "produced_at": "2026-11-07T10:33:17.573159Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "kinesis_producer",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "kafka_cluster",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "schema_registry",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "pubsub_connector",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "flink_cluster",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "data_quality_checker",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "data_lake_raw",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "data_lake_curated",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "data_warehouse",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "bi_dashboard",
+        "role": "compute",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "pubsub_connector",
+      "kinesis_producer"
+    ],
+    "data_classification": "internal",
+    "operational_context": "t3_multicloud_data"
+  },
+  "threat_actors": [
+    {
+      "name": "Sandworm Team",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1133",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT28",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1133",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT41",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1133",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-1",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "schema_registry",
+      "entry_point": "kinesis_producer",
+      "impact": "CRITICAL: schema_registry compromise via kinesis_producer",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Schema Registry. 2 hops, criticality 0.73. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 2 hops"
+    },
+    {
+      "path_id": "AP-2",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "schema_registry",
+      "entry_point": "pubsub_connector",
+      "impact": "CRITICAL: schema_registry compromise via pubsub_connector",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Attacker-only path (no human actor baseline): GCP Pub/Sub Connector \u2192 Kafka Cluster \u2192 Schema Registry. 2 hops, criticality 0.73. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 2 hops"
+    },
+    {
+      "path_id": "AP-3",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "data_lake_raw",
+      "entry_point": "kinesis_producer",
+      "impact": "HIGH: data_lake_raw compromise via kinesis_producer",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker \u2192 Data Lake - Raw Zone. 4 hops, criticality 0.69. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-4",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "data_quality_checker",
+      "entry_point": "kinesis_producer",
+      "impact": "HIGH: data_quality_checker compromise via kinesis_producer",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker. 3 hops, criticality 0.69. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-5",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "data_lake_raw",
+      "entry_point": "pubsub_connector",
+      "impact": "HIGH: data_lake_raw compromise via pubsub_connector",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Attacker-only path (no human actor baseline): GCP Pub/Sub Connector \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker \u2192 Data Lake - Raw Zone. 4 hops, criticality 0.69. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-6",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "data_lake_curated",
+      "entry_point": "kinesis_producer",
+      "impact": "HIGH: data_lake_curated compromise via kinesis_producer",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker \u2192 Data Lake - Raw Zone \u2192 Data Lake - Curated Zone. 5 hops, criticality 0.64. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 5 hops"
+    },
+    {
+      "path_id": "AP-7",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "data_warehouse",
+      "entry_point": "kinesis_producer",
+      "impact": "HIGH: data_warehouse compromise via kinesis_producer",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker \u2192 Data Lake - Raw Zone \u2192 Data Lake - Curated Zone \u2192 Data Warehouse. 6 hops, criticality 0.64. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 6 hops"
+    },
+    {
+      "path_id": "AP-8",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "bi_dashboard",
+      "entry_point": "kinesis_producer",
+      "impact": "HIGH: bi_dashboard compromise via kinesis_producer",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker \u2192 Data Lake - Raw Zone \u2192 Data Lake - Curated Zone \u2192 Data Warehouse \u2192 BI Dashboard. 7 hops, criticality 0.59. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 7 hops"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "M1016",
+      "control_name": "least privilege",
+      "addresses_technique": [
+        "T1021",
+        "T1040",
+        "T1059",
+        "T1098",
+        "T1110"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "M1033",
+      "control_name": "rate limiting",
+      "addresses_technique": [
+        "T1021",
+        "T1059",
+        "T1133",
+        "T1190",
+        "T1498"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "M1053",
+      "control_name": "backup",
+      "addresses_technique": [
+        "T1486"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "M1040",
+      "control_name": "edr",
+      "addresses_technique": [
+        "T1059",
+        "T1486"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "M1037",
+      "control_name": "waf",
+      "addresses_technique": [
+        "T1190",
+        "T1498",
+        "T1499",
+        "T1530",
+        "T1570"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "M1050",
+      "control_name": "input validation",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "M1017",
+      "control_name": "patching",
+      "addresses_technique": [
+        "T1021",
+        "T1110",
+        "T1190",
+        "T1213"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "M1038",
+      "control_name": "code signing",
+      "addresses_technique": [
+        "T1059"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "M1017",
+      "control_name": "vulnerability scanning",
+      "addresses_technique": [
+        "T1021",
+        "T1110",
+        "T1213"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "M1032",
+      "control_name": "mfa",
+      "addresses_technique": [
+        "T1021",
+        "T1040",
+        "T1098",
+        "T1110",
+        "T1133"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Schema Registry. 2 hops, criticality 0.73. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "kinesis_producer",
+        "kafka_cluster",
+        "schema_registry"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1040",
+        "T1565"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Attacker-only path (no human actor baseline): GCP Pub/Sub Connector \u2192 Kafka Cluster \u2192 Schema Registry. 2 hops, criticality 0.73. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "pubsub_connector",
+        "kafka_cluster",
+        "schema_registry"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1040",
+        "T1565"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker \u2192 Data Lake - Raw Zone. 4 hops, criticality 0.69. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "kinesis_producer",
+        "kafka_cluster",
+        "flink_cluster",
+        "data_quality_checker",
+        "data_lake_raw"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1040",
+        "T1565"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker. 3 hops, criticality 0.69. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "kinesis_producer",
+        "kafka_cluster",
+        "flink_cluster",
+        "data_quality_checker"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1040",
+        "T1565"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Attacker-only path (no human actor baseline): GCP Pub/Sub Connector \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker \u2192 Data Lake - Raw Zone. 4 hops, criticality 0.69. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "pubsub_connector",
+        "kafka_cluster",
+        "flink_cluster",
+        "data_quality_checker",
+        "data_lake_raw"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1040",
+        "T1565"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker \u2192 Data Lake - Raw Zone \u2192 Data Lake - Curated Zone. 5 hops, criticality 0.64. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "kinesis_producer",
+        "kafka_cluster",
+        "flink_cluster",
+        "data_quality_checker",
+        "data_lake_raw",
+        "data_lake_curated"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1040",
+        "T1565"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker \u2192 Data Lake - Raw Zone \u2192 Data Lake - Curated Zone \u2192 Data Warehouse. 6 hops, criticality 0.64. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "kinesis_producer",
+        "kafka_cluster",
+        "flink_cluster",
+        "data_quality_checker",
+        "data_lake_raw",
+        "data_lake_curated",
+        "data_warehouse"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1040",
+        "T1565"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Attacker-only path (no human actor baseline): Kinesis Producer \u2192 Kafka Cluster \u2192 Flink Streaming Cluster \u2192 Data Quality Checker \u2192 Data Lake - Raw Zone \u2192 Data Lake - Curated Zone \u2192 Data Warehouse \u2192 BI Dashboard. 7 hops, criticality 0.59. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "kinesis_producer",
+        "kafka_cluster",
+        "flink_cluster",
+        "data_quality_checker",
+        "data_lake_raw",
+        "data_lake_curated",
+        "data_warehouse",
+        "bi_dashboard"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1040",
+        "T1565"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "compliance_scope": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "third_party_dependencies": []
+  }
+}

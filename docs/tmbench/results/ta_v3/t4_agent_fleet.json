@@ -1,0 +1,668 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_agent_fleet",
+  "produced_by": "ta_v3 v1.0",
+  "produced_at": "2026-11-07T10:33:51.898640Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Users",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "APIGateway",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "RateLimiter",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "TenantRouter",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "TenantDB",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "LLMOrchestrator",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "VectorDB",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "ConversationStore",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PromptGuard",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "ResponseFilter",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "ModelRouter",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "Anthropic",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "OpenAI",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "SelfHostedLLM",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "AuditLog",
+        "role": "compute",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "Users"
+    ],
+    "data_classification": "internal",
+    "operational_context": "t4_agent_fleet"
+  },
+  "threat_actors": [
+    {
+      "name": "Sandworm Team",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT41",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT28",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-1",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "TenantDB",
+      "entry_point": "Users",
+      "impact": "CRITICAL: TenantDB compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 Tenant Config DB. Legitimate use: end user traverse path to reach Tenant Config DB. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Reach target Tenant Config DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-2",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "VectorDB",
+      "entry_point": "Users",
+      "impact": "CRITICAL: VectorDB compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Vector Database. Legitimate use: end user traverse path to reach Vector Database. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Reach target Vector Database \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 5 hops"
+    },
+    {
+      "path_id": "AP-3",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "ConversationStore",
+      "entry_point": "Users",
+      "impact": "HIGH: ConversationStore compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Conversation Store. Legitimate use: end user traverse path to reach Conversation Store. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Reach target Conversation Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 5 hops"
+    },
+    {
+      "path_id": "AP-4",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "LLMOrchestrator",
+      "entry_point": "Users",
+      "impact": "HIGH: LLMOrchestrator compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator. Legitimate use: end user traverse path to reach LLM Orchestrator. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Reach target LLM Orchestrator \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-5",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "PromptGuard",
+      "entry_point": "Users",
+      "impact": "HIGH: PromptGuard compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Prompt Guard. Legitimate use: end user traverse path to reach Prompt Guard. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Reach target Prompt Guard \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 5 hops"
+    },
+    {
+      "path_id": "AP-6",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "ResponseFilter",
+      "entry_point": "Users",
+      "impact": "HIGH: ResponseFilter compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Response Filter. Legitimate use: end user traverse path to reach Response Filter. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Reach target Response Filter \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 5 hops"
+    },
+    {
+      "path_id": "AP-7",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "Anthropic",
+      "entry_point": "Users",
+      "impact": "HIGH: Anthropic compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Prompt Guard \u2192 Model Router \u2192 Anthropic API. Legitimate use: end user traverse path to reach Anthropic API. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Move from LLM Orchestrator to Prompt Guard. Move from Prompt Guard to Model Router. Reach target Anthropic API \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 7 hops"
+    },
+    {
+      "path_id": "AP-8",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "OpenAI",
+      "entry_point": "Users",
+      "impact": "HIGH: OpenAI compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Prompt Guard \u2192 Model Router \u2192 OpenAI API. Legitimate use: end user traverse path to reach OpenAI API. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Move from LLM Orchestrator to Prompt Guard. Move from Prompt Guard to Model Router. Reach target OpenAI API \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 7 hops"
+    },
+    {
+      "path_id": "AP-9",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "SelfHostedLLM",
+      "entry_point": "Users",
+      "impact": "HIGH: SelfHostedLLM compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Prompt Guard \u2192 Model Router \u2192 Self-Hosted LLM. Legitimate use: end user traverse path to reach Self-Hosted LLM. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Move from LLM Orchestrator to Prompt Guard. Move from Prompt Guard to Model Router. Reach target Self-Hosted LLM \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 7 hops"
+    },
+    {
+      "path_id": "AP-10",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "AuditLog",
+      "entry_point": "Users",
+      "impact": "HIGH: AuditLog compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Audit Log. Legitimate use: end user traverse path to reach Audit Log. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Reach target Audit Log \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 5 hops"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "M1033",
+      "control_name": "rate limiting",
+      "addresses_technique": [
+        "T1021",
+        "T1048",
+        "T1059",
+        "T1071",
+        "T1090"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "M1017",
+      "control_name": "patching",
+      "addresses_technique": [
+        "T1021",
+        "T1078",
+        "T1110",
+        "T1190",
+        "T1203"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "M1015",
+      "control_name": "least privilege",
+      "addresses_technique": [
+        "T1021",
+        "T1040",
+        "T1046",
+        "T1048",
+        "T1055"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "M1037",
+      "control_name": "waf",
+      "addresses_technique": [
+        "T1048",
+        "T1071",
+        "T1090",
+        "T1190",
+        "T1203"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "M1050",
+      "control_name": "input validation",
+      "addresses_technique": [
+        "T1190",
+        "T1203",
+        "T1212"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "M1047",
+      "control_name": "logging",
+      "addresses_technique": [
+        "T1021",
+        "T1059",
+        "T1213",
+        "T1528",
+        "T1530"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "M1038",
+      "control_name": "code signing",
+      "addresses_technique": [
+        "T1059",
+        "T1562"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "M1017",
+      "control_name": "vulnerability scanning",
+      "addresses_technique": [
+        "T1021",
+        "T1078",
+        "T1110",
+        "T1213",
+        "T1528"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "M1032",
+      "control_name": "mfa",
+      "addresses_technique": [
+        "T1021",
+        "T1040",
+        "T1078",
+        "T1110",
+        "T1133"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "M1053",
+      "control_name": "backup",
+      "addresses_technique": [
+        "T1485",
+        "T1486"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 Tenant Config DB. Legitimate use: end user traverse path to reach Tenant Config DB. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Reach target Tenant Config DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "RateLimiter",
+        "TenantRouter",
+        "TenantDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Vector Database. Legitimate use: end user traverse path to reach Vector Database. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Reach target Vector Database \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "RateLimiter",
+        "TenantRouter",
+        "LLMOrchestrator",
+        "VectorDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Conversation Store. Legitimate use: end user traverse path to reach Conversation Store. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Reach target Conversation Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "RateLimiter",
+        "TenantRouter",
+        "LLMOrchestrator",
+        "ConversationStore"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator. Legitimate use: end user traverse path to reach LLM Orchestrator. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Reach target LLM Orchestrator \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "RateLimiter",
+        "TenantRouter",
+        "LLMOrchestrator"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Prompt Guard. Legitimate use: end user traverse path to reach Prompt Guard. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Reach target Prompt Guard \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "RateLimiter",
+        "TenantRouter",
+        "LLMOrchestrator",
+        "PromptGuard"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Response Filter. Legitimate use: end user traverse path to reach Response Filter. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Reach target Response Filter \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "RateLimiter",
+        "TenantRouter",
+        "LLMOrchestrator",
+        "ResponseFilter"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Prompt Guard \u2192 Model Router \u2192 Anthropic API. Legitimate use: end user traverse path to reach Anthropic API. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Move from LLM Orchestrator to Prompt Guard. Move from Prompt Guard to Model Router. Reach target Anthropic API \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "RateLimiter",
+        "TenantRouter",
+        "LLMOrchestrator",
+        "PromptGuard",
+        "ModelRouter",
+        "Anthropic"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Prompt Guard \u2192 Model Router \u2192 OpenAI API. Legitimate use: end user traverse path to reach OpenAI API. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Move from LLM Orchestrator to Prompt Guard. Move from Prompt Guard to Model Router. Reach target OpenAI API \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "RateLimiter",
+        "TenantRouter",
+        "LLMOrchestrator",
+        "PromptGuard",
+        "ModelRouter",
+        "OpenAI"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Prompt Guard \u2192 Model Router \u2192 Self-Hosted LLM. Legitimate use: end user traverse path to reach Self-Hosted LLM. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Move from LLM Orchestrator to Prompt Guard. Move from Prompt Guard to Model Router. Reach target Self-Hosted LLM \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "RateLimiter",
+        "TenantRouter",
+        "LLMOrchestrator",
+        "PromptGuard",
+        "ModelRouter",
+        "SelfHostedLLM"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-010",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Tenant Users \u2192 API Gateway \u2192 Rate Limiter \u2192 Tenant Router \u2192 LLM Orchestrator \u2192 Audit Log. Legitimate use: end user traverse path to reach Audit Log. If exploited: Gain initial access at Tenant Users. Access API Gateway via the initial entry point. Move from API Gateway to Rate Limiter. Move from Rate Limiter to Tenant Router. Move from Tenant Router to LLM Orchestrator. Reach target Audit Log \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "RateLimiter",
+        "TenantRouter",
+        "LLMOrchestrator",
+        "AuditLog"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "compliance_scope": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "third_party_dependencies": [],
+    "agentic": {
+      "tool_call_scope": "restricted",
+      "oversight_required": false
+    }
+  }
+}

@@ -201,110 +201,217 @@ def call_llm_client(tool: str, arch_id: str, dry_run: bool = False) -> dict | No
 
 
 def call_ta_api(arch_id: str, dry_run: bool = False) -> dict | None:
-    """Call TA's local API and convert ta-export/1.0 → threatmodel/0.1."""
+    """Call TA's local API via /analyze-stream (SSE) and convert ta-export/1.0 → threatmodel/0.1."""
     import urllib.request
+    import urllib.parse
 
     api_base = os.environ.get("TA_API_URL", "http://localhost:8000")
+    api_key = os.environ.get("TA_API_KEY") or os.environ.get("API_KEY", "")
     if dry_run:
         print(f"\n[dry-run] Would call TA API at {api_base} for {arch_id}")
         return None
 
     mmd = load_mmd(arch_id)
-    payload = json.dumps({"content": mmd, "arch_name": arch_id}).encode()
+    form_data = urllib.parse.urlencode({
+        "mmd_text": mmd,
+        "mmd_name": arch_id,
+        "include_validation": "true",
+    }).encode()
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    if api_key:
+        headers["TM-API-KEY"] = api_key
     try:
         req = urllib.request.Request(
-            f"{api_base}/api/v1/analyze/artifact",
-            data=payload,
-            headers={"Content-Type": "application/json"},
+            f"{api_base}/api/v1/analyze-stream",
+            data=form_data,
+            headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            bundle = json.loads(resp.read())
-        return convert_ta_export_to_threatmodel(bundle, arch_id)
+        # Consume the SSE stream to completion; extract architecture_name from complete event
+        arch_name_resolved = arch_id
+        current_event = None
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            for raw_line in resp:
+                line = raw_line.decode("utf-8").strip()
+                if line.startswith("event:"):
+                    current_event = line[6:].strip()
+                elif line.startswith("data:") and current_event == "complete":
+                    try:
+                        evt = json.loads(line[5:].strip())
+                        arch_name_resolved = evt.get("architecture_name", arch_id)
+                    except json.JSONDecodeError:
+                        pass
+                    break
+                elif not line:
+                    current_event = None
+
+        # Read ground_truth + governance from report directory
+        report_dir = ROOT / "report" / arch_name_resolved
+        gt_path = report_dir / "ground_truth.json"
+        gs_path = report_dir / "governance_signals.json"
+        if not gt_path.exists():
+            print(f"  [error] ta_v3/{arch_id}: report not found at {gt_path}", file=sys.stderr)
+            return None
+        gt = json.loads(gt_path.read_text(encoding="utf-8"))
+        gs = json.loads(gs_path.read_text(encoding="utf-8")) if gs_path.exists() else {}
+        return convert_ta_gt_to_threatmodel(gt, gs, arch_id)
     except Exception as e:
         print(f"  [error] ta_v3/{arch_id}: {e}", file=sys.stderr)
         return None
 
 
-def convert_ta_export_to_threatmodel(bundle: dict, arch_id: str) -> dict:
-    """Best-effort conversion from ta-export/1.0 to threatmodel/0.1."""
-    assessment = bundle.get("assessment", {})
-    gt = assessment.get("ground_truth", {})
+def _load_mitre_lookup() -> dict:
+    """Return {technique_id: (name, tactic)} from enterprise-attack.json."""
+    mitre_path = ROOT / "chatbot/data/enterprise-attack.json"
+    if not mitre_path.exists():
+        return {}
+    try:
+        data = json.loads(mitre_path.read_text(encoding="utf-8"))
+        lookup = {}
+        for obj in data.get("objects", []):
+            if obj.get("type") != "attack-pattern":
+                continue
+            refs = obj.get("external_references", [])
+            tid = next((r["external_id"] for r in refs if r.get("source_name") == "mitre-attack"), None)
+            if not tid:
+                continue
+            name = obj.get("name", "")
+            phases = obj.get("kill_chain_phases", [])
+            tactic = phases[0]["phase_name"].replace("-", " ").title() if phases else ""
+            lookup[tid] = (name, tactic)
+        return lookup
+    except Exception:
+        return {}
 
-    components = [
-        {"id": c.get("id", c.get("name", "unknown")),
-         "role": c.get("role", "compute"),
-         "trust_zone": c.get("trust_zone", "internal")}
-        for c in gt.get("components", [])
-    ]
 
+_MITRE_LOOKUP: dict = {}
+
+
+def convert_ta_gt_to_threatmodel(gt: dict, gs: dict, arch_id: str) -> dict:
+    """Convert TA ground_truth.json + governance_signals.json → threatmodel/0.1."""
+    global _MITRE_LOOKUP
+    if not _MITRE_LOOKUP:
+        _MITRE_LOOKUP = _load_mitre_lookup()
+
+    _INITIAL_ACCESS = {"T1566", "T1190", "T1133", "T1078", "T1189", "T1091", "T1195", "T1199", "T1200"}
+    _TIER_MAP = {"CRITICAL": "Critical", "HIGH": "High", "MEDIUM": "Medium", "LOW": "Low"}
+    _CRIT_LIKELIHOOD = {"CRITICAL": "High", "HIGH": "High", "MEDIUM": "Medium", "LOW": "Low"}
+
+    # Components: unique nodes from attack_path paths
+    seen_nodes: set = set()
+    components = []
+    for ap in gt.get("attack_paths", []):
+        for node in ap.get("path", []):
+            if node not in seen_nodes:
+                seen_nodes.add(node)
+                components.append({"id": node, "role": "compute", "trust_zone": "internal"})
+
+    # Threat actors: APT groups → threatmodel format
     threat_actors = []
     for actor in gt.get("threat_actors", []):
+        overlap = actor.get("overlap_pct", 0)
+        cap = "nation-state" if overlap >= 0.5 else ("targeted" if overlap >= 0.3 else "opportunistic")
+        matched = actor.get("matched_techniques", [])
+        ia_techs = [t for t in matched if t in _INITIAL_ACCESS]
         threat_actors.append({
             "name": actor.get("name", "Unknown Actor"),
-            "motivation": actor.get("motivation", ""),
-            "capability_tier": actor.get("capability_tier", "targeted"),
-            "initial_access_vector": actor.get("initial_access", ""),
-            "non_capabilities": actor.get("non_capabilities", ["No physical access"]),
+            "motivation": "Cyber espionage and financial gain",
+            "capability_tier": cap,
+            "initial_access_vector": ia_techs[0] if ia_techs else (matched[0] if matched else ""),
+            "non_capabilities": ["No physical access to target systems"],
         })
+
+    # Attack paths
+    recs = gt.get("control_recommendations", [])
+    rec_by_path: dict = {}
+    for rec in recs:
+        for pid in rec.get("attack_paths", []):
+            if pid not in rec_by_path:
+                rec_by_path[pid] = rec.get("control", "")
 
     attack_paths = []
     for i, ap in enumerate(gt.get("attack_paths", [])):
+        tier = ap.get("criticality_tier", "MEDIUM")
+        techs = ap.get("techniques", [])
+        tid = techs[0] if techs else ""
+        tname, tactic = _MITRE_LOOKUP.get(tid, ("", ""))
         attack_paths.append({
-            "path_id": ap.get("path_id", f"AP-{i+1:03d}"),
-            "technique_id": ap.get("technique_id", ""),
-            "technique_name": ap.get("technique_name", ""),
-            "tactic": ap.get("tactic", ""),
-            "target_component": ap.get("target_component", ""),
-            "entry_point": ap.get("entry_point", ""),
-            "impact": ap.get("impact", ""),
-            "likelihood": ap.get("likelihood", "Medium"),
-            "likelihood_rationale": ap.get("likelihood_rationale", ""),
+            "path_id": ap.get("id", f"AP-{i+1:03d}"),
+            "technique_id": tid,
+            "technique_name": tname,
+            "tactic": tactic,
+            "target_component": ap.get("target", ""),
+            "entry_point": ap.get("entry", ""),
+            "impact": f"{tier}: {ap.get('target', '')} compromise via {ap.get('entry', '')}",
+            "likelihood": _CRIT_LIKELIHOOD.get(tier, "Medium"),
+            "likelihood_rationale": ap.get("rationale", ""),
+            "mitigation": rec_by_path.get(i, ""),
+            "finding": f"{_TIER_MAP.get(tier, tier)} severity path — {ap.get('hop_count', 0)} hops",
         })
 
+    # Mitigations: top critical/high control recommendations (skip those without MITRE M-IDs)
     mitigations = []
-    for m in gt.get("mitigations", []):
+    for rec in recs:
+        ctrl_ids = [c for c in rec.get("mitigations", []) if c]
+        if not ctrl_ids:
+            continue
+        j = len(mitigations)
         mitigations.append({
-            "mitigation_id": m.get("mitigation_id", ""),
-            "control_id": m.get("control_id", ""),
-            "control_name": m.get("control_name", ""),
-            "addresses_technique": m.get("addresses_technique", []),
-            "implementation_status": m.get("implementation_status", "Planned"),
-            "residual_risk": m.get("residual_risk", "Medium"),
+            "mitigation_id": f"M-{j+1:03d}",
+            "control_id": ctrl_ids[0],
+            "control_name": rec.get("control", ""),
+            "addresses_technique": rec.get("techniques", [])[:5],
+            "implementation_status": "Planned",
+            "residual_risk": "Low",
         })
+        if len(mitigations) >= 10:
+            break
 
+    # Findings: one per CRITICAL/HIGH attack path
     findings = []
-    for f in gt.get("findings", []):
+    for k, ap in enumerate(gt.get("attack_paths", [])):
+        tier = ap.get("criticality_tier", "MEDIUM")
+        if tier not in ("CRITICAL", "HIGH"):
+            continue
+        severity = _TIER_MAP.get(tier, "High")
+        cvss = ("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H" if tier == "CRITICAL"
+                else "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H")
         findings.append({
-            "finding_id": f.get("finding_id", ""),
-            "severity": f.get("severity", "Medium"),
-            "severity_rationale": f.get("severity_rationale", ""),
-            "severity_vector": f.get("cvss_vector", f.get("aivss_vector", "")),
-            "affected_components": f.get("affected_components", []),
-            "linked_techniques": f.get("linked_techniques", []),
-            "linked_mitigations": f.get("linked_mitigations", []),
-            "remediation_priority": f.get("remediation_priority", "Short-term"),
+            "finding_id": f"F-{k+1:03d}",
+            "severity": severity,
+            "severity_rationale": ap.get("rationale", ""),
+            "severity_vector": cvss,
+            "affected_components": ap.get("path", []),
+            "linked_techniques": ap.get("techniques", [])[:5],
+            "linked_mitigations": [f"M-{j+1:03d}" for j in range(min(2, len(mitigations)))],
+            "remediation_priority": "Immediate" if tier == "CRITICAL" else "Short-term",
         })
 
-    gov = gt.get("governance", {})
-    governance = {
-        "data_sovereignty": gov.get("data_sovereignty", []),
-        "compliance_scope": gov.get("compliance_scope", []),
-        "third_party_dependencies": gov.get("third_party_dependencies", []),
+    # Governance
+    sov = gs.get("sovereignty", {})
+    arch_meta = gs.get("arch_metadata", {})
+    governance: dict = {
+        "data_sovereignty": sov.get("inferred_regions") or sov.get("arc_categories", []),
+        "compliance_scope": sov.get("arc_categories", []),
+        "third_party_dependencies": [],
     }
-    if "agentic" in gov:
-        governance["agentic"] = gov["agentic"]
+    if arch_meta.get("is_agentic"):
+        governance["agentic"] = {
+            "tool_call_scope": "restricted",
+            "oversight_required": not arch_meta.get("no_oversight_path", False),
+        }
 
+    import datetime
     return {
         "spec_version": "threatmodel/0.1",
         "architecture_id": arch_id,
         "produced_by": "ta_v3 v1.0",
-        "produced_at": bundle.get("produced_at", ""),
+        "produced_at": datetime.datetime.utcnow().isoformat() + "Z",
         "architecture_summary": {
             "components": components,
-            "trust_boundaries": gt.get("trust_boundaries", []),
-            "data_classification": gt.get("data_classification", "internal"),
-            "operational_context": gt.get("operational_context", ""),
+            "trust_boundaries": list({ap.get("entry", "") for ap in gt.get("attack_paths", []) if ap.get("entry")}),
+            "data_classification": "internal",
+            "operational_context": gt.get("architecture_name", arch_id),
         },
         "threat_actors": threat_actors,
         "attack_paths": attack_paths,
