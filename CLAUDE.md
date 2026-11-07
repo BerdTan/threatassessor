@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
 **Version:** 3.0  
-**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 67 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph) + TAgym (instrument gym flywheel)
+**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 65 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph) + TAgym (instrument gym flywheel)
 
 ---
 
@@ -50,48 +50,36 @@ tail -f logs/api.log            # logs
 - `chatbot/harness/governance.py` — `GovernanceSignals`, governance adapter, injection/evasion detection
 - `chatbot/harness/policy_broker.py` — `PolicyBroker`, `BrokerDecision` (dynamic routing after QualityStage)
 - `chatbot/harness/event_broker.py` — `EventBrokerCritic`, pub/sub to SIEM/Langfuse/Webhook sinks
-- `chatbot/harness/sinks.py` — `SiemSink`, `LangfuseSink`, `WebhookSink`; routing_mode tag preservation across trace.update() calls
 - `chatbot/harness/smart_router.py` — `select_mode(arch_name)` → `RoutingDecision`; brain_fast / api_only / full_moe selection
-- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (58 DETECT rules)
-- `chatbot/harness/rule_trend_evaluator.py` — `RuleTrendEvaluator` (trend analysis from history JSONL)
-- `chatbot/harness/registry.py` — `CriticRegistry`
+- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (65 DETECT rules)
 
 **SOC detection:**
-- `policies/soc_detection_rules.yaml` — 58 DETECT rules with OWASP/ATLAS/incident provenance
+- `policies/soc_detection_rules.yaml` — 65 DETECT rules with OWASP/ATLAS/incident provenance
 
 **REST API:**
 - `chatbot/api/app.py` — FastAPI factory
 - `chatbot/api/routes/reports.py` — report endpoints + `/detect-trend/{arch}` + `/governance/check` + `/reports/{arch}/export`
 - `chatbot/api/routes/streaming.py` — SSE analysis stream
 - `chatbot/api/routes/jobs.py` — `POST /jobs/expert-review` + `GET /jobs/{id}/status` (async job layer for MCP)
-- `chatbot/api/routes/mcp_sim.py` — SSE sim stream + personas endpoint + access-signals + jobs snapshot
-- `chatbot/api/job_store.py` — in-memory job store, 1-hr TTL, `get_job_store()` singleton; `list_all()` for SIP jobs panel
 - `chatbot/api/static/` — dashboard (index.html + JS; nav: Overview/Assessment/Simulation/Platform/Reporting/Workspace/Settings)
 
 **TA-SIP (Security Intelligence Platform):**
 - `chatbot/adapters/` — `ArchitectureGraph` + adapters: TF/CF/OAI/Prose/MMD; `RepoCrawler` (MAX_FILES=200, dedup 0.85)
 - `chatbot/api/routes/enrich.py` — `POST /api/v1/enrich`: fuzzy component→attack paths (<50ms, no LLM)
-- `chatbot/api/routes/artifact.py` — `POST /api/v1/analyze/artifact`: file upload → adapter → SSE stream
 - `chatbot/api/routes/taclaw.py` — `POST /api/v1/taclaw/run` + `GET /api/v1/taclaw/jobs` (async crawl+assess)
-- `chatbot/api/routes/gym.py` — `POST /api/v1/gym/start` + `GET /api/v1/gym/status` + `POST /api/v1/gym/stop`; `GymSession`/`GymIteration` state; `_gym_loop` asyncio task; Brier snapshots per iteration
-- `chatbot/api/routes/platform.py` — `GET /api/v1/adapters` + `GET /api/v1/sip/health`
+- `chatbot/api/routes/gym.py` — `POST /api/v1/gym/start|status|stop`; `GymSession`/`GymIteration`; Brier snapshots per iteration
 - `chatbot/schemas/ta_export_v1.json` — JSON Schema for ta-export/1.0; served at `GET /api/v1/schemas/ta-export`
-- `mcp_connector/` — `threatassessor-mcp` v1.1.0; typed `TAExportBundle`, `ComponentContext`; `enrich_finding()`
-- `taclaw/` — `ta`/`taclaw` CLI; `ta gate` exits 1 on BLOCK (CI); `ta gym start/status/stop` — TAgym CLI; publish on `taclaw-v*` tags
+- `taclaw/` — `ta`/`taclaw` CLI; `ta gate` exits 1 on BLOCK (CI); `ta gym start/status/stop`; publish on `taclaw-v*` tags
 
 **MCP server:**
 - `mcp_server/server.py` — FastMCP app, 18 tools (stdio transport); all tools log to `MCPAccessLogger`
-- `mcp_server/job_client.py` — HTTP wrapper for all REST calls
-- `mcp_server/access_logger.py` — `MCPAccessLogger` rolling-window singleton; produces `mcp_access` signals for DETECT-MCP-001/021/022
 - `mcp_server/client_sim.py` — 6-persona integration simulator (chatbot, code-agent, ciso, soc, copilot, chatgpt)
 - `mcp_server/README.md` — setup, 4-step testing protocol, per-client integration snippets
 
 **TA Brain:**
 - `chatbot/modules/ta_brain_builder.py` — instance ingest + distiller + `HOLD_OUT_ARCHS` (8 archs)
 - `chatbot/modules/ta_brain_benchmarks.py` — Brier calibration (precision-weighted, score over predicted only) + framework floors
-- `chatbot/modules/ta_brain_mmd_generator.py` — Gap→MMD generator (Stage 8); synthetic queue in `report/brain/synthetic_queue/`
 - `chatbot/modules/ta_brain_query.py` — TACO query surface (infer/gaps/patterns/explain modes)
-- `chatbot/modules/ta_brain_taco_processor.py` — idempotent feedback processor (Stage 7)
 - `chatbot/api/routes/brain.py` — all `/api/v1/brain/*` endpoints
 - `report/brain/ta_brain.json` — pattern layer + meta layer (`pattern_version` key drives cache invalidation)
 - `report/brain/ta_brain_instances.jsonl` — append-only instance layer (use `incremental=True` to avoid duplicates)
@@ -146,9 +134,8 @@ python3 .claude/skills/check-governance/scripts/check-governance.py
 # EventBroker + sinks (60 tests)
 python3 .claude/skills/check-eventbroker/scripts/check-eventbroker.py
 
-# Adversarial red-team probe (inside-out injection, no API, ~5s)
-python3 scripts/tmeval/tmeval_run.py --phase2
-python3 scripts/tmeval/tmeval_run.py --all --api-url http://localhost:8000  # + outside-in REST probe
+# Adversarial red-team probe (Phase 2: no API; Phase 1: API required)
+/tmeval
 
 # DETECT coverage flywheel
 python3 .claude/skills/detect-loop/scripts/detect-loop.py --observe-only
@@ -162,9 +149,8 @@ python3 .claude/skills/check-mcp/scripts/check-mcp.py
 python3 .claude/skills/check-mcp/scripts/check-mcp.py --live  # + live REST + MCP stdio
 
 # MCP client simulator — integration persona testing (API must be running)
-python3 mcp_server/client_sim.py --dry-run             # protocol handshake only
-python3 mcp_server/client_sim.py --all --arch <arch>   # all 6 benign personas live
-python3 mcp_server/client_sim.py --persona soc --arch <arch>
+python3 mcp_server/client_sim.py --dry-run                       # protocol handshake only
+python3 mcp_server/client_sim.py --all --arch <arch>             # all 6 benign personas live
 
 # Connector layer (mcp_connector package + openapi.yaml + transport flag)
 python3 .claude/skills/check-connector/scripts/check-connector.py          # static + live
@@ -218,4 +204,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-11-01
+**Last Updated:** 2026-11-07
