@@ -1,0 +1,455 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_saas_integration",
+  "produced_by": "deepseek_flash v1.0 v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "ExternalSaaS",
+        "role": "external SaaS provider and event source",
+        "trust_zone": "external (untrusted)"
+      },
+      {
+        "id": "EndUser",
+        "role": "human user and OAuth client",
+        "trust_zone": "external (untrusted)"
+      },
+      {
+        "id": "WebhookReceiver",
+        "role": "public webhook ingress endpoint",
+        "trust_zone": "ingress (DMZ)"
+      },
+      {
+        "id": "OAuthProxy",
+        "role": "OAuth 2.0 authorization proxy",
+        "trust_zone": "ingress (DMZ)"
+      },
+      {
+        "id": "RateLimiter",
+        "role": "request throttling and abuse control",
+        "trust_zone": "integration"
+      },
+      {
+        "id": "EventQueue",
+        "role": "event buffering and message queue",
+        "trust_zone": "integration"
+      },
+      {
+        "id": "Transformer",
+        "role": "data transformation and event processing compute",
+        "trust_zone": "integration"
+      },
+      {
+        "id": "IntegrationDB",
+        "role": "data store for integration records",
+        "trust_zone": "data (restricted)"
+      },
+      {
+        "id": "AuditLog",
+        "role": "audit and security event data store",
+        "trust_zone": "data (restricted)"
+      }
+    ],
+    "trust_boundaries": [
+      "Internet to Ingress Layer",
+      "External SaaS to Webhook Receiver",
+      "End User to OAuth Proxy",
+      "Ingress Layer to Integration Layer",
+      "Integration Layer to Data Layer"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted event-driven SaaS integration with webhook ingestion and OAuth-mediated API access; multi-tenant deployment."
+  },
+  "threat_actors": [
+    {
+      "name": "Opportunistic external attacker",
+      "motivation": "Financial gain via data theft or service disruption",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Internet-exposed webhook and OAuth endpoints, credential stuffing, or leaked OAuth tokens",
+      "non_capabilities": [
+        "No physical access to cloud infrastructure",
+        "No pre-existing insider knowledge of integration internals",
+        "No zero-day exploit budget",
+        "Cannot modify the external SaaS provider's code or signing keys"
+      ]
+    },
+    {
+      "name": "Malicious or negligent insider (integration operator)",
+      "motivation": "Data exfiltration, sabotage, or bypassing controls for personal gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate operator credentials to the integration platform, database, or audit tooling",
+      "non_capabilities": [
+        "Cannot alter the external SaaS provider's systems",
+        "No access to cloud provider hypervisor or physical hosts",
+        "Constrained by separation of duties and audit logging",
+        "Cannot forge webhook HMAC signatures without access to secrets"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "WebhookReceiver",
+      "entry_point": "Public webhook endpoint exposed to External SaaS and the internet",
+      "impact": "Unauthorized event injection and downstream data corruption or exfiltration",
+      "likelihood": "High",
+      "likelihood_rationale": "The webhook endpoint is internet-facing and signature verification is only partially enforced."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1528",
+      "technique_name": "Steal Application Access Token",
+      "tactic": "Credential Access",
+      "target_component": "OAuthProxy",
+      "entry_point": "OAuth callback and token endpoint exposed to the EndUser browser",
+      "impact": "Replay of a stolen token to act as an integration user and access events",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Tokens are short-lived but not strictly bound to client context, and token leakage via logs is possible."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1110",
+      "technique_name": "Brute Force",
+      "tactic": "Credential Access",
+      "target_component": "OAuthProxy",
+      "entry_point": "OAuth login and authentication endpoint",
+      "impact": "Account takeover leading to unauthorized integration actions",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Rate limiting exists but distributed credential attempts are not fully blocked."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1565",
+      "technique_name": "Data Manipulation",
+      "tactic": "Impact",
+      "target_component": "EventQueue",
+      "entry_point": "Ingress-to-integration boundary via a compromised webhook or OAuth session",
+      "impact": "Poisoned events processed by Transformer, corrupting IntegrationDB and downstream integrations",
+      "likelihood": "Medium",
+      "likelihood_rationale": "The queue is internal but accepts messages from ingress components with only partial schema validation."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1213",
+      "technique_name": "Data from Information Repositories",
+      "tactic": "Collection",
+      "target_component": "IntegrationDB",
+      "entry_point": "Data layer reached through Transformer processing of untrusted event payloads",
+      "impact": "Exfiltration of confidential integration records from IntegrationDB",
+      "likelihood": "High",
+      "likelihood_rationale": "Transformer consumes untrusted payloads and the database role has broad read access."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1070",
+      "technique_name": "Indicator Removal",
+      "tactic": "Defense Evasion",
+      "target_component": "AuditLog",
+      "entry_point": "Integration-to-data boundary via compromised Transformer or an insider with audit log write/delete permissions",
+      "impact": "Attacker clears or alters audit events to evade detection",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Audit log is append-only by policy, but deletion permissions are overgranted."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1499",
+      "technique_name": "Endpoint Denial of Service",
+      "tactic": "Impact",
+      "target_component": "RateLimiter",
+      "entry_point": "OAuthProxy and webhook ingress request paths",
+      "impact": "Resource exhaustion and denial of event processing availability",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Rate limiting is per-client but not global, and unauthenticated webhook bursts are possible."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1557",
+      "technique_name": "Adversary-in-the-Middle",
+      "tactic": "Credential Access",
+      "target_component": "WebhookReceiver",
+      "entry_point": "Network path between External SaaS and webhook ingress",
+      "impact": "Capture of webhook secrets and confidential payloads in transit",
+      "likelihood": "Low",
+      "likelihood_rationale": "TLS is enforced, but certificate validation and pinning are not verified across all paths."
+    },
+    {
+      "path_id": "AP-009",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "IntegrationDB",
+      "entry_point": "Insider operator session using legitimate database credentials",
+      "impact": "Exfiltration or modification of confidential integration records and audit data",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Operators have broad database access, and audit review is periodic rather than real-time."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Webhook HMAC signature validation and replay protection",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "OAuth token binding, short expiry, and audience validation",
+      "addresses_technique": [
+        "T1528"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Adaptive rate limiting and account lockout",
+      "addresses_technique": [
+        "T1110",
+        "T1499"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.DS-6",
+      "control_name": "Queue message signing, schema validation, and encryption",
+      "addresses_technique": [
+        "T1565"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Database least privilege and parameterized queries",
+      "addresses_technique": [
+        "T1213"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "Immutable audit logging and tamper detection",
+      "addresses_technique": [
+        "T1070"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "TLS 1.2+ enforcement, HSTS, and certificate validation",
+      "addresses_technique": [
+        "T1557"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF PR.DS-5",
+      "control_name": "Data loss prevention and egress monitoring for integration data",
+      "addresses_technique": [
+        "T1078",
+        "T1213"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "An internet-facing webhook with partial signature validation can accept forged events that reach the event queue.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "WebhookReceiver",
+        "EventQueue"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "OAuth token theft enables impersonation of an integration user because tokens are not tightly bound to client context.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "OAuthProxy"
+      ],
+      "linked_techniques": [
+        "T1528"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Credential guessing is partially throttled, but distributed attempts can still lead to OAuth account takeover.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "OAuthProxy"
+      ],
+      "linked_techniques": [
+        "T1110"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Queue poisoning can corrupt downstream integration data and persist malicious state in the data layer.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "EventQueue",
+        "Transformer",
+        "IntegrationDB"
+      ],
+      "linked_techniques": [
+        "T1565"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Critical",
+      "severity_rationale": "Untrusted event payloads processed by Transformer with broad database read access can expose confidential integration data.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Transformer",
+        "IntegrationDB"
+      ],
+      "linked_techniques": [
+        "T1213"
+      ],
+      "linked_mitigations": [
+        "M-005",
+        "M-008"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "Audit log tampering can hide other attacks, but requires elevated privileges and is partially detected.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "AuditLog"
+      ],
+      "linked_techniques": [
+        "T1070"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Medium",
+      "severity_rationale": "Rate limiter bypass can degrade event processing availability, though service remains partially available.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+      "affected_components": [
+        "RateLimiter",
+        "EventQueue"
+      ],
+      "linked_techniques": [
+        "T1499"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Medium",
+      "severity_rationale": "TLS is enforced, but gaps in certificate validation could expose webhook payloads in transit.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "WebhookReceiver",
+        "ExternalSaaS"
+      ],
+      "linked_techniques": [
+        "T1557"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "High",
+      "severity_rationale": "An insider with valid database credentials can exfiltrate or alter confidential records and audit data.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "IntegrationDB",
+        "AuditLog"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-008",
+        "M-006"
+      ],
+      "remediation_priority": "Immediate"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "United States",
+      "European Union"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "ISO/IEC 27001",
+      "GDPR"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "External SaaS provider",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "OAuth identity provider",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Cloud infrastructure provider",
+        "trust_tier": "trusted"
+      }
+    ]
+  }
+}

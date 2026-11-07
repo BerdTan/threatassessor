@@ -1,0 +1,766 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t3_multicloud_data",
+  "produced_by": "deepseek_flash v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "kinesis_producer",
+        "role": "data source \u2014 AWS Kinesis stream producer feeding the platform",
+        "trust_zone": "external-aws-producer-account"
+      },
+      {
+        "id": "pubsub_connector",
+        "role": "ingress connector \u2014 GCP Pub/Sub to Kafka bridge across clouds",
+        "trust_zone": "external-gcp-project"
+      },
+      {
+        "id": "sftp_ingest",
+        "role": "ingress gateway \u2014 managed file transfer endpoint for partner drops",
+        "trust_zone": "dmz-partner-edge"
+      },
+      {
+        "id": "api_webhook",
+        "role": "ingress \u2014 public HTTPS webhook receiver for event callbacks",
+        "trust_zone": "dmz-internet-edge"
+      },
+      {
+        "id": "kafka_cluster",
+        "role": "data store / message broker \u2014 transient event bus and transport",
+        "trust_zone": "ingestion-vpc"
+      },
+      {
+        "id": "schema_registry",
+        "role": "data store \u2014 event schema and contract metadata",
+        "trust_zone": "ingestion-vpc"
+      },
+      {
+        "id": "kafka_connect",
+        "role": "compute \u2014 connector workers executing third-party plugins",
+        "trust_zone": "ingestion-vpc"
+      },
+      {
+        "id": "flink_cluster",
+        "role": "compute \u2014 stateful stream processing and enrichment",
+        "trust_zone": "processing-vpc"
+      },
+      {
+        "id": "spark_batch",
+        "role": "compute \u2014 batch processing and raw-to-curated promotion",
+        "trust_zone": "processing-vpc"
+      },
+      {
+        "id": "data_quality_checker",
+        "role": "compute \u2014 validation, thresholding and promotion gate",
+        "trust_zone": "processing-vpc"
+      },
+      {
+        "id": "data_lake_raw",
+        "role": "data store \u2014 object storage raw zone (immutable landing)",
+        "trust_zone": "storage-raw-account"
+      },
+      {
+        "id": "data_lake_curated",
+        "role": "data store \u2014 object storage curated zone (modelled, de-identified)",
+        "trust_zone": "storage-curated-account"
+      },
+      {
+        "id": "data_warehouse",
+        "role": "data store \u2014 MPP warehouse for analytics marts",
+        "trust_zone": "storage-analytics-vpc"
+      },
+      {
+        "id": "feature_store",
+        "role": "data store \u2014 online/offline ML feature tables",
+        "trust_zone": "serving-vpc"
+      },
+      {
+        "id": "ml_model_registry",
+        "role": "control plane / data store \u2014 model artifact and version registry",
+        "trust_zone": "serving-vpc"
+      },
+      {
+        "id": "ml_serving_endpoint",
+        "role": "compute \u2014 inference API serving registered models",
+        "trust_zone": "serving-edge"
+      },
+      {
+        "id": "bi_dashboard",
+        "role": "egress / consumer \u2014 BI dashboards and export surface",
+        "trust_zone": "serving-edge"
+      },
+      {
+        "id": "data_catalog",
+        "role": "control plane \u2014 metadata, lineage and access classification",
+        "trust_zone": "platform-services"
+      },
+      {
+        "id": "airflow_orchestrator",
+        "role": "control plane \u2014 DAG scheduling and job submission with data-plane credentials",
+        "trust_zone": "platform-services"
+      },
+      {
+        "id": "iam_service",
+        "role": "control plane \u2014 identity, STS token issuance and cross-account roles",
+        "trust_zone": "platform-services"
+      }
+    ],
+    "trust_boundaries": [
+      "TB-1: Internet/untrusted partners -> DMZ ingress edge (api_webhook, sftp_ingest)",
+      "TB-2: External data sources (kinesis_producer, pubsub_connector) -> ingestion tier (kafka_cluster, kafka_connect)",
+      "TB-3: Ingestion tier (kafka_cluster, kafka_connect) -> processing tier (flink_cluster, spark_batch, data_quality_checker)",
+      "TB-4: Processing tier -> storage raw zone (data_lake_raw)",
+      "TB-5: Raw zone -> curated zone / warehouse / feature store promotion boundary (data_lake_raw -> data_lake_curated -> data_warehouse, feature_store)",
+      "TB-6: Storage tier -> serving tier (feature_store, data_warehouse -> ml_model_registry, ml_serving_endpoint, bi_dashboard)",
+      "TB-7: Platform control plane (iam_service, airflow_orchestrator, data_catalog) -> all data-plane tiers",
+      "TB-8: AWS account <-> GCP project cross-cloud link (pubsub_connector -> kafka_cluster)",
+      "TB-9: Serving tier -> external consumers (ml_serving_endpoint API clients, bi_dashboard users)"
+    ],
+    "data_classification": "restricted",
+    "operational_context": "Multi-cloud (AWS primary data plane + GCP source project) managed data platform: streaming and batch ingestion, medallion lake (raw/curated), warehouse, feature store and ML serving, orchestrated by Airflow with a central IAM control plane. Raw zone holds customer PII and partner financial records; curated zone and feature store hold de-identified but re-identifiable data. Serving tier exposes an inference API and BI dashboards to internal users and authenticated external API clients."
+  },
+  "threat_actors": [
+    {
+      "name": "Opportunistic external attacker / commodity botnet operator",
+      "motivation": "Low-effort monetisation: credential stuffing against the webhook and SFTP edges, scanning for exposed storage, cryptomining or data resale",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Internet-exposed api_webhook and partner sftp_ingest; leaked access keys found in public repositories",
+      "non_capabilities": [
+        "No zero-day development budget; relies on public exploits and default/leaked credentials",
+        "No physical access to datacentres or insider knowledge of internal schema and role names",
+        "Cannot defeat enforced MFA or workload-identity federation on the IAM control plane",
+        "No ability to sign or forge model artifacts accepted by the registry",
+        "No persistence capability against immutable, object-locked storage buckets"
+      ]
+    },
+    {
+      "name": "Motivated data broker / organised fraud group",
+      "motivation": "Bulk exfiltration and resale of customer PII and partner financial records; model evasion to enable downstream fraud",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Phishing a data engineer for cross-cloud static keys, then using the platform's own processing tier to reach the lake and feature store",
+      "non_capabilities": [
+        "No nation-state-grade network implant on the cloud interconnect; TLS interception requires a compromised proxy",
+        "Cannot obtain insider approval to merge a DAG or connector plugin into the production repository",
+        "Limited budget for model-extraction campaigns against a rate-limited inference API",
+        "No ability to disable cross-region backup replication or object lock retention",
+        "Cannot compel a third-party SaaS provider (BI vendor, connector marketplace) to act on their behalf"
+      ]
+    },
+    {
+      "name": "Malicious or negligent insider (data engineer / analyst with production access)",
+      "motivation": "Financial gain from data sale, sabotage after notice, or reckless handling of production data for convenience",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate DAG authoring rights in airflow_orchestrator, warehouse query access, or BI export permissions",
+      "non_capabilities": [
+        "Cannot bypass break-glass approval for deleting object-locked curated prefixes",
+        "No access to the cloud root accounts or to KMS key policy administration",
+        "Cannot alter immutable raw-zone objects once written (write-once retention)",
+        "Actions in the control plane are logged to an append-only audit trail they cannot edit",
+        "No ability to modify model artifacts without a second reviewer approving the registry promotion"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "api_webhook",
+      "entry_point": "Public HTTPS webhook endpoint on the internet edge (TB-1)",
+      "impact": "Foothold inside the ingestion edge; forged events injected into kafka_cluster and propagated through processing into curated data and models",
+      "likelihood": "High",
+      "likelihood_rationale": "The endpoint is internet-reachable, parses attacker-controlled payloads with custom code, and no WAF/rate limit is confirmed in front of it."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1133",
+      "technique_name": "External Remote Services",
+      "tactic": "Initial Access",
+      "target_component": "sftp_ingest",
+      "entry_point": "Partner SFTP endpoint reachable from the internet with shared accounts (TB-1)",
+      "impact": "Attacker-supplied files are treated as trusted partner data by kafka_connect and enter the lake; persistent ingestion-tier foothold",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Partner onboarding uses long-lived shared SFTP credentials and IP allowlisting is only partially enforced."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "iam_service",
+      "entry_point": "Long-lived cloud access keys leaked from CI/CD or a developer workstation, replayed against IAM/STS (TB-7)",
+      "impact": "Cross-account access to data_lake_raw, data_lake_curated, data_warehouse and Kafka control plane; full data-plane compromise from a single credential",
+      "likelihood": "High",
+      "likelihood_rationale": "Static cross-cloud automation keys exist with no enforced rotation and no MFA requirement for programmatic sessions."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1195.002",
+      "technique_name": "Compromise Software Supply Chain: Compromise Software Supply Chain",
+      "tactic": "Initial Access",
+      "target_component": "kafka_connect",
+      "entry_point": "Third-party Kafka Connect connector plugin pulled from a public marketplace into the ingestion runtime (TB-2)",
+      "impact": "Code execution inside the ingestion VPC under the connector service account, with persistence across task restarts",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Connector plugins are version-pinned but not signature-verified, and marketplace artifacts are pulled from an untrusted tier."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1059",
+      "technique_name": "Command and Scripting Interpreter",
+      "tactic": "Execution",
+      "target_component": "airflow_orchestrator",
+      "entry_point": "DAG authoring rights or a hijacked Airflow UI session in platform services (TB-7)",
+      "impact": "Arbitrary Python execution on workers holding data-plane credentials; ability to tamper with every downstream processing job",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Airflow is a credentialed control plane and the DAG repository is broadly writable by the data engineering group, with review only informally enforced."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1021",
+      "technique_name": "Remote Services",
+      "tactic": "Lateral Movement",
+      "target_component": "flink_cluster",
+      "entry_point": "Compromised ingestion container reaching Flink TaskManagers over a flat east-west network (TB-3)",
+      "impact": "Lateral movement from the ingestion tier into the processing tier; streaming state and job credentials exposed",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Ingestion and processing share VPC peering with broad east-west rules and no mTLS between tiers."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1530",
+      "technique_name": "Data from Cloud Storage Object",
+      "tactic": "Collection",
+      "target_component": "data_lake_raw",
+      "entry_point": "Over-permissive bucket policy exploited with a compute role obtained via AP-003 or AP-005 (TB-4)",
+      "impact": "Bulk exfiltration of raw PII and partner financial records at rest",
+      "likelihood": "High",
+      "likelihood_rationale": "The raw zone is readable by broad analyst and pipeline roles and there is no data-perimeter restriction to trusted VPCs."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1565.001",
+      "technique_name": "Data Manipulation: Stored Data Manipulation",
+      "tactic": "Impact",
+      "target_component": "data_lake_curated",
+      "entry_point": "Write access to curated-zone Spark jobs or to data_quality_checker promotion thresholds (TB-5)",
+      "impact": "Silent corruption of curated datasets feeding the warehouse, feature store and models; fraudulent downstream business decisions",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Curated writes are performed by multiple overlapping jobs and quality thresholds are editable by job owners, with only partial integrity checks."
+    },
+    {
+      "path_id": "AP-009",
+      "technique_id": "T1485",
+      "technique_name": "Data Destruction",
+      "tactic": "Impact",
+      "target_component": "data_lake_curated",
+      "entry_point": "Compromised role with delete permissions on curated-zone prefixes (TB-5)",
+      "impact": "Loss of curated datasets, blocking warehouse refresh, feature generation and model retraining",
+      "likelihood": "Low",
+      "likelihood_rationale": "Object lock/versioning and cross-region replication are implemented, materially limiting destructive blast radius."
+    },
+    {
+      "path_id": "AP-010",
+      "technique_id": "T1557",
+      "technique_name": "Adversary-in-the-Middle",
+      "tactic": "Collection",
+      "target_component": "kafka_cluster",
+      "entry_point": "Cross-cloud GCP Pub/Sub to AWS Kafka transport traversing a shared interconnect/egress proxy (TB-8)",
+      "impact": "Interception or modification of data in transit, plus capture of SASL/API credentials used by the bridge",
+      "likelihood": "Low",
+      "likelihood_rationale": "Most hops use TLS, but one connector still negotiates SASL_PLAINTEXT and a legacy proxy terminates TLS without pinning."
+    },
+    {
+      "path_id": "AP-011",
+      "technique_id": "T1567",
+      "technique_name": "Exfiltration Over Web Service",
+      "tactic": "Exfiltration",
+      "target_component": "data_warehouse",
+      "entry_point": "Compromised BI analyst account or dashboard service principal exporting warehouse marts (TB-9)",
+      "impact": "Exfiltration of aggregated customer and commercial data to attacker-controlled cloud storage outside the trust boundary",
+      "likelihood": "Medium",
+      "likelihood_rationale": "BI export to cloud storage is permitted by design and warehouse-level egress filtering or DLP on exports is not enforced."
+    },
+    {
+      "path_id": "AP-012",
+      "technique_id": "AML.T0010",
+      "technique_name": "ML Supply Chain Compromise",
+      "tactic": "Initial Access",
+      "target_component": "ml_model_registry",
+      "entry_point": "Unsigned model artifact or poisoned dependency promoted from a public hub or compromised data-science workstation (TB-6)",
+      "impact": "Backdoored model served by ml_serving_endpoint producing attacker-chosen outputs for trigger inputs, while behaving normally otherwise",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Model artifacts are versioned but not cryptographically signed, and dependencies are pulled from untrusted public hubs without provenance attestation."
+    },
+    {
+      "path_id": "AP-013",
+      "technique_id": "AML.T0024",
+      "technique_name": "Exfiltration via ML Inference API",
+      "tactic": "Exfiltration",
+      "target_component": "ml_serving_endpoint",
+      "entry_point": "Weakly authenticated scoring API reachable by external clients with high-volume queries (TB-9)",
+      "impact": "Model inversion and membership inference recovering sensitive feature_store attributes present in training data",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Query quotas exist but responses return confidence scores that aid inversion and there is no per-client anomaly detection."
+    },
+    {
+      "path_id": "AP-014",
+      "technique_id": "AML.T0015",
+      "technique_name": "Evade ML Model",
+      "tactic": "Defense Evasion",
+      "target_component": "ml_serving_endpoint",
+      "entry_point": "Adversarially crafted records injected via api_webhook/kafka and carried through feature_store into inference (TB-6)",
+      "impact": "Fraud and abuse detection bypassed at inference time; crafted features persist in the feature store affecting future scoring",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Only statistical drift checks exist in data_quality_checker; no adversarial-input detection or per-record anomaly gating is applied before scoring."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.PT-4",
+      "control_name": "Boundary protection for the public webhook: WAF, strict JSON/schema validation, request signing and per-source rate limiting",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Remote access management for partner file transfer: per-partner keys, source-IP allowlisting, MFA-backed portal and session logging",
+      "addresses_technique": [
+        "T1133"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Identity and credential lifecycle: eliminate static keys in favour of short-lived workload identity, enforce rotation and MFA for privileged roles",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 16.11",
+      "control_name": "Leverage vetted modules and services: connector allowlist, signed images (cosign) and admission control rejecting unverified plugins",
+      "addresses_technique": [
+        "T1195.002"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.MA-1",
+      "control_name": "Controlled maintenance of orchestration assets: Airflow RBAC, protected DAG branch with mandatory review, sandboxed and least-privilege workers",
+      "addresses_technique": [
+        "T1059"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.AC-5",
+      "control_name": "Network integrity and segmentation: deny-by-default security groups between ingestion and processing, mTLS between tiers, no flat east-west path",
+      "addresses_technique": [
+        "T1021"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Data-at-rest protection for the raw zone: deny-by-default bucket policies, SSE-KMS with per-zone keys, VPC-endpoint-only access and sensitive-data discovery scanning",
+      "addresses_technique": [
+        "T1530"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF PR.DS-6",
+      "control_name": "Integrity checking for curated data: table-format snapshots, row-count and checksum reconciliation, immutable raw zone and change review on quality thresholds",
+      "addresses_technique": [
+        "T1565.001"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "NIST CSF PR.IP-4",
+      "control_name": "Backups with immutability: object lock retention on curated prefixes, cross-region replication and tested restore runbooks",
+      "addresses_technique": [
+        "T1485"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Data-in-transit protection: TLS 1.2+ and mTLS on all Kafka and cross-cloud hops, private interconnect, removal of SASL_PLAINTEXT and certificate pinning on the bridge",
+      "addresses_technique": [
+        "T1557"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-011",
+      "control_id": "NIST CSF PR.DS-5",
+      "control_name": "Protection against data leaks: warehouse/BI egress filtering, DLP on bulk exports, approved-destination allowlist and export volume alerting",
+      "addresses_technique": [
+        "T1567"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-012",
+      "control_id": "NIST CSF PR.DS-6",
+      "control_name": "ML artifact integrity: model signing and SBOM verification, trusted-registry-only pulls and dual-approval promotion into ml_model_registry",
+      "addresses_technique": [
+        "AML.T0010"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-013",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Inference API abuse control: authenticated per-client quotas, output minimisation (coarse confidence bands) and query-pattern anomaly detection",
+      "addresses_technique": [
+        "AML.T0024"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-014",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "Continuous monitoring for model inputs: feature-distribution drift detection, adversarial-input screening in data_quality_checker and per-record anomaly gating before scoring",
+      "addresses_technique": [
+        "AML.T0015"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Internet-reachable parsing endpoint with attacker-controlled payloads gives a straightforward path into the ingestion tier, though only partial confidentiality and availability impact is expected initially.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:L",
+      "affected_components": [
+        "api_webhook",
+        "kafka_cluster"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Shared long-lived partner SFTP credentials grant authenticated write access to a pipeline that treats uploaded files as trusted, yielding high integrity impact on downstream data.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L",
+      "affected_components": [
+        "sftp_ingest",
+        "kafka_connect"
+      ],
+      "linked_techniques": [
+        "T1133"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Critical",
+      "severity_rationale": "A single leaked static key yields cross-account access spanning raw, curated, warehouse and Kafka control plane, so one credential compromises the entire data platform.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "iam_service",
+        "data_lake_raw",
+        "data_lake_curated",
+        "data_warehouse"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Unsigned third-party connector code executes inside the ingestion VPC under a service account with broker and storage reachability, and the high attack complexity is offset by full post-exploitation impact.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "kafka_connect",
+        "schema_registry"
+      ],
+      "linked_techniques": [
+        "T1195.002"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "Airflow workers hold broad data-plane credentials, so a single privileged DAG-author account yields code execution and control over all processing jobs; privileged-only access keeps it below Critical.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "airflow_orchestrator",
+        "spark_batch",
+        "flink_cluster"
+      ],
+      "linked_techniques": [
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "Flat east-west networking permits pivot from ingestion into processing, but the pivot requires an existing foothold and yields limited confidentiality and integrity impact within one VPC.",
+      "severity_vector": "CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "flink_cluster",
+        "kafka_connect"
+      ],
+      "linked_techniques": [
+        "T1021"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "High",
+      "severity_rationale": "The raw zone holds restricted PII readable by broad pipeline and analyst roles over any network path, making bulk collection of data at rest a high-impact, low-complexity objective.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N",
+      "affected_components": [
+        "data_lake_raw"
+      ],
+      "linked_techniques": [
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "High",
+      "severity_rationale": "Tampering at the curated promotion boundary silently corrupts warehouse, feature store and model inputs, producing high integrity and confidentiality impact that is difficult to detect and reverse.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "data_lake_curated",
+        "data_quality_checker",
+        "spark_batch",
+        "feature_store"
+      ],
+      "linked_techniques": [
+        "T1565.001"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "Medium",
+      "severity_rationale": "Destructive action on curated prefixes would disrupt analytics and retraining, but implemented object lock, versioning and cross-region replication reduce availability impact to a recoverable outage.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:N/I:H/A:H",
+      "affected_components": [
+        "data_lake_curated"
+      ],
+      "linked_techniques": [
+        "T1485"
+      ],
+      "linked_mitigations": [
+        "M-009"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-010",
+      "severity": "Medium",
+      "severity_rationale": "A partially unencrypted cross-cloud hop exposes data in transit, but the low likelihood of positioned interception and the confidentiality-only impact keep the rating at medium.",
+      "severity_vector": "CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "kafka_cluster",
+        "pubsub_connector"
+      ],
+      "linked_techniques": [
+        "T1557"
+      ],
+      "linked_mitigations": [
+        "M-010"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-011",
+      "severity": "High",
+      "severity_rationale": "The BI export path deliberately permits bulk movement of warehouse data to external cloud storage, so a compromised analyst or service principal can exfiltrate aggregated commercial data with low effort.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N",
+      "affected_components": [
+        "data_warehouse",
+        "bi_dashboard"
+      ],
+      "linked_techniques": [
+        "T1567"
+      ],
+      "linked_mitigations": [
+        "M-011"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-012",
+      "severity": "High",
+      "severity_rationale": "An unsigned backdoored model served to production clients gives an attacker durable, scoped control over automated decisions while metrics remain normal, with cross-boundary impact into serving consumers.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "ml_model_registry",
+        "ml_serving_endpoint",
+        "feature_store"
+      ],
+      "linked_techniques": [
+        "AML.T0010"
+      ],
+      "linked_mitigations": [
+        "M-012"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-013",
+      "severity": "Medium",
+      "severity_rationale": "Inference API extraction requires sustained high-volume querying and yields only aggregate leakage of training features, so partial rate limiting and output granularity keep the rating at medium.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "ml_serving_endpoint",
+        "feature_store"
+      ],
+      "linked_techniques": [
+        "AML.T0024"
+      ],
+      "linked_mitigations": [
+        "M-013"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-014",
+      "severity": "Medium",
+      "severity_rationale": "Crafted inputs can evade the served model and persist in the feature store, but the effect is bounded to decision quality on a single model family and requires specificity about model behaviour.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "ml_serving_endpoint",
+        "feature_store",
+        "data_quality_checker"
+      ],
+      "linked_techniques": [
+        "AML.T0015"
+      ],
+      "linked_mitigations": [
+        "M-014"
+      ],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "United States (AWS primary data plane, us-east-1)",
+      "European Union (Ireland \u2014 GCP source project and EU-resident partner data)"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "ISO/IEC 27001:2022",
+      "GDPR",
+      "CCPA/CPRA"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "AWS Kinesis (upstream producer stream)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Google Cloud Pub/Sub (cross-cloud ingestion bridge)",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Kafka Connect connector marketplace / public plugin artifacts",
+        "trust_tier": "untrusted"
+      },
+      {
+        "name": "Public model hub (pre-trained model and library artifacts)",
+        "trust_tier": "untrusted"
+      },
+      {
+        "name": "External partner SFTP senders",
+        "trust_tier": "untrusted"
+      },
+      {
+        "name": "SaaS BI vendor and cloud-storage export destinations",
+        "trust_tier": "conditional"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "supervised",
+      "tool_call_scope": [
+        "ml_serving_endpoint inference API (score/classify call, read-only)",
+        "feature_store online lookup (read-only)",
+        "ml_model_registry artifact pull at deploy time",
+        "airflow_orchestrator triggered retraining job submission (human-approved DAG run)"
+      ],
+      "blast_radius": "No autonomous tool-calling agent exists; automation is limited to scheduled Airflow jobs and model inference. An uncontrolled run could affect: curated and feature-store data integrity for downstream models, decisions emitted by ml_serving_endpoint to external API clients, and compute cost across the processing tier. It cannot directly mutate IAM policy, delete object-locked raw data, or invoke external third-party APIs.",
+      "human_oversight_points": [
+        "Data engineer review and merge approval for every Airflow DAG and connector configuration change",
+        "Dual approval required to promote a model artifact into ml_model_registry and to the serving endpoint",
+        "Analyst-confirmed review of BI exports above threshold volume",
+        "Break-glass approval workflow for any deletion or retention change on curated-zone prefixes"
+      ],
+      "model_provenance": {
+        "provider": "Internal MLOps platform (open-source base: XGBoost / scikit-learn)",
+        "model_id": "risk-scoring-v3.2",
+        "fine_tuned": true
+      }
+    }
+  }
+}

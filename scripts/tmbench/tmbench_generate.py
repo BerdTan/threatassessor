@@ -71,11 +71,14 @@ TOOL_CONFIGS = {
         "provider": "openrouter",
         "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
         "env_key": "OPENROUTER_API_KEY",
+        "max_tokens": 24000,
     },
     "deepseek_flash": {
         "provider": "openrouter",
         "model": "openrouter/deepseek/deepseek-v4.1-flash-1017",
         "env_key": "OPENROUTER_API_KEY",
+        "max_tokens": 24000,  # 14000 truncates t3/t4 arches → incomplete JSON
+        "strip_thinking": True,  # deepseek may emit <think>...</think> before JSON
     },
     "ta_v3": {
         "provider": "ta_api",
@@ -172,18 +175,21 @@ def call_llm_client(tool: str, arch_id: str, dry_run: bool = False) -> dict | No
             system_message=system,
             provider=provider,
             model=config["model"],
-            max_tokens=14000,
+            max_tokens=config.get("max_tokens", 14000),
             temperature=0.1,
             **extra_kwargs,
         )
         raw = resp.content.strip()
+        # Strip <think>...</think> blocks (deepseek and similar reasoning models)
+        import re as _re
+        if config.get("strip_thinking"):
+            raw = _re.sub(r'<think>.*?</think>', '', raw, flags=_re.DOTALL).strip()
         # Strip markdown fences if present
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1]
             if raw.endswith("```"):
                 raw = raw.rsplit("```", 1)[0]
         # Extract JSON object (skip any thinking prefix)
-        import re as _re
         m = _re.search(r'\{.*\}', raw, _re.DOTALL)
         if not m:
             print(f"  [error] no JSON found in response for {arch_id}", file=sys.stderr)

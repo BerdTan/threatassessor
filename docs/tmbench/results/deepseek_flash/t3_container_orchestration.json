@@ -1,0 +1,902 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t3_container_orchestration",
+  "produced_by": "deepseek_flash v1.0 v1.0",
+  "produced_at": "2026-11-01T00:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "internet",
+        "role": "external network",
+        "trust_zone": "External"
+      },
+      {
+        "id": "developer",
+        "role": "human/CI deployment actor",
+        "trust_zone": "External/Corporate"
+      },
+      {
+        "id": "container_registry",
+        "role": "data store",
+        "trust_zone": "Registry"
+      },
+      {
+        "id": "image_scanner",
+        "role": "compute/security scanner",
+        "trust_zone": "Registry"
+      },
+      {
+        "id": "k8s_api_server",
+        "role": "control plane API",
+        "trust_zone": "Control Plane"
+      },
+      {
+        "id": "etcd",
+        "role": "data store",
+        "trust_zone": "Control Plane"
+      },
+      {
+        "id": "controller_manager",
+        "role": "control plane controller",
+        "trust_zone": "Control Plane"
+      },
+      {
+        "id": "scheduler",
+        "role": "control plane scheduler",
+        "trust_zone": "Control Plane"
+      },
+      {
+        "id": "admission_controller",
+        "role": "policy enforcement",
+        "trust_zone": "Control Plane"
+      },
+      {
+        "id": "rbac_engine",
+        "role": "authorization",
+        "trust_zone": "Control Plane"
+      },
+      {
+        "id": "worker_node_a",
+        "role": "compute",
+        "trust_zone": "Worker Nodes"
+      },
+      {
+        "id": "worker_node_b",
+        "role": "compute",
+        "trust_zone": "Worker Nodes"
+      },
+      {
+        "id": "kubelet",
+        "role": "node agent",
+        "trust_zone": "Worker Nodes"
+      },
+      {
+        "id": "container_runtime",
+        "role": "compute runtime",
+        "trust_zone": "Worker Nodes"
+      },
+      {
+        "id": "ingress_controller",
+        "role": "ingress",
+        "trust_zone": "Networking"
+      },
+      {
+        "id": "service_mesh_proxy",
+        "role": "network proxy",
+        "trust_zone": "Networking"
+      },
+      {
+        "id": "network_policy_engine",
+        "role": "network policy",
+        "trust_zone": "Networking"
+      },
+      {
+        "id": "persistent_volume_controller",
+        "role": "storage controller",
+        "trust_zone": "Storage"
+      },
+      {
+        "id": "secret_store",
+        "role": "data store",
+        "trust_zone": "Storage"
+      },
+      {
+        "id": "prometheus",
+        "role": "observability",
+        "trust_zone": "Observability"
+      },
+      {
+        "id": "log_aggregator",
+        "role": "observability",
+        "trust_zone": "Observability"
+      }
+    ],
+    "trust_boundaries": [
+      "Internet to Ingress Controller",
+      "Developer/CI to K8s API Server and Container Registry",
+      "Container Registry to Image Scanner to K8s API Server",
+      "Kubernetes Control Plane to Worker Nodes",
+      "Worker Nodes to Secret Store",
+      "Cluster Networking to Worker Nodes",
+      "Observability to Control Plane and Worker Nodes",
+      "Persistent Volume Controller to Worker Nodes"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted Kubernetes cluster with CI/CD, container registry, service mesh, and observability; production workload orchestration."
+  },
+  "threat_actors": [
+    {
+      "name": "External opportunistic attacker",
+      "motivation": "Financial gain through data theft, cryptomining, or ransomware",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Internet-exposed ingress controller or leaked developer credentials",
+      "non_capabilities": [
+        "No physical access to datacenter or worker nodes",
+        "No pre-existing insider knowledge of cluster configuration",
+        "No zero-day budget for Kubernetes or container runtime exploits",
+        "No initial control plane or etcd credentials",
+        "No ability to write to container registry without supply chain compromise"
+      ]
+    },
+    {
+      "name": "Malicious insider or compromised CI developer",
+      "motivation": "Sabotage, data exfiltration, or unauthorized workload deployment",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Valid developer or CI/CD credentials to K8s API Server and container registry",
+      "non_capabilities": [
+        "No physical access to control plane hosts",
+        "No ability to bypass all audit logging without detection",
+        "No nation-state-level resources or zero-day exploits",
+        "No direct etcd access without first compromising control plane",
+        "No unrestricted cluster-admin rights unless explicitly granted"
+      ]
+    },
+    {
+      "name": "Compromised third-party image scanner",
+      "motivation": "Supply chain persistence and false security approval",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Compromised scanner update or registry integration credentials",
+      "non_capabilities": [
+        "No direct network access to worker nodes",
+        "No Kubernetes admin credentials by default",
+        "No ability to persist in etcd without API access",
+        "No physical access to registry storage",
+        "No ability to modify signed images without registry write access"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "P-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "ingress_controller",
+      "entry_point": "Internet to ingress controller",
+      "impact": "Initial foothold in cluster network and potential access to backend services",
+      "likelihood": "High",
+      "likelihood_rationale": "Ingress controller exposes public endpoints and is a common initial access target."
+    },
+    {
+      "path_id": "P-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "k8s_api_server",
+      "entry_point": "Developer/CI credentials to K8s API Server",
+      "impact": "Control plane access with developer or CI permissions",
+      "likelihood": "Medium",
+      "likelihood_rationale": "CI and developer credentials are high-value and may be phished or leaked."
+    },
+    {
+      "path_id": "P-003",
+      "technique_id": "T1610",
+      "technique_name": "Deploy Container",
+      "tactic": "Execution",
+      "target_component": "k8s_api_server",
+      "entry_point": "Compromised CI pipeline or developer account",
+      "impact": "Malicious workload deployment into the cluster",
+      "likelihood": "Medium",
+      "likelihood_rationale": "CI pipelines commonly have deploy rights and can be abused if compromised."
+    },
+    {
+      "path_id": "P-004",
+      "technique_id": "T1525",
+      "technique_name": "Implant Internal Image",
+      "tactic": "Persistence",
+      "target_component": "container_registry",
+      "entry_point": "Compromised CI or registry write access",
+      "impact": "Backdoored image persists across deployments and compromises workloads",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Registry write access is restricted but CI compromise enables image tampering."
+    },
+    {
+      "path_id": "P-005",
+      "technique_id": "T1552",
+      "technique_name": "Unsecured Credentials",
+      "tactic": "Credential Access",
+      "target_component": "secret_store",
+      "entry_point": "Compromised pod or worker node",
+      "impact": "Theft of cluster secrets and service credentials",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Pods may mount secrets and node compromise can expose the secret store."
+    },
+    {
+      "path_id": "P-006",
+      "technique_id": "T1611",
+      "technique_name": "Escape to Host",
+      "tactic": "Privilege Escalation",
+      "target_component": "container_runtime",
+      "entry_point": "Compromised container",
+      "impact": "Node compromise and lateral movement to other workloads",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Container escapes require misconfiguration or runtime vulnerabilities but are high impact."
+    },
+    {
+      "path_id": "P-007",
+      "technique_id": "T1485",
+      "technique_name": "Data Destruction",
+      "tactic": "Impact",
+      "target_component": "etcd",
+      "entry_point": "Compromised control plane administrator",
+      "impact": "Cluster state loss and control plane outage",
+      "likelihood": "Low",
+      "likelihood_rationale": "etcd access requires control plane compromise but would cause severe disruption."
+    },
+    {
+      "path_id": "P-008",
+      "technique_id": "T1040",
+      "technique_name": "Network Sniffing",
+      "tactic": "Credential Access",
+      "target_component": "service_mesh_proxy",
+      "entry_point": "Compromised ingress, mesh proxy, or node network",
+      "impact": "Interception of service-to-service traffic and credentials",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Mesh traffic may be encrypted but misconfigured mTLS or node access enables sniffing."
+    },
+    {
+      "path_id": "P-009",
+      "technique_id": "T1071",
+      "technique_name": "Application Layer Protocol",
+      "tactic": "Command and Control",
+      "target_component": "service_mesh_proxy",
+      "entry_point": "Compromised pod",
+      "impact": "Command and control over allowed application protocols",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Egress controls may be incomplete and mesh traffic can blend with normal protocols."
+    },
+    {
+      "path_id": "P-010",
+      "technique_id": "T1562.001",
+      "technique_name": "Impair Defenses: Disable or Modify Tools",
+      "tactic": "Defense Evasion",
+      "target_component": "log_aggregator",
+      "entry_point": "Compromised observability component or worker node",
+      "impact": "Audit and log tampering that hides intrusion activity",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Log pipelines may be writable by compromised workloads or observability components."
+    },
+    {
+      "path_id": "P-011",
+      "technique_id": "T1496",
+      "technique_name": "Resource Hijacking",
+      "tactic": "Impact",
+      "target_component": "worker_node_a",
+      "entry_point": "Compromised container",
+      "impact": "Cryptomining or denial of service through resource exhaustion",
+      "likelihood": "High",
+      "likelihood_rationale": "Resource limits may be absent or permissive, making hijacking easy after compromise."
+    },
+    {
+      "path_id": "P-012",
+      "technique_id": "T1195",
+      "technique_name": "Supply Chain Compromise",
+      "tactic": "Initial Access",
+      "target_component": "image_scanner",
+      "entry_point": "Compromised scanner update or registry integration",
+      "impact": "False scan results and admission of malicious images",
+      "likelihood": "Low",
+      "likelihood_rationale": "Scanner compromise requires supply chain access but can bypass image security gates."
+    },
+    {
+      "path_id": "P-013",
+      "technique_id": "T1548",
+      "technique_name": "Abuse Elevation Control Mechanism",
+      "tactic": "Privilege Escalation",
+      "target_component": "rbac_engine",
+      "entry_point": "Compromised developer or service account",
+      "impact": "RBAC bypass and privilege escalation within the cluster",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Over-permissive roles or misconfigured bindings can allow privilege escalation."
+    },
+    {
+      "path_id": "P-014",
+      "technique_id": "T1021",
+      "technique_name": "Remote Services",
+      "tactic": "Lateral Movement",
+      "target_component": "kubelet",
+      "entry_point": "Compromised control plane or node",
+      "impact": "Remote command execution on worker nodes",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Kubelet APIs may be network-accessible if not restricted to the control plane."
+    },
+    {
+      "path_id": "P-015",
+      "technique_id": "T1552.007",
+      "technique_name": "Unsecured Credentials: Container API",
+      "tactic": "Credential Access",
+      "target_component": "kubelet",
+      "entry_point": "Compromised pod",
+      "impact": "Service account token theft via container API access",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Pods may reach kubelet or container APIs if network policies are not restrictive."
+    },
+    {
+      "path_id": "P-016",
+      "technique_id": "T1613",
+      "technique_name": "Container and Resource Discovery",
+      "tactic": "Discovery",
+      "target_component": "k8s_api_server",
+      "entry_point": "Compromised pod or service account",
+      "impact": "Enumeration of cluster resources and attack surface",
+      "likelihood": "High",
+      "likelihood_rationale": "Default service account tokens often allow basic discovery in Kubernetes clusters."
+    },
+    {
+      "path_id": "P-017",
+      "technique_id": "T1609",
+      "technique_name": "Container Administration Command",
+      "tactic": "Execution",
+      "target_component": "kubelet",
+      "entry_point": "Compromised node or exposed kubelet API",
+      "impact": "Command execution inside containers",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Kubelet exec endpoints are powerful and must be strictly restricted."
+    },
+    {
+      "path_id": "P-018",
+      "technique_id": "T1485",
+      "technique_name": "Data Destruction",
+      "tactic": "Impact",
+      "target_component": "persistent_volume_controller",
+      "entry_point": "Compromised storage controller or node",
+      "impact": "Persistent volume data loss and workload disruption",
+      "likelihood": "Low",
+      "likelihood_rationale": "Storage controller compromise requires cluster privileges but causes durable data loss."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Access control and least privilege for ingress",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Identity and credential management for CI/developer accounts",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 5.2",
+      "control_name": "Use least privilege for service accounts and deployment pipelines",
+      "addresses_technique": [
+        "T1610"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 7.1",
+      "control_name": "Image signing and registry write controls",
+      "addresses_technique": [
+        "T1525"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Secrets management and encryption at rest",
+      "addresses_technique": [
+        "T1552"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 4.1",
+      "control_name": "Container runtime hardening and seccomp/AppArmor",
+      "addresses_technique": [
+        "T1611"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.DS-5",
+      "control_name": "etcd encryption and backup protection",
+      "addresses_technique": [
+        "T1485"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "mTLS and network encryption for service mesh",
+      "addresses_technique": [
+        "T1040"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "CIS Control 9.2",
+      "control_name": "Egress filtering and application-layer firewall",
+      "addresses_technique": [
+        "T1071"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "NIST CSF PR.PT-1",
+      "control_name": "Centralized immutable logging and log integrity",
+      "addresses_technique": [
+        "T1562.001"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-011",
+      "control_id": "CIS Control 3.1",
+      "control_name": "Resource quotas and workload limits",
+      "addresses_technique": [
+        "T1496"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-012",
+      "control_id": "NIST CSF ID.SC-4",
+      "control_name": "Third-party scanner integrity verification and signed updates",
+      "addresses_technique": [
+        "T1195"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-013",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "RBAC least privilege and periodic review",
+      "addresses_technique": [
+        "T1548"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-014",
+      "control_id": "CIS Control 4.2",
+      "control_name": "Kubelet API authentication and network restriction",
+      "addresses_technique": [
+        "T1021"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-015",
+      "control_id": "CIS Control 5.1",
+      "control_name": "Disable automount service account tokens and restrict kubelet API",
+      "addresses_technique": [
+        "T1552.007"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-016",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Namespace isolation and minimal service account permissions",
+      "addresses_technique": [
+        "T1613"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-017",
+      "control_id": "CIS Control 4.3",
+      "control_name": "Disable kubelet exec and restrict admin endpoints",
+      "addresses_technique": [
+        "T1609"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-018",
+      "control_id": "NIST CSF PR.DS-5",
+      "control_name": "Persistent volume encryption and access controls",
+      "addresses_technique": [
+        "T1485"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Internet-exposed ingress with public endpoints gives unauthenticated attackers a realistic initial foothold.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:L",
+      "affected_components": [
+        "ingress_controller"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Valid CI/developer credentials provide direct control plane access and are a common target.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "k8s_api_server"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Compromised CI deploy rights allow malicious workloads to run with cluster trust.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "k8s_api_server",
+        "worker_node_a",
+        "worker_node_b"
+      ],
+      "linked_techniques": [
+        "T1610"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Registry write access is restricted but CI compromise enables persistent backdoored images.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "container_registry",
+        "image_scanner"
+      ],
+      "linked_techniques": [
+        "T1525"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Critical",
+      "severity_rationale": "Secret store compromise exposes cluster-wide credentials and can lead to full environment takeover.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "secret_store",
+        "container_runtime",
+        "worker_node_a",
+        "worker_node_b"
+      ],
+      "linked_techniques": [
+        "T1552"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "High",
+      "severity_rationale": "Container escape from a compromised workload can compromise the node and pivot laterally.",
+      "severity_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "container_runtime",
+        "kubelet",
+        "worker_node_a",
+        "worker_node_b"
+      ],
+      "linked_techniques": [
+        "T1611"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "High",
+      "severity_rationale": "etcd destruction requires control plane access but would cause cluster-wide state loss.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:N/I:H/A:H",
+      "affected_components": [
+        "etcd",
+        "k8s_api_server"
+      ],
+      "linked_techniques": [
+        "T1485"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "High",
+      "severity_rationale": "Service mesh traffic interception can expose confidential service-to-service data if mTLS is misconfigured.",
+      "severity_vector": "CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "service_mesh_proxy",
+        "network_policy_engine"
+      ],
+      "linked_techniques": [
+        "T1040"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "Medium",
+      "severity_rationale": "C2 over allowed application protocols is plausible but limited by egress controls.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "service_mesh_proxy"
+      ],
+      "linked_techniques": [
+        "T1071"
+      ],
+      "linked_mitigations": [
+        "M-009"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-010",
+      "severity": "Medium",
+      "severity_rationale": "Log tampering can hide intrusion activity but requires access to observability components.",
+      "severity_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "log_aggregator",
+        "prometheus"
+      ],
+      "linked_techniques": [
+        "T1562.001"
+      ],
+      "linked_mitigations": [
+        "M-010"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-011",
+      "severity": "Medium",
+      "severity_rationale": "Resource hijacking is likely without quotas but impact is limited to availability and cost.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": [
+        "worker_node_a",
+        "worker_node_b"
+      ],
+      "linked_techniques": [
+        "T1496"
+      ],
+      "linked_mitigations": [
+        "M-011"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-012",
+      "severity": "High",
+      "severity_rationale": "Scanner compromise can approve malicious images but requires high-privilege supply chain access.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "image_scanner",
+        "container_registry",
+        "k8s_api_server"
+      ],
+      "linked_techniques": [
+        "T1195"
+      ],
+      "linked_mitigations": [
+        "M-012"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-013",
+      "severity": "High",
+      "severity_rationale": "Over-permissive RBAC can let a compromised service account escalate privileges.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "rbac_engine",
+        "admission_controller"
+      ],
+      "linked_techniques": [
+        "T1548"
+      ],
+      "linked_mitigations": [
+        "M-013"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-014",
+      "severity": "High",
+      "severity_rationale": "Kubelet remote services can provide node-level command execution if network-exposed.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "kubelet",
+        "worker_node_a",
+        "worker_node_b"
+      ],
+      "linked_techniques": [
+        "T1021"
+      ],
+      "linked_mitigations": [
+        "M-014"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-015",
+      "severity": "High",
+      "severity_rationale": "Container API credential theft can expose service account tokens and enable lateral movement.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N",
+      "affected_components": [
+        "kubelet",
+        "container_runtime"
+      ],
+      "linked_techniques": [
+        "T1552.007"
+      ],
+      "linked_mitigations": [
+        "M-015"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-016",
+      "severity": "Medium",
+      "severity_rationale": "Discovery from a compromised pod is common but low direct impact.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N",
+      "affected_components": [
+        "k8s_api_server"
+      ],
+      "linked_techniques": [
+        "T1613"
+      ],
+      "linked_mitigations": [
+        "M-016"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-017",
+      "severity": "High",
+      "severity_rationale": "Kubelet exec endpoint allows command execution in containers and requires strict restriction.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "kubelet",
+        "container_runtime"
+      ],
+      "linked_techniques": [
+        "T1609"
+      ],
+      "linked_mitigations": [
+        "M-017"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-018",
+      "severity": "High",
+      "severity_rationale": "Persistent volume destruction requires storage controller access but causes durable data loss.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:N/I:H/A:H",
+      "affected_components": [
+        "persistent_volume_controller",
+        "worker_node_a",
+        "worker_node_b"
+      ],
+      "linked_techniques": [
+        "T1485"
+      ],
+      "linked_mitigations": [
+        "M-018"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US"
+    ],
+    "compliance_scope": [
+      "SOC 2",
+      "ISO 27001",
+      "PCI-DSS"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "Cloud provider managed Kubernetes control plane",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Container registry",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Image scanner",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "CI/CD system",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Service mesh proxy",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Observability stack",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Persistent volume storage backend",
+        "trust_tier": "trusted"
+      }
+    ]
+  }
+}

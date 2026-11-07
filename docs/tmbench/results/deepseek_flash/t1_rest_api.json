@@ -1,0 +1,314 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t1_rest_api",
+  "produced_by": "deepseek_flash v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Client",
+        "role": "API client / external user",
+        "trust_zone": "Internet (untrusted)"
+      },
+      {
+        "id": "APIGateway",
+        "role": "Ingress / API gateway",
+        "trust_zone": "Gateway Layer (DMZ)"
+      },
+      {
+        "id": "AuthService",
+        "role": "Authentication and authorization compute",
+        "trust_zone": "Auth Layer"
+      },
+      {
+        "id": "Redis",
+        "role": "Data store / session cache",
+        "trust_zone": "Auth Layer Data Zone"
+      },
+      {
+        "id": "AppServer",
+        "role": "Compute / business logic",
+        "trust_zone": "App Layer"
+      }
+    ],
+    "trust_boundaries": [
+      "Internet to Gateway Layer",
+      "Gateway Layer to Auth Layer",
+      "Auth Layer to Redis Data Zone",
+      "Gateway Layer to App Layer"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-hosted, internet-facing multi-tier REST API with API gateway, authentication service, Redis session cache, and application server."
+  },
+  "threat_actors": [
+    {
+      "name": "External opportunistic attacker",
+      "motivation": "Credential theft, data exfiltration, and API abuse for financial gain",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Internet-facing API endpoints, credential stuffing, and exploitation of public-facing gateway vulnerabilities",
+      "non_capabilities": [
+        "No physical access to cloud infrastructure",
+        "No pre-existing insider knowledge or valid internal credentials",
+        "No zero-day exploit budget",
+        "No direct network access to Redis or App Server from the internet",
+        "Cannot bypass enforced TLS without a privileged network position"
+      ]
+    },
+    {
+      "name": "Malicious insider",
+      "motivation": "Data exfiltration, fraud, or sabotage using authorized access",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Valid API credentials or operator access to Auth Service or App Server",
+      "non_capabilities": [
+        "No physical access to cloud provider facilities",
+        "Cannot unilaterally modify gateway or auth code without change approval",
+        "No direct internet exposure of Redis",
+        "Limited to granted IAM roles and API scopes",
+        "Cannot disable organization-wide logging without detection"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1110.004",
+      "technique_name": "Credential Stuffing",
+      "tactic": "Credential Access",
+      "target_component": "AuthService",
+      "entry_point": "Public API Gateway authentication endpoint",
+      "impact": "Account takeover and unauthorized API access to confidential data",
+      "likelihood": "High",
+      "likelihood_rationale": "Internet-facing authentication endpoint with password-based login and no confirmed universal MFA makes automated credential stuffing feasible."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "APIGateway",
+      "entry_point": "Internet-facing API Gateway HTTP/HTTPS listener",
+      "impact": "Gateway compromise, authentication bypass, or pivot into internal service network",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Gateway is internet-facing but patched and fronted by a WAF; exploit requires a new vulnerability or misconfiguration."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1557",
+      "technique_name": "Adversary-in-the-Middle",
+      "tactic": "Credential Access",
+      "target_component": "APIGateway",
+      "entry_point": "Client-to-gateway network path",
+      "impact": "Theft of bearer tokens or credentials in transit",
+      "likelihood": "Low",
+      "likelihood_rationale": "TLS is enforced, but clients on untrusted networks remain exposed to misconfiguration or downgrade attacks."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1539",
+      "technique_name": "Steal Web Session Cookie",
+      "tactic": "Credential Access",
+      "target_component": "Redis",
+      "entry_point": "Compromised Auth Service host or internal Auth-to-Redis network segment",
+      "impact": "Session token theft enabling impersonation of authenticated users",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Redis stores session material and may be reachable from a compromised Auth Service; authentication and segmentation reduce but do not eliminate exposure."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "AppServer",
+      "entry_point": "API Gateway route using a valid but over-privileged token",
+      "impact": "Unauthorized read access to application data and business logic",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Stolen or over-scoped tokens can reach App Server through the gateway; token scoping and least privilege are only partially implemented."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Rate limiting and account lockout for authentication endpoints",
+      "addresses_technique": [
+        "T1110.004"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Multi-factor authentication for privileged and API access",
+      "addresses_technique": [
+        "T1110.004",
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 7.1",
+      "control_name": "Establish and maintain a vulnerability management process",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Data-in-transit protection with TLS and HSTS",
+      "addresses_technique": [
+        "T1557"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.AC-5",
+      "control_name": "Redis authentication and network segmentation",
+      "addresses_technique": [
+        "T1539"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Least privilege and token scoping for App Server access",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Session token rotation and binding",
+      "addresses_technique": [
+        "T1539"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Credential stuffing can yield valid sessions and confidential API data, but partial MFA and rate limiting reduce exploitability.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "AuthService",
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1110.004"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "A gateway exploit would bypass a primary trust boundary and expose internal services, though WAF and patching lower likelihood.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "TLS is enforced, so interception requires a privileged network position or misconfiguration; impact is credential or session theft.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "APIGateway",
+        "Client"
+      ],
+      "linked_techniques": [
+        "T1557"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Redis holds session material and is reachable from the auth zone; theft enables impersonation but segmentation limits reach.",
+      "severity_vector": "CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "Redis",
+        "AuthService"
+      ],
+      "linked_techniques": [
+        "T1539"
+      ],
+      "linked_mitigations": [
+        "M-005",
+        "M-007"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Valid but over-scoped tokens can read application data through the gateway; least privilege is only partially enforced.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "AppServer",
+        "APIGateway"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-006",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "United States"
+    ],
+    "compliance_scope": [
+      "SOC 2",
+      "ISO 27001",
+      "GDPR"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "Cloud infrastructure provider",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "TLS certificate authority",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Upstream identity provider (if federated)",
+        "trust_tier": "conditional"
+      }
+    ]
+  }
+}

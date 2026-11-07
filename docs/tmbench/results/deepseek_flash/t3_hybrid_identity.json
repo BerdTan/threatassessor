@@ -1,0 +1,820 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t3_hybrid_identity",
+  "produced_by": "deepseek_flash v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "workstation",
+        "role": "Domain-joined user endpoint",
+        "trust_zone": "Endpoint Layer"
+      },
+      {
+        "id": "admin_ws",
+        "role": "Privileged administration workstation",
+        "trust_zone": "Endpoint Layer"
+      },
+      {
+        "id": "vpn_client",
+        "role": "Remote access VPN client",
+        "trust_zone": "Endpoint Layer"
+      },
+      {
+        "id": "dc01",
+        "role": "Primary domain controller",
+        "trust_zone": "On-Premises Active Directory"
+      },
+      {
+        "id": "dc02",
+        "role": "Secondary domain controller",
+        "trust_zone": "On-Premises Active Directory"
+      },
+      {
+        "id": "ntds",
+        "role": "AD credential database (NTDS.dit)",
+        "trust_zone": "On-Premises Active Directory"
+      },
+      {
+        "id": "krbtgt",
+        "role": "Kerberos KDC service account",
+        "trust_zone": "On-Premises Active Directory"
+      },
+      {
+        "id": "adcs_server",
+        "role": "AD Certificate Services CA server",
+        "trust_zone": "AD Certificate Services"
+      },
+      {
+        "id": "cert_template",
+        "role": "Certificate template configuration",
+        "trust_zone": "AD Certificate Services"
+      },
+      {
+        "id": "enrollment_svc",
+        "role": "ADCS web enrollment service",
+        "trust_zone": "AD Certificate Services"
+      },
+      {
+        "id": "issuing_ca",
+        "role": "Issuing certificate authority",
+        "trust_zone": "AD Certificate Services"
+      },
+      {
+        "id": "root_ca",
+        "role": "Offline root certificate authority",
+        "trust_zone": "AD Certificate Services"
+      },
+      {
+        "id": "crl_point",
+        "role": "CRL distribution point",
+        "trust_zone": "AD Certificate Services"
+      },
+      {
+        "id": "aad_connect",
+        "role": "Azure AD Connect synchronization service",
+        "trust_zone": "Hybrid Identity Bridge"
+      },
+      {
+        "id": "hybrid_agent",
+        "role": "Hybrid Azure AD Join agent",
+        "trust_zone": "Hybrid Identity Bridge"
+      },
+      {
+        "id": "federation_proxy",
+        "role": "Federation authentication proxy",
+        "trust_zone": "Hybrid Identity Bridge"
+      },
+      {
+        "id": "scim_provisioner",
+        "role": "SCIM user provisioning service",
+        "trust_zone": "Hybrid Identity Bridge"
+      },
+      {
+        "id": "entra_id",
+        "role": "Cloud identity provider (Entra ID/Azure AD)",
+        "trust_zone": "Cloud Identity"
+      },
+      {
+        "id": "mfa_gateway",
+        "role": "Multi-factor authentication gateway",
+        "trust_zone": "Cloud Identity"
+      },
+      {
+        "id": "conditional_access",
+        "role": "Conditional Access policy engine",
+        "trust_zone": "Cloud Identity"
+      },
+      {
+        "id": "pam_vault",
+        "role": "Privileged access management vault",
+        "trust_zone": "Cloud Identity"
+      },
+      {
+        "id": "siem_connector",
+        "role": "SIEM log ingestion connector",
+        "trust_zone": "Security Operations"
+      },
+      {
+        "id": "audit_log",
+        "role": "Central audit log store",
+        "trust_zone": "Security Operations"
+      }
+    ],
+    "trust_boundaries": [
+      "External to Endpoint Layer",
+      "External to ADCS Web Enrollment",
+      "Endpoint Layer to On-Premises AD",
+      "Endpoint Layer to ADCS",
+      "Endpoint Layer to Cloud Identity",
+      "On-Premises AD to ADCS",
+      "On-Premises AD to Hybrid Identity Bridge",
+      "Hybrid Identity Bridge to Cloud Identity",
+      "Cloud Identity to Security Operations",
+      "ADCS to Security Operations",
+      "On-Premises AD to Security Operations",
+      "Cloud Identity internal policy boundary"
+    ],
+    "data_classification": "restricted",
+    "operational_context": "Hybrid identity infrastructure spanning on-premises Active Directory, AD Certificate Services, and Microsoft Entra ID; cloud-hosted identity control plane with on-premises synchronization, federation, and privileged access management."
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Initial access, credential theft, and lateral movement for financial gain or ransomware deployment",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Internet-exposed VPN or ADCS web enrollment service",
+      "non_capabilities": [
+        "No physical access to datacenter or endpoints",
+        "No pre-existing insider knowledge of ADCS template misconfigurations",
+        "No zero-day budget for enterprise VPN or Microsoft cloud services",
+        "No direct administrative access to Entra ID or domain controllers"
+      ]
+    },
+    {
+      "name": "Malicious Privileged Insider",
+      "motivation": "Privilege escalation, data exfiltration, or sabotage using legitimate administrative access",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Admin workstation or PAM vault credentials",
+      "non_capabilities": [
+        "No ability to modify offline root CA private key without physical access",
+        "No nation-state-level supply chain compromise capability",
+        "No control over Microsoft cloud provider infrastructure",
+        "Cannot unilaterally disable all SIEM forwarding without detection"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1133",
+      "technique_name": "External Remote Services",
+      "tactic": "Initial Access",
+      "target_component": "vpn_client",
+      "entry_point": "Internet-facing VPN endpoint",
+      "impact": "Initial foothold on endpoint layer and potential access to domain controller via VPN",
+      "likelihood": "Medium",
+      "likelihood_rationale": "VPN requires credentials or a vulnerability; MFA may be enforced but remote access is exposed."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "enrollment_svc",
+      "entry_point": "ADCS web enrollment service exposed to external attacker",
+      "impact": "Unauthorized certificate enrollment and potential ADCS compromise",
+      "likelihood": "High",
+      "likelihood_rationale": "Web enrollment is reachable from external zone and certificate template permissions may be permissive."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1558.003",
+      "technique_name": "Kerberoasting",
+      "tactic": "Credential Access",
+      "target_component": "dc01",
+      "entry_point": "Compromised domain workstation",
+      "impact": "Offline cracking of service account password hashes leading to privilege escalation",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Any authenticated domain user can request service tickets; weak service account passwords enable cracking."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1649",
+      "technique_name": "Steal or Forge Authentication Certificates",
+      "tactic": "Credential Access",
+      "target_component": "cert_template",
+      "entry_point": "Admin workstation with ADCS management access",
+      "impact": "Forged certificate for domain admin authentication and persistent AD access",
+      "likelihood": "Medium",
+      "likelihood_rationale": "ADCS template misconfigurations such as ESC1 are common and admin workstation compromise enables template abuse."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1078.004",
+      "technique_name": "Valid Accounts: Cloud Accounts",
+      "tactic": "Persistence",
+      "target_component": "entra_id",
+      "entry_point": "Azure AD Connect synchronization account on hybrid bridge",
+      "impact": "Cloud tenant persistence and access to synchronized identities",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Sync account has broad directory replication rights; compromise yields durable cloud identity access."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1606.002",
+      "technique_name": "Forge Web Credentials: SAML Tokens",
+      "tactic": "Credential Access",
+      "target_component": "federation_proxy",
+      "entry_point": "Federation proxy signing certificate or configuration",
+      "impact": "Forged SAML tokens accepted by Entra ID for any user",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Federation signing keys are high-value and token forgery bypasses MFA if keys are compromised."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1003.003",
+      "technique_name": "OS Credential Dumping: NTDS",
+      "tactic": "Credential Access",
+      "target_component": "ntds",
+      "entry_point": "Domain controller DC01 with administrative access",
+      "impact": "Exfiltration of all domain credential hashes",
+      "likelihood": "Medium",
+      "likelihood_rationale": "NTDS.dit is accessible to domain admins and backup operators; compromise of DC yields full credential store."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1557",
+      "technique_name": "Adversary-in-the-Middle",
+      "tactic": "Credential Access",
+      "target_component": "aad_connect",
+      "entry_point": "Network path between DC01 and Azure AD Connect / Entra ID",
+      "impact": "Interception of synchronization credentials or tokens",
+      "likelihood": "Low",
+      "likelihood_rationale": "Sync traffic is encrypted and internal, but misconfigured TLS or network segmentation gaps could enable interception."
+    },
+    {
+      "path_id": "AP-009",
+      "technique_id": "T1555",
+      "technique_name": "Credentials from Password Stores",
+      "tactic": "Credential Access",
+      "target_component": "pam_vault",
+      "entry_point": "Admin workstation with PAM vault access",
+      "impact": "Theft of privileged credentials managed by PAM",
+      "likelihood": "Medium",
+      "likelihood_rationale": "PAM vault is accessible from admin workstation and credential extraction is possible if endpoint is compromised."
+    },
+    {
+      "path_id": "AP-010",
+      "technique_id": "T1562.008",
+      "technique_name": "Impair Defenses: Disable Cloud Logs",
+      "tactic": "Defense Evasion",
+      "target_component": "siem_connector",
+      "entry_point": "Entra ID administrative access",
+      "impact": "Reduced detection of cloud identity attacks",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires cloud admin privileges and audit log tampering may be alerted by SIEM."
+    },
+    {
+      "path_id": "AP-011",
+      "technique_id": "T1070.001",
+      "technique_name": "Clear Windows Event Logs",
+      "tactic": "Defense Evasion",
+      "target_component": "adcs_server",
+      "entry_point": "Compromised ADCS server",
+      "impact": "Loss of certificate service audit evidence",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires administrative access to ADCS server and log clearing is commonly monitored."
+    },
+    {
+      "path_id": "AP-012",
+      "technique_id": "T1098",
+      "technique_name": "Account Manipulation",
+      "tactic": "Persistence",
+      "target_component": "scim_provisioner",
+      "entry_point": "SCIM provisioning service credentials",
+      "impact": "Creation or modification of cloud accounts for persistence",
+      "likelihood": "Medium",
+      "likelihood_rationale": "SCIM token compromise allows automated account changes that may blend with legitimate provisioning."
+    },
+    {
+      "path_id": "AP-013",
+      "technique_id": "T1556.006",
+      "technique_name": "Modify Authentication Process: Multi-Factor Authentication",
+      "tactic": "Persistence",
+      "target_component": "mfa_gateway",
+      "entry_point": "Entra ID or MFA gateway administrative interface",
+      "impact": "MFA bypass for targeted accounts",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires high-privilege access to MFA configuration and changes are audited."
+    },
+    {
+      "path_id": "AP-014",
+      "technique_id": "T1550.002",
+      "technique_name": "Use Alternate Authentication Material: Pass the Hash",
+      "tactic": "Lateral Movement",
+      "target_component": "adcs_server",
+      "entry_point": "Compromised domain controller or domain admin credential",
+      "impact": "Lateral movement to ADCS server and certificate authority compromise",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Domain admin credential reuse and NTLM authentication can enable lateral movement to ADCS."
+    },
+    {
+      "path_id": "AP-015",
+      "technique_id": "T1550.002",
+      "technique_name": "Use Alternate Authentication Material: Pass the Hash",
+      "tactic": "Lateral Movement",
+      "target_component": "aad_connect",
+      "entry_point": "Compromised domain controller",
+      "impact": "Access to Azure AD Connect server and synchronization credentials",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Compromised DC credentials can reach hybrid bridge systems that permit NTLM authentication."
+    },
+    {
+      "path_id": "AP-016",
+      "technique_id": "T1070.001",
+      "technique_name": "Clear Windows Event Logs",
+      "tactic": "Defense Evasion",
+      "target_component": "dc01",
+      "entry_point": "Compromised domain controller",
+      "impact": "Loss of domain controller audit logs before SIEM ingestion",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires domain admin on DC and impacts audit evidence rather than direct access."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Remote access management",
+      "addresses_technique": [
+        "T1133"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 4.1",
+      "control_name": "Secure configuration of public-facing services",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 5.4",
+      "control_name": "Restrict administrator privileges",
+      "addresses_technique": [
+        "T1558.003"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Certificate template access control",
+      "addresses_technique": [
+        "T1649"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Sync account credential management",
+      "addresses_technique": [
+        "T1078.004"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Federation signing key protection",
+      "addresses_technique": [
+        "T1606.002"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.AC-6",
+      "control_name": "Tier 0 privileged access and credential protection",
+      "addresses_technique": [
+        "T1003.003"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Encrypted synchronization channels",
+      "addresses_technique": [
+        "T1557"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "CIS Control 5.4",
+      "control_name": "PAM vault access restriction",
+      "addresses_technique": [
+        "T1555"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "NIST CSF DE.AE-3",
+      "control_name": "Audit log integrity and centralized monitoring",
+      "addresses_technique": [
+        "T1562.008"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-011",
+      "control_id": "CIS Control 8.1",
+      "control_name": "Audit log retention and protection",
+      "addresses_technique": [
+        "T1070.001"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-012",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "SCIM token lifecycle management",
+      "addresses_technique": [
+        "T1098"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-013",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "MFA configuration change control",
+      "addresses_technique": [
+        "T1556.006"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-014",
+      "control_id": "CIS Control 5.4",
+      "control_name": "Tiered administration and credential hygiene",
+      "addresses_technique": [
+        "T1550.002"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-015",
+      "control_id": "CIS Control 12.2",
+      "control_name": "Network segmentation for hybrid bridge",
+      "addresses_technique": [
+        "T1550.002"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-016",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "Centralized event log forwarding",
+      "addresses_technique": [
+        "T1070.001"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Medium",
+      "severity_rationale": "VPN exposure requires credentials or a vulnerability but provides initial endpoint access.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "vpn_client",
+        "dc01"
+      ],
+      "linked_techniques": [
+        "T1133"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Externally reachable ADCS web enrollment can issue certificates if template permissions are weak.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "enrollment_svc",
+        "issuing_ca"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Any domain user can request service tickets; weak service account passwords enable offline cracking.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "dc01",
+        "krbtgt"
+      ],
+      "linked_techniques": [
+        "T1558.003"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Misconfigured certificate templates can allow a low-privileged user to obtain domain admin certificates.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "cert_template",
+        "adcs_server"
+      ],
+      "linked_techniques": [
+        "T1649"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "Sync account compromise grants broad directory replication and cloud persistence.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "aad_connect",
+        "entra_id"
+      ],
+      "linked_techniques": [
+        "T1078.004"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Critical",
+      "severity_rationale": "Federation signing key compromise enables forged SAML tokens accepted as any user, bypassing MFA.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "federation_proxy",
+        "entra_id"
+      ],
+      "linked_techniques": [
+        "T1606.002"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Critical",
+      "severity_rationale": "Domain controller compromise exposes all domain credential hashes and enables full domain takeover.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "ntds",
+        "dc01"
+      ],
+      "linked_techniques": [
+        "T1003.003"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Medium",
+      "severity_rationale": "Sync traffic is encrypted and internal; interception requires network position or TLS weakness.",
+      "severity_vector": "CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "aad_connect",
+        "dc01",
+        "entra_id"
+      ],
+      "linked_techniques": [
+        "T1557"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "High",
+      "severity_rationale": "PAM vault compromise yields privileged credentials but requires admin workstation access.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "pam_vault",
+        "admin_ws"
+      ],
+      "linked_techniques": [
+        "T1555"
+      ],
+      "linked_mitigations": [
+        "M-009"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-010",
+      "severity": "Medium",
+      "severity_rationale": "Requires cloud admin privileges; impact is reduced detection rather than direct compromise.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "siem_connector",
+        "entra_id"
+      ],
+      "linked_techniques": [
+        "T1562.008"
+      ],
+      "linked_mitigations": [
+        "M-010"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-011",
+      "severity": "Medium",
+      "severity_rationale": "Requires local admin on ADCS server and affects audit evidence only.",
+      "severity_vector": "CVSS:3.1/AV:L/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "adcs_server",
+        "siem_connector"
+      ],
+      "linked_techniques": [
+        "T1070.001"
+      ],
+      "linked_mitigations": [
+        "M-011"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-012",
+      "severity": "High",
+      "severity_rationale": "SCIM token compromise allows persistent account creation or modification in cloud identity.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "scim_provisioner",
+        "entra_id"
+      ],
+      "linked_techniques": [
+        "T1098"
+      ],
+      "linked_mitigations": [
+        "M-012"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-013",
+      "severity": "High",
+      "severity_rationale": "MFA configuration change requires high privilege but can bypass a key control.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "mfa_gateway",
+        "entra_id"
+      ],
+      "linked_techniques": [
+        "T1556.006"
+      ],
+      "linked_mitigations": [
+        "M-013"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-014",
+      "severity": "High",
+      "severity_rationale": "Lateral movement from compromised DC to ADCS enables certificate authority compromise.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "adcs_server",
+        "dc01"
+      ],
+      "linked_techniques": [
+        "T1550.002"
+      ],
+      "linked_mitigations": [
+        "M-014"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-015",
+      "severity": "High",
+      "severity_rationale": "Compromised DC credentials can reach hybrid bridge and sync credentials.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "aad_connect",
+        "dc01"
+      ],
+      "linked_techniques": [
+        "T1550.002"
+      ],
+      "linked_mitigations": [
+        "M-015"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-016",
+      "severity": "Medium",
+      "severity_rationale": "Requires domain admin on DC and impacts audit evidence.",
+      "severity_vector": "CVSS:3.1/AV:L/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "dc01",
+        "siem_connector"
+      ],
+      "linked_techniques": [
+        "T1070.001"
+      ],
+      "linked_mitigations": [
+        "M-016"
+      ],
+      "remediation_priority": "Long-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "United States",
+      "European Union"
+    ],
+    "compliance_scope": [
+      "SOC 2",
+      "ISO 27001",
+      "GDPR",
+      "NIST 800-53"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "Microsoft Entra ID",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Azure AD Connect",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Federated SaaS applications",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "SCIM target applications",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Public CRL distribution endpoint",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "SIEM platform",
+        "trust_tier": "trusted"
+      }
+    ]
+  }
+}

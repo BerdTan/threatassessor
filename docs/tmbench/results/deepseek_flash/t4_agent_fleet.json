@@ -1,0 +1,937 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_agent_fleet",
+  "produced_by": "deepseek_flash v1.0 v1.0",
+  "produced_at": "2026-11-01T12:00:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "tenant-users",
+        "role": "external user / API client (ingress source)",
+        "trust_zone": "untrusted-internet"
+      },
+      {
+        "id": "api-gateway",
+        "role": "ingress / public API endpoint and TLS termination",
+        "trust_zone": "dmz-ingress"
+      },
+      {
+        "id": "rate-limiter",
+        "role": "ingress control / quota and throttling enforcement",
+        "trust_zone": "dmz-ingress"
+      },
+      {
+        "id": "tenant-router",
+        "role": "compute / tenant resolution and request routing",
+        "trust_zone": "app-tenant-isolation"
+      },
+      {
+        "id": "llm-orchestrator",
+        "role": "agent / LLM orchestration, RAG retrieval, conversation state",
+        "trust_zone": "app-llm-service"
+      },
+      {
+        "id": "prompt-guard",
+        "role": "security control / prompt injection and policy screening",
+        "trust_zone": "app-llm-service"
+      },
+      {
+        "id": "response-filter",
+        "role": "security control / output policy and DLP filtering",
+        "trust_zone": "app-llm-service"
+      },
+      {
+        "id": "model-router",
+        "role": "egress broker / model selection and provider credential use",
+        "trust_zone": "app-llm-service"
+      },
+      {
+        "id": "openai-api",
+        "role": "external model backend (third-party inference)",
+        "trust_zone": "third-party-model"
+      },
+      {
+        "id": "anthropic-api",
+        "role": "external model backend (third-party inference)",
+        "trust_zone": "third-party-model"
+      },
+      {
+        "id": "self-hosted-llm",
+        "role": "internal model backend (self-hosted, fine-tuned inference)",
+        "trust_zone": "model-backend-internal"
+      },
+      {
+        "id": "tenant-config-db",
+        "role": "data store / tenant configuration, routing and provider settings",
+        "trust_zone": "data-confidential"
+      },
+      {
+        "id": "conversation-store",
+        "role": "data store / per-tenant conversation history and message content",
+        "trust_zone": "data-confidential"
+      },
+      {
+        "id": "vector-db",
+        "role": "data store / tenant document embeddings for RAG retrieval",
+        "trust_zone": "data-confidential"
+      },
+      {
+        "id": "audit-log",
+        "role": "data store / security and request audit trail",
+        "trust_zone": "data-audit"
+      }
+    ],
+    "trust_boundaries": [
+      "TB-1 Internet -> Ingress Layer: unauthenticated tenant traffic crosses from the public internet into API Gateway",
+      "TB-2 Ingress Layer -> LLM Service Layer: tenant-scoped request from Tenant Router enters the shared multi-tenant LLM Orchestrator",
+      "TB-3 LLM Service Layer -> Model Backends: confidential prompt and retrieved context leave platform control to OpenAI/Anthropic third-party APIs",
+      "TB-4 LLM Service Layer -> Data Layer: orchestrator compute gains read/write access to confidential conversation, vector and audit stores",
+      "TB-5 Tenant <-> Tenant isolation boundary inside the shared orchestrator, vector index namespace and conversation store",
+      "TB-6 Model Backend internal boundary: self-hosted LLM inference host sits on the platform network and consumes fine-tuned model artifacts"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Multi-tenant SaaS deployed on public cloud (multi-region), agentic LLM pipeline with semi-autonomous per-request orchestration, hybrid model backend strategy (two third-party inference APIs plus one self-hosted fine-tuned model), shared data layer with logical tenant partitioning."
+  },
+  "threat_actors": [
+    {
+      "name": "Opportunistic LLM Abuser",
+      "motivation": "Financial gain through API cost abuse, free inference, and resale of harvested credentials; low-effort disruption.",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Unauthenticated or self-registered access to the public API Gateway, automated abuse of LLM endpoints, and credential stuffing against tenant login.",
+      "non_capabilities": [
+        "No physical access to cloud regions or data centers",
+        "No zero-day or exploit-development budget; relies on public tooling and known CVEs",
+        "No pre-existing tenant credentials or insider knowledge of tenant IDs",
+        "Cannot modify model weights, fine-tuning data, or self-hosted inference binaries",
+        "Cannot compromise upstream OpenAI or Anthropic infrastructure"
+      ]
+    },
+    {
+      "name": "Targeted Data Broker / Cybercriminal Group",
+      "motivation": "Exfiltrate multi-tenant conversation and document data for resale, competitive intelligence, or extortion.",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Phishing or infostealer compromise of tenant API keys and session tokens, followed by authenticated abuse of the Tenant Router and orchestrator.",
+      "non_capabilities": [
+        "No nation-state SIGINT, upstream telco, or cloud-provider-level access",
+        "Cannot read per-tenant encryption keys held in the KMS",
+        "Cannot alter WORM/immutable audit storage directly",
+        "No physical access and no ability to persist inside managed third-party model providers",
+        "Cannot forge signed model artifacts accepted by the self-hosted inference host"
+      ]
+    },
+    {
+      "name": "Malicious or Over-Reaching Tenant Insider",
+      "motivation": "Access competitor tenant data, exceed contractual data-retention scope, or extract proprietary prompt/RAG content.",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Legitimate tenant account or tenant admin credentials used to probe cross-tenant retrieval, prompt injection, and orchestrator parameter manipulation.",
+      "non_capabilities": [
+        "No host, network, or hypervisor layer access",
+        "No ability to read other tenants' encryption keys or KMS grants",
+        "No ability to write directly to the audit log store or disable platform logging",
+        "No control over model provider infrastructure or model weights",
+        "No ability to modify Prompt Guard or Response Filter source code"
+      ]
+    },
+    {
+      "name": "Model Supply-Chain Poisoner",
+      "motivation": "Establish persistent, hard-to-detect influence over model outputs for a specific tenant or topic.",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Compromise of the fine-tuning dataset or model artifact consumed by the Self-Hosted LLM, or poisoning of documents ingested into the Vector Database.",
+      "non_capabilities": [
+        "No access to OpenAI or Anthropic model weights or training pipelines",
+        "Cannot merge code into Prompt Guard or Response Filter without passing code review",
+        "No physical access to the inference host",
+        "Cannot bypass signed-artifact verification once enforced",
+        "No ability to alter audit log retention or SIEM ingestion"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "api-gateway",
+      "entry_point": "Public HTTPS API endpoint exposed to the internet (TB-1)",
+      "impact": "Remote code execution or request smuggling in the gateway, leading to bypass of Rate Limiter and Tenant Router and direct access to the LLM Service Layer.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Gateway is internet-facing and continuously scanned, but a managed gateway with patched dependencies and WAF coverage reduces exploitability."
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "tenant-router",
+      "entry_point": "Stolen tenant API key or session token replayed against the API Gateway (TB-1, TB-2)",
+      "impact": "Authenticated access to another tenant's orchestrator context, enabling cross-tenant conversation and document disclosure (TB-5 violation).",
+      "likelihood": "High",
+      "likelihood_rationale": "Long-lived tenant API keys are the primary auth mechanism and are frequently leaked in client code and repositories; no MFA is enforced on API-key flows."
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1110",
+      "technique_name": "Brute Force",
+      "tactic": "Credential Access",
+      "target_component": "api-gateway",
+      "entry_point": "Tenant authentication endpoint behind the API Gateway (TB-1)",
+      "impact": "Account takeover of a tenant administrator, granting configuration changes and access to that tenant's conversation history.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Rate Limiter throttles per-IP attempts, but distributed credential stuffing against weak tenant passwords remains feasible."
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1499",
+      "technique_name": "Endpoint Denial of Service",
+      "tactic": "Impact",
+      "target_component": "rate-limiter",
+      "entry_point": "High-volume request flood against LLM completion endpoints (TB-1)",
+      "impact": "Exhaustion of orchestrator concurrency and third-party model quota, degrading service for all tenants and driving unbounded inference spend.",
+      "likelihood": "High",
+      "likelihood_rationale": "LLM completions are expensive and slow; modest request volume can saturate orchestrator worker pools before per-tenant quotas engage."
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1552",
+      "technique_name": "Unsecured Credentials",
+      "tactic": "Credential Access",
+      "target_component": "model-router",
+      "entry_point": "Error responses, debug endpoints, or SSRF from the orchestrator reaching Model Router configuration (TB-4)",
+      "impact": "Theft of OpenAI and Anthropic API keys, enabling off-platform inference billed to the operator and bypass of all platform guardrails.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Provider keys must be resident in the Model Router process; verbose error handling and shared environment configuration are common leakage vectors."
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1530",
+      "technique_name": "Data from Cloud Storage",
+      "tactic": "Collection",
+      "target_component": "conversation-store",
+      "entry_point": "Over-broad orchestrator database role used against the Conversation Store (TB-4)",
+      "impact": "Bulk exfiltration of confidential conversation history belonging to multiple tenants from a single compromised service identity.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "The orchestrator requires broad read/write on the store; without row-level security a single service-account compromise yields all tenants' data."
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1213",
+      "technique_name": "Data from Information Repositories",
+      "tactic": "Collection",
+      "target_component": "vector-db",
+      "entry_point": "RAG similarity query issued by the orchestrator without a tenant namespace filter (TB-4, TB-5)",
+      "impact": "Retrieval of another tenant's embedded documents into the prompt context, which the model then surfaces in its response.",
+      "likelihood": "High",
+      "likelihood_rationale": "Vector search is the core RAG path and tenant filtering is enforced in application code rather than at the index level, making omission a single-line defect."
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1567",
+      "technique_name": "Exfiltration Over Web Service",
+      "tactic": "Exfiltration",
+      "target_component": "model-router",
+      "entry_point": "Prompt-injected instruction causing retrieved context to be encoded into a model request or rendered as a URL in the response (TB-3)",
+      "impact": "Confidential tenant data is transmitted to an attacker-controlled web service through the trusted model provider egress path.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Model Router egress to provider APIs is allowlisted, but attacker-controlled URLs embedded in model output can be fetched by downstream clients or link previews."
+    },
+    {
+      "path_id": "AP-009",
+      "technique_id": "T1071",
+      "technique_name": "Application Layer Protocol",
+      "tactic": "Command and Control",
+      "target_component": "llm-orchestrator",
+      "entry_point": "Injected instructions establishing a covert channel encoded in prompt/response payloads to a third-party model API (TB-3)",
+      "impact": "Persistent attacker tasking channel that blends with legitimate model traffic and evades network-layer detection.",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires sustained injection control and a cooperating external endpoint; Response Filter and egress inspection raise the cost substantially."
+    },
+    {
+      "path_id": "AP-010",
+      "technique_id": "T1565",
+      "technique_name": "Data Manipulation",
+      "tactic": "Impact",
+      "target_component": "vector-db",
+      "entry_point": "Tenant document ingestion pipeline writing attacker-controlled embeddings (TB-4)",
+      "impact": "Manipulated RAG answers for all users of the affected tenant namespace, including falsified policy or pricing guidance.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Ingestion accepts tenant-supplied documents with limited content validation, and embeddings are not integrity-signed."
+    },
+    {
+      "path_id": "AP-011",
+      "technique_id": "T1562.008",
+      "technique_name": "Impair Defenses: Disable or Modify Cloud Logs",
+      "tactic": "Defense Evasion",
+      "target_component": "audit-log",
+      "entry_point": "Compromised orchestrator or Prompt Guard service identity with write access to the Audit Log (TB-4)",
+      "impact": "Deletion or suppression of request and security events, destroying forensic evidence of prior cross-tenant access.",
+      "likelihood": "Low",
+      "likelihood_rationale": "Audit writes are append-only from a dedicated identity, but the store is not yet WORM-backed and retention policy is enforced in application code."
+    },
+    {
+      "path_id": "AP-012",
+      "technique_id": "AML.T0051",
+      "technique_name": "LLM Prompt Injection",
+      "tactic": "Initial Access",
+      "target_component": "prompt-guard",
+      "entry_point": "User prompt or retrieved document content passing through Prompt Guard into the orchestrator (TB-2, TB-5)",
+      "impact": "Goal hijacking of the orchestrator: instruction override, tool/parameter misuse, and cross-tenant context disclosure via the shared model session.",
+      "likelihood": "High",
+      "likelihood_rationale": "Indirect injection through RAG-ingested documents is not fully separable from legitimate content, and Prompt Guard is a heuristic classifier with known bypasses."
+    },
+    {
+      "path_id": "AP-013",
+      "technique_id": "AML.T0054",
+      "technique_name": "LLM Jailbreak",
+      "tactic": "Defense Evasion",
+      "target_component": "response-filter",
+      "entry_point": "Crafted multi-turn prompt sequence submitted through the API Gateway (TB-1, TB-2)",
+      "impact": "Bypass of system-prompt policy and Response Filter, producing disallowed content or leaking guardrail configuration to the tenant.",
+      "likelihood": "High",
+      "likelihood_rationale": "Jailbreak techniques evolve faster than static filter rules, and Response Filter operates on a fixed policy set."
+    },
+    {
+      "path_id": "AP-014",
+      "technique_id": "AML.T0057",
+      "technique_name": "LLM Data Leakage",
+      "tactic": "Exfiltration",
+      "target_component": "llm-orchestrator",
+      "entry_point": "Prompt instructing the model to reproduce prior context, system prompt, or other tenants' retrieved passages (TB-5)",
+      "impact": "Disclosure of confidential conversation content and proprietary orchestration instructions to a tenant.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Context windows are shared per request and tenant scoping depends on correct retrieval filtering; leakage is reproducible but requires knowledge of the retrieval layout."
+    },
+    {
+      "path_id": "AP-015",
+      "technique_id": "AML.T0043",
+      "technique_name": "Craft Adversarial Data",
+      "tactic": "ML Attack Staging",
+      "target_component": "vector-db",
+      "entry_point": "Adversarial documents crafted to rank highly for unrelated queries during ingestion (TB-4)",
+      "impact": "Attacker content is preferentially retrieved and injected into prompts, steering model answers for targeted queries.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Embedding-space manipulation is well documented and requires only document upload rights, which every tenant holds."
+    },
+    {
+      "path_id": "AP-016",
+      "technique_id": "AML.T0018",
+      "technique_name": "Backdoor ML Model",
+      "tactic": "Persistence",
+      "target_component": "self-hosted-llm",
+      "entry_point": "Compromised fine-tuning dataset or unsigned model artifact loaded by the self-hosted inference host (TB-6)",
+      "impact": "Persistent trigger-activated behavior in the self-hosted model, silently degrading or biasing responses for all tenants routed to it.",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires access to the training pipeline or artifact store; artifact signing and provenance checks are planned but not yet enforced."
+    },
+    {
+      "path_id": "AP-017",
+      "technique_id": "AML.T0034",
+      "technique_name": "Cost Harvesting",
+      "tactic": "Impact",
+      "target_component": "rate-limiter",
+      "entry_point": "Automated high-token-count requests from many low-privilege or trial tenant accounts (TB-1)",
+      "impact": "Direct financial loss from third-party inference billing and quota exhaustion that denies service to paying tenants.",
+      "likelihood": "High",
+      "likelihood_rationale": "Per-tenant quotas exist but are keyed to accounts, so account multiplication and long-context prompts bypass effective spend ceilings."
+    },
+    {
+      "path_id": "AP-018",
+      "technique_id": "AML.T0056",
+      "technique_name": "Extract LLM System Prompt",
+      "tactic": "Collection",
+      "target_component": "llm-orchestrator",
+      "entry_point": "Iterative extraction prompts sent through Prompt Guard to the orchestrator (TB-2)",
+      "impact": "Disclosure of proprietary orchestration instructions, guardrail logic, and internal routing hints that enable further bypass.",
+      "likelihood": "Medium",
+      "likelihood_rationale": "System prompts are injected into every request and extraction is a well-known technique; Response Filter only partially detects verbatim reproduction."
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AA-01 / CIS Control 16.1",
+      "control_name": "Strong authentication and authorization on all ingress endpoints",
+      "addresses_technique": [
+        "T1190",
+        "T1078",
+        "T1110"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 4.1 / NIST CSF PR.PS-02",
+      "control_name": "Secure gateway configuration, WAF rules and strict input schema validation",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.AA-03 / CIS Control 6.5",
+      "control_name": "MFA and short-lived tokens for tenant administrator accounts",
+      "addresses_technique": [
+        "T1078",
+        "T1110"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 4.7 / NIST CSF PR.IR-01",
+      "control_name": "Per-tenant rate limiting, token budgets and concurrency caps",
+      "addresses_technique": [
+        "T1499",
+        "AML.T0034"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.DS-01 / CIS Control 3.11",
+      "control_name": "Encryption at rest with per-tenant KMS keys for all data stores",
+      "addresses_technique": [
+        "T1530",
+        "T1213"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.DS-02 / CIS Control 3.10",
+      "control_name": "TLS 1.3 in transit and mTLS between orchestrator and model backends",
+      "addresses_technique": [
+        "T1567",
+        "T1071"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "CIS Control 5.4 / NIST CSF PR.AA-05",
+      "control_name": "Secrets vault with scoped, rotatable model provider API keys",
+      "addresses_technique": [
+        "T1552"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "OWASP LLM01 / CSA ART-1.1",
+      "control_name": "Prompt injection defenses: instruction hierarchy, Prompt Guard screening, output policy enforcement",
+      "addresses_technique": [
+        "AML.T0051",
+        "AML.T0054",
+        "AML.T0056"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "NIST CSF PR.PS-05 / CIS Control 16.11",
+      "control_name": "Enforced tenant isolation: row-level security, per-tenant vector namespaces, tenant-scoped service identities",
+      "addresses_technique": [
+        "T1078",
+        "T1530",
+        "T1213",
+        "AML.T0057"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "CIS Control 8.2 / NIST CSF DE.AE-03",
+      "control_name": "Immutable WORM audit logging with SIEM alerting on cross-tenant access patterns",
+      "addresses_technique": [
+        "T1562.008",
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-011",
+      "control_id": "NIST CSF PR.DS-06 / CIS Control 3.4",
+      "control_name": "Vector store integrity: signed embeddings, ingestion content review, retrieval anomaly detection",
+      "addresses_technique": [
+        "T1565",
+        "AML.T0043"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-012",
+      "control_id": "CSA ART-4.2 / NIST CSF PR.DS-08",
+      "control_name": "Model provenance and supply-chain verification with signed model artifacts",
+      "addresses_technique": [
+        "AML.T0018"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-013",
+      "control_id": "OWASP LLM06 / CIS Control 3.13",
+      "control_name": "Output DLP filtering and egress allowlisting for model provider calls",
+      "addresses_technique": [
+        "T1567",
+        "AML.T0057",
+        "T1071"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-014",
+      "control_id": "NIST CSF PR.IR-01 / CIS Control 4.8",
+      "control_name": "Per-tenant cost anomaly detection with hard budget caps and account velocity limits",
+      "addresses_technique": [
+        "AML.T0034",
+        "T1499"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-015",
+      "control_id": "CIS Control 8.11 / NIST CSF DE.CM-03",
+      "control_name": "Session and behavioral anomaly detection for tenant accounts",
+      "addresses_technique": [
+        "T1110",
+        "T1078"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-016",
+      "control_id": "OWASP LLM07 / CSA ART-2.3",
+      "control_name": "System prompt hardening with secret-free prompts and extraction detection",
+      "addresses_technique": [
+        "AML.T0056"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-017",
+      "control_id": "NIST CSF PR.IR-04 / CIS Control 12.2",
+      "control_name": "Network egress proxy with destination allowlist for all model backend traffic",
+      "addresses_technique": [
+        "T1071",
+        "T1567"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "Indirect prompt injection through RAG content can hijack the shared orchestrator and disclose another tenant's confidential context, breaking the primary multi-tenant isolation guarantee.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "prompt-guard",
+        "llm-orchestrator",
+        "vector-db",
+        "conversation-store"
+      ],
+      "linked_techniques": [
+        "AML.T0051"
+      ],
+      "linked_mitigations": [
+        "M-008",
+        "M-009"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Stolen tenant credentials are accepted by the Tenant Router without step-up verification, allowing authenticated cross-tenant access to orchestrator context.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N",
+      "affected_components": [
+        "tenant-router",
+        "llm-orchestrator",
+        "tenant-config-db"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-003",
+        "M-009",
+        "M-010",
+        "M-015"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Model provider API keys are resident in the Model Router and reachable through verbose errors or SSRF, giving an attacker off-platform inference and guardrail bypass.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "model-router",
+        "openai-api",
+        "anthropic-api"
+      ],
+      "linked_techniques": [
+        "T1552"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "LLM completion endpoints are expensive and slow, so a modest flood saturates orchestrator workers and third-party quota before per-tenant throttles engage.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": [
+        "rate-limiter",
+        "llm-orchestrator",
+        "model-router"
+      ],
+      "linked_techniques": [
+        "T1499"
+      ],
+      "linked_mitigations": [
+        "M-004",
+        "M-014"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "Tenant-supplied documents are embedded without integrity signing, so manipulated content persistently alters RAG answers for the affected tenant namespace.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:L/I:H/A:N",
+      "affected_components": [
+        "vector-db",
+        "llm-orchestrator"
+      ],
+      "linked_techniques": [
+        "T1565"
+      ],
+      "linked_mitigations": [
+        "M-011"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "A compromised orchestrator identity can suppress audit events, but the dedicated append-only writer identity and SIEM replication limit the scope of evidence loss.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N",
+      "affected_components": [
+        "audit-log",
+        "llm-orchestrator",
+        "prompt-guard"
+      ],
+      "linked_techniques": [
+        "T1562.008"
+      ],
+      "linked_mitigations": [
+        "M-010"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "High",
+      "severity_rationale": "Prompt-injected content can route confidential retrieved context to an attacker-controlled web service through the trusted model egress path, evading network controls.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N",
+      "affected_components": [
+        "model-router",
+        "openai-api",
+        "anthropic-api",
+        "response-filter"
+      ],
+      "linked_techniques": [
+        "T1567"
+      ],
+      "linked_mitigations": [
+        "M-006",
+        "M-013",
+        "M-017"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "High",
+      "severity_rationale": "An unsigned fine-tuned model artifact could carry a persistent trigger backdoor affecting every tenant routed to the self-hosted backend, though pipeline access is restricted.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "self-hosted-llm",
+        "model-router"
+      ],
+      "linked_techniques": [
+        "AML.T0018"
+      ],
+      "linked_mitigations": [
+        "M-012"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "Medium",
+      "severity_rationale": "System prompt extraction discloses orchestration logic and guardrail hints, which is valuable for follow-on bypass but does not directly expose tenant data.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "llm-orchestrator",
+        "prompt-guard"
+      ],
+      "linked_techniques": [
+        "AML.T0056"
+      ],
+      "linked_mitigations": [
+        "M-008",
+        "M-016"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-010",
+      "severity": "Medium",
+      "severity_rationale": "Distributed credential stuffing against tenant logins is partially throttled by the Rate Limiter, limiting but not preventing account takeover.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+      "affected_components": [
+        "api-gateway",
+        "rate-limiter",
+        "tenant-router"
+      ],
+      "linked_techniques": [
+        "T1110"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-003",
+        "M-015"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-011",
+      "severity": "High",
+      "severity_rationale": "The orchestrator holds a broad database role over the Conversation Store, so one service-identity compromise yields bulk cross-tenant conversation history.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N",
+      "affected_components": [
+        "conversation-store",
+        "llm-orchestrator"
+      ],
+      "linked_techniques": [
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-005",
+        "M-009"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-012",
+      "severity": "Medium",
+      "severity_rationale": "A covert channel encoded in model API payloads is plausible but requires sustained injection control and a cooperating external endpoint, and egress allowlisting raises cost.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:L/A:N",
+      "affected_components": [
+        "llm-orchestrator",
+        "model-router",
+        "openai-api"
+      ],
+      "linked_techniques": [
+        "T1071"
+      ],
+      "linked_mitigations": [
+        "M-006",
+        "M-013",
+        "M-017"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-013",
+      "severity": "High",
+      "severity_rationale": "The API Gateway is the only internet-facing component; a memory-safety or request-parsing flaw there bypasses Rate Limiter and Tenant Router entirely.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "api-gateway",
+        "rate-limiter",
+        "tenant-router"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-014",
+      "severity": "High",
+      "severity_rationale": "Tenant scoping for vector retrieval is enforced in application code rather than at the index, so a single missing filter returns another tenant's documents into the prompt.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N",
+      "affected_components": [
+        "vector-db",
+        "llm-orchestrator"
+      ],
+      "linked_techniques": [
+        "T1213"
+      ],
+      "linked_mitigations": [
+        "M-005",
+        "M-009"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-015",
+      "severity": "Medium",
+      "severity_rationale": "Jailbreak sequences bypass policy and Response Filter, producing disallowed output and guardrail disclosure without direct cross-tenant data access.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "response-filter",
+        "prompt-guard",
+        "llm-orchestrator"
+      ],
+      "linked_techniques": [
+        "AML.T0054"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-016",
+      "severity": "High",
+      "severity_rationale": "Context-window leakage lets a tenant reproduce other tenants' retrieved passages or prior conversation content, a direct confidentiality breach of the shared orchestrator.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N",
+      "affected_components": [
+        "llm-orchestrator",
+        "conversation-store",
+        "vector-db"
+      ],
+      "linked_techniques": [
+        "AML.T0057"
+      ],
+      "linked_mitigations": [
+        "M-009",
+        "M-013"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-017",
+      "severity": "Medium",
+      "severity_rationale": "Adversarial documents can be crafted to rank highly for targeted queries, but the effect is scoped to the attacker's own tenant namespace and requires upload rights.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:L/I:H/A:N",
+      "affected_components": [
+        "vector-db",
+        "llm-orchestrator"
+      ],
+      "linked_techniques": [
+        "AML.T0043"
+      ],
+      "linked_mitigations": [
+        "M-011"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-018",
+      "severity": "Medium",
+      "severity_rationale": "Account multiplication and long-context prompts bypass per-account spend ceilings, causing measurable financial loss and quota starvation for paying tenants.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": [
+        "rate-limiter",
+        "model-router",
+        "openai-api",
+        "anthropic-api"
+      ],
+      "linked_techniques": [
+        "AML.T0034"
+      ],
+      "linked_mitigations": [
+        "M-004",
+        "M-014"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "United States (us-east-1, us-west-2) \u2014 primary processing and storage",
+      "European Union (eu-central-1) \u2014 EU tenant conversation and vector data residency",
+      "Third-party model inference occurs in the provider's published processing regions (OpenAI US, Anthropic US) under contractual data processing terms"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "ISO/IEC 27001:2022",
+      "GDPR (EU tenant data)",
+      "CCPA/CPRA (California tenant data)",
+      "NIST AI Risk Management Framework 1.0"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "OpenAI API (third-party LLM inference)",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Anthropic API (third-party LLM inference)",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Self-Hosted LLM inference service (fine-tuned model artifacts)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Cloud KMS and object storage for data stores and audit retention",
+        "trust_tier": "trusted"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "semi-autonomous",
+      "tool_call_scope": [
+        "LLM inference via OpenAI API",
+        "LLM inference via Anthropic API",
+        "LLM inference via Self-Hosted LLM",
+        "Vector Database similarity search (read) and document ingestion (write)",
+        "Conversation Store read/write for the active tenant",
+        "Tenant Config DB read for routing and provider selection",
+        "Audit Log append"
+      ],
+      "blast_radius": "An uncontrolled orchestrator run can disclose confidential conversation and document content across all tenants sharing the orchestrator, persist poisoned embeddings into the Vector Database that affect all future answers for a tenant, and incur unbounded third-party inference spend. It cannot write to external customer systems, modify model provider infrastructure, or alter KMS key policy; the self-hosted model artifact store is reachable only through the deployment pipeline.",
+      "human_oversight_points": [
+        "Tenant administrator approval required for API key rotation and model routing changes",
+        "Prompt Guard and Response Filter rule changes require security review before deployment",
+        "No human review of individual agent responses \u2014 per-request execution is unsupervised",
+        "SOC analyst triage of SIEM alerts for cross-tenant access and audit log anomalies",
+        "Model artifact promotion to the self-hosted backend requires release-manager sign-off"
+      ],
+      "model_provenance": {
+        "provider": "Multi-vendor: OpenAI, Anthropic, and self-hosted open-weights model",
+        "model_id": "gpt-4o (OpenAI), claude-sonnet (Anthropic), llama-3.1-70b-instruct fine-tune (self-hosted)",
+        "fine_tuned": true
+      }
+    }
+  }
+}
