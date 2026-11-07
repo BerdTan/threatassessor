@@ -11,7 +11,7 @@ Tools (aligned with model_routing.yaml confirmed/partial models):
   hetzner        → Qwen3.6-35B-A3B-FP8 via Hetzner   (HETZNER_API_KEY)
   hetzner_27b    → Qwen3.8-27B via Hetzner             (HETZNER_API_KEY, high_quality tier)
   gemini_flash   → gemini-3.6-flash via Gemini AI      (GEMINI_API_KEY)
-  nemotron_super → nvidia/nemotron-3-super-120b:free    (OPENROUTER_API_KEY, slow ~10min/arch)
+  nemotron_ultra → nvidia/nemotron-3-ultra-550b-a55b:free (OPENROUTER_API_KEY, slow ~10min/arch)
   gpt4o          → openai/gpt-4o via OpenRouter         (OPENROUTER_API_KEY, external comparison)
   ta_v3          → TA full harness API → threatmodel/0.1 (TA_API_URL, requires running API)
 
@@ -67,9 +67,9 @@ TOOL_CONFIGS = {
         "model": "gemini/gemini-3.6-flash",
         "env_key": "GEMINI_API_KEY",
     },
-    "nemotron_super": {
+    "nemotron_ultra": {
         "provider": "openrouter",
-        "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
         "env_key": "OPENROUTER_API_KEY",
         "max_tokens": 24000,
     },

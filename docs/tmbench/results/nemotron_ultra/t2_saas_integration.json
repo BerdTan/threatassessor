@@ -1,0 +1,456 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_saas_integration",
+  "produced_by": "nemotron_ultra v1.0 v1.0",
+  "produced_at": "2026-11-15T10:30:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "external_saas",
+        "role": "external",
+        "trust_zone": "untrusted"
+      },
+      {
+        "id": "end_user",
+        "role": "external",
+        "trust_zone": "untrusted"
+      },
+      {
+        "id": "webhook_receiver",
+        "role": "ingress",
+        "trust_zone": "dmz"
+      },
+      {
+        "id": "oauth_proxy",
+        "role": "ingress",
+        "trust_zone": "dmz"
+      },
+      {
+        "id": "rate_limiter",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "event_queue",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "transformer",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "integration_db",
+        "role": "data_store",
+        "trust_zone": "restricted"
+      },
+      {
+        "id": "audit_log",
+        "role": "data_store",
+        "trust_zone": "restricted"
+      }
+    ],
+    "trust_boundaries": [
+      "external_saas -> webhook_receiver (untrusted to DMZ)",
+      "end_user -> oauth_proxy (untrusted to DMZ)",
+      "oauth_proxy -> rate_limiter (DMZ to internal)",
+      "webhook_receiver -> event_queue (DMZ to internal)",
+      "transformer -> integration_db (internal to restricted)",
+      "transformer -> audit_log (internal to restricted)"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-based SaaS integration platform processing webhook events and user-authorized API calls, deployed in multi-tenant Kubernetes environment with managed database services"
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Financial gain via data theft, credential harvesting, or ransomware deployment",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Public webhook endpoint exploitation or stolen OAuth tokens from credential stuffing",
+      "non_capabilities": [
+        "No physical access to cloud infrastructure",
+        "No pre-existing insider knowledge of internal topology",
+        "No zero-day exploit budget",
+        "Cannot compromise managed database encryption keys"
+      ]
+    },
+    {
+      "name": "Malicious Insider (Compromised Employee)",
+      "motivation": "Data exfiltration for competitive advantage or sabotage",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate CI/CD pipeline access or internal admin console credentials",
+      "non_capabilities": [
+        "No direct access to external SaaS provider infrastructure",
+        "Cannot bypass hardware security module (HSM) protections",
+        "No control over external user devices",
+        "Cannot modify cloud provider control plane"
+      ]
+    },
+    {
+      "name": "Compromised External SaaS Provider",
+      "motivation": "Supply chain attack to inject malicious payloads into downstream integrations",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Malicious webhook payloads sent to webhook_receiver",
+      "non_capabilities": [
+        "No direct network access to internal VPC",
+        "Cannot forge valid OAuth 2.0 tokens for oauth_proxy",
+        "No visibility into internal event queue contents",
+        "Cannot directly query integration_db or audit_log"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "webhook_receiver",
+      "entry_point": "Unauthenticated webhook HTTP endpoint",
+      "impact": "Remote code execution or malicious event injection into event_queue",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Webhook endpoint is publicly exposed; input validation gaps in transformer could allow deserialization attacks"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "oauth_proxy",
+      "entry_point": "OAuth 2.0 token endpoint via stolen refresh tokens",
+      "impact": "Unauthorized API calls bypassing rate_limiter, accessing downstream integrations",
+      "likelihood": "High",
+      "likelihood_rationale": "Credential stuffing and token theft are prevalent; OAuth proxy may lack token binding or device fingerprinting"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1566.002",
+      "technique_name": "Phishing: Spearphishing Link",
+      "tactic": "Initial Access",
+      "target_component": "end_user",
+      "entry_point": "Phishing email directing user to malicious OAuth consent screen",
+      "impact": "Attacker gains valid OAuth grant for end_user's data via oauth_proxy",
+      "likelihood": "Medium",
+      "likelihood_rationale": "End users are high-value targets; consent screens can be spoofed if domain validation is weak"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1040",
+      "technique_name": "Network Sniffing",
+      "tactic": "Credential Access",
+      "target_component": "event_queue",
+      "entry_point": "Compromised host in same VPC segment or misconfigured network mirroring",
+      "impact": "Interception of sensitive event payloads in transit between webhook_receiver/oauth_proxy and event_queue",
+      "likelihood": "Low",
+      "likelihood_rationale": "Cloud provider network encryption (TLS in transit) mitigates; risk increases with misconfigured VPC flow logs"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1505.003",
+      "technique_name": "Server Software Component: Web Shell",
+      "tactic": "Persistence",
+      "target_component": "transformer",
+      "entry_point": "Malicious webhook payload exploiting deserialization flaw in transformer",
+      "impact": "Persistent backdoor in transformer process enabling arbitrary code execution on subsequent events",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Transformer processes untrusted data; lack of sandboxing or strict schema validation enables persistence"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1005",
+      "technique_name": "Data from Local System",
+      "tactic": "Collection",
+      "target_component": "integration_db",
+      "entry_point": "Compromised transformer with database credentials",
+      "impact": "Exfiltration of all integrated SaaS data stored in integration_db",
+      "likelihood": "High",
+      "likelihood_rationale": "Transformer holds DB credentials; if compromised (AP-005), direct data access is trivial"
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1074.001",
+      "technique_name": "Data Staged: Local Data Staging",
+      "tactic": "Collection",
+      "target_component": "audit_log",
+      "entry_point": "Compromised transformer writing to audit_log",
+      "impact": "Audit log tampering or deletion to cover tracks of data exfiltration",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Transformer writes audit entries; compromised process can overwrite or delete logs if permissions are excessive"
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1499",
+      "technique_name": "Endpoint Denial of Service",
+      "tactic": "Impact",
+      "target_component": "rate_limiter",
+      "entry_point": "High-volume request flood from external_saas or end_user",
+      "impact": "Rate limiter exhaustion causing legitimate webhook/OAuth traffic to be dropped",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Rate limiter is a choke point; distributed flood from compromised SaaS or botnet can overwhelm fixed limits"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "Baseline Configuration & Hardening",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 16.1",
+      "control_name": "Input Validation & Schema Enforcement",
+      "addresses_technique": [
+        "T1190",
+        "T1505.003"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Least Privilege & Token Binding",
+      "addresses_technique": [
+        "T1078",
+        "T1566.002"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 3.10",
+      "control_name": "Encrypt Sensitive Data in Transit",
+      "addresses_technique": [
+        "T1040"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "Runtime Application Self-Protection (RASP)",
+      "addresses_technique": [
+        "T1505.003"
+      ],
+      "implementation_status": "Not applicable",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 13.2",
+      "control_name": "Database Activity Monitoring & Encryption",
+      "addresses_technique": [
+        "T1005",
+        "T1074.001"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.IP-4",
+      "control_name": "Immutable Audit Logs with WORM Storage",
+      "addresses_technique": [
+        "T1074.001"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "CIS Control 12.1",
+      "control_name": "Adaptive Rate Limiting & DDoS Protection",
+      "addresses_technique": [
+        "T1499"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Identity & Access Management with MFA",
+      "addresses_technique": [
+        "T1078",
+        "T1566.002"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Public webhook endpoint with insufficient input validation allows RCE via deserialization, leading to full pipeline compromise",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "webhook_receiver",
+        "transformer",
+        "event_queue"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1505.003"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002",
+        "M-005"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Stolen OAuth tokens grant full API access without additional verification; token binding and device fingerprinting not implemented",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:L",
+      "affected_components": [
+        "oauth_proxy",
+        "rate_limiter",
+        "event_queue"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-003",
+        "M-009"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Spearphishing can trick users into granting malicious OAuth consent; domain validation and user education gaps exist",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:L/A:N",
+      "affected_components": [
+        "end_user",
+        "oauth_proxy"
+      ],
+      "linked_techniques": [
+        "T1566.002"
+      ],
+      "linked_mitigations": [
+        "M-003",
+        "M-009"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Low",
+      "severity_rationale": "Network sniffing risk mitigated by cloud provider TLS; residual risk only from misconfiguration",
+      "severity_vector": "CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
+      "affected_components": [
+        "event_queue",
+        "webhook_receiver",
+        "oauth_proxy"
+      ],
+      "linked_techniques": [
+        "T1040"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Critical",
+      "severity_rationale": "Transformer compromise leads to direct database access and audit log tampering; no runtime protection or least-privilege DB credentials",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "transformer",
+        "integration_db",
+        "audit_log"
+      ],
+      "linked_techniques": [
+        "T1505.003",
+        "T1005",
+        "T1074.001"
+      ],
+      "linked_mitigations": [
+        "M-002",
+        "M-005",
+        "M-006",
+        "M-007"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "Rate limiter is single point of failure for DoS; adaptive limits and upstream DDoS protection partially deployed",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": [
+        "rate_limiter",
+        "webhook_receiver",
+        "oauth_proxy"
+      ],
+      "linked_techniques": [
+        "T1499"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US-East-1 (AWS)",
+      "EU-Central-1 (AWS)"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "ISO 27001",
+      "GDPR",
+      "CCPA"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "External SaaS Provider API",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "OAuth 2.0 Identity Provider (Auth0)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Cloud Provider Managed Kafka (Event Queue)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Cloud Provider Managed PostgreSQL (Integration DB)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Cloud Provider CloudWatch (Audit Log)",
+        "trust_tier": "trusted"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "supervised",
+      "tool_call_scope": [],
+      "blast_radius": "No autonomous agents in architecture; all components are deterministic services",
+      "human_oversight_points": [
+        "All deployment changes require human approval via CI/CD gates",
+        "Database schema changes require DBA review"
+      ],
+      "model_provenance": {
+        "provider": "N/A",
+        "model_id": "N/A",
+        "fine_tuned": false
+      }
+    }
+  }
+}

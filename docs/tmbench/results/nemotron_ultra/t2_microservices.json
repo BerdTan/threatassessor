@@ -1,0 +1,467 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_microservices",
+  "produced_by": "nemotron_ultra v1.0 v1.0",
+  "produced_at": "2026-11-15T10:30:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "users",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "api_gateway",
+        "role": "ingress",
+        "trust_zone": "dmz"
+      },
+      {
+        "id": "user_service",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "order_service",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "payment_service",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "inventory_service",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "message_queue",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "user_db",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "order_db",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "payment_db",
+        "role": "data_store",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "inventory_db",
+        "role": "data_store",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "external_to_dmz: users -> api_gateway",
+      "dmz_to_internal: api_gateway -> microservices",
+      "internal_to_data: microservices -> databases",
+      "internal_to_message_bus: order_service/payment_service -> message_queue",
+      "message_bus_to_internal: message_queue -> inventory_service"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "cloud-hosted microservices architecture with API gateway, message queue for async communication, and per-service databases"
+  },
+  "threat_actors": [
+    {
+      "name": "external_attacker",
+      "motivation": "financial gain through payment data theft and order manipulation",
+      "capability_tier": "targeted",
+      "initial_access_vector": "exploit public-facing API gateway vulnerability or credential stuffing",
+      "non_capabilities": [
+        "no physical access to cloud infrastructure",
+        "no pre-existing valid credentials",
+        "no zero-day exploits for underlying cloud platform",
+        "no insider knowledge of internal service topology"
+      ]
+    },
+    {
+      "name": "malicious_insider",
+      "motivation": "data exfiltration for competitive advantage or sabotage",
+      "capability_tier": "targeted",
+      "initial_access_vector": "legitimate access to internal network via compromised developer workstation or CI/CD pipeline",
+      "non_capabilities": [
+        "no direct access to production database credentials (stored in vault)",
+        "no ability to modify API gateway configuration",
+        "no access to payment service encryption keys",
+        "no physical access to cloud provider facilities"
+      ]
+    },
+    {
+      "name": "opportunistic_botnet",
+      "motivation": "automated credential stuffing and vulnerability scanning for any exploitable service",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "credential stuffing against API gateway auth endpoints or scanning for known CVEs in exposed services",
+      "non_capabilities": [
+        "no targeted reconnaissance capability",
+        "no ability to chain multiple exploits",
+        "no persistence mechanisms beyond initial access",
+        "no capability to bypass WAF rules"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "api_gateway",
+      "entry_point": "public HTTPS endpoint",
+      "impact": "initial foothold in DMZ, potential bypass of authentication",
+      "likelihood": "Medium",
+      "likelihood_rationale": "API gateway is internet-exposed; known CVEs in gateway software (e.g., Kong, NGINX, AWS API Gateway) are regularly exploited"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "api_gateway",
+      "entry_point": "authentication endpoint (/login, /oauth/token)",
+      "impact": "authenticated access as legitimate user, bypassing initial access controls",
+      "likelihood": "High",
+      "likelihood_rationale": "credential stuffing and phishing are prevalent; API gateway auth endpoints are high-value targets"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1505.003",
+      "technique_name": "Web Shell",
+      "tactic": "Persistence",
+      "target_component": "user_service",
+      "entry_point": "compromised API gateway -> internal service-to-service call",
+      "impact": "persistent access to user service, ability to read/modify user data",
+      "likelihood": "Medium",
+      "likelihood_rationale": "if initial access gained, lateral movement to internal services is feasible; web shells common in compromised web apps"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1213",
+      "technique_name": "Data from Information Repositories",
+      "tactic": "Collection",
+      "target_component": "payment_db",
+      "entry_point": "compromised payment_service -> direct database connection",
+      "impact": "exfiltration of payment card data, PII, transaction history",
+      "likelihood": "Medium",
+      "likelihood_rationale": "payment database is high-value target; if payment service compromised, direct DB access likely"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over Command and Control Channel",
+      "tactic": "Exfiltration",
+      "target_component": "message_queue",
+      "entry_point": "compromised order_service publishing malicious messages",
+      "impact": "data exfiltration via message queue to external listener, bypassing direct DB access controls",
+      "likelihood": "Low",
+      "likelihood_rationale": "requires compromise of order_service first; message queue may have egress filtering"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1565.001",
+      "technique_name": "Stored Data Manipulation",
+      "tactic": "Impact",
+      "target_component": "inventory_db",
+      "entry_point": "compromised inventory_service via message_queue injection",
+      "impact": "inventory corruption, financial loss through incorrect stock levels, order fulfillment failures",
+      "likelihood": "Medium",
+      "likelihood_rationale": "message queue is trusted internal channel; injection possible if order/payment service compromised"
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1021.004",
+      "technique_name": "Pass the Hash",
+      "tactic": "Lateral Movement",
+      "target_component": "order_service",
+      "entry_point": "compromised developer workstation -> internal network access",
+      "impact": "lateral movement to order service using stolen service account credentials",
+      "likelihood": "High",
+      "likelihood_rationale": "insider threat with network access; service-to-service auth often uses shared secrets or certificates vulnerable to theft"
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1552.001",
+      "technique_name": "Credentials In Files",
+      "tactic": "Credential Access",
+      "target_component": "user_db",
+      "entry_point": "CI/CD pipeline compromise -> access to infrastructure-as-code repositories",
+      "impact": "database credentials extracted from config files, direct database access",
+      "likelihood": "Medium",
+      "likelihood_rationale": "credentials often stored in config files or environment variables in repos; CI/CD compromise is realistic"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Identities and credentials are issued, managed, verified, revoked, and audited for authorized devices, users, and processes",
+      "addresses_technique": [
+        "T1078",
+        "T1552.001"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.IP-12",
+      "control_name": "Vulnerability management plan is developed and implemented",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 8.5",
+      "control_name": "Collect and Analyze Audit Logs",
+      "addresses_technique": [
+        "T1505.003",
+        "T1021.004"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Data-at-rest is protected",
+      "addresses_technique": [
+        "T1213"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Data-in-transit is protected",
+      "addresses_technique": [
+        "T1041"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 13.5",
+      "control_name": "Manage Access Control for Remote Assets",
+      "addresses_technique": [
+        "T1021.004",
+        "T1552.001"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.IP-3",
+      "control_name": "Configuration change control processes are in place",
+      "addresses_technique": [
+        "T1565.001"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "CIS Control 10.1",
+      "control_name": "Utilize an Automated Tool to Inventory Network Devices",
+      "addresses_technique": [
+        "T1021.004"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "API gateway is internet-exposed; credential stuffing (T1078) has high likelihood and leads to authenticated access bypassing perimeter controls",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N",
+      "affected_components": [
+        "api_gateway"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Known vulnerabilities in API gateway software (T1190) provide initial access vector; patching cadence may leave window of exposure",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "api_gateway"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Web shell persistence (T1505.003) on user service enables long-term access to user data; logging coverage is partial",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "user_service"
+      ],
+      "linked_techniques": [
+        "T1505.003"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Critical",
+      "severity_rationale": "Payment database (T1213) contains cardholder data; direct exfiltration would trigger PCI-DSS breach notification and severe financial/reputational impact",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "payment_db",
+        "payment_service"
+      ],
+      "linked_techniques": [
+        "T1213"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Message queue exfiltration (T1041) is lower likelihood due to egress controls but would bypass database access monitoring",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:N/A:N",
+      "affected_components": [
+        "message_queue",
+        "order_service"
+      ],
+      "linked_techniques": [
+        "T1041"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "High",
+      "severity_rationale": "Inventory data manipulation (T1565.001) via message queue injection causes direct financial loss and operational disruption; message queue is trusted channel",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:N/I:H/A:H",
+      "affected_components": [
+        "inventory_db",
+        "inventory_service",
+        "message_queue"
+      ],
+      "linked_techniques": [
+        "T1565.001"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "High",
+      "severity_rationale": "Insider lateral movement via Pass the Hash (T1021.004) is high likelihood given internal network access; service-to-service auth uses shared secrets",
+      "severity_vector": "CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "order_service",
+        "user_service",
+        "payment_service"
+      ],
+      "linked_techniques": [
+        "T1021.004"
+      ],
+      "linked_mitigations": [
+        "M-003",
+        "M-006",
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Medium",
+      "severity_rationale": "Database credentials in configuration files (T1552.001) accessible via CI/CD compromise; vault adoption is incomplete",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "user_db",
+        "order_db",
+        "payment_db",
+        "inventory_db"
+      ],
+      "linked_techniques": [
+        "T1552.001"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-006"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US-East-1 (AWS)",
+      "EU-West-1 (AWS)"
+    ],
+    "compliance_scope": [
+      "PCI-DSS",
+      "GDPR",
+      "SOC 2 Type II"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "AWS API Gateway",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "AWS RDS (PostgreSQL)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "AWS SQS/SNS",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Stripe Payment API",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Auth0 Authentication",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Datadog Monitoring",
+        "trust_tier": "conditional"
+      }
+    ],
+    "agentic": null
+  }
+}

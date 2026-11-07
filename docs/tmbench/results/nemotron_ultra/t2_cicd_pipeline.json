@@ -1,0 +1,527 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_cicd_pipeline",
+  "produced_by": "nemotron_ultra v1.0 v1.0",
+  "produced_at": "2026-11-15T14:30:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "developer",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "github_repo",
+        "role": "data_store",
+        "trust_zone": "source_control"
+      },
+      {
+        "id": "branch_protection",
+        "role": "compute",
+        "trust_zone": "source_control"
+      },
+      {
+        "id": "actions_runner",
+        "role": "compute",
+        "trust_zone": "ci_layer"
+      },
+      {
+        "id": "secrets_manager",
+        "role": "data_store",
+        "trust_zone": "ci_layer"
+      },
+      {
+        "id": "artifactory",
+        "role": "data_store",
+        "trust_zone": "artifact_layer"
+      },
+      {
+        "id": "sast_scanner",
+        "role": "compute",
+        "trust_zone": "artifact_layer"
+      },
+      {
+        "id": "staging_env",
+        "role": "compute",
+        "trust_zone": "deploy_layer"
+      },
+      {
+        "id": "prod_env",
+        "role": "compute",
+        "trust_zone": "deploy_layer"
+      },
+      {
+        "id": "deploy_key_store",
+        "role": "data_store",
+        "trust_zone": "deploy_layer"
+      }
+    ],
+    "trust_boundaries": [
+      "external_to_source_control",
+      "source_control_to_ci",
+      "ci_to_secrets",
+      "ci_to_artifact_layer",
+      "artifact_to_staging",
+      "staging_to_production",
+      "deploy_keys_to_production"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Cloud-native CI/CD pipeline using GitHub Actions for build/test, Artifactory for artifact storage, and staged deployment to cloud environments. Secrets managed via dedicated secrets manager. Deploy keys control production access."
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Credential theft, cryptomining, supply chain compromise for downstream impact",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Phishing developer credentials or exploiting public GitHub repository misconfigurations",
+      "non_capabilities": [
+        "No physical access to developer workstations",
+        "No pre-existing insider knowledge of pipeline internals",
+        "No zero-day exploits for GitHub Actions or Artifactory",
+        "No ability to compromise upstream dependencies directly"
+      ]
+    },
+    {
+      "name": "Malicious Insider (Compromised Developer)",
+      "motivation": "Intellectual property theft, sabotage, backdoor insertion",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate developer credentials with write access to repository",
+      "non_capabilities": [
+        "Cannot bypass branch protection rules without admin approval",
+        "Cannot access production deploy keys directly",
+        "Cannot modify secrets manager policies without elevated IAM role",
+        "Cannot disable SAST scanning configuration"
+      ]
+    },
+    {
+      "name": "Supply Chain Attacker",
+      "motivation": "Inject malicious code into artifacts consumed by downstream users",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Compromise of third-party dependency or build toolchain",
+      "non_capabilities": [
+        "No direct access to GitHub repository or Actions runners",
+        "Cannot modify branch protection rules",
+        "Cannot access secrets manager or deploy key store",
+        "No ability to promote artifacts to staging/production without pipeline execution"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1078.004",
+      "technique_name": "Valid Accounts: Cloud Accounts",
+      "tactic": "Initial Access",
+      "target_component": "github_repo",
+      "entry_point": "Developer credential phishing or token theft",
+      "impact": "Full read/write access to source code, ability to push malicious commits, modify workflow files",
+      "likelihood": "High",
+      "likelihood_rationale": "Developer credentials are high-value targets; phishing and token leakage are common"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1556.002",
+      "technique_name": "Modify Authentication Process: Password Filter",
+      "tactic": "Defense Evasion",
+      "target_component": "branch_protection",
+      "entry_point": "Compromised developer account with repo admin rights",
+      "impact": "Bypass required reviews and status checks, merge malicious code directly to protected branches",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Requires admin-level compromise; branch protection misconfigurations are exploitable"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1105",
+      "technique_name": "Ingress Tool Transfer",
+      "tactic": "Command and Control",
+      "target_component": "actions_runner",
+      "entry_point": "Malicious workflow file or compromised dependency in build",
+      "impact": "Arbitrary code execution on runner, access to secrets manager, ability to exfiltrate data or poison artifacts",
+      "likelihood": "High",
+      "likelihood_rationale": "Self-hosted or ephemeral runners execute untrusted code; supply chain compromises are increasing"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1552.001",
+      "technique_name": "Unsecured Credentials: Credentials In Files",
+      "tactic": "Credential Access",
+      "target_component": "secrets_manager",
+      "entry_point": "Compromised Actions runner with access to secrets",
+      "impact": "Theft of API keys, database passwords, cloud credentials used in pipeline",
+      "likelihood": "High",
+      "likelihood_rationale": "Runners need secrets access; malicious workflow steps can dump environment variables"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1080",
+      "technique_name": "Taint Shared Content",
+      "tactic": "Impact",
+      "target_component": "artifactory",
+      "entry_point": "Compromised Actions runner publishing malicious artifact",
+      "impact": "Poisoned artifacts deployed to staging/production, affecting downstream consumers",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Requires successful runner compromise; artifact signing and verification can mitigate"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1583.001",
+      "technique_name": "Acquire Infrastructure: Domains",
+      "tactic": "Resource Development",
+      "target_component": "sast_scanner",
+      "entry_point": "Malicious code designed to evade static analysis rules",
+      "impact": "SAST scanner fails to detect vulnerabilities, allowing vulnerable code to proceed to artifact storage",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires deep knowledge of SAST rules; evasion techniques exist but are complex"
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1074.001",
+      "technique_name": "Data Staged: Local Data Staging",
+      "tactic": "Collection",
+      "target_component": "staging_env",
+      "entry_point": "Malicious artifact deployed from Artifactory",
+      "impact": "Persistence in staging environment, lateral movement to production, data exfiltration",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Staging often has production-like data and network access; promotion gates may be weak"
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1505.003",
+      "technique_name": "Server Software Component: Web Shell",
+      "tactic": "Persistence",
+      "target_component": "prod_env",
+      "entry_point": "Promoted malicious artifact from staging or compromised deploy key",
+      "impact": "Persistent backdoor in production, full control over production workloads and data",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires bypassing staging validation and deploy key controls; high impact but multiple barriers"
+    },
+    {
+      "path_id": "AP-009",
+      "technique_id": "T1068",
+      "technique_name": "Exploitation for Privilege Escalation",
+      "tactic": "Privilege Escalation",
+      "target_component": "deploy_key_store",
+      "entry_point": "Compromised staging environment with network access to deploy key store",
+      "impact": "Theft of production deployment keys, ability to deploy arbitrary code to production",
+      "likelihood": "Low",
+      "likelihood_rationale": "Deploy key store should be network-isolated; requires staging compromise plus lateral movement"
+    },
+    {
+      "path_id": "AP-010",
+      "technique_id": "T1602",
+      "technique_name": "Data from Configuration Repository",
+      "tactic": "Collection",
+      "target_component": "github_repo",
+      "entry_point": "Compromised read-only token or public repository exposure",
+      "impact": "Exfiltration of source code, architecture details, hardcoded secrets, pipeline configuration",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Repositories often contain sensitive configuration; token scopes may be excessive"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Identities and credentials are issued, managed, verified, revoked, and audited",
+      "addresses_technique": [
+        "T1078.004",
+        "T1602"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "NIST CSF PR.AC-4",
+      "control_name": "Access permissions and authorizations are managed, incorporating least privilege and separation of duties",
+      "addresses_technique": [
+        "T1556.002",
+        "T1552.001"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "CIS Control 5.1",
+      "control_name": "Establish and Maintain an Inventory of Accounts",
+      "addresses_technique": [
+        "T1078.004"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "A baseline configuration of information technology/industrial control systems is created and maintained",
+      "addresses_technique": [
+        "T1105",
+        "T1080"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "CIS Control 16.5",
+      "control_name": "Ensure That All Application Software is Developed In-House or Acquired from Trusted Sources",
+      "addresses_technique": [
+        "T1105",
+        "T1080"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "NIST CSF PR.DS-1",
+      "control_name": "Data-at-rest is protected",
+      "addresses_technique": [
+        "T1552.001",
+        "T1602"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Data-in-transit is protected",
+      "addresses_technique": [
+        "T1080",
+        "T1074.001"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "CIS Control 10.2",
+      "control_name": "Establish and Maintain a Secure Configuration Process for Network Infrastructure",
+      "addresses_technique": [
+        "T1074.001",
+        "T1505.003",
+        "T1068"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "NIST CSF DE.CM-7",
+      "control_name": "Monitoring for unauthorized personnel, connections, devices, and software is performed",
+      "addresses_technique": [
+        "T1105",
+        "T1080",
+        "T1505.003"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "CIS Control 3.3",
+      "control_name": "Configure Data Access Control Lists",
+      "addresses_technique": [
+        "T1552.001",
+        "T1068"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-011",
+      "control_id": "NIST CSF PR.IP-12",
+      "control_name": "A vulnerability management plan is developed and implemented",
+      "addresses_technique": [
+        "T1583.001"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-012",
+      "control_id": "CIS Control 17.5",
+      "control_name": "Ensure That All Software Development Personnel Receive Training in Writing Secure Code",
+      "addresses_technique": [
+        "T1583.001"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "Compromised developer credentials grant full pipeline control with high likelihood and no MFA enforcement on all accounts",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "github_repo",
+        "actions_runner",
+        "secrets_manager",
+        "artifactory"
+      ],
+      "linked_techniques": [
+        "T1078.004"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-003"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "Branch protection bypass allows direct malicious code merge; admin compromise is feasible via credential theft",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "branch_protection",
+        "github_repo"
+      ],
+      "linked_techniques": [
+        "T1556.002"
+      ],
+      "linked_mitigations": [
+        "M-002",
+        "M-004"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Critical",
+      "severity_rationale": "Actions runner executes untrusted code with access to all pipeline secrets; supply chain compromise likelihood is high",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "actions_runner",
+        "secrets_manager",
+        "artifactory"
+      ],
+      "linked_techniques": [
+        "T1105",
+        "T1552.001"
+      ],
+      "linked_mitigations": [
+        "M-004",
+        "M-005",
+        "M-006",
+        "M-009"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Malicious artifact publication poisons supply chain; artifact signing not enforced",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "artifactory",
+        "staging_env",
+        "prod_env"
+      ],
+      "linked_techniques": [
+        "T1080"
+      ],
+      "linked_mitigations": [
+        "M-004",
+        "M-005",
+        "M-007",
+        "M-009"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "SAST evasion possible but requires sophisticated attacker; defense-in-depth reduces impact",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "sast_scanner",
+        "artifactory"
+      ],
+      "linked_techniques": [
+        "T1583.001"
+      ],
+      "linked_mitigations": [
+        "M-011",
+        "M-012"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "High",
+      "severity_rationale": "Staging environment compromise enables lateral movement to production; network segmentation incomplete",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "staging_env",
+        "prod_env",
+        "deploy_key_store"
+      ],
+      "linked_techniques": [
+        "T1074.001",
+        "T1505.003",
+        "T1068"
+      ],
+      "linked_mitigations": [
+        "M-008",
+        "M-009",
+        "M-010"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Medium",
+      "severity_rationale": "Source code exfiltration via excessive token scopes; impacts IP confidentiality but not integrity",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "github_repo"
+      ],
+      "linked_techniques": [
+        "T1602"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-006"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US-East-1",
+      "EU-West-1"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "ISO 27001",
+      "GDPR"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "GitHub",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Artifactory (JFrog)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "SAST Scanner (Semgrep)",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Cloud Provider (AWS)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Third-party npm/PyPI packages",
+        "trust_tier": "untrusted"
+      }
+    ]
+  }
+}

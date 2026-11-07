@@ -1,0 +1,602 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_rag_pipeline",
+  "produced_by": "nemotron_ultra v1.0 v1.0",
+  "produced_at": "2026-11-15T14:30:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "WebUI",
+        "role": "ingress",
+        "trust_zone": "dmz"
+      },
+      {
+        "id": "AgentOrchestrator",
+        "role": "compute",
+        "trust_zone": "application"
+      },
+      {
+        "id": "PromptManager",
+        "role": "compute",
+        "trust_zone": "application"
+      },
+      {
+        "id": "ToolRegistry",
+        "role": "compute",
+        "trust_zone": "application"
+      },
+      {
+        "id": "LLMGateway",
+        "role": "compute",
+        "trust_zone": "application"
+      },
+      {
+        "id": "OpenAI",
+        "role": "egress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "Anthropic",
+        "role": "egress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "LocalLLM",
+        "role": "compute",
+        "trust_zone": "application"
+      },
+      {
+        "id": "VectorDB",
+        "role": "data_store",
+        "trust_zone": "data"
+      },
+      {
+        "id": "DocumentStore",
+        "role": "data_store",
+        "trust_zone": "data"
+      },
+      {
+        "id": "EmbeddingService",
+        "role": "compute",
+        "trust_zone": "application"
+      },
+      {
+        "id": "WebSearch",
+        "role": "egress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "CodeExecution",
+        "role": "compute",
+        "trust_zone": "isolated"
+      },
+      {
+        "id": "DatabaseTool",
+        "role": "compute",
+        "trust_zone": "application"
+      },
+      {
+        "id": "APIIntegrations",
+        "role": "egress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "UserDB",
+        "role": "data_store",
+        "trust_zone": "data"
+      },
+      {
+        "id": "SessionStore",
+        "role": "data_store",
+        "trust_zone": "data"
+      },
+      {
+        "id": "AuditLog",
+        "role": "data_store",
+        "trust_zone": "audit"
+      }
+    ],
+    "trust_boundaries": [
+      "dmz-to-application: WebUI -> AgentOrchestrator",
+      "application-to-external: LLMGateway -> OpenAI/Anthropic",
+      "application-to-external: ToolRegistry -> WebSearch/APIIntegrations",
+      "application-to-data: AgentOrchestrator -> VectorDB/DocumentStore/UserDB/SessionStore",
+      "application-to-isolated: ToolRegistry -> CodeExecution",
+      "application-to-audit: AgentOrchestrator -> AuditLog"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "hybrid cloud deployment with agentic RAG pipeline; LLM inference via managed APIs (OpenAI, Anthropic) and local model; vector database and document store in private VPC; code execution sandbox isolated"
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "Credential harvesting, cryptomining, low-effort data exfiltration from exposed interfaces",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "Public-facing Web UI chat interface (prompt injection, auth bypass)",
+      "non_capabilities": [
+        "No physical access to data centers",
+        "No pre-existing valid credentials",
+        "No zero-day exploits for underlying infrastructure",
+        "Cannot compromise supply chain of third-party LLM providers"
+      ]
+    },
+    {
+      "name": "Targeted APT Group",
+      "motivation": "Intellectual property theft, persistent access to proprietary documents and user data",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Spear-phishing developers with access to Agent Orchestrator CI/CD; supply chain compromise of Embedding Service dependencies",
+      "non_capabilities": [
+        "No insider with legitimate production access",
+        "Cannot physically access on-prem Local LLM hardware",
+        "No capability to break TLS 1.3 in transit"
+      ]
+    },
+    {
+      "name": "Malicious Insider (Developer)",
+      "motivation": "Exfiltrate training data, plant model backdoors, sabotage RAG retrieval",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate access to Prompt Manager configuration, Tool Registry, and CI/CD pipelines",
+      "non_capabilities": [
+        "No direct database admin credentials (separation of duties)",
+        "Cannot modify Audit Log entries (append-only)",
+        "No access to production encryption keys (managed by KMS)"
+      ]
+    },
+    {
+      "name": "Adversarial Agent (Prompt Injection)",
+      "motivation": "Goal hijacking, tool misuse, data exfiltration via autonomous agent actions",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Malicious user input crafted to override system prompts and invoke tools",
+      "non_capabilities": [
+        "Cannot directly access underlying OS or container runtime",
+        "Cannot bypass Tool Registry allowlist",
+        "Cannot persist across sessions without Session Store compromise"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "WebUI",
+      "entry_point": "Chat interface input field",
+      "impact": "Remote code execution on Web UI container; pivot to Agent Orchestrator",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Web UI is internet-exposed; input validation gaps in chat parsing could allow injection"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "AML.T0043",
+      "technique_name": "Craft Adversarial Data",
+      "tactic": "Initial Access",
+      "target_component": "PromptManager",
+      "entry_point": "User-supplied prompts via Web UI",
+      "impact": "Prompt injection overrides system instructions; agent executes unauthorized tool calls",
+      "likelihood": "High",
+      "likelihood_rationale": "Direct user input flows to Prompt Manager without sanitization; LLM inherently follows instructions"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "AML.T0048",
+      "technique_name": "Model Backdoor",
+      "tactic": "Persistence",
+      "target_component": "LocalLLM",
+      "entry_point": "Compromised model artifact in CI/CD or supply chain",
+      "impact": "Backdoored model emits malicious outputs or triggers tool misuse on specific triggers",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires supply chain compromise; Local LLM artifacts are signed and verified"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "UserDB",
+      "entry_point": "Credential stuffing against authentication endpoint",
+      "impact": "Account takeover; access to user sessions, chat history, and personalized RAG data",
+      "likelihood": "Medium",
+      "likelihood_rationale": "No MFA enforced on all accounts; credential reuse common"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1505.003",
+      "technique_name": "Web Shell",
+      "tactic": "Persistence",
+      "target_component": "CodeExecution",
+      "entry_point": "Malicious code submitted via Code Execution Sandbox tool",
+      "impact": "Persistent foothold in sandbox; lateral movement to Database Tool and internal APIs",
+      "likelihood": "High",
+      "likelihood_rationale": "Sandbox isolation historically bypassed; tool accepts arbitrary code"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1021.004",
+      "technique_name": "Pass the Hash",
+      "tactic": "Lateral Movement",
+      "target_component": "DatabaseTool",
+      "entry_point": "Compromised service account credentials from Agent Orchestrator memory",
+      "impact": "Unauthorized queries to UserDB, SessionStore; data exfiltration",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Service accounts use static credentials; no rotation; memory scraping feasible"
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "T1530",
+      "technique_name": "Data from Cloud Storage",
+      "tactic": "Collection",
+      "target_component": "VectorDB",
+      "entry_point": "Misconfigured network ACL on Vector DB; accessed via compromised Agent Orchestrator",
+      "impact": "Exfiltration of embedded proprietary documents and user-uploaded content",
+      "likelihood": "High",
+      "likelihood_rationale": "Vector DB in same VPC; overly permissive security groups observed in similar deployments"
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "T1041",
+      "technique_name": "Exfiltration Over Command and Control Channel",
+      "tactic": "Exfiltration",
+      "target_component": "APIIntegrations",
+      "entry_point": "Compromised agent invokes external API integration with stolen data as payload",
+      "impact": "Data exfiltrated to attacker-controlled endpoint via legitimate integration",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Agent has broad tool call scope; no egress filtering on API integration responses"
+    },
+    {
+      "path_id": "AP-009",
+      "technique_id": "T1499.001",
+      "technique_name": "Direct Network Flood",
+      "tactic": "Impact",
+      "target_component": "LLMGateway",
+      "entry_point": "High-volume requests from botnet to Web UI -> Agent Orchestrator -> LLM Gateway",
+      "impact": "Denial of service; exhaust LLM API quotas and local compute",
+      "likelihood": "Medium",
+      "likelihood_rationale": "No rate limiting per user at LLM Gateway; public endpoint"
+    },
+    {
+      "path_id": "AP-010",
+      "technique_id": "AML.T0057",
+      "technique_name": "LLM Plugin Compromise",
+      "tactic": "Execution",
+      "target_component": "ToolRegistry",
+      "entry_point": "Malicious tool definition registered via CI/CD or insider",
+      "impact": "Arbitrary code execution when agent invokes compromised tool",
+      "likelihood": "Low",
+      "likelihood_rationale": "Tool Registry changes require code review; but insider could bypass"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "Input Validation and Sanitization",
+      "addresses_technique": [
+        "T1190",
+        "AML.T0043"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 16.11",
+      "control_name": "Prompt Injection Defense: Instruction Hierarchy Enforcement",
+      "addresses_technique": [
+        "AML.T0043"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.DS-6",
+      "control_name": "Model Artifact Signing and Verification",
+      "addresses_technique": [
+        "AML.T0048"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 5.2",
+      "control_name": "Multi-Factor Authentication Enforcement",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.AC-3",
+      "control_name": "Code Execution Sandbox Hardening (gVisor, seccomp, network egress deny)",
+      "addresses_technique": [
+        "T1505.003"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 4.1",
+      "control_name": "Service Account Credential Rotation and Vault Integration",
+      "addresses_technique": [
+        "T1021.004"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.AC-5",
+      "control_name": "Network Segmentation: Vector DB in Isolated Subnet with Deny-All Egress",
+      "addresses_technique": [
+        "T1530"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "CIS Control 13.3",
+      "control_name": "Egress Filtering and Data Loss Prevention on API Integrations",
+      "addresses_technique": [
+        "T1041"
+      ],
+      "implementation_status": "Not applicable",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "NIST CSF PR.DS-4",
+      "control_name": "Rate Limiting and Quota Enforcement at LLM Gateway",
+      "addresses_technique": [
+        "T1499.001"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "CIS Control 3.3",
+      "control_name": "Tool Registry Change Control with Signed Tool Definitions",
+      "addresses_technique": [
+        "AML.T0057"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Prompt injection directly enables unauthorized tool invocation and data access; high likelihood, partial mitigation",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "PromptManager",
+        "AgentOrchestrator",
+        "ToolRegistry"
+      ],
+      "linked_techniques": [
+        "AML.T0043"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "Code execution sandbox escape leads to full container compromise and lateral movement; high likelihood",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "CodeExecution",
+        "DatabaseTool",
+        "APIIntegrations"
+      ],
+      "linked_techniques": [
+        "T1505.003"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "High",
+      "severity_rationale": "Vector database exfiltration exposes proprietary embeddings and user documents; high likelihood, partial network controls",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "VectorDB",
+        "DocumentStore",
+        "EmbeddingService"
+      ],
+      "linked_techniques": [
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-007"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Service account credential reuse enables lateral movement to databases; no rotation implemented",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "affected_components": [
+        "DatabaseTool",
+        "UserDB",
+        "SessionStore"
+      ],
+      "linked_techniques": [
+        "T1021.004"
+      ],
+      "linked_mitigations": [
+        "M-006"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Exfiltration via API integrations possible due to lack of egress DLP; medium likelihood",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+      "affected_components": [
+        "APIIntegrations",
+        "AgentOrchestrator"
+      ],
+      "linked_techniques": [
+        "T1041"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Medium",
+      "severity_rationale": "Web UI exploit chain to Agent Orchestrator; input validation partial, WAF in place",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+      "affected_components": [
+        "WebUI",
+        "AgentOrchestrator"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Medium",
+      "severity_rationale": "LLM Gateway DoS exhausts quotas and degrades service; rate limiting not implemented",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "affected_components": [
+        "LLMGateway",
+        "OpenAI",
+        "Anthropic",
+        "LocalLLM"
+      ],
+      "linked_techniques": [
+        "T1499.001"
+      ],
+      "linked_mitigations": [
+        "M-009"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Low",
+      "severity_rationale": "Model backdoor requires supply chain compromise; artifacts signed and verified",
+      "severity_vector": "CVSS:3.1/AV:L/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "LocalLLM"
+      ],
+      "linked_techniques": [
+        "AML.T0048"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "Low",
+      "severity_rationale": "Tool Registry compromise requires insider or CI/CD breach; signed definitions enforced",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "ToolRegistry"
+      ],
+      "linked_techniques": [
+        "AML.T0057"
+      ],
+      "linked_mitigations": [
+        "M-010"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-010",
+      "severity": "Medium",
+      "severity_rationale": "Credential stuffing against user accounts; MFA not universally enforced",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
+      "affected_components": [
+        "UserDB",
+        "WebUI",
+        "SessionStore"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US-East (AWS us-east-1)",
+      "EU-Central (Azure germanywestcentral)"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "ISO 27001",
+      "GDPR",
+      "CCPA"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "OpenAI API",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Anthropic API",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Pinecone Vector DB (managed)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Google Custom Search API",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "GitHub Copilot (code execution sandbox base image)",
+        "trust_tier": "conditional"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "semi-autonomous",
+      "tool_call_scope": [
+        "WebSearch",
+        "CodeExecution",
+        "DatabaseTool",
+        "APIIntegrations"
+      ],
+      "blast_radius": "Full read/write access to UserDB, SessionStore, VectorDB, DocumentStore; ability to invoke external APIs; code execution in sandbox; potential lateral movement to internal services",
+      "human_oversight_points": [
+        "Tool invocation requires explicit user confirmation for CodeExecution and DatabaseTool write operations; Prompt Manager changes require admin approval; Audit Log reviewed daily by SOC"
+      ],
+      "model_provenance": {
+        "provider": "Multiple (OpenAI, Anthropic, Local)",
+        "model_id": "gpt-4o, claude-3.5-sonnet, llama-3.1-70b-instruct",
+        "fine_tuned": false
+      }
+    }
+  }
+}

@@ -1,0 +1,623 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t3_multicloud_data",
+  "produced_by": "nemotron_ultra v1.0 v1.0",
+  "produced_at": "2026-11-15T14:30:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "kinesis_producer",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "pubsub_connector",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "sftp_ingest",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "api_webhook",
+        "role": "ingress",
+        "trust_zone": "external"
+      },
+      {
+        "id": "kafka_cluster",
+        "role": "compute",
+        "trust_zone": "ingestion"
+      },
+      {
+        "id": "schema_registry",
+        "role": "compute",
+        "trust_zone": "ingestion"
+      },
+      {
+        "id": "kafka_connect",
+        "role": "compute",
+        "trust_zone": "ingestion"
+      },
+      {
+        "id": "flink_cluster",
+        "role": "compute",
+        "trust_zone": "processing"
+      },
+      {
+        "id": "spark_batch",
+        "role": "compute",
+        "trust_zone": "processing"
+      },
+      {
+        "id": "data_quality_checker",
+        "role": "compute",
+        "trust_zone": "processing"
+      },
+      {
+        "id": "data_lake_raw",
+        "role": "data_store",
+        "trust_zone": "storage"
+      },
+      {
+        "id": "data_lake_curated",
+        "role": "data_store",
+        "trust_zone": "storage"
+      },
+      {
+        "id": "data_warehouse",
+        "role": "data_store",
+        "trust_zone": "storage"
+      },
+      {
+        "id": "feature_store",
+        "role": "data_store",
+        "trust_zone": "storage"
+      },
+      {
+        "id": "ml_model_registry",
+        "role": "compute",
+        "trust_zone": "serving"
+      },
+      {
+        "id": "ml_serving_endpoint",
+        "role": "egress",
+        "trust_zone": "serving"
+      },
+      {
+        "id": "bi_dashboard",
+        "role": "egress",
+        "trust_zone": "serving"
+      },
+      {
+        "id": "data_catalog",
+        "role": "compute",
+        "trust_zone": "platform"
+      },
+      {
+        "id": "airflow_orchestrator",
+        "role": "compute",
+        "trust_zone": "platform"
+      },
+      {
+        "id": "iam_service",
+        "role": "compute",
+        "trust_zone": "platform"
+      }
+    ],
+    "trust_boundaries": [
+      "external_to_ingestion",
+      "ingestion_to_processing",
+      "processing_to_storage",
+      "storage_to_serving",
+      "platform_cross_cutting"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "Multi-cloud (AWS Kinesis, GCP Pub/Sub) hybrid data platform with streaming/batch processing, ML model serving, and BI analytics. Deployed across AWS and GCP with shared Kafka backbone."
+  },
+  "threat_actors": [
+    {
+      "name": "External Cybercriminal Group",
+      "motivation": "Financial gain through data theft, ransomware, or cryptomining",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Exploit public-facing ingestion endpoints (API webhook, SFTP gateway) or compromised credentials for Kinesis/PubSub producers",
+      "non_capabilities": [
+        "No physical access to cloud infrastructure",
+        "No pre-existing valid credentials for IAM service",
+        "No zero-day exploits for Kafka/Flink/Spark",
+        "Cannot directly access VPC-private storage tiers"
+      ]
+    },
+    {
+      "name": "Malicious Insider (Data Engineer)",
+      "motivation": "Intellectual property theft, sabotage, or data exfiltration for personal gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "Legitimate access to Airflow orchestrator, Kafka Connect, or Spark/Flink job submission",
+      "non_capabilities": [
+        "Cannot bypass IAM service policy enforcement without privilege escalation",
+        "No access to cloud provider root accounts",
+        "Cannot modify ML model registry without audit trail",
+        "No ability to disable platform-wide encryption at rest"
+      ]
+    },
+    {
+      "name": "Adversarial ML Attacker",
+      "motivation": "Model evasion, data poisoning, or model extraction to compromise ML-driven decisions",
+      "capability_tier": "targeted",
+      "initial_access_vector": "API calls to ML serving endpoint, poisoned training data via feature store, or supply chain compromise of model registry",
+      "non_capabilities": [
+        "No direct access to Flink/Spark processing clusters",
+        "Cannot modify Airflow DAGs or Kafka topics directly",
+        "No ability to extract model weights without API access",
+        "Cannot bypass model registry signature verification"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "api_webhook",
+      "entry_point": "Unauthenticated API webhook endpoint exposed to internet",
+      "impact": "Remote code execution on webhook receiver, pivot to Kafka cluster",
+      "likelihood": "High",
+      "likelihood_rationale": "Webhook receiver is internet-facing with potential deserialization vulnerabilities; no WAF depicted"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1078",
+      "technique_name": "Valid Accounts",
+      "tactic": "Initial Access",
+      "target_component": "kafka_cluster",
+      "entry_point": "Stolen producer credentials for Kinesis/PubSub connectors",
+      "impact": "Unauthorized data injection into Kafka topics, downstream poisoning",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Credentials managed by external producers; rotation and monitoring not shown"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1505.003",
+      "technique_name": "Web Shell",
+      "tactic": "Persistence",
+      "target_component": "sftp_ingest",
+      "entry_point": "Compromised SFTP gateway via weak credentials or CVE",
+      "impact": "Persistent foothold in ingestion tier, file upload manipulation",
+      "likelihood": "Medium",
+      "likelihood_rationale": "SFTP gateways often have weak auth; direct path to Kafka Connect"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1059.006",
+      "technique_name": "Python Script",
+      "tactic": "Execution",
+      "target_component": "flink_cluster",
+      "entry_point": "Malicious Flink job submitted via compromised Airflow or direct API",
+      "impact": "Arbitrary code execution in processing tier, access to raw data lake",
+      "likelihood": "High",
+      "likelihood_rationale": "Airflow orchestrates Flink; insider or compromised Airflow can submit jobs"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1213",
+      "technique_name": "Data from Information Repositories",
+      "tactic": "Collection",
+      "target_component": "data_lake_raw",
+      "entry_point": "Compromised Flink/Spark job or direct storage API access",
+      "impact": "Exfiltration of raw confidential data from data lake",
+      "likelihood": "High",
+      "likelihood_rationale": "Raw zone contains unprocessed sensitive data; broad read access for processing"
+    },
+    {
+      "path_id": "AP-006",
+      "technique_id": "T1530",
+      "technique_name": "Data from Cloud Storage",
+      "tactic": "Collection",
+      "target_component": "data_warehouse",
+      "entry_point": "Compromised BI dashboard service account or SQL injection in dashboard queries",
+      "impact": "Exfiltration of curated business data, PII, financial records",
+      "likelihood": "Medium",
+      "likelihood_rationale": "BI dashboard has read access to warehouse; service accounts often over-privileged"
+    },
+    {
+      "path_id": "AP-007",
+      "technique_id": "AML.T0043",
+      "technique_name": "Craft Adversarial Data",
+      "tactic": "ML Attack Staging",
+      "target_component": "feature_store",
+      "entry_point": "Poisoned data injected via Kafka -> Flink -> feature store pipeline",
+      "impact": "Model degradation, biased predictions, targeted misclassification",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Feature store feeds ML models; data quality checker may not detect targeted poisoning"
+    },
+    {
+      "path_id": "AP-008",
+      "technique_id": "AML.T0048",
+      "technique_name": "Model Backdoor",
+      "tactic": "ML Model Compromise",
+      "target_component": "ml_model_registry",
+      "entry_point": "Compromised CI/CD pipeline or insider upload of backdoored model artifact",
+      "impact": "Persistent backdoor in production models, triggered by specific inputs",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires supply chain compromise or malicious insider with registry write access"
+    },
+    {
+      "path_id": "AP-009",
+      "technique_id": "T1080",
+      "technique_name": "Taint Shared Content",
+      "tactic": "Impact",
+      "target_component": "kafka_cluster",
+      "entry_point": "Malicious producer injecting corrupted Avro/Protobuf schemas via schema registry",
+      "impact": "Downstream processing failures, data corruption, denial of service",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Schema registry accepts producer registrations; validation logic not shown"
+    },
+    {
+      "path_id": "AP-010",
+      "technique_id": "T1556.003",
+      "technique_name": "Multi-Factor Authentication Bypass",
+      "tactic": "Credential Access",
+      "target_component": "iam_service",
+      "entry_point": "Session token theft or MFA fatigue attack on platform engineers",
+      "impact": "Full control over IAM policies, privilege escalation across all tiers",
+      "likelihood": "Low",
+      "likelihood_rationale": "IAM service is central control plane; MFA bypass requires targeted social engineering"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.AC-7",
+      "control_name": "Authentication and Authorization for Public-Facing Endpoints",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 5.2",
+      "control_name": "Unique Credentials for Service Accounts",
+      "addresses_technique": [
+        "T1078"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Identity and Access Management with Least Privilege",
+      "addresses_technique": [
+        "T1078",
+        "T1556.003"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 8.5",
+      "control_name": "File Integrity Monitoring on Ingestion Gateways",
+      "addresses_technique": [
+        "T1505.003"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.IP-3",
+      "control_name": "Code Signing and Verification for Flink/Spark Jobs",
+      "addresses_technique": [
+        "T1059.006"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 3.3",
+      "control_name": "Data Loss Prevention for Cloud Storage",
+      "addresses_technique": [
+        "T1213",
+        "T1530"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF DE.CM-1",
+      "control_name": "Anomaly Detection on Data Access Patterns",
+      "addresses_technique": [
+        "T1213",
+        "T1530"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "CSA ART 4.2",
+      "control_name": "ML Data Validation and Drift Detection",
+      "addresses_technique": [
+        "AML.T0043"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "MITRE ATLAS AML.M0001",
+      "control_name": "Model Provenance and Signature Verification",
+      "addresses_technique": [
+        "AML.T0048"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "NIST CSF PR.DS-6",
+      "control_name": "Schema Validation and Compatibility Enforcement",
+      "addresses_technique": [
+        "T1080"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-011",
+      "control_id": "CIS Control 6.3",
+      "control_name": "MFA Enforcement with Phishing-Resistant Factors",
+      "addresses_technique": [
+        "T1556.003"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Internet-facing webhook with no depicted WAF or auth allows unauthenticated RCE leading to Kafka cluster compromise",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "api_webhook",
+        "kafka_cluster"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Medium",
+      "severity_rationale": "External producer credentials lack rotation enforcement; compromise enables data injection across pipeline",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:H/A:L",
+      "affected_components": [
+        "kinesis_producer",
+        "pubsub_connector",
+        "kafka_cluster"
+      ],
+      "linked_techniques": [
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-002",
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "SFTP gateway lacks file integrity monitoring; web shell persistence enables ongoing ingestion manipulation",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:H/A:L",
+      "affected_components": [
+        "sftp_ingest",
+        "kafka_connect"
+      ],
+      "linked_techniques": [
+        "T1505.003"
+      ],
+      "linked_mitigations": [
+        "M-004"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Airflow-to-Flink job submission path lacks code signing; insider or compromised Airflow achieves arbitrary code execution in processing tier",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "airflow_orchestrator",
+        "flink_cluster",
+        "data_lake_raw"
+      ],
+      "linked_techniques": [
+        "T1059.006"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Critical",
+      "severity_rationale": "Raw data lake contains unencrypted PII/financial data with broad read access; compromised processing job enables mass exfiltration",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
+      "affected_components": [
+        "data_lake_raw",
+        "flink_cluster",
+        "spark_batch"
+      ],
+      "linked_techniques": [
+        "T1213"
+      ],
+      "linked_mitigations": [
+        "M-006",
+        "M-007"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "High",
+      "severity_rationale": "BI dashboard service account has excessive warehouse read privileges; SQL injection or token theft exposes curated business data",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N",
+      "affected_components": [
+        "bi_dashboard",
+        "data_warehouse"
+      ],
+      "linked_techniques": [
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-006",
+        "M-007"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "High",
+      "severity_rationale": "Feature store lacks adversarial data detection; targeted poisoning via streaming pipeline degrades all downstream models",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:L/I:H/A:H",
+      "affected_components": [
+        "feature_store",
+        "flink_cluster",
+        "ml_serving_endpoint"
+      ],
+      "linked_techniques": [
+        "AML.T0043"
+      ],
+      "linked_mitigations": [
+        "M-008"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Medium",
+      "severity_rationale": "Model registry has signature verification but CI/CD pipeline not shown; supply chain compromise could deploy backdoored models",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "ml_model_registry",
+        "ml_serving_endpoint"
+      ],
+      "linked_techniques": [
+        "AML.T0048"
+      ],
+      "linked_mitigations": [
+        "M-009"
+      ],
+      "remediation_priority": "Long-term"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "Medium",
+      "severity_rationale": "Schema registry accepts producer registrations without compatibility enforcement; malicious schemas cause downstream DoS",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:H",
+      "affected_components": [
+        "schema_registry",
+        "kafka_cluster",
+        "flink_cluster",
+        "spark_batch"
+      ],
+      "linked_techniques": [
+        "T1080"
+      ],
+      "linked_mitigations": [
+        "M-010"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-010",
+      "severity": "High",
+      "severity_rationale": "IAM service is single control plane; MFA bypass grants full policy control across all trust zones",
+      "severity_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "iam_service",
+        "kafka_cluster",
+        "data_lake_raw",
+        "data_warehouse",
+        "ml_model_registry"
+      ],
+      "linked_techniques": [
+        "T1556.003"
+      ],
+      "linked_mitigations": [
+        "M-003",
+        "M-011"
+      ],
+      "remediation_priority": "Immediate"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US-East (AWS)",
+      "US-Central1 (GCP)",
+      "EU-West-1 (AWS backup)"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "ISO 27001",
+      "GDPR",
+      "CCPA"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "AWS Kinesis",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "GCP Pub/Sub",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "Confluent Cloud (Kafka)",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Databricks (Spark)",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "MLflow (Model Registry)",
+        "trust_tier": "conditional"
+      }
+    ],
+    "agentic": {
+      "agent_autonomy_level": "supervised",
+      "tool_call_scope": [
+        "ml_serving_endpoint:invoke",
+        "feature_store:read",
+        "data_warehouse:query"
+      ],
+      "blast_radius": "ML serving endpoint can return predictions affecting downstream business decisions; feature store read access enables reconnaissance; warehouse query access enables data exfiltration",
+      "human_oversight_points": [
+        "Model deployment approval gate in ML model registry",
+        "Automated drift detection alerts to ML ops team",
+        "Bi-weekly model performance reviews"
+      ],
+      "model_provenance": {
+        "provider": "Internal ML Platform Team",
+        "model_id": "fraud-detection-v3.2.1",
+        "fine_tuned": true
+      }
+    }
+  }
+}

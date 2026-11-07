@@ -1,0 +1,318 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t1_web_app",
+  "produced_by": "nemotron_ultra v1.0 v1.0",
+  "produced_at": "2026-11-15T14:30:00Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Browser",
+        "role": "client",
+        "trust_zone": "external"
+      },
+      {
+        "id": "Nginx",
+        "role": "ingress",
+        "trust_zone": "dmz"
+      },
+      {
+        "id": "FlaskAPI",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PostgreSQL",
+        "role": "data_store",
+        "trust_zone": "data"
+      }
+    ],
+    "trust_boundaries": [
+      "external_to_dmz",
+      "dmz_to_internal",
+      "internal_to_data"
+    ],
+    "data_classification": "confidential",
+    "operational_context": "cloud-hosted web application with containerized services deployed in a VPC; Nginx terminates TLS at edge, FlaskAPI runs in private subnet, PostgreSQL in isolated data subnet with no direct internet access"
+  },
+  "threat_actors": [
+    {
+      "name": "External Opportunistic Attacker",
+      "motivation": "financial gain, credential harvesting, service disruption, cryptomining",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "public-facing web application via HTTPS",
+      "non_capabilities": [
+        "no physical access to infrastructure",
+        "no insider knowledge of internal network topology",
+        "no zero-day exploits",
+        "no compromised valid credentials initially",
+        "no ability to bypass WAF rules without detection"
+      ]
+    },
+    {
+      "name": "Malicious Insider (Developer/Operator)",
+      "motivation": "data theft, sabotage, espionage, intellectual property exfiltration",
+      "capability_tier": "targeted",
+      "initial_access_vector": "legitimate internal network access via corporate VPN and CI/CD pipeline access",
+      "non_capabilities": [
+        "no direct access to production database without approval workflow and audit logging",
+        "no ability to modify infrastructure-as-code without mandatory peer review",
+        "no physical access to hardware security modules or key management systems",
+        "no root access to production Kubernetes nodes without break-glass procedure"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-001",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "Nginx",
+      "entry_point": "HTTPS port 443 on Nginx reverse proxy",
+      "impact": "Initial foothold in DMZ; potential lateral movement to application layer via compromised proxy",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Nginx is internet-exposed; vulnerabilities in Nginx (CVE-2021-23017, CVE-2022-41741) or misconfigurations (path traversal, header smuggling) are actively exploited in the wild"
+    },
+    {
+      "path_id": "AP-002",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "FlaskAPI",
+      "entry_point": "HTTP API endpoints exposed via Nginx (e.g., /api/v1/users, /api/v1/upload)",
+      "impact": "Direct application compromise; SQL injection or command injection leading to data exfiltration or remote code execution",
+      "likelihood": "High",
+      "likelihood_rationale": "Flask APIs frequently contain injection flaws (SQLi via raw queries, command injection via subprocess, path traversal); OWASP Top 10 risks map directly to this entry point"
+    },
+    {
+      "path_id": "AP-003",
+      "technique_id": "T1021",
+      "technique_name": "Remote Services",
+      "tactic": "Lateral Movement",
+      "target_component": "FlaskAPI",
+      "entry_point": "Internal HTTP API calls from Nginx to FlaskAPI (port 8000/5000)",
+      "impact": "Compromise of application server after initial Nginx breach; access to business logic, session tokens, and database credentials",
+      "likelihood": "Medium",
+      "likelihood_rationale": "If Nginx compromised (AP-001), attacker can send malicious requests to FlaskAPI; trust between layers often overly permissive with no mutual TLS or request validation"
+    },
+    {
+      "path_id": "AP-004",
+      "technique_id": "T1505",
+      "technique_name": "Server Software Component",
+      "tactic": "Persistence",
+      "target_component": "PostgreSQL",
+      "entry_point": "Database connection from FlaskAPI to PostgreSQL (port 5432)",
+      "impact": "Persistent access to database; data exfiltration at rest, credential theft, backdoor user creation",
+      "likelihood": "High",
+      "likelihood_rationale": "Database credentials often stored in config files or environment variables on FlaskAPI; compromised app server yields direct DB access; PostgreSQL superuser or CREATEROLE privileges enable persistence"
+    },
+    {
+      "path_id": "AP-005",
+      "technique_id": "T1040",
+      "technique_name": "Network Sniffing",
+      "tactic": "Credential Access",
+      "target_component": "FlaskAPI",
+      "entry_point": "Internal network segment (VPC subnet) carrying traffic between Nginx-FlaskAPI and FlaskAPI-PostgreSQL",
+      "impact": "Interception of sensitive data in transit: API tokens, PII, database credentials, session cookies",
+      "likelihood": "Low",
+      "likelihood_rationale": "Requires network-level access (compromised host in same VPC, malicious insider, or cloud provider insider); TLS between layers mitigates but internal segments may lack encryption (mTLS not enforced)"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "NIST CSF PR.IP-1",
+      "control_name": "Baseline Configuration and Hardening",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "CIS Control 16.1",
+      "control_name": "Application Software Security - Secure Coding Practices",
+      "addresses_technique": [
+        "T1190"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "NIST CSF PR.AC-5",
+      "control_name": "Network Segmentation and Micro-segmentation",
+      "addresses_technique": [
+        "T1021"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "CIS Control 3.3",
+      "control_name": "Configure Data Access Control Lists",
+      "addresses_technique": [
+        "T1505"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "NIST CSF PR.DS-2",
+      "control_name": "Data-in-Transit Protection (mTLS)",
+      "addresses_technique": [
+        "T1040"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "High"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "CIS Control 7.2",
+      "control_name": "Automated Vulnerability Scanning and Patch Management",
+      "addresses_technique": [
+        "T1190",
+        "T1505"
+      ],
+      "implementation_status": "Implemented",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "NIST CSF PR.AC-1",
+      "control_name": "Identity and Access Management - Least Privilege Database Roles",
+      "addresses_technique": [
+        "T1505"
+      ],
+      "implementation_status": "Partial",
+      "residual_risk": "Medium"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "Internet-exposed Nginx with known vulnerability history provides initial access vector; successful exploit leads to DMZ foothold and lateral movement opportunity",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:L/A:N",
+      "affected_components": [
+        "Nginx"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-006"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "FlaskAPI directly accessible via public endpoints with high likelihood of injection flaws; compromise yields direct data access and RCE potential",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "FlaskAPI"
+      ],
+      "linked_techniques": [
+        "T1190"
+      ],
+      "linked_mitigations": [
+        "M-002",
+        "M-006"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Medium",
+      "severity_rationale": "Lateral movement from compromised Nginx to FlaskAPI feasible due to excessive trust between tiers; network segmentation partially mitigates but application-layer validation missing",
+      "severity_vector": "CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:C/C:H/I:L/A:N",
+      "affected_components": [
+        "FlaskAPI",
+        "Nginx"
+      ],
+      "linked_techniques": [
+        "T1021"
+      ],
+      "linked_mitigations": [
+        "M-003"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "Database credentials on FlaskAPI host enable direct PostgreSQL access; excessive privileges (superuser/CREATEROLE) allow persistence and data exfiltration at rest",
+      "severity_vector": "CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "PostgreSQL",
+        "FlaskAPI"
+      ],
+      "linked_techniques": [
+        "T1505"
+      ],
+      "linked_mitigations": [
+        "M-004",
+        "M-007"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Medium",
+      "severity_rationale": "Internal network traffic unencrypted (no mTLS) allows credential and data interception if attacker gains VPC-level access; low likelihood but high impact if realized",
+      "severity_vector": "CVSS:3.1/AV:A/AC:H/PR:L/UI:N/S:U/C:H/I:L/A:N",
+      "affected_components": [
+        "Nginx",
+        "FlaskAPI",
+        "PostgreSQL"
+      ],
+      "linked_techniques": [
+        "T1040"
+      ],
+      "linked_mitigations": [
+        "M-005"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "US-East (AWS us-east-1)",
+      "EU-Central (AWS eu-central-1) for GDPR-subject data"
+    ],
+    "compliance_scope": [
+      "SOC 2 Type II",
+      "ISO 27001",
+      "GDPR",
+      "CCPA"
+    ],
+    "third_party_dependencies": [
+      {
+        "name": "AWS (VPC, ALB, RDS, ECS)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "GitHub Actions (CI/CD)",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Datadog (APM/Logging)",
+        "trust_tier": "conditional"
+      },
+      {
+        "name": "Let's Encrypt (TLS certificates)",
+        "trust_tier": "trusted"
+      },
+      {
+        "name": "PyPI (Python dependencies)",
+        "trust_tier": "untrusted"
+      }
+    ],
+    "agentic": null
+  }
+}
