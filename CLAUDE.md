@@ -146,6 +146,10 @@ python3 .claude/skills/check-governance/scripts/check-governance.py
 # EventBroker + sinks (60 tests)
 python3 .claude/skills/check-eventbroker/scripts/check-eventbroker.py
 
+# Adversarial red-team probe (inside-out injection, no API, ~5s)
+python3 scripts/tmeval/tmeval_run.py --phase2
+python3 scripts/tmeval/tmeval_run.py --all --api-url http://localhost:8000  # + outside-in REST probe
+
 # DETECT coverage flywheel
 python3 .claude/skills/detect-loop/scripts/detect-loop.py --observe-only
 
