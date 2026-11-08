@@ -9,6 +9,8 @@ Submit a Mermaid (`.mmd`) diagram, a Git repo, or IaC files and receive a MITRE 
 - **Expert review** — 5-critic MoE panel (Architect / Tester / Red Team / Purple Team / Blackhat) + ScrumMaster synthesis, on demand
 - **TA Brain** — self-growing knowledge graph that predicts findings for known topology patterns and drives smart routing
 - **TAclaw** — autonomous repo assessment: point at a Git URL or directory; adapters (TF / CF / OAI / Prose / MMD) convert it to a graph and run the full pipeline; usable via REST, MCP tool, or `ta analyze` CLI
+- **TMbench** — open benchmark for structured threat model output; 10 reference architectures across four tiers (T1–T4); TATB rubric (max 13 with ATLAS bonus); scores any tool; leaderboard at `docs/tmbench/`
+- **TMeval** — adversarial red-team probe; outside-in (8 adversarial MMDs against the governance gate) + inside-out (21 injection cases, 3 threat-actor entry points into RuleEvaluator and BouncerStage); exits 0/1 for CI
 
 ## Architecture
 
@@ -108,6 +110,17 @@ flowchart TD
 
     dash_ui --> persp
 
+    subgraph Bench["Benchmarking Layer"]
+        tmbench["TMbench\n10 arches · TATB rubric · max 13\nleaderboard: docs/tmbench/"]
+        tmeval["TMeval\nadversarial probe\noutside-in + inside-out · CI exit 0/1"]
+    end
+
+    rest_api -.->|benchmark run| tmbench
+    rest_api -.->|adversarial MMDs| tmeval
+
+    style Bench fill:#fef9c3,stroke:#ca8a04
+    style tmbench fill:#fefce8,stroke:#ca8a04
+    style tmeval fill:#fefce8,stroke:#ca8a04
     style Fleet fill:#f3e8ff,stroke:#7c3aed
     style supervisor fill:#ede9fe,stroke:#7c3aed
     style tool_reg fill:#ede9fe,stroke:#7c3aed
@@ -219,11 +232,12 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 - [`mcp_server/README.md`](mcp_server/README.md) — all 18 tools, 4-step test protocol, client integration snippets
 - [`taclaw/README.md`](taclaw/README.md) — TAclaw CLI: `ta analyze`, `ta gate`, `ta export`
 - [`policies/soc_detection_rules.yaml`](policies/soc_detection_rules.yaml) — 65 DETECT rules with OWASP/ATLAS/CSA ART/incident provenance
+- [`docs/tmbench/`](docs/tmbench/) — open benchmark spec, 10 reference architectures, leaderboard (7 tools; ta_v3_1 2nd at 12.90/13)
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decision log (local only, gitignored)
 
 ## Build story
 
-38 parts on Medium — from diagram to detection layer, with every design decision exposed:
+40 parts on Medium — from diagram to detection layer, with every design decision exposed:
 
 | # | Title | What it covers |
 |---|---|---|
