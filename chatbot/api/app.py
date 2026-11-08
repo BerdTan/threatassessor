@@ -149,7 +149,7 @@ API key required via `TM-API-KEY` header.
 
     async def _counting_rate_limit_handler(request, exc):
         rate_limit_counter.increment()
-        return await _rate_limit_exceeded_handler(request, exc)
+        return _rate_limit_exceeded_handler(request, exc)
 
     app.add_exception_handler(RateLimitExceeded, _counting_rate_limit_handler)
 

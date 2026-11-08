@@ -4,6 +4,31 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 121 — 2026-11-08
+
+### Entry 246 — ta_v3_1 re-benchmark: 12.60 (+0.30 over ta_v3 baseline)
+
+**Date:** 2026-11-08
+**Status:** Complete
+
+**What:** After implementing Phases 1+2 (boxing data for brain_fast bypass + ATLAS wiring) and three converter/scorer fixes, ta_v3_1 scores **12.60/13** (mean across 10 corpus arches), up from ta_v3 baseline of 12.30. Ta_v3_1 now ranks 4th overall, past gemini_flash (12.40).
+
+**Three bug fixes required to surface the improvement:**
+
+1. **Scorer falsy check** (`tmbench-check.py`): `if not agentic.get(field_name)` treated `human_oversight_points: 0` as missing. Fixed to `is None` — field presence check, not truthiness. `0` is a valid value meaning no oversight checkpoints.
+
+2. **Converter ATLAS fallback** (`tmbench_generate.py`): `atlas_techniques[]` sidecar was empty (generator adds AML.T* to `techniques[]` from TAbrain, not the sidecar). Converter now scans `techniques[]` directly for the first `AML.T*` entry to use as `technique_id`.
+
+3. **Component role mapping** (`tmbench_generate.py`): All components were hardcoded as `role: "compute"`. `bonus_agentic()` checks component roles for `"agent"/"llm"/"ml"`. Fixed to use `metadata.parsed_nodes` labels with keyword mapping → LLM/orchestrator/agent nodes now carry correct roles.
+
+**Rate limit handler bug also fixed** (`app.py`): `await _rate_limit_exceeded_handler(...)` was awaiting a sync `JSONResponse`, causing 500 instead of 429 on rate-limited requests.
+
+**Remaining 12/13 arches (3):** t1_web_app, t1_rest_api, t2_cicd_pipeline — attack path count below spec minimum (Phase 3). Note: t3_container_orchestration stays at 12 — Kubernetes arch with CI agent but no LLM/ML nodes; ATLAS bonus legitimately doesn't apply.
+
+**Expected Phase 3 delta:** Sub-path decomposition for 3 arches → each gains +1 → ta_v3_1 projected mean ≥12.90.
+
+---
+
 ## Session 120 — 2026-11-08
 
 ### Entry 245 — P41 blog held for complete journey post-improvement

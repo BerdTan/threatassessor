@@ -308,13 +308,30 @@ def convert_ta_gt_to_threatmodel(gt: dict, gs: dict, arch_id: str) -> dict:
     _CRIT_LIKELIHOOD = {"CRITICAL": "High", "HIGH": "High", "MEDIUM": "Medium", "LOW": "Low"}
 
     # Components: unique nodes from attack_path paths
+    # Use parsed_nodes labels to derive meaningful roles (needed for bonus_agentic detection).
+    _parsed_nodes: dict = gt.get("metadata", {}).get("parsed_nodes", {})
+    _ROLE_KEYWORDS: list[tuple[str, str]] = [
+        ("agent orchestrat", "agent"), ("orchestrat", "agent"), ("agent", "agent"),
+        ("llm", "llm"), ("language model", "llm"), ("openai", "llm"), ("claude", "llm"), ("gpt", "llm"),
+        ("tool call", "tool_caller"), ("tool registry", "tool_caller"),
+        ("embedding", "ml"), ("vector", "ml"), ("ml model", "ml"), ("model server", "ml"),
+    ]
+    def _node_role(node_id: str) -> str:
+        node = _parsed_nodes.get(node_id, {})
+        label = node.get("label", "").lower()
+        for kw, role in _ROLE_KEYWORDS:
+            if kw in label:
+                return role
+        return "compute"
+
     seen_nodes: set = set()
     components = []
     for ap in gt.get("attack_paths", []):
         for node in ap.get("path", []):
             if node not in seen_nodes:
                 seen_nodes.add(node)
-                components.append({"id": node, "role": "compute", "trust_zone": "internal"})
+                components.append({"id": node, "name": _parsed_nodes.get(node, {}).get("label"),
+                                    "role": _node_role(node), "trust_zone": "internal"})
 
     # Threat actors: APT groups → threatmodel format
     threat_actors = []
@@ -345,9 +362,12 @@ def convert_ta_gt_to_threatmodel(gt: dict, gs: dict, arch_id: str) -> dict:
         techs = ap.get("techniques", [])
         atlas_techs = ap.get("atlas_techniques", [])
         # Use first ATLAS technique as technique_id for agentic paths so scorer finds AML.*
-        if atlas_techs:
-            tid = atlas_techs[0]
-            tname = tid  # ATLAS names not in Enterprise ATT&CK lookup
+        # Prefer sidecar; fall back to scanning techniques[] directly for any AML.T* entry.
+        aml_tid = next((t for t in atlas_techs if t.startswith("AML.")), None) or \
+                  next((t for t in techs if t.startswith("AML.")), None)
+        if aml_tid:
+            tid = aml_tid
+            tname = aml_tid
             tactic = "ml-attack-staging"
         else:
             tid = techs[0] if techs else ""

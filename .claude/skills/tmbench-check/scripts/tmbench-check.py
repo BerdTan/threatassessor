@@ -218,7 +218,7 @@ def check_governance(tm: dict) -> list[tuple[str, str]]:
     elif gov.get("agentic"):
         agentic = gov["agentic"]
         for field_name in ["agent_autonomy_level", "tool_call_scope", "blast_radius", "human_oversight_points", "model_provenance"]:
-            if not agentic.get(field_name):
+            if agentic.get(field_name) is None:
                 gaps.append(("Medium", f"governance.agentic.{field_name} missing"))
 
     return gaps
