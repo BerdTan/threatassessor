@@ -328,6 +328,29 @@
   <div class="gap-grid" id="gap-grid"></div>
 </section>
 
+<!-- ── WEIGHTING RATIONALE ────────────────────────────────────────────── -->
+<section>
+  <h2>Weighting rationale</h2>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px 20px;max-width:720px;font-size:13px;line-height:1.8;color:var(--muted)">
+    <p style="margin-bottom:10px">
+      Tier weights (T1×1.0 → T4×2.5) are a <strong style="color:var(--text)">temporary scaffold</strong>, not a permanent fixture.
+      They compensate for the fact that the current TATB rubric does not yet differentiate structural complexity —
+      all architectures max at 13 regardless of component count or domain novelty.
+    </p>
+    <p style="margin-bottom:10px">
+      The long-term goal is <strong style="color:var(--text)">rubric-as-truth</strong>: a well-calibrated TATB should make a 13 on
+      <span class="tier t4">T4</span> intrinsically harder to earn than a 13 on <span class="tier t1">T1</span>,
+      making equal weights fair. As the rubric matures — deeper TB dimension, agentic PA tiers,
+      cross-boundary RD criteria — the tier multipliers should converge toward 1.0.
+    </p>
+    <p>
+      If the leaderboard still needs external weights to rank tools fairly at that point, it is a signal
+      that the rubric needs to grow further, not that the weights need to increase.
+      <span style="color:var(--text)">DECISIONS Entry 248.</span>
+    </p>
+  </div>
+</section>
+
 <script>
 const TOOLS_ORDERED = [
   { id: "deepseek_flash",  label: "deepseek_flash",  tag: "llm",      tagLabel: "LLM" },

@@ -4,6 +4,28 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 248 — Leaderboard weighting: rubric-as-truth principle
+
+**Date:** 2026-11-08
+**Status:** Decided
+
+**What:** Chose Option C (tier weights + rubric difficulty alignment) over Option B (per-arch domain multipliers) for the TMbench leaderboard. Established the "rubric-as-truth" principle as the long-term direction.
+
+**The principle:** The TATB rubric should be the single source of truth for difficulty. If the rubric is well-calibrated, equal weights across all arches would produce a fair ranking on their own — a 13 on t4_agent_fleet should already be harder to earn than a 13 on t1_web_app. When the leaderboard needs external weights to compensate for rubric flatness, that is a signal that the rubric itself needs to grow.
+
+**Current tier weights (T1×1.0, T2×1.5, T3×2.0, T4×2.5) are a temporary scaffold.** They compensate for the fact that the current TATB rubric does not yet distinguish structural complexity — all arches max at 13 regardless of component count or domain novelty. As the rubric matures (deeper TB dimension, agentic PA tiers, cross-boundary RD criteria), the weights should converge toward 1.0.
+
+**Why not Option B (per-arch domain multipliers):**
+- Domain difficulty multipliers are subjective — "established-enterprise = ×1.1" is arbitrary without an objective backing criterion.
+- Two weighting layers (tier × domain) are harder to explain to external contributors.
+- Rubric improvement is the more honest fix: if t3_hybrid_identity requires AD/federation knowledge that the PA dimension doesn't yet probe, the right answer is to add a PA criterion for identity federation, not to adjust the weight.
+
+**What "TB is rudimentary" means as a risk:** If the current TB/TA dimensions are too flat and don't discriminate between easy and hard architectures, the leaderboard can mislead — a tool that scores 13 on T1 arches only looks as good as one that scores 13 across T4. The tier weights partially address this, but the long-term fix is rubric depth, not weight complexity.
+
+**Implications for P41 blog:** The weighting rationale is part of the story. The pipeline improved from 5th to 2nd not because the benchmark favoured it, but because the rubric probes real capabilities (ATLAS coverage, agentic governance, path depth) that the pipeline now handles. That is the honest narrative.
+
+---
+
 ### Entry 247 — ta_v3_1 Phase 3: sub-path decomposition → 12.90 (2nd place)
 
 **Date:** 2026-11-08
