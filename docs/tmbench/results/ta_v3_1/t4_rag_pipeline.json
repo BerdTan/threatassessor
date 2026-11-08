@@ -1,0 +1,871 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t4_rag_pipeline",
+  "produced_by": "ta_v3 v1.0",
+  "produced_at": "2026-11-08T02:18:43.099149Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Users",
+        "name": "Users",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "WebUI",
+        "name": "Web UI / Chat Interface",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "AgentOrchestrator",
+        "name": "Agent Orchestrator",
+        "role": "agent",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "ToolRegistry",
+        "name": "Tool Registry",
+        "role": "tool_caller",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "DatabaseTool",
+        "name": "Database Tool",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "UserDB",
+        "name": "User Database",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "VectorDB",
+        "name": "Vector Database",
+        "role": "ml",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "EmbeddingService",
+        "name": "Embedding Service",
+        "role": "ml",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "CodeExecution",
+        "name": "Code Execution Sandbox",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "APIIntegrations",
+        "name": "External API Integrations",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "DocumentStore",
+        "name": "Document Store",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PromptManager",
+        "name": "Prompt Manager",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "SessionStore",
+        "name": "Session Store",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "WebSearch",
+        "name": "Web Search Tool",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "AuditLog",
+        "name": "Audit Log",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "LLMGateway",
+        "name": "LLM API Gateway",
+        "role": "llm",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "Anthropic",
+        "name": "Anthropic API",
+        "role": "compute",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "WebUI",
+      "Users"
+    ],
+    "data_classification": "internal",
+    "operational_context": "t4_rag_pipeline"
+  },
+  "threat_actors": [
+    {
+      "name": "Sandworm Team",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT28",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT41",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-1",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "DatabaseTool",
+      "entry_point": "Users",
+      "impact": "CRITICAL: DatabaseTool compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry \u2192 Database Tool. Legitimate use: end user traverse path to reach Database Tool. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Tool Registry. Reach target Database Tool \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-2",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "UserDB",
+      "entry_point": "Users",
+      "impact": "CRITICAL: UserDB compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 User Database. Legitimate use: end user traverse path to reach User Database. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target User Database \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-3",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "VectorDB",
+      "entry_point": "Users",
+      "impact": "CRITICAL: VectorDB compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Vector Database. Legitimate use: end user traverse path to reach Vector Database. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Vector Database \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-4",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "VectorDB",
+      "entry_point": "Users",
+      "impact": "CRITICAL: VectorDB compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Embedding Service \u2192 Vector Database. Legitimate use: end user traverse path to reach Vector Database. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Embedding Service. Reach target Vector Database \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-5",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "CodeExecution",
+      "entry_point": "Users",
+      "impact": "CRITICAL: CodeExecution compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry \u2192 Code Execution Sandbox. Legitimate use: end user traverse path to reach Code Execution Sandbox. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Tool Registry. Reach target Code Execution Sandbox \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-6",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "APIIntegrations",
+      "entry_point": "Users",
+      "impact": "CRITICAL: APIIntegrations compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry \u2192 External API Integrations. Legitimate use: end user traverse path to reach External API Integrations. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Tool Registry. Reach target External API Integrations \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-7",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "DocumentStore",
+      "entry_point": "Users",
+      "impact": "CRITICAL: DocumentStore compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Embedding Service \u2192 Document Store. Legitimate use: end user traverse path to reach Document Store. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Embedding Service. Reach target Document Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-8",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "EmbeddingService",
+      "entry_point": "Users",
+      "impact": "CRITICAL: EmbeddingService compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Embedding Service. Legitimate use: end user traverse path to reach Embedding Service. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Embedding Service \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-9",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "PromptManager",
+      "entry_point": "Users",
+      "impact": "CRITICAL: PromptManager compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Prompt Manager. Legitimate use: end user traverse path to reach Prompt Manager. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Prompt Manager \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-10",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "SessionStore",
+      "entry_point": "Users",
+      "impact": "CRITICAL: SessionStore compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Session Store. Legitimate use: end user traverse path to reach Session Store. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Session Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-11",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "ToolRegistry",
+      "entry_point": "Users",
+      "impact": "CRITICAL: ToolRegistry compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry. Legitimate use: end user traverse path to reach Tool Registry. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Tool Registry \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-12",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "WebSearch",
+      "entry_point": "Users",
+      "impact": "CRITICAL: WebSearch compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry \u2192 Web Search Tool. Legitimate use: end user traverse path to reach Web Search Tool. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Tool Registry. Reach target Web Search Tool \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "Critical severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-13",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "AuditLog",
+      "entry_point": "Users",
+      "impact": "HIGH: AuditLog compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Audit Log. Legitimate use: end user traverse path to reach Audit Log. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Audit Log \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-14",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "LLMGateway",
+      "entry_point": "Users",
+      "impact": "HIGH: LLMGateway compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Prompt Manager \u2192 LLM API Gateway. Legitimate use: end user traverse path to reach LLM API Gateway. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Prompt Manager. Reach target LLM API Gateway \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-15",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "Anthropic",
+      "entry_point": "WebUI",
+      "impact": "HIGH: Anthropic compromise via WebUI",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Attacker-only path (no human actor baseline): Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Prompt Manager \u2192 LLM API Gateway \u2192 Anthropic API. 4 hops, criticality 0.61. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "mitigation": "rate limiting",
+      "finding": "High severity path \u2014 4 hops"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "M1033",
+      "control_name": "rate limiting",
+      "addresses_technique": [
+        "T1021",
+        "T1048",
+        "T1059",
+        "T1071",
+        "T1090"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "M1017",
+      "control_name": "patching",
+      "addresses_technique": [
+        "T1021",
+        "T1078",
+        "T1110",
+        "T1190",
+        "T1203"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "M1015",
+      "control_name": "least privilege",
+      "addresses_technique": [
+        "T1021",
+        "T1040",
+        "T1046",
+        "T1048",
+        "T1055"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "M1037",
+      "control_name": "waf",
+      "addresses_technique": [
+        "T1048",
+        "T1071",
+        "T1090",
+        "T1190",
+        "T1203"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "M1047",
+      "control_name": "logging",
+      "addresses_technique": [
+        "T1021",
+        "T1059",
+        "T1213",
+        "T1528",
+        "T1530"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "M1038",
+      "control_name": "code signing",
+      "addresses_technique": [
+        "T1059",
+        "T1548",
+        "T1562"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "M1017",
+      "control_name": "vulnerability scanning",
+      "addresses_technique": [
+        "T1021",
+        "T1078",
+        "T1110",
+        "T1213",
+        "T1528"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "M1032",
+      "control_name": "mfa",
+      "addresses_technique": [
+        "T1021",
+        "T1040",
+        "T1078",
+        "T1110",
+        "T1133"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "M1053",
+      "control_name": "backup",
+      "addresses_technique": [
+        "T1485",
+        "T1486"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "M1040",
+      "control_name": "edr",
+      "addresses_technique": [
+        "T1055",
+        "T1059",
+        "T1486",
+        "T1566"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry \u2192 Database Tool. Legitimate use: end user traverse path to reach Database Tool. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Tool Registry. Reach target Database Tool \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "ToolRegistry",
+        "DatabaseTool"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 User Database. Legitimate use: end user traverse path to reach User Database. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target User Database \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "UserDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Vector Database. Legitimate use: end user traverse path to reach Vector Database. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Vector Database \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "VectorDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Embedding Service \u2192 Vector Database. Legitimate use: end user traverse path to reach Vector Database. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Embedding Service. Reach target Vector Database \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "EmbeddingService",
+        "VectorDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry \u2192 Code Execution Sandbox. Legitimate use: end user traverse path to reach Code Execution Sandbox. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Tool Registry. Reach target Code Execution Sandbox \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "ToolRegistry",
+        "CodeExecution"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry \u2192 External API Integrations. Legitimate use: end user traverse path to reach External API Integrations. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Tool Registry. Reach target External API Integrations \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "ToolRegistry",
+        "APIIntegrations"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Embedding Service \u2192 Document Store. Legitimate use: end user traverse path to reach Document Store. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Embedding Service. Reach target Document Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "EmbeddingService",
+        "DocumentStore"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Embedding Service. Legitimate use: end user traverse path to reach Embedding Service. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Embedding Service \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "EmbeddingService"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Prompt Manager. Legitimate use: end user traverse path to reach Prompt Manager. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Prompt Manager \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "PromptManager"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-010",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Session Store. Legitimate use: end user traverse path to reach Session Store. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Session Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "SessionStore"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-011",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry. Legitimate use: end user traverse path to reach Tool Registry. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Tool Registry \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "ToolRegistry"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-012",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Tool Registry \u2192 Web Search Tool. Legitimate use: end user traverse path to reach Web Search Tool. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Tool Registry. Reach target Web Search Tool \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "ToolRegistry",
+        "WebSearch"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-013",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Audit Log. Legitimate use: end user traverse path to reach Audit Log. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Reach target Audit Log \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "AuditLog"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-014",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Users \u2192 Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Prompt Manager \u2192 LLM API Gateway. Legitimate use: end user traverse path to reach LLM API Gateway. If exploited: Gain initial access at Users. Access Web UI / Chat Interface via the initial entry point. Move from Web UI / Chat Interface to Agent Orchestrator. Move from Agent Orchestrator to Prompt Manager. Reach target LLM API Gateway \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "WebUI",
+        "AgentOrchestrator",
+        "PromptManager",
+        "LLMGateway"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-015",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Attacker-only path (no human actor baseline): Web UI / Chat Interface \u2192 Agent Orchestrator \u2192 Prompt Manager \u2192 LLM API Gateway \u2192 Anthropic API. 4 hops, criticality 0.61. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "WebUI",
+        "AgentOrchestrator",
+        "PromptManager",
+        "LLMGateway",
+        "Anthropic"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1059",
+        "T1083",
+        "T1210",
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "compliance_scope": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "third_party_dependencies": [],
+    "agentic": {
+      "tool_call_scope": "restricted",
+      "oversight_required": false,
+      "agent_autonomy_level": "high",
+      "blast_radius": "medium",
+      "human_oversight_points": 0,
+      "model_provenance": "third-party"
+    }
+  }
+}

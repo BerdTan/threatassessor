@@ -1,0 +1,439 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_saas_integration",
+  "produced_by": "ta_v3 v1.0",
+  "produced_at": "2026-11-08T02:27:00.388275Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "ExternalSaaS",
+        "name": "External SaaS",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "WebhookReceiver",
+        "name": "Webhook Receiver",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "EventQueue",
+        "name": "Event Queue",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "Transformer",
+        "name": "Data Transformer",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "IntegrationDB",
+        "name": "Integration DB",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "EndUser",
+        "name": "End User",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "OAuthProxy",
+        "name": "OAuth 2.0 Proxy",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "RateLimiter",
+        "name": "Rate Limiter",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "AuditLog",
+        "name": "Audit Log",
+        "role": "compute",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "ExternalSaaS",
+      "EndUser"
+    ],
+    "data_classification": "internal",
+    "operational_context": "t2_saas_integration"
+  },
+  "threat_actors": [
+    {
+      "name": "Sandworm Team",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT28",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "Scattered Spider",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-1",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "IntegrationDB",
+      "entry_point": "ExternalSaaS",
+      "impact": "CRITICAL: IntegrationDB compromise via ExternalSaaS",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] External SaaS \u2192 Webhook Receiver \u2192 Event Queue \u2192 Data Transformer \u2192 Integration DB. Legitimate use: end user traverse path to reach Integration DB. If exploited: Gain initial access at External SaaS. Access Webhook Receiver via the initial entry point. Move from Webhook Receiver to Event Queue. Move from Event Queue to Data Transformer. Reach target Integration DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-2",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "IntegrationDB",
+      "entry_point": "EndUser",
+      "impact": "CRITICAL: IntegrationDB compromise via EndUser",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] End User \u2192 OAuth 2.0 Proxy \u2192 Rate Limiter \u2192 Event Queue \u2192 Data Transformer \u2192 Integration DB. Legitimate use: end user traverse path to reach Integration DB. If exploited: Gain initial access at End User. Access OAuth 2.0 Proxy via the initial entry point. Move from OAuth 2.0 Proxy to Rate Limiter. Move from Rate Limiter to Event Queue. Move from Event Queue to Data Transformer. Reach target Integration DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 5 hops"
+    },
+    {
+      "path_id": "AP-3",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "Transformer",
+      "entry_point": "ExternalSaaS",
+      "impact": "CRITICAL: Transformer compromise via ExternalSaaS",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] External SaaS \u2192 Webhook Receiver \u2192 Event Queue \u2192 Data Transformer. Legitimate use: end user traverse path to reach Data Transformer. If exploited: Gain initial access at External SaaS. Access Webhook Receiver via the initial entry point. Move from Webhook Receiver to Event Queue. Reach target Data Transformer \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-4",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "Transformer",
+      "entry_point": "EndUser",
+      "impact": "HIGH: Transformer compromise via EndUser",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] End User \u2192 OAuth 2.0 Proxy \u2192 Rate Limiter \u2192 Event Queue \u2192 Data Transformer. Legitimate use: end user traverse path to reach Data Transformer. If exploited: Gain initial access at End User. Access OAuth 2.0 Proxy via the initial entry point. Move from OAuth 2.0 Proxy to Rate Limiter. Move from Rate Limiter to Event Queue. Reach target Data Transformer \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-5",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "AuditLog",
+      "entry_point": "ExternalSaaS",
+      "impact": "HIGH: AuditLog compromise via ExternalSaaS",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] External SaaS \u2192 Webhook Receiver \u2192 Event Queue \u2192 Data Transformer \u2192 Audit Log. Legitimate use: end user traverse path to reach Audit Log. If exploited: Gain initial access at External SaaS. Access Webhook Receiver via the initial entry point. Move from Webhook Receiver to Event Queue. Move from Event Queue to Data Transformer. Reach target Audit Log \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 4 hops"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "M1015",
+      "control_name": "least privilege",
+      "addresses_technique": [
+        "T1021",
+        "T1059",
+        "T1078",
+        "T1098",
+        "T1110"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "M1033",
+      "control_name": "rate limiting",
+      "addresses_technique": [
+        "T1021",
+        "T1059",
+        "T1071",
+        "T1090",
+        "T1133"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "M1017",
+      "control_name": "vulnerability scanning",
+      "addresses_technique": [
+        "T1021",
+        "T1078",
+        "T1110",
+        "T1213",
+        "T1556"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "M1047",
+      "control_name": "logging",
+      "addresses_technique": [
+        "T1021",
+        "T1059",
+        "T1213",
+        "T1530",
+        "T1556"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "M1053",
+      "control_name": "backup",
+      "addresses_technique": [
+        "T1485",
+        "T1486"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "M1040",
+      "control_name": "edr",
+      "addresses_technique": [
+        "T1059",
+        "T1486",
+        "T1566"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "M1037",
+      "control_name": "waf",
+      "addresses_technique": [
+        "T1071",
+        "T1090",
+        "T1190",
+        "T1212",
+        "T1498"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "M1050",
+      "control_name": "input validation",
+      "addresses_technique": [
+        "T1190",
+        "T1212"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "M1017",
+      "control_name": "patching",
+      "addresses_technique": [
+        "T1021",
+        "T1078",
+        "T1110",
+        "T1190",
+        "T1212"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "M1033",
+      "control_name": "api gateway",
+      "addresses_technique": [
+        "T1021",
+        "T1059",
+        "T1133",
+        "T1190"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] External SaaS \u2192 Webhook Receiver \u2192 Event Queue \u2192 Data Transformer \u2192 Integration DB. Legitimate use: end user traverse path to reach Integration DB. If exploited: Gain initial access at External SaaS. Access Webhook Receiver via the initial entry point. Move from Webhook Receiver to Event Queue. Move from Event Queue to Data Transformer. Reach target Integration DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "ExternalSaaS",
+        "WebhookReceiver",
+        "EventQueue",
+        "Transformer",
+        "IntegrationDB"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1059",
+        "T1083"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] End User \u2192 OAuth 2.0 Proxy \u2192 Rate Limiter \u2192 Event Queue \u2192 Data Transformer \u2192 Integration DB. Legitimate use: end user traverse path to reach Integration DB. If exploited: Gain initial access at End User. Access OAuth 2.0 Proxy via the initial entry point. Move from OAuth 2.0 Proxy to Rate Limiter. Move from Rate Limiter to Event Queue. Move from Event Queue to Data Transformer. Reach target Integration DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "EndUser",
+        "OAuthProxy",
+        "RateLimiter",
+        "EventQueue",
+        "Transformer",
+        "IntegrationDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1556"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] External SaaS \u2192 Webhook Receiver \u2192 Event Queue \u2192 Data Transformer. Legitimate use: end user traverse path to reach Data Transformer. If exploited: Gain initial access at External SaaS. Access Webhook Receiver via the initial entry point. Move from Webhook Receiver to Event Queue. Reach target Data Transformer \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "ExternalSaaS",
+        "WebhookReceiver",
+        "EventQueue",
+        "Transformer"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1059",
+        "T1083"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "High",
+      "severity_rationale": "[HIGH] End User \u2192 OAuth 2.0 Proxy \u2192 Rate Limiter \u2192 Event Queue \u2192 Data Transformer. Legitimate use: end user traverse path to reach Data Transformer. If exploited: Gain initial access at End User. Access OAuth 2.0 Proxy via the initial entry point. Move from OAuth 2.0 Proxy to Rate Limiter. Move from Rate Limiter to Event Queue. Reach target Data Transformer \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "EndUser",
+        "OAuthProxy",
+        "RateLimiter",
+        "EventQueue",
+        "Transformer"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1556"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "High",
+      "severity_rationale": "[HIGH] External SaaS \u2192 Webhook Receiver \u2192 Event Queue \u2192 Data Transformer \u2192 Audit Log. Legitimate use: end user traverse path to reach Audit Log. If exploited: Gain initial access at External SaaS. Access Webhook Receiver via the initial entry point. Move from Webhook Receiver to Event Queue. Move from Event Queue to Data Transformer. Reach target Audit Log \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "ExternalSaaS",
+        "WebhookReceiver",
+        "EventQueue",
+        "Transformer",
+        "AuditLog"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1059",
+        "T1083"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "compliance_scope": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "third_party_dependencies": []
+  }
+}

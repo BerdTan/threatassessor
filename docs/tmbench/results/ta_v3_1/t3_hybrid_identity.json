@@ -1,0 +1,682 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t3_hybrid_identity",
+  "produced_by": "ta_v3 v1.0",
+  "produced_at": "2026-11-08T02:27:02.215519Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "attacker",
+        "name": "[External Attacker]",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "workstation",
+        "name": "Domain Workstation",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "dc01",
+        "name": "Domain Controller DC01",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "ntds",
+        "name": "NTDS Credential Store",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "enrollment_svc",
+        "name": "Web Enrollment Service",
+        "role": "llm",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "issuing_ca",
+        "name": "Issuing CA",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "root_ca",
+        "name": "Root CA",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "remote_user",
+        "name": "[Remote User]",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "vpn_client",
+        "name": "VPN Client",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "adcs_server",
+        "name": "ADCS CA Server",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "cert_template",
+        "name": "Certificate Templates",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "krbtgt",
+        "name": "krbtgt Service Account",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "crl_point",
+        "name": "CRL Distribution Point",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "entra_id",
+        "name": "Entra ID / Azure AD",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "conditional_access",
+        "name": "Conditional Access Policy Engine",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "pam_vault",
+        "name": "PAM Vault",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "siem_connector",
+        "name": "SIEM Connector",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "audit_log",
+        "name": "Audit Log Store",
+        "role": "compute",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "remote_user",
+      "attacker"
+    ],
+    "data_classification": "internal",
+    "operational_context": "t3_hybrid_identity"
+  },
+  "threat_actors": [
+    {
+      "name": "Sandworm Team",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT28",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT41",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "opportunistic",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-1",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "ntds",
+      "entry_point": "attacker",
+      "impact": "CRITICAL: ntds compromise via attacker",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] [External Attacker] \u2192 Domain Workstation \u2192 Domain Controller DC01 \u2192 NTDS Credential Store. Legitimate use: threat actor traverse path to reach NTDS Credential Store. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Domain Controller DC01. Reach target NTDS Credential Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-2",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "root_ca",
+      "entry_point": "attacker",
+      "impact": "CRITICAL: root_ca compromise via attacker",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] [External Attacker] \u2192 Web Enrollment Service \u2192 Issuing CA \u2192 Root CA. Legitimate use: threat actor traverse path to reach Root CA. If exploited: Gain initial access at [External Attacker]. Access Web Enrollment Service via the initial entry point. Move from Web Enrollment Service to Issuing CA. Reach target Root CA \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-3",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "root_ca",
+      "entry_point": "attacker",
+      "impact": "CRITICAL: root_ca compromise via attacker",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] [External Attacker] \u2192 Domain Workstation \u2192 Web Enrollment Service \u2192 Issuing CA \u2192 Root CA. Legitimate use: threat actor traverse path to reach Root CA. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Web Enrollment Service. Move from Web Enrollment Service to Issuing CA. Reach target Root CA \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-4",
+      "technique_id": "T1621",
+      "technique_name": "Multi-Factor Authentication Request Generation",
+      "tactic": "Credential Access",
+      "target_component": "ntds",
+      "entry_point": "remote_user",
+      "impact": "CRITICAL: ntds compromise via remote_user",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] [Remote User] \u2192 VPN Client \u2192 Domain Controller DC01 \u2192 NTDS Credential Store. Legitimate use: end user traverse path to reach NTDS Credential Store. If exploited: Gain initial access at [Remote User]. Access VPN Client via the initial entry point. Move from VPN Client to Domain Controller DC01. Reach target NTDS Credential Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-5",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "enrollment_svc",
+      "entry_point": "attacker",
+      "impact": "CRITICAL: enrollment_svc compromise via attacker",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] [External Attacker] \u2192 Web Enrollment Service. Legitimate use: threat actor traverse path to reach Web Enrollment Service. If exploited: Gain initial access at [External Attacker]. Reach target Web Enrollment Service \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 1 hops"
+    },
+    {
+      "path_id": "AP-6",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "cert_template",
+      "entry_point": "attacker",
+      "impact": "CRITICAL: cert_template compromise via attacker",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] [External Attacker] \u2192 Domain Workstation \u2192 Domain Controller DC01 \u2192 ADCS CA Server \u2192 Certificate Templates. Legitimate use: threat actor traverse path to reach Certificate Templates. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Domain Controller DC01. Move from Domain Controller DC01 to ADCS CA Server. Reach target Certificate Templates \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 4 hops"
+    },
+    {
+      "path_id": "AP-7",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "krbtgt",
+      "entry_point": "attacker",
+      "impact": "CRITICAL: krbtgt compromise via attacker",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] [External Attacker] \u2192 Domain Workstation \u2192 Domain Controller DC01 \u2192 krbtgt Service Account. Legitimate use: threat actor traverse path to reach krbtgt Service Account. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Domain Controller DC01. Reach target krbtgt Service Account \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-8",
+      "technique_id": "AML.T0051",
+      "technique_name": "AML.T0051",
+      "tactic": "ml-attack-staging",
+      "target_component": "crl_point",
+      "entry_point": "attacker",
+      "impact": "CRITICAL: crl_point compromise via attacker",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] [External Attacker] \u2192 Web Enrollment Service \u2192 Issuing CA \u2192 CRL Distribution Point. Legitimate use: threat actor traverse path to reach CRL Distribution Point. If exploited: Gain initial access at [External Attacker]. Access Web Enrollment Service via the initial entry point. Move from Web Enrollment Service to Issuing CA. Reach target CRL Distribution Point \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-9",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "pam_vault",
+      "entry_point": "attacker",
+      "impact": "CRITICAL: pam_vault compromise via attacker",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] [External Attacker] \u2192 Domain Workstation \u2192 Domain Controller DC01 \u2192 Entra ID / Azure AD \u2192 Conditional Access Policy Engine \u2192 PAM Vault. Legitimate use: threat actor traverse path to reach PAM Vault. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Domain Controller DC01. Move from Domain Controller DC01 to Entra ID / Azure AD. Move from Entra ID / Azure AD to Conditional Access Policy Engine. Reach target PAM Vault \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 5 hops"
+    },
+    {
+      "path_id": "AP-10",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "audit_log",
+      "entry_point": "attacker",
+      "impact": "HIGH: audit_log compromise via attacker",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] [External Attacker] \u2192 Domain Workstation \u2192 Domain Controller DC01 \u2192 SIEM Connector \u2192 Audit Log Store. Legitimate use: threat actor traverse path to reach Audit Log Store. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Domain Controller DC01. Move from Domain Controller DC01 to SIEM Connector. Reach target Audit Log Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 4 hops"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "M1015",
+      "control_name": "least privilege",
+      "addresses_technique": [
+        "T1003.003",
+        "T1003.006",
+        "T1021",
+        "T1040",
+        "T1046"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "M1033",
+      "control_name": "rate limiting",
+      "addresses_technique": [
+        "T1021",
+        "T1048",
+        "T1059",
+        "T1071",
+        "T1090"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "M1017",
+      "control_name": "patching",
+      "addresses_technique": [
+        "T1003.003",
+        "T1003.006",
+        "T1021",
+        "T1027",
+        "T1078"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "M1047",
+      "control_name": "logging",
+      "addresses_technique": [
+        "T1021",
+        "T1027",
+        "T1059",
+        "T1213",
+        "T1528"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "M1037",
+      "control_name": "waf",
+      "addresses_technique": [
+        "T1048",
+        "T1071",
+        "T1090",
+        "T1190",
+        "T1210"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "M1017",
+      "control_name": "vulnerability scanning",
+      "addresses_technique": [
+        "T1003.003",
+        "T1003.006",
+        "T1021",
+        "T1027",
+        "T1078"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "M1050",
+      "control_name": "input validation",
+      "addresses_technique": [
+        "T1190",
+        "T1210",
+        "T1212"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "M1053",
+      "control_name": "backup",
+      "addresses_technique": [
+        "T1485",
+        "T1486"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "M1040",
+      "control_name": "edr",
+      "addresses_technique": [
+        "T1027",
+        "T1059",
+        "T1486"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "M1052",
+      "control_name": "user training",
+      "addresses_technique": [
+        "T1550.002"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] [External Attacker] \u2192 Domain Workstation \u2192 Domain Controller DC01 \u2192 NTDS Credential Store. Legitimate use: threat actor traverse path to reach NTDS Credential Store. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Domain Controller DC01. Reach target NTDS Credential Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "attacker",
+        "workstation",
+        "dc01",
+        "ntds"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1087",
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] [External Attacker] \u2192 Web Enrollment Service \u2192 Issuing CA \u2192 Root CA. Legitimate use: threat actor traverse path to reach Root CA. If exploited: Gain initial access at [External Attacker]. Access Web Enrollment Service via the initial entry point. Move from Web Enrollment Service to Issuing CA. Reach target Root CA \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "attacker",
+        "enrollment_svc",
+        "issuing_ca",
+        "root_ca"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1059",
+        "T1083"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] [External Attacker] \u2192 Domain Workstation \u2192 Web Enrollment Service \u2192 Issuing CA \u2192 Root CA. Legitimate use: threat actor traverse path to reach Root CA. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Web Enrollment Service. Move from Web Enrollment Service to Issuing CA. Reach target Root CA \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "attacker",
+        "workstation",
+        "enrollment_svc",
+        "issuing_ca",
+        "root_ca"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1087",
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] [Remote User] \u2192 VPN Client \u2192 Domain Controller DC01 \u2192 NTDS Credential Store. Legitimate use: end user traverse path to reach NTDS Credential Store. If exploited: Gain initial access at [Remote User]. Access VPN Client via the initial entry point. Move from VPN Client to Domain Controller DC01. Reach target NTDS Credential Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "remote_user",
+        "vpn_client",
+        "dc01",
+        "ntds"
+      ],
+      "linked_techniques": [
+        "T1621",
+        "T1110",
+        "T1133",
+        "T1021",
+        "T1040"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] [External Attacker] \u2192 Web Enrollment Service. Legitimate use: threat actor traverse path to reach Web Enrollment Service. If exploited: Gain initial access at [External Attacker]. Reach target Web Enrollment Service \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "attacker",
+        "enrollment_svc"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1213",
+        "T1530"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] [External Attacker] \u2192 Domain Workstation \u2192 Domain Controller DC01 \u2192 ADCS CA Server \u2192 Certificate Templates. Legitimate use: threat actor traverse path to reach Certificate Templates. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Domain Controller DC01. Move from Domain Controller DC01 to ADCS CA Server. Reach target Certificate Templates \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "attacker",
+        "workstation",
+        "dc01",
+        "adcs_server",
+        "cert_template"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1087",
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-007",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] [External Attacker] \u2192 Domain Workstation \u2192 Domain Controller DC01 \u2192 krbtgt Service Account. Legitimate use: threat actor traverse path to reach krbtgt Service Account. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Domain Controller DC01. Reach target krbtgt Service Account \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "attacker",
+        "workstation",
+        "dc01",
+        "krbtgt"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1087",
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-008",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] [External Attacker] \u2192 Web Enrollment Service \u2192 Issuing CA \u2192 CRL Distribution Point. Legitimate use: threat actor traverse path to reach CRL Distribution Point. If exploited: Gain initial access at [External Attacker]. Access Web Enrollment Service via the initial entry point. Move from Web Enrollment Service to Issuing CA. Reach target CRL Distribution Point \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "attacker",
+        "enrollment_svc",
+        "issuing_ca",
+        "crl_point"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1059",
+        "T1083"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-009",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] [External Attacker] \u2192 Domain Workstation \u2192 Domain Controller DC01 \u2192 Entra ID / Azure AD \u2192 Conditional Access Policy Engine \u2192 PAM Vault. Legitimate use: threat actor traverse path to reach PAM Vault. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Domain Controller DC01. Move from Domain Controller DC01 to Entra ID / Azure AD. Move from Entra ID / Azure AD to Conditional Access Policy Engine. Reach target PAM Vault \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "attacker",
+        "workstation",
+        "dc01",
+        "entra_id",
+        "conditional_access",
+        "pam_vault"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1087",
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-010",
+      "severity": "High",
+      "severity_rationale": "[HIGH] [External Attacker] \u2192 Domain Workstation \u2192 Domain Controller DC01 \u2192 SIEM Connector \u2192 Audit Log Store. Legitimate use: threat actor traverse path to reach Audit Log Store. If exploited: Gain initial access at [External Attacker]. Access Domain Workstation via the initial entry point. Move from Domain Workstation to Domain Controller DC01. Move from Domain Controller DC01 to SIEM Connector. Reach target Audit Log Store \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "attacker",
+        "workstation",
+        "dc01",
+        "siem_connector",
+        "audit_log"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1133",
+        "T1110",
+        "T1087",
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "compliance_scope": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "third_party_dependencies": [],
+    "agentic": {
+      "tool_call_scope": "restricted",
+      "oversight_required": false,
+      "agent_autonomy_level": "high",
+      "blast_radius": "high",
+      "human_oversight_points": 0,
+      "model_provenance": "third-party"
+    }
+  }
+}

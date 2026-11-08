@@ -1,0 +1,304 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t1_web_app",
+  "produced_by": "ta_v3 v1.0",
+  "produced_at": "2026-11-08T02:26:56.809142Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "FlaskAPI",
+        "name": "Flask API Server",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PostgreSQL",
+        "name": "PostgreSQL DB",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "Browser",
+        "name": "Browser",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "Nginx",
+        "name": "Nginx Reverse Proxy",
+        "role": "compute",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "Browser",
+      "FlaskAPI"
+    ],
+    "data_classification": "internal",
+    "operational_context": "t1_web_app"
+  },
+  "threat_actors": [
+    {
+      "name": "Sandworm Team",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT41",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT28",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-1",
+      "technique_id": "T1190",
+      "technique_name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "target_component": "PostgreSQL",
+      "entry_point": "FlaskAPI",
+      "impact": "CRITICAL: PostgreSQL compromise via FlaskAPI",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Attacker-only path (no human actor baseline): Flask API Server \u2192 PostgreSQL DB. 1 hop, criticality 0.93. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 1 hops"
+    },
+    {
+      "path_id": "AP-2",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "PostgreSQL",
+      "entry_point": "Browser",
+      "impact": "CRITICAL: PostgreSQL compromise via Browser",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Browser \u2192 Nginx Reverse Proxy \u2192 Flask API Server \u2192 PostgreSQL DB. Legitimate use: end user traverse path to reach PostgreSQL DB. If exploited: Gain initial access at Browser. Access Nginx Reverse Proxy via the initial entry point. Move from Nginx Reverse Proxy to Flask API Server. Reach target PostgreSQL DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-SUB-001",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "Nginx Reverse Proxy",
+      "entry_point": "Browser",
+      "impact": "Medium: Nginx Reverse Proxy compromise via lateral movement from Browser",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Sub-path of AP-2: Browser \u2192 Nginx Reverse Proxy",
+      "mitigation": "",
+      "finding": "Medium severity sub-path \u2014 1 hop"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "M1015",
+      "control_name": "least privilege",
+      "addresses_technique": [
+        "T1021",
+        "T1040",
+        "T1046",
+        "T1048",
+        "T1059"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "M1033",
+      "control_name": "rate limiting",
+      "addresses_technique": [
+        "T1021",
+        "T1048",
+        "T1059",
+        "T1071",
+        "T1090"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "M1047",
+      "control_name": "logging",
+      "addresses_technique": [
+        "T1021",
+        "T1027",
+        "T1059",
+        "T1213",
+        "T1552"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "M1037",
+      "control_name": "waf",
+      "addresses_technique": [
+        "T1048",
+        "T1071",
+        "T1090",
+        "T1190",
+        "T1210"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "M1050",
+      "control_name": "input validation",
+      "addresses_technique": [
+        "T1190",
+        "T1210",
+        "T1212"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "M1017",
+      "control_name": "patching",
+      "addresses_technique": [
+        "T1021",
+        "T1027",
+        "T1078",
+        "T1110",
+        "T1190"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "M1053",
+      "control_name": "backup",
+      "addresses_technique": [
+        "T1485",
+        "T1486"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "M1040",
+      "control_name": "edr",
+      "addresses_technique": [
+        "T1027",
+        "T1059",
+        "T1486",
+        "T1566"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "M1032",
+      "control_name": "mfa",
+      "addresses_technique": [
+        "T1021",
+        "T1040",
+        "T1078",
+        "T1098",
+        "T1110"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "M1038",
+      "control_name": "code signing",
+      "addresses_technique": [
+        "T1059",
+        "T1562"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Attacker-only path (no human actor baseline): Flask API Server \u2192 PostgreSQL DB. 1 hop, criticality 0.93. No legitimate user traversal \u2014 behavioral anomaly detection will not catch this.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "FlaskAPI",
+        "PostgreSQL"
+      ],
+      "linked_techniques": [
+        "T1190",
+        "T1059",
+        "T1083",
+        "T1210",
+        "T1078"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Browser \u2192 Nginx Reverse Proxy \u2192 Flask API Server \u2192 PostgreSQL DB. Legitimate use: end user traverse path to reach PostgreSQL DB. If exploited: Gain initial access at Browser. Access Nginx Reverse Proxy via the initial entry point. Move from Nginx Reverse Proxy to Flask API Server. Reach target PostgreSQL DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Browser",
+        "Nginx",
+        "FlaskAPI",
+        "PostgreSQL"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "compliance_scope": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "third_party_dependencies": []
+  }
+}

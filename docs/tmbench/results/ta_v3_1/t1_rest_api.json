@@ -1,0 +1,309 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t1_rest_api",
+  "produced_by": "ta_v3 v1.0",
+  "produced_at": "2026-11-08T02:26:57.700647Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "Client",
+        "name": "API Client",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "APIGateway",
+        "name": "API Gateway",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "AppServer",
+        "name": "App Server",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "AuthService",
+        "name": "Auth Service",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "Redis",
+        "name": "Redis Cache",
+        "role": "compute",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "Client"
+    ],
+    "data_classification": "internal",
+    "operational_context": "t1_rest_api"
+  },
+  "threat_actors": [
+    {
+      "name": "Sandworm Team",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT28",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "Scattered Spider",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-1",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "AppServer",
+      "entry_point": "Client",
+      "impact": "HIGH: AppServer compromise via Client",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] API Client \u2192 API Gateway \u2192 App Server. Legitimate use: service account traverse path to reach App Server. If exploited: Gain initial access at API Client. Access API Gateway via the initial entry point. Reach target App Server \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 2 hops"
+    },
+    {
+      "path_id": "AP-2",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "Redis",
+      "entry_point": "Client",
+      "impact": "HIGH: Redis compromise via Client",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] API Client \u2192 API Gateway \u2192 Auth Service \u2192 Redis Cache. Legitimate use: service account traverse path to reach Redis Cache. If exploited: Gain initial access at API Client. Access API Gateway via the initial entry point. Move from API Gateway to Auth Service. Reach target Redis Cache \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-SUB-001",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "API Gateway",
+      "entry_point": "API Client",
+      "impact": "Medium: API Gateway compromise via lateral movement from API Client",
+      "likelihood": "Medium",
+      "likelihood_rationale": "Sub-path of AP-1: API Client \u2192 API Gateway",
+      "mitigation": "",
+      "finding": "Medium severity sub-path \u2014 1 hop"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "M1015",
+      "control_name": "least privilege",
+      "addresses_technique": [
+        "T1021",
+        "T1040",
+        "T1046",
+        "T1048",
+        "T1059"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "M1033",
+      "control_name": "rate limiting",
+      "addresses_technique": [
+        "T1021",
+        "T1048",
+        "T1059",
+        "T1071",
+        "T1090"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "M1053",
+      "control_name": "backup",
+      "addresses_technique": [
+        "T1485",
+        "T1486"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "M1040",
+      "control_name": "edr",
+      "addresses_technique": [
+        "T1059",
+        "T1486",
+        "T1566"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "M1047",
+      "control_name": "logging",
+      "addresses_technique": [
+        "T1021",
+        "T1059",
+        "T1213",
+        "T1530",
+        "T1556"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "M1037",
+      "control_name": "waf",
+      "addresses_technique": [
+        "T1048",
+        "T1071",
+        "T1090",
+        "T1190",
+        "T1210"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "M1050",
+      "control_name": "input validation",
+      "addresses_technique": [
+        "T1190",
+        "T1210",
+        "T1212"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "M1017",
+      "control_name": "patching",
+      "addresses_technique": [
+        "T1021",
+        "T1078",
+        "T1110",
+        "T1190",
+        "T1210"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "M1038",
+      "control_name": "code signing",
+      "addresses_technique": [
+        "T1059",
+        "T1562"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "M1017",
+      "control_name": "vulnerability scanning",
+      "addresses_technique": [
+        "T1021",
+        "T1078",
+        "T1110",
+        "T1213",
+        "T1556"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "High",
+      "severity_rationale": "[HIGH] API Client \u2192 API Gateway \u2192 App Server. Legitimate use: service account traverse path to reach App Server. If exploited: Gain initial access at API Client. Access API Gateway via the initial entry point. Reach target App Server \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Client",
+        "APIGateway",
+        "AppServer"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "High",
+      "severity_rationale": "[HIGH] API Client \u2192 API Gateway \u2192 Auth Service \u2192 Redis Cache. Legitimate use: service account traverse path to reach Redis Cache. If exploited: Gain initial access at API Client. Access API Gateway via the initial entry point. Move from API Gateway to Auth Service. Reach target Redis Cache \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Client",
+        "APIGateway",
+        "AuthService",
+        "Redis"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "compliance_scope": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "third_party_dependencies": []
+  }
+}

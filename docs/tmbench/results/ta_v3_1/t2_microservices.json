@@ -1,0 +1,481 @@
+{
+  "spec_version": "threatmodel/0.1",
+  "architecture_id": "t2_microservices",
+  "produced_by": "ta_v3 v1.0",
+  "produced_at": "2026-11-08T02:26:58.594504Z",
+  "architecture_summary": {
+    "components": [
+      {
+        "id": "UserService",
+        "name": "User Service",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "UserDB",
+        "name": "User DB",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "Users",
+        "name": "Users",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "APIGateway",
+        "name": "API Gateway",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "OrderService",
+        "name": "Order Service",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "OrderDB",
+        "name": "Order DB",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PaymentService",
+        "name": "Payment Service",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "PaymentDB",
+        "name": "Payment DB",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "MessageQueue",
+        "name": "Message Queue",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "InventoryService",
+        "name": "Inventory Service",
+        "role": "compute",
+        "trust_zone": "internal"
+      },
+      {
+        "id": "InventoryDB",
+        "name": "Inventory DB",
+        "role": "compute",
+        "trust_zone": "internal"
+      }
+    ],
+    "trust_boundaries": [
+      "Users",
+      "UserService"
+    ],
+    "data_classification": "internal",
+    "operational_context": "t2_microservices"
+  },
+  "threat_actors": [
+    {
+      "name": "Sandworm Team",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "APT28",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1078",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    },
+    {
+      "name": "Magic Hound",
+      "motivation": "Cyber espionage and financial gain",
+      "capability_tier": "targeted",
+      "initial_access_vector": "T1190",
+      "non_capabilities": [
+        "No physical access to target systems"
+      ]
+    }
+  ],
+  "attack_paths": [
+    {
+      "path_id": "AP-1",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "UserDB",
+      "entry_point": "UserService",
+      "impact": "CRITICAL: UserDB compromise via UserService",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] User Service \u2192 User DB. Legitimate use: service account traverse path to reach User DB. If exploited: Gain initial access at User Service. Reach target User DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 1 hops"
+    },
+    {
+      "path_id": "AP-2",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "OrderDB",
+      "entry_point": "Users",
+      "impact": "CRITICAL: OrderDB compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 API Gateway \u2192 Order Service \u2192 Order DB. Legitimate use: end user traverse path to reach Order DB. If exploited: Gain initial access at Users. Access API Gateway via the initial entry point. Move from API Gateway to Order Service. Reach target Order DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-3",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "PaymentDB",
+      "entry_point": "Users",
+      "impact": "CRITICAL: PaymentDB compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 API Gateway \u2192 Payment Service \u2192 Payment DB. Legitimate use: end user traverse path to reach Payment DB. If exploited: Gain initial access at Users. Access API Gateway via the initial entry point. Move from API Gateway to Payment Service. Reach target Payment DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-4",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "UserDB",
+      "entry_point": "Users",
+      "impact": "CRITICAL: UserDB compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 API Gateway \u2192 User Service \u2192 User DB. Legitimate use: end user traverse path to reach User DB. If exploited: Gain initial access at Users. Access API Gateway via the initial entry point. Move from API Gateway to User Service. Reach target User DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 3 hops"
+    },
+    {
+      "path_id": "AP-5",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "InventoryDB",
+      "entry_point": "Users",
+      "impact": "CRITICAL: InventoryDB compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[CRITICAL] Users \u2192 API Gateway \u2192 Order Service \u2192 Message Queue \u2192 Inventory Service \u2192 Inventory DB. Legitimate use: end user traverse path to reach Inventory DB. If exploited: Gain initial access at Users. Access API Gateway via the initial entry point. Move from API Gateway to Order Service. Move from Order Service to Message Queue. Move from Message Queue to Inventory Service. Reach target Inventory DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "Critical severity path \u2014 5 hops"
+    },
+    {
+      "path_id": "AP-6",
+      "technique_id": "T1566",
+      "technique_name": "Phishing",
+      "tactic": "Initial Access",
+      "target_component": "PaymentService",
+      "entry_point": "Users",
+      "impact": "HIGH: PaymentService compromise via Users",
+      "likelihood": "High",
+      "likelihood_rationale": "[HIGH] Users \u2192 API Gateway \u2192 Payment Service. Legitimate use: end user traverse path to reach Payment Service. If exploited: Gain initial access at Users. Access API Gateway via the initial entry point. Reach target Payment Service \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "mitigation": "least privilege",
+      "finding": "High severity path \u2014 2 hops"
+    }
+  ],
+  "mitigations": [
+    {
+      "mitigation_id": "M-001",
+      "control_id": "M1015",
+      "control_name": "least privilege",
+      "addresses_technique": [
+        "T1021",
+        "T1040",
+        "T1046",
+        "T1048",
+        "T1059"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-002",
+      "control_id": "M1033",
+      "control_name": "rate limiting",
+      "addresses_technique": [
+        "T1021",
+        "T1048",
+        "T1059",
+        "T1071",
+        "T1090"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-003",
+      "control_id": "M1053",
+      "control_name": "backup",
+      "addresses_technique": [
+        "T1485",
+        "T1486"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-004",
+      "control_id": "M1040",
+      "control_name": "edr",
+      "addresses_technique": [
+        "T1059",
+        "T1486",
+        "T1566"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-005",
+      "control_id": "M1047",
+      "control_name": "logging",
+      "addresses_technique": [
+        "T1021",
+        "T1059",
+        "T1114",
+        "T1213",
+        "T1530"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-006",
+      "control_id": "M1037",
+      "control_name": "waf",
+      "addresses_technique": [
+        "T1048",
+        "T1071",
+        "T1090",
+        "T1190",
+        "T1210"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-007",
+      "control_id": "M1017",
+      "control_name": "patching",
+      "addresses_technique": [
+        "T1021",
+        "T1078",
+        "T1110",
+        "T1190",
+        "T1210"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-008",
+      "control_id": "M1017",
+      "control_name": "vulnerability scanning",
+      "addresses_technique": [
+        "T1021",
+        "T1078",
+        "T1110",
+        "T1213",
+        "T1557"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-009",
+      "control_id": "M1050",
+      "control_name": "input validation",
+      "addresses_technique": [
+        "T1190",
+        "T1210",
+        "T1212"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    },
+    {
+      "mitigation_id": "M-010",
+      "control_id": "M1038",
+      "control_name": "code signing",
+      "addresses_technique": [
+        "T1059",
+        "T1562"
+      ],
+      "implementation_status": "Planned",
+      "residual_risk": "Low"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "F-001",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] User Service \u2192 User DB. Legitimate use: service account traverse path to reach User DB. If exploited: Gain initial access at User Service. Reach target User DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "UserService",
+        "UserDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1213"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-002",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 API Gateway \u2192 Order Service \u2192 Order DB. Legitimate use: end user traverse path to reach Order DB. If exploited: Gain initial access at Users. Access API Gateway via the initial entry point. Move from API Gateway to Order Service. Reach target Order DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "OrderService",
+        "OrderDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-003",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 API Gateway \u2192 Payment Service \u2192 Payment DB. Legitimate use: end user traverse path to reach Payment DB. If exploited: Gain initial access at Users. Access API Gateway via the initial entry point. Move from API Gateway to Payment Service. Reach target Payment DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "PaymentService",
+        "PaymentDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-004",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 API Gateway \u2192 User Service \u2192 User DB. Legitimate use: end user traverse path to reach User DB. If exploited: Gain initial access at Users. Access API Gateway via the initial entry point. Move from API Gateway to User Service. Reach target User DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "UserService",
+        "UserDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-005",
+      "severity": "Critical",
+      "severity_rationale": "[CRITICAL] Users \u2192 API Gateway \u2192 Order Service \u2192 Message Queue \u2192 Inventory Service \u2192 Inventory DB. Legitimate use: end user traverse path to reach Inventory DB. If exploited: Gain initial access at Users. Access API Gateway via the initial entry point. Move from API Gateway to Order Service. Move from Order Service to Message Queue. Move from Message Queue to Inventory Service. Reach target Inventory DB \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "OrderService",
+        "MessageQueue",
+        "InventoryService",
+        "InventoryDB"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Immediate"
+    },
+    {
+      "finding_id": "F-006",
+      "severity": "High",
+      "severity_rationale": "[HIGH] Users \u2192 API Gateway \u2192 Payment Service. Legitimate use: end user traverse path to reach Payment Service. If exploited: Gain initial access at Users. Access API Gateway via the initial entry point. Reach target Payment Service \u2014 exfiltrate, encrypt, or disrupt. Corroborated: user journey matches attack path.",
+      "severity_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "affected_components": [
+        "Users",
+        "APIGateway",
+        "PaymentService"
+      ],
+      "linked_techniques": [
+        "T1566",
+        "T1078",
+        "T1110",
+        "T1133",
+        "T1059"
+      ],
+      "linked_mitigations": [
+        "M-001",
+        "M-002"
+      ],
+      "remediation_priority": "Short-term"
+    }
+  ],
+  "governance": {
+    "data_sovereignty": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "compliance_scope": [
+      "PRIV",
+      "SEC",
+      "SOC"
+    ],
+    "third_party_dependencies": []
+  }
+}
