@@ -4,6 +4,64 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+## Session 120 — 2026-11-08
+
+### Entry 245 — P41 blog held for complete journey post-improvement
+
+**Date:** 2026-11-08
+**Status:** Decided — `docs/blog/drafts/draft_2026-11-07.md`
+
+**What:** Blog P41 ("The Pipeline Came Fifth") is drafted but intentionally not published yet. The draft covers the benchmark gap findings. The decision is to hold publication until after Phases 1–3 improvements are implemented and re-run, so P41 can tell the complete arc: benchmark → gaps found → pipeline activation + ATLAS wiring + path depth → before/after score. A partial gap report is half a story; the full journey with verified improvement is the stronger post.
+
+**Why:** P41 becomes a worked example of engineering discipline: use a benchmark to find real gaps, fix them systematically, re-bench to confirm. That narrative is more useful to readers than a gap description alone.
+
+**Alternatives rejected:** Publishing the draft as-is and writing P42 for the improvement — splits the story across two posts unnecessarily and loses the before/after contrast within a single piece.
+
+---
+
+### Entry 244 — TMbench tiered arch weighting design
+
+**Date:** 2026-11-08
+**Status:** Decided — pending implementation in `scripts/tmbench/tmbench_generate.py`
+
+**What:** TMbench leaderboard to adopt complexity-weighted scoring alongside the flat mean. Architecture tiers carry different weights reflecting analytical depth required: T1 (web_app, rest_api) = 1.0×, T2 (microservices, cicd, saas) = 1.5×, T3 (hybrid_identity, container_orchestration, multicloud_data) = 2.0×, T4 (rag_pipeline, agent_fleet) = 2.5×. Weighted mean replaces the flat mean as the primary ranking signal. HTML leaderboard shows both weighted and unweighted scores, plus a per-tier breakdown panel showing each tool's profile across T1–T4.
+
+**Why:** 10 equal arches conflates t1_web_app (4 components, standard CRUD) with t4_agent_fleet (tool registries, multi-hop LLM chains, agentic governance). A tool that scores 13/13 on T4 arches demonstrates fundamentally different analytical capability than one that excels only on T1/T2. Tiered weighting makes ATLAS coverage on T3/T4 more valuable — the fix is amplified in the weighted score, which better reflects its security significance. Per-tier breakdown also surfaces tool specialisation (e.g. a tool strong on agentic arches but weaker on cloud pipelines).
+
+**Alternatives rejected:** Keeping flat mean as primary — obscures where tools actually differ; a tool that games T1/T2 and drops on T3/T4 looks better than it should.
+
+---
+
+### Entry 243 — TA pipeline improvement roadmap from TMbench gaps
+
+**Date:** 2026-11-08
+**Status:** Decided — implementation pending
+
+**What:** Three-phase improvement plan to close TA's TMbench gaps and activate the pipeline's full depth:
+
+**Phase 1 — Activate full pipeline for benchmark arches (critic activation).**
+Benchmark arches currently have no boxing data → smart_router selects `api_only` → critics, ScrumMaster, and TAbrain all skipped. The 12.30 score represents TA at ~20% capacity. Fix: generate boxing data for the 10 corpus arches (one-time `ta boxing` run) so the router selects the correct mode on subsequent benchmark runs. This activates the critic layer that catches structural gaps.
+Expected impact: modest score improvement through governance field completeness; more importantly, future benchmark runs test TA as it runs in production.
+
+**Phase 2 — ATLAS technique wiring for agentic arches.**
+`atlas_helper.py` has `get_techniques_by_component()` with full component→AML technique mapping (llm_api, vector_db, agent_orchestrator, etc.). `atlas_arc_pattern.py` uses it in the RAPIDS AI/ML analyst. `ground_truth_generator.py` never imports it — ATLAS only appears in a comment string. Fix: when `arch_type == "ai_system"`, call `atlas_helper.get_techniques_by_component()` for each AI component node and add AML technique IDs to attack paths touching those nodes.
+Expected impact: 4 agentic arches (t3_hybrid_identity, t3_container_orchestration, t4_rag_pipeline, t4_agent_fleet) go 12/13 → 13/13. Flat mean: 12.30 → ~12.70.
+
+**Phase 3 — Attack path depth and agentic governance fields.**
+Attack path count: when component_count > 4, decompose existing traversals into sub-paths to meet the spec minimum (component_count / 2). Agentic governance fields (agent_autonomy_level, blast_radius, human_oversight_points, model_provenance): derive from arch graph (node count, tool_registry presence, human-in-loop node) and wire into ta_exporter governance section.
+Expected impact: remaining 5–6 non-perfect arches improve. Combined with Phase 2: flat mean 12.30 → ~13.00.
+
+**Phase 4 — TMbench score into the flywheel.**
+Add a tmbench-check pass to TAgym: after each gym iteration, score the generated output against threatmodel/0.1 and record spec gap count alongside Brier delta. This closes the loop — the flywheel now treats spec compliance as a signal, not just internal Brier calibration.
+
+**Core principle:** TAbrain is TA's anchor differentiator. External LLMs follow the spec from a prompt; TA layers calibrated priors (181 instances, Brier 0.165), critics, 65 DETECT rules, and governance signals. Improving TA means activating that depth fully, not mimicking spec-following behaviour. A TA at 13.00 weighted score via actual analysis is qualitatively different from deepseek_flash at 13.00 via prompt compliance.
+
+**Why:** Benchmark found real gaps; structured improvement with re-bench confirmation is the correct response. Each phase has a concrete test: re-run tmbench_generate.py and check the score improves.
+
+**Alternatives rejected:** Treating gaps as converter artifacts — attack path count and ATLAS absence are genuine generator-level gaps. Spec-aware generation layer without fixing underlying generator — would game the benchmark without improving security value.
+
+---
+
 ## Session 119 — 2026-11-07
 
 ### Entry 241 — TMbench leaderboard complete (5 tools); nemotron_super retired
