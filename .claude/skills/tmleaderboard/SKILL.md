@@ -78,7 +78,7 @@ Each JSON must conform to the `threatmodel/0.1` schema:
 - Full sections: `architecture_summary`, `threat_actors`, `attack_paths`,
   `mitigations`, `findings`, `governance`
 
-Full schema: `docs/tmbench/threatmodel.md §4`.
+Full schema: `docs/tmbench/threatmodel.md §4`. Spec version: `threatmodel/0.1` (see `docs/tmbench/CHANGELOG.md` for patch history).
 
 ### Step 2 — Ingest
 

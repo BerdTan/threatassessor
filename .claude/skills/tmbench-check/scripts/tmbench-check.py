@@ -126,7 +126,7 @@ def check_attack_paths(tm: dict) -> list[tuple[str, str]]:
     if not is_agentic:
         # Check component roles
         comp_roles = [c.get("role", "").lower() for c in components]
-        is_agentic = any(r in ("agent", "llm", "tool_caller", "ai", "ml") for r in comp_roles)
+        is_agentic = any(r in ("agent", "llm", "tool_caller", "ai", "ml", "language_model", "orchestrator") for r in comp_roles)
 
     if is_agentic:
         has_atlas = any(
@@ -153,8 +153,8 @@ def check_mitigations(tm: dict) -> list[tuple[str, str]]:
     for m in mitigations:
         for tid in m.get("addresses_technique", []):
             addressed.add(tid)
-        if not m.get("control_id"):
-            gaps.append(("Medium", f"mitigation '{m.get('mitigation_id','?')}': control_id missing"))
+        if not m.get("control_id") and not m.get("control_name"):
+            gaps.append(("Medium", f"mitigation '{m.get('mitigation_id','?')}': control_id or control_name required"))
         if not m.get("implementation_status"):
             gaps.append(("Low", f"mitigation '{m.get('mitigation_id','?')}': implementation_status missing"))
 
@@ -211,7 +211,7 @@ def check_governance(tm: dict) -> list[tuple[str, str]]:
     # Agentic check
     components = tm.get("architecture_summary", {}).get("components", [])
     comp_roles = [c.get("role", "").lower() for c in components]
-    is_agentic = any(r in ("agent", "llm", "tool_caller", "ai", "ml") for r in comp_roles)
+    is_agentic = any(r in ("agent", "llm", "tool_caller", "ai", "ml", "language_model", "orchestrator") for r in comp_roles)
 
     if is_agentic and not gov.get("agentic"):
         gaps.append(("Critical", "agentic governance block required — architecture has agent/LLM component"))
@@ -320,7 +320,7 @@ def bonus_completeness(tm: dict, all_gaps: list[tuple[str, str]]) -> tuple[int, 
 def bonus_agentic(tm: dict) -> tuple[int, str]:
     components = tm.get("architecture_summary", {}).get("components", [])
     comp_roles = [c.get("role", "").lower() for c in components]
-    is_agentic = any(r in ("agent", "llm", "tool_caller", "ai", "ml") for r in comp_roles)
+    is_agentic = any(r in ("agent", "llm", "tool_caller", "ai", "ml", "language_model", "orchestrator") for r in comp_roles)
     if not is_agentic:
         return 0, "n/a — no agentic component"
 
@@ -468,7 +468,8 @@ def run_compare(results_dir: Path) -> list[dict]:
 # ── spec review mode ──────────────────────────────────────────────────────────
 
 def run_spec_review(results_dir: Path) -> None:
-    files = sorted(results_dir.glob("*.json"))
+    # Collect JSONs from both results_dir itself and one level of subdirectories
+    files = sorted(results_dir.glob("*.json")) + sorted(results_dir.glob("*/*.json"))
     if not files:
         print(f"No JSON files found in {results_dir} — run --score first to populate results")
         return

@@ -73,7 +73,7 @@ A compliant threat model MUST contain all six sections. A section is present if 
 ### 1.4 Mitigations
 
 **Required fields per mitigation:**
-- `control_id`: reference to a control framework (e.g. NIST CSF PR.AC-1, CIS Control 5.1, CSA ART 4.2)
+- `control_id`: reference to a control framework (e.g. NIST CSF PR.AC-1, CIS Control 5.1, CSA ART 4.2, MITRE M1030). **Optional** when no standard control ID applies — use `control_name` to describe the control in that case.
 - `control_name`: human-readable label
 - `addresses_technique`: one or more `technique_id` values this control mitigates
 - `implementation_status`: Implemented / Partial / Planned / Not applicable
@@ -103,12 +103,25 @@ A compliant threat model MUST contain all six sections. A section is present if 
 - `compliance_scope`: applicable frameworks (SOC 2, ISO 27001, GDPR, HIPAA, PCI-DSS, etc.) — "none identified" is acceptable if justified
 - `third_party_dependencies`: external services, APIs, or models the architecture depends on, with trust tier (trusted / conditional / untrusted)
 
-**Required for agentic architectures** (architectures with autonomous agents, LLM-driven components, or tool-calling pipelines):
-- `agent_autonomy_level`: supervised / semi-autonomous / autonomous
-- `tool_call_scope`: list of tools or APIs the agent can invoke
-- `blast_radius`: what an uncontrolled agent run could affect (data, external systems, other agents)
-- `human_oversight_points`: where a human is in the loop, or explicit statement that no oversight exists
-- `model_provenance`: model provider, model ID, and whether the model is fine-tuned or prompted-only
+**Required for agentic architectures.** An architecture is agentic when it contains any component with one of these roles: `agent`, `llm`, `tool_caller`, `ai`, `ml`, `language_model`, `orchestrator`. When in doubt, use the `is_agentic: true` flag in `architecture_summary`.
+
+Required fields:
+- `agent_autonomy_level`: one of `supervised` (human approves each action), `semi-autonomous` (human reviews batches or on exception), or `autonomous` (no human in the loop during a run)
+- `tool_call_scope`: list of tools or APIs the agent can invoke (e.g. `["web_search", "code_interpreter", "file_write"]`). Use `["none"]` if the agent has no tool access.
+- `blast_radius`: what an uncontrolled agent run could affect — be specific (e.g. `"write access to production database and outbound HTTP to any URL"`, not just `"data"`)
+- `human_oversight_points`: list the specific checkpoints where a human is in the loop (e.g. `["approval before tool_call: file_write", "daily audit log review"]`). If no oversight exists, write `["none — fully autonomous"]` explicitly.
+- `model_provenance`: model provider, model ID, and whether the model is fine-tuned or prompted-only (e.g. `{"provider": "Anthropic", "model_id": "claude-opus-5-5", "fine_tuned": false}`)
+
+**Worked example (agent fleet architecture):**
+```json
+"agentic": {
+  "agent_autonomy_level": "semi-autonomous",
+  "tool_call_scope": ["web_search", "code_interpreter", "file_read"],
+  "blast_radius": "read access to internal knowledge base; no write or external network access",
+  "human_oversight_points": ["approval required before code_interpreter executes", "weekly usage audit"],
+  "model_provenance": {"provider": "Anthropic", "model_id": "claude-sonnet-5-5", "fine_tuned": false}
+}
+```
 
 ---
 
