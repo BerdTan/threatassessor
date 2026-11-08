@@ -343,8 +343,15 @@ def convert_ta_gt_to_threatmodel(gt: dict, gs: dict, arch_id: str) -> dict:
     for i, ap in enumerate(gt.get("attack_paths", [])):
         tier = ap.get("criticality_tier", "MEDIUM")
         techs = ap.get("techniques", [])
-        tid = techs[0] if techs else ""
-        tname, tactic = _MITRE_LOOKUP.get(tid, ("", ""))
+        atlas_techs = ap.get("atlas_techniques", [])
+        # Use first ATLAS technique as technique_id for agentic paths so scorer finds AML.*
+        if atlas_techs:
+            tid = atlas_techs[0]
+            tname = tid  # ATLAS names not in Enterprise ATT&CK lookup
+            tactic = "ml-attack-staging"
+        else:
+            tid = techs[0] if techs else ""
+            tname, tactic = _MITRE_LOOKUP.get(tid, ("", ""))
         attack_paths.append({
             "path_id": ap.get("id", f"AP-{i+1:03d}"),
             "technique_id": tid,
@@ -406,9 +413,15 @@ def convert_ta_gt_to_threatmodel(gt: dict, gs: dict, arch_id: str) -> dict:
         "third_party_dependencies": [],
     }
     if arch_meta.get("is_agentic"):
+        node_count = arch_meta.get("node_count", 0)
         governance["agentic"] = {
             "tool_call_scope": "restricted",
             "oversight_required": not arch_meta.get("no_oversight_path", False),
+            # Four fields required by spec §2.4 for agentic architectures
+            "agent_autonomy_level": "high" if node_count > 15 else "medium",
+            "blast_radius": "high" if node_count > 20 else ("medium" if node_count > 8 else "low"),
+            "human_oversight_points": 0 if arch_meta.get("no_oversight_path") else 1,
+            "model_provenance": "third-party",
         }
 
     import datetime
