@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TMbench Leaderboard</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --border:   #2a2d3a;
+    --text:     #e2e4ed;
+    --muted:    #7a7f94;
+    --accent:   #6366f1;
+    --gold:     #f59e0b;
+    --silver:   #94a3b8;
+    --bronze:   #cd7c54;
+    --green:    #22c55e;
+    --red:      #ef4444;
+    --t1:       #3b82f6;
+    --t2:       #8b5cf6;
+    --t3:       #ec4899;
+    --t4:       #f97316;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 32px 24px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 32px;
+  }
+
+  .subtitle span { color: var(--text); }
+
+  section { margin-bottom: 40px; }
+
+  h2 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* ── Tables ── */
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 500;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  tr:hover td { background: rgba(255,255,255,0.03); }
+
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ── Score cells ── */
+  .score-13 { color: var(--green); font-weight: 600; }
+  .score-12 { color: var(--text); }
+  .score-11 { color: #fb923c; }
+  .score-low { color: var(--red); }
+  .score-miss { color: var(--border); }
+
+  /* ── Rank badges ── */
+  .rank { font-weight: 700; min-width: 28px; display: inline-block; }
+  .rank-1 { color: var(--gold); }
+  .rank-2 { color: var(--silver); }
+  .rank-3 { color: var(--bronze); }
+
+  /* ── Tool name cell ── */
+  .tool-name { font-weight: 600; }
+  .tool-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .tag-pipeline { background: rgba(99,102,241,0.2); color: var(--accent); }
+  .tag-llm      { background: rgba(148,163,184,0.15); color: var(--silver); }
+  .tag-baseline { background: rgba(99,102,241,0.1); color: #818cf8; }
+
+  /* ── Delta chip ── */
+  .delta-pos { color: var(--green); }
+  .delta-neg { color: var(--red); }
+  .delta-zero { color: var(--muted); }
+
+  /* ── Tier badge ── */
+  .tier {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+  }
+  .t1 { background: rgba(59,130,246,0.15); color: var(--t1); }
+  .t2 { background: rgba(139,92,246,0.15); color: var(--t2); }
+  .t3 { background: rgba(236,72,153,0.15); color: var(--t3); }
+  .t4 { background: rgba(249,115,22,0.15); color: var(--t4); }
+
+  /* ── Progress bar ── */
+  .bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 120px;
+  }
+  .bar-track {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--accent);
+    transition: width 0.3s;
+  }
+  .bar-label {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    min-width: 36px;
+    text-align: right;
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* ── Gap grid ── */
+  .gap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .gap-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .gap-card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+  .gap-pill {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin: 2px 2px 2px 0;
+    background: rgba(239,68,68,0.15);
+    color: #fca5a5;
+  }
+  .gap-none { color: var(--green); font-size: 12px; }
+
+  /* ── Weighted explanation ── */
+  .weight-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .weight-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .weight-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  /* ── Improvement strip ── */
+  .improvement-strip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .imp-stat { display: flex; flex-direction: column; }
+  .imp-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .imp-value { font-size: 18px; font-weight: 700; }
+  .imp-sep { width: 1px; height: 32px; background: var(--border); }
+</style>
+</head>
+<body>
+
+<h1>TMbench Leaderboard</h1>
+<p class="subtitle">Spec: <span>threatmodel/0.1</span> &nbsp;·&nbsp; Corpus: <span>10 reference architectures (T1–T4)</span> &nbsp;·&nbsp; Rubric: <span>TATB 0–3 each, max 13 (12 base + 1 agentic bonus)</span> &nbsp;·&nbsp; Pass: <span>≥8, no dimension at 0</span> &nbsp;·&nbsp; <span id="date"></span></p>
+
+<div class="improvement-strip">
+  <div class="imp-stat">
+    <span class="imp-label">ta_v3 baseline</span>
+    <span class="imp-value" style="color:var(--muted)">12.30</span>
+  </div>
+  <div class="imp-sep"></div>
+  <div class="imp-stat">
+    <span class="imp-label">ta_v3_1 (Phases 1–3)</span>
+    <span class="imp-value" style="color:var(--green)">12.90</span>
+  </div>
+  <div class="imp-sep"></div>
+  <div class="imp-stat">
+    <span class="imp-label">Delta</span>
+    <span class="imp-value delta-pos">+0.60</span>
+  </div>
+  <div class="imp-sep"></div>
+  <div class="imp-stat">
+    <span class="imp-label">Rank change</span>
+    <span class="imp-value" style="color:var(--gold)">5th → 2nd</span>
+  </div>
+  <div class="imp-sep"></div>
+  <div class="imp-stat">
+    <span class="imp-label">Phases</span>
+    <span style="font-size:12px; color:var(--text)">Boxing data · ATLAS wiring · Sub-path decomp</span>
+  </div>
+</div>
+
+<!-- ── MAIN LEADERBOARD ───────────────────────────────────────────────── -->
+<section>
+  <h2>Overall ranking · weighted mean (T1×1.0, T2×1.5, T3×2.0, T4×2.5)</h2>
+
+  <div class="weight-legend">
+    <div class="weight-item"><div class="weight-dot" style="background:var(--t1)"></div>T1 Basic (×1.0)</div>
+    <div class="weight-item"><div class="weight-dot" style="background:var(--t2)"></div>T2 Intermediate (×1.5)</div>
+    <div class="weight-item"><div class="weight-dot" style="background:var(--t3)"></div>T3 Advanced (×2.0)</div>
+    <div class="weight-item"><div class="weight-dot" style="background:var(--t4)"></div>T4 Expert (×2.5)</div>
+  </div>
+
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Tool</th>
+        <th class="num">Weighted</th>
+        <th class="num">Unweighted</th>
+        <th class="num">Pass</th>
+        <th style="min-width:160px">Score</th>
+        <th class="num">Δ unweighted</th>
+      </tr>
+    </thead>
+    <tbody id="main-table"></tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ── PER-TIER BREAKDOWN ─────────────────────────────────────────────── -->
+<section>
+  <h2>Per-tier breakdown</h2>
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Arch</th>
+        <th>Tier</th>
+        <th>Weight</th>
+        <th>deepseek_flash</th>
+        <th>ta_v3_1</th>
+        <th>nemotron_ultra</th>
+        <th>hetzner_27b</th>
+        <th>gemini_flash</th>
+        <th>ta_v3</th>
+        <th>hetzner</th>
+      </tr>
+    </thead>
+    <tbody id="tier-table"></tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ── GAP CLUSTERS ───────────────────────────────────────────────────── -->
+<section>
+  <h2>Gap clusters · arches where score &lt; 13</h2>
+  <div class="gap-grid" id="gap-grid"></div>
+</section>
+
+<script>
+const TOOLS_ORDERED = [
+  { id: "deepseek_flash",  label: "deepseek_flash",  tag: "llm",      tagLabel: "LLM" },
+  { id: "ta_v3_1",         label: "ta_v3_1",         tag: "pipeline", tagLabel: "Pipeline" },
+  { id: "nemotron_ultra",  label: "nemotron_ultra",   tag: "llm",      tagLabel: "LLM" },
+  { id: "hetzner_27b",     label: "hetzner_27b",      tag: "llm",      tagLabel: "LLM" },
+  { id: "gemini_flash",    label: "gemini_flash",     tag: "llm",      tagLabel: "LLM" },
+  { id: "ta_v3",           label: "ta_v3",            tag: "baseline", tagLabel: "Baseline" },
+  { id: "hetzner",         label: "hetzner",          tag: "llm",      tagLabel: "LLM" },
+];
+
+const ARCHES = [
+  { id: "t1_web_app",                tier: "T1", w: 1.0 },
+  { id: "t1_rest_api",               tier: "T1", w: 1.0 },
+  { id: "t2_microservices",          tier: "T2", w: 1.5 },
+  { id: "t2_cicd_pipeline",          tier: "T2", w: 1.5 },
+  { id: "t2_saas_integration",       tier: "T2", w: 1.5 },
+  { id: "t3_multicloud_data",        tier: "T3", w: 2.0 },
+  { id: "t3_hybrid_identity",        tier: "T3", w: 2.0 },
+  { id: "t3_container_orchestration",tier: "T3", w: 2.0 },
+  { id: "t4_rag_pipeline",           tier: "T4", w: 2.5 },
+  { id: "t4_agent_fleet",            tier: "T4", w: 2.5 },
+];
+
+// Raw per-arch scores  (tool_id → arch_id → score)
+const SCORES = {
+  deepseek_flash:  { t1_web_app:13, t1_rest_api:13, t2_microservices:13, t2_cicd_pipeline:13, t2_saas_integration:13, t3_multicloud_data:13, t3_hybrid_identity:13, t3_container_orchestration:13, t4_rag_pipeline:13, t4_agent_fleet:13 },
+  ta_v3_1:         { t1_web_app:13, t1_rest_api:13, t2_microservices:13, t2_cicd_pipeline:13, t2_saas_integration:13, t3_multicloud_data:13, t3_hybrid_identity:13, t3_container_orchestration:12, t4_rag_pipeline:13, t4_agent_fleet:13 },
+  nemotron_ultra:  { t1_web_app:13, t1_rest_api:13, t2_microservices:13, t2_cicd_pipeline:13, t2_saas_integration:12, t3_multicloud_data:13, t3_hybrid_identity:13, t3_container_orchestration:12, t4_rag_pipeline:13, t4_agent_fleet:13 },
+  hetzner_27b:     { t1_web_app:13, t1_rest_api:13, t2_microservices:13, t2_cicd_pipeline:13, t2_saas_integration:13, t3_multicloud_data:13, t3_hybrid_identity:12, t3_container_orchestration:12, t4_rag_pipeline:13, t4_agent_fleet:13 },
+  gemini_flash:    { t1_web_app:13, t1_rest_api:13, t2_microservices:13, t2_cicd_pipeline:12, t2_saas_integration:12, t3_multicloud_data:13, t3_hybrid_identity:12, t3_container_orchestration:12, t4_rag_pipeline:13, t4_agent_fleet:11 },
+  ta_v3:           { t1_web_app:12, t1_rest_api:12, t2_microservices:13, t2_cicd_pipeline:12, t2_saas_integration:13, t3_multicloud_data:13, t3_hybrid_identity:12, t3_container_orchestration:12, t4_rag_pipeline:12, t4_agent_fleet:12 },
+  hetzner:         { t1_web_app:12, t1_rest_api:12, t2_microservices:12, t2_cicd_pipeline:12, t2_saas_integration:12, t3_multicloud_data:12, t3_hybrid_identity:12, t3_container_orchestration:12, t4_rag_pipeline:12, t4_agent_fleet:13 },
+};
+
+function weightedMean(tool_id) {
+  let num = 0, den = 0;
+  for (const a of ARCHES) {
+    const s = SCORES[tool_id]?.[a.id];
+    if (s !== undefined) { num += s * a.w; den += a.w; }
+  }
+  return den ? num / den : 0;
+}
+
+function unweightedMean(tool_id) {
+  const vals = Object.values(SCORES[tool_id] || {});
+  return vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : 0;
+}
+
+function scoreClass(s) {
+  if (s === 13) return "score-13";
+  if (s === 12) return "score-12";
+  if (s === 11) return "score-11";
+  if (s <= 10 && s >= 1) return "score-low";
+  return "score-miss";
+}
+
+// ── Render main table ──
+const rankedTools = [...TOOLS_ORDERED].sort((a, b) => weightedMean(b.id) - weightedMean(a.id));
+
+const tbody = document.getElementById("main-table");
+rankedTools.forEach((tool, i) => {
+  const wm = weightedMean(tool.id);
+  const um = unweightedMean(tool.id);
+  const pct = (wm / 13) * 100;
+  const prevUm = i > 0 ? unweightedMean(rankedTools[0].id) : um;
+  const delta = um - unweightedMean("deepseek_flash");
+  const deltaStr = delta === 0 ? "—" : (delta > 0 ? "+" : "") + delta.toFixed(2);
+  const deltaClass = delta === 0 ? "delta-zero" : delta > 0 ? "delta-pos" : "delta-neg";
+  const rankClass = i === 0 ? "rank-1" : i === 1 ? "rank-2" : i === 2 ? "rank-3" : "";
+  const passCount = Object.values(SCORES[tool.id] || {}).filter(s => s >= 8).length;
+
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><span class="rank ${rankClass}">${i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i+1}</span></td>
+    <td class="tool-name">${tool.label}<span class="tool-tag tag-${tool.tag}">${tool.tagLabel}</span></td>
+    <td class="num">${wm.toFixed(3)}</td>
+    <td class="num">${um.toFixed(2)}</td>
+    <td class="num">${passCount}/10</td>
+    <td>
+      <div class="bar-wrap">
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${i===0?'var(--gold)':i===1?'var(--accent)':'var(--muted)'}"></div></div>
+        <span class="bar-label">${wm.toFixed(2)}</span>
+      </div>
+    </td>
+    <td class="num ${deltaClass}">${deltaStr}</td>
+  `;
+  tbody.appendChild(tr);
+});
+
+// ── Render per-tier table ──
+const tierTbody = document.getElementById("tier-table");
+const tierOrder = ["deepseek_flash","ta_v3_1","nemotron_ultra","hetzner_27b","gemini_flash","ta_v3","hetzner"];
+let lastTier = "";
+for (const a of ARCHES) {
+  const tr = document.createElement("tr");
+  const cells = tierOrder.map(tid => {
+    const s = SCORES[tid]?.[a.id];
+    if (s === undefined) return `<td class="num score-miss">—</td>`;
+    return `<td class="num ${scoreClass(s)}">${s}</td>`;
+  }).join("");
+  const tierLabel = a.tier !== lastTier ? `<span class="tier ${a.tier.toLowerCase()}">${a.tier}</span>` : `<span style="color:var(--border)">│</span>`;
+  if (a.tier !== lastTier) lastTier = a.tier;
+  tr.innerHTML = `
+    <td style="font-size:12px;color:var(--muted)">${a.id}</td>
+    <td>${tierLabel}</td>
+    <td style="color:var(--muted);font-size:12px">×${a.w.toFixed(1)}</td>
+    ${cells}
+  `;
+  tierTbody.appendChild(tr);
+}
+
+// Add weighted subtotals per tier
+const tiers = ["T1","T2","T3","T4"];
+for (const tier of tiers) {
+  const tierArches = ARCHES.filter(a => a.tier === tier);
+  const tr = document.createElement("tr");
+  tr.style.borderTop = "1px solid var(--border)";
+  const totals = tierOrder.map(tid => {
+    const vals = tierArches.map(a => SCORES[tid]?.[a.id] ?? 0);
+    const mean = vals.reduce((a,b)=>a+b,0) / vals.length;
+    return `<td class="num" style="font-weight:600;font-size:12px;color:var(--muted)">${mean.toFixed(1)}</td>`;
+  }).join("");
+  tr.innerHTML = `
+    <td style="font-size:11px;color:var(--muted);padding-left:16px">↳ ${tier} mean</td>
+    <td></td><td></td>${totals}
+  `;
+  tierTbody.appendChild(tr);
+}
+
+// ── Render gap grid ──
+const gapGrid = document.getElementById("gap-grid");
+for (const tool of TOOLS_ORDERED) {
+  const gaps = ARCHES.filter(a => (SCORES[tool.id]?.[a.id] ?? 13) < 13);
+  const card = document.createElement("div");
+  card.className = "gap-card";
+  const gapPills = gaps.map(a =>
+    `<span class="gap-pill">${a.id.replace(/^t[1-4]_/,"").replace(/_/g," ")} (${SCORES[tool.id]?.[a.id] ?? "—"})</span>`
+  ).join("");
+  card.innerHTML = `
+    <div class="gap-card-title">${tool.label} <span class="tool-tag tag-${tool.tag}">${tool.tagLabel}</span></div>
+    ${gaps.length ? gapPills : '<span class="gap-none">✓ Perfect score — all 13/13</span>'}
+  `;
+  gapGrid.appendChild(card);
+}
+
+// ── Date ──
+document.getElementById("date").textContent = new Date().toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+</script>
+</body>
+</html>
