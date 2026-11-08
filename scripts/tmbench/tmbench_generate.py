@@ -84,7 +84,12 @@ TOOL_CONFIGS = {
         "provider": "ta_api",
         "model": "ta-pipeline-v3",
         "env_key": None,
-        "force_mode": "api_only",  # bypass brain_fast so benchmark tests the generator
+    },
+    "ta_v3_1": {
+        "provider": "ta_api",
+        "model": "ta-pipeline-v3",
+        "env_key": None,
+        "force_mode": "api_only",  # bypass brain_fast; tests generator with ATLAS wiring
     },
 }
 
@@ -201,7 +206,7 @@ def call_llm_client(tool: str, arch_id: str, dry_run: bool = False) -> dict | No
         return None
 
 
-def call_ta_api(arch_id: str, dry_run: bool = False) -> dict | None:
+def call_ta_api(arch_id: str, tool: str = "ta_v3", dry_run: bool = False) -> dict | None:
     """Call TA's local API via /analyze-stream (SSE) and convert ta-export/1.0 → threatmodel/0.1."""
     import urllib.request
     import urllib.parse
@@ -212,7 +217,7 @@ def call_ta_api(arch_id: str, dry_run: bool = False) -> dict | None:
         print(f"\n[dry-run] Would call TA API at {api_base} for {arch_id}")
         return None
 
-    config = TOOL_CONFIGS.get("ta_v3", {})
+    config = TOOL_CONFIGS.get(tool, {})
     mmd = load_mmd(arch_id)
     form_fields: dict = {
         "mmd_text": mmd,
@@ -445,8 +450,8 @@ def ingest(tool: str, arch_id: str, tm: dict) -> None:
 
 
 def run_one(tool: str, arch_id: str, dry_run: bool) -> bool:
-    if tool == "ta_v3":
-        tm = call_ta_api(arch_id, dry_run=dry_run)
+    if TOOL_CONFIGS.get(tool, {}).get("provider") == "ta_api":
+        tm = call_ta_api(arch_id, tool=tool, dry_run=dry_run)
     else:
         tm = call_llm_client(tool, arch_id, dry_run=dry_run)
 
