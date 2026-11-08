@@ -4,6 +4,35 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 249 — TAprover: independent TM claim verifier
+
+**Date:** 2026-11-08
+**Status:** Planned (P50)
+
+**What:** TAprover — a standalone independent verifier for ThreatAssessor threat model outputs. Reads the final TM JSON (ta-export/1.0 or threatmodel/0.1), verifies each factual claim against authoritative external evidence sources, and produces a ProofAttestation: VERIFIED / UNVERIFIABLE / REFUTED per claim, with the evidence grain that produced the verdict.
+
+**Why:** tmbench-check scores quality. TAprover proves correctness. The pipeline cannot grade its own homework. The core invariant: TAprover knows nothing about which pipeline produced the output — it only sees the JSON and bundled evidence data. Inspired by FlashProve (anthropics/FlashProve), which proves LLM inference provenance cryptographically. TAprover applies the same independence principle at the semantic/output layer: not "did this model say this" but "is what the model said true."
+
+**Claim categories:**
+- `technique_grounding` — each technique ID exists in ATT&CK Enterprise/ATLAS, name matches
+- `tactic_correctness` — stated tactic phase is in the technique's official tactic_refs
+- `atlas_grounding` — ATLAS technique ID exists; agentic architecture correctly triggered it
+- `control_existence` — control_id is a real entry in NIST CSF / CIS catalog
+- `cvss_validity` — CVSS 3.1 vector is well-formed; base score matches stated severity tier
+- `coverage_completeness` — attack path count meets spec §1.3 minimums for component count
+- `mitigation_coverage` — every attack_path has at least one mitigation
+- `agentic_trigger_parity` — agentic block present iff component roles include trigger roles
+
+**Build order:** technique_grounding + tactic_correctness first (ATT&CK STIX, extends self_validation.py); then pure-logic checks (coverage, mitigation, agentic_trigger_parity); then cvss_validity; then atlas_grounding; then control_existence.
+
+**Skill:** `.claude/skills/taprover/` — `--prove <tm.json>`, `--prove-dir <dir>`, `--summary`, `--refuted-only`
+
+**Alternatives rejected:**
+- Extending tmbench-check with grounding checks — rejected because tmbench-check scores quality; mixing in binary correctness verdicts muddies the rubric. Separation of concerns: tmbench-check = quality score, TAprover = correctness attestation.
+- Using Jev as the oracle — Jev answers subjective applicability questions; ATT&CK STIX is deterministic. Wrong tool for a lookup problem.
+
+---
+
 ### Entry 248 — Leaderboard weighting: rubric-as-truth principle
 
 **Date:** 2026-11-08

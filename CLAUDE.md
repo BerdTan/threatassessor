@@ -124,7 +124,7 @@ Full tool reference, sim personas (17), and client integration: [`mcp_server/REA
 /aivss-gate
 
 # ── SOC detection ────────────────────────────────────────────────────────────
-# Regression suite (58 rules, 54 scenarios)
+# Regression suite (65 rules, 61 scenarios)
 python3 .claude/skills/check-detect/scripts/check-detect.py
 python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 
@@ -204,4 +204,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-11-07
+**Last Updated:** 2026-11-08

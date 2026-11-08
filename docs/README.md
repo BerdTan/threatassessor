@@ -1,7 +1,7 @@
 # ThreatAssessor Documentation
 
-**Version:** 2.9 — Harness v2 + 40 SOC DETECT rules + MCP server (18 tools) + TA-SIP + TA Brain Stages 1–9 + smart routing + N-model bench + Engine Items 6–10 + adapter fidelity (Engine Item 7)  
-**Last Updated:** 2026-09-20
+**Version:** 3.0 — Harness v2 + 65 SOC DETECT rules + MCP server (18 tools) + TA-SIP + TA Brain (181 instances) + smart routing + TAgym + TMbench (open TM benchmark, 7 tools) + TAeval + managed agent fleet  
+**Last Updated:** 2026-11-08
 
 ---
 
@@ -82,6 +82,20 @@ TAclaw is the external-facing agent interface to the TA engine. External develop
 **Adapter coverage:** Terraform (.tf, plan.json) · CloudFormation (YAML/JSON/SAM/CDK) · OpenAPI / AsyncAPI · Mermaid (.mmd) · Prose (.md/.txt/.pdf/.docx)  
 **Not covered yet:** Kubernetes YAML · Docker Compose · Bicep · ARM · Ansible
 
+### TMbench — Open Threat Model Benchmark
+
+| Resource | Purpose |
+|---|---|
+| [tmbench/threatmodel.md](tmbench/threatmodel.md) | Open TM spec v0.1.1 — schema, TATB rubric, verification checklist, output JSON schema |
+| [tmbench/CHANGELOG.md](tmbench/CHANGELOG.md) | Spec version history (v0.1.0 → v0.1.1) |
+| `docs/tmbench/corpus/` | 10 reference architectures (T1–T4) in Mermaid |
+| `docs/tmbench/results/` | All tool submissions (7 tools × 10 arches) |
+| `/tmleaderboard` skill | Leaderboard view + external tool ingestion + rescore |
+| `/tmbench-check` skill | Score a single TM JSON against the spec |
+| `/tmeval` skill | Adversarial red-team probe (outside-in + inside-out) |
+
+**Current leaderboard:** deepseek_flash (13.00) · ta_v3_1 (12.90, 2nd) · hetzner_27b / nemotron_ultra (12.80) · gemini_flash (12.40) · hetzner (12.10). Pass threshold: ≥8/13, no TATB dimension at 0.
+
 ### Dashboard
 
 | File | Purpose |
@@ -97,7 +111,7 @@ Critical architectural choices are logged in [DECISIONS.md](DECISIONS.md). Entri
 | Topic | Entry range |
 |---|---|
 | Engine Items 6–10 (integrity gate, critic isolation, adapter fidelity, routing spans, source trust) | 174–179, 185–186 |
-| SOC DETECT rules (40 rules, domain renumbering QC/INJ/EXF/SCT/MCP/RES) | 158–162, 174 |
+| SOC DETECT rules (65 rules, domains QC/INJ/EXF/SCT/MCP/RES/ABU/SEC/AGT/PER) | 158–162, 174, 209–210, 218–219 |
 | TA Brain + TACO (Stages 1–9, TACO Phase 1–4, Brier calibration) | 139–154 |
 | Smart routing (select_mode, D5 gate, boxing framework) | 146–156 |
 | TA-SIP platform (adapters, enrichment API, TAclaw, mcp_connector) | 139–145 |
