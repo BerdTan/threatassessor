@@ -84,6 +84,7 @@ TOOL_CONFIGS = {
         "provider": "ta_api",
         "model": "ta-pipeline-v3",
         "env_key": None,
+        "force_mode": "api_only",  # bypass brain_fast so benchmark tests the generator
     },
 }
 
@@ -211,12 +212,16 @@ def call_ta_api(arch_id: str, dry_run: bool = False) -> dict | None:
         print(f"\n[dry-run] Would call TA API at {api_base} for {arch_id}")
         return None
 
+    config = TOOL_CONFIGS.get("ta_v3", {})
     mmd = load_mmd(arch_id)
-    form_data = urllib.parse.urlencode({
+    form_fields: dict = {
         "mmd_text": mmd,
         "mmd_name": arch_id,
         "include_validation": "true",
-    }).encode()
+    }
+    if config.get("force_mode"):
+        form_fields["force_mode"] = config["force_mode"]
+    form_data = urllib.parse.urlencode(form_fields).encode()
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     if api_key:
         headers["TM-API-KEY"] = api_key

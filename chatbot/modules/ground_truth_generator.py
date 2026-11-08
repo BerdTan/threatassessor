@@ -1428,6 +1428,46 @@ def generate_ground_truth(
         # Jev Phase 2 ❻: applicability noul filter (fails silently)
         _jev_filter_ap_techniques(ap, parsed["nodes"], arch_type)
 
+    # Phase 2 — ATLAS technique injection for agentic/AI architectures.
+    # atlas_helper.get_techniques_by_component() maps AI node types → AML.T* IDs.
+    # Runs after per-node Enterprise ATT&CK mapping so ATLAS augments rather than replaces.
+    if arch_type == "ai_system":
+        try:
+            from chatbot.modules.atlas_helper import get_atlas_helper as _get_atlas
+            _atlas = _get_atlas()
+            # Map node label keywords → atlas component types
+            _LABEL_TO_COMP = {
+                "llm": "llm_api", "openai": "llm_api", "claude": "llm_api",
+                "gpt": "llm_api", "local llm": "llm_api",
+                "vector": "vector_db", "embedding": "embedding_service",
+                "agent orchestrat": "agent_orchestrator", "orchestrat": "agent_orchestrator",
+                "prompt": "prompt_manager",
+                "tool registry": "tool_registry", "tool_registry": "tool_registry",
+                "code execut": "code_execution",
+            }
+            for ap in attack_paths:
+                _atlas_techs: list[str] = []
+                for node_id in ap.get("path", []):
+                    node = parsed["nodes"].get(node_id) or next(
+                        (n for n in parsed["nodes"].values() if n.get("id") == node_id), None
+                    )
+                    if not node:
+                        continue
+                    label_lower = node.get("label", "").lower()
+                    for keyword, comp_type in _LABEL_TO_COMP.items():
+                        if keyword in label_lower:
+                            _atlas_techs.extend(_atlas.get_techniques_by_component(comp_type))
+                            break
+                # Deduplicate and append to path techniques (preserve Enterprise ATT&CK IDs)
+                _existing = set(ap.get("techniques", []))
+                _new_atlas = [t for t in dict.fromkeys(_atlas_techs) if t not in _existing]
+                if _new_atlas:
+                    ap["techniques"] = ap.get("techniques", []) + _new_atlas
+                    ap.setdefault("atlas_techniques", []).extend(_new_atlas)
+                    logger.info(f"ATLAS: {ap.get('id', '?')} +{len(_new_atlas)} techniques: {_new_atlas[:4]}")
+        except Exception as _e:
+            logger.debug("ATLAS injection skipped (fail-open): %s", _e)
+
     # Phase 3B: Threat actor matching via GroupCampaignMatcher (STIX TTP overlap, no LLM)
     logger.info("Phase 3B: Matching threat actors via STIX TTP overlap...")
     _top_actors: list = []

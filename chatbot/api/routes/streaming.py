@@ -252,6 +252,10 @@ async def analyze_with_progress(
         # falls through to the full harness path automatically.
         from chatbot.harness.smart_router import select_mode as _select_mode
         _routing = _select_mode(base_name)
+        if force_mode in ("api_only", "full_moe"):
+            # Benchmark/testing override: bypass smart routing, run harness directly
+            import dataclasses as _dc
+            _routing = _dc.replace(_routing, mode=force_mode)
         if _routing.mode == "brain_fast":
             async for _evt in _brain_fast_stream(architecture_path, filename, base_name, report_base):
                 yield _evt
@@ -532,6 +536,7 @@ async def analyze_architecture_stream(
     include_validation: bool = Form(True),
     ssp_profile: str = Form("low_risk_cloud"),
     enable_ssp: bool = Form(True),
+    force_mode: Optional[str] = Form(None, description="Override smart routing: 'api_only' or 'full_moe'. For benchmark/testing use only."),
     api_key: str = Depends(verify_api_key)
 ):
     """
