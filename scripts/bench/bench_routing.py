@@ -7,16 +7,16 @@ Langfuse trace metadata to extract token counts and wall time per mode.
 
 Usage:
     # Default: 3 representative archs, one per routing mode
-    python3 scripts/bench_routing.py --langfuse
+    python3 scripts/bench/bench_routing.py --langfuse
 
     # Custom arch set
-    python3 scripts/bench_routing.py --langfuse --archs 03_aws_3tier 21_agentic_ai_system
+    python3 scripts/bench/bench_routing.py --langfuse --archs 03_aws_3tier 21_agentic_ai_system
 
     # Dry run — shows which archs would run + expected routing, no API calls
-    python3 scripts/bench_routing.py --dry-run
+    python3 scripts/bench/bench_routing.py --dry-run
 
     # Pull results from a previous run without re-running
-    python3 scripts/bench_routing.py --fetch-only
+    python3 scripts/bench/bench_routing.py --fetch-only
 
 Output:
     Table: arch | routing_mode | wall_s | moe_tokens | aivss | token_savings_vs_full_moe

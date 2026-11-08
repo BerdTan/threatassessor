@@ -24,18 +24,18 @@ Corpus qualification:
 
 Usage:
     # Qualify corpus first
-    python3 scripts/bench_critics.py --qualify
+    python3 scripts/bench/bench_critics.py --qualify
 
     # Critic benchmark — two models side-by-side
-    python3 scripts/bench_critics.py --models hetzner gemini_flash
+    python3 scripts/bench/bench_critics.py --models hetzner gemini_flash
 
     # Explicit archs
-    python3 scripts/bench_critics.py \\
+    python3 scripts/bench/bench_critics.py \\
         --archs 21_agentic_ai_system 10_complex_enterprise 13_iot_architecture \\
         --models hetzner gemini_flash
 
     # Brain quality check (after rerun-moe)
-    python3 scripts/bench_critics.py --mode brain
+    python3 scripts/bench/bench_critics.py --mode brain
 
 Model aliases (benched 2026-08-29):
     current         whatever is in .env right now (baseline)
@@ -226,7 +226,7 @@ def cmd_qualify(report_base: Path, mode: str):
           f"~{sel_est//1000}k tokens/model  "
           f"~{len(selected)*est_min_per_arch}m/model")
     print(f"\nSelected: {', '.join(r['arch'] for r in selected)}")
-    print(f"\nRun with: python3 scripts/bench_critics.py --mode {mode} "
+    print(f"\nRun with: python3 scripts/bench/bench_critics.py --mode {mode} "
           f"--archs {' '.join(r['arch'] for r in selected)}")
 
 
@@ -666,11 +666,11 @@ def main():
     # --combine: merge existing summaries and exit
     if args.combine:
         try:
-            from scripts.bench_report import generate_combined as _gc
+            from scripts.bench.bench_report import generate_combined as _gc
         except ImportError:
             import importlib.util
             spec = importlib.util.spec_from_file_location(
-                "bench_report", ROOT / "scripts" / "bench_report.py")
+                "bench_report", ROOT / "scripts" / "bench" / "bench_report.py")
             mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
             _gc = mod.generate_combined
         import datetime
@@ -778,11 +778,11 @@ def main():
 
     # Auto-generate HTML visual report
     try:
-        from scripts.bench_report import generate as _gen_report
+        from scripts.bench.bench_report import generate as _gen_report
     except ImportError:
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "bench_report", ROOT / "scripts" / "bench_report.py")
+            "bench_report", ROOT / "scripts" / "bench" / "bench_report.py")
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         _gen_report = mod.generate

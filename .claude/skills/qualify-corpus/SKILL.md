@@ -35,9 +35,9 @@ complexity and token cost. Produces a ranked, budget-aware list ready to paste i
 ## Usage
 
 ```bash
-python3 scripts/bench_critics.py --qualify                   # critics mode
-python3 scripts/bench_critics.py --qualify --mode brain      # brain mode
-python3 scripts/bench_critics.py --qualify --mode critics    # explicit
+python3 scripts/bench/bench_critics.py --qualify                   # critics mode
+python3 scripts/bench/bench_critics.py --qualify --mode brain      # brain mode
+python3 scripts/bench/bench_critics.py --qualify --mode critics    # explicit
 ```
 
 ## Output example
@@ -57,7 +57,7 @@ Arch                    Type         N   TTPs  Tok est   Hold  Sel
 Bench corpus: 6 archs  ~750k tokens/model  ~72m/model
 Full corpus:  28 archs ~2.1M tokens/model  ~5h36m/model
 
-Run with: python3 scripts/bench_critics.py --archs 21_agentic_ai_system ...
+Run with: python3 scripts/bench/bench_critics.py --archs 21_agentic_ai_system ...
 ```
 
 ## When to re-qualify

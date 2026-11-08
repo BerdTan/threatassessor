@@ -6,9 +6,9 @@ Queries recent threat_assessment traces, groups by routing_mode tag, and prints
 a comparison table: arch_type × routing_mode → avg tokens, cost, wall_s.
 
 Usage:
-    python3 scripts/langfuse_token_report.py
-    python3 scripts/langfuse_token_report.py --limit 50
-    python3 scripts/langfuse_token_report.py --since 2026-09-19
+    python3 scripts/bench/langfuse_token_report.py
+    python3 scripts/bench/langfuse_token_report.py --limit 50
+    python3 scripts/bench/langfuse_token_report.py --since 2026-09-19
 
 Requires LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_BASE_URL in .env.
 """

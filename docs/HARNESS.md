@@ -328,7 +328,7 @@ This design makes TA safe to expose externally: external callers cannot affect t
 | 7.3 | Corpus diversity signal | ✅ Shipped | d1bf90b | Shannon entropy of arch_type distribution; `flywheel_health()` flags skew |
 | 8.1 | Routing tags | ✅ Shipped | 1670a4a | `routing_mode` tag preserved across `trace.update()` in all sinks |
 | 8.2 | Per-critic generation spans | ✅ Shipped | b744e4a | `arch_type` + `aivss_composite` in `run_complete`; per-critic spans in `CriticStage` |
-| 8.3 | Bench routing run | ✅ Shipped | b61d881 | `bench_routing.py`; routing distribution across 13 arches |
+| 8.3 | Bench routing run | ✅ Shipped | b61d881 | `scripts/bench/bench_routing.py`; routing distribution across 13 arches |
 | 9 | Pre-flight authority layer | ✅ Shipped | Session 85 | `source_trust` on `ArchitectureGraph`; `check_preflight()` in `GovernanceAdapter`; BouncerStage Check 5 |
 | 10 | Propagation / taint layer | ✅ Shipped | Session 85 | Per-node provenance in adapters; `routing_mode` + `source_trust` stamped to `ground_truth` metadata; `TAExportBundle` `generated_by`/`pipeline_mode`/`source_trust`; cross-agent provenance in `query_brain()` |
 

@@ -335,7 +335,7 @@ def main():
         run_id, summary = _latest_summary(args.arch)
         if summary is None:
             print(f"No bench run found for arch '{args.arch}'.")
-            print(f"Run: python3 scripts/bench_critics.py --mode critics --archs {args.arch}")
+            print(f"Run: python3 scripts/bench/bench_critics.py --mode critics --archs {args.arch}")
             sys.exit(1)
         model_scores = _scores_for_arch(summary, args.arch)
         for model, scores in model_scores.items():

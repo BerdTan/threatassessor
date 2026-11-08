@@ -62,7 +62,7 @@ After each rewrite, wait for user approval of the diff before writing.
 ## Step 3 — Re-bench to verify improvement
 
 ```bash
-python3 scripts/bench_critics.py --mode critics --archs <arch>
+python3 scripts/bench/bench_critics.py --mode critics --archs <arch>
 python3 .claude/skills/critic-improve-loop/scripts/critic_improve_loop.py \
     --arch <arch> --compare <prev_run_id> <new_run_id>
 ```

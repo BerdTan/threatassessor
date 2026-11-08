@@ -7,7 +7,7 @@ import subprocess, sys
 from pathlib import Path
 
 ROOT   = Path(__file__).resolve().parent.parent.parent.parent.parent
-script = ROOT / "scripts" / "bench_critics.py"
+script = ROOT / "scripts" / "bench" / "bench_critics.py"
 
 mode = sys.argv[1] if len(sys.argv) > 1 else "critics"
 subprocess.run([sys.executable, str(script), "--qualify", "--mode", mode], check=False)

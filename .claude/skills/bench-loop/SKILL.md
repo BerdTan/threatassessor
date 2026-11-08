@@ -19,7 +19,7 @@ Orchestrates the full benchmark cycle. Stop at each gate and confirm before proc
 ## Step 1 — Qualify corpus
 
 ```bash
-python3 scripts/bench_critics.py --qualify
+python3 scripts/bench/bench_critics.py --qualify
 ```
 
 Show the output table. Explain:
@@ -34,7 +34,7 @@ If user wants to adjust, re-run with `--archs <names>` to preview cost.
 ## Step 2 — Run critic benchmark
 
 ```bash
-python3 scripts/bench_critics.py \
+python3 scripts/bench/bench_critics.py \
     --models <model_a> <model_b> \
     [--archs <confirmed archs if custom>]
 ```
@@ -131,7 +131,7 @@ Or use: `/brain-ingest`
 ## Step 8 — Verify brain improvement
 
 ```bash
-python3 scripts/bench_critics.py --mode brain
+python3 scripts/bench/bench_critics.py --mode brain
 ```
 
 This compares Brain predictions vs actual harness output on hold-out archs:

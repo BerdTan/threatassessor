@@ -3,8 +3,8 @@
 bench_report.py — Generate HTML visual diff report from bench_summary.json.
 
 Usage:
-    python3 scripts/bench_report.py bench_results/<run_id>/bench_summary.json
-    python3 scripts/bench_report.py bench_results/<run_id>/bench_summary.json --open
+    python3 scripts/bench/bench_report.py bench_results/<run_id>/bench_summary.json
+    python3 scripts/bench/bench_report.py bench_results/<run_id>/bench_summary.json --open
 
 Writes bench_report.html next to the input file.
 """
