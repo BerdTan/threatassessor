@@ -11,6 +11,8 @@
 
 Add an entry after any significant architectural decision: date, what, why, alternatives rejected.
 
+**Before any ⬜ priority item:** 30-second audit against [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md) — ten governing principles. Flag any tension in the DECISIONS entry before coding. Guides, does not restrict.
+
 ---
 
 ## GitHub Actions CI

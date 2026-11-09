@@ -31,6 +31,7 @@
 | [HARNESS.md](HARNESS.md) | Harness v2 Orchestrator/Broker/Bouncer — implemented; Engine Items 6–10 extensions |
 | [TATB.md](TATB.md) | TATB benchmark rubric (Threat/TTP/Risk/Plan); brain_fast coverage notes |
 | [TACLAW.md](TACLAW.md) | TAclaw hardening + test suite MVP — export completeness, smart routing, agent passport, eval scorecard |
+| [PRINCIPLES.md](PRINCIPLES.md) | Ten governing design principles — read before any ⬜ priority item; guides changes, does not restrict |
 
 ### Operations
 

@@ -9,7 +9,9 @@ Read this file at the start of every session. After any significant decision abo
 **Date:** 2026-11-09
 **Status:** Design direction adopted
 
-**What:** Formalise a principle-audit pass as a standing layer above TAgym's metric-driven flywheel. The audit checks whether the flywheel's optimisation target still aligns with the governing design principles. It is not a periodic review — it fires whenever a metric improvement is proposed, and it asks: does this improvement respect all eight governing principles, or does it only look good on the metric?
+**What:** Formalise a principle-audit pass as a standing layer above TAgym's metric-driven flywheel. The audit checks whether the flywheel's optimisation target still aligns with the governing design principles. It is not a periodic review — it fires whenever a metric improvement is proposed, and it asks: does this improvement respect all ten governing principles, or does it only look good on the metric?
+
+**Living document:** `docs/PRINCIPLES.md` is the authoritative readable reference for all ten principles with TA-specific evidence. This entry is the record of when and why the principles were adopted. When a principle is revised, update PRINCIPLES.md and add a new DECISIONS entry.
 
 **The eight governing principles:**
 
@@ -29,7 +31,11 @@ Read this file at the start of every session. After any significant decision abo
 
 8. **Decompose complexity; compose strengths** — when a problem is genuinely complex, break it into the smallest units where each component has a clear, bounded strength. The final deliverable emerges from composition, not from one component doing everything. Each TA stage, critic, adapter, and verifier does one thing well: AnalysisStage generates ground truth; each CriticStage reviews one dimension; each adapter handles one input format; BouncerStage enforces one class of rule; TAprover verifies one class of claim. ta-export is the composition of all bounded contributions. The failure mode this guards against is the God component — a stage that analyses, routes, enforces, and reports.
 
-Principles 1–8 derived from TA's own design history and first-principles reflection.
+9. **Adapt, recall and prioritise with purpose** — memory and priority are navigation instruments, not bookkeeping. What to remember is determined by why it matters and how it will be used. P-sequencing is load-bearing: each item's output strengthens the next build and the next blog. MEMORY.md carries why alongside what. DECISIONS.md is read at session start. The failure mode: accumulating notes that are never used because the connection between memory and action was never made explicit.
+
+10. **Document raw, reflect, recircle** — write what you think even before the idea is fully formed; return to it; reflect; capture the essence. The document guides when right and can be revised when wrong — it is a thinking tool, not a constraint. TAprover, brain_route, and this principle audit were all documented before they were fully built; the raw documentation created the conditions for the design to be correct. The failure mode: waiting until the idea is fully formed to write it down — by then the intermediate reasoning that would have caught errors is gone.
+
+Principles 1–10 derived from TA's own design history and first-principles reflection. Full text with TA evidence: `docs/PRINCIPLES.md`.
 
 **Why this matters over the flywheel alone:** A flywheel optimises what it measures. If the measurement is correct and the governing principle is intact, iteration compounds improvement. If a principle is violated, the flywheel compounds the violation — a vicious cycle indistinguishable from improvement on the metric. The metric catches quantity; principles catch kind. brain_fast is the first confirmed case: it improved throughput (Brier stable, latency down) while violating Principle 1 (skipping TM generation is not the simplest architecture that works — it is an architecture that sometimes produces no TM), Principle 4 (uncertainty not surfaced), and Principle 7 (routing collapsed into execution). The flywheel would not have caught this.
 
