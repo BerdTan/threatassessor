@@ -21,7 +21,7 @@ Read this file at the start of every session. After any significant decision abo
 7. Classify and execute are separate layers — the classifier decides the mode; the executor acts on it; never collapse them. The classifier has no side effects; the executor has no routing logic. smart_router is the confirmed correct example; brain_fast execution handler was the confirmed violation.
 8. Decompose complexity; compose strengths — when a problem is genuinely complex, break it into the smallest units where each component has a clear, bounded strength. The final deliverable emerges from composition, not from one component doing everything. Each TA stage, critic, adapter, and verifier does one thing well; ta-export is the composition.
 
-Principles 1–6 sourced from "Six agent harness techniques that actually worked" (levelup.gitconnected.com). Principles 7–8 derived from TA's own design history.
+Principles 1–8 derived from TA's own design history and first-principles reflection.
 
 **Why this matters over the flywheel alone:** A flywheel optimises what it measures. If the measurement is correct and the governing principle is intact, iteration compounds improvement. If a principle is violated, the flywheel compounds the violation — a vicious cycle indistinguishable from improvement on the metric. The metric catches quantity; principles catch kind. brain_fast is the first confirmed case: it improved throughput (Brier stable, latency down) while violating Principle 1 (skipping TM generation is not the simplest architecture that works — it is an architecture that sometimes produces no TM), Principle 4 (uncertainty not surfaced), and Principle 7 (routing collapsed into execution). The flywheel would not have caught this.
 
