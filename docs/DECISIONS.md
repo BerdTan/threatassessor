@@ -4,6 +4,56 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 251 — Principle-based reflection as meta-improvement layer above the flywheel
+
+**Date:** 2026-11-09
+**Status:** Design direction adopted
+
+**What:** Formalise a principle-audit pass as a standing layer above TAgym's metric-driven flywheel. The audit checks whether the flywheel's optimisation target still aligns with the governing design principles. It is not a periodic review — it fires whenever a metric improvement is proposed, and it asks: does this improvement respect all six governing principles, or does it only look good on the metric?
+
+**The six governing principles (mapped from "Six agent harness techniques that actually worked"):**
+1. Simplest architecture that works — stages only where they solve an actual problem
+2. Context as engineering decision — give each stage what it needs, not everything available
+3. Deterministic over LLM where the problem is deterministic
+4. Uncertainty must be visible — if the pipeline doesn't know, the caller must know
+5. Authorisation and business rules live in application code, not prompts
+6. Observability and evaluation throughout execution, not just at the final output
+
+**Why this matters over the flywheel alone:** A flywheel optimises what it measures. If the measurement is correct and the governing principle is intact, iteration compounds improvement. If a principle is violated, the flywheel compounds the violation — a vicious cycle indistinguishable from improvement on the metric. The metric catches quantity; principles catch kind. brain_fast is the first confirmed case: it improved throughput (Brier stable, latency down) while violating Principle 1 (skipping TM generation is not the simplest architecture that works — it is an architecture that sometimes produces no TM) and Principle 4 (uncertainty not surfaced when brain is guessing from patterns). The flywheel would not have caught this.
+
+**Practical form:** Before any P-priority engineering item is started, check it against the six principles. Flag any tension explicitly in the DECISIONS entry. If a tension exists, resolve the tension first or document why the trade-off is acceptable. This is not a veto — it is a forcing function for explicit trade-off documentation.
+
+**How to apply:** At session start, when reviewing priorities: for each ⬜ item, run a 30-second mental audit against the six principles. If any principle is in tension with the proposed implementation, note it in the DECISIONS entry before coding.
+
+**Alternatives rejected:** Extending TAgym metrics to cover principle compliance (metrics cannot measure principle alignment without encoding the principle — which is circular). Periodic human review without a checklist (too informal; the brain_fast case was present for multiple sessions without being flagged until a first-principles question was asked).
+
+---
+
+### Entry 250 — brain_fast role redesign: routing oracle, not TM generator
+
+**Date:** 2026-11-09
+**Status:** Design decision; refactor P51 (before P44)
+
+**What:** brain_fast mode is to be deprecated as a TM-generation shortcut. Brain's correct role is as a routing oracle — it informs which engine runs, not whether the engine runs. The minimum output of any pipeline call remains a fresh analysis-generated TM. Brain patterns become post-analysis annotations (expected vs confirmed techniques) rather than the analysis itself.
+
+**Why:** Same architecture type does not imply the same adversarial surface. Attack paths depend on node-level topology — where authentication is enforced, what trusts what, where data crosses trust boundaries. Brain patterns are generalisations over those specifics trained on prior arches. Using them as TM output loses the information that matters most for threat modelling: the specifics of this architecture's trust model.
+
+**The principle violation:** brain_fast violates Principle 1 (skipping TM generation is not "the simplest architecture that works" — it is an architecture that produces no TM for novel topology variants) and Principle 4 (uncertainty not surfaced — brain confidence score exists internally but does not reach the caller; a marginal pattern match looks identical to a confirmed one in the output).
+
+**Flywheel trap:** Brier scores are stable under brain_fast because patterns are correct on average. The metric cannot catch coverage erosion on novel topologies. The vicious cycle: more arches routed brain_fast → more stable aggregate Brier → routing threshold lowers → more arches routed brain_fast. Principle audit breaks this.
+
+**Redesign:**
+- Rename conceptually: `brain_fast` → `brain_route` (brain informs routing, does not serve output)
+- `api_only` becomes the minimum floor — brain_fast routing never bypasses TM generation
+- Brain patterns annotate the pipeline output: `brain_expected: [T1190, T1078]` + `brain_confirmed: [T1190]` + `brain_missed: [T1078]` (new field in ta-export)
+- `brain_route` confidence score surfaces in the export as `routing.brain_confidence` — caller can see how certain the routing decision was
+
+**Alternatives rejected:** arch-change guard (hash the .mmd; if changed → force api_only) — treats the symptom, not the cause; a structurally identical arch with a changed trust boundary has the same hash until node labels change. TTL gate (force api_only if last full run >N days) — same problem, different axis.
+
+**Build order:** (1) this DECISIONS entry; (2) refactor select_mode() to treat brain_fast as api_only + brain annotation; (3) add brain_expected/confirmed/missed to ta-export schema; (4) update smart_router docstring + routing policy YAML comments.
+
+---
+
 ### Entry 249 — TAprover: independent TM claim verifier
 
 **Date:** 2026-11-08
