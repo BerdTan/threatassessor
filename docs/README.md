@@ -88,6 +88,7 @@ TAclaw is the external-facing agent interface to the TA engine. External develop
 | Resource | Purpose |
 |---|---|
 | [tmbench/threatmodel.md](tmbench/threatmodel.md) | Open TM spec v0.1.1 — schema, TATB rubric, verification checklist, output JSON schema |
+| [tmbench/SUBMIT.md](tmbench/SUBMIT.md) | External submission guide — how to score and ingest a tool's TMs into the leaderboard |
 | [tmbench/CHANGELOG.md](tmbench/CHANGELOG.md) | Spec version history (v0.1.0 → v0.1.1) |
 | `docs/tmbench/corpus/` | 10 reference architectures (T1–T4) in Mermaid |
 | `docs/tmbench/results/` | All tool submissions (7 tools × 10 arches) |
