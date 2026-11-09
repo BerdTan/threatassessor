@@ -133,7 +133,7 @@ python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live cor
 # Governance guardrails (56 tests)
 python3 .claude/skills/check-governance/scripts/check-governance.py
 
-# EventBroker + sinks (60 tests)
+# EventBroker + sinks (65 tests)
 python3 .claude/skills/check-eventbroker/scripts/check-eventbroker.py
 
 # Adversarial red-team probe (Phase 2: no API; Phase 1: API required)
@@ -206,4 +206,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-11-08
+**Last Updated:** 2026-11-09

@@ -101,6 +101,8 @@ Principles 1–10 derived from TA's own design history and first-principles refl
 
 ---
 
+## Session 122 — 2026-11-09
+
 ### Entry 248 — Leaderboard weighting: rubric-as-truth principle
 
 **Date:** 2026-11-08
