@@ -198,77 +198,79 @@ async def _run_taclaw_job(
         routing = _select_mode(arch_name)
         routing_mode = routing.mode
 
-        # brain_fast: skip pipeline if existing report files are present; else fall back
-        if routing_mode == "brain_fast" and not (report_dir / "ground_truth.json").exists():
+        # brain_fast: collect annotations then run api_only — brain informs routing,
+        # never replaces the pipeline. The minimum output is always a fresh TM.
+        _brain_annotations = None
+        if routing_mode == "brain_fast":
+            try:
+                from chatbot.api.routes.streaming import _get_brain_annotations
+                _brain_annotations = _get_brain_annotations(arch_name)
+            except Exception:
+                pass
             routing_mode = "api_only"
-            logger.info("TAclaw: brain_fast → api_only (no existing report for %s)", arch_name)
+            logger.info("TAclaw: brain_fast → api_only for %s (annotations: %s)",
+                        arch_name, "yes" if _brain_annotations else "no match")
 
         _blocked_exc = None  # set if BlockedPipelineError is raised
         store.update(job.job_id, progress=55, message=f"Running TA pipeline [{routing_mode}]")
 
-        if routing_mode == "brain_fast":
-            # Serve from existing report files — no new pipeline run
-            gate = "PASS"
-            pipeline_result = None
-            logger.info("TAclaw: brain_fast path for %s (skipping full pipeline)", arch_name)
-        else:
-            mmd_tmp = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".mmd", delete=False, encoding="utf-8"
+        mmd_tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".mmd", delete=False, encoding="utf-8"
+        )
+        mmd_tmp.write(mmd_text)
+        mmd_tmp.close()
+        mmd_path = Path(mmd_tmp.name)
+
+        try:
+            from chatbot.harness.controller import ThreatAssessorHarness, PipelineRequest, BlockedPipelineError
+
+            _routed_model = routing.model_id
+            _agent_models = (
+                {a: _routed_model for a in
+                 ["architect", "tester", "red_team", "purple_team", "blackhat", "moe_orchestrator"]}
+                if _routed_model else None
             )
-            mmd_tmp.write(mmd_text)
-            mmd_tmp.close()
-            mmd_path = Path(mmd_tmp.name)
-
-            try:
-                from chatbot.harness.controller import ThreatAssessorHarness, PipelineRequest, BlockedPipelineError
-
-                _routed_model = routing.model_id
-                _agent_models = (
-                    {a: _routed_model for a in
-                     ["architect", "tester", "red_team", "purple_team", "blackhat", "moe_orchestrator"]}
-                    if _routed_model else None
+            if _routed_model:
+                logger.warning(
+                    "TAclaw smart_router: %s → mode=%s model=%s (%s)",
+                    arch_name, routing_mode, routing.model_alias, _routed_model,
                 )
-                if _routed_model:
-                    logger.warning(
-                        "TAclaw smart_router: %s → mode=%s model=%s (%s)",
-                        arch_name, routing_mode, routing.model_alias, _routed_model,
-                    )
 
-                def _run_pipeline():
-                    harness = ThreatAssessorHarness()
-                    req = PipelineRequest(
-                        architecture_path=str(mmd_path),
-                        report_dir=str(report_dir),
-                        ssp_profile=ssp_profile,
-                        architecture_name=arch_name,
-                        enable_moe=routing_mode == "full_moe",
-                        enable_scrum_master=routing_mode == "full_moe",
-                        agent_models=_agent_models,
-                        metadata={
-                            "routing_mode": routing_mode,
-                            "agent_passport_status": "valid" if _passport_valid else _passport_reason,
-                            "agent_passport_id": passport.passport_id() if passport else "",
-                            "_preflight_blocked": False,
-                            "_source_trust": getattr(merged, "source_trust", "unverified"),
-                            "_preflight_signals": _preflight_sig.preflight,
-                        },
-                    )
-                    return harness.run_typed(req)
+            def _run_pipeline():
+                harness = ThreatAssessorHarness()
+                req = PipelineRequest(
+                    architecture_path=str(mmd_path),
+                    report_dir=str(report_dir),
+                    ssp_profile=ssp_profile,
+                    architecture_name=arch_name,
+                    enable_moe=routing_mode == "full_moe",
+                    enable_scrum_master=routing_mode == "full_moe",
+                    agent_models=_agent_models,
+                    metadata={
+                        "routing_mode": routing_mode,
+                        "agent_passport_status": "valid" if _passport_valid else _passport_reason,
+                        "agent_passport_id": passport.passport_id() if passport else "",
+                        "_preflight_blocked": False,
+                        "_source_trust": getattr(merged, "source_trust", "unverified"),
+                        "_preflight_signals": _preflight_sig.preflight,
+                    },
+                )
+                return harness.run_typed(req)
 
-                store.update(job.job_id, progress=60, message=f"TA pipeline running [{routing_mode}]")
-                pipeline_result = await asyncio.get_event_loop().run_in_executor(None, _run_pipeline)
-                gate = "PASS"
-            except Exception as exc:
-                if "BlockedPipelineError" in type(exc).__name__ or "blocked" in str(exc).lower():
-                    gate = "BLOCK"
-                    pipeline_result = None
-                    _blocked_exc = exc  # preserve for investigation context
-                    logger.warning("TAclaw: pipeline blocked for %s: %s", arch_name, exc)
-                else:
-                    store.update(job.job_id, status="failed", error=f"Pipeline failed: {exc}", progress=0)
-                    return
-            finally:
-                mmd_path.unlink(missing_ok=True)
+            store.update(job.job_id, progress=60, message=f"TA pipeline running [{routing_mode}]")
+            pipeline_result = await asyncio.get_event_loop().run_in_executor(None, _run_pipeline)
+            gate = "PASS"
+        except Exception as exc:
+            if "BlockedPipelineError" in type(exc).__name__ or "blocked" in str(exc).lower():
+                gate = "BLOCK"
+                pipeline_result = None
+                _blocked_exc = exc  # preserve for investigation context
+                logger.warning("TAclaw: pipeline blocked for %s: %s", arch_name, exc)
+            else:
+                store.update(job.job_id, status="failed", error=f"Pipeline failed: {exc}", progress=0)
+                return
+        finally:
+            mmd_path.unlink(missing_ok=True)
 
         store.update(job.job_id, progress=83, message="Scoring TATB rubric")
 
@@ -320,7 +322,20 @@ async def _run_taclaw_job(
         export_data: dict = {}
         try:
             from chatbot.modules.ta_exporter import build_export
-            export_data = build_export(arch_name, report_dir, tatb_scores=tatb_scores)
+            # Enrich brain annotations with confirmed/novel/diverged if available
+            if _brain_annotations:
+                try:
+                    import json as _json
+                    _gt = _json.loads((report_dir / "ground_truth.json").read_text())
+                    from chatbot.api.routes.streaming import _enrich_brain_annotations
+                    _brain_annotations = _enrich_brain_annotations(_brain_annotations, _gt)
+                except Exception:
+                    pass
+            export_data = build_export(
+                arch_name, report_dir,
+                tatb_scores=tatb_scores,
+                brain_annotations=_brain_annotations,
+            )
         except Exception as exc:
             logger.warning("TAclaw: export bundle failed: %s", exc)
             export_data = {"gate": {"result": gate}}

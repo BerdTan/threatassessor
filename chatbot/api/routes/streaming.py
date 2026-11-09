@@ -60,143 +60,49 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["streaming"])
 
 
-async def _brain_fast_stream(
-    architecture_path: str,
-    filename: str,
-    arch_name: str,
-    report_base: Path,
-) -> AsyncGenerator[str, None]:
+def _get_brain_annotations(arch_name: str) -> Optional[dict]:
+    """Query brain for expected techniques and return annotation seed.
+
+    Returns a dict with routing/confidence/patterns_fired/expected, or None
+    when brain has no match for this arch. confirmed/novel/diverged are added
+    later by _enrich_brain_annotations() once the pipeline result is available.
     """
-    Brain-fast SSE path: skip harness, serve from brain corpus patterns.
+    try:
+        from chatbot.modules.ta_brain_query import query_brain
+        infer = query_brain(mode="infer", arch_name=arch_name, caller_type="harness")
+        if not infer.get("had_match"):
+            return None
+        preds = infer.get("predictions", {})
+        return {
+            "routing": "brain_fast",
+            "confidence": infer.get("confidence", 0.0),
+            "patterns_fired": infer.get("patterns_fired", []),
+            "expected": preds.get("techniques", []),
+        }
+    except Exception:
+        logger.warning("brain annotations query failed for %s — continuing without", arch_name)
+        return None
 
-    Uses the existing report/<arch>/governance_signals.json for AIVSS (reuses
-    the score from the last full run — same risk profile, no re-computation).
-    Writes ground_truth.json tagged generated_by=brain_fast so BrainGuardian
-    blocks circular re-ingest.
 
-    Falls through (raises StopAsyncIteration immediately) when brain has no
-    match — caller detects this and falls back to full harness path.
+def _enrich_brain_annotations(annotations: dict, ground_truth: dict) -> dict:
+    """Add confirmed/novel/diverged by diffing brain expected vs pipeline output.
+
+    confirmed  — brain predicted AND pipeline found (intersection)
+    novel      — pipeline found but brain did not predict (new discoveries)
+    diverged   — brain predicted but pipeline did not find (brain over-predicted)
     """
-    import json as _json
-    from datetime import datetime as _dt, timezone as _tz
-
-    report_dir = report_base / arch_name
-
-    yield await SSEStream.send_progress(
-        stage="parsing", progress=5,
-        message=f"[BRAIN-FAST] {filename} — routing to brain pattern engine...",
-        eta_seconds=1,
-    )
-    await asyncio.sleep(0.05)
-
-    from chatbot.modules.ta_brain_query import query_brain
-    infer = query_brain(mode="infer", arch_name=arch_name, caller_type="harness")
-
-    if not infer.get("had_match"):
-        # No brain match — arch may have drifted since boxing; fall back gracefully
-        logger.warning("brain_fast: no pattern match for %s — emitting fallback error", arch_name)
-        yield await SSEStream.send_error(
-            error_message="Brain-fast: no pattern match",
-            detail=(
-                f"Brain has no match for '{arch_name}' (arch may have changed since boxing). "
-                "Re-run without boxing data to trigger full pipeline."
-            ),
-        )
-        return
-
-    preds = infer.get("predictions", {})
-    techniques: list = preds.get("techniques", [])
-    controls: list = preds.get("missing_controls", [])
-    control_priorities: list = preds.get("control_priorities", [])
-    confidence: float = infer.get("confidence", 0.0)
-    patterns_fired: list = infer.get("patterns_fired", [])
-    arch_type: str = infer.get("arch_type", "")
-
-    yield await SSEStream.send_progress(
-        stage="rapids", progress=50,
-        message=(
-            f"[BRAIN-FAST] Matched {len(techniques)} techniques via "
-            f"{len(patterns_fired)} corpus pattern(s) — confidence {confidence:.0%}..."
-        ),
-        eta_seconds=1,
-    )
-    await asyncio.sleep(0.05)
-
-    # Reuse AIVSS from the last full run (same arch, same risk profile)
-    gov_signals: dict = {}
-    gs_path = report_dir / "governance_signals.json"
-    if gs_path.exists():
-        try:
-            gov_signals = _json.loads(gs_path.read_text())
-        except Exception:
-            pass
-
-    # Load existing ground_truth.json for overview stats (risk score, attack paths, controls).
-    # brain_fast does NOT overwrite ground_truth.json — the existing RAPIDS-generated
-    # file is kept intact so API tabs and the brain builder ingest remain correct.
-    # BrainGuardian's ingest_guard() guards against any future path that does write
-    # a brain_fast-tagged ground_truth (defense-in-depth).
-    ground_truth: dict = {}
-    gt_path = report_dir / "ground_truth.json"
-    if gt_path.exists():
-        try:
-            ground_truth = _json.loads(gt_path.read_text())
-        except Exception:
-            pass
-
-    # Engine Item 7.2 — brain-path quality bridge: attach recall/Brier for the matched pattern
-    brain_quality: dict = {}
-    if patterns_fired:
-        try:
-            from chatbot.modules.ta_brain_benchmarks import BENCHMARKS_PATH  # noqa: PLC0415
-            if BENCHMARKS_PATH.exists():
-                bscores = _json.loads(BENCHMARKS_PATH.read_text()).get("brier_scores", {})
-                pat_id = patterns_fired[0]
-                if pat_id in bscores:
-                    bs = bscores[pat_id]
-                    brain_quality = {
-                        "pattern_id": pat_id,
-                        "arch_type": bs.get("arch_type", arch_type),
-                        "brier_combined": bs.get("brier_combined"),
-                        "brier_technique": bs.get("brier_technique"),
-                        "brier_control": bs.get("brier_control"),
-                        "benchmark_confidence": bs.get("benchmark_confidence_brier"),
-                        "samples_used": bs.get("samples_used", 0),
-                    }
-        except Exception:
-            pass
-
-    yield await SSEStream.send_progress(
-        stage="complete", progress=100,
-        message=(
-            f"✅ {filename} — Brain-fast complete! "
-            f"{len(techniques)} techniques, {len(controls)} recommended controls."
-        ),
-        eta_seconds=0,
-    )
-    await asyncio.sleep(0.05)
-
-    # The dashboard's handleComplete reads data.data to populate this.analysisData.
-    # The history-load path wraps the full ground_truth as {analysis: gt}, so tabs
-    # read this.analysisData.analysis.expected_attack_paths / .threat_model / etc.
-    # We use the full ground_truth (not just gt["data"]) so threat_model, ADRs, etc.
-    # are present. Brain_fast markers overlay on top.
-    brain_fast_data: dict = {
-        **ground_truth,
-        "architecture_name": arch_name,
-        "generated_by": "brain_fast",
-        "brain_techniques": techniques,
-        "control_priorities": control_priorities,
-        "brain_confidence": confidence,
-        "patterns_fired": patterns_fired,
-        "governance_signals": gov_signals,
-        "report_paths": {"ground_truth": str(gt_path)},
-        "brain_quality": brain_quality,
+    expected = set(annotations.get("expected", []))
+    pipeline_techniques = {
+        ap.get("technique_id", "")
+        for ap in ground_truth.get("attack_paths", [])
+        if ap.get("technique_id")
     }
-    yield await SSEStream.send_complete({
-        **brain_fast_data,
-        "data": brain_fast_data,
-    })
+    return {
+        **annotations,
+        "confirmed": sorted(expected & pipeline_techniques),
+        "novel": sorted(pipeline_techniques - expected),
+        "diverged": sorted(expected - pipeline_techniques),
+    }
 
 
 async def analyze_with_progress(
@@ -256,10 +162,17 @@ async def analyze_with_progress(
             # Benchmark/testing override: bypass smart routing, run harness directly
             import dataclasses as _dc
             _routing = _dc.replace(_routing, mode=force_mode)
+        # brain_fast: collect annotations then run api_only — brain informs routing,
+        # never replaces the pipeline. The minimum output is always a fresh TM.
+        _brain_annotations: Optional[dict] = None
         if _routing.mode == "brain_fast":
-            async for _evt in _brain_fast_stream(architecture_path, filename, base_name, report_base):
-                yield _evt
-            return
+            _brain_annotations = _get_brain_annotations(base_name)
+            import dataclasses as _dc
+            _routing = _dc.replace(_routing, mode="api_only")
+            logger.info(
+                "smart_router: %s brain_fast → api_only (brain annotations: %s)",
+                base_name, "yes" if _brain_annotations else "no match",
+            )
         # ─────────────────────────────────────────────────────────────────────
 
         clean_arch_name = base_name
@@ -495,6 +408,10 @@ async def analyze_with_progress(
         )
         await asyncio.sleep(0.1)
 
+        # Enrich brain annotations with confirmed/novel/diverged now that we have ground_truth
+        if _brain_annotations:
+            _brain_annotations = _enrich_brain_annotations(_brain_annotations, ground_truth)
+
         # Inject governance_signals (includes AIVSS block) into complete payload for dashboard badge
         gov_signals = ctx.get("governance_signals")
         if gov_signals:
@@ -502,17 +419,25 @@ async def analyze_with_progress(
                 _complete_dict = service_result.to_dict()
                 _complete_dict["governance_signals"] = gov_signals
                 _complete_dict["architecture_name"] = clean_arch_name
+                if _brain_annotations:
+                    _complete_dict["brain_annotations"] = _brain_annotations
                 yield await SSEStream.send_complete(_complete_dict)
             else:
                 result_data["governance_signals"] = gov_signals
                 result_data["architecture_name"] = clean_arch_name
+                if _brain_annotations:
+                    result_data["brain_annotations"] = _brain_annotations
                 yield await SSEStream.send_complete(result_data)
         elif service_result:
             _sr_dict = service_result.to_dict()
             _sr_dict["architecture_name"] = clean_arch_name
+            if _brain_annotations:
+                _sr_dict["brain_annotations"] = _brain_annotations
             yield await SSEStream.send_complete(_sr_dict)
         else:
             result_data["architecture_name"] = clean_arch_name
+            if _brain_annotations:
+                result_data["brain_annotations"] = _brain_annotations
             yield await SSEStream.send_complete(result_data)
 
     except Exception as e:

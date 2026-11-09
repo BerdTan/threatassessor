@@ -282,15 +282,19 @@ def build_export(
     report_dir: Path,
     tatb_scores: Optional[Dict] = None,
     brain_quality: Optional[Dict] = None,
+    brain_annotations: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
     Assemble ta_export.json for one architecture.
 
     Args:
-        arch_name:     Architecture directory name.
-        report_dir:    Path to report/<arch_name>/.
-        tatb_scores:   Optional pre-fetched tatb-corpus response dict.
-        brain_quality: Optional Brier calibration dict from brain_fast or post-ingest query.
+        arch_name:          Architecture directory name.
+        report_dir:         Path to report/<arch_name>/.
+        tatb_scores:        Optional pre-fetched tatb-corpus response dict.
+        brain_quality:      Optional Brier calibration dict from post-ingest query.
+        brain_annotations:  Optional brain routing annotation: expected/confirmed/novel/diverged
+                            technique sets produced when brain_fast routing was selected.
+                            Present only on brain_fast-routed runs; absent otherwise.
 
     Returns:
         Export bundle dict (schema ta-export/1.0).
@@ -300,7 +304,7 @@ def build_export(
     moe = _read_json(report_dir / "07_moe_orchestrator.json")
     ocsf = _read_ocsf(report_dir / "ocsf_findings.json")
 
-    return {
+    export = {
         "schema":       "ta-export/1.0",
         "exported_at":  datetime.now(timezone.utc).isoformat(),
         "architecture": _build_architecture(arch_name, gt),
@@ -315,6 +319,9 @@ def build_export(
         "security_findings": [f for f in ocsf if f.get("class_uid") == 2001],
         "otm":          _build_otm(gt, arch_name),
     }
+    if brain_annotations:
+        export["brain_annotations"] = brain_annotations
+    return export
 
 
 def save_export(arch_name: str, report_dir: Path, tatb_scores: Optional[Dict] = None) -> Path:
