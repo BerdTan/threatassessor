@@ -11,19 +11,23 @@ Read this file at the start of every session. After any significant decision abo
 
 **What:** Formalise a principle-audit pass as a standing layer above TAgym's metric-driven flywheel. The audit checks whether the flywheel's optimisation target still aligns with the governing design principles. It is not a periodic review — it fires whenever a metric improvement is proposed, and it asks: does this improvement respect all six governing principles, or does it only look good on the metric?
 
-**The six governing principles (mapped from "Six agent harness techniques that actually worked"):**
+**The eight governing principles:**
 1. Simplest architecture that works — stages only where they solve an actual problem
 2. Context as engineering decision — give each stage what it needs, not everything available
 3. Deterministic over LLM where the problem is deterministic
 4. Uncertainty must be visible — if the pipeline doesn't know, the caller must know
 5. Authorisation and business rules live in application code, not prompts
 6. Observability and evaluation throughout execution, not just at the final output
+7. Classify and execute are separate layers — the classifier decides the mode; the executor acts on it; never collapse them. The classifier has no side effects; the executor has no routing logic. smart_router is the confirmed correct example; brain_fast execution handler was the confirmed violation.
+8. Decompose complexity; compose strengths — when a problem is genuinely complex, break it into the smallest units where each component has a clear, bounded strength. The final deliverable emerges from composition, not from one component doing everything. Each TA stage, critic, adapter, and verifier does one thing well; ta-export is the composition.
 
-**Why this matters over the flywheel alone:** A flywheel optimises what it measures. If the measurement is correct and the governing principle is intact, iteration compounds improvement. If a principle is violated, the flywheel compounds the violation — a vicious cycle indistinguishable from improvement on the metric. The metric catches quantity; principles catch kind. brain_fast is the first confirmed case: it improved throughput (Brier stable, latency down) while violating Principle 1 (skipping TM generation is not the simplest architecture that works — it is an architecture that sometimes produces no TM) and Principle 4 (uncertainty not surfaced when brain is guessing from patterns). The flywheel would not have caught this.
+Principles 1–6 sourced from "Six agent harness techniques that actually worked" (levelup.gitconnected.com). Principles 7–8 derived from TA's own design history.
 
-**Practical form:** Before any P-priority engineering item is started, check it against the six principles. Flag any tension explicitly in the DECISIONS entry. If a tension exists, resolve the tension first or document why the trade-off is acceptable. This is not a veto — it is a forcing function for explicit trade-off documentation.
+**Why this matters over the flywheel alone:** A flywheel optimises what it measures. If the measurement is correct and the governing principle is intact, iteration compounds improvement. If a principle is violated, the flywheel compounds the violation — a vicious cycle indistinguishable from improvement on the metric. The metric catches quantity; principles catch kind. brain_fast is the first confirmed case: it improved throughput (Brier stable, latency down) while violating Principle 1 (skipping TM generation is not the simplest architecture that works — it is an architecture that sometimes produces no TM), Principle 4 (uncertainty not surfaced), and Principle 7 (routing collapsed into execution). The flywheel would not have caught this.
 
-**How to apply:** At session start, when reviewing priorities: for each ⬜ item, run a 30-second mental audit against the six principles. If any principle is in tension with the proposed implementation, note it in the DECISIONS entry before coding.
+**Practical form:** Before any P-priority engineering item is started, check it against the eight principles. Flag any tension explicitly in the DECISIONS entry. If a tension exists, resolve the tension first or document why the trade-off is acceptable. This is not a veto — it is a forcing function for explicit trade-off documentation.
+
+**How to apply:** At session start, when reviewing priorities: for each ⬜ item, run a 30-second mental audit against the eight principles. If any principle is in tension with the proposed implementation, note it in the DECISIONS entry before coding.
 
 **Alternatives rejected:** Extending TAgym metrics to cover principle compliance (metrics cannot measure principle alignment without encoding the principle — which is circular). Periodic human review without a checklist (too informal; the brain_fast case was present for multiple sessions without being flagged until a first-principles question was asked).
 
