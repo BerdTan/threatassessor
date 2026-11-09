@@ -9,17 +9,25 @@ Read this file at the start of every session. After any significant decision abo
 **Date:** 2026-11-09
 **Status:** Design direction adopted
 
-**What:** Formalise a principle-audit pass as a standing layer above TAgym's metric-driven flywheel. The audit checks whether the flywheel's optimisation target still aligns with the governing design principles. It is not a periodic review — it fires whenever a metric improvement is proposed, and it asks: does this improvement respect all six governing principles, or does it only look good on the metric?
+**What:** Formalise a principle-audit pass as a standing layer above TAgym's metric-driven flywheel. The audit checks whether the flywheel's optimisation target still aligns with the governing design principles. It is not a periodic review — it fires whenever a metric improvement is proposed, and it asks: does this improvement respect all eight governing principles, or does it only look good on the metric?
 
 **The eight governing principles:**
-1. Simplest architecture that works — stages only where they solve an actual problem
-2. Context as engineering decision — give each stage what it needs, not everything available
-3. Deterministic over LLM where the problem is deterministic
-4. Uncertainty must be visible — if the pipeline doesn't know, the caller must know
-5. Authorisation and business rules live in application code, not prompts
-6. Observability and evaluation throughout execution, not just at the final output
-7. Classify and execute are separate layers — the classifier decides the mode; the executor acts on it; never collapse them. The classifier has no side effects; the executor has no routing logic. smart_router is the confirmed correct example; brain_fast execution handler was the confirmed violation.
-8. Decompose complexity; compose strengths — when a problem is genuinely complex, break it into the smallest units where each component has a clear, bounded strength. The final deliverable emerges from composition, not from one component doing everything. Each TA stage, critic, adapter, and verifier does one thing well; ta-export is the composition.
+
+1. **Simplest architecture that works** — introduce a stage, component, or mode only when it solves an actual problem that simpler wiring cannot. The harness stage registry (register_scenario decorator) enforces this: adding a scenario requires a decorated function, not edits scattered across the codebase. brain_fast was introduced to solve a real performance problem but overreached into skipping TM generation — the simplest fix for throughput was not the simplest architecture for correctness.
+
+2. **Context as engineering decision** — more information is not automatically useful. Each stage receives what it needs for its bounded task, not the full pipeline state. RepoCrawler (MAX_FILES=200, dedup 0.85) and the adapter layer enforce this at ingestion. The gap: critics currently receive full pipeline context rather than a scoped view of the dimension they review. When a stage uses more context than its task requires, it becomes harder to reason about, harder to test, and slower.
+
+3. **Deterministic over LLM where the problem is deterministic** — if the answer can be computed from a lookup, a rule, or a schema, compute it. Reserve LLM calls for problems that are genuinely ambiguous. TA applies this in: DETECT rules (65 deterministic pattern checks), MITRE technique validation in self_validation.py (lookup, not generation), Jev for routing confidence (classifier, not generation), CVSS/AIVSS scoring (formula), governance YAML enforcement (rule check). TAprover extends this furthest: ATT&CK STIX lookups are pure deterministic; no LLM is needed to verify that T1190 exists in the Enterprise catalog.
+
+4. **Uncertainty must be visible** — when the pipeline is guessing, the caller must know it is guessing. A marginal confidence score and a high-confidence score must not produce identical-looking output. Currently TA's brain confidence score exists internally but does not surface in the ta-export or API response. A caller receiving a brain_fast output has no signal that the TM was derived from pattern retrieval rather than fresh analysis. TAprover's UNVERIFIABLE verdict is the first mechanism that explicitly names uncertainty in the output — the pipeline saying "I cannot prove this claim" rather than silently including it.
+
+5. **Authorisation and business rules live in application code, not prompts** — the agent recommends; the harness decides. BouncerStage enforces governance signals regardless of what any critic or LLM output says. PolicyBroker reads live governance signals and adjusts routing before critics run — critics cannot override it. kill_switch in agent_governance.yaml halts the pipeline; no prompt can override it. The invariant: any rule that must hold under adversarial conditions must be in code, not in a prompt that an adversary can influence.
+
+6. **Observability and evaluation throughout execution, not just at the final output** — instrument each stage, not just the result. EventBroker publishes to SIEM/Langfuse/Webhook sinks at stage boundaries. DETECT rules evaluate inline during pipeline execution. TAgym captures Brier snapshots per iteration, not just final scores. TMbench provides external evaluation against an independent spec. The gap this principle identified: evaluation covers pipeline health (did stages run correctly?) but not output correctness (is what the pipeline said true?). TAprover closes that gap — it evaluates the claims in the output, not the execution that produced them.
+
+7. **Classify and execute are separate layers** — the classifier decides the mode; the executor acts on it; never collapse them. The classifier has no side effects; the executor has no routing logic. smart_router is the confirmed correct example: select_mode() returns a RoutingDecision and nothing else. brain_fast execution handler was the confirmed violation: _brain_fast_stream() both served as a routing outcome and smuggled TM generation logic (skip pipeline, serve patterns) into what should have been a pure execution handler.
+
+8. **Decompose complexity; compose strengths** — when a problem is genuinely complex, break it into the smallest units where each component has a clear, bounded strength. The final deliverable emerges from composition, not from one component doing everything. Each TA stage, critic, adapter, and verifier does one thing well: AnalysisStage generates ground truth; each CriticStage reviews one dimension; each adapter handles one input format; BouncerStage enforces one class of rule; TAprover verifies one class of claim. ta-export is the composition of all bounded contributions. The failure mode this guards against is the God component — a stage that analyses, routes, enforces, and reports.
 
 Principles 1–8 derived from TA's own design history and first-principles reflection.
 
