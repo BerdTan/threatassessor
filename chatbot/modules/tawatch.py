@@ -81,48 +81,72 @@ _CONFIDENCE_LOW    = "low"
 # ── Incident adapter ──────────────────────────────────────────────────────────
 
 class IncidentAdapter:
-    """Maps a Threat Watch incident dict → set of matched DETECT domain codes + confidence."""
+    """
+    Maps a Threat Watch incident dict → set of matched DETECT domain codes + confidence.
+
+    Real Supabase schema fields used:
+      mitre_tactics   list[str]  MITRE ATT&CK phase names
+      taxonomy_cats   list[str]  AI capability labels (Social Engineering, Reconnaissance …)
+      risk_cats       list[str]  Cyber Offense | Manipulation | Biological Risk | Loss of Control
+      models_involved list[str]  model families (GPT, Claude, Gemini …)
+      actor_type      list[str]  Cybercriminal | State-sponsored | Hacktivist …
+      targeted_sector list[str]  sector labels
+      actors_origin   list[str]  country names
+      model_availability str     Closed-weight | Open-weight
+      headline        str        incident title
+      reporting_date  str        YYYY-MM-DD
+      link            str        source URL
+      sophistication  float      composite score (joined from incident_sophistication_scores)
+    """
 
     def adapt(self, incident: Dict[str, Any]) -> Dict[str, str]:
-        """
-        Returns {domain_code: confidence} for all domains that match the incident.
-        e.g. {"EXF": "high", "MCP": "medium", "INJ": "low"}
-        """
-        tactic_domains: Dict[str, int] = {}   # domain → hit count
+        """Returns {domain_code: confidence} for all domains that match the incident."""
+        tactic_domains: Dict[str, int] = {}
         cap_domains:    Dict[str, int] = {}
 
-        for t in incident.get("tactics", []):
+        for t in _to_list(incident.get("mitre_tactics")):
             for d in _TACTIC_TO_DOMAINS.get(t, []):
                 tactic_domains[d] = tactic_domains.get(d, 0) + 1
 
-        for c in incident.get("capabilities", []):
+        for c in _to_list(incident.get("taxonomy_cats")):
             for d in _CAPABILITY_TO_DOMAINS.get(c, []):
                 cap_domains[d] = cap_domains.get(d, 0) + 1
+
+        # risk_cats as secondary domain signal
+        risk_map = {
+            "Cyber Offense":  ["EXF", "MCP", "INJ"],
+            "Manipulation":   ["INJ", "ABU"],
+            "Loss of Control":["AGT", "QC"],
+            "Biological Risk":[],
+        }
+        for rc in _to_list(incident.get("risk_cats")):
+            for d in risk_map.get(rc, []):
+                if d not in tactic_domains and d not in cap_domains:
+                    cap_domains[d] = cap_domains.get(d, 0) + 1
 
         all_domains = set(tactic_domains) | set(cap_domains)
         result: Dict[str, str] = {}
         for d in all_domains:
-            in_tactic = d in tactic_domains
-            in_cap    = d in cap_domains
-            if in_tactic and in_cap:
+            if d in tactic_domains and d in cap_domains:
                 result[d] = _CONFIDENCE_HIGH
             else:
                 result[d] = _CONFIDENCE_MEDIUM
 
-        # low-confidence: actor type signals for AGT
-        if incident.get("actor_type") in ("State-sponsored", "Cybercriminal") and "AGT" not in result:
+        actor_types = _to_list(incident.get("actor_type"))
+        if any(a in ("State-sponsored", "Cybercriminal") for a in actor_types) and "AGT" not in result:
             result["AGT"] = _CONFIDENCE_LOW
 
         return result
 
     def is_agentic(self, incident: Dict[str, Any]) -> bool:
-        caps = incident.get("capabilities", [])
-        return any(c in ("Attack Orchestration", "Multi-agent dynamics", "AI R&D") for c in caps)
+        cats = _to_list(incident.get("taxonomy_cats"))
+        return any(c in ("Attack Orchestration", "Multi-agent dynamics", "AI R&D") for c in cats)
 
     def model_family(self, incident: Dict[str, Any]) -> str:
-        m = (incident.get("model") or "").lower()
+        models = _to_list(incident.get("models_involved"))
+        combined = " ".join(models).lower()
         for fam in ("gpt", "claude", "gemini", "deepseek", "kimi", "grok", "qwen", "llama", "glm", "minimax"):
-            if fam in m:
+            if fam in combined:
                 return fam
         return "other"
 
@@ -295,6 +319,7 @@ class TAwatch:
                 "mean_sophistication":  round(sum(sophs) / len(sophs), 2) if sophs else None,
                 "top_sectors":          _top_n([i["sector"] for i in incidents if i.get("sector")], 3),
                 "top_models":           _top_n([i["model"] for i in incidents if i.get("model")], 3),
+                "top_capabilities":     _top_n([c for i in incidents for c in i.get("capabilities", [])], 3),
             })
         return rows
 
@@ -306,19 +331,17 @@ class TAwatch:
         model_family: Optional[str] = None,
         is_agentic: bool = False,
     ) -> List[Dict[str, Any]]:
-        """
-        Find real incidents that match an architecture profile.
-        Used by ta_exporter and brain query surface.
-        """
+        """Find real incidents that match an architecture profile."""
         self.load()
         scored: List[Tuple[int, Dict[str, Any]]] = []
         for inc in self._incidents:
             score = 0
-            if sector and inc.get("sector", "").lower() == sector.lower():
-                score += 3
+            if sector:
+                sec_str = " ".join(_to_list(inc.get("targeted_sector"))).lower()
+                if sector.lower() in sec_str:
+                    score += 3
             if model_family:
-                fam = self._adapter.model_family(inc)
-                if fam == model_family.lower():
+                if self._adapter.model_family(inc) == model_family.lower():
                     score += 2
             if is_agentic and self._adapter.is_agentic(inc):
                 score += 2
@@ -333,49 +356,44 @@ class TAwatch:
     def sector_risk_profile(self, sector: str) -> Dict[str, Any]:
         """Real-world attack profile for a given sector."""
         self.load()
-        incs = [i for i in self._incidents if i.get("sector", "").lower() == sector.lower()]
+        incs = [i for i in self._incidents if sector.lower() in " ".join(_to_list(i.get("targeted_sector"))).lower()]
         if not incs:
             return {"sector": sector, "incident_count": 0}
-        sophs  = [i["sophistication"] for i in incs if i.get("sophistication")]
+        sophs: List[float] = [i["sophistication"] for i in incs if i.get("sophistication")]
         tactics: List[str] = []
         caps:    List[str] = []
         models:  List[str] = []
         for i in incs:
-            tactics.extend(i.get("tactics", []))
-            caps.extend(i.get("capabilities", []))
-            if i.get("model"):
-                models.append(self._adapter.model_family(i))
+            tactics.extend(_to_list(i.get("mitre_tactics")))
+            caps.extend(_to_list(i.get("taxonomy_cats")))
+            models.append(self._adapter.model_family(i))
         return {
-            "sector":               sector,
-            "incident_count":       len(incs),
-            "mean_sophistication":  round(sum(sophs) / len(sophs), 2) if sophs else None,
-            "top_tactics":          _top_n(tactics, 5),
-            "top_capabilities":     _top_n(caps, 5),
-            "top_models":           _top_n(models, 3),
+            "sector":              sector,
+            "incident_count":      len(incs),
+            "mean_sophistication": round(sum(sophs) / len(sophs), 2) if sophs else None,
+            "top_tactics":         _top_n(tactics, 5),
+            "top_capabilities":    _top_n(caps, 5),
+            "top_models":          _top_n(models, 3),
         }
 
     def model_risk_profile(self, model_family: str) -> Dict[str, Any]:
         """Real-world operation profile for a given model family."""
         self.load()
-        incs = [
-            i for i in self._incidents
-            if self._adapter.model_family(i) == model_family.lower()
-        ]
+        incs = [i for i in self._incidents if self._adapter.model_family(i) == model_family.lower()]
         if not incs:
             return {"model_family": model_family, "incident_count": 0}
-        sophs    = [i["sophistication"] for i in incs if i.get("sophistication")]
+        sophs: List[float] = [i["sophistication"] for i in incs if i.get("sophistication")]
         tactics: List[str] = []
         sectors: List[str] = []
         for i in incs:
-            tactics.extend(i.get("tactics", []))
-            if i.get("sector"):
-                sectors.append(i["sector"])
+            tactics.extend(_to_list(i.get("mitre_tactics")))
+            sectors.extend(_to_list(i.get("targeted_sector")))
         return {
-            "model_family":         model_family,
-            "incident_count":       len(incs),
-            "mean_sophistication":  round(sum(sophs) / len(sophs), 2) if sophs else None,
-            "top_tactics":          _top_n(tactics, 5),
-            "top_sectors":          _top_n(sectors, 3),
+            "model_family":        model_family,
+            "incident_count":      len(incs),
+            "mean_sophistication": round(sum(sophs) / len(sophs), 2) if sophs else None,
+            "top_tactics":         _top_n(tactics, 5),
+            "top_sectors":         _top_n(sectors, 3),
         }
 
     # ── helpers ───────────────────────────────────────────────────────────────
@@ -388,9 +406,9 @@ class TAwatch:
     ) -> List[Dict[str, Any]]:
         result = self._incidents
         if sector:
-            result = [i for i in result if i.get("sector", "").lower() == sector.lower()]
+            result = [i for i in result if sector.lower() in " ".join(_to_list(i.get("targeted_sector"))).lower()]
         if actor:
-            result = [i for i in result if i.get("actor_type", "").lower() == actor.lower()]
+            result = [i for i in result if actor.lower() in " ".join(_to_list(i.get("actor_type"))).lower()]
         if model:
             result = [i for i in result if self._adapter.model_family(i) == model.lower()]
         return result
@@ -398,18 +416,30 @@ class TAwatch:
     def _incident_summary(self, inc: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "id":             inc.get("id", ""),
-            "date":           inc.get("date", ""),
-            "title":          inc.get("title", ""),
-            "sector":         inc.get("sector", ""),
-            "actor_type":     inc.get("actor_type", ""),
-            "origin":         inc.get("origin", ""),
-            "model":          inc.get("model", ""),
+            "date":           inc.get("reporting_date", ""),
+            "title":          inc.get("headline", ""),
+            "sector":         ", ".join(_to_list(inc.get("targeted_sector"))),
+            "actor_type":     ", ".join(_to_list(inc.get("actor_type"))),
+            "origin":         ", ".join(_to_list(inc.get("actors_origin"))),
+            "model":          ", ".join(_to_list(inc.get("models_involved"))),
             "sophistication": inc.get("sophistication"),
-            "tactics":        inc.get("tactics", []),
-            "capabilities":   inc.get("capabilities", []),
-            "harm_type":      inc.get("harm_type", []),
-            "source_url":     inc.get("source_url", ""),
+            "tactics":        _to_list(inc.get("mitre_tactics")),
+            "capabilities":   _to_list(inc.get("taxonomy_cats")),
+            "risk_cats":      _to_list(inc.get("risk_cats")),
+            "harm_type":      _to_list(inc.get("disarm_stage")),
+            "source_url":     inc.get("link", ""),
         }
+
+
+def _to_list(v: Any) -> List[str]:
+    """Normalise a field that may be a list, comma-string, or None → list[str]."""
+    if not v:
+        return []
+    if isinstance(v, list):
+        return [str(x) for x in v]
+    if isinstance(v, str):
+        return [v.strip()] if v.strip() else []
+    return [str(v)]
 
 
 def _top_n(items: List[str], n: int) -> List[str]:
