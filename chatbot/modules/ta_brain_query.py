@@ -42,7 +42,7 @@ BRAIN_PATH = _brain_dir() / "ta_brain.json"
 INSTANCES_PATH = _brain_dir() / "ta_brain_instances.jsonl"
 INTERACTIONS_PATH = _brain_dir() / "ta_brain_interactions.jsonl"
 
-VALID_MODES = ("infer", "gaps", "patterns")
+VALID_MODES = ("infer", "gaps", "patterns", "incident_match", "sector_risk", "model_risk")
 
 
 # ── Brain loader (cached per process, invalidated on pattern_version change) ──
@@ -270,8 +270,8 @@ def query_brain(
                     resolved_sig = gt_meta.get("topology_signature") or ""
                 except Exception:
                     pass
-            # If still nothing, return a clean no-match rather than an error
-            if not resolved_sig and not resolved_type:
+            # If still nothing, return a clean no-match — but only for brain-dependent modes
+            if not resolved_sig and not resolved_type and mode not in ("incident_match", "sector_risk", "model_risk"):
                 return {
                     "had_match": False,
                     "confidence": 0.0,
@@ -403,5 +403,72 @@ def query_brain(
             "patterns": patterns,
             "cross_agent_provenance": {"source": "brain", "query_mode": "patterns", "caller_type": caller_type},
         }
+
+    # ── TAwatch modes (incident_match | sector_risk | model_risk) ─────────────
+    if mode in ("incident_match", "sector_risk", "model_risk"):
+        try:
+            from chatbot.modules.tawatch import get_tawatch
+            tw = get_tawatch()
+        except Exception as exc:
+            return {"error": f"TAwatch unavailable: {exc}"}
+
+        if mode == "incident_match":
+            # arch_name used as sector hint; arch_type used as model family hint
+            is_agentic = arch_type in ("agentic", "ai_agent", "multi_agent")
+            matches = tw.match_architecture(
+                sector=arch_name or None,
+                model_family=arch_type or None,
+                is_agentic=is_agentic,
+            )
+            _log_interaction(
+                caller_type=caller_type,
+                query_mode="incident_match",
+                topology_signature=resolved_sig,
+                arch_type=resolved_type,
+                patterns_fired=[],
+                confidence_returned=float(len(matches)),
+                had_match=bool(matches),
+            )
+            return {
+                "mode": "incident_match",
+                "match_count": len(matches),
+                "matches": matches,
+                "corpus_size": tw.incident_count,
+                "cross_agent_provenance": {"source": "tawatch", "query_mode": "incident_match", "caller_type": caller_type},
+            }
+
+        if mode == "sector_risk":
+            profile = tw.sector_risk_profile(arch_name)
+            _log_interaction(
+                caller_type=caller_type,
+                query_mode="sector_risk",
+                topology_signature="",
+                arch_type=arch_name,
+                patterns_fired=[],
+                confidence_returned=float(profile.get("incident_count", 0)),
+                had_match=bool(profile.get("incident_count")),
+            )
+            return {
+                "mode": "sector_risk",
+                **profile,
+                "cross_agent_provenance": {"source": "tawatch", "query_mode": "sector_risk", "caller_type": caller_type},
+            }
+
+        if mode == "model_risk":
+            profile = tw.model_risk_profile(arch_name)
+            _log_interaction(
+                caller_type=caller_type,
+                query_mode="model_risk",
+                topology_signature="",
+                arch_type=arch_name,
+                patterns_fired=[],
+                confidence_returned=float(profile.get("incident_count", 0)),
+                had_match=bool(profile.get("incident_count")),
+            )
+            return {
+                "mode": "model_risk",
+                **profile,
+                "cross_agent_provenance": {"source": "tawatch", "query_mode": "model_risk", "caller_type": caller_type},
+            }
 
     return {"error": "Unreachable"}

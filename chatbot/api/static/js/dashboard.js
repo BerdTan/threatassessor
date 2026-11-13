@@ -20760,19 +20760,25 @@ class Dashboard {
         const strip = document.getElementById('sip-sub-tab-strip');
         if (hdr)   hdr.style.display   = isPerspective ? 'none' : '';
         if (strip) strip.style.display = isPerspective ? 'none' : '';
-        ['adapters', 'jobs', 'enrich', 'artifact', 'gym', 'perspective'].forEach(n => {
+        const isFull = ['perspective', 'tawatch'].includes(name);
+        const hdr   = document.getElementById('sip-header-bar');
+        const strip = document.getElementById('sip-sub-tab-strip');
+        if (hdr)   hdr.style.display   = isFull ? 'none' : '';
+        if (strip) strip.style.display = isFull ? 'none' : '';
+        ['adapters', 'jobs', 'enrich', 'artifact', 'gym', 'perspective', 'tawatch'].forEach(n => {
             const btn  = document.getElementById(`sip-subtab-${n}`);
             const pane = document.getElementById(`sip-sub-${n}`);
             const active = n === name;
             if (btn)  { btn.style.borderBottomColor = active ? '#f59e0b' : 'transparent';
                         btn.style.color = active ? '#f59e0b' : 'var(--text-secondary)';
                         btn.style.fontWeight = active ? '600' : '400'; }
-            if (pane) { pane.style.display = active ? (['jobs','gym','perspective'].includes(n) ? 'flex' : 'block') : 'none'; }
+            if (pane) { pane.style.display = active ? (['jobs','gym','perspective','tawatch'].includes(n) ? 'flex' : 'block') : 'none'; }
         });
         if (name === 'adapters')    this._sipLoadAdapters();
         if (name === 'jobs')        this._sipLoadJobs();
         if (name === 'gym')         this._gymPoll();
         if (name === 'perspective') this._perspInit();
+        if (name === 'tawatch')     this._tawatchLoad();
     }
 
     // ── TA Perspective ────────────────────────────────────────────────────────
@@ -22223,6 +22229,111 @@ class Dashboard {
         } catch (err) {
             if (status) status.textContent = '';
             if (result) result.innerHTML = `<span style="color:#ef4444;">Error: ${this._esc(err.message)}</span>`;
+        }
+    }
+
+    // ── TAwatch ───────────────────────────────────────────────────────────────
+
+    async _tawatchLoad() {
+        const sector = document.getElementById('tawatch-sector-filter')?.value || '';
+        const model  = document.getElementById('tawatch-model-filter')?.value  || '';
+        const badge  = document.getElementById('tawatch-corpus-badge');
+        const empty  = document.getElementById('tawatch-empty');
+        const heatmap = document.getElementById('tawatch-heatmap');
+        const feed    = document.getElementById('tawatch-incident-list');
+        const covRow  = document.getElementById('tawatch-coverage-row');
+        if (badge) badge.textContent = 'Loading…';
+        try {
+            const params = new URLSearchParams();
+            if (sector) params.set('sector', sector);
+            if (model)  params.set('model', model);
+            const [hmData, covData] = await Promise.all([
+                this._apiFetch(`/api/v1/tawatch/heatmap?${params}`),
+                this._apiFetch('/api/v1/tawatch/coverage'),
+            ]);
+            const incCount = hmData.incidents?.length || 0;
+            const total    = covData.total_incidents || 0;
+            if (badge) badge.textContent = `${incCount} of ${total} incidents`;
+            if (empty) empty.style.display = total === 0 ? 'flex' : 'none';
+            this._tawatchRenderCoverage(covRow, covData.domains || []);
+            this._tawatchRenderHeatmap(heatmap, hmData);
+            this._tawatchRenderFeed(feed, hmData.incidents || []);
+        } catch (err) {
+            if (badge) badge.textContent = 'Error';
+            if (empty) { empty.style.display = 'flex'; }
+            console.error('[TAwatch]', err);
+        }
+    }
+
+    _tawatchRenderCoverage(el, domains) {
+        if (!el) return;
+        const COLORS = {
+            QC:'#8b5cf6', INJ:'#ef4444', EXF:'#f59e0b', SCT:'#64748b',
+            MCP:'#3b82f6', RES:'#10b981', ABU:'#f97316', SEC:'#ec4899',
+            AGT:'#14b8a6', PER:'#6366f1',
+        };
+        el.innerHTML = domains.map(d => {
+            const pct  = d.total_incidents || 0;
+            const max  = domains.reduce((m, x) => Math.max(m, x.total_incidents || 0), 1);
+            const bar  = Math.round((pct / max) * 60);
+            const col  = COLORS[d.domain] || '#6b7280';
+            return `<div title="${d.domain}: ${pct} incidents, ${(d.high_confidence||0)} high-conf" style="flex-shrink:0;text-align:center;cursor:default;">
+                <div style="font-size:0.6rem;font-weight:700;color:${col};letter-spacing:0.03em;">${d.domain}</div>
+                <div style="width:36px;height:${Math.max(bar,2)}px;background:${col};opacity:0.8;border-radius:2px 2px 0 0;margin:0 auto;"></div>
+                <div style="font-size:0.58rem;color:var(--text-tertiary);">${pct}</div>
+            </div>`;
+        }).join('');
+    }
+
+    _tawatchRenderHeatmap(el, data) {
+        if (!el || !data) return;
+        const domains   = data.domains  || [];
+        const incidents = data.incidents || [];
+        const matrix    = data.matrix   || {};
+        const CONF_COLOR = { high: '#14b8a6', medium: '#0d9488', low: '#134e4a', none: 'transparent' };
+        if (!incidents.length) { el.innerHTML = '<span style="color:var(--text-tertiary);font-size:0.72rem;">No incidents match filters.</span>'; return; }
+        const headerRow = `<tr><th style="padding:0.15rem 0.4rem;font-size:0.6rem;color:var(--text-tertiary);border-right:1px solid var(--border-color);min-width:120px;text-align:left;">Incident</th>`
+            + domains.map(d => `<th style="padding:0.15rem 0.3rem;font-size:0.6rem;color:var(--text-tertiary);text-align:center;">${d}</th>`).join('') + '</tr>';
+        const rows = incidents.slice(0, 100).map(inc => {
+            const cells = domains.map(d => {
+                const conf = matrix[inc.id]?.[d] || 'none';
+                return `<td style="text-align:center;padding:0.1rem;"><div style="width:10px;height:10px;border-radius:2px;background:${CONF_COLOR[conf]};margin:0 auto;" title="${d}: ${conf}"></div></td>`;
+            }).join('');
+            const soph = inc.sophistication ? `<span style="color:#f59e0b;font-size:0.58rem;margin-left:0.3rem;">${inc.sophistication.toFixed(1)}</span>` : '';
+            return `<tr style="border-bottom:1px solid var(--border-color)20;">
+                <td style="padding:0.15rem 0.4rem;border-right:1px solid var(--border-color);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${this._esc(inc.title)}">
+                    <span style="font-size:0.65rem;color:var(--text-color);">${this._esc(inc.id)}</span>${soph}
+                </td>${cells}</tr>`;
+        }).join('');
+        el.innerHTML = `<table style="border-collapse:collapse;width:100%;">${headerRow}${rows}</table>`;
+    }
+
+    _tawatchRenderFeed(el, incidents) {
+        if (!el) return;
+        if (!incidents.length) { el.innerHTML = '<span style="color:var(--text-tertiary);padding:0.5rem;">No incidents.</span>'; return; }
+        el.innerHTML = incidents.slice(0, 50).map(inc => {
+            const soph = inc.sophistication ? `<span style="color:#f59e0b;font-size:0.65rem;float:right;">${inc.sophistication.toFixed(1)}</span>` : '';
+            const tags = (inc.capabilities || []).slice(0,2).map(c =>
+                `<span style="font-size:0.6rem;background:var(--border-color);border-radius:3px;padding:0.1rem 0.3rem;margin-right:0.2rem;">${this._esc(c)}</span>`).join('');
+            return `<div style="padding:0.4rem 0.5rem;border-bottom:1px solid var(--border-color)20;cursor:pointer;"
+                onclick="window.open('${this._esc(inc.source_url||'')}','_blank')">
+                <div style="font-size:0.68rem;font-weight:600;color:var(--text-color);margin-bottom:0.15rem;">${soph}${this._esc(inc.id)} · ${this._esc(inc.date||'')}</div>
+                <div style="font-size:0.65rem;color:var(--text-secondary);margin-bottom:0.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._esc(inc.title||'')}</div>
+                <div style="font-size:0.62rem;color:var(--text-tertiary);">${this._esc(inc.sector||'')} · ${this._esc(inc.actor_type||'')} · ${this._esc(inc.model||'')}</div>
+                <div style="margin-top:0.2rem;">${tags}</div>
+            </div>`;
+        }).join('');
+    }
+
+    async _tawatchReload() {
+        const badge = document.getElementById('tawatch-corpus-badge');
+        if (badge) badge.textContent = 'Reloading…';
+        try {
+            await this._apiFetch('/api/v1/tawatch/reload', { method: 'POST' });
+            await this._tawatchLoad();
+        } catch (err) {
+            if (badge) badge.textContent = 'Reload error';
+            console.error('[TAwatch reload]', err);
         }
     }
 

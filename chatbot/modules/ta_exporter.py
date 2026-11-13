@@ -283,6 +283,7 @@ def build_export(
     tatb_scores: Optional[Dict] = None,
     brain_quality: Optional[Dict] = None,
     brain_annotations: Optional[Dict] = None,
+    tawatch_annotations: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
     Assemble ta_export.json for one architecture.
@@ -321,6 +322,33 @@ def build_export(
     }
     if brain_annotations:
         export["brain_annotations"] = brain_annotations
+
+    # TAwatch — real-world incident correlation (populated when corpus is loaded)
+    if tawatch_annotations:
+        export["threat_watch"] = tawatch_annotations
+    else:
+        try:
+            from chatbot.modules.tawatch import get_tawatch
+            tw = get_tawatch()
+            if tw.corpus_loaded:
+                gt = export.get("assessment", {})
+                sector = gt.get("sector") or ""
+                models = [c.get("name", "") for c in gt.get("components", []) if c.get("type") == "llm"]
+                model_fam = models[0].lower() if models else None
+                is_agentic = export.get("architecture", {}).get("is_agentic", False)
+                matches = tw.match_architecture(sector=sector or None, model_family=model_fam, is_agentic=is_agentic)
+                sector_prof = tw.sector_risk_profile(sector) if sector else {}
+                export["threat_watch"] = {
+                    "matched_incidents":    [m["id"] for m in matches[:5]],
+                    "match_count":          len(matches),
+                    "sector_incident_rate": sector_prof.get("incident_count", 0),
+                    "sector_top_tactics":   sector_prof.get("top_tactics", []),
+                    "mean_sophistication":  sector_prof.get("mean_sophistication"),
+                    "corpus_size":          tw.incident_count,
+                }
+        except Exception:
+            pass
+
     return export
 
 
