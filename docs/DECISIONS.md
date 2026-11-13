@@ -4,6 +4,35 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 252 — TAwatch: AI Risk Explorer incident corpus integrated into DETECT + Brain
+
+**Date:** 2026-11-13
+**Status:** Shipped (commits 01c08e7, 0c40b7d)
+
+**What:** Integrated 755 real-world AI-enabled operations from AI Risk Explorer (airiskexplorer.com) into TA as TAwatch — a new module that bridges the external incident corpus with TA's DETECT rule taxonomy and TAbrain.
+
+**Components built:**
+- `chatbot/modules/tawatch.py` — `IncidentAdapter` (maps Supabase schema fields: `mitre_tactics`, `taxonomy_cats`, `risk_cats`, `models_involved`, `targeted_sector`, `actor_type` → DETECT domain codes with high/medium/low confidence tiers) + `TAwatch` class (corpus loader, heatmap builder, coverage stats, brain enrichment queries)
+- `chatbot/api/routes/tawatch.py` — 8 REST endpoints: status, heatmap, incidents, domain drill-down, coverage summary, architecture match, sector profile, model profile
+- Brain query surface (`ta_brain_query.py`) extended with three new TACO modes: `incident_match`, `sector_risk`, `model_risk`
+- `ta_exporter.py` — `threat_watch` key auto-injected into ta-export bundle when corpus loaded
+- SIP dashboard: 📡 TAwatch sub-tab with domain coverage bar row, 65-domain × incident heatmap, incident feed
+- `scripts/tawatch/export_devtools.js` — browser DevTools script for corpus refresh
+
+**Data:** 755 incidents, all 10 DETECT domains covered. 755/755 sophistication scores joined from `incident_sophistication_scores` table. Corpus at `report/brain/tawatch_incidents.jsonl` (gitignored — regenerate via DevTools script).
+
+**Coverage highlights:** INJ=755 (42% high-conf), ABU=566, AGT=562, EXF/MCP=490, RES=316 (64% high-conf).
+
+**Why:** DETECT rules were validated only against synthetic pipeline runs. TAwatch grounds them against real-world AI-enabled attacks, enables CISO-facing proof-of-relevance ("DETECT-RES fires on 316 real incidents"), and opens a calibration loop: gaps in coverage → candidate synthetic MMDs → gym → brain ingest. Brain query modes give architects real incident context ("79 real operations targeted Financial services architectures, mean sophistication 7.88").
+
+**Alternatives rejected:**
+- Building a scraper: site uses Supabase with a public anon JWT — direct REST API query was cleaner and more reliable
+- Mapping incidents directly into governance_signals: incident fields are too sparse for signal-level evaluation; domain-level confidence mapping is the right abstraction layer
+
+**Blog candidate:** "755 Real Incidents, 10 Detection Domains: What It Looks Like When Threat Intelligence Meets a Detection Framework" — harvest from TAwatch heatmap findings, contrast synthetic vs real calibration, sophistication score distribution by sector/model.
+
+---
+
 ### Entry 251 — Principle-based reflection as meta-improvement layer above the flywheel
 
 **Date:** 2026-11-09
