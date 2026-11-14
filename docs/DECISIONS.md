@@ -4,6 +4,24 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 254 — TAwatch CISO infographic + rule priority scoring
+
+**Date:** 2026-11-14
+**Status:** Done
+
+**What:** Extended TAwatch from a 10-domain heatmap to a 67-rule CISO brief with a standalone infographic. Key changes:
+
+- **Priority score per rule:** `sev_weight × incident_count × conf_weight × mean_soph` where `conf_weight = (high + 0.5×med) / total`. Rewards precision, not just volume.
+- **CISO brief endpoint** (`GET /api/v1/tawatch/ciso-brief`): per-rule cards with incident grounding, top sectors, top 3 real operations by sophistication.
+- **Infographic** (`tawatch-infographic.html`): single-viewport, 3-column (Past/Now/Future). Bubble chart replaces sector bar — X=incident breadth, Y=high-conf%, bubble size=mean sophistication. So-what summaries generated from live data. DETECT domain legend.
+- **Emerging threats section:** rules not in top-10 by priority score but ranked by mean sophistication — the shape of what is coming, not what is urgent today.
+
+**Why bubble chart over table:** The quadrant reading matters more than the ranking. Bottom-right = recall problem (high volume, low precision, signals are wrong). Bottom-left = both problems. Top-right = well-calibrated. A ranked list does not surface which problem each domain has.
+
+**Alternatives rejected:** D3 canvas for the 67-rule heatmap — deferred; HTML table cap at 200 rows is sufficient for the current corpus. Per-incident sparklines in the brief — too dense for CISO view.
+
+---
+
 ### Entry 253 — EvalWatch: AI Risk Explorer evals catalogue (future work)
 
 **Date:** 2026-11-14
@@ -229,7 +247,8 @@ Principles 1–10 derived from TA's own design history and first-principles refl
 ### Entry 245 — P41 blog held for complete journey post-improvement
 
 **Date:** 2026-11-08
-**Status:** Decided — `docs/blog/drafts/draft_2026-11-07.md`
+**Status:** PUBLISHED 2026-11-14 — https://medium.com/@breadtan/i-built-the-benchmark-then-lost-to-it-c611de098146
+**Title (published):** "I Built the Benchmark. Then Lost to It."
 
 **What:** Blog P41 ("The Pipeline Came Fifth") is drafted but intentionally not published yet. The draft covers the benchmark gap findings. The decision is to hold publication until after Phases 1–3 improvements are implemented and re-run, so P41 can tell the complete arc: benchmark → gaps found → pipeline activation + ATLAS wiring + path depth → before/after score. A partial gap report is half a story; the full journey with verified improvement is the stronger post.
 
