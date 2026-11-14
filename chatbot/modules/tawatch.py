@@ -37,6 +37,56 @@ INCIDENTS_PATH   = ROOT / "report" / "brain" / "tawatch_incidents.jsonl"
 DETECT_RULES_PATH = ROOT / "policies" / "soc_detection_rules.yaml"
 
 
+def _load_rule_meta() -> Dict[str, Dict[str, str]]:
+    """Return {rule_id: {name, description, severity, kill_chain_stage}} from YAML.
+
+    Lightweight line-by-line scan — no full YAML parse dep.
+    """
+    result: Dict[str, Dict[str, str]] = {}
+    current: Dict[str, str] = {}
+    desc_lines: List[str] = []
+    in_desc = False
+    try:
+        for raw in DETECT_RULES_PATH.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.startswith("- id: DETECT-"):
+                if current.get("id"):
+                    if desc_lines:
+                        current["description"] = " ".join(desc_lines).strip()
+                    result[current["id"]] = current
+                current = {"id": line[len("- id: "):].strip()}
+                desc_lines = []
+                in_desc = False
+            elif current.get("id"):
+                if line.startswith("name: "):
+                    current["name"] = line[len("name: "):].strip()
+                    in_desc = False
+                elif line.startswith("severity: "):
+                    current["severity"] = line[len("severity: "):].strip()
+                    in_desc = False
+                elif line.startswith("kill_chain_stage: "):
+                    current["kill_chain_stage"] = line[len("kill_chain_stage: "):].strip()
+                    in_desc = False
+                elif line.startswith("description: >") or line.startswith("description: |"):
+                    in_desc = True
+                    desc_lines = []
+                elif line.startswith("description: "):
+                    current["description"] = line[len("description: "):].strip()
+                    in_desc = False
+                elif in_desc:
+                    if line and not line.startswith("-") and not line.endswith(":"):
+                        desc_lines.append(line)
+                    elif line.startswith("- ") or (line and line[0].isalpha() and line.endswith(":")):
+                        in_desc = False
+        if current.get("id"):
+            if desc_lines:
+                current["description"] = " ".join(desc_lines).strip()
+            result[current["id"]] = current
+    except OSError:
+        logger.warning("tawatch: soc_detection_rules.yaml not found — rule meta unavailable")
+    return result
+
+
 def _load_rule_ids() -> Dict[str, List[str]]:
     """Return {domain: [rule_id, ...]} loaded from soc_detection_rules.yaml.
 
@@ -447,6 +497,96 @@ class TAwatch:
         }
 
     # ── helpers ───────────────────────────────────────────────────────────────
+
+    # ── CISO brief ────────────────────────────────────────────────────────────
+
+    def ciso_brief(self) -> Dict[str, Any]:
+        """Return per-rule CISO briefing cards + cross-rule top-10 priority list.
+
+        Each card has: rule metadata (id, name, description, severity,
+        kill_chain_stage), incident stats, top-3 incidents by sophistication,
+        and a priority_score used to rank the top-10 list.
+
+        priority_score = incident_count × high_pct × mean_sophistication
+        (a rule with many high-confidence incidents on sophisticated operations
+        ranks highest).
+        """
+        self.load()
+        rule_meta   = _load_rule_meta()   # {rule_id: {name, description, severity, kill_chain_stage}}
+        rule_map    = _load_rule_ids()    # {domain: [rule_id]}
+        order       = {_CONFIDENCE_HIGH: 3, _CONFIDENCE_MEDIUM: 2, _CONFIDENCE_LOW: 1}
+
+        # flat rule list in domain order
+        domain_order = ["QC", "INJ", "EXF", "SCT", "MCP", "RES", "ABU", "SEC", "AGT", "PER"]
+        all_rules: List[str] = []
+        for d in domain_order:
+            all_rules.extend(rule_map.get(d, []))
+
+        cards = []
+        for rid in all_rules:
+            domain = rid.split("-")[1] if rid.count("-") >= 2 else "?"
+            # incidents matching this domain at any confidence
+            dom_incidents = []
+            for inc in self._incidents:
+                iid = inc.get("id", "")
+                conf = self._coverage.get(iid, {}).get(domain)
+                if conf:
+                    dom_incidents.append((inc, conf))
+
+            meta   = rule_meta.get(rid, {})
+            total  = len(dom_incidents)
+            high   = sum(1 for _, c in dom_incidents if c == _CONFIDENCE_HIGH)
+            med    = sum(1 for _, c in dom_incidents if c == _CONFIDENCE_MEDIUM)
+            sophs  = [i.get("sophistication") or 0 for i, _ in dom_incidents]
+            mean_soph = round(sum(sophs) / len(sophs), 2) if sophs else 0.0
+            high_pct  = round(high / total, 3) if total else 0.0
+            # weighted confidence blend so domains with only medium-conf still rank
+            conf_weight = round((high + med * 0.5) / total, 3) if total else 0.0
+            sev_weight = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}.get(meta.get("severity", ""), 1)
+            priority_score = round(sev_weight * total * conf_weight * mean_soph, 1)
+
+            # top-3 by sophistication
+            top3 = sorted(dom_incidents, key=lambda x: x[0].get("sophistication") or 0, reverse=True)[:3]
+            top3_summaries = []
+            for inc, conf in top3:
+                s = self._incident_summary(inc)
+                s["confidence"] = conf
+                top3_summaries.append(s)
+
+            top_sectors = _top_n(
+                [", ".join(_to_list(i.get("targeted_sector"))) for i, _ in dom_incidents if i.get("targeted_sector")], 3
+            )
+            cards.append({
+                "rule_id":        rid,
+                "domain":         domain,
+                "name":           meta.get("name", ""),
+                "description":    meta.get("description", ""),
+                "severity":       meta.get("severity", ""),
+                "kill_chain":     meta.get("kill_chain_stage", ""),
+                "incident_count": total,
+                "high_pct":       high_pct,
+                "mean_soph":      mean_soph,
+                "priority_score": priority_score,
+                "top_sectors":    top_sectors,
+                "top_incidents":  top3_summaries,
+            })
+
+        # top-10: best rule per domain (by priority_score), then rank across domains
+        seen_domains: set = set()
+        top10 = []
+        for card in sorted(cards, key=lambda c: c["priority_score"], reverse=True):
+            if card["domain"] not in seen_domains:
+                seen_domains.add(card["domain"])
+                top10.append(card)
+            if len(top10) == 10:
+                break
+
+        return {
+            "cards":        cards,
+            "top10":        top10,
+            "total_rules":  len(all_rules),
+            "total_incidents": len(self._incidents),
+        }
 
     def _filter(
         self,

@@ -6,6 +6,7 @@ GET /api/v1/tawatch/heatmap          — 65-rule × N-incident coverage matrix (
 GET /api/v1/tawatch/incidents        — paginated incident list with DETECT domain tags
 GET /api/v1/tawatch/domain/{domain}  — incidents matching a DETECT domain
 GET /api/v1/tawatch/coverage         — per-domain coverage stats (CISO view)
+GET /api/v1/tawatch/ciso-brief       — per-rule CISO cards + cross-rule top-10 priority list
 GET /api/v1/tawatch/match            — architecture → matched real incidents
 GET /api/v1/tawatch/sector/{sector}  — real-world attack profile for a sector
 GET /api/v1/tawatch/model/{model}    — real-world operation profile for a model family
@@ -97,6 +98,14 @@ async def tawatch_coverage(_: str = Depends(verify_api_key)):
         "total_incidents": tw.incident_count,
         "domains":         tw.coverage_summary(),
     }
+
+
+@router.get("/ciso-brief")
+async def tawatch_ciso_brief(_: str = Depends(verify_api_key)):
+    tw = get_tawatch()
+    if not tw.corpus_loaded:
+        raise HTTPException(status_code=503, detail="TAwatch corpus not loaded.")
+    return tw.ciso_brief()
 
 
 @router.get("/match")

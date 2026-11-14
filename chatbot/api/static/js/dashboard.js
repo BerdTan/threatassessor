@@ -20754,12 +20754,7 @@ class Dashboard {
 
     _sipSubTab(name) {
         this._sipActiveSubTab = name;
-        // Perspective gets its own full-bleed toolbar — hide both the header bar and sub-tab strip
-        const isPerspective = name === 'perspective';
-        const hdr   = document.getElementById('sip-header-bar');
-        const strip = document.getElementById('sip-sub-tab-strip');
-        if (hdr)   hdr.style.display   = isPerspective ? 'none' : '';
-        if (strip) strip.style.display = isPerspective ? 'none' : '';
+        // Perspective and TAwatch get full-bleed — hide the header bar and sub-tab strip
         const isFull = ['perspective', 'tawatch'].includes(name);
         const hdr   = document.getElementById('sip-header-bar');
         const strip = document.getElementById('sip-sub-tab-strip');
@@ -22235,8 +22230,6 @@ class Dashboard {
     // ── TAwatch ───────────────────────────────────────────────────────────────
 
     async _tawatchLoad() {
-        const sector = document.getElementById('tawatch-sector-filter')?.value || '';
-        const model  = document.getElementById('tawatch-model-filter')?.value  || '';
         const badge  = document.getElementById('tawatch-corpus-badge');
         const empty  = document.getElementById('tawatch-empty');
         const heatmap = document.getElementById('tawatch-heatmap');
@@ -22244,20 +22237,15 @@ class Dashboard {
         const covRow  = document.getElementById('tawatch-coverage-row');
         if (badge) badge.textContent = 'Loading…';
         try {
-            const params = new URLSearchParams();
-            if (sector) params.set('sector', sector);
-            if (model)  params.set('model', model);
-            const [hmData, covData] = await Promise.all([
-                this._apiFetch(`/api/v1/tawatch/heatmap?${params}`),
-                this._apiFetch('/api/v1/tawatch/coverage'),
+            const [brief, covData] = await Promise.all([
+                this._apiGet('/api/v1/tawatch/ciso-brief'),
+                this._apiGet('/api/v1/tawatch/coverage'),
             ]);
-            const incCount = hmData.incidents?.length || 0;
-            const total    = covData.total_incidents || 0;
-            if (badge) badge.textContent = `${incCount} of ${total} incidents`;
+            const total = brief.total_incidents || 0;
+            if (badge) badge.textContent = `${total} incidents · ${brief.total_rules} rules`;
             if (empty) empty.style.display = total === 0 ? 'flex' : 'none';
             this._tawatchRenderCoverage(covRow, covData.domains || []);
-            this._tawatchRenderHeatmap(heatmap, hmData);
-            this._tawatchRenderFeed(feed, hmData.incidents || []);
+            this._tawatchRenderCisoBrief(heatmap, feed, brief);
         } catch (err) {
             if (badge) badge.textContent = 'Error';
             if (empty) { empty.style.display = 'flex'; }
@@ -22285,66 +22273,241 @@ class Dashboard {
         }).join('');
     }
 
-    _tawatchRenderHeatmap(el, data) {
-        if (!el || !data) return;
-        // support both old domain-level response and new rule-level response
-        const rules      = data.rules    || data.domains || [];
-        const ruleMap    = data.rule_domain || {};
-        const incidents  = data.incidents || [];
-        const matrix     = data.matrix   || {};
-        if (!incidents.length) { el.innerHTML = '<span style="color:var(--text-tertiary);font-size:0.72rem;">No incidents match filters.</span>'; return; }
-
-        const CONF_COLOR = { high: '#14b8a6', medium: '#0d9488', low: '#134e4a', none: 'transparent' };
+    _tawatchRenderCisoBrief(leftEl, rightEl, brief) {
+        if (!leftEl || !brief) return;
         const DOMAIN_COLOR = {
             QC:'#8b5cf6', INJ:'#ef4444', EXF:'#f59e0b', SCT:'#64748b',
             MCP:'#3b82f6', RES:'#10b981', ABU:'#f97316', SEC:'#ec4899',
             AGT:'#14b8a6', PER:'#6366f1',
         };
+        const SEV_COLOR = { Critical:'#ef4444', High:'#f59e0b', Medium:'#3b82f6', Low:'#6b7280' };
+        const DOMAIN_ORDER = ['QC','INJ','EXF','SCT','MCP','RES','ABU','SEC','AGT','PER'];
 
-        // header: rule IDs with domain color stripe
-        const headerCols = rules.map(r => {
-            const dom = ruleMap[r] || r;
-            const col = DOMAIN_COLOR[dom] || '#6b7280';
-            const short = r.replace('DETECT-', '');
-            return `<th title="${r} (${dom})" style="padding:0.1rem 0.15rem;font-size:0.52rem;color:${col};text-align:center;white-space:nowrap;writing-mode:vertical-rl;transform:rotate(180deg);max-height:60px;overflow:hidden;">${short}</th>`;
-        }).join('');
-        const headerRow = `<tr>
-            <th style="padding:0.15rem 0.4rem;font-size:0.6rem;color:var(--text-tertiary);border-right:1px solid var(--border-color);min-width:110px;text-align:left;position:sticky;left:0;background:var(--card-bg);z-index:2;">Incident</th>
-            ${headerCols}
-        </tr>`;
+        // Store for rule-panel drill-in
+        this._tawatchBrief = brief;
 
-        // rows: cap at 200 for DOM performance; full dataset needs Phase 2 D3 canvas
-        const rows = incidents.slice(0, 200).map(inc => {
-            const cells = rules.map(r => {
-                const conf = matrix[inc.id]?.[r] || 'none';
-                const dom  = ruleMap[r] || '';
-                return conf === 'none'
-                    ? `<td style="padding:0.08rem;"></td>`
-                    : `<td style="padding:0.08rem;text-align:center;"><div style="width:7px;height:7px;border-radius:1px;background:${CONF_COLOR[conf]};margin:0 auto;" title="${r}: ${conf}"></div></td>`;
+        // ── Left: top-10 priority list ──────────────────────────────────────
+        const top10Html = `
+            <div style="padding:0.5rem 0.75rem 0.3rem;font-size:0.65rem;font-weight:700;color:var(--text-tertiary);letter-spacing:0.06em;border-bottom:1px solid var(--border-color);">TOP CONCERNS — ANALYST TO CISO</div>
+            ${brief.top10.map((c,i) => {
+                const dc = DOMAIN_COLOR[c.domain] || '#6b7280';
+                const sc = SEV_COLOR[c.severity]  || '#6b7280';
+                const short = c.rule_id.replace('DETECT-','');
+                const bar = Math.min(Math.round((c.priority_score / (brief.top10[0]?.priority_score||1)) * 80), 80);
+                return `<div data-rule="${this._esc(c.rule_id)}" onclick="window.dashboard&&window.dashboard._tawatchOpenCard('${this._esc(c.rule_id)}')"
+                    style="padding:0.45rem 0.75rem;border-bottom:1px solid var(--border-color)15;cursor:pointer;transition:background 0.1s;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
+                    <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.2rem;">
+                        <span style="font-size:0.6rem;color:var(--text-tertiary);min-width:14px;">${i+1}.</span>
+                        <span style="font-size:0.68rem;font-weight:700;color:${dc};">${this._esc(short)}</span>
+                        <span style="font-size:0.58rem;color:${sc};margin-left:auto;border:1px solid ${sc};border-radius:3px;padding:0.05rem 0.3rem;">${this._esc(c.severity)}</span>
+                    </div>
+                    <div style="font-size:0.62rem;color:var(--text-secondary);margin-bottom:0.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._esc(c.name.replace(/_/g,' '))}</div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <div style="flex:1;height:3px;background:var(--border-color);border-radius:2px;overflow:hidden;">
+                            <div style="width:${bar}%;height:100%;background:${dc};opacity:0.7;"></div>
+                        </div>
+                        <span style="font-size:0.58rem;color:var(--text-tertiary);white-space:nowrap;">${c.incident_count} incidents · ${Math.round(c.high_pct*100)}% high</span>
+                    </div>
+                </div>`;
+            }).join('')}`;
+        leftEl.innerHTML = top10Html;
+
+        // ── Right: grouped rule cards (all rules, expandable) ───────────────
+        if (!rightEl) return;
+        const byDomain = {};
+        for (const c of brief.cards) {
+            (byDomain[c.domain] = byDomain[c.domain] || []).push(c);
+        }
+        const domainSections = [...DOMAIN_ORDER.filter(d => byDomain[d]),
+            ...Object.keys(byDomain).filter(d => !DOMAIN_ORDER.includes(d))].map(domain => {
+            const dc = DOMAIN_COLOR[domain] || '#6b7280';
+            const rules = byDomain[domain] || [];
+            const ruleCards = rules.map(c => {
+                const sc = SEV_COLOR[c.severity] || '#6b7280';
+                const short = c.rule_id.replace('DETECT-','');
+                const sectors = c.top_sectors.slice(0,2).map(s =>
+                    `<span style="font-size:0.58rem;background:var(--border-color);border-radius:2px;padding:0.05rem 0.3rem;margin-right:0.2rem;">${this._esc(s)}</span>`
+                ).join('');
+                const top3 = c.top_incidents.map(inc =>
+                    `<div onclick="window.open('${this._esc(inc.source_url||'')}','_blank')" style="padding:0.3rem 0.5rem;border-left:2px solid ${dc};margin-bottom:0.3rem;cursor:pointer;background:var(--main-bg);border-radius:0 4px 4px 0;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:0.1rem;">
+                            <span style="font-size:0.65rem;font-weight:600;color:var(--text-color);">${this._esc(inc.title||inc.id)}</span>
+                            ${inc.sophistication ? `<span style="font-size:0.6rem;color:#f59e0b;flex-shrink:0;margin-left:0.4rem;">${inc.sophistication.toFixed(1)}</span>` : ''}
+                        </div>
+                        <div style="font-size:0.6rem;color:var(--text-tertiary);">${this._esc(inc.sector||'')} · ${this._esc(inc.actor_type||'')} · ${this._esc(inc.date||'')}</div>
+                    </div>`
+                ).join('');
+                return `<div id="card-${this._esc(c.rule_id)}" style="border:1px solid var(--border-color);border-radius:6px;margin-bottom:0.5rem;overflow:hidden;">
+                    <div onclick="window.dashboard&&window.dashboard._tawatchToggleCard('${this._esc(c.rule_id)}')"
+                        style="padding:0.45rem 0.6rem;display:flex;align-items:center;gap:0.5rem;cursor:pointer;background:var(--card-bg);"
+                        onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                        <span style="font-size:0.68rem;font-weight:700;color:${dc};min-width:90px;">${this._esc(short)}</span>
+                        <span style="font-size:0.62rem;color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this._esc(c.name.replace(/_/g,' '))}</span>
+                        <span style="font-size:0.58rem;color:${sc};border:1px solid ${sc};border-radius:3px;padding:0.05rem 0.3rem;flex-shrink:0;">${this._esc(c.severity)}</span>
+                        <span style="font-size:0.65rem;color:var(--text-tertiary);flex-shrink:0;min-width:60px;text-align:right;">${c.incident_count} inc</span>
+                        <span id="card-arrow-${this._esc(c.rule_id)}" style="font-size:0.65rem;color:var(--text-tertiary);flex-shrink:0;">▶</span>
+                    </div>
+                    <div id="card-body-${this._esc(c.rule_id)}" style="display:none;padding:0.6rem 0.75rem;border-top:1px solid var(--border-color);background:var(--main-bg);">
+                        <div style="font-size:0.68rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.3rem;">What it detects</div>
+                        <div style="font-size:0.68rem;color:var(--text-color);margin-bottom:0.6rem;line-height:1.5;">${this._esc(c.description)}</div>
+                        <div style="font-size:0.68rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.3rem;">So what — real-world grounding</div>
+                        <div style="font-size:0.68rem;color:var(--text-color);margin-bottom:0.5rem;line-height:1.5;">Fired on <strong style="color:var(--text-color);">${c.incident_count}</strong> real AI operations (${Math.round(c.high_pct*100)}% high-confidence, avg sophistication ${c.mean_soph}). Kill chain: <span style="color:${dc};">${this._esc(c.kill_chain||'—')}</span>. ${sectors ? 'Most active in: ' + sectors : ''}</div>
+                        ${top3 ? `<div style="font-size:0.65rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.3rem;">Top 3 most prominent operations</div>${top3}` : ''}
+                    </div>
+                </div>`;
             }).join('');
-            const soph = inc.sophistication ? `<span style="color:#f59e0b;font-size:0.58rem;margin-left:0.25rem;">${inc.sophistication.toFixed(1)}</span>` : '';
-            return `<tr style="border-bottom:1px solid var(--border-color)15;">
-                <td style="padding:0.12rem 0.4rem;border-right:1px solid var(--border-color);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:sticky;left:0;background:var(--card-bg);z-index:1;" title="${this._esc(inc.title)}">
-                    <span style="font-size:0.62rem;color:var(--text-color);">${this._esc(inc.id)}</span>${soph}
-                </td>${cells}</tr>`;
+            return `<div style="margin-bottom:0.75rem;">
+                <div style="font-size:0.65rem;font-weight:700;color:${dc};padding:0.3rem 0;letter-spacing:0.05em;border-bottom:1px solid ${dc}30;margin-bottom:0.4rem;">${domain} — ${rules.length} rules</div>
+                ${ruleCards}
+            </div>`;
         }).join('');
-
-        const overflow = incidents.length > 200
-            ? `<div style="font-size:0.65rem;color:var(--text-tertiary);padding:0.4rem 0.5rem;">${incidents.length - 200} more incidents not shown — use filters to narrow.</div>`
-            : '';
-        el.innerHTML = `<table style="border-collapse:collapse;table-layout:fixed;">${headerRow}${rows}</table>${overflow}`;
+        rightEl.innerHTML = domainSections;
     }
 
-    _tawatchRenderFeed(el, incidents) {
+    _tawatchToggleCard(ruleId) {
+        const body  = document.getElementById(`card-body-${ruleId}`);
+        const arrow = document.getElementById(`card-arrow-${ruleId}`);
+        if (!body) return;
+        const open = body.style.display === 'none';
+        body.style.display  = open ? 'block' : 'none';
+        if (arrow) arrow.textContent = open ? '▼' : '▶';
+    }
+
+    _tawatchOpenCard(ruleId) {
+        // scroll to card in right panel and open it
+        const card = document.getElementById(`card-${ruleId}`);
+        const feed = document.getElementById('tawatch-incident-list');
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            const body = document.getElementById(`card-body-${ruleId}`);
+            if (body && body.style.display === 'none') this._tawatchToggleCard(ruleId);
+        }
+    }
+
+    _tawatchRenderHeatmap(el, data) {
+        if (!el || !data) return;
+        const rules     = data.rules       || [];
+        const ruleMap   = data.rule_domain || {};
+        const incidents = data.incidents   || [];
+        const matrix    = data.matrix      || {};
+        if (!incidents.length) { el.innerHTML = '<span style="color:var(--text-tertiary);font-size:0.72rem;">No incidents match filters.</span>'; return; }
+
+        const DOMAIN_COLOR = {
+            QC:'#8b5cf6', INJ:'#ef4444', EXF:'#f59e0b', SCT:'#64748b',
+            MCP:'#3b82f6', RES:'#10b981', ABU:'#f97316', SEC:'#ec4899',
+            AGT:'#14b8a6', PER:'#6366f1',
+        };
+        const DOMAIN_ORDER = ['QC','INJ','EXF','SCT','MCP','RES','ABU','SEC','AGT','PER'];
+
+        // Build incident lookup for sector aggregation
+        const incById = {};
+        for (const inc of incidents) incById[inc.id] = inc;
+
+        // Compute per-rule stats from the matrix
+        const ruleStats = {};
+        for (const r of rules) {
+            let high = 0, med = 0, low = 0;
+            const sectorCount = {};
+            for (const [iid, row] of Object.entries(matrix)) {
+                const conf = row[r];
+                if (!conf || conf === 'none') continue;
+                if (conf === 'high') high++;
+                else if (conf === 'medium') med++;
+                else low++;
+                const sector = incById[iid]?.sector || '';
+                if (sector) sectorCount[sector] = (sectorCount[sector] || 0) + 1;
+            }
+            const total = high + med + low;
+            const topSectors = Object.entries(sectorCount).sort((a,b) => b[1]-a[1]).slice(0,2).map(([s]) => s);
+            ruleStats[r] = { total, high, med, low, topSectors };
+        }
+
+        // Group rules by domain in display order
+        const byDomain = {};
+        for (const r of rules) {
+            const d = ruleMap[r] || 'OTHER';
+            (byDomain[d] = byDomain[d] || []).push(r);
+        }
+        const domainGroups = [...DOMAIN_ORDER.filter(d => byDomain[d]),
+            ...Object.keys(byDomain).filter(d => !DOMAIN_ORDER.includes(d))];
+
+        // Render
+        const header = `<tr style="border-bottom:2px solid var(--border-color);">
+            <th style="padding:0.3rem 0.5rem;text-align:left;font-size:0.65rem;color:var(--text-tertiary);min-width:140px;">Rule</th>
+            <th style="padding:0.3rem 0.5rem;text-align:right;font-size:0.65rem;color:var(--text-tertiary);min-width:70px;">Incidents</th>
+            <th style="padding:0.3rem 0.5rem;text-align:right;font-size:0.65rem;color:var(--text-tertiary);min-width:55px;">High</th>
+            <th style="padding:0.3rem 0.5rem;text-align:right;font-size:0.65rem;color:var(--text-tertiary);min-width:55px;">Med</th>
+            <th style="padding:0.3rem 0.5rem;font-size:0.65rem;color:var(--text-tertiary);">Top Sectors</th>
+        </tr>`;
+
+        const rows = domainGroups.map(domain => {
+            const col = DOMAIN_COLOR[domain] || '#6b7280';
+            const domainHeader = `<tr>
+                <td colspan="5" style="padding:0.4rem 0.5rem 0.2rem;font-size:0.65rem;font-weight:700;color:${col};border-top:1px solid var(--border-color);letter-spacing:0.04em;">${domain}</td>
+            </tr>`;
+            const ruleRows = byDomain[domain].map(r => {
+                const st = ruleStats[r];
+                const short = r.replace('DETECT-', '');
+                const highPct = st.total ? Math.round(st.high / st.total * 100) : 0;
+                const medPct  = st.total ? Math.round(st.med  / st.total * 100) : 0;
+                const bar = st.total ? `<div style="display:inline-block;width:${Math.min(Math.round(st.total/8),80)}px;height:5px;background:${col};opacity:0.6;border-radius:2px;vertical-align:middle;margin-right:0.3rem;"></div>` : '';
+                const sectors = st.topSectors.map(s => `<span style="font-size:0.58rem;background:var(--border-color);border-radius:2px;padding:0.05rem 0.25rem;margin-right:0.2rem;opacity:0.85;">${this._esc(s)}</span>`).join('');
+                return `<tr data-rule="${this._esc(r)}" style="border-bottom:1px solid var(--border-color)15;cursor:pointer;transition:background 0.1s;"
+                    onmouseover="this.style.background='var(--hover-bg,rgba(255,255,255,0.04))'"
+                    onmouseout="this.style.background=''"
+                    onclick="window.dashboard&&window.dashboard._tawatchSelectRule(this,'${this._esc(r)}')">
+                    <td style="padding:0.28rem 0.5rem;font-size:0.68rem;color:${col};font-weight:600;white-space:nowrap;">${this._esc(short)}</td>
+                    <td style="padding:0.28rem 0.5rem;text-align:right;font-size:0.7rem;color:var(--text-color);">${bar}${st.total}</td>
+                    <td style="padding:0.28rem 0.5rem;text-align:right;font-size:0.68rem;color:#14b8a6;">${highPct}%</td>
+                    <td style="padding:0.28rem 0.5rem;text-align:right;font-size:0.68rem;color:#0d9488;">${medPct}%</td>
+                    <td style="padding:0.28rem 0.5rem;">${sectors}</td>
+                </tr>`;
+            }).join('');
+            return domainHeader + ruleRows;
+        }).join('');
+
+        this._tawatchHeatmapData = data;
+        el.innerHTML = `<table style="border-collapse:collapse;width:100%;">${header}${rows}</table>`;
+    }
+
+    _tawatchSelectRule(rowEl, rule) {
+        // Highlight selected row
+        const el = document.getElementById('tawatch-heatmap');
+        if (el) el.querySelectorAll('tr[data-rule]').forEach(r => r.style.background = '');
+        if (rowEl) rowEl.style.background = 'var(--hover-bg,rgba(255,255,255,0.07))';
+        // Filter feed to incidents matching this rule
+        const data = this._tawatchHeatmapData;
+        if (!data) return;
+        const matrix    = data.matrix   || {};
+        const incidents = data.incidents || [];
+        const incById   = {};
+        for (const inc of incidents) incById[inc.id] = inc;
+        const matched = Object.entries(matrix)
+            .filter(([iid, row]) => row[rule] && row[rule] !== 'none')
+            .map(([iid, row]) => ({ ...incById[iid], _conf: row[rule] }))
+            .filter(i => i.id)
+            .sort((a,b) => (b.sophistication||0) - (a.sophistication||0));
+        const feed = document.getElementById('tawatch-incident-list');
+        const short = rule.replace('DETECT-', '');
+        this._tawatchRenderFeed(feed, matched, short);
+    }
+
+    _tawatchRenderFeed(el, incidents, ruleLabel) {
         if (!el) return;
-        if (!incidents.length) { el.innerHTML = '<span style="color:var(--text-tertiary);padding:0.5rem;">No incidents.</span>'; return; }
-        el.innerHTML = incidents.slice(0, 50).map(inc => {
+        const header = ruleLabel
+            ? `<div style="padding:0.35rem 0.5rem;font-size:0.65rem;font-weight:600;color:#14b8a6;border-bottom:1px solid var(--border-color);background:var(--main-bg);">${this._esc(ruleLabel)} — ${incidents.length} incidents</div>`
+            : '';
+        if (!incidents.length) { el.innerHTML = header + '<span style="color:var(--text-tertiary);padding:0.5rem;display:block;">No incidents.</span>'; return; }
+        const CONF_COL = { high: '#14b8a6', medium: '#0d9488', low: '#5eead4' };
+        el.innerHTML = header + incidents.slice(0, 50).map(inc => {
             const soph = inc.sophistication ? `<span style="color:#f59e0b;font-size:0.65rem;float:right;">${inc.sophistication.toFixed(1)}</span>` : '';
+            const conf = inc._conf ? `<span style="font-size:0.58rem;color:${CONF_COL[inc._conf]||'#6b7280'};margin-left:0.3rem;">${inc._conf}</span>` : '';
             const tags = (inc.capabilities || []).slice(0,2).map(c =>
                 `<span style="font-size:0.6rem;background:var(--border-color);border-radius:3px;padding:0.1rem 0.3rem;margin-right:0.2rem;">${this._esc(c)}</span>`).join('');
             return `<div style="padding:0.4rem 0.5rem;border-bottom:1px solid var(--border-color)20;cursor:pointer;"
                 onclick="window.open('${this._esc(inc.source_url||'')}','_blank')">
-                <div style="font-size:0.68rem;font-weight:600;color:var(--text-color);margin-bottom:0.15rem;">${soph}${this._esc(inc.id)} · ${this._esc(inc.date||'')}</div>
+                <div style="font-size:0.68rem;font-weight:600;color:var(--text-color);margin-bottom:0.15rem;">${soph}${this._esc(inc.id)} · ${this._esc(inc.date||'')}${conf}</div>
                 <div style="font-size:0.65rem;color:var(--text-secondary);margin-bottom:0.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._esc(inc.title||'')}</div>
                 <div style="font-size:0.62rem;color:var(--text-tertiary);">${this._esc(inc.sector||'')} · ${this._esc(inc.actor_type||'')} · ${this._esc(inc.model||'')}</div>
                 <div style="margin-top:0.2rem;">${tags}</div>
@@ -22356,7 +22519,7 @@ class Dashboard {
         const badge = document.getElementById('tawatch-corpus-badge');
         if (badge) badge.textContent = 'Reloading…';
         try {
-            await this._apiFetch('/api/v1/tawatch/reload', { method: 'POST' });
+            await this._apiPost('/api/v1/tawatch/reload', {});
             await this._tawatchLoad();
         } catch (err) {
             if (badge) badge.textContent = 'Reload error';
