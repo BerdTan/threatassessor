@@ -556,6 +556,9 @@ class TAwatch:
             top_sectors = _top_n(
                 [", ".join(_to_list(i.get("targeted_sector"))) for i, _ in dom_incidents if i.get("targeted_sector")], 3
             )
+            top_risk_cats = _top_n(
+                [rc for i, _ in dom_incidents for rc in _to_list(i.get("risk_cats"))], 3
+            )
             cards.append({
                 "rule_id":        rid,
                 "domain":         domain,
@@ -568,6 +571,7 @@ class TAwatch:
                 "mean_soph":      mean_soph,
                 "priority_score": priority_score,
                 "top_sectors":    top_sectors,
+                "top_risk_cats":  top_risk_cats,
                 "top_incidents":  top3_summaries,
             })
 

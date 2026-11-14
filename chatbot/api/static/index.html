@@ -1545,7 +1545,28 @@
                             <option value="gemini">Gemini</option><option value="deepseek">DeepSeek</option>
                             <option value="llama">Llama</option><option value="qwen">Qwen</option>
                         </select>
+                        <div style="width:1px;height:1rem;background:var(--border-color);flex-shrink:0;"></div>
+                        <select id="tawatch-sev-filter" onchange="window.dashboard&&window.dashboard._tawatchFilter()" style="padding:0.26rem 0.4rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.72rem;">
+                            <option value="">All severity</option>
+                            <option value="Critical">Critical</option><option value="High">High</option>
+                            <option value="Medium">Medium</option><option value="Low">Low</option>
+                        </select>
+                        <select id="tawatch-domain-filter" onchange="window.dashboard&&window.dashboard._tawatchFilter()" style="padding:0.26rem 0.4rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.72rem;">
+                            <option value="">All domains</option>
+                            <option value="QC">QC</option><option value="INJ">INJ</option><option value="EXF">EXF</option>
+                            <option value="SCT">SCT</option><option value="MCP">MCP</option><option value="RES">RES</option>
+                            <option value="ABU">ABU</option><option value="SEC">SEC</option><option value="AGT">AGT</option>
+                            <option value="PER">PER</option>
+                        </select>
+                        <select id="tawatch-riskcat-filter" onchange="window.dashboard&&window.dashboard._tawatchFilter()" style="padding:0.26rem 0.4rem;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-color);font-size:0.72rem;">
+                            <option value="">All incident types</option>
+                            <option value="Cyber Offense">Cyber Offense</option>
+                            <option value="Manipulation">Manipulation</option>
+                            <option value="Loss of Control">Loss of Control</option>
+                            <option value="Biological Risk">Biological Risk</option>
+                        </select>
                         <span id="tawatch-corpus-badge" style="font-size:0.68rem;color:var(--text-tertiary);margin-left:auto;"></span>
+                        <button onclick="window.dashboard&&window.dashboard._tawatchInfoGraphic()" style="padding:0.2rem 0.6rem;border:1px solid #14b8a6;border-radius:4px;background:transparent;color:#14b8a6;font-size:0.7rem;cursor:pointer;" title="Open DETECT infographic">📊 Infographic</button>
                         <button onclick="window.dashboard&&window.dashboard._tawatchReload()" style="padding:0.2rem 0.6rem;border:1px solid var(--border-color);border-radius:4px;background:transparent;color:var(--text-tertiary);font-size:0.7rem;cursor:pointer;" title="Reload incident corpus from disk">↺ Reload</button>
                     </div>
                     <!-- Coverage row -->

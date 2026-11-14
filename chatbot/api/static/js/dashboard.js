@@ -22527,6 +22527,37 @@ class Dashboard {
         }
     }
 
+    _tawatchFilter() {
+        const brief = this._tawatchBrief;
+        if (!brief) return;
+        const sev     = document.getElementById('tawatch-sev-filter')?.value || '';
+        const domain  = document.getElementById('tawatch-domain-filter')?.value || '';
+        const riskCat = document.getElementById('tawatch-riskcat-filter')?.value || '';
+        const filtered = {
+            ...brief,
+            cards: brief.cards.filter(c => {
+                if (sev     && c.severity !== sev)                                    return false;
+                if (domain  && c.domain   !== domain)                                 return false;
+                if (riskCat && !(c.top_risk_cats||[]).includes(riskCat))              return false;
+                return true;
+            }),
+        };
+        // recompute top-10 from filtered cards
+        const seen = new Set();
+        filtered.top10 = [];
+        for (const c of [...filtered.cards].sort((a,b) => b.priority_score - a.priority_score)) {
+            if (!seen.has(c.domain)) { seen.add(c.domain); filtered.top10.push(c); }
+            if (filtered.top10.length === 10) break;
+        }
+        const heatmap = document.getElementById('tawatch-heatmap');
+        const feed    = document.getElementById('tawatch-incident-list');
+        this._tawatchRenderCisoBrief(heatmap, feed, filtered);
+    }
+
+    _tawatchInfoGraphic() {
+        window.open('/static/tawatch-infographic.html', '_blank');
+    }
+
     // ── TAgym ─────────────────────────────────────────────────────────────────
 
     async _gymStart() {
