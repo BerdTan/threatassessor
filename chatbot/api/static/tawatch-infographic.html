@@ -95,10 +95,10 @@ canvas{display:block;}
     <div class="panel">
       <div class="ph"><span class="pill pill-past">PAST</span> What DETECT Has Caught</div>
       <div class="pb">
-        <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.4rem;">Coverage by domain — incident count / % high-conf</div>
+        <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.4rem;">Domains — incidents / high-conf %</div>
         <div class="chips" id="chips"></div>
-        <div style="font-size:0.6rem;color:var(--muted);margin:0.5rem 0 0.3rem;">Top sectors targeted</div>
-        <canvas id="sector-chart" height="130"></canvas>
+        <div style="font-size:0.6rem;color:var(--muted);margin:0.5rem 0 0.2rem;">Coverage breadth vs detection quality · bubble = sophistication</div>
+        <canvas id="bubble-chart" height="140"></canvas>
       </div>
     </div>
 
@@ -170,23 +170,30 @@ function render(brief,cov){
     return`<div class="chip" style="border-color:${col}40;"><div class="chip-code" style="color:${col};">${d}</div><div class="chip-n" style="color:${col};">${x.total_incidents||0}</div><div class="chip-p">${Math.round((x.high_confidence||0)/Math.max(x.total_incidents||1,1)*100)}%↑</div></div>`;
   }).join('');
 
-  // sector chart
-  const sv={};
-  for(const d of(cov.domains||[]))for(const s of(d.top_sectors||[]))sv[s]=(sv[s]||0)+(d.total_incidents||0);
-  const se=Object.entries(sv).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  new Chart(document.getElementById('sector-chart'),{
-    type:'bar',
-    data:{labels:se.map(([s])=>s.length>18?s.slice(0,16)+'…':s),
-          datasets:[{data:se.map(([,v])=>v),backgroundColor:se.map((_,i)=>`hsl(${i*55},55%,52%)`),borderRadius:3,borderSkipped:false}]},
-    options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{
-      x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b949e',font:{size:9}}},
-      y:{grid:{display:false},ticks:{color:'#8b949e',font:{size:9}}}},
+  // bubble chart: x=incident count, y=high_pct, r=mean_soph, color=domain
+  const dm2={};for(const d of(cov.domains||[]))dm2[d.domain]=d;
+  const bubbleData=DO.filter(d=>dm2[d]).map(d=>{
+    const x=dm2[d];
+    const cards=brief.cards.filter(c=>c.domain===d);
+    const ms=cards.length?cards.reduce((s,c)=>s+(c.mean_soph||0),0)/cards.length:0;
+    return{d,x:x.total_incidents||0,y:Math.round((x.high_confidence||0)/Math.max(x.total_incidents||1,1)*100),r:Math.max(ms*2.2,4)};
+  });
+  new Chart(document.getElementById('bubble-chart'),{
+    type:'bubble',
+    data:{datasets:bubbleData.map(p=>({label:p.d,data:[{x:p.x,y:p.y,r:p.r}],
+      backgroundColor:(DC[p.d]||'#6b7280')+'99',borderColor:DC[p.d]||'#6b7280',borderWidth:1.5}))},
+    options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{
+      const d=bubbleData[ctx.datasetIndex];
+      return`${d.d}: ${d.x} inc, ${d.y}% high-conf`;
+    }}}},scales:{
+      x:{title:{display:true,text:'Incidents',color:'#8b949e',font:{size:9}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b949e',font:{size:9}}},
+      y:{title:{display:true,text:'High-conf %',color:'#8b949e',font:{size:9}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b949e',font:{size:9}},min:0,max:100}},
     responsive:true,maintainAspectRatio:false},
   });
 
   // top-10
   const mx=brief.top10[0]?.priority_score||1;
-  document.getElementById('top10').innerHTML=brief.top10.map((c,i)=>{
+  document.getElementById('top10').innerHTML=brief.top10.slice(0,8).map((c,i)=>{
     const dc=DC[c.domain]||'#6b7280',sc=SC[c.severity]||'#6b7280';
     const pct=Math.round(c.priority_score/mx*100);
     return`<div class="pr">
@@ -203,11 +210,10 @@ function render(brief,cov){
   const injC=brief.cards.filter(c=>c.domain==='INJ'&&c.severity==='Critical').length;
   const topS=Math.max(...brief.cards.map(c=>c.mean_soph||0));
   const sigs=[
-    {i:'🤖',t:'Agentic ops growing fastest',b:`AGT: ${agI} operations. Multi-agent coordination now Critical-severity — autonomous pipelines without supervisor oversight are the primary expansion vector.`},
-    {i:'💉',t:'Injection is the broadest surface',b:`INJ matches all 755 incidents. ${injC} Critical rules. Expect payloads to shift from naive prompts to structured instruction overrides.`},
-    {i:'📈',t:`Sophistication rising (peak ${topS.toFixed(1)}/10)`,b:'State-sponsored actors fielding more capable operations. Architectures without adversarial validation and critic divergence detection are highest-priority targets.'},
-    {i:'🔗',t:'Supply chain & persistence emerging',b:'SCT/PER (267+54 incidents) signal a shift from one-time attacks to embedded compromise in AI pipelines.'},
-    {i:'🕵️',t:'QC gaps exploited as stealth vector',b:'Confidence suppression and divergence overriding make compromised outputs look clean. Will increase as input-layer defences mature.'},
+    {i:'🤖',t:'Agentic ops growing fastest',b:`AGT: ${agI} real operations. Multi-agent coordination (AGT-004/005) now Critical — autonomous pipelines without oversight are the primary new vector.`},
+    {i:'💉',t:'Injection is the broadest surface',b:`INJ matches all 755 incidents; ${injC} Critical rules. Payloads shifting from naive prompts toward structured instruction overrides as defences mature.`},
+    {i:'📈',t:`Sophistication trending up (peak ${topS.toFixed(1)}/10)`,b:'State actors fielding more capable ops. Architectures without adversarial input validation are the highest-priority hardening target.'},
+    {i:'🕵️',t:'QC manipulation used as stealth cover',b:'Confidence suppression and divergence overriding make compromised outputs appear clean. Will grow as input-layer detection improves.'},
   ];
   document.getElementById('signals').innerHTML=sigs.map(s=>`<div class="sig"><div class="sig-ico">${s.i}</div><div><div class="sig-t">${e(s.t)}</div><div class="sig-b">${e(s.b)}</div></div></div>`).join('');
 
