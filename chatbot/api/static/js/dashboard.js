@@ -22287,25 +22287,52 @@ class Dashboard {
 
     _tawatchRenderHeatmap(el, data) {
         if (!el || !data) return;
-        const domains   = data.domains  || [];
-        const incidents = data.incidents || [];
-        const matrix    = data.matrix   || {};
-        const CONF_COLOR = { high: '#14b8a6', medium: '#0d9488', low: '#134e4a', none: 'transparent' };
+        // support both old domain-level response and new rule-level response
+        const rules      = data.rules    || data.domains || [];
+        const ruleMap    = data.rule_domain || {};
+        const incidents  = data.incidents || [];
+        const matrix     = data.matrix   || {};
         if (!incidents.length) { el.innerHTML = '<span style="color:var(--text-tertiary);font-size:0.72rem;">No incidents match filters.</span>'; return; }
-        const headerRow = `<tr><th style="padding:0.15rem 0.4rem;font-size:0.6rem;color:var(--text-tertiary);border-right:1px solid var(--border-color);min-width:120px;text-align:left;">Incident</th>`
-            + domains.map(d => `<th style="padding:0.15rem 0.3rem;font-size:0.6rem;color:var(--text-tertiary);text-align:center;">${d}</th>`).join('') + '</tr>';
-        const rows = incidents.slice(0, 100).map(inc => {
-            const cells = domains.map(d => {
-                const conf = matrix[inc.id]?.[d] || 'none';
-                return `<td style="text-align:center;padding:0.1rem;"><div style="width:10px;height:10px;border-radius:2px;background:${CONF_COLOR[conf]};margin:0 auto;" title="${d}: ${conf}"></div></td>`;
+
+        const CONF_COLOR = { high: '#14b8a6', medium: '#0d9488', low: '#134e4a', none: 'transparent' };
+        const DOMAIN_COLOR = {
+            QC:'#8b5cf6', INJ:'#ef4444', EXF:'#f59e0b', SCT:'#64748b',
+            MCP:'#3b82f6', RES:'#10b981', ABU:'#f97316', SEC:'#ec4899',
+            AGT:'#14b8a6', PER:'#6366f1',
+        };
+
+        // header: rule IDs with domain color stripe
+        const headerCols = rules.map(r => {
+            const dom = ruleMap[r] || r;
+            const col = DOMAIN_COLOR[dom] || '#6b7280';
+            const short = r.replace('DETECT-', '');
+            return `<th title="${r} (${dom})" style="padding:0.1rem 0.15rem;font-size:0.52rem;color:${col};text-align:center;white-space:nowrap;writing-mode:vertical-rl;transform:rotate(180deg);max-height:60px;overflow:hidden;">${short}</th>`;
+        }).join('');
+        const headerRow = `<tr>
+            <th style="padding:0.15rem 0.4rem;font-size:0.6rem;color:var(--text-tertiary);border-right:1px solid var(--border-color);min-width:110px;text-align:left;position:sticky;left:0;background:var(--card-bg);z-index:2;">Incident</th>
+            ${headerCols}
+        </tr>`;
+
+        // rows: cap at 200 for DOM performance; full dataset needs Phase 2 D3 canvas
+        const rows = incidents.slice(0, 200).map(inc => {
+            const cells = rules.map(r => {
+                const conf = matrix[inc.id]?.[r] || 'none';
+                const dom  = ruleMap[r] || '';
+                return conf === 'none'
+                    ? `<td style="padding:0.08rem;"></td>`
+                    : `<td style="padding:0.08rem;text-align:center;"><div style="width:7px;height:7px;border-radius:1px;background:${CONF_COLOR[conf]};margin:0 auto;" title="${r}: ${conf}"></div></td>`;
             }).join('');
-            const soph = inc.sophistication ? `<span style="color:#f59e0b;font-size:0.58rem;margin-left:0.3rem;">${inc.sophistication.toFixed(1)}</span>` : '';
-            return `<tr style="border-bottom:1px solid var(--border-color)20;">
-                <td style="padding:0.15rem 0.4rem;border-right:1px solid var(--border-color);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${this._esc(inc.title)}">
-                    <span style="font-size:0.65rem;color:var(--text-color);">${this._esc(inc.id)}</span>${soph}
+            const soph = inc.sophistication ? `<span style="color:#f59e0b;font-size:0.58rem;margin-left:0.25rem;">${inc.sophistication.toFixed(1)}</span>` : '';
+            return `<tr style="border-bottom:1px solid var(--border-color)15;">
+                <td style="padding:0.12rem 0.4rem;border-right:1px solid var(--border-color);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:sticky;left:0;background:var(--card-bg);z-index:1;" title="${this._esc(inc.title)}">
+                    <span style="font-size:0.62rem;color:var(--text-color);">${this._esc(inc.id)}</span>${soph}
                 </td>${cells}</tr>`;
         }).join('');
-        el.innerHTML = `<table style="border-collapse:collapse;width:100%;">${headerRow}${rows}</table>`;
+
+        const overflow = incidents.length > 200
+            ? `<div style="font-size:0.65rem;color:var(--text-tertiary);padding:0.4rem 0.5rem;">${incidents.length - 200} more incidents not shown — use filters to narrow.</div>`
+            : '';
+        el.innerHTML = `<table style="border-collapse:collapse;table-layout:fixed;">${headerRow}${rows}</table>${overflow}`;
     }
 
     _tawatchRenderFeed(el, incidents) {

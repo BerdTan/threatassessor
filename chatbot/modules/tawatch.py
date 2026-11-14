@@ -33,7 +33,33 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
-INCIDENTS_PATH = ROOT / "report" / "brain" / "tawatch_incidents.jsonl"
+INCIDENTS_PATH   = ROOT / "report" / "brain" / "tawatch_incidents.jsonl"
+DETECT_RULES_PATH = ROOT / "policies" / "soc_detection_rules.yaml"
+
+
+def _load_rule_ids() -> Dict[str, List[str]]:
+    """Return {domain: [rule_id, ...]} loaded from soc_detection_rules.yaml.
+
+    Uses a lightweight line scan — no full YAML parse dependency.
+    Rule IDs are lines matching '  - id: DETECT-<DOMAIN>-NNN'.
+    Returns domain-ordered dict; falls back to hardcoded 10 domains if file missing.
+    """
+    domain_order = ["QC", "INJ", "EXF", "SCT", "MCP", "RES", "ABU", "SEC", "AGT", "PER"]
+    result: Dict[str, List[str]] = {d: [] for d in domain_order}
+    try:
+        for line in DETECT_RULES_PATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("- id: DETECT-"):
+                rule_id = line[len("- id: "):].strip()
+                parts = rule_id.split("-")
+                if len(parts) >= 3:
+                    domain = parts[1]
+                    result.setdefault(domain, [])
+                    if rule_id not in result[domain]:
+                        result[domain].append(rule_id)
+    except OSError:
+        logger.warning("tawatch: soc_detection_rules.yaml not found — rule-level heatmap unavailable")
+    return result
 
 # ── Domain → tactic / capability mappings ─────────────────────────────────────
 
@@ -238,23 +264,40 @@ class TAwatch:
         actor_filter:  Optional[str] = None,
         model_filter:  Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Return the coverage matrix:
-          {
-            "incidents": [...],      # filtered incident list (summary)
-            "domains":   [...],      # ordered domain list
-            "matrix":    {           # incident_id → {domain: confidence|"none"}
-                "op#113": {"EXF": "high", "MCP": "medium", "INJ": "none", ...},
-                ...
-            },
-            "domain_stats": {        # per-domain aggregate
-                "EXF": {"count": 89, "high_pct": 0.72},
-                ...
-            },
-          }
+        """Return the rule-level coverage matrix.
+
+        {
+          "incidents":    [...],       # filtered incident list (summary)
+          "rules":        [...],       # ordered rule IDs e.g. ["DETECT-QC-001", ...]
+          "domains":      [...],       # ordered domain codes (for column grouping)
+          "rule_domain":  {...},       # rule_id → domain code
+          "matrix":       {            # incident_id → {rule_id: confidence|"none"}
+              "op#113": {"DETECT-EXF-001": "high", "DETECT-MCP-001": "medium", ...},
+          },
+          "rule_stats":   {            # rule_id → {count, high_pct}
+              "DETECT-EXF-001": {"count": 89, "high_pct": 0.72},
+          },
+        }
+
+        Each incident's domain-level confidence is propagated to all rules within that
+        domain (e.g. incident matched INJ at high → all DETECT-INJ-* at high).
         """
         self.load()
-        DOMAINS = ["QC", "INJ", "EXF", "SCT", "MCP", "RES", "ABU", "SEC", "AGT", "PER"]
+        rule_map = _load_rule_ids()   # {domain: [rule_id, ...]}
+        domain_order = ["QC", "INJ", "EXF", "SCT", "MCP", "RES", "ABU", "SEC", "AGT", "PER"]
+
+        # flat ordered rule list; unknown domains appended at end
+        rules: List[str] = []
+        rule_domain: Dict[str, str] = {}
+        seen_domains = set(rule_map.keys())
+        for d in domain_order:
+            for rid in rule_map.get(d, []):
+                rules.append(rid)
+                rule_domain[rid] = d
+        for d in sorted(seen_domains - set(domain_order)):
+            for rid in rule_map[d]:
+                rules.append(rid)
+                rule_domain[rid] = d
 
         incidents = self._filter(sector_filter, actor_filter, model_filter)
         filtered_ids = {inc["id"] for inc in incidents}
@@ -262,23 +305,30 @@ class TAwatch:
         matrix: Dict[str, Dict[str, str]] = {}
         for inc in incidents:
             iid = inc["id"]
-            dom = self._coverage.get(iid, {})
-            matrix[iid] = {d: dom.get(d, "none") for d in DOMAINS}
+            dom_conf = self._coverage.get(iid, {})
+            row: Dict[str, str] = {}
+            for rid in rules:
+                domain = rule_domain[rid]
+                row[rid] = dom_conf.get(domain, "none")
+            matrix[iid] = row
 
-        domain_stats: Dict[str, Dict[str, Any]] = {}
-        for d in DOMAINS:
-            matched = [iid for iid in filtered_ids if self._coverage.get(iid, {}).get(d)]
-            high    = [iid for iid in matched if self._coverage.get(iid, {}).get(d) == _CONFIDENCE_HIGH]
-            domain_stats[d] = {
+        rule_stats: Dict[str, Dict[str, Any]] = {}
+        for rid in rules:
+            domain = rule_domain[rid]
+            matched = [iid for iid in filtered_ids if self._coverage.get(iid, {}).get(domain)]
+            high    = [iid for iid in matched if self._coverage.get(iid, {}).get(domain) == _CONFIDENCE_HIGH]
+            rule_stats[rid] = {
                 "count":    len(matched),
                 "high_pct": round(len(high) / len(matched), 3) if matched else 0.0,
             }
 
         return {
-            "incidents":    [self._incident_summary(i) for i in incidents],
-            "domains":      DOMAINS,
-            "matrix":       matrix,
-            "domain_stats": domain_stats,
+            "incidents":   [self._incident_summary(i) for i in incidents],
+            "rules":       rules,
+            "domains":     [d for d in domain_order if d in seen_domains],
+            "rule_domain": rule_domain,
+            "matrix":      matrix,
+            "rule_stats":  rule_stats,
         }
 
     # ── coverage queries ──────────────────────────────────────────────────────

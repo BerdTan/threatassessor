@@ -2,7 +2,7 @@
 TAwatch API routes.
 
 GET /api/v1/tawatch/status           — corpus stats + load state
-GET /api/v1/tawatch/heatmap          — 65-domain × N-incident coverage matrix
+GET /api/v1/tawatch/heatmap          — 65-rule × N-incident coverage matrix (rule_id columns, grouped by domain)
 GET /api/v1/tawatch/incidents        — paginated incident list with DETECT domain tags
 GET /api/v1/tawatch/domain/{domain}  — incidents matching a DETECT domain
 GET /api/v1/tawatch/coverage         — per-domain coverage stats (CISO view)

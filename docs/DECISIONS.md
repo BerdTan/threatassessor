@@ -4,6 +4,21 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 253 — EvalWatch: AI Risk Explorer evals catalogue (future work)
+
+**Date:** 2026-11-14
+**Status:** Design direction logged — not started
+
+**What:** AI Risk Explorer has an evals catalogue at airiskexplorer.com/evals: 1,417 AI safety/capability evaluations (self evals, third-party evals, benchmarks, system cards). Fields: Risk category (Cyber Offense, Loss of Control, Biological Risk, Manipulation), Capability tags (Reconnaissance, Artifact Development, Attack Orchestration, Deception, Situational Awareness, Multi-agent dynamics), Eval type, Model, Org. No per-eval scores visible in the listing — each row links to a source paper.
+
+**Potential use:** The Capability taxonomy maps closely to DETECT domains. EvalWatch would mirror TAwatch's pattern: ingest catalogue → map capability tags to DETECT rules → expose a coverage view alongside the incident heatmap. The eval type field (self vs. third-party vs. benchmark) could annotate source independence for MoE critic weighting.
+
+**Why deferred:** No scores in the listing — only links to source papers. Without per-eval scores/results, it's a catalogue index, not benchmark data. TMbench and TAgym cannot use it until per-row detail is extracted. TAwatch-style domain mapping is feasible with the catalogue alone, but the signal-to-noise is lower than incidents.
+
+**When to revisit:** After TAwatch heatmap is at 65-rule granularity and the calibration loop (gaps → synthetic MMDs → gym) is live. EvalWatch then adds a second ground-truth layer alongside incidents.
+
+---
+
 ### Entry 252 — TAwatch: AI Risk Explorer incident corpus integrated into DETECT + Brain
 
 **Date:** 2026-11-13
