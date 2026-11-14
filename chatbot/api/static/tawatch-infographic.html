@@ -106,6 +106,9 @@ canvas{display:block;}
   <div class="stats" id="stats"></div>
   <div id="stat-sowhat"></div>
 
+  <!-- DETECT domain legend -->
+  <div id="detect-legend" style="display:flex;flex-wrap:wrap;gap:0.3rem 0.6rem;flex-shrink:0;"></div>
+
   <!-- Three-column body -->
   <div class="body3">
 
@@ -183,6 +186,28 @@ function render(brief,cov){
     {v:crit,                 l:'Critical Rules',       col:'var(--red)'},
     {v:avgS,                 l:'Avg Sophistication',   col:'var(--amber)'},
   ].map(s=>`<div class="stat"><div class="stat-val" style="color:${s.col};">${s.v}</div><div class="stat-lbl">${s.l}</div></div>`).join('');
+
+  // DETECT domain legend
+  const DOMAIN_LABELS={
+    QC:'Quality & Confidence Manipulation',
+    INJ:'Input Injection & Evasion',
+    EXF:'Exfiltration & Leakage',
+    SCT:'Supply Chain & Tampering',
+    MCP:'MCP & API Abuse',
+    RES:'Resource & Coverage',
+    ABU:'Abuse & Harvesting',
+    SEC:'Security Control Evasion',
+    AGT:'Agent Identity & Ops',
+    PER:'Persistence',
+  };
+  document.getElementById('detect-legend').innerHTML=DO.map(d=>{
+    const col=DC[d]||'#6b7280';
+    return`<span style="display:inline-flex;align-items:center;gap:0.25rem;font-size:0.58rem;color:var(--muted);">`+
+      `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${col};flex-shrink:0;"></span>`+
+      `<span style="color:${col};font-weight:700;">${d}</span>`+
+      `<span>${DOMAIN_LABELS[d]||d}</span>`+
+      `</span>`;
+  }).join('');
 
   // domain chips
   const dm={};for(const d of(cov.domains||[]))dm[d.domain]=d;
