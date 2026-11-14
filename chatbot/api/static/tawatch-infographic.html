@@ -7,321 +7,222 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 :root {
-  --bg:      #0d1117;
-  --card:    #161b22;
-  --border:  #30363d;
-  --text:    #e6edf3;
-  --muted:   #8b949e;
-  --teal:    #14b8a6;
-  --red:     #ef4444;
-  --amber:   #f59e0b;
-  --purple:  #8b5cf6;
-  --blue:    #3b82f6;
-  --green:   #10b981;
-  --orange:  #f97316;
-  --pink:    #ec4899;
-  --indigo:  #6366f1;
-  --slate:   #64748b;
+  --bg:     #0d1117; --card:  #161b22; --border: #21262d;
+  --text:   #e6edf3; --muted: #8b949e;
+  --teal:   #14b8a6; --red:   #ef4444; --amber: #f59e0b;
+  --purple: #8b5cf6; --blue:  #3b82f6; --green: #10b981;
+  --orange: #f97316; --pink:  #ec4899; --indigo:#6366f1; --slate:#64748b;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height: 100vh; }
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     min-height:100vh;display:flex;flex-direction:column;align-items:center;}
 
-header {
-  padding: 2rem 2.5rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: flex-end; justify-content: space-between;
-}
-header h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
-header h1 span { color: var(--teal); }
-header p  { font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; }
-.ts { font-size: 0.72rem; color: var(--muted); }
+#loading,#error{padding:4rem;color:var(--muted);font-size:0.9rem;text-align:center;}
+#error{color:var(--red);display:none;}
 
-.stat-row {
-  display: flex; gap: 1rem; padding: 1.25rem 2.5rem;
-  border-bottom: 1px solid var(--border);
-}
-.stat { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; flex: 1; }
-.stat-val { font-size: 2rem; font-weight: 800; line-height: 1; margin-bottom: 0.25rem; }
-.stat-lbl { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+#content{width:100%;max-width:1140px;padding:1.25rem 1.25rem 2rem;display:none;flex-direction:column;gap:0.75rem;}
 
-section { padding: 1.5rem 2.5rem; border-bottom: 1px solid var(--border); }
-section h2 {
-  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
-  color: var(--muted); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;
-}
-section h2 .pill {
-  font-size: 0.65rem; padding: 0.15rem 0.5rem; border-radius: 20px;
-  font-weight: 700; letter-spacing: 0.04em;
-}
-.pill-past   { background: rgba(99,102,241,0.15); color: var(--indigo); }
-.pill-now    { background: rgba(20,184,166,0.15); color: var(--teal); }
-.pill-future { background: rgba(245,158,11,0.15); color: var(--amber); }
+/* ── header ── */
+.hd{display:flex;align-items:baseline;justify-content:space-between;padding-bottom:0.6rem;border-bottom:1px solid var(--border);}
+.hd h1{font-size:1.1rem;font-weight:800;letter-spacing:-0.01em;}
+.hd h1 span{color:var(--teal);}
+.hd small{font-size:0.65rem;color:var(--muted);}
 
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+/* ── stat strip ── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0.5rem;}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:0.6rem 0.75rem;}
+.stat-val{font-size:1.5rem;font-weight:800;line-height:1;}
+.stat-lbl{font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-top:0.15rem;}
 
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
-.card-title { font-size: 0.75rem; font-weight: 700; margin-bottom: 0.5rem; }
+/* ── three-column body ── */
+.body3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;align-items:start;}
 
-/* Top-10 priority list */
-.priority-row {
-  display: flex; align-items: center; gap: 0.75rem;
-  padding: 0.5rem 0; border-bottom: 1px solid var(--border);
-}
-.priority-row:last-child { border-bottom: none; }
-.pr-rank { font-size: 1.1rem; font-weight: 800; min-width: 28px; color: var(--muted); }
-.pr-rule { font-size: 0.75rem; font-weight: 700; min-width: 110px; }
-.pr-name { font-size: 0.7rem; color: var(--muted); flex: 1; }
-.pr-bar-wrap { width: 90px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; flex-shrink: 0; }
-.pr-bar { height: 100%; border-radius: 3px; }
-.pr-count { font-size: 0.65rem; color: var(--muted); min-width: 70px; text-align: right; white-space: nowrap; }
-.sev-badge {
-  font-size: 0.58rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 700;
-  flex-shrink: 0; border: 1px solid;
-}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.ph{font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;
+    padding:0.4rem 0.65rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.4rem;}
+.pill{font-size:0.58rem;padding:0.1rem 0.4rem;border-radius:20px;font-weight:700;}
+.pill-past  {background:rgba(99,102,241,.15);color:var(--indigo);}
+.pill-now   {background:rgba(20,184,.15);color:var(--teal);}
+.pill-future{background:rgba(245,158,11,.15);color:var(--amber);}
+.pb{padding:0.6rem 0.65rem;}
 
-/* Domain chips */
-.domain-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
-.domain-chip {
-  display: flex; flex-direction: column; align-items: center;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 8px; padding: 0.6rem 0.8rem; min-width: 70px;
-}
-.domain-chip .dc-code { font-size: 0.72rem; font-weight: 800; }
-.domain-chip .dc-count { font-size: 1.1rem; font-weight: 700; }
-.domain-chip .dc-lbl { font-size: 0.6rem; color: var(--muted); }
+/* domain chips */
+.chips{display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.5rem;}
+.chip{display:flex;flex-direction:column;align-items:center;border:1px solid;border-radius:5px;
+      padding:0.3rem 0.4rem;min-width:52px;}
+.chip-code{font-size:0.62rem;font-weight:800;}
+.chip-n   {font-size:0.9rem;font-weight:700;line-height:1;}
+.chip-p   {font-size:0.55rem;color:var(--muted);}
 
-/* Future signals */
-.signal { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid var(--border)15; }
-.signal:last-child { border-bottom: none; }
-.signal-icon { font-size: 1.3rem; flex-shrink: 0; }
-.signal-title { font-size: 0.75rem; font-weight: 700; margin-bottom: 0.2rem; }
-.signal-body  { font-size: 0.7rem; color: var(--muted); line-height: 1.5; }
+/* top-10 list */
+.pr{display:flex;align-items:center;gap:0.4rem;padding:0.3rem 0;border-bottom:1px solid var(--border)15;}
+.pr:last-child{border-bottom:none;}
+.pr-rank{font-size:0.75rem;font-weight:800;min-width:16px;color:var(--muted);}
+.pr-rule{font-size:0.65rem;font-weight:700;min-width:80px;}
+.pr-bar-w{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+.pr-bar{height:100%;border-radius:2px;}
+.pr-ct{font-size:0.58rem;color:var(--muted);min-width:40px;text-align:right;white-space:nowrap;}
+.sev{font-size:0.52rem;padding:0.05rem 0.28rem;border-radius:3px;border:1px solid;font-weight:700;flex-shrink:0;}
 
-#loading { text-align: center; padding: 4rem; color: var(--muted); font-size: 0.9rem; }
-#error   { text-align: center; padding: 4rem; color: var(--red); font-size: 0.9rem; display: none; }
-#content { display: none; }
+/* future signals */
+.sig{display:flex;gap:0.4rem;padding:0.35rem 0;border-bottom:1px solid var(--border)15;}
+.sig:last-child{border-bottom:none;}
+.sig-ico{font-size:0.95rem;flex-shrink:0;line-height:1.3;}
+.sig-t{font-size:0.65rem;font-weight:700;margin-bottom:0.1rem;}
+.sig-b{font-size:0.6rem;color:var(--muted);line-height:1.4;}
 
-@media (max-width: 700px) {
-  .grid2, .grid3 { grid-template-columns: 1fr; }
-  .stat-row { flex-direction: column; }
-  header { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
-  section, .stat-row, header { padding-left: 1rem; padding-right: 1rem; }
-}
+canvas{display:block;}
 </style>
 </head>
 <body>
-
-<div id="loading">Loading DETECT intelligence brief…</div>
-<div id="error">Failed to load data. Ensure the TA API is running at localhost:8000.</div>
+<div id="loading">Loading…</div>
+<div id="error">Failed to load. Is the TA API running at localhost:8000?</div>
 
 <div id="content">
-<header>
-  <div>
+  <!-- Header -->
+  <div class="hd">
     <h1>TA <span>DETECT</span> — Threat Intelligence Brief</h1>
-    <p>AI-enabled attack detection: grounded in 755 real-world operations from AI Risk Explorer</p>
+    <small id="ts"></small>
   </div>
-  <div class="ts" id="ts"></div>
-</header>
 
-<!-- Stat tiles -->
-<div class="stat-row" id="stat-row"></div>
+  <!-- Stat strip -->
+  <div class="stats" id="stats"></div>
 
-<!-- Past -->
-<section>
-  <h2><span class="pill pill-past">PAST</span> What DETECT Has Already Caught</h2>
-  <div class="grid2">
-    <div class="card">
-      <div class="card-title">Incident Coverage by Domain</div>
-      <div class="domain-chips" id="domain-chips"></div>
+  <!-- Three-column body -->
+  <div class="body3">
+
+    <!-- PAST -->
+    <div class="panel">
+      <div class="ph"><span class="pill pill-past">PAST</span> What DETECT Has Caught</div>
+      <div class="pb">
+        <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.4rem;">Coverage by domain — incident count / % high-conf</div>
+        <div class="chips" id="chips"></div>
+        <div style="font-size:0.6rem;color:var(--muted);margin:0.5rem 0 0.3rem;">Top sectors targeted</div>
+        <canvas id="sector-chart" height="130"></canvas>
+      </div>
     </div>
-    <div class="card">
-      <div class="card-title">Top Sectors Under Attack</div>
-      <canvas id="sector-chart" height="180"></canvas>
+
+    <!-- NOW -->
+    <div class="panel">
+      <div class="ph"><span class="pill pill-now">NOW</span> Top 10 Concerns — Analyst → CISO</div>
+      <div class="pb" id="top10"></div>
     </div>
+
+    <!-- FUTURE -->
+    <div class="panel">
+      <div class="ph"><span class="pill pill-future">FUTURE</span> Signals to Watch</div>
+      <div class="pb">
+        <div id="signals"></div>
+        <div style="font-size:0.6rem;color:var(--muted);margin:0.5rem 0 0.3rem;">Avg sophistication by domain</div>
+        <canvas id="radar-chart" height="160"></canvas>
+      </div>
+    </div>
+
   </div>
-</section>
 
-<!-- Now -->
-<section>
-  <h2><span class="pill pill-now">NOW</span> Top 10 Active Concerns — Analyst to CISO</h2>
-  <div class="grid2">
-    <div id="top10-list"></div>
-    <div class="card">
-      <div class="card-title">Priority Score Distribution</div>
-      <canvas id="priority-chart" height="260"></canvas>
-    </div>
+  <div style="font-size:0.6rem;color:var(--muted);text-align:center;">
+    ThreatAssessor · AI Risk Explorer (airiskexplorer.com) · soc_detection_rules.yaml
   </div>
-</section>
-
-<!-- Future -->
-<section>
-  <h2><span class="pill pill-future">FUTURE</span> What to Expect — Emerging Signals</h2>
-  <div class="grid2">
-    <div class="card" id="future-signals"></div>
-    <div class="card">
-      <div class="card-title">Sophistication Spread by Domain</div>
-      <canvas id="soph-chart" height="220"></canvas>
-    </div>
-  </div>
-</section>
-
-<footer style="padding:1rem 2.5rem;font-size:0.65rem;color:var(--muted);border-top:1px solid var(--border);">
-  Generated by ThreatAssessor · Data: AI Risk Explorer (airiskexplorer.com) · Rules: soc_detection_rules.yaml
-</footer>
 </div>
 
 <script>
-const DOMAIN_COLOR = {
-  QC:'#8b5cf6', INJ:'#ef4444', EXF:'#f59e0b', SCT:'#64748b',
-  MCP:'#3b82f6', RES:'#10b981', ABU:'#f97316', SEC:'#ec4899',
-  AGT:'#14b8a6', PER:'#6366f1',
-};
-const SEV_COLOR = { Critical:'#ef4444', High:'#f59e0b', Medium:'#3b82f6', Low:'#6b7280' };
+const DC={QC:'#8b5cf6',INJ:'#ef4444',EXF:'#f59e0b',SCT:'#64748b',MCP:'#3b82f6',
+          RES:'#10b981',ABU:'#f97316',SEC:'#ec4899',AGT:'#14b8a6',PER:'#6366f1'};
+const SC={Critical:'#ef4444',High:'#f59e0b',Medium:'#3b82f6',Low:'#6b7280'};
+const DO=['QC','INJ','EXF','SCT','MCP','RES','ABU','SEC','AGT','PER'];
+const e=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-function esc(s) { return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-async function load() {
-  try {
-    const key = localStorage.getItem('ta_api_key') || '';
-    const headers = key ? { 'TM-API-KEY': key } : {};
-    const [brief, cov] = await Promise.all([
-      fetch('/api/v1/tawatch/ciso-brief', { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-      fetch('/api/v1/tawatch/coverage',   { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+async function load(){
+  try{
+    const k=localStorage.getItem('tm_api_key')||'';
+    const h=k?{'TM-API-KEY':k}:{};
+    const [brief,cov]=await Promise.all([
+      fetch('/api/v1/tawatch/ciso-brief',{headers:h}).then(r=>r.ok?r.json():Promise.reject(r.status)),
+      fetch('/api/v1/tawatch/coverage',  {headers:h}).then(r=>r.ok?r.json():Promise.reject(r.status)),
     ]);
-    render(brief, cov);
-  } catch(e) {
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('error').style.display = 'block';
-    console.error(e);
+    render(brief,cov);
+  }catch(err){
+    document.getElementById('loading').style.display='none';
+    document.getElementById('error').style.display='block';
   }
 }
 
-function render(brief, cov) {
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('content').style.display = 'block';
-  document.getElementById('ts').textContent = new Date().toLocaleString();
+function render(brief,cov){
+  document.getElementById('loading').style.display='none';
+  const c=document.getElementById('content');
+  c.style.display='flex';
+  document.getElementById('ts').textContent=new Date().toLocaleString();
 
-  // ── Stat tiles ──────────────────────────────────────────────────────────
-  const critCount = brief.cards.filter(c => c.severity === 'Critical').length;
-  const avgSoph   = brief.top10.reduce((s,c) => s + (c.mean_soph||0), 0) / (brief.top10.length||1);
-  document.getElementById('stat-row').innerHTML = [
-    { val: brief.total_incidents, lbl: 'Real AI Operations', col: '#14b8a6' },
-    { val: brief.total_rules,     lbl: 'DETECT Rules Active', col: '#8b5cf6' },
-    { val: critCount,             lbl: 'Critical-Severity Rules', col: '#ef4444' },
-    { val: avgSoph.toFixed(1),    lbl: 'Avg Sophistication Score', col: '#f59e0b' },
-  ].map(s => `<div class="stat"><div class="stat-val" style="color:${s.col};">${s.val}</div><div class="stat-lbl">${s.lbl}</div></div>`).join('');
+  // stats
+  const crit=brief.cards.filter(x=>x.severity==='Critical').length;
+  const avgS=(brief.top10.reduce((s,x)=>s+(x.mean_soph||0),0)/(brief.top10.length||1)).toFixed(1);
+  document.getElementById('stats').innerHTML=[
+    {v:brief.total_incidents,l:'Real AI Operations',  col:'var(--teal)'},
+    {v:brief.total_rules,    l:'DETECT Rules Active', col:'var(--purple)'},
+    {v:crit,                 l:'Critical Rules',       col:'var(--red)'},
+    {v:avgS,                 l:'Avg Sophistication',   col:'var(--amber)'},
+  ].map(s=>`<div class="stat"><div class="stat-val" style="color:${s.col};">${s.v}</div><div class="stat-lbl">${s.l}</div></div>`).join('');
 
-  // ── Domain chips ─────────────────────────────────────────────────────────
-  const domMap = {};
-  for (const d of (cov.domains||[])) domMap[d.domain] = d;
-  const DORDER = ['QC','INJ','EXF','SCT','MCP','RES','ABU','SEC','AGT','PER'];
-  document.getElementById('domain-chips').innerHTML = DORDER.map(d => {
-    const info = domMap[d] || {};
-    const col  = DOMAIN_COLOR[d] || '#6b7280';
-    return `<div class="domain-chip" style="border-color:${col}30;">
-      <div class="dc-code" style="color:${col};">${d}</div>
-      <div class="dc-count" style="color:${col};">${info.total_incidents||0}</div>
-      <div class="dc-lbl">${Math.round((info.high_confidence||0)/(info.total_incidents||1)*100)}% high</div>
-    </div>`;
+  // domain chips
+  const dm={};for(const d of(cov.domains||[]))dm[d.domain]=d;
+  document.getElementById('chips').innerHTML=DO.map(d=>{
+    const x=dm[d]||{};const col=DC[d]||'#6b7280';
+    return`<div class="chip" style="border-color:${col}40;"><div class="chip-code" style="color:${col};">${d}</div><div class="chip-n" style="color:${col};">${x.total_incidents||0}</div><div class="chip-p">${Math.round((x.high_confidence||0)/Math.max(x.total_incidents||1,1)*100)}%↑</div></div>`;
   }).join('');
 
-  // ── Sector chart ─────────────────────────────────────────────────────────
-  const sectors = {};
-  for (const d of (cov.domains||[])) {
-    for (const s of (d.top_sectors||[])) sectors[s] = (sectors[s]||0) + (d.total_incidents||0);
-  }
-  const sectorEntries = Object.entries(sectors).sort((a,b) => b[1]-a[1]).slice(0,8);
-  new Chart(document.getElementById('sector-chart'), {
-    type: 'bar',
-    data: {
-      labels: sectorEntries.map(([s]) => s),
-      datasets: [{ data: sectorEntries.map(([,v]) => v),
-        backgroundColor: sectorEntries.map((_,i) => `hsl(${i*40},60%,55%)`),
-        borderRadius: 4, borderSkipped: false }],
-    },
-    options: { indexAxis:'y', plugins:{legend:{display:false}}, scales:{
-      x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8b949e',font:{size:10}}},
-      y:{grid:{display:false},ticks:{color:'#8b949e',font:{size:10}}},
-    }, responsive:true, maintainAspectRatio:false },
+  // sector chart
+  const sv={};
+  for(const d of(cov.domains||[]))for(const s of(d.top_sectors||[]))sv[s]=(sv[s]||0)+(d.total_incidents||0);
+  const se=Object.entries(sv).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  new Chart(document.getElementById('sector-chart'),{
+    type:'bar',
+    data:{labels:se.map(([s])=>s.length>18?s.slice(0,16)+'…':s),
+          datasets:[{data:se.map(([,v])=>v),backgroundColor:se.map((_,i)=>`hsl(${i*55},55%,52%)`),borderRadius:3,borderSkipped:false}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{
+      x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b949e',font:{size:9}}},
+      y:{grid:{display:false},ticks:{color:'#8b949e',font:{size:9}}}},
+    responsive:true,maintainAspectRatio:false},
   });
 
-  // ── Top-10 list ───────────────────────────────────────────────────────────
-  const maxScore = brief.top10[0]?.priority_score || 1;
-  document.getElementById('top10-list').innerHTML = brief.top10.map((c,i) => {
-    const dc  = DOMAIN_COLOR[c.domain] || '#6b7280';
-    const sc  = SEV_COLOR[c.severity]  || '#6b7280';
-    const pct = Math.round(c.priority_score / maxScore * 100);
-    return `<div class="priority-row">
+  // top-10
+  const mx=brief.top10[0]?.priority_score||1;
+  document.getElementById('top10').innerHTML=brief.top10.map((c,i)=>{
+    const dc=DC[c.domain]||'#6b7280',sc=SC[c.severity]||'#6b7280';
+    const pct=Math.round(c.priority_score/mx*100);
+    return`<div class="pr">
       <div class="pr-rank" style="color:${i<3?dc:'var(--muted)'};">${i+1}</div>
-      <div class="pr-rule" style="color:${dc};">${esc(c.rule_id.replace('DETECT-',''))}</div>
-      <div class="pr-name">${esc(c.name.replace(/_/g,' '))}</div>
-      <div class="pr-bar-wrap"><div class="pr-bar" style="width:${pct}%;background:${dc};"></div></div>
-      <span class="sev-badge" style="color:${sc};border-color:${sc};">${esc(c.severity)}</span>
-      <div class="pr-count">${c.incident_count} inc · ${Math.round(c.high_pct*100)}% ↑</div>
+      <div class="pr-rule" style="color:${dc};">${e(c.rule_id.replace('DETECT-',''))}</div>
+      <div class="pr-bar-w"><div class="pr-bar" style="width:${pct}%;background:${dc};"></div></div>
+      <span class="sev" style="color:${sc};border-color:${sc};">${e(c.severity.slice(0,4))}</span>
+      <div class="pr-ct">${c.incident_count}i·${Math.round(c.high_pct*100)}%↑</div>
     </div>`;
   }).join('');
 
-  // ── Priority score chart ──────────────────────────────────────────────────
-  new Chart(document.getElementById('priority-chart'), {
-    type: 'bar',
-    data: {
-      labels: brief.top10.map(c => c.rule_id.replace('DETECT-','')),
-      datasets: [{ data: brief.top10.map(c => c.priority_score),
-        backgroundColor: brief.top10.map(c => DOMAIN_COLOR[c.domain]||'#6b7280'),
-        borderRadius: 4, borderSkipped: false }],
-    },
-    options: { indexAxis:'y', plugins:{legend:{display:false}}, scales:{
-      x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8b949e',font:{size:10}}},
-      y:{grid:{display:false},ticks:{color:'#8b949e',font:{size:10}}},
-    }, responsive:true, maintainAspectRatio:false },
-  });
-
-  // ── Future signals ────────────────────────────────────────────────────────
-  const agentRules   = brief.cards.filter(c => c.domain === 'AGT').reduce((s,c) => s + c.incident_count, 0);
-  const topSoph      = Math.max(...brief.cards.map(c => c.mean_soph||0));
-  const injCrit      = brief.cards.filter(c => c.domain === 'INJ' && c.severity === 'Critical').length;
-  const signals = [
-    { icon:'🤖', title:'Agentic orchestration is the fastest-growing attack surface',
-      body:`AGT domain covers ${agentRules} real operations. Multi-agent coordination (DETECT-AGT-004/005) now carries Critical severity — autonomous AI pipelines without supervisor oversight are the primary attack vector expansion to watch.` },
-    { icon:'💉', title:'Adversarial input injection remains the broadest threat',
-      body:`INJ domain matches all 755 corpus incidents. ${injCrit} INJ rules are Critical-severity. Expect prompt injection to evolve from naive payloads toward structured instruction overrides as LLM defences mature.` },
-    { icon:'📈', title:`Sophistication trending upward — peak score ${topSoph.toFixed(1)}/10`,
-      body:'State-sponsored and cybercriminal actors are fielding increasingly sophisticated operations. Architectures without adversarial input validation and critic divergence detection are the highest-priority hardening targets.' },
-    { icon:'🔗', title:'Supply chain and persistence becoming persistent concerns',
-      body:'SCT and PER domains (267 and 54 incidents) signal a shift from one-time attacks to embedded compromise. DETECT-SCT-001 (Critical) and DETECT-PER-001 indicate attackers establishing long-term footholds in AI pipelines.' },
-    { icon:'🔍', title:'Quality control gaps exploited as a stealth vector',
-      body:'QC domain (89 incidents): synthesis-layer manipulation (confidence suppression, divergence overriding) is used to make a compromised pipeline output look clean. Expect this to increase as defenders focus on input-layer detection.' },
+  // future signals
+  const agI=brief.cards.filter(c=>c.domain==='AGT').reduce((s,c)=>s+c.incident_count,0);
+  const injC=brief.cards.filter(c=>c.domain==='INJ'&&c.severity==='Critical').length;
+  const topS=Math.max(...brief.cards.map(c=>c.mean_soph||0));
+  const sigs=[
+    {i:'🤖',t:'Agentic ops growing fastest',b:`AGT: ${agI} operations. Multi-agent coordination now Critical-severity — autonomous pipelines without supervisor oversight are the primary expansion vector.`},
+    {i:'💉',t:'Injection is the broadest surface',b:`INJ matches all 755 incidents. ${injC} Critical rules. Expect payloads to shift from naive prompts to structured instruction overrides.`},
+    {i:'📈',t:`Sophistication rising (peak ${topS.toFixed(1)}/10)`,b:'State-sponsored actors fielding more capable operations. Architectures without adversarial validation and critic divergence detection are highest-priority targets.'},
+    {i:'🔗',t:'Supply chain & persistence emerging',b:'SCT/PER (267+54 incidents) signal a shift from one-time attacks to embedded compromise in AI pipelines.'},
+    {i:'🕵️',t:'QC gaps exploited as stealth vector',b:'Confidence suppression and divergence overriding make compromised outputs look clean. Will increase as input-layer defences mature.'},
   ];
-  document.getElementById('future-signals').innerHTML =
-    `<div class="card-title">Five Signals to Watch</div>` +
-    signals.map(s => `<div class="signal">
-      <div class="signal-icon">${s.icon}</div>
-      <div><div class="signal-title">${esc(s.title)}</div><div class="signal-body">${esc(s.body)}</div></div>
-    </div>`).join('');
+  document.getElementById('signals').innerHTML=sigs.map(s=>`<div class="sig"><div class="sig-ico">${s.i}</div><div><div class="sig-t">${e(s.t)}</div><div class="sig-b">${e(s.b)}</div></div></div>`).join('');
 
-  // ── Sophistication spread chart ───────────────────────────────────────────
-  const domSoph = DORDER.map(d => {
-    const cards = brief.cards.filter(c => c.domain === d);
-    const avg = cards.length ? cards.reduce((s,c) => s+(c.mean_soph||0),0)/cards.length : 0;
-    return { d, avg: parseFloat(avg.toFixed(2)) };
-  }).filter(x => x.avg > 0);
-  new Chart(document.getElementById('soph-chart'), {
-    type: 'radar',
-    data: {
-      labels: domSoph.map(x => x.d),
-      datasets: [{ label: 'Avg Sophistication', data: domSoph.map(x => x.avg),
-        backgroundColor: 'rgba(20,184,166,0.15)', borderColor: '#14b8a6',
-        pointBackgroundColor: domSoph.map(x => DOMAIN_COLOR[x.d]||'#14b8a6'),
-        pointRadius: 5, borderWidth: 2 }],
-    },
-    options: { plugins:{legend:{display:false}},
-      scales:{ r:{ grid:{color:'rgba(255,255,255,0.08)'}, ticks:{display:false},
-        pointLabels:{color:'#8b949e',font:{size:11}}, suggestedMin:0, suggestedMax:10 }},
-      responsive:true, maintainAspectRatio:false },
+  // radar
+  const rd=DO.map(d=>{const cs=brief.cards.filter(c=>c.domain===d);return{d,v:cs.length?parseFloat((cs.reduce((s,c)=>s+(c.mean_soph||0),0)/cs.length).toFixed(2)):0};}).filter(x=>x.v>0);
+  new Chart(document.getElementById('radar-chart'),{
+    type:'radar',
+    data:{labels:rd.map(x=>x.d),datasets:[{label:'Avg Soph',data:rd.map(x=>x.v),
+      backgroundColor:'rgba(20,184,166,0.12)',borderColor:'#14b8a6',
+      pointBackgroundColor:rd.map(x=>DC[x.d]||'#14b8a6'),pointRadius:4,borderWidth:1.5}]},
+    options:{plugins:{legend:{display:false}},scales:{r:{grid:{color:'rgba(255,255,255,0.07)'},
+      ticks:{display:false},pointLabels:{color:'#8b949e',font:{size:10}},suggestedMin:0,suggestedMax:10}},
+    responsive:true,maintainAspectRatio:false},
   });
 }
-
 load();
 </script>
 </body>
