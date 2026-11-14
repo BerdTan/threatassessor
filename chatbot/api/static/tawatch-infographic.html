@@ -74,6 +74,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
 .chart-wrap{flex:1;min-height:0;position:relative;}
 canvas{display:block;}
+/* so-what summaries */
+.sowhat{font-size:0.6rem;color:var(--muted);line-height:1.55;padding:0.4rem 0.5rem;
+        border-top:1px solid var(--border);margin-top:0.4rem;flex-shrink:0;}
+.sowhat strong{color:var(--text);}
+#stat-sowhat{font-size:0.6rem;color:var(--muted);line-height:1.55;
+             background:var(--card);border:1px solid var(--border);border-radius:6px;
+             padding:0.45rem 0.75rem;flex-shrink:0;}
+#stat-sowhat strong{color:var(--text);}
 /* emerging threats */
 .emerge-hd{font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;
            color:var(--amber);margin-top:0.5rem;padding-top:0.4rem;border-top:1px solid var(--border);flex-shrink:0;}
@@ -96,6 +104,7 @@ canvas{display:block;}
 
   <!-- Stat strip -->
   <div class="stats" id="stats"></div>
+  <div id="stat-sowhat"></div>
 
   <!-- Three-column body -->
   <div class="body3">
@@ -108,6 +117,7 @@ canvas{display:block;}
         <div class="chips" id="chips" style="flex-shrink:0;"></div>
         <div style="font-size:0.6rem;color:var(--muted);margin:0.35rem 0 0.2rem;flex-shrink:0;">Coverage breadth vs detection quality · bubble = sophistication</div>
         <div class="chart-wrap"><canvas id="bubble-chart"></canvas></div>
+        <div class="sowhat" id="past-sowhat"></div>
       </div>
     </div>
 
@@ -115,6 +125,7 @@ canvas{display:block;}
     <div class="panel">
       <div class="ph"><span class="pill pill-now">NOW</span> Top Priority Concerns — Analyst → CISO</div>
       <div class="pb" id="top10" style="overflow-y:auto;"></div>
+      <div class="sowhat" id="now-sowhat" style="margin:0;border-top:1px solid var(--border);padding:0.4rem 0.65rem;"></div>
     </div>
 
     <!-- FUTURE -->
@@ -124,6 +135,7 @@ canvas{display:block;}
         <div id="signals" style="flex-shrink:0;"></div>
         <div style="font-size:0.6rem;color:var(--muted);margin:0.4rem 0 0.2rem;flex-shrink:0;">Avg sophistication by domain</div>
         <div class="chart-wrap"><canvas id="radar-chart"></canvas></div>
+        <div class="sowhat" id="future-sowhat"></div>
       </div>
     </div>
 
@@ -196,7 +208,7 @@ function render(brief,cov){
       return`${d.d}: ${d.x} inc, ${d.y}% high-conf`;
     }}}},scales:{
       x:{title:{display:true,text:'Incidents',color:'#8b949e',font:{size:9}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b949e',font:{size:9}},min:0},
-      y:{title:{display:true,text:'High-conf %',color:'#8b949e',font:{size:9}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b949e',font:{size:9}},min:0,max:100}},
+      y:{title:{display:true,text:'High-conf %',color:'#8b949e',font:{size:9}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b949e',font:{size:9}},min:0,reverse:false,suggestedMax:Math.max(...bubbleData.map(p=>p.y))*1.25||10}},
     responsive:true,maintainAspectRatio:false},
   });
 
@@ -245,6 +257,37 @@ function render(brief,cov){
   ];
   document.getElementById('signals').innerHTML=sigs.map(s=>`<div class="sig"><div class="sig-ico">${s.i}</div><div><div class="sig-t">${e(s.t)}</div><div class="sig-b">${e(s.b)}</div></div></div>`).join('');
 
+  // so-what: stats bar
+  const topDomain=brief.top10[0]?.domain||'—';
+  const totalHigh=brief.cards.reduce((s,c)=>s+Math.round((c.high_pct||0)*c.incident_count),0);
+  const highPct=brief.total_incidents?Math.round(totalHigh/brief.total_incidents*100):0;
+  document.getElementById('stat-sowhat').innerHTML=
+    `<strong>${brief.total_incidents} real AI operations</strong> mapped across <strong>${brief.total_rules} DETECT rules</strong> — `+
+    `<strong>${crit} Critical</strong> rules active, avg sophistication <strong>${avgS}/10</strong>. `+
+    `${highPct}% of detections carry high confidence. <strong>${topDomain}</strong> is the highest-priority domain right now.`;
+
+  // so-what: past
+  const sortedBreadth=[...DO].filter(d=>dm2[d]).sort((a,b)=>(dm2[b].total_incidents||0)-(dm2[a].total_incidents||0));
+  const sortedQuality=[...DO].filter(d=>dm2[d]).sort((a,b)=>{
+    const qa=(dm2[a].high_confidence||0)/Math.max(dm2[a].total_incidents||1,1);
+    const qb=(dm2[b].high_confidence||0)/Math.max(dm2[b].total_incidents||1,1);
+    return qb-qa;
+  });
+  const bTop=sortedBreadth[0],qTop=sortedQuality[0];
+  document.getElementById('past-sowhat').innerHTML=
+    `<strong>${bTop}</strong> has the widest footprint (${dm2[bTop]?.total_incidents||0} operations). `+
+    `<strong>${qTop}</strong> catches threats most reliably`+(bTop===qTop?' — both depth and breadth in one domain':'')+`. `+
+    `Domains below the diagonal have broad exposure but weaker detection — the highest hardening ROI.`;
+
+  // so-what: now (populated after emerging is computed — patch it in)
+  const nowEl=document.getElementById('now-sowhat');
+  const r1=brief.top10[0],r2=brief.top10[1];
+  const emergName=emerging[0]?.rule_id?.replace('DETECT-','')||null;
+  nowEl.innerHTML=
+    `<strong>${r1?.rule_id?.replace('DETECT-','')||'—'}</strong> and <strong>${r2?.rule_id?.replace('DETECT-','')||'—'}</strong> are the most urgent gaps today. `+
+    (emergName?`<strong>${emergName}</strong> is not yet critical but sophistication is rising — watch the next 30 days. `:'') +
+    `Priority score weights severity, incident volume, and high-confidence share.`;
+
   // radar
   const rd=DO.map(d=>{const cs=brief.cards.filter(c=>c.domain===d);return{d,v:cs.length?parseFloat((cs.reduce((s,c)=>s+(c.mean_soph||0),0)/cs.length).toFixed(2)):0};}).filter(x=>x.v>0);
   new Chart(document.getElementById('radar-chart'),{
@@ -256,6 +299,16 @@ function render(brief,cov){
       ticks:{display:false},pointLabels:{color:'#8b949e',font:{size:10}},suggestedMin:0,suggestedMax:10}},
     responsive:true,maintainAspectRatio:false},
   });
+
+  // so-what: future
+  const rdSorted=[...rd].sort((a,b)=>b.v-a.v);
+  const peakD=rdSorted[0],secondD=rdSorted[1];
+  const agI2=brief.cards.filter(c=>c.domain==='AGT').reduce((s,c)=>s+c.incident_count,0);
+  document.getElementById('future-sowhat').innerHTML=
+    `<strong>${peakD?.d||'AGT'}</strong> carries the highest avg sophistication (${peakD?.v?.toFixed(1)||'—'}/10)`+
+    (secondD?`, followed by <strong>${secondD.d}</strong> (${secondD.v.toFixed(1)})`:'') +
+    `. Agentic ops: <strong>${agI2} operations</strong> — fastest-growing vector. `+
+    `Architectures without adversarial input validation and human-in-the-loop controls are the primary hardening target for the next 90 days.`;
 }
 load();
 </script>
