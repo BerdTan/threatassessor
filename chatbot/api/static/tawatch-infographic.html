@@ -15,12 +15,12 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-     min-height:100vh;display:flex;flex-direction:column;align-items:center;}
+     height:100vh;overflow:hidden;display:flex;flex-direction:column;align-items:center;}
 
 #loading,#error{padding:4rem;color:var(--muted);font-size:0.9rem;text-align:center;}
 #error{color:var(--red);display:none;}
 
-#content{width:100%;max-width:1140px;padding:1.25rem 1.25rem 2rem;display:none;flex-direction:column;gap:0.75rem;}
+#content{width:100%;max-width:1140px;height:100vh;padding:1rem 1.25rem 0.75rem;display:none;flex-direction:column;gap:0.6rem;overflow:hidden;}
 
 /* ── header ── */
 .hd{display:flex;align-items:baseline;justify-content:space-between;padding-bottom:0.6rem;border-bottom:1px solid var(--border);}
@@ -35,16 +35,17 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .stat-lbl{font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-top:0.15rem;}
 
 /* ── three-column body ── */
-.body3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;align-items:start;}
+.body3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;flex:1;min-height:0;align-items:stretch;}
 
-.panel{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;
+       display:flex;flex-direction:column;height:100%;}
 .ph{font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;
-    padding:0.4rem 0.65rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.4rem;}
+    padding:0.4rem 0.65rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.4rem;flex-shrink:0;}
 .pill{font-size:0.58rem;padding:0.1rem 0.4rem;border-radius:20px;font-weight:700;}
 .pill-past  {background:rgba(99,102,241,.15);color:var(--indigo);}
 .pill-now   {background:rgba(20,184,.15);color:var(--teal);}
 .pill-future{background:rgba(245,158,11,.15);color:var(--amber);}
-.pb{padding:0.6rem 0.65rem;}
+.pb{padding:0.6rem 0.65rem;flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;}
 
 /* domain chips */
 .chips{display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.5rem;}
@@ -71,7 +72,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .sig-t{font-size:0.65rem;font-weight:700;margin-bottom:0.1rem;}
 .sig-b{font-size:0.6rem;color:var(--muted);line-height:1.4;}
 
+.chart-wrap{flex:1;min-height:0;position:relative;}
 canvas{display:block;}
+/* emerging threats */
+.emerge-hd{font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;
+           color:var(--amber);margin-top:0.5rem;padding-top:0.4rem;border-top:1px solid var(--border);flex-shrink:0;}
+.em{display:flex;align-items:center;gap:0.35rem;padding:0.22rem 0;}
+.em-rule{font-size:0.62rem;font-weight:700;min-width:76px;}
+.em-why{font-size:0.58rem;color:var(--muted);flex:1;}
+.em-soph{font-size:0.58rem;min-width:28px;text-align:right;}
 </style>
 </head>
 <body>
@@ -95,32 +104,32 @@ canvas{display:block;}
     <div class="panel">
       <div class="ph"><span class="pill pill-past">PAST</span> What DETECT Has Caught</div>
       <div class="pb">
-        <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.4rem;">Domains — incidents / high-conf %</div>
-        <div class="chips" id="chips"></div>
-        <div style="font-size:0.6rem;color:var(--muted);margin:0.5rem 0 0.2rem;">Coverage breadth vs detection quality · bubble = sophistication</div>
-        <canvas id="bubble-chart" height="140"></canvas>
+        <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.3rem;flex-shrink:0;">Domains — incidents / high-conf %</div>
+        <div class="chips" id="chips" style="flex-shrink:0;"></div>
+        <div style="font-size:0.6rem;color:var(--muted);margin:0.35rem 0 0.2rem;flex-shrink:0;">Coverage breadth vs detection quality · bubble = sophistication</div>
+        <div class="chart-wrap"><canvas id="bubble-chart"></canvas></div>
       </div>
     </div>
 
     <!-- NOW -->
     <div class="panel">
-      <div class="ph"><span class="pill pill-now">NOW</span> Top 10 Concerns — Analyst → CISO</div>
-      <div class="pb" id="top10"></div>
+      <div class="ph"><span class="pill pill-now">NOW</span> Top Priority Concerns — Analyst → CISO</div>
+      <div class="pb" id="top10" style="overflow-y:auto;"></div>
     </div>
 
     <!-- FUTURE -->
     <div class="panel">
       <div class="ph"><span class="pill pill-future">FUTURE</span> Signals to Watch</div>
       <div class="pb">
-        <div id="signals"></div>
-        <div style="font-size:0.6rem;color:var(--muted);margin:0.5rem 0 0.3rem;">Avg sophistication by domain</div>
-        <canvas id="radar-chart" height="160"></canvas>
+        <div id="signals" style="flex-shrink:0;"></div>
+        <div style="font-size:0.6rem;color:var(--muted);margin:0.4rem 0 0.2rem;flex-shrink:0;">Avg sophistication by domain</div>
+        <div class="chart-wrap"><canvas id="radar-chart"></canvas></div>
       </div>
     </div>
 
   </div>
 
-  <div style="font-size:0.6rem;color:var(--muted);text-align:center;">
+  <div style="font-size:0.55rem;color:var(--muted);text-align:center;flex-shrink:0;padding-bottom:0.4rem;">
     ThreatAssessor · AI Risk Explorer (airiskexplorer.com) · soc_detection_rules.yaml
   </div>
 </div>
@@ -176,7 +185,7 @@ function render(brief,cov){
     const x=dm2[d];
     const cards=brief.cards.filter(c=>c.domain===d);
     const ms=cards.length?cards.reduce((s,c)=>s+(c.mean_soph||0),0)/cards.length:0;
-    return{d,x:x.total_incidents||0,y:Math.round((x.high_confidence||0)/Math.max(x.total_incidents||1,1)*100),r:Math.max(ms*2.2,4)};
+    return{d,x:x.total_incidents||0,y:Math.round((x.high_confidence||0)/Math.max(x.total_incidents||1,1)*100),r:Math.min(Math.max(ms*1.4,3),10)};
   });
   new Chart(document.getElementById('bubble-chart'),{
     type:'bubble',
@@ -186,14 +195,20 @@ function render(brief,cov){
       const d=bubbleData[ctx.datasetIndex];
       return`${d.d}: ${d.x} inc, ${d.y}% high-conf`;
     }}}},scales:{
-      x:{title:{display:true,text:'Incidents',color:'#8b949e',font:{size:9}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b949e',font:{size:9}}},
+      x:{title:{display:true,text:'Incidents',color:'#8b949e',font:{size:9}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b949e',font:{size:9}},min:0},
       y:{title:{display:true,text:'High-conf %',color:'#8b949e',font:{size:9}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8b949e',font:{size:9}},min:0,max:100}},
     responsive:true,maintainAspectRatio:false},
   });
 
-  // top-10
+  // top priority list
   const mx=brief.top10[0]?.priority_score||1;
-  document.getElementById('top10').innerHTML=brief.top10.slice(0,8).map((c,i)=>{
+  const top10Ids=new Set(brief.top10.map(c=>c.rule_id));
+  // emerging = not in top-10, has incidents, sort by sophistication then incident count
+  const emerging=brief.cards
+    .filter(c=>!top10Ids.has(c.rule_id)&&c.incident_count>0)
+    .sort((a,b)=>((b.mean_soph||0)-(a.mean_soph||0))||((b.incident_count||0)-(a.incident_count||0)))
+    .slice(0,4);
+  const priorityHtml=brief.top10.slice(0,8).map((c,i)=>{
     const dc=DC[c.domain]||'#6b7280',sc=SC[c.severity]||'#6b7280';
     const pct=Math.round(c.priority_score/mx*100);
     return`<div class="pr">
@@ -204,6 +219,19 @@ function render(brief,cov){
       <div class="pr-ct">${c.incident_count}i·${Math.round(c.high_pct*100)}%↑</div>
     </div>`;
   }).join('');
+  const emergingHtml=emerging.length?`<div class="emerge-hd">⚡ Emerging — low count, rising sophistication</div>`+emerging.map(c=>{
+    const dc=DC[c.domain]||'#6b7280';
+    const whyParts=[];
+    if(c.mean_soph>=7)whyParts.push(`soph ${c.mean_soph.toFixed(1)}`);
+    if(c.kill_chain)whyParts.push(c.kill_chain.split(/[/,]/)[0].trim());
+    if(c.top_sectors&&c.top_sectors[0])whyParts.push(c.top_sectors[0]);
+    return`<div class="em">
+      <div class="em-rule" style="color:${dc};">${e(c.rule_id.replace('DETECT-',''))}</div>
+      <div class="em-why">${e(whyParts.join(' · ')||c.domain)}</div>
+      <div class="em-soph" style="color:var(--amber);">${c.mean_soph?.toFixed(1)||'–'}</div>
+    </div>`;
+  }).join(''):'';
+  document.getElementById('top10').innerHTML=priorityHtml+emergingHtml;
 
   // future signals
   const agI=brief.cards.filter(c=>c.domain==='AGT').reduce((s,c)=>s+c.incident_count,0);
