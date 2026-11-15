@@ -167,8 +167,8 @@ d05d6e1b92c718bf50798b50487d35e6d3965f925845daf1fe97bd502a7c9fca  .claude/skills
 da9b23400cd23aa45aabb9b76d9d9e0e8b38e3b6d3fbcaea14131736844631ce  .claude/skills/taco-run/SKILL.md
 3f783690b606132d0581cbce7cac745c09b6c1d92e21a1918ae8eeae2498be8f  .claude/skills/taco-run/scripts/taco-run.py
 bdb92b54d709f018dd07340cb792a829eb7857c2533fd913039e7788a39837ea  .claude/skills/tagym/SKILL.md
-10d96ad5d56d2a46d498b2f331cf4bbf7ca019f91c5c32a865e7cb0d2c5863bc  .claude/skills/taskillgym/SKILL.md
-d662870e1318157a839658c3e287aa6225c16e8c17b947eafb61f215c8439c2f  .claude/skills/taskillgym/scripts/taskillgym.py
+c846fe0c01462f8b3d537c23eaadcbeb493dfa26a6fa2aa97244a09e29bf150d  .claude/skills/taskillgym/SKILL.md
+a3f503601a89793c73ebd767e9c3ac3b570ebcc4ee7b754c6fd7a304237c7e8f  .claude/skills/taskillgym/scripts/taskillgym.py
 4b12ba16d08f6aca6e7663c87ee3e3413e5fece230f91664fe16564d0ccdab68  .claude/skills/tatb-corpus/SKILL.md
 f23ed600b08b865777e56548d066cfea321a0bf4533d32204209ec008da05de7  .claude/skills/tatb-corpus/scripts/tatb-corpus.py
 53f406bee97180e3b72135563c4fd481af6a5904cecf8cb3be0106540f9b86e9  .claude/skills/tatb-loop/SKILL.md

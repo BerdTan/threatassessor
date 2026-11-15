@@ -35,7 +35,7 @@ CLAIMS = [
 
 def check_counts(T):
     seen = collections.defaultdict(set)
-    docs = [(ROOT / "CLAUDE.md", "error", None)]
+    docs = [(ROOT / n, "error", None) for n in ("CLAUDE.md", "README.md", "docs/README.md", "mcp_server/README.md", "taclaw/README.md") if (ROOT / n).exists()]
     docs += [(p, "error", None) for p in SK.glob("*/SKILL.md")]
     if MEM.exists():
         m = rd(MEM)
@@ -52,10 +52,14 @@ def check_counts(T):
                 if key == "rules" and not re.search(r"detect|soc", line, re.I):
                     continue
                 for m_ in rx.finditer(line):
+                    if key == "mcp_tools":
+                        clause = re.split(r"\s\+\s|[|;]|\s[—–-]\s|\),?\s", line[:m_.start()])[-1]
+                        if "mcp" not in (clause + m_.group(0)).lower():
+                            continue  # another thing's tools (e.g. benchmark tools) on the same line
                     if key == "rules" and re.search(r"DETECT-[A-Z]{2,4}\s*$", line[:m_.start()]):
                         continue  # domain-scoped count, not the total
                     n = int(m_.group(1))
-                    seen[(key, n)].add(p.name if p.name != "SKILL.md" else p.parent.name)
+                    seen[(key, n)].add(p.parent.name if p.name == "SKILL.md" else (str(p.relative_to(ROOT)) if str(p).startswith(str(ROOT)) else p.name))
                     if n != T[key]:
                         add(sev, "correct", p.relative_to(ROOT) if str(p).startswith(str(ROOT)) else p,
                             f"states {n} {key.replace('_',' ')}; repo has {T[key]}")
