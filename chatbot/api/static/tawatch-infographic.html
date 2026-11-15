@@ -275,8 +275,8 @@ function render(brief,cov){
   const injC=brief.cards.filter(c=>c.domain==='INJ'&&c.severity==='Critical').length;
   
   const sigs=[
-    {i:'🤖',t:'Agentic operations: a large pipeline surface',b:`AGT maps to ${agI} of ${brief.total_incidents} incidents, but only the incidents where an AI system is the target test pipeline rules directly. Multi-agent rules (AGT-004/005) are Critical.`},
-    {i:'💉',t:'Injection is the broadest surface',b:`INJ matches all 755 incidents; ${injC} Critical rules. Every incident maps to INJ by the tag rules, so this is breadth of mapping, not injection frequency.`},
+    {i:'🤖',t:'Agentic operations: a large pipeline surface',b:`AGT maps to ${agI} of ${brief.total_incidents} incidents, but only incidents where an AI system is the target test pipeline rules directly: about 4% (roughly 28, from a 60-case hand-labelled sample, 95% range 9 to 61). Multi-agent rules (AGT-004/005) are Critical.`},
+    {i:'💉',t:'Injection is the broadest surface',b:`INJ matches all ${brief.total_incidents} incidents; ${injC} Critical rules. Every incident maps to INJ by the tag rules, so this is breadth of mapping, not injection frequency.`},
     {i:'📈',t:`Sophistication peaks at ${maxS} (corpus mean ${avgS})`,b:'The most sophisticated operations cluster in credential-access and persistence domains. Scores reward offensive AI use, so attacks that trick an agent into acting can score low.'},
     {i:'🕵️',t:'QC manipulation used as stealth cover',b:'Confidence suppression and divergence overriding make compromised outputs appear clean. Mapped from tactic and capability tags, not from rule firings.'},
   ];

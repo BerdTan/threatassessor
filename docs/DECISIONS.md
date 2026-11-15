@@ -4,6 +4,20 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 259 — Remaining incident candidates: MCP metadata drift is worth a rule, FakeGit is not (yet)
+
+**Date:** 2026-11-15
+**Status:** Decided; nothing built. Commit `c1d03cf` pushed. TAwatch infographic re-verified against 70 rules.
+
+**Why:** Entry 255 left two DETECT candidates. User asked to consider them if worthy. Checked against the 70 existing rules.
+
+**Decision:**
+- **MCP tool-metadata drift (Deadbugz, SANDWORM_MODE): worth a rule.** No existing rule covers a third-party or community MCP server attached to an agent with no pinning, signature or review step. MCP-001..006 are runtime access patterns on our own server, and SCT-006 covers our own dependencies. A diagram-level rule fits the INJ-011 pattern: untrusted MCP server or registry node with a direct edge to an agent node, no pin/approval/allowlist node. Proposed id DETECT-MCP-007. Limit: a diagram cannot see the post-approval metadata change itself, so the rule flags the exposure, not the swap.
+- **Agent-lure crawl (FakeGit): not worth a separate rule yet.** INJ-010 already lists public repositories as an untrusted source. The gap is the sink (fetch-and-execute or install), which is a sink-list extension, not a new pattern. Extend INJ-010's sink list only if a second incident shows it. Rule count inflation without a second grounding incident is the failure mode Entry 257 warned about.
+- Build MCP-007 as its own pass, with a constructed-diagram test, a corpus false-positive check, a scenario, and the count refresh that TAskillgym will demand.
+
+**Infographic check:** counts (70 rules, 12 Critical, 3 Critical INJ, 755 incidents) match the rules file and API. The agentic card now states the hand-labelled estimate of about 4% targets (9 to 61) and the INJ card no longer hard-codes 755. The docstring in `tawatch.py` no longer says 65 rules.
+
 ### Entry 258 — DETECT-INJ-011 and DETECT-RES-005 from the hand-labelled TAwatch targets
 
 **Date:** 2026-11-15
