@@ -4,6 +4,31 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 260 — Trajectory evals for TA: score the path and the end state, not only the final output
+
+**Date:** 2026-11-15
+**Status:** Decided; nothing built. Trace check to be folded into the P51 principles audit.
+
+**Why:** User shared an agent-eval framing with six questions: did the agent choose the right action, use the right information, complete all required steps, in the right order, preserve context across turns, and produce the intended end state. TA mostly scores final outputs (TATB, gate verdict, `check-*` suites). The brain_fast vicious cycle (Entry 250) was a case where the metric looked fine while the route was wrong.
+
+**Mapping (from notes, not a fresh code check):**
+- Right action: routing is Brier-calibrated, but the route taken is not judged right or wrong per architecture. P51 `brain_route` question.
+- Right information: output is scored (TATB); claims are not checked against retrieved evidence. TAprover (P50) fits.
+- Required steps: `BouncerStage` is required and DETECT-QC-012 checks oversight, but nothing asserts every expected stage ran.
+- Order: fixed by construction in code, not verified from traces.
+- Context across turns: weakest. TAclaw/TAgym loops do not check that earlier findings carry forward. Flywheel Step A (context-hash parity) is the nearest item.
+- End state: strongest (`ta-export` schema, gate verdict), but checked per output, not per run.
+- Same lens applies to skills: TAskillgym checks form, not whether an agent using a skill takes the right steps.
+
+**Decision:**
+1. Record this entry before P51 so the principles audit can use it.
+2. In P51, log expected versus actual stages for each `brain_route` decision and flag mismatches.
+3. Later, a `TAtrace` check over Langfuse traces for step completeness and ordering, reusing recall-first reporting and kappa from Entry 257.
+
+**Alternatives rejected:** an LLM judge over whole traces first (adds a classifier we would have to validate before trusting); doing nothing, since the Entry 250 failure shows output-only metrics miss this class of error.
+
+---
+
 ### Entry 259 — Remaining incident candidates: MCP metadata drift is worth a rule, FakeGit is not (yet)
 
 **Date:** 2026-11-15
