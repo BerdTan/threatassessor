@@ -1,3 +1,9 @@
+---
+name: health-audit
+description: "ThreatAssessor Structural Health. Catches orphaned code, broken seams, and coverage gaps that accumulate silently as TA grows. No API required. Read-only. Produces a findings table; never auto-modifies."
+allowed-tools: Bash(python3:*)
+---
+
 # health-audit — ThreatAssessor Structural Health
 
 Catches orphaned code, broken seams, and coverage gaps that accumulate silently as TA grows.

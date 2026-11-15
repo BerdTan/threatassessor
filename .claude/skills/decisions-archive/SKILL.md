@@ -1,3 +1,9 @@
+---
+name: decisions-archive
+description: "DECISIONS.md maintenance. Time-based archiving and recall for DECISIONS.md. Entries older than `--days` (default 60) with no open signals are moved to `docs/archive/DECISIONS_archive.md`. Archived entries stay in the same `### Entry NNN` format and can be recalled back at any time — useful when CI, skills, or GitHub readers need to see an older decision."
+allowed-tools: Bash(python3:*)
+---
+
 # decisions-archive — DECISIONS.md maintenance
 
 Time-based archiving and recall for DECISIONS.md. Entries older than `--days`

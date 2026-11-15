@@ -1,3 +1,9 @@
+---
+name: check-jev
+description: "Jev System 1 integration benchmark. Validates and benchmarks all 5 Jev (typesafe.ai) integration points in ThreatAssessor. Exits 0 on pass, 1 on any failure."
+allowed-tools: Bash(python3:*)
+---
+
 # check-jev — Jev System 1 integration benchmark
 
 Validates and benchmarks all 5 Jev (typesafe.ai) integration points in ThreatAssessor.

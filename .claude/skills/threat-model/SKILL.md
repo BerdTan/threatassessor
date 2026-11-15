@@ -1,3 +1,9 @@
+---
+name: threat-model
+description: "Spec-Driven Threat Model Generator. Generate a complete, verifiable threat model for any architecture input, conforming to the **threatmodel/0.1** open spec. Output is valid JSON scoreable by the bundled `tmbench-check` scorer."
+allowed-tools: Bash(python3:*)
+---
+
 # threat-model — Spec-Driven Threat Model Generator
 
 Generate a complete, verifiable threat model for any architecture input,

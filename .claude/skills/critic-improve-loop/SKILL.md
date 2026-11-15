@@ -90,10 +90,10 @@ Ask: **"Contribute this run to Brain and Workspace?"**
 
 ```bash
 # Ingest improved run into Brain instance layer
-python3 .claude/skills/brain-ingest/scripts/brain_ingest.py --arch <arch>
+python3 .claude/skills/brain-ingest/scripts/brain-ingest.py --arch <arch>
 
 # Rebuild Brain pattern layer to pick up the new instance
-python3 .claude/skills/brain-grow/scripts/brain_grow.py --rounds 0
+python3 .claude/skills/brain-grow/scripts/brain-grow.py --rounds 0
 ```
 
 Then commit the improved critic prompts:

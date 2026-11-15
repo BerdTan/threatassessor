@@ -1,6 +1,6 @@
 ---
 name: detect-trend
-description: Show per-rule firing trends across governance_signals_history.jsonl for one or all corpus architectures. Trends: new | rising | stable | falling | cleared | never. Requires at least 2 pipeline runs per architecture to show directional trends (single-run snapshot shows new/never only). Use after running /backfill-detect-history to seed synthetic baselines, or after multiple real pipeline runs accumulate. Read-only — no side effects.
+description: "Show per-rule firing trends across governance_signals_history.jsonl for one or all corpus architectures. Trends: new | rising | stable | falling | cleared | never. Requires at least 2 pipeline runs per architecture to show directional trends (single-run snapshot shows new/never only). Use after running /backfill-detect-history to seed synthetic baselines, or after multiple real pipeline runs accumulate. Read-only — no side effects."
 allowed-tools: Bash(python3:*) Bash(source:*)
 ---
 

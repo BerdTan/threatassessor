@@ -1,3 +1,9 @@
+---
+name: tmleaderboard
+description: "TMbench Leaderboard + Open Submission. Maintain and display the TMbench leaderboard. Any tool that produces `threatmodel/0.1` compliant JSON can be ingested, scored, and ranked alongside existing entries. No pipeline access required — the scorer reads the spec and your JSON files."
+allowed-tools: Bash(python3:*)
+---
+
 # tmleaderboard — TMbench Leaderboard + Open Submission
 
 Maintain and display the TMbench leaderboard. Any tool that produces `threatmodel/0.1`

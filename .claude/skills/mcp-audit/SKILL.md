@@ -1,3 +1,9 @@
+---
+name: mcp-audit
+description: "MCP Attack Surface Security Posture Audit. Engine Item 12. Six static audit dimensions against the 18-tool ThreatAssessor MCP server. No API required — all checks read source files only."
+allowed-tools: Bash(python3:*)
+---
+
 # mcp-audit — MCP Attack Surface Security Posture Audit
 
 Engine Item 12. Six static audit dimensions against the 18-tool ThreatAssessor MCP server.

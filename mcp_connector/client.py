@@ -286,6 +286,30 @@ class MCPClient:
             "force_critic": force_critic,
         })
 
+    # ── Tool 18: run_taclaw ───────────────────────────────────────────────────
+
+    def run_taclaw(
+        self,
+        target: str,
+        arch_name: str = "",
+        target_type: str = "directory",
+        ssp_profile: str = "low_risk_cloud",
+    ) -> Dict:
+        """Start an async TAclaw crawl + assessment of a directory or git URL.
+
+        Returns job_id and poll info; poll with get_job_status(job_id).
+
+        Args:
+            target:      Local directory path or git URL (https://...).
+            arch_name:   Assessment name (defaults to the target basename).
+            target_type: "directory" | "git_url".
+            ssp_profile: SSP profile for TA analysis.
+        """
+        payload = {"target": target, "target_type": target_type, "ssp_profile": ssp_profile}
+        if arch_name:
+            payload["arch_name"] = arch_name
+        return self._post("/api/v1/taclaw/run", payload)
+
     # ── Tool 14: query_ta_brain ───────────────────────────────────────────────
 
     def query_ta_brain(

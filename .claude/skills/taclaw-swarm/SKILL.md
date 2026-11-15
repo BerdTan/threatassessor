@@ -1,3 +1,9 @@
+---
+name: taclaw-swarm
+description: "TAclaw Swarm Runner. Fan out TAclaw jobs across multiple artifact targets in parallel, aggregate findings cross-swarm, and spotlight the champion claw by composite risk score."
+allowed-tools: Bash(python3:*)
+---
+
 # taclaw-swarm — TAclaw Swarm Runner
 
 Fan out TAclaw jobs across multiple artifact targets in parallel, aggregate findings cross-swarm, and spotlight the champion claw by composite risk score.

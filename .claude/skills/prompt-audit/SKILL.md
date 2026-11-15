@@ -1,3 +1,9 @@
+---
+name: prompt-audit
+description: "Prompt Template Security Audit. Engine Item 16. Audit prompt templates as an adversarial security surface. Six dimensions; no API required. Distinct from `promptsmith` (quality lens vs security lens)."
+allowed-tools: Bash(python3:*)
+---
+
 # prompt-audit — Prompt Template Security Audit
 
 Engine Item 16. Audit prompt templates as an adversarial security surface.

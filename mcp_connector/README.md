@@ -60,7 +60,7 @@ response = oai.responses.create(
 print(response.output_text)
 ```
 
-OpenAI proxies all 16 tools automatically — no individual function definitions needed.
+OpenAI proxies all 18 tools automatically — no individual function definitions needed.
 
 ---
 
@@ -191,3 +191,4 @@ Key endpoints for automation:
 | 15 | `record_brain_feedback` | Record confirmed/wrong/partial feedback → TACO loop |
 | 16 | `generate_synthetic_architectures` | Generate synthetic MMDs from Brain meta-layer gaps |
 | 17 | `run_taco_agent` | Run TACO routing chain (brain→rag→harness) → HopChain |
+| 18 | `run_taclaw` | Async crawl + assess a directory or git URL (poll with `get_job_status`) |

@@ -1,5 +1,5 @@
 """
-LangChain bridge — BaseTool wrappers for all 16 ThreatAssessor MCP tools.
+LangChain bridge — BaseTool wrappers for 16 of the 18 ThreatAssessor MCP tools.
 
 Usage::
 
@@ -99,6 +99,17 @@ class BrainFeedbackInput(BaseModel):
 class GenerateSyntheticInput(BaseModel):
     gap_ids:     str = Field("", description="Comma-separated gap IDs. Empty = auto-select.")
     max_per_run: int = Field(3, description="Maximum diagrams to generate.")
+
+class TacoAgentInput(BaseModel):
+    query:        str  = Field(description="Natural-language threat question.")
+    arch_name:    str  = Field("", description="Known corpus architecture name. Empty = brain-only.")
+    force_critic: bool = Field(False, description="Append a TACOminiCritic hop.")
+
+class TAclawInput(BaseModel):
+    target:      str = Field(description="Local directory path or git URL.")
+    arch_name:   str = Field("", description="Assessment name. Default: target basename.")
+    target_type: str = Field("directory", description="directory | git_url")
+    ssp_profile: str = Field("low_risk_cloud", description="SSP profile for analysis.")
 
 
 # ── Tool classes ──────────────────────────────────────────────────────────────
@@ -350,10 +361,50 @@ class GenerateSyntheticArchitecturesTool(BaseTool):
         raise NotImplementedError
 
 
+class RunTacoAgentTool(BaseTool):
+    name: str = "run_taco_agent"
+    description: str = (
+        "Run the TACO routing chain (brain, workspace, harness) for a threat question "
+        "and return the HopChain with per-hop findings and confidence."
+    )
+    args_schema: Type[BaseModel] = TacoAgentInput
+    client: Any
+
+    def _run(self, query: str, arch_name: str = "", force_critic: bool = False) -> str:
+        return json.dumps(self.client.run_taco_agent(query, arch_name, force_critic), indent=2)
+
+    async def _arun(self, *args: Any, **kwargs: Any) -> str:
+        raise NotImplementedError
+
+
+class RunTAclawTool(BaseTool):
+    name: str = "run_taclaw"
+    description: str = (
+        "Start an async TAclaw crawl and assessment of a directory or git URL. "
+        "Returns a job_id; poll with get_job_status. Only use on trusted targets."
+    )
+    args_schema: Type[BaseModel] = TAclawInput
+    client: Any
+
+    def _run(
+        self,
+        target: str,
+        arch_name: str = "",
+        target_type: str = "directory",
+        ssp_profile: str = "low_risk_cloud",
+    ) -> str:
+        return json.dumps(
+            self.client.run_taclaw(target, arch_name, target_type, ssp_profile), indent=2
+        )
+
+    async def _arun(self, *args: Any, **kwargs: Any) -> str:
+        raise NotImplementedError
+
+
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 def langchain_tools(client: Any) -> List[BaseTool]:
-    """Return LangChain BaseTool instances for all 16 ThreatAssessor tools.
+    """Return LangChain BaseTool instances for 16 of the 18 ThreatAssessor tools.
 
     Args:
         client: MCPClient instance.
@@ -378,4 +429,6 @@ def langchain_tools(client: Any) -> List[BaseTool]:
         QueryTaBrainTool(client=client),
         RecordBrainFeedbackTool(client=client),
         GenerateSyntheticArchitecturesTool(client=client),
+        RunTacoAgentTool(client=client),
+        RunTAclawTool(client=client),
     ]

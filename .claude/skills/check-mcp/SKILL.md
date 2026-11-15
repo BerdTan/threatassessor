@@ -1,6 +1,6 @@
 ---
 name: check-mcp
-description: Validate the ThreatAssessor MCP server — imports, tool registration (10 tools), job store, jobs router endpoints, and optional live smoke-test against a running API. No LLM calls. Use after any change to mcp_server/, chatbot/api/job_store.py, or chatbot/api/routes/jobs.py.
+description: Validate the ThreatAssessor MCP server — imports, tool registration (all server tools, currently 18), job store, jobs router endpoints, and optional live smoke-test against a running API. No LLM calls. Use after any change to mcp_server/, chatbot/api/job_store.py, or chatbot/api/routes/jobs.py.
 allowed-tools: Bash(python3:*) Bash(source:*)
 ---
 
@@ -15,7 +15,7 @@ including a real MCP stdio protocol handshake via `client_sim.py`.
 |-------|-----------------|
 | Syntax | All 6 MCP-layer files parse without errors |
 | Imports | `mcp.server.fastmcp.FastMCP` importable; `job_client` and `server` load |
-| Tool registration | Exactly 10 tools registered with expected names |
+| Tool registration | All @mcp.tool functions registered (currently 18) |
 | Job store | Create / update / get / TTL-evict all work correctly |
 | Jobs router | Both endpoints present, correct HTTP methods and paths |
 | App wire-up | `jobs_router` registered in FastAPI app |
@@ -69,3 +69,7 @@ Each persona prints a copy-paste integration snippet (Python or TypeScript) at t
 - After editing `chatbot/api/job_store.py` or `chatbot/api/routes/jobs.py`
 - Before pointing Claude Desktop at the MCP server for the first time
 - When onboarding a new integration (run `--dry-run` first, then `--persona <type>`)
+
+## Output
+
+Prints one line per check and a final `PASS n/n` or `FAIL k/n` verdict. Exit 0 if every check passes, 1 otherwise.

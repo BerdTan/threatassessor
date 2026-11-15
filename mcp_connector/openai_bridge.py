@@ -2,14 +2,14 @@
 OpenAI bridge — two integration paths:
 
 1. openai_tools(client)
-   Returns a list of OpenAI function-calling tool definitions for all 16
+   Returns a list of OpenAI function-calling tool definitions for all 18
    ThreatAssessor tools. Use with the Chat Completions API (function calling)
    or the Responses API (tools=[...]).
 
 2. openai_mcp_tool(server_url, api_key)
    Returns a single {"type": "mcp"} tool definition that points at a running
    ThreatAssessor MCP server (streamable-http transport). Use with the OpenAI
-   Responses API — OpenAI proxies all 16 tools automatically.
+   Responses API — OpenAI proxies all 18 tools automatically.
 
 Usage — function calling (Chat Completions)::
 
@@ -409,13 +409,65 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_taco_agent",
+            "description": (
+                "Run the TACO routing chain for a threat question: TABrain, then TAWorkspace, "
+                "then the full harness only if confidence is low and a diagram is provided. "
+                "Returns the HopChain with per-hop findings, final confidence and routing flags."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Natural-language threat question."},
+                    "arch_name": {
+                        "type": "string",
+                        "description": "Known corpus architecture name. Empty = brain-only mode.",
+                    },
+                    "force_critic": {
+                        "type": "boolean",
+                        "description": "Append a TACOminiCritic hop (needs critic_enabled). Default: false.",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_taclaw",
+            "description": (
+                "Start an autonomous assessment: crawl a local directory or git URL, discover "
+                "Terraform, CloudFormation, OpenAPI or prose architecture artifacts, merge them "
+                "and run the full threat-modeling pipeline. Asynchronous: returns a job_id; "
+                "poll get_job_status until completed. Only point it at targets you trust to read."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "description": "Local directory path or git URL."},
+                    "arch_name": {"type": "string", "description": "Assessment name. Default: target basename."},
+                    "target_type": {
+                        "type": "string",
+                        "enum": ["directory", "git_url"],
+                        "description": "Default: directory.",
+                    },
+                    "ssp_profile": {"type": "string", "description": "SSP profile. Default: low_risk_cloud."},
+                },
+                "required": ["target"],
+            },
+        },
+    },
 ]
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def openai_tools(client: Optional[Any] = None) -> List[Dict[str, Any]]:
-    """Return OpenAI Chat Completions function-calling tool definitions for all 16 tools.
+    """Return OpenAI Chat Completions function-calling tool definitions for all 18 tools.
 
     The returned list is passed directly to client.chat.completions.create(tools=...).
     Pass the MCPClient instance if you want tool calls auto-dispatched (future use).
@@ -440,13 +492,13 @@ def openai_mcp_tool(
     The ThreatAssessor MCP server must be running with streamable-http transport:
         python -m mcp_server.server --transport streamable-http --port 8001
 
-    OpenAI will proxy all 16 tools automatically — no individual function definitions needed.
+    OpenAI will proxy all 18 tools automatically — no individual function definitions needed.
 
     Args:
         server_url:       Full URL of the MCP server, e.g. 'https://your-host:8001/mcp'.
         api_key:          TM-API-KEY value (passed as Authorization header to the MCP server).
         require_approval: 'never' (default) or a dict of {never: {tool_names: [...]}} for granular control.
-        allowed_tools:    Subset of tool names to expose. None = all 16 tools.
+        allowed_tools:    Subset of tool names to expose. None = all 18 tools.
 
     Returns:
         OpenAI Responses API tool dict with type='mcp'.

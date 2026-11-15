@@ -34,3 +34,7 @@ python3 .claude/skills/taco-run/scripts/taco-run.py "assess this" --mmd tests/da
 # Raw JSON for scripting
 python3 .claude/skills/taco-run/scripts/taco-run.py "threats?" --arch 01_minimal_vulnerable --json
 ```
+
+## Output
+
+Prints the TACO response (raw JSON with the JSON flag). Exits with an error message if the request fails.

@@ -1,3 +1,9 @@
+---
+name: ta-boxing
+description: "Brain vs Bot Evaluation. Three contenders, one deterministic referee, four quality dimensions + efficiency metrics."
+allowed-tools: Bash(python3:*)
+---
+
 # ta-boxing — Brain vs Bot Evaluation
 
 Three contenders, one deterministic referee, four quality dimensions + efficiency metrics.

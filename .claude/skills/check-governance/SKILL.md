@@ -1,6 +1,6 @@
 ---
 name: check-governance
-description: Run the governance guardrail regression suite (56 tests, ~9s, no LLM calls). Covers all 5 governance dimensions — injection categories, evasion layers, PII/credential leakage, manipulation signals, sovereignty — plus new signals: external_url_references (AST05), evasion_attempts/homoglyph_count/url_encoded_count (AST08), supply_chain_modified_modules (AST02). Optionally re-check live governance_signals.json for one or all corpus architectures. Use after any change to chatbot/harness/governance.py to confirm no regressions.
+description: "Run the governance guardrail regression suite (56 tests, ~9s, no LLM calls). Covers all 5 governance dimensions — injection categories, evasion layers, PII/credential leakage, manipulation signals, sovereignty — plus new signals: external_url_references (AST05), evasion_attempts/homoglyph_count/url_encoded_count (AST08), supply_chain_modified_modules (AST02). Optionally re-check live governance_signals.json for one or all corpus architectures. Use after any change to chatbot/harness/governance.py to confirm no regressions."
 allowed-tools: Bash(python3:*) Bash(source:*) Bash(pytest:*)
 ---
 

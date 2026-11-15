@@ -14,9 +14,9 @@ rule evaluator to show which DETECT rules fire on real architecture data.
 
 | Test file | What it covers |
 |-----------|---------------|
-| `test_soc_rule_evaluator.py` | All 58 DETECT rules — fire/no-fire, severity, actions, kill_chain_stage |
+| `test_soc_rule_evaluator.py` | All 68 DETECT rules — fire/no-fire, severity, actions, kill_chain_stage |
 | `test_aivss_to_findings.py` | AIVSS→OCSF SecurityFinding + DetectionFinding export (escape signals) |
-| `test_incident_simulator.py` | 54 incident scenarios → rule co-occurrence assertions (all 58 rules covered) |
+| `test_incident_simulator.py` | 62 incident scenarios → rule co-occurrence assertions (all 68 rules covered) |
 | `test_harness_event_broker.py` | sm_verdicts event → LangfuseSink Score objects |
 
 ## Run

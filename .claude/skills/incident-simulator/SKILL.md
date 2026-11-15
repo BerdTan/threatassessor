@@ -10,7 +10,7 @@ Synthesises `governance_signals.json` payloads based on real AI security inciden
 runs them through the SOC rule evaluator, and optionally generates a plain-English
 incident narrative contextualised to a specific architecture.
 
-## Scenarios (19 total — all 18 DETECT rules covered)
+## Scenarios (62 total — all 68 DETECT rules covered)
 
 ### Original incidents (DETECT-QC-001 through 007)
 | ID | Name | Based on | Rules fired |

@@ -1,6 +1,8 @@
+---
 name: check-connector
-description: Validate the ThreatAssessor connector layer — mcp_connector package integrity, OpenAI tool definitions (13 tools), openai_mcp_tool shape, LangChain bridge graceful import, OpenAPI spec (47 paths, auth), --transport flag, and live MCPClient calls (governance_check, export_assessment, tatb). Use after any change to mcp_connector/, openapi.yaml, or mcp_server/server.py.
+description: Validate the ThreatAssessor connector layer — mcp_connector package integrity, OpenAI tool definitions (all server tools), openai_mcp_tool shape, LangChain bridge graceful import, OpenAPI spec (47 paths, auth), --transport flag, and live MCPClient calls (governance_check, export_assessment, tatb). Use after any change to mcp_connector/, openapi.yaml, or mcp_server/server.py.
 allowed-tools: Bash(python3:*)
+---
 
 # check-connector — Connector Layer Validation
 
@@ -13,7 +15,7 @@ Does not re-check the MCP server internals (use `/check-mcp` for that).
 |---------|-----------------|
 | Package structure | All 6 files present and parseable |
 | Imports | MCPClient, openai_bridge, langchain_bridge load cleanly |
-| OpenAI tool defs | 13 defs, required fields, all names match server |
+| OpenAI tool defs | Every server tool bridged (derived from the server; waiver set is empty); required fields, names match server |
 | OpenAI MCP tool | `{"type":"mcp"}` shape, authorization, allowed_tools filtering |
 | LangChain bridge | Graceful ImportError without langchain; BaseTool list when installed |
 | OpenAPI spec | ≥40 paths, ApiKeyHeader, global security, /health no-auth, x-mcp-server hint |
@@ -39,7 +41,7 @@ python3 .claude/skills/check-connector/scripts/check-connector.py --url http://h
 |---------|------|-------------|
 | Claude Desktop (stdio) | `mcp_server/server.py` | `mcp.run(transport="stdio")` — zero config |
 | OpenAI Responses API | `mcp_connector/openai_bridge.py` | `openai_mcp_tool(server_url=...)` |
-| OpenAI Chat Completions | `mcp_connector/openai_bridge.py` | `openai_tools()` → 13 function defs |
+| OpenAI Chat Completions | `mcp_connector/openai_bridge.py` | `openai_tools()` → 18 function defs (all server tools) |
 | LangChain | `mcp_connector/langchain_bridge.py` | `langchain_tools(client)` → 11 BaseTool |
 | Direct Python | `mcp_connector/client.py` | `MCPClient(base_url=..., api_key=...)` |
 | n8n / REST | `openapi.yaml` / `/openapi.json` | 47 documented paths |
@@ -66,3 +68,7 @@ tools = [openai_mcp_tool("http://your-host:8001/mcp", api_key="your-ta-key")]
 - After regenerating `openapi.yaml`
 - After adding or removing MCP tools (also run `/check-mcp`)
 - Before publishing the connector package or pointing an external agent at the HTTP server
+
+## Output
+
+Prints a section per layer and a final PASS or FAIL with `n/N checks passed` and a warning count. Exit 0 when no check fails, 1 otherwise. Any waived bridge gap would appear as a warning.

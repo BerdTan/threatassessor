@@ -41,3 +41,7 @@ python3 .claude/skills/check-routing/scripts/check-routing.py --live --show-poli
 - After changing thresholds in `policies/model_routing.yaml`
 - After boxing a new architecture (verify it routes as expected)
 - Before wiring brain_fast execution into the streaming flow
+
+## Output
+
+Prints test results and, with the live flag, routing decisions. Exit 0 if all checks pass, 1 otherwise.

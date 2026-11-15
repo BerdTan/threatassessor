@@ -15,7 +15,7 @@ Usage:
 Sections:
   1. Package structure      — all files present, parseable
   2. Imports                — MCPClient, openai_bridge, langchain_bridge load cleanly
-  3. OpenAI tool defs       — 13 defs, required fields, all tool names match server
+  3. OpenAI tool defs       — server tools minus waiver, required fields, all tool names match server
   4. OpenAI MCP tool        — {"type":"mcp"} shape, required fields
   5. LangChain bridge       — graceful ImportError without langchain; tools list when installed
   6. OpenAPI spec           — 47 paths, auth scheme, version, x-mcp-server hint
@@ -27,6 +27,7 @@ import argparse
 import ast
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -46,13 +47,15 @@ CONNECTOR_DIR = REPO_ROOT / "mcp_connector"
 OPENAPI_FILE  = REPO_ROOT / "openapi.yaml"
 SERVER_PY     = REPO_ROOT / "mcp_server" / "server.py"
 
-EXPECTED_TOOL_NAMES = [
-    "analyze_architecture", "run_expert_review", "get_job_status",
-    "get_threat_briefing",  "get_ciso_brief",    "get_governance_signals",
-    "get_detect_trends",    "get_tatb_scores",   "list_architectures",
-    "lookup_mitre_technique","get_mcp_access_signals","export_assessment",
-    "governance_check",
-]
+def _server_tool_names():
+    src = (Path(__file__).resolve().parents[4] / "mcp_server/server.py").read_text()
+    return re.findall(r"@mcp\.tool\([^)]*\)\s*(?:async\s+)?def\s+(\w+)", src)
+
+# Server tools deliberately absent from the OpenAI bridge, reported as warnings.
+# Empty since run_taclaw and run_taco_agent were bridged (2026-11-15).
+UNBRIDGED_WAIVER: set = set()
+ALL_SERVER_TOOLS = _server_tool_names()
+EXPECTED_TOOL_NAMES = [n for n in ALL_SERVER_TOOLS if n not in UNBRIDGED_WAIVER]
 
 passed = failed = warned = 0
 
@@ -152,6 +155,8 @@ def check_openai_tools() -> None:
             ok(f"{len(defs)} tool definitions")
 
         names = {t["function"]["name"] for t in defs}
+        for gap in sorted(UNBRIDGED_WAIVER - names):
+            warn(gap, "server tool not exposed via OpenAI bridge (waived gap)")
         for expected in EXPECTED_TOOL_NAMES:
             if expected in names:
                 ok(expected)
@@ -297,14 +302,15 @@ def check_openapi() -> None:
         fail("info.version", "missing")
 
     schemes = spec.get("components", {}).get("securitySchemes", {})
-    if "ApiKeyHeader" in schemes:
-        ok("securitySchemes.ApiKeyHeader present")
-        if schemes["ApiKeyHeader"].get("name") == "TM-API-KEY":
-            ok("ApiKeyHeader.name = TM-API-KEY")
+    scheme = schemes.get("ApiKeyAuth") or schemes.get("ApiKeyHeader")
+    if scheme:
+        ok("API key security scheme present")
+        if scheme.get("name") == "TM-API-KEY":
+            ok("API key header name = TM-API-KEY")
         else:
-            fail("ApiKeyHeader.name", f"got {schemes['ApiKeyHeader'].get('name')!r}")
+            fail("API key header name", f"got {scheme.get('name')!r}")
     else:
-        fail("securitySchemes.ApiKeyHeader", "missing")
+        fail("securitySchemes.ApiKeyAuth", "missing")
 
     if spec.get("security"):
         ok("global security applied")

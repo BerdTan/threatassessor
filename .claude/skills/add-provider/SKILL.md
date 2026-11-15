@@ -52,3 +52,7 @@ python3 .claude/skills/add-provider/scripts/add-provider.py \
 3. Set `LLM_PROVIDER=<name>` in `.env`
 4. Run: `python3 .claude/skills/check-model-routing/scripts/check-model-routing.py`
 5. Restart API: `./scripts/api/api_restart.sh`
+
+## Output
+
+Prints the manifest entry before writing. Exit 1 on an invalid or incomplete provider entry; otherwise exit 0.

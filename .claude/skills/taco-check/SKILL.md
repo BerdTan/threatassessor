@@ -26,3 +26,7 @@ Exits 0 on all pass, 1 on any failure. Prints a phase table with durations.
 - After any change to `chatbot/modules/taco_benchmark.py`
 - After any change to `chatbot/api/routes/taco.py`
 - Before committing Phase 3+ TACO changes
+
+## Output
+
+Prints the check results. Exit 0 when healthy, 1 on any failed check.

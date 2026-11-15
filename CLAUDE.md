@@ -1,7 +1,7 @@
 # ThreatAssessor — Developer Quick Reference
 
 **Version:** 3.0  
-**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 65 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph) + TAgym (instrument gym flywheel)
+**Core:** `.mmd` / repo / IaC → threat model + MITRE ATT&CK + MoE review + 68 SOC DETECT rules + AIVSS + MCP (18 tools) + ta-export/1.0 + TA Brain (181 instances, brain_fast/api_only/full_moe) + TA-SIP (TF/CF/OAI/Prose/MMD → ArchitectureGraph) + TAgym (instrument gym flywheel)
 
 ---
 
@@ -53,10 +53,10 @@ tail -f logs/api.log            # logs
 - `chatbot/harness/policy_broker.py` — `PolicyBroker`, `BrokerDecision` (dynamic routing after QualityStage)
 - `chatbot/harness/event_broker.py` — `EventBrokerCritic`, pub/sub to SIEM/Langfuse/Webhook sinks
 - `chatbot/harness/smart_router.py` — `select_mode(arch_name)` → `RoutingDecision`; brain_fast / api_only / full_moe selection
-- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (65 DETECT rules)
+- `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (68 DETECT rules)
 
 **SOC detection:**
-- `policies/soc_detection_rules.yaml` — 65 DETECT rules with OWASP/ATLAS/incident provenance
+- `policies/soc_detection_rules.yaml` — 68 DETECT rules with OWASP/ATLAS/incident provenance
 
 **REST API:**
 - `chatbot/api/app.py` — FastAPI factory
@@ -126,7 +126,7 @@ Full tool reference, sim personas (17), and client integration: [`mcp_server/REA
 /aivss-gate
 
 # ── SOC detection ────────────────────────────────────────────────────────────
-# Regression suite (65 rules, 61 scenarios)
+# Regression suite (68 rules, 62 scenarios)
 python3 .claude/skills/check-detect/scripts/check-detect.py
 python3 .claude/skills/check-detect/scripts/check-detect.py --all   # + live corpus
 

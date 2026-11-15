@@ -1,3 +1,9 @@
+---
+name: check-sip
+description: "TA Security Intelligence Platform test suite. Validates the full SIP layer: adapter registry, input adapters (TF/CF/OAI/Prose/MMD), enrichment API, artifact endpoint, TAclaw jobs, brain match, and taclaw CLI."
+allowed-tools: Bash(python3:*)
+---
+
 # check-sip — TA Security Intelligence Platform test suite
 
 Validates the full SIP layer: adapter registry, input adapters (TF/CF/OAI/Prose/MMD),

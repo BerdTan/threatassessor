@@ -1,3 +1,9 @@
+---
+name: skill-audit
+description: "Skill Corpus Execution Surface Audit. Engine Item 15. Audit the `.claude/skills/` corpus as an adversarial execution surface. Six dimensions; no API required. Distinct from `check-skills` (tamper detection vs execution risk)."
+allowed-tools: Bash(python3:*)
+---
+
 # skill-audit — Skill Corpus Execution Surface Audit
 
 Engine Item 15. Audit the `.claude/skills/` corpus as an adversarial execution surface.

@@ -1,3 +1,9 @@
+---
+name: tmbench-check
+description: "TMbench Spec Scorer + Flywheel. Score a threat model JSON against `docs/tmbench/threatmodel.md`, identify improvement areas, and track spec quality over time. The flywheel: each run reveals both output gaps and underspecified spec areas — both improve on each cycle."
+allowed-tools: Bash(python3:*)
+---
+
 # tmbench-check — TMbench Spec Scorer + Flywheel
 
 Score a threat model JSON against `docs/tmbench/threatmodel.md`, identify improvement areas,

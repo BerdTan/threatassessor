@@ -1,6 +1,8 @@
+---
 name: trim-data
-description: Reduce chatbot/data/ from ~116 MB to ~42 MB for portability — strip unused MITRE object types, convert embeddings to numpy float16, delete the pkl cache, and optionally package data files as a GitHub Release asset with a bootstrap download script. Run before exporting or cloning to a new machine.
+description: "Reduce chatbot/data/ from ~116 MB to ~42 MB for portability — strip unused MITRE object types, convert embeddings to numpy float16, delete the pkl cache, and optionally package data files as a GitHub Release asset with a bootstrap download script. Run before exporting or cloning to a new machine."
 allowed-tools: Bash(python3:*) Bash(ls:*) Bash(du:*) Bash(rm:*) Bash(gzip:*) Bash(gunzip:*) Read Write Edit
+---
 
 # Trim Data
 

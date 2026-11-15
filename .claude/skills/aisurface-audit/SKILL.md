@@ -1,3 +1,9 @@
+---
+name: aisurface-audit
+description: "AI Ingest Surface Enumeration. Engine Item 13. Enumerate all data ingest paths across ThreatAssessor and rate their adversarial gate coverage. Six surfaces; no API required."
+allowed-tools: Bash(python3:*)
+---
+
 # aisurface-audit — AI Ingest Surface Enumeration
 
 Engine Item 13. Enumerate all data ingest paths across ThreatAssessor and rate their

@@ -1,3 +1,9 @@
+---
+name: model-audit
+description: "Model Trust Surface Audit. Engine Item 14. Audit the model trust surface: config integrity, routing staleness, critic role validation, endogenous output scan (DETECT-QC-009), and provider config. No API required — all checks read source files and config only."
+allowed-tools: Bash(python3:*)
+---
+
 # model-audit — Model Trust Surface Audit
 
 Engine Item 14. Audit the model trust surface: config integrity, routing staleness,
@@ -49,7 +55,7 @@ and wired into `rule_evaluator.py`. Promotion steps:
 1. Add rule `DETECT-QC-009` to `policies/soc_detection_rules.yaml` (domain: QC)
 2. Add a `sm_constraint_evasion_language` signal field to `RuleEvaluator`
 3. Wire SM verdict text into the evaluator after `ScrumMasterStage`
-4. Add test scenario to `tests/test_detect_rules.py`
+4. Add test scenario to `tests/test_soc_rule_evaluator.py`
 
 ## Relationship to other checks
 

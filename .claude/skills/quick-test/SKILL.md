@@ -37,3 +37,7 @@ cd "$(git rev-parse --show-toplevel)" && bash .claude/skills/quick-test/scripts/
 - `/build-embeddings-cache` — regenerate embeddings after MITRE update
 - `/check-deprecation` — deeper module import + deprecation check (~2 min)
 - `/update-data` — refresh MITRE/ATLAS/SSP/ARC data files
+
+## Output
+
+Prints one OK or FAIL line per check, then `=== ALL SYSTEMS OK ===` when everything passes. Any failed check exits non-zero before that line.

@@ -4,6 +4,27 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 256 — Watch family + TAskillgym: deterministic currency checks for our own claims
+
+**Date:** 2026-11-15
+**Status:** Design accepted; TAskillgym v1 built (`.claude/skills/taskillgym/`); generic `watch` base class deferred
+
+**Problem:** TAwatch (Entry 255) showed a mapping table can measure itself. The same failure exists in our own docs: CLAUDE.md and memory still said 65 rules while the repo has 68. gen-blog gates now catch this in blog drafts only.
+
+**Decision:**
+- Treat TAwatch's shape (adapter -> domain map -> currency check against a source of truth -> heatmap) as a pattern, a "watch family": TAwatch (incidents), EvalWatch (Entry 253), skillwatch (our skills), threatwatch later. Extract a shared base only when a second watch is built, not before (Principle 1).
+- Build TAskillgym first as the skillwatch consumer: a deterministic checker (no LLM, Principle 3) scoring each skill and the headline docs on five dimensions: correct (stated counts and paths match repo), complete (frontmatter, referenced scripts exist), coherent (same quantity stated identically across docs), clear (description and usage present), conclusive (states an output or exit contract).
+- Findings are reported per item with severity, never auto-fixed (Principle 4: uncertainty visible). Exit 1 on any `error`.
+
+**Alternatives rejected:** LLM judge of skill quality (non-deterministic, costly); building the generic watch framework up front (one consumer only); auto-rewriting stale counts (hides which docs drift).
+
+**First run (2026-11-15) found and fixed:** 19 errors and 20+ warnings. Stale counts (CLAUDE.md 65 rules, check-detect 58, incident-simulator 18, check-mcp 10 tools, check-connector 13). 15 skills with no frontmatter, 2 with no opening `---`, 3 with invalid YAML (unquoted `: ` in description). `health-audit` had no SKILL.md. 8 skills tracked as lowercase `skill.md` (breaks on case-sensitive systems; the `/mnt/c` mount hid it, so the checker now lists directory names exactly). `critic-improve-loop` referenced scripts with underscores that are hyphenated. check-connector hardcoded 13 expected tools and the wrong security-scheme name; it now derives tools from the server.
+**Follow-up (same day, user-approved):** `run_taclaw` and `run_taco_agent` now bridged: OpenAI tool defs (18), `MCPClient.run_taclaw`, LangChain tools (16 of 18; `get_ciso_brief` and `get_mcp_access_signals` still unbridged there), README. check-connector waiver set is empty. `skills.sha256` regenerated after the audit edits; it was already stale for bench-loop, check-detect.py, critic_improve_loop.py and qualify-corpus.
+
+**Known limits:** checks mechanical facts only. It cannot tell whether a skill's instructions are good.
+
+---
+
 ### Entry 255 — TAwatch correction: label mismatch, domain-level resolution, AI-as-target gap
 
 **Date:** 2026-11-15
