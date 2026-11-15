@@ -4,6 +4,25 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 257 — Agreement metrics for our evals (kappa, with recall first) + human-label protocol for `ai_role`
+
+**Date:** 2026-11-15
+**Status:** Helper and protocol built; human labelling pending; P42/P43 to be updated after results
+
+**Source:** DeepLearning.AI "Building Evaluators You Can Trust" (Module 3, slides 36-42, 45-46, 53-54): kappa is chance-corrected agreement and "a signal, not proof"; 90% raw agreement can hide the only missed failure (kappa 0); report recall and precision first, then kappa, then read disagreements; hold out 25% never used to tune; design the validation set for coverage, not production frequency; change one thing, retest on fresh cases.
+
+**Decision:** `chatbot/modules/eval_agreement.py` (pure functions): Cohen's kappa (nominal, linear/quadratic weighted), Gwet's AC1 (stable under skew), per-class precision/recall/F1, bootstrap CI. First use: validate the TAwatch `ai_role` keyword heuristic (712 weapon / 32 bypass / 11 target) against human labels via `scripts/tawatch/ailabel.py` (make = blind sheet; score = agreement + stratum-weighted population estimate of the heuristic's miss rate for `target`). Sample is stratified (11 target, 10 bypass, 15 near-miss weapon, 24 random weapon) so rare-class misses are findable; raw kappa on that sample is explicitly not a population estimate.
+
+**Limits recorded:** kappa on the TAwatch mapping tables would measure consistency only (both authored here); needs an independent reviewer. n is small; intervals reported. Reviewer must be someone other than the heuristic's author and see the sheet blind. Not applied to deterministic checks (TAskillgym) where the answer is exact.
+
+**Result (2026-11-15, 60 cases labelled blind by the user, one labeller; v2 sheet, S048 relabelled weapon):** agreement 0.92, kappa 0.84 (95% CI 0.69 to 0.97), AC1 0.89. Per class (precision/recall): weapon 0.95/0.95, bypass 0.80/0.89, target 0.91/0.83. 5 disagreements (S048 added: refused injection = weapon): S002 (false bypass on the word "refusal"), S019 (stripped safeguards not in vocabulary), S034 and S058 (real targets missed: hijacked exposed endpoints; Grok prompted to repost links). Stratum-weighted estimate of true targets: about 28 of 755 (3.8%), 95% interval 9 to 61; 10 of the 11 keyword hits confirmed. Sophistication of 12 confirmed targets: median 3.0 (weapon sample 5.0). Heuristic NOT tuned on these cases (they are no longer a clean test set). Resolved: S048 relabelled weapon in v2 (injection attempt refused). Boundary cases S026, S034, S043, S048, S057 suggest rubric v2 clauses (failed subversion attempt = weapon; both-hit = target if an AI system was hijacked). Files: report/brain/ailabel/ (gitignored).
+
+**Rule-coverage check of the two hand-found targets (tested with small diagrams through the governance adapter, 2026-11-15):** Grokking (S058, 2025): DETECT-INJ-010 does NOT fire; its source list has no reply/comment/social-thread term and its sink list has no trusted-channel publish; the harm was amplification through a trusted post, not a credentialed action. Zenity honeypots (S034, 2026): nothing fires; DETECT-MCP-004 uses runtime MCP access signals, not an exposed-inference-endpoint structure. New DETECT candidates (not implemented): (4) AI output published through a trusted/branded channel after untrusted replies (vocabulary extension or sibling of INJ-010); (5) exposed unauthenticated model-inference endpoint (Ollama/LiteLLM) in an architecture.
+
+**Follow-ups:** apply recall-first reporting to TATB/TMbench judge comparisons (weighted kappa for the 0-3 rubric); update blog P42 (replace "I read it by hand" with the measured result) and P43 (principle of gyms for every layer).
+
+---
+
 ### Entry 256 — Watch family + TAskillgym: deterministic currency checks for our own claims
 
 **Date:** 2026-11-15
@@ -18,8 +37,10 @@ Read this file at the start of every session. After any significant decision abo
 
 **Alternatives rejected:** LLM judge of skill quality (non-deterministic, costly); building the generic watch framework up front (one consumer only); auto-rewriting stale counts (hides which docs drift).
 
-**First run (2026-11-15) found and fixed:** 19 errors and 20+ warnings. Stale counts (CLAUDE.md 65 rules, check-detect 58, incident-simulator 18, check-mcp 10 tools, check-connector 13). 15 skills with no frontmatter, 2 with no opening `---`, 3 with invalid YAML (unquoted `: ` in description). `health-audit` had no SKILL.md. 8 skills tracked as lowercase `skill.md` (breaks on case-sensitive systems; the `/mnt/c` mount hid it, so the checker now lists directory names exactly). `critic-improve-loop` referenced scripts with underscores that are hyphenated. check-connector hardcoded 13 expected tools and the wrong security-scheme name; it now derives tools from the server.
+**First run (2026-11-15) found and fixed:** 19 errors on the first pass; replaying the final checker on the pre-audit commit (97807e1) gives 25 errors and 10 warnings across 85 tracked skills (the checker grew during the audit, e.g. the exact-case filename check). Blog draft: `docs/blog/drafts/draft_2026-11-15_p43.md` (12/12). Stale counts (CLAUDE.md 65 rules, check-detect 58, incident-simulator 18, check-mcp 10 tools, check-connector 13). 15 skills with no frontmatter, 2 with no opening `---`, 3 with invalid YAML (unquoted `: ` in description). `health-audit` had no SKILL.md. 8 skills tracked as lowercase `skill.md` (breaks on case-sensitive systems; the `/mnt/c` mount hid it, so the checker now lists directory names exactly). `critic-improve-loop` referenced scripts with underscores that are hyphenated. check-connector hardcoded 13 expected tools and the wrong security-scheme name; it now derives tools from the server.
 **Follow-up (same day, user-approved):** `run_taclaw` and `run_taco_agent` now bridged: OpenAI tool defs (18), `MCPClient.run_taclaw`, LangChain tools (16 of 18; `get_ciso_brief` and `get_mcp_access_signals` still unbridged there), README. check-connector waiver set is empty. `skills.sha256` regenerated after the audit edits; it was already stale for bench-loop, check-detect.py, critic_improve_loop.py and qualify-corpus.
+
+**Principle (user, 2026-11-15):** gyms are not only for the harness, models, pipeline and engine. Skills shape outcomes too, so they get a gym, and it is run openly: findings, fixes and limits are published, not hidden. TAskillgym is the first skill gym; the blog (P43 candidate) states our own view of a solid skill as opinion, not validated benchmark.
 
 **Known limits:** checks mechanical facts only. It cannot tell whether a skill's instructions are good.
 
