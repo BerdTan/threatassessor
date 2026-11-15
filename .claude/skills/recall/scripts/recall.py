@@ -43,6 +43,12 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 #   Fleet Security (Entry 222) — CoreBouncer; after Foundation (step 13)
 #   Fleet Service/Report/Coordinator — steps 17–21
 PRIORITY_STEPS = [
+    # ── Current head of queue (2026-11-15 reconciliation) ────────────────────
+    (45, 51, "brain_fast → brain_route: routing oracle only, api_only floor, brain_expected/confirmed/missed annotations in ta-export (Entry 250)", "chatbot/harness/smart_router.py + ta_exporter.py", None),
+    (46, 50, "TAprover: technique_grounding + tactic_correctness vs ATT&CK STIX; ProofAttestation; skill taprover (Entry 249)", ".claude/skills/taprover/", 45),
+    (47, 0,  "Sequence Entries 243/244 (TMbench-gap pipeline roadmap, tiered arch weighting) into steps", "docs/DECISIONS.md", None),
+    (48, 0,  "EvalWatch (Entry 253): ingest AI Risk Explorer evals catalogue -> DETECT coverage view; gated on TAwatch 65-rule heatmap + calibration loop live", "chatbot/modules/evalwatch.py", 26),
+    (49, 0,  "📝 Publish Blog P42 (draft 9/9)", "docs/blog/drafts/draft_2026-11-14_p42.md", None),
     # ── Priority 33/34/35 — DONE ─────────────────────────────────────────────
     (1,  33, "✅ DETECT-ABU 6 rules + MCPAccessLogger",  "policies/soc_detection_rules.yaml",         None),
     (2,  34, "✅ Jev Phase 2: GT noul ❻ + CISO posture ❽", "ground_truth_generator.py + ta_exporter.py", 1),
@@ -64,9 +70,9 @@ PRIORITY_STEPS = [
     (35, 43, "✅ TMbench Step B — Curate 10 reference architectures with ground truth", "docs/tmbench/corpus/", 34),
     (36, 43, "✅ TMbench Step C — Batch runner + GT comparison (tmbench_runner.py)", "scripts/tmbench/tmbench_runner.py", 35),
     (37, 43, "✅ TMbench Step D — hetzner baseline 10/10; 12.10/13 mean; agentic-overgen gap documented", "docs/tmbench/results/baseline_v1.md", 36),
-    (38, 43, "TMbench Step E — TMagent: model-swappable TM generation agent (Entry 234); TA's leaderboard entry; model variants: hetzner/claude/gpt4o/ta_full_moe", "chatbot/agents/tmagent.py", 37),
+    (38, 43, "✅ TMbench Step E — TMagent: model-swappable TM generation agent (Entry 234); TA's leaderboard entry; model variants: hetzner/claude/gpt4o/ta_full_moe", "chatbot/agents/tmagent.py", 37),
     # Blog P40 unblocked after TMbench Step D (results exist to write about)
-    (40, 43, "📝 Draft P40 blog — 'The Benchmark Threat Modeling Doesn't Have Yet'", "docs/blog/drafts/", 37),
+    (40, 43, "✅ Draft P40 blog — 'The Benchmark Threat Modeling Doesn't Have Yet'", "docs/blog/drafts/", 37),
     # ── Priority 40 — ManagedAgentHarness harness.py (Entry 221) ─────────────
     # circuit breaker + RunCredentials + confirm_isolation are already in base.py (step 29);
     # harness.py wraps them into formal stage objects for the fleet pipeline.
@@ -102,7 +108,7 @@ PRIORITY_STEPS = [
     (27, 0,  "ta-export version-stamp: {model_id, routing_mode, skills_context} into bundle", "chatbot/modules/ta_exporter.py", None),
     (28, 0,  "skill-master: multi-location inventory + override detection + change-triggered re-scan (Entry 225)", ".claude/skills/skill-master/", 27),
     # Blog P42 (synthesis): three-tier confidence stack — unblocked after AgentBench + flywheel
-    (44, 0,  "📝 Draft P42 blog — 'Three Benchmarks, One Confidence Claim' (TAgym + AgentBench + TMbench)", "docs/blog/drafts/", 43),
+    (44, 0,  "✅ Draft P42 blog — 'What 755 Real AI Operations Taught My Detection Rules' (9/9; awaiting publish)", "docs/blog/drafts/draft_2026-11-14_p42.md", None),
     # ── Freestanding: Open Factory (Entry 224) — needs sequencing ────────────
     (33, 0,  "Open Factory (Entry 224): define ta-export reproducibility gap + interoperability steps", "docs/DECISIONS.md", 27),
     # ── Freestanding: recall ADR auto-sequencing (Step 22) ───────────────────
@@ -123,7 +129,10 @@ ADR_TO_STEPS: dict[int, list[int]] = {
     230: [30],                   # check-managed-agents (done)
     231: [34, 35, 36, 37, 38],   # TMbench A–E (step 38 = TMagent, Entry 234)
     233: [39, 41, 42, 43],       # AgentBench A–D (Entry 233 = three-tier system)
-    234: [38],                    # TMagent — model-swappable TM generation agent
+    234: [38],
+    249: [46],                   # TAprover
+    250: [45],                   # brain_route
+    253: [48],                   # EvalWatch                    # TMagent — model-swappable TM generation agent
 }
 
 # ── helpers ───────────────────────────────────────────────────────────────────
