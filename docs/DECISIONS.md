@@ -27,6 +27,16 @@ Read this file at the start of every session. After any significant decision abo
 
 **Alternatives rejected:** an LLM judge over whole traces first (adds a classifier we would have to validate before trusting); doing nothing, since the Entry 250 failure shows output-only metrics miss this class of error.
 
+
+**Addendum (same day): fault-localisation ladder + change discipline.** From a second eval talk. Match the change to the evidence, cheapest layer first: data missing or inconsistent -> look at the data; information present but requirement unclear -> prompt; agent knows what to do but fails to carry it out reliably -> tools and workflow; those fine but task still too hard -> model; sampling behaviour -> parameters. Then change one thing, rerun the same eval, check the targeted behaviour and what else moved.
+- TA cases: Entry 255 was a data-layer bug nearly read as a rule gap; `critic-gym` is the prompt layer; Entry 250 / P51 is the workflow layer; routing and leaderboards are the model layer, which TA reaches for first.
+- Gap: `critic-improve-loop` has two levers (code flag, prompt) and the planned `GymProposer` (Entry 227) has none, so it would propose whatever is easiest to generate.
+- Rules going forward: (1) each failure record carries `lever` (`data|prompt|tools|model|params`) plus the evidence for it; (2) a fix is accepted only after rerunning the same eval and reporting non-target metrics, not just the target gain; (3) a model swap states which cheaper layers were ruled out.
+
+**Addendum 2 (same day): Observe -> Benchmark -> Evaluate -> Improve, and a two-tier 5Cs.** From a third eval talk. TA ran this loop once already: the P42 hand labelling (Observe, Benchmark) exposed heuristic misses, which became rubric v2 clauses and then DETECT-INJ-011 / RES-005 (Improve, criteria refined).
+- Gaps by stage: Observe keeps no failure records and reviews no traces systematically; Benchmark sets are small with one labeller; Evaluate has the kappa/AC1 helper (Entry 257) but not yet applied to TATB/TMbench judges; Improve lacks the `lever` field and a standard regression report.
+- **5Cs get a second tier.** Tier 1 (exists in TAskillgym): mechanical form checks. Tier 2 (new): behaviour from traces. Correct = output grounded in run evidence (TAprover); Complete = required stages ran; Coherent = context carries across turns and iterations; Clear = requirement unambiguous (failures tagged `prompt`); Conclusive = run produced the intended end state.
+- Order: build Tier 2 **Complete** first, for one skill (`check-detect`), because the P51 stage-trace check needs it anyway. Generalise only after it holds up. TAskillgym itself stays mechanical-only.
 ---
 
 ### Entry 259 — Remaining incident candidates: MCP metadata drift is worth a rule, FakeGit is not (yet)
