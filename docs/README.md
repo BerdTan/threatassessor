@@ -1,6 +1,6 @@
 # ThreatAssessor Documentation
 
-**Version:** 3.0 — Harness v2 + 65 SOC DETECT rules + MCP server (18 tools) + TA-SIP + TA Brain (181 instances) + smart routing + TAgym + TMbench (open TM benchmark, 7 tools) + TAeval + managed agent fleet  
+**Version:** 3.0 — Harness v2 + 70 SOC DETECT rules + MCP server (18 tools) + TA-SIP + TA Brain (181 instances) + smart routing + TAgym + TMbench (open TM benchmark, 7 tools) + TAeval + managed agent fleet  
 **Last Updated:** 2026-11-08
 
 ---
@@ -113,7 +113,7 @@ Critical architectural choices are logged in [DECISIONS.md](DECISIONS.md). Entri
 | Topic | Entry range |
 |---|---|
 | Engine Items 6–10 (integrity gate, critic isolation, adapter fidelity, routing spans, source trust) | 174–179, 185–186 |
-| SOC DETECT rules (65 rules, domains QC/INJ/EXF/SCT/MCP/RES/ABU/SEC/AGT/PER) | 158–162, 174, 209–210, 218–219 |
+| SOC DETECT rules (70 rules, domains QC/INJ/EXF/SCT/MCP/RES/ABU/SEC/AGT/PER) | 158–162, 174, 209–210, 218–219 |
 | TA Brain + TACO (Stages 1–9, TACO Phase 1–4, Brier calibration) | 139–154 |
 | Smart routing (select_mode, D5 gate, boxing framework) | 146–156 |
 | TA-SIP platform (adapters, enrichment API, TAclaw, mcp_connector) | 139–145 |
