@@ -4,6 +4,36 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 255 — TAwatch correction: label mismatch, domain-level resolution, AI-as-target gap
+
+**Date:** 2026-11-15
+**Status:** Fixes shipped; candidate 2 implemented as DETECT-INJ-010 (rule 68); candidates 1 and 3 open
+
+**Problem:** Audit before writing P42 found TAwatch numbers were partly artefacts.
+- Capability table key `Intrusion Evasion & Persistence` never matched corpus label `Intrusion, Evasion & Persistence` (154 incidents). SCT/PER/QC could not reach "high" confidence by construction, so the "0% high-confidence = recall blind spot" reading was a bug, not a finding.
+- Export comma-split some labels (`' "Intrusion'`, `' Evasion & Persistence"'`); 4 capability labels (Multimodal Generation 206, Personalization 57, Automation Logistics 49, Multiturn Interaction 11) were unmapped; `harm_type` read `disarm_stage`.
+- "High" = tactic table and capability table agree, both authored here: mapping agreement, not validation.
+- Counts are per domain; every rule in a domain shares them (9 INJ rules all show 755). Top-10 is effectively a domain ranking weighted by domain size.
+- Corpus is mostly AI-as-weapon; DETECT rules defend an AI pipeline (AI-as-target). Tactic mapping blurred the two.
+
+**Decision:** Canonical-key label normalisation (`_canon`, `_norm_labels`) applied on every lookup; fixed key; mapped Automation Logistics (AGT,RES) and Multiturn (INJ); Multimodal Generation and Personalization declared out-of-scope (surfaced by `gap_report()`, not forced into a domain); added `ai_role` (weapon / guardrail_bypass / target, keyword heuristic, flagged as such); `resolution: "domain"` on cards; `GET /api/v1/tawatch/gap-report`; `tests/test_tawatch_mapping.py` (guards unmapped labels and per-domain reachability of "high").
+
+**Effect:** high-confidence QC 0->44, PER 0->37, SCT 0->115; SEC still 0 (no capability channel; known limit). QC-002 rises to 7th in top-10 (203 incidents, mean soph 8.72). Only 11 of 755 incidents are AI-as-target; 166 are out-of-scope content generation.
+
+**DETECT candidates from the 11 target incidents (to implement):**
+1. MCP tool-metadata drift/unpinned third-party tool descriptions (Deadbugz, SANDWORM_MODE): no rule covers tool-description integrity after trust is granted.
+2. DONE as DETECT-INJ-010 (Critical; governance signal `sovereignty.untrusted_to_privileged_agent`, simulator scenario, 3 tests; approval-gate check is graph-wide not path-local). Untrusted content (PR/issue/web) -> privileged agent with publish/credential tools, no approval gate (Clinejection, hackerbot-claw, indirect-injection browsing payments). Also applies to our own `ta-review.yml`, which feeds PR `.mmd` content to a pipeline holding `TA_API_KEY`.
+3. Agent-lure / untrusted repo crawl (FakeGit "AgentBaiting"): TAclaw RepoCrawler has no source-reputation gate.
+Already covered: Hades (INJ-001/005), TrapDoor (INJ-006, SCT-002), training-data poisoning (SCT-003, partial).
+
+**Infographic fixes (found via screenshot):** header summed per-rule counts across domain-replicated cards -> "1107% high confidence", AGT "3516 operations" (corpus is 755), sophistication shown as "/10" (scale max 22.6), unsupported "growing fastest / trending up / rising" claims. `ciso_brief()` now returns a `summary` computed over distinct incidents; page reads it. Remaining: emerging list repeats domain-level stats per rule.
+
+**Alternatives rejected:** forcing out-of-scope capabilities into INJ/ABU to keep totals high (inflates domains); dropping the confidence tiers (still useful, only renamed in meaning); rule-level attribution via keyword matching (false precision).
+
+**Blog impact:** P42 must be rewritten around these corrections; "0% high-confidence" must not be cited.
+
+---
+
 ### Entry 254 — TAwatch CISO infographic + rule priority scoring
 
 **Date:** 2026-11-14

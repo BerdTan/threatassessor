@@ -111,6 +111,41 @@ def _load_rule_ids() -> Dict[str, List[str]]:
         logger.warning("tawatch: soc_detection_rules.yaml not found — rule-level heatmap unavailable")
     return result
 
+# ── Label normalisation ───────────────────────────────────────────────────────
+# The corpus export comma-splits labels that contain commas
+# ('Intrusion, Evasion & Persistence' -> ' "Intrusion', ' Evasion & Persistence"')
+# and leaves leading spaces. Lookups use a canonical key so these cannot silently
+# miss (a miss here once made SCT/PER/QC unable to reach 'high' confidence).
+
+def _canon(label: str) -> str:
+    """Canonical lookup key: lowercase, no quotes/commas, collapsed whitespace."""
+    return " ".join(label.replace('"', "").replace(",", " ").lower().split())
+
+
+def _norm_labels(v: Any) -> List[str]:
+    """_to_list + repair comma-split quoted labels + strip whitespace/quotes."""
+    items = [x.strip() for x in _to_list(v)]
+    out: List[str] = []
+    i = 0
+    while i < len(items):
+        cur = items[i]
+        if cur.startswith('"') and not cur.endswith('"') and i + 1 < len(items):
+            j = i + 1
+            parts = [cur]
+            while j < len(items):
+                parts.append(items[j])
+                if items[j].endswith('"'):
+                    break
+                j += 1
+            cur = ", ".join(parts)
+            i = j
+        cur = cur.strip().strip('"').strip()
+        if cur:
+            out.append(cur)
+        i += 1
+    return out
+
+
 # ── Domain → tactic / capability mappings ─────────────────────────────────────
 
 _TACTIC_TO_DOMAINS: Dict[str, List[str]] = {
@@ -135,7 +170,7 @@ _CAPABILITY_TO_DOMAINS: Dict[str, List[str]] = {
     "Reconnaissance":                     ["EXF", "MCP"],
     "Artifact Development":               ["RES", "INJ"],
     "Social Engineering":                 ["INJ", "ABU"],
-    "Intrusion Evasion & Persistence":    ["SCT", "PER", "QC"],
+    "Intrusion, Evasion & Persistence":   ["SCT", "PER", "QC"],
     "Attack Orchestration":               ["AGT", "MCP"],
     "Multi-agent dynamics":               ["AGT"],
     "Reward hacking":                     ["ABU", "QC"],
@@ -146,9 +181,34 @@ _CAPABILITY_TO_DOMAINS: Dict[str, List[str]] = {
     "Design and Sequencing":              ["AGT", "RES"],
     "Innovation and Knowledge":           ["RES"],
     "AI R&D":                             ["RES", "AGT"],
+    "Automation Logistics":               ["AGT", "RES"],
+    "Multiturn Interaction":              ["INJ"],
 }
 
-# confidence: 3=high (tactic+capability agree), 2=medium (one source), 1=low (sector/actor only)
+# Capability labels that describe AI used as a *weapon* (content generation for fraud,
+# influence, impersonation). No DETECT domain defends a pipeline against these; they are
+# deliberately unmapped so they surface in gap_report() instead of inflating a domain.
+_OUT_OF_SCOPE_CAPABILITIES = {"Multimodal Generation", "Personalization"}
+
+_TACTIC_TO_DOMAINS = {_canon(k): v for k, v in _TACTIC_TO_DOMAINS.items()}
+_CAPABILITY_TO_DOMAINS = {_canon(k): v for k, v in _CAPABILITY_TO_DOMAINS.items()}
+_OUT_OF_SCOPE_KEYS = {_canon(k) for k in _OUT_OF_SCOPE_CAPABILITIES}
+
+# ai_role: is the AI the weapon, or the thing being attacked? DETECT rules defend an AI
+# pipeline, so only target / guardrail_bypass incidents are direct evidence for them.
+import re as _re
+_TARGET_RE = _re.compile(
+    r"prompt.inject|indirect injection|tool.metadata|poison\w* (agent|tool|mcp|ai|model|training)|"
+    r"(malicious|rogue|trojan\w*) (openclaw )?(skill|mcp)s?\b|claude\.md|\.cursorrules|rules.file|"
+    r"(manipulate|steer|trick|deceive|hijack)s? (the )?(ai|llm)[\w -]{0,25}(agent|assistant|scanner|browsing)|"
+    r"hidden instructions|model (theft|extraction)",
+    _re.I,
+)
+_BYPASS_RE = _re.compile(r"jailbr(oke|eak)\w*|guardrail|safety (filter|bypass)|refusal", _re.I)
+
+# "confidence" is MAPPING AGREEMENT, not validation: high = the tactic table and the capability
+# table (both authored here) independently point at the domain; medium = one table does;
+# low = actor type only. It says nothing about whether a DETECT rule would have fired.
 _CONFIDENCE_HIGH   = "high"
 _CONFIDENCE_MEDIUM = "medium"
 _CONFIDENCE_LOW    = "low"
@@ -180,12 +240,12 @@ class IncidentAdapter:
         tactic_domains: Dict[str, int] = {}
         cap_domains:    Dict[str, int] = {}
 
-        for t in _to_list(incident.get("mitre_tactics")):
-            for d in _TACTIC_TO_DOMAINS.get(t, []):
+        for t in _norm_labels(incident.get("mitre_tactics")):
+            for d in _TACTIC_TO_DOMAINS.get(_canon(t), []):
                 tactic_domains[d] = tactic_domains.get(d, 0) + 1
 
-        for c in _to_list(incident.get("taxonomy_cats")):
-            for d in _CAPABILITY_TO_DOMAINS.get(c, []):
+        for c in _norm_labels(incident.get("taxonomy_cats")):
+            for d in _CAPABILITY_TO_DOMAINS.get(_canon(c), []):
                 cap_domains[d] = cap_domains.get(d, 0) + 1
 
         # risk_cats as secondary domain signal
@@ -195,7 +255,7 @@ class IncidentAdapter:
             "Loss of Control":["AGT", "QC"],
             "Biological Risk":[],
         }
-        for rc in _to_list(incident.get("risk_cats")):
+        for rc in _norm_labels(incident.get("risk_cats")):
             for d in risk_map.get(rc, []):
                 if d not in tactic_domains and d not in cap_domains:
                     cap_domains[d] = cap_domains.get(d, 0) + 1
@@ -214,8 +274,31 @@ class IncidentAdapter:
 
         return result
 
+    def ai_role(self, incident: Dict[str, Any]) -> str:
+        """'target' | 'guardrail_bypass' | 'weapon'. Keyword heuristic on headline+description."""
+        text = f"{incident.get('headline', '')} {incident.get('description', '')}"
+        if _TARGET_RE.search(text):
+            return "target"
+        if _BYPASS_RE.search(text):
+            return "guardrail_bypass"
+        return "weapon"
+
+    def unmapped_labels(self, incidents: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
+        """Labels present in the corpus that no table maps (excluding declared out-of-scope)."""
+        from collections import Counter
+        tac, cap = Counter(), Counter()
+        for inc in incidents:
+            for t in _norm_labels(inc.get("mitre_tactics")):
+                if _canon(t) not in _TACTIC_TO_DOMAINS:
+                    tac[t] += 1
+            for c in _norm_labels(inc.get("taxonomy_cats")):
+                k = _canon(c)
+                if k not in _CAPABILITY_TO_DOMAINS and k not in _OUT_OF_SCOPE_KEYS:
+                    cap[c] += 1
+        return {"tactics": dict(tac), "capabilities": dict(cap)}
+
     def is_agentic(self, incident: Dict[str, Any]) -> bool:
-        cats = _to_list(incident.get("taxonomy_cats"))
+        cats = _norm_labels(incident.get("taxonomy_cats"))
         return any(c in ("Attack Orchestration", "Multi-agent dynamics", "AI R&D") for c in cats)
 
     def model_family(self, incident: Dict[str, Any]) -> str:
@@ -401,6 +484,35 @@ class TAwatch:
         result.sort(key=lambda x: x.get("sophistication", 0), reverse=True)
         return result
 
+    def gap_report(self) -> Dict[str, Any]:
+        """Where the corpus has evidence the DETECT domains do not address.
+
+        - out_of_scope: AI-as-weapon content generation (no pipeline rule defends it)
+        - unmapped_domain: incidents that matched no domain at all
+        - target_incidents: incidents where an AI system/agent is the thing attacked;
+          the only direct evidence for pipeline-defence rules. Review each against the rules.
+        """
+        self.load()
+        out_scope, no_domain, target = [], [], []
+        for inc in self._incidents:
+            caps = {_canon(c) for c in _norm_labels(inc.get("taxonomy_cats"))}
+            if caps & _OUT_OF_SCOPE_KEYS and not (caps - _OUT_OF_SCOPE_KEYS):
+                out_scope.append(inc)
+            if not self._coverage.get(inc.get("id", "")):
+                no_domain.append(inc)
+            if self._adapter.ai_role(inc) == "target":
+                target.append(inc)
+        return {
+            "total": len(self._incidents),
+            "out_of_scope_content_generation": len(out_scope),
+            "unmapped_domain": len(no_domain),
+            "target_count": len(target),
+            "target_incidents": [self._incident_summary(i) for i in target],
+            "ai_role_counts": {r: sum(1 for i in self._incidents if self._adapter.ai_role(i) == r)
+                               for r in ("weapon", "guardrail_bypass", "target")},
+            "ai_role_basis": "keyword heuristic on headline+description; review before citing",
+        }
+
     def coverage_summary(self) -> List[Dict[str, Any]]:
         """Per-domain coverage stats for the CISO coverage view."""
         self.load()
@@ -464,8 +576,8 @@ class TAwatch:
         caps:    List[str] = []
         models:  List[str] = []
         for i in incs:
-            tactics.extend(_to_list(i.get("mitre_tactics")))
-            caps.extend(_to_list(i.get("taxonomy_cats")))
+            tactics.extend(_norm_labels(i.get("mitre_tactics")))
+            caps.extend(_norm_labels(i.get("taxonomy_cats")))
             models.append(self._adapter.model_family(i))
         return {
             "sector":              sector,
@@ -486,7 +598,7 @@ class TAwatch:
         tactics: List[str] = []
         sectors: List[str] = []
         for i in incs:
-            tactics.extend(_to_list(i.get("mitre_tactics")))
+            tactics.extend(_norm_labels(i.get("mitre_tactics")))
             sectors.extend(_to_list(i.get("targeted_sector")))
         return {
             "model_family":        model_family,
@@ -566,6 +678,7 @@ class TAwatch:
                 "description":    meta.get("description", ""),
                 "severity":       meta.get("severity", ""),
                 "kill_chain":     meta.get("kill_chain_stage", ""),
+                "resolution":     "domain",   # counts are per DOMAIN; rules in a domain share them
                 "incident_count": total,
                 "high_pct":       high_pct,
                 "mean_soph":      mean_soph,
@@ -585,7 +698,20 @@ class TAwatch:
             if len(top10) == 10:
                 break
 
+        # Corpus-level figures computed over DISTINCT incidents. Cards repeat domain-level
+        # counts for every rule in a domain, so summing across cards over-counts.
+        all_sophs = [i.get("sophistication") for i in self._incidents if i.get("sophistication")]
+        summary = {
+            "mean_sophistication": round(sum(all_sophs) / len(all_sophs), 2) if all_sophs else 0.0,
+            "max_sophistication":  max(all_sophs) if all_sophs else 0.0,
+            "incidents_with_high_mapping": sum(
+                1 for iid in (i.get("id", "") for i in self._incidents)
+                if any(c == _CONFIDENCE_HIGH for c in self._coverage.get(iid, {}).values())),
+            "domain_incidents": {d: len(self._rule_index.get(d, [])) for d in domain_order},
+        }
+
         return {
+            "summary":      summary,
             "cards":        cards,
             "top10":        top10,
             "total_rules":  len(all_rules),
@@ -617,10 +743,11 @@ class TAwatch:
             "origin":         ", ".join(_to_list(inc.get("actors_origin"))),
             "model":          ", ".join(_to_list(inc.get("models_involved"))),
             "sophistication": inc.get("sophistication"),
-            "tactics":        _to_list(inc.get("mitre_tactics")),
-            "capabilities":   _to_list(inc.get("taxonomy_cats")),
+            "tactics":        _norm_labels(inc.get("mitre_tactics")),
+            "capabilities":   _norm_labels(inc.get("taxonomy_cats")),
             "risk_cats":      _to_list(inc.get("risk_cats")),
-            "harm_type":      _to_list(inc.get("disarm_stage")),
+            "harm_type":      _norm_labels(inc.get("harm_type")),
+            "ai_role":        self._adapter.ai_role(inc),
             "source_url":     inc.get("link", ""),
         }
 

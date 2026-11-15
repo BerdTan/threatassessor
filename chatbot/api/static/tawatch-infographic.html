@@ -179,7 +179,7 @@ function render(brief,cov){
 
   // stats
   const crit=brief.cards.filter(x=>x.severity==='Critical').length;
-  const avgS=(brief.top10.reduce((s,x)=>s+(x.mean_soph||0),0)/(brief.top10.length||1)).toFixed(1);
+  const sm=brief.summary||{};const avgS=(sm.mean_sophistication||0).toFixed(1);const maxS=(sm.max_sophistication||0).toFixed(1);
   document.getElementById('stats').innerHTML=[
     {v:brief.total_incidents,l:'Real AI Operations',  col:'var(--teal)'},
     {v:brief.total_rules,    l:'DETECT Rules Active', col:'var(--purple)'},
@@ -256,7 +256,7 @@ function render(brief,cov){
       <div class="pr-ct">${c.incident_count}i·${Math.round(c.high_pct*100)}%↑</div>
     </div>`;
   }).join('');
-  const emergingHtml=emerging.length?`<div class="emerge-hd">⚡ Emerging — low count, rising sophistication</div>`+emerging.map(c=>{
+  const emergingHtml=emerging.length?`<div class="emerge-hd">⚡ Emerging — low count, high sophistication</div>`+emerging.map(c=>{
     const dc=DC[c.domain]||'#6b7280';
     const whyParts=[];
     if(c.mean_soph>=7)whyParts.push(`soph ${c.mean_soph.toFixed(1)}`);
@@ -271,25 +271,25 @@ function render(brief,cov){
   document.getElementById('top10').innerHTML=priorityHtml+emergingHtml;
 
   // future signals
-  const agI=brief.cards.filter(c=>c.domain==='AGT').reduce((s,c)=>s+c.incident_count,0);
+  const agI=(sm.domain_incidents||{}).AGT||0;
   const injC=brief.cards.filter(c=>c.domain==='INJ'&&c.severity==='Critical').length;
-  const topS=Math.max(...brief.cards.map(c=>c.mean_soph||0));
+  
   const sigs=[
-    {i:'🤖',t:'Agentic ops growing fastest',b:`AGT: ${agI} real operations. Multi-agent coordination (AGT-004/005) now Critical — autonomous pipelines without oversight are the primary new vector.`},
-    {i:'💉',t:'Injection is the broadest surface',b:`INJ matches all 755 incidents; ${injC} Critical rules. Payloads shifting from naive prompts toward structured instruction overrides as defences mature.`},
-    {i:'📈',t:`Sophistication trending up (peak ${topS.toFixed(1)}/10)`,b:'State actors fielding more capable ops. Architectures without adversarial input validation are the highest-priority hardening target.'},
-    {i:'🕵️',t:'QC manipulation used as stealth cover',b:'Confidence suppression and divergence overriding make compromised outputs appear clean. Will grow as input-layer detection improves.'},
+    {i:'🤖',t:'Agentic operations: a large pipeline surface',b:`AGT maps to ${agI} of ${brief.total_incidents} incidents, but only the incidents where an AI system is the target test pipeline rules directly. Multi-agent rules (AGT-004/005) are Critical.`},
+    {i:'💉',t:'Injection is the broadest surface',b:`INJ matches all 755 incidents; ${injC} Critical rules. Every incident maps to INJ by the tag rules, so this is breadth of mapping, not injection frequency.`},
+    {i:'📈',t:`Sophistication peaks at ${maxS} (corpus mean ${avgS})`,b:'The most sophisticated operations cluster in credential-access and persistence domains. Scores reward offensive AI use, so attacks that trick an agent into acting can score low.'},
+    {i:'🕵️',t:'QC manipulation used as stealth cover',b:'Confidence suppression and divergence overriding make compromised outputs appear clean. Mapped from tactic and capability tags, not from rule firings.'},
   ];
   document.getElementById('signals').innerHTML=sigs.map(s=>`<div class="sig"><div class="sig-ico">${s.i}</div><div><div class="sig-t">${e(s.t)}</div><div class="sig-b">${e(s.b)}</div></div></div>`).join('');
 
   // so-what: stats bar
   const topDomain=brief.top10[0]?.domain||'—';
-  const totalHigh=brief.cards.reduce((s,c)=>s+Math.round((c.high_pct||0)*c.incident_count),0);
+  const totalHigh=sm.incidents_with_high_mapping||0;
   const highPct=brief.total_incidents?Math.round(totalHigh/brief.total_incidents*100):0;
   document.getElementById('stat-sowhat').innerHTML=
     `<strong>${brief.total_incidents} real AI operations</strong> mapped across <strong>${brief.total_rules} DETECT rules</strong> — `+
-    `<strong>${crit} Critical</strong> rules active, avg sophistication <strong>${avgS}/10</strong>. `+
-    `${highPct}% of detections carry high confidence. <strong>${topDomain}</strong> is the highest-priority domain right now.`;
+    `<strong>${crit} Critical</strong> rules active, avg sophistication <strong>${avgS}</strong> (max ${maxS}). `+
+    `${highPct}% of incidents have high mapping agreement (two tables agree; not validation). <strong>${topDomain}</strong> is the highest-priority domain right now.`;
 
   // so-what: past
   const sortedBreadth=[...DO].filter(d=>dm2[d]).sort((a,b)=>(dm2[b].total_incidents||0)-(dm2[a].total_incidents||0));
@@ -310,7 +310,7 @@ function render(brief,cov){
   const emergName=emerging[0]?.rule_id?.replace('DETECT-','')||null;
   nowEl.innerHTML=
     `<strong>${r1?.rule_id?.replace('DETECT-','')||'—'}</strong> and <strong>${r2?.rule_id?.replace('DETECT-','')||'—'}</strong> are the most urgent gaps today. `+
-    (emergName?`<strong>${emergName}</strong> is not yet critical but sophistication is rising — watch the next 30 days. `:'') +
+    (emergName?`<strong>${emergName}</strong> is not yet critical but sophistication is high on a small count. `:'') +
     `Priority score weights severity, incident volume, and high-confidence share.`;
 
   // radar
@@ -328,12 +328,12 @@ function render(brief,cov){
   // so-what: future
   const rdSorted=[...rd].sort((a,b)=>b.v-a.v);
   const peakD=rdSorted[0],secondD=rdSorted[1];
-  const agI2=brief.cards.filter(c=>c.domain==='AGT').reduce((s,c)=>s+c.incident_count,0);
+  const agI2=(sm.domain_incidents||{}).AGT||0;
   document.getElementById('future-sowhat').innerHTML=
-    `<strong>${peakD?.d||'AGT'}</strong> carries the highest avg sophistication (${peakD?.v?.toFixed(1)||'—'}/10)`+
+    `<strong>${peakD?.d||'AGT'}</strong> carries the highest avg sophistication (${peakD?.v?.toFixed(1)||'—'})`+
     (secondD?`, followed by <strong>${secondD.d}</strong> (${secondD.v.toFixed(1)})`:'') +
-    `. Agentic ops: <strong>${agI2} operations</strong> — fastest-growing vector. `+
-    `Architectures without adversarial input validation and human-in-the-loop controls are the primary hardening target for the next 90 days.`;
+    `. Agentic ops: <strong>${agI2} incidents</strong>. `+
+    `Architectures without adversarial input validation and human-in-the-loop controls remain the primary hardening target.`;
 }
 load();
 </script>

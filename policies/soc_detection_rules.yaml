@@ -3779,6 +3779,65 @@ rules:
       runtime HTTP fetch surfaces, not analysis-time injection or LLM egress.
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # DETECT-INJ-010: Untrusted Content -> Privileged Agent, No Approval Gate
+  # Source: TAwatch AI-as-target incidents (2026): Clinejection (issue text steers a
+  #         Claude-powered GitHub triage workflow into an unauthorised npm release),
+  #         hackerbot-claw (PR content abuses GitHub Actions), indirect prompt injection
+  #         in web content steering browsing agents into crypto payments.
+  #
+  # The architecture routes attacker-influenceable content (PRs, issues, webhooks, web
+  # pages, inbound email, public repos) into an LLM/agent node that has an edge to a
+  # privileged sink (publish, deploy, payment, secrets, merge), and no approval gate or
+  # injection filter node exists. The agent is the confused deputy.
+  # OWASP: A01  ATLAS: AML.TA0005  Kill chain: execution
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-INJ-010
+    name: untrusted_content_to_privileged_agent
+    domain: INJ
+    description: >
+      An agentic architecture feeds untrusted, attacker-influenceable content (pull
+      requests, issues, webhooks, web pages, inbound email, public repositories) into an
+      LLM or agent node that has a direct edge to a privileged sink (package publish,
+      deployment, payments, secrets, merge) and no human approval, sanitisation, or
+      injection-filter node appears anywhere in the diagram. A single injected
+      instruction can then trigger a privileged action with the agent's credentials.
+    incident_refs:
+      - tawatch-clinejection-2026
+      - tawatch-hackerbot-claw-2026
+      - tawatch-indirect-injection-browsing-agent-payments-2026
+    owasp: [A01]
+    csa_art: ["4.1.2", "4.4.1"]
+    atlas_tactic: AML.TA0005
+    mitre_techniques:
+      - T1195
+      - T1059
+    kill_chain_stage: execution
+    ocsf_class: 2004
+    ocsf_type_uid: 200401
+    severity: Critical
+    conditions:
+      - field: arch_metadata.is_agentic
+        op: "=="
+        value: true
+      - field: sovereignty.untrusted_to_privileged_agent
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+      - type: page_soc
+        condition: "severity >= High"
+    tuning_note: >
+      Structural signal from node labels and edges. Add an explicit approval,
+      sanitisation or injection-filter node to the diagram when one exists in the real
+      system, otherwise the rule fires. False positives: read-only sinks mislabelled
+      as 'deployment' or 'secrets'. Note the gate check is graph-wide, not path-local:
+      a gate on an unrelated path suppresses the rule (known limitation; path-local
+      check is future work). Applies to this repository's own ta-review.yml, which
+      feeds PR .mmd content to a pipeline holding TA_API_KEY.
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-QC-016: Debug Bypass Artifact in Production Architecture
   # Source: Epherem web-app hardening checklist \u00a714 \u2014 Treat temporary, demo,
   #         and bypass logic as suspicious.

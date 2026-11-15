@@ -6,6 +6,7 @@ GET /api/v1/tawatch/heatmap          — 65-rule × N-incident coverage matrix (
 GET /api/v1/tawatch/incidents        — paginated incident list with DETECT domain tags
 GET /api/v1/tawatch/domain/{domain}  — incidents matching a DETECT domain
 GET /api/v1/tawatch/coverage         — per-domain coverage stats (CISO view)
+GET /api/v1/tawatch/gap-report       — corpus evidence the DETECT domains do not address
 GET /api/v1/tawatch/ciso-brief       — per-rule CISO cards + cross-rule top-10 priority list
 GET /api/v1/tawatch/match            — architecture → matched real incidents
 GET /api/v1/tawatch/sector/{sector}  — real-world attack profile for a sector
@@ -133,6 +134,14 @@ async def tawatch_sector_profile(sector: str, _: str = Depends(verify_api_key)):
 async def tawatch_model_profile(model_family: str, _: str = Depends(verify_api_key)):
     tw = get_tawatch()
     return tw.model_risk_profile(model_family)
+
+
+@router.get("/gap-report")
+async def tawatch_gap_report(_: str = Depends(verify_api_key)):
+    tw = get_tawatch()
+    if not tw.corpus_loaded:
+        raise HTTPException(status_code=503, detail="Corpus not loaded")
+    return tw.gap_report()
 
 
 @router.post("/reload")

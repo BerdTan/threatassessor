@@ -379,6 +379,29 @@ _RE_C2_RECEIVER = re.compile(
     re.IGNORECASE,
 )
 
+# INJ-010 — untrusted content source -> LLM agent -> privileged sink, no approval gate.
+# Grounded in TAwatch AI-as-target incidents: Clinejection (issue text -> triage agent ->
+# npm publish), hackerbot-claw (PR content -> CI), indirect-injection browsing agents -> payments.
+_RE_UNTRUSTED_SOURCE_NODE = re.compile(
+    r"\b(pull[\s_-]?requests?|prs?|issues?|issue[\s_-]?comments?|webhooks?|web[\s_-]?pages?"
+    r"|browsed?[\s_-]?content|public[\s_-]?repos?|third[\s_-]?party[\s_-]?content"
+    r"|inbound[\s_-]?emails?|email[\s_-]?inbox|user[\s_-]?uploads?|external[\s_-]?content"
+    r"|scraped[\s_-]?content|rss|public[\s_-]?forum)\b",
+    re.IGNORECASE,
+)
+_RE_PRIVILEGED_SINK_NODE = re.compile(
+    r"\b(npm[\s_-]?publish|package[\s_-]?registry|pypi|release[\s_-]?pipeline|deploy(?:ment)?"
+    r"|ci[\s_-]?/?[\s_-]?cd|github[\s_-]?actions?|payments?|payment[\s_-]?api|wire[\s_-]?transfer"
+    r"|git[\s_-]?push|merge|production[\s_-]?db|prod[\s_-]?database|secrets?|credential[\s_-]?store)\b",
+    re.IGNORECASE,
+)
+_RE_APPROVAL_GATE_NODE = re.compile(
+    r"\b(human[\s_-]?(?:review|approval|in[\s_-]?the[\s_-]?loop)|manual[\s_-]?(?:review|approval)"
+    r"|approval[\s_-]?gate|approver|sanitiz\w+|content[\s_-]?filter|prompt[\s_-]?shield"
+    r"|injection[\s_-]?(?:filter|guard|scanner)|allowlist)\b",
+    re.IGNORECASE,
+)
+
 # PER — Persistence mechanism node labels (schedulers, init scripts, SSH auth keys, shell profiles)
 # Grounded in: AISI INC-2026-07-28 — Mythos5 "Planted crontab @reboot persistence"; Numbat persistence ruleset
 _RE_PERSISTENCE_NODE = re.compile(
@@ -523,6 +546,9 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
                 "persistence_mechanism_nodes": [],
                 "credential_store_nodes": [],
                 "agent_credential_access": False,
+                "untrusted_to_privileged_agent": False,
+                "untrusted_source_nodes": [],
+                "privileged_sink_nodes": [],
                 "token_forgery_risk": False,
                 "flagged": False,
                 "severity": "LOW",
@@ -788,6 +814,28 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
             if src in llm_node_ids and dst in _cred_store_ids:
                 sig.sovereignty["agent_credential_access"] = True
                 break
+
+        # INJ-010 — untrusted source -> LLM node -> privileged sink with no approval gate.
+        _untrusted_ids = {nid for nid, lbl in node_labels.items() if _RE_UNTRUSTED_SOURCE_NODE.search(lbl)}
+        _privileged_ids = {nid for nid, lbl in node_labels.items() if _RE_PRIVILEGED_SINK_NODE.search(lbl)}
+        _gate_present = any(_RE_APPROVAL_GATE_NODE.search(lbl) for lbl in node_labels.values())
+        _ingress = False
+        _egress = False
+        for em in _RE_EDGE.finditer(_edges_content):
+            src, dst = em.group(1), em.group(2)
+            if src in _untrusted_ids and dst in llm_node_ids:
+                _ingress = True
+            if src in llm_node_ids and dst in _privileged_ids:
+                _egress = True
+        if _ingress and _egress and not _gate_present:
+            sig.sovereignty["untrusted_to_privileged_agent"] = True
+            sig.sovereignty["untrusted_source_nodes"] = [
+                f"{n}[{node_labels[n][:40]}]" for n in sorted(_untrusted_ids)]
+            sig.sovereignty["privileged_sink_nodes"] = [
+                f"{n}[{node_labels[n][:40]}]" for n in sorted(_privileged_ids)]
+            sig.sovereignty["flagged"] = True
+            if sig.sovereignty["severity"] != "HIGH":
+                sig.sovereignty["severity"] = "HIGH"
 
         # SEC — Token forgery risk: federation/SSO architecture with attacker edge to
         # token store or JWKS endpoint (T1606 Golden SAML / T1528 token theft precondition).

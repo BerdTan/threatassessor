@@ -1648,6 +1648,29 @@ def scenario_ssrf_user_supplied_url() -> Dict[str, Any]:
     return sig
 
 
+def scenario_untrusted_content_to_privileged_agent() -> Dict[str, Any]:
+    """
+    DETECT-INJ-010 (Critical) — TAwatch 2026: issue text steers triage agent to npm publish
+
+    Representative scenario (Clinejection): a GitHub issue body reaches a Claude-powered
+    triage workflow that holds a publish token; injected instructions cause an
+    unauthorised package release. No approval gate or injection filter in the design.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 7,
+        "is_agentic": True,
+        "no_oversight_path": False,
+    }
+    sig["sovereignty"] = {
+        "untrusted_to_privileged_agent": True,
+        "untrusted_source_nodes": ["Issue[GitHub Issue Body]"],
+        "privileged_sink_nodes": ["Publish[npm publish]"],
+    }
+    return sig
+
+
 def scenario_debug_bypass_in_architecture() -> Dict[str, Any]:
     """
     DETECT-QC-016 (Medium) — Epherem §14: debug bypass artifact in production
@@ -1792,6 +1815,8 @@ SCENARIOS = {
         "DETECT-AGT-006 (High) — Epherem §5: service accesses multi-tenant store without ownership predicate"),
     "ssrf_user_supplied_url":             (scenario_ssrf_user_supplied_url,
         "DETECT-INJ-009 (High) — Epherem §7: outbound HTTP to user-supplied URL with no allowlist"),
+    "untrusted_content_to_privileged_agent": (scenario_untrusted_content_to_privileged_agent,
+        "DETECT-INJ-010 (Critical) — TAwatch 2026: untrusted issue/PR content -> LLM agent -> privileged sink, no approval gate"),
     "debug_bypass_in_architecture":       (scenario_debug_bypass_in_architecture,
         "DETECT-QC-016 (Medium) — Epherem §14: TODO/skip_auth/BYPASS annotation adjacent to auth node"),
 }
@@ -1861,6 +1886,7 @@ EXPECTED_RULES = {
     # Epherem web-app hardening checklist grounded
     "idor_missing_ownership_check":         {"DETECT-AGT-006"},
     "ssrf_user_supplied_url":               {"DETECT-INJ-009"},
+    "untrusted_content_to_privileged_agent": {"DETECT-INJ-010"},
     "debug_bypass_in_architecture":         {"DETECT-QC-016"},
 }
 
