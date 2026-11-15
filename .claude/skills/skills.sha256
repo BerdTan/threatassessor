@@ -47,7 +47,7 @@ b77e170ed06828fe6e1568a99e833cbab924d494b88eb3a4ba2ea4e99443d1a7  .claude/skills
 f58e65e75d6b9a9867731d358bae308ffabe37c2bc7ba075aa2922186d1155d5  .claude/skills/check-connector/scripts/check-connector.py
 a098a5cadf89eda8faafa1ad634254d2f8f106c5bcd6ff256da0da8ccb8d4d17  .claude/skills/check-deprecation/SKILL.md
 180df20b3d58b92fe47cb7da16c685c62f2876d0cfcf96fd8e06e47b8926cd94  .claude/skills/check-deprecation/scripts/check-deprecation.sh
-f9d83d53e722bf5187740e8e14cfc740d9146fbb5519926007db4010da2a4307  .claude/skills/check-detect/SKILL.md
+29347d2f91c73b41b6762b7f49a7c108cc8bac3ee79db47be4ee637a1d8cfb41  .claude/skills/check-detect/SKILL.md
 7172a9d069435ba6e571d60ba53525304962a9ebf461f6c0c017cbc692ade806  .claude/skills/check-detect/scripts/check-detect.py
 2fcea9e557357a8fe1ce4abd862e9f1d2611bc38530c4a167925a1752c36f144  .claude/skills/check-eventbroker/SKILL.md
 3a86bb2db75396e270ebbf571611bbc4998c0b1235cf4d1855b592fae8e78d91  .claude/skills/check-eventbroker/scripts/check-eventbroker.py
@@ -96,8 +96,8 @@ e7729b30ebcdf168eeb46e227ae5085e9bba05230c1c196263446a7e485aa32a  .claude/skills
 6c088bdb7bf45e154017bbc1dc956ab146c3af3713056dc74e5f733a58b01de0  .claude/skills/harden-audit/references/webpage.md
 ea00764aeeff321f9a01f39bcf9b127afd6d490e70dabf889702eb33189f299a  .claude/skills/health-audit/SKILL.md
 0ba90766b485a0310764c08909df905a5b2e9ec06043034643a5b76a49d923f2  .claude/skills/health-audit/scripts/health-audit.py
-1ba746aa6ed9a0fb99dc778ac624522896924be4944fbae9c81d415cf39e7fe5  .claude/skills/incident-simulator/SKILL.md
-3cac05b2386a4885f9016032d9dbe4bd4a2660aa25dd520004d00e5f0681a600  .claude/skills/incident-simulator/scripts/incident_simulator.py
+4da8a46ed7513676b3519fb46072410ace08b2ea8c384374a15b43a3fca35a5a  .claude/skills/incident-simulator/SKILL.md
+022ad8ef02bf6a8240c55d82fc6987d03a911e29b3fa9d355cddabe2e953f6be  .claude/skills/incident-simulator/scripts/incident_simulator.py
 9ddd2e486584e18f2fad75b6f6c7121b3dab4e1ff74bcc58c98cd2919c460e44  .claude/skills/langfuse-to-ocsf/SKILL.md
 4837cc7e7182b0ae83b1b26d5c973e8e64516b60bcb4485af57721d09bc985d7  .claude/skills/langfuse-to-ocsf/scripts/langfuse_to_ocsf.py
 44b93a3443de74a7d4a2c03f5a83ed6bc590a9756b583672c5e76e80d052559a  .claude/skills/mcp-audit/SKILL.md
@@ -167,7 +167,7 @@ d05d6e1b92c718bf50798b50487d35e6d3965f925845daf1fe97bd502a7c9fca  .claude/skills
 da9b23400cd23aa45aabb9b76d9d9e0e8b38e3b6d3fbcaea14131736844631ce  .claude/skills/taco-run/SKILL.md
 3f783690b606132d0581cbce7cac745c09b6c1d92e21a1918ae8eeae2498be8f  .claude/skills/taco-run/scripts/taco-run.py
 bdb92b54d709f018dd07340cb792a829eb7857c2533fd913039e7788a39837ea  .claude/skills/tagym/SKILL.md
-85c588549e379eb82ac72da9185d3aaad30b0366401b3573db59e16ff3b6ce7a  .claude/skills/taskillgym/SKILL.md
+10d96ad5d56d2a46d498b2f331cf4bbf7ca019f91c5c32a865e7cb0d2c5863bc  .claude/skills/taskillgym/SKILL.md
 d662870e1318157a839658c3e287aa6225c16e8c17b947eafb61f215c8439c2f  .claude/skills/taskillgym/scripts/taskillgym.py
 4b12ba16d08f6aca6e7663c87ee3e3413e5fece230f91664fe16564d0ccdab68  .claude/skills/tatb-corpus/SKILL.md
 f23ed600b08b865777e56548d066cfea321a0bf4533d32204209ec008da05de7  .claude/skills/tatb-corpus/scripts/tatb-corpus.py

@@ -1,6 +1,6 @@
 ---
 name: check-detect
-description: Run the SOC detection rule regression suite (~15s, no LLM/network). Covers all 68 DETECT rules (rule evaluator), AIVSS→OCSF findings export, incident simulator scenarios (62 scenarios covering all 68 rules), and EventBroker sm_verdicts path. Optionally re-evaluates live governance_signals.json for one or all corpus architectures and shows which rules fire. Use after any change to policies/soc_detection_rules.yaml, chatbot/harness/rule_evaluator.py, chatbot/harness/stages.py, or chatbot/harness/governance.py.
+description: Run the SOC detection rule regression suite (~15s, no LLM/network). Covers all 70 DETECT rules (rule evaluator), AIVSS→OCSF findings export, incident simulator scenarios (64 scenarios covering all 70 rules), and EventBroker sm_verdicts path. Optionally re-evaluates live governance_signals.json for one or all corpus architectures and shows which rules fire. Use after any change to policies/soc_detection_rules.yaml, chatbot/harness/rule_evaluator.py, chatbot/harness/stages.py, or chatbot/harness/governance.py.
 allowed-tools: Bash(python3:*) Bash(source:*) Bash(pytest:*)
 ---
 
@@ -14,9 +14,9 @@ rule evaluator to show which DETECT rules fire on real architecture data.
 
 | Test file | What it covers |
 |-----------|---------------|
-| `test_soc_rule_evaluator.py` | All 68 DETECT rules — fire/no-fire, severity, actions, kill_chain_stage |
+| `test_soc_rule_evaluator.py` | All 70 DETECT rules — fire/no-fire, severity, actions, kill_chain_stage |
 | `test_aivss_to_findings.py` | AIVSS→OCSF SecurityFinding + DetectionFinding export (escape signals) |
-| `test_incident_simulator.py` | 62 incident scenarios → rule co-occurrence assertions (all 68 rules covered) |
+| `test_incident_simulator.py` | 64 incident scenarios → rule co-occurrence assertions (all 70 rules covered) |
 | `test_harness_event_broker.py` | sm_verdicts event → LangfuseSink Score objects |
 
 ## Run

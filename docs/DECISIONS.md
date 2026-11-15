@@ -4,6 +4,25 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 258 — DETECT-INJ-011 and DETECT-RES-005 from the hand-labelled TAwatch targets
+
+**Date:** 2026-11-15
+**Status:** Implemented; rules 69 and 70; tests and scenarios added; counts refreshed (70 rules, 64 scenarios)
+
+**Why:** The blind labelling (Entry 257) found two real AI-as-target incidents the keyword heuristic missed, and a coverage test with small diagrams showed no rule fired for either. User approved adding rules ("if new DETECT is needed, I'm open to add in").
+
+**Rules:**
+- **DETECT-INJ-011** `untrusted_content_to_trusted_channel` (INJ, High). Untrusted social content (replies, comments, mentions, DMs, ad metadata) -> LLM node -> trusted/branded publish channel, no moderation/link-scan/approval node. Signal `sovereignty.untrusted_to_trusted_channel`. Grounded in Grokking (2025). Distinct from INJ-010: no credential needed, the channel's reputation is the amplifier. Gate check is graph-wide (documented).
+- **DETECT-RES-005** `exposed_inference_endpoint` (RES, High). Direct edge from the internet/external client network to an inference endpoint (Ollama, LiteLLM, vLLM, inference server/gateway), no control on the endpoint's own label. Signal `sovereignty.exposed_inference_endpoint`. Grounded in Zenity honeypots (2026). Path-local by construction: an auth/gateway node between them removes the direct edge, a second direct path still fires.
+
+**Evidence and limits:** 8 new tests (fire / suppressed / benign / does-not-need-credential / second-path / own-control); 2 simulator scenarios; 431 tests pass across rule evaluator, simulator, tawatch mapping, agreement. False-positive check: 0 firings across all 36 corpus architectures, but the corpus has no real example of either pattern, so recall rests on constructed diagrams grounded in ONE incident each. Keyword lists are a starting point; unlisted wording will not match. Not tuned further (no clean fresh test set yet).
+
+**Still open (Entry 255):** candidate 1 (MCP tool-metadata drift: Deadbugz, SANDWORM_MODE) and candidate 3 (agent-lure / untrusted repo crawl: FakeGit).
+
+**Process note:** TAskillgym flagged the stale rule counts in CLAUDE.md and four skill docs immediately after the rule count moved from 68 to 70.
+
+---
+
 ### Entry 257 — Agreement metrics for our evals (kappa, with recall first) + human-label protocol for `ai_role`
 
 **Date:** 2026-11-15
@@ -17,7 +36,7 @@ Read this file at the start of every session. After any significant decision abo
 
 **Result (2026-11-15, 60 cases labelled blind by the user, one labeller; v2 sheet, S048 relabelled weapon):** agreement 0.92, kappa 0.84 (95% CI 0.69 to 0.97), AC1 0.89. Per class (precision/recall): weapon 0.95/0.95, bypass 0.80/0.89, target 0.91/0.83. 5 disagreements (S048 added: refused injection = weapon): S002 (false bypass on the word "refusal"), S019 (stripped safeguards not in vocabulary), S034 and S058 (real targets missed: hijacked exposed endpoints; Grok prompted to repost links). Stratum-weighted estimate of true targets: about 28 of 755 (3.8%), 95% interval 9 to 61; 10 of the 11 keyword hits confirmed. Sophistication of 12 confirmed targets: median 3.0 (weapon sample 5.0). Heuristic NOT tuned on these cases (they are no longer a clean test set). Resolved: S048 relabelled weapon in v2 (injection attempt refused). Boundary cases S026, S034, S043, S048, S057 suggest rubric v2 clauses (failed subversion attempt = weapon; both-hit = target if an AI system was hijacked). Files: report/brain/ailabel/ (gitignored).
 
-**Rule-coverage check of the two hand-found targets (tested with small diagrams through the governance adapter, 2026-11-15):** Grokking (S058, 2025): DETECT-INJ-010 does NOT fire; its source list has no reply/comment/social-thread term and its sink list has no trusted-channel publish; the harm was amplification through a trusted post, not a credentialed action. Zenity honeypots (S034, 2026): nothing fires; DETECT-MCP-004 uses runtime MCP access signals, not an exposed-inference-endpoint structure. New DETECT candidates (not implemented): (4) AI output published through a trusted/branded channel after untrusted replies (vocabulary extension or sibling of INJ-010); (5) exposed unauthenticated model-inference endpoint (Ollama/LiteLLM) in an architecture.
+**Rule-coverage check of the two hand-found targets (tested with small diagrams through the governance adapter, 2026-11-15):** Grokking (S058, 2025): DETECT-INJ-010 does NOT fire; its source list has no reply/comment/social-thread term and its sink list has no trusted-channel publish; the harm was amplification through a trusted post, not a credentialed action. Zenity honeypots (S034, 2026): nothing fires; DETECT-MCP-004 uses runtime MCP access signals, not an exposed-inference-endpoint structure. New DETECT candidates (IMPLEMENTED in Entry 258): (4) AI output published through a trusted/branded channel after untrusted replies (vocabulary extension or sibling of INJ-010); (5) exposed unauthenticated model-inference endpoint (Ollama/LiteLLM) in an architecture.
 
 **Follow-ups:** apply recall-first reporting to TATB/TMbench judge comparisons (weighted kappa for the 0-3 rubric); update blog P42 (replace "I read it by hand" with the measured result) and P43 (principle of gyms for every layer).
 

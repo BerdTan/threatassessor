@@ -1671,6 +1671,44 @@ def scenario_untrusted_content_to_privileged_agent() -> Dict[str, Any]:
     return sig
 
 
+def scenario_untrusted_content_to_trusted_channel() -> Dict[str, Any]:
+    """
+    DETECT-INJ-011 (High) — TAwatch 2025 "Grokking": reply prompts make an AI assistant
+    repost a malicious link in a system-trusted post.
+
+    No credential is involved. A public reply thread reaches an LLM assistant that can publish
+    to a trusted public channel, with no moderation or link-scanning node in the design.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 4,
+        "is_agentic": False,
+        "no_oversight_path": False,
+    }
+    sig["sovereignty"] = {"untrusted_to_trusted_channel": True}
+    return sig
+
+
+def scenario_exposed_inference_endpoint() -> Dict[str, Any]:
+    """
+    DETECT-RES-005 (High) — TAwatch 2026 Zenity honeypots: exposed Ollama/LiteLLM endpoints
+    hijacked by real actors to run offensive tooling.
+
+    A model-inference endpoint has a direct edge from the internet with no authentication,
+    gateway or allowlist on the path.
+    """
+    sig = _base()
+    sig["arch_metadata"] = {
+        "architecture_type": "ai_system",
+        "node_count": 3,
+        "is_agentic": False,
+        "no_oversight_path": False,
+    }
+    sig["sovereignty"] = {"exposed_inference_endpoint": True}
+    return sig
+
+
 def scenario_debug_bypass_in_architecture() -> Dict[str, Any]:
     """
     DETECT-QC-016 (Medium) — Epherem §14: debug bypass artifact in production
@@ -1817,6 +1855,10 @@ SCENARIOS = {
         "DETECT-INJ-009 (High) — Epherem §7: outbound HTTP to user-supplied URL with no allowlist"),
     "untrusted_content_to_privileged_agent": (scenario_untrusted_content_to_privileged_agent,
         "DETECT-INJ-010 (Critical) — TAwatch 2026: untrusted issue/PR content -> LLM agent -> privileged sink, no approval gate"),
+    "untrusted_content_to_trusted_channel": (scenario_untrusted_content_to_trusted_channel,
+        "DETECT-INJ-011 (High) — TAwatch 2025 Grokking: untrusted replies -> LLM -> trusted-channel post, no moderation"),
+    "exposed_inference_endpoint":         (scenario_exposed_inference_endpoint,
+        "DETECT-RES-005 (High) — TAwatch 2026 Zenity: internet -> inference endpoint on a direct edge, no auth"),
     "debug_bypass_in_architecture":       (scenario_debug_bypass_in_architecture,
         "DETECT-QC-016 (Medium) — Epherem §14: TODO/skip_auth/BYPASS annotation adjacent to auth node"),
 }
@@ -1887,6 +1929,8 @@ EXPECTED_RULES = {
     "idor_missing_ownership_check":         {"DETECT-AGT-006"},
     "ssrf_user_supplied_url":               {"DETECT-INJ-009"},
     "untrusted_content_to_privileged_agent": {"DETECT-INJ-010"},
+    "untrusted_content_to_trusted_channel": {"DETECT-INJ-011"},
+    "exposed_inference_endpoint":           {"DETECT-RES-005"},
     "debug_bypass_in_architecture":         {"DETECT-QC-016"},
 }
 

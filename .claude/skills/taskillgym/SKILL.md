@@ -1,6 +1,6 @@
 ---
 name: taskillgym
-description: Deterministic checker for our own skills and headline docs (CLAUDE.md, MEMORY.md system state). Scores correct, complete, coherent, clear, conclusive; catches stale counts such as 65 vs 68 DETECT rules. No LLM, read-only.
+description: Deterministic checker for our own skills and headline docs (CLAUDE.md, MEMORY.md system state). Scores correct, complete, coherent, clear, conclusive; catches stale rule and tool counts that no longer match the repo. No LLM, read-only.
 allowed-tools: Bash(python3:*)
 ---
 

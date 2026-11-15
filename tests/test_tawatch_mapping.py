@@ -79,3 +79,61 @@ def test_inj010_suppressed_by_approval_gate():
 
 def test_inj010_quiet_on_benign():
     assert _sov(_BENIGN)["untrusted_to_privileged_agent"] is False
+
+
+# ── DETECT-INJ-011 / DETECT-RES-005 (hand-labelled TAwatch targets, Entry 257) ──────────────
+
+_GROK = """graph TD
+Reply["Public Reply Thread"] --> Assistant["Grok LLM Assistant"]
+Assistant --> Post["Publish Public Post"]
+"""
+_GROK_MOD = _GROK.replace('Assistant --> Post', 'Assistant --> Mod["Link Scanner"]\nMod --> Post')
+_GROK_BENIGN = """graph TD
+Reply["Public Reply Thread"] --> Assistant["Summariser LLM"]
+Assistant --> Store["Analytics Store"]
+"""
+_OPEN = """graph TD
+Net["Internet"] --> Ollama["Ollama Inference Server (no auth)"]
+"""
+_OPEN_GW = """graph TD
+Net["Internet"] --> GW["API Gateway with Auth"]
+GW --> Ollama["Ollama Inference Server"]
+"""
+_OPEN_BOTH = _OPEN_GW + 'Net --> Ollama\n'
+_OPEN_KEYED = """graph TD
+Net["Internet"] --> Ollama["Ollama Inference Server (API key)"]
+"""
+
+
+def test_inj011_fires_on_reply_to_llm_to_public_post():
+    assert _sov(_GROK)["untrusted_to_trusted_channel"] is True
+
+
+def test_inj011_suppressed_by_link_scanner():
+    assert _sov(_GROK_MOD)["untrusted_to_trusted_channel"] is False
+
+
+def test_inj011_quiet_when_output_is_internal():
+    assert _sov(_GROK_BENIGN)["untrusted_to_trusted_channel"] is False
+
+
+def test_inj011_does_not_require_a_credentialed_sink():
+    # Grokking has no credential; INJ-010 stays quiet while INJ-011 fires.
+    s = _sov(_GROK)
+    assert s["untrusted_to_privileged_agent"] is False and s["untrusted_to_trusted_channel"] is True
+
+
+def test_res005_fires_on_direct_internet_to_inference_endpoint():
+    assert _sov(_OPEN)["exposed_inference_endpoint"] is True
+
+
+def test_res005_quiet_behind_gateway():
+    assert _sov(_OPEN_GW)["exposed_inference_endpoint"] is False
+
+
+def test_res005_still_fires_when_a_second_direct_path_exists():
+    assert _sov(_OPEN_BOTH)["exposed_inference_endpoint"] is True
+
+
+def test_res005_quiet_when_endpoint_declares_its_own_control():
+    assert _sov(_OPEN_KEYED)["exposed_inference_endpoint"] is False

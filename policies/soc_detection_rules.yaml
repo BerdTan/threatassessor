@@ -3838,6 +3838,88 @@ rules:
       feeds PR .mmd content to a pipeline holding TA_API_KEY.
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # INJ-011 — Untrusted social content -> LLM -> trusted-channel publish (TAwatch 2025)
+  # "Grokking": reply prompts made an AI assistant repost a malicious link in a trusted post.
+  # OWASP: A01  ATLAS: AML.TA0005  Kill chain: delivery
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-INJ-011
+    name: untrusted_content_to_trusted_channel
+    domain: INJ
+    description: >
+      An architecture routes untrusted social or user content (replies, comments, mentions,
+      direct messages, ad metadata, forum threads) into an LLM node that has a direct edge to a
+      trusted or branded publishing channel (public post, official account, announcement,
+      newsletter, status page) and no moderation, link-scanning, approval or injection-filter
+      node appears in the diagram. The attacker needs no credential: the channel's reputation
+      amplifies whatever the model is prompted to publish, including malicious links.
+    incident_refs:
+      - tawatch-grokking-malvertising-2025
+    owasp: [A01]
+    csa_art: ["4.1.2"]
+    atlas_tactic: AML.TA0005
+    mitre_techniques:
+      - T1566
+      - T1204
+    kill_chain_stage: delivery
+    ocsf_class: 2004
+    ocsf_type_uid: 200401
+    severity: High
+    conditions:
+      - field: sovereignty.untrusted_to_trusted_channel
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+    tuning_note: >
+      Structural signal from node labels and edges. The gate check is graph-wide, not
+      path-local: a moderation or approval node on an unrelated branch silences the rule.
+      Distinct from DETECT-INJ-010, which needs a credentialed sink. Word lists are
+      keyword-based; a channel or source labelled with unlisted wording will not match.
+      Grounded in one incident, so treat the lists as a starting point.
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RES-005 — Model-inference endpoint directly exposed to the internet (TAwatch 2026)
+  # Zenity honeypots: exposed Ollama/LiteLLM endpoints hijacked to run offensive tooling.
+  # OWASP: A05  ATLAS: AML.TA0004  Kill chain: initial_access
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: DETECT-RES-005
+    name: exposed_inference_endpoint
+    domain: RES
+    description: >
+      A model-inference endpoint or LLM proxy (Ollama, LiteLLM, vLLM, an inference server or
+      gateway) has a direct edge from the internet or an external client network, with no
+      authentication, gateway or allowlist on that path and none declared on the endpoint
+      itself. Real actors scan for such endpoints and use them for free compute, offensive
+      tooling and jailbreak-driven operations billed to the owner.
+    incident_refs:
+      - tawatch-zenity-honeypots-2026
+    owasp: [A05]
+    csa_art: ["4.4.1"]
+    atlas_tactic: AML.TA0004
+    mitre_techniques:
+      - T1190
+      - T1496
+    kill_chain_stage: initial_access
+    ocsf_class: 2004
+    ocsf_type_uid: 200401
+    severity: High
+    conditions:
+      - field: sovereignty.exposed_inference_endpoint
+        op: "=="
+        value: true
+    combine: all
+    actions:
+      - type: audit_log
+      - type: flag_for_review
+    tuning_note: >
+      Path-local: fires only on a direct internet-to-endpoint edge, so an authentication or
+      gateway node between them silences it, while a second unprotected path still fires it.
+      Add the control to the endpoint label (for example "API key" or "mTLS") if it is enforced
+      there. Node-label keyword matching only; it cannot see network configuration.
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # DETECT-QC-016: Debug Bypass Artifact in Production Architecture
   # Source: Epherem web-app hardening checklist \u00a714 \u2014 Treat temporary, demo,
   #         and bypass logic as suspicious.

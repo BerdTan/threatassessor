@@ -402,6 +402,49 @@ _RE_APPROVAL_GATE_NODE = re.compile(
     re.IGNORECASE,
 )
 
+# INJ-011 — untrusted social content -> LLM -> publish through a trusted/branded channel.
+# Grounded in: TAwatch "Grokking" (2025): reply prompts made an AI assistant repost a malicious
+# link in a system-trusted post. The harm is amplification by a trusted channel, not a credential.
+_RE_SOCIAL_SOURCE_NODE = re.compile(
+    r"\b(repl(?:y|ies)|reply[\s_-]?threads?|comment[\s_-]?threads?|mentions?|direct[\s_-]?messages?"
+    r"|dms?|user[\s_-]?generated|social[\s_-]?(?:feed|media|posts?)|forum[\s_-]?(?:posts?|threads?)"
+    r"|customer[\s_-]?reviews?|chat[\s_-]?messages?|promoted[\s_-]?ads?|ad[\s_-]?metadata)\b",
+    re.IGNORECASE,
+)
+_RE_TRUSTED_CHANNEL_SINK_NODE = re.compile(
+    r"\b(publish(?:es|ed)?[\s_-]?(?:public[\s_-]?)?(?:posts?|repl(?:y|ies)|tweets?|messages?)"
+    r"|public[\s_-]?(?:posts?|timeline)|repost\w*|official[\s_-]?(?:account|channel)"
+    r"|brand(?:ed)?[\s_-]?account|verified[\s_-]?account|announcements?|newsletter"
+    r"|press[\s_-]?release|status[\s_-]?page)\b",
+    re.IGNORECASE,
+)
+_RE_CONTENT_GATE_NODE = re.compile(
+    r"\b(moderation|link[\s_-]?(?:scanner|check\w*|filter)|url[\s_-]?(?:scanner|reputation|filter)"
+    r"|safe[\s_-]?browsing)\b",
+    re.IGNORECASE,
+)
+
+# RES-005 — model-inference endpoint directly reachable from the internet.
+# Grounded in: TAwatch Zenity honeypots (2026): exposed Ollama/LiteLLM endpoints hijacked by
+# real actors to run offensive tooling on someone else's compute.
+_RE_INFERENCE_ENDPOINT_NODE = re.compile(
+    r"\b(ollama|litellm|vllm|llama[\s._-]?cpp|lm[\s_-]?studio|localai|text[\s_-]?generation[\s_-]?inference"
+    r"|inference[\s_-]?(?:server|endpoint|api|gateway)|model[\s_-]?(?:server|endpoint|api|gateway)"
+    r"|llm[\s_-]?(?:proxy|gateway|endpoint|server|api))\b",
+    re.IGNORECASE,
+)
+_RE_INTERNET_NODE = re.compile(
+    r"\b(internet|public[\s_-]?(?:internet|network|ip)|external[\s_-]?(?:users?|clients?|network|callers?)"
+    r"|untrusted[\s_-]?network|anonymous[\s_-]?(?:users?|clients?)|any[\s_-]?client)\b",
+    re.IGNORECASE,
+)
+# A control on the endpoint's own label ("Ollama (API key)"). Negations ("no auth") do not count.
+_RE_ENDPOINT_OWN_CONTROL = re.compile(
+    r"\b(api[\s_-]?key|oauth|oidc|mtls|mutual[\s_-]?tls|authenticated|vpn|ip[\s_-]?allowlist|private[\s_-]?(?:link|subnet))\b",
+    re.IGNORECASE,
+)
+_RE_NEGATED_CONTROL = re.compile(r"\b(no|without|missing|disabled|none|unauthenticated|anonymous|open)\b", re.IGNORECASE)
+
 # PER — Persistence mechanism node labels (schedulers, init scripts, SSH auth keys, shell profiles)
 # Grounded in: AISI INC-2026-07-28 — Mythos5 "Planted crontab @reboot persistence"; Numbat persistence ruleset
 _RE_PERSISTENCE_NODE = re.compile(
@@ -547,6 +590,8 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
                 "credential_store_nodes": [],
                 "agent_credential_access": False,
                 "untrusted_to_privileged_agent": False,
+                "untrusted_to_trusted_channel": False,
+                "exposed_inference_endpoint": False,
                 "untrusted_source_nodes": [],
                 "privileged_sink_nodes": [],
                 "token_forgery_risk": False,
@@ -836,6 +881,41 @@ class InhouseGovernanceAdapter(GovernanceAdapter):
             sig.sovereignty["flagged"] = True
             if sig.sovereignty["severity"] != "HIGH":
                 sig.sovereignty["severity"] = "HIGH"
+
+        # INJ-011 — untrusted social content -> LLM node -> trusted-channel publish, no gate.
+        _social_ids = _untrusted_ids | {nid for nid, lbl in node_labels.items() if _RE_SOCIAL_SOURCE_NODE.search(lbl)}
+        _channel_ids = {nid for nid, lbl in node_labels.items() if _RE_TRUSTED_CHANNEL_SINK_NODE.search(lbl)} - _social_ids
+        _content_gate = any(
+            _RE_APPROVAL_GATE_NODE.search(lbl) or _RE_CONTENT_GATE_NODE.search(lbl)
+            for lbl in node_labels.values())
+        _in11 = _out11 = False
+        for em in _RE_EDGE.finditer(_edges_content):
+            src, dst = em.group(1), em.group(2)
+            if src in _social_ids and dst in llm_node_ids:
+                _in11 = True
+            if src in llm_node_ids and dst in _channel_ids:
+                _out11 = True
+        if _in11 and _out11 and not _content_gate:
+            sig.sovereignty["untrusted_to_trusted_channel"] = True
+            sig.sovereignty["flagged"] = True
+            if sig.sovereignty["severity"] != "HIGH":
+                sig.sovereignty["severity"] = "HIGH"
+
+        # RES-005 — internet -> inference endpoint on a DIRECT edge (an auth/gateway node on the
+        # path removes the direct edge, so the check is path-local, unlike INJ-010's gate test).
+        _inf_ids = {
+            nid for nid, lbl in node_labels.items()
+            if _RE_INFERENCE_ENDPOINT_NODE.search(lbl)
+            and not (_RE_ENDPOINT_OWN_CONTROL.search(lbl) and not _RE_NEGATED_CONTROL.search(lbl))
+        }
+        _net_ids = {nid for nid, lbl in node_labels.items() if _RE_INTERNET_NODE.search(lbl)} - _inf_ids
+        for em in _RE_EDGE.finditer(_edges_content):
+            if em.group(1) in _net_ids and em.group(2) in _inf_ids:
+                sig.sovereignty["exposed_inference_endpoint"] = True
+                sig.sovereignty["flagged"] = True
+                if sig.sovereignty["severity"] != "HIGH":
+                    sig.sovereignty["severity"] = "HIGH"
+                break
 
         # SEC — Token forgery risk: federation/SSO architecture with attacker edge to
         # token store or JWKS endpoint (T1606 Golden SAML / T1528 token theft precondition).
