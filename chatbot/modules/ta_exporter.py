@@ -81,8 +81,13 @@ def _build_gate(gov: Dict, ocsf: List[Dict]) -> Dict:
     }
 
 
+def _attack_paths(gt: Dict) -> List[Dict]:
+    """The engine writes `expected_attack_paths`; older/hand-built inputs use `attack_paths`."""
+    return gt.get("expected_attack_paths") or gt.get("attack_paths") or []
+
+
 def _build_assessment(gt: Dict) -> Dict:
-    aps = gt.get("attack_paths", [])
+    aps = _attack_paths(gt)
     techs = gt.get("techniques", [])
     controls = gt.get("control_recommendations", [])
     val = gt.get("validation", {}) or gt.get("validation_report", {}) or {}
@@ -164,7 +169,7 @@ def _build_posture_signal(gt: Dict, gov: Dict) -> Optional[Dict]:
         meta = gt.get("metadata", {})
         arch_type = meta.get("architecture_type", "generic")
         techs = gt.get("techniques", [])
-        aps = gt.get("attack_paths", [])
+        aps = _attack_paths(gt)
         critical_count = sum(
             1 for ap in aps
             if (ap.get("criticality_tier") or "").lower() in ("critical", "high")
@@ -241,7 +246,7 @@ def _build_otm(gt: Dict, arch_name: str) -> Dict:
         for k, v in nodes.items()
     ]
 
-    aps = gt.get("attack_paths", [])
+    aps = _attack_paths(gt)
     threats = [
         {
             "id":          ap.get("id", f"TH-{i+1:03d}"),
