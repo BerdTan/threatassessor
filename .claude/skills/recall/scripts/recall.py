@@ -48,7 +48,7 @@ PRIORITY_STEPS = [
     (46, 50, "TAprover: technique_grounding + tactic_correctness vs ATT&CK STIX; ProofAttestation; skill taprover (Entry 249)", ".claude/skills/taprover/", 45),
     (47, 0,  "Sequence Entries 243/244 (TMbench-gap pipeline roadmap, tiered arch weighting) into steps", "docs/DECISIONS.md", None),
     (48, 0,  "EvalWatch (Entry 253): ingest AI Risk Explorer evals catalogue -> DETECT coverage view; gated on TAwatch 65-rule heatmap + calibration loop live", "chatbot/modules/evalwatch.py", 26),
-    (49, 0,  "📝 Publish Blog P42 (draft 9/9)", "docs/blog/drafts/draft_2026-11-14_p42.md", None),
+    (49, 0,  "✅ Blog P42 published — 'My Incident Heatmap Was Lying to Me' (https://medium.com/@breadtan/my-incident-heatmap-was-lying-to-me-fixing-it-produced-new-detection-rules-8ab099e6a439)", "docs/BLOG_INDEX.md", None),
     # ── Priority 33/34/35 — DONE ─────────────────────────────────────────────
     (1,  33, "✅ DETECT-ABU 6 rules + MCPAccessLogger",  "policies/soc_detection_rules.yaml",         None),
     (2,  34, "✅ Jev Phase 2: GT noul ❻ + CISO posture ❽", "ground_truth_generator.py + ta_exporter.py", 1),
@@ -108,7 +108,7 @@ PRIORITY_STEPS = [
     (27, 0,  "ta-export version-stamp: {model_id, routing_mode, skills_context} into bundle", "chatbot/modules/ta_exporter.py", None),
     (28, 0,  "skill-master: multi-location inventory + override detection + change-triggered re-scan (Entry 225)", ".claude/skills/skill-master/", 27),
     # Blog P42 (synthesis): three-tier confidence stack — unblocked after AgentBench + flywheel
-    (44, 0,  "✅ Draft P42 blog — 'What 755 Real AI Operations Taught My Detection Rules' (9/9; awaiting publish)", "docs/blog/drafts/draft_2026-11-14_p42.md", None),
+    (44, 0,  "✅ Draft P42 blog — 'What 755 Real AI Operations Taught My Detection Rules' (9/9; PUBLISHED)", "docs/blog/drafts/draft_2026-11-14_p42.md", None),
     # ── Freestanding: Open Factory (Entry 224) — needs sequencing ────────────
     (33, 0,  "Open Factory (Entry 224): define ta-export reproducibility gap + interoperability steps", "docs/DECISIONS.md", 27),
     # ── Freestanding: recall ADR auto-sequencing (Step 22) ───────────────────

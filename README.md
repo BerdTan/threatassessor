@@ -238,10 +238,10 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 ## Build story
 
-41 parts on Medium, from diagram to detection layer, with every design decision exposed. The full table is in [`docs/BLOG_INDEX.md`](docs/BLOG_INDEX.md).
+42 parts on Medium, from diagram to detection layer, with every design decision exposed. The full table is in [`docs/BLOG_INDEX.md`](docs/BLOG_INDEX.md).
 
 Latest:
 
-- Part 39: [Four Primitives, One Honest Gap: Mapping OpenShell to a Real Python Agent Fleet](https://medium.com/@breadtan/four-primitives-one-honest-gap-mapping-openshell-to-a-real-python-agent-fleet-99c505afe208)
 - Part 40: [The Scanner Saw Clean. The Pipeline Already Had.](https://medium.com/@breadtan/the-scanner-saw-clean-the-pipeline-already-had-521b8c2fc678)
 - Part 41: [I Built the Benchmark. Then Lost to It.](https://medium.com/@breadtan/i-built-the-benchmark-then-lost-to-it-c611de098146)
+- Part 42: [My Incident Heatmap Was Lying to Me: Fixing It Produced New Detection Rules](https://medium.com/@breadtan/my-incident-heatmap-was-lying-to-me-fixing-it-produced-new-detection-rules-8ab099e6a439)
