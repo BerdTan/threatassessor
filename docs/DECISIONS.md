@@ -89,6 +89,8 @@ Read this file at the start of every session. After any significant decision abo
 
 **Follow-ups:** apply recall-first reporting to TATB/TMbench judge comparisons (weighted kappa for the 0-3 rubric); update blog P42 (replace "I read it by hand" with the measured result) and P43 (principle of gyms for every layer).
 
+
+**Addendum (2026-11-20) — run-level reliability:** pass@k (>=1 of k succeed = capability) and pass^k (all k succeed = reliability) belong beside kappa. Use pass^k for CI gates (`ta gate`) and TMbench leaderboard claims, where a single-run score cannot separate reliable from lucky (cf. deepseek_flash 2/10 JSON failures). Inputs come from TAprover attestations grouped by run_id. Caveat: k=3 to 5 gives a rough signal, not a calibrated probability.
 ---
 
 ### Entry 256 — Watch family + TAskillgym: deterministic currency checks for our own claims
@@ -252,7 +254,7 @@ Principles 1–10 derived from TA's own design history and first-principles refl
 ### Entry 250 — brain_fast role redesign: routing oracle, not TM generator
 
 **Date:** 2026-11-09
-**Status:** Design decision; refactor P51 (before P44)
+**Status:** Implemented — commit d5f4139 (P51, 2026-11-09). Export field shipped as `brain_annotations` (expected/confirmed/novel/diverged); `routing.brain_confidence` not verified.
 
 **What:** brain_fast mode is to be deprecated as a TM-generation shortcut. Brain's correct role is as a routing oracle — it informs which engine runs, not whether the engine runs. The minimum output of any pipeline call remains a fresh analysis-generated TM. Brain patterns become post-analysis annotations (expected vs confirmed techniques) rather than the analysis itself.
 
@@ -277,7 +279,17 @@ Principles 1–10 derived from TA's own design history and first-principles refl
 ### Entry 249 — TAprover: independent TM claim verifier
 
 **Date:** 2026-11-08
-**Status:** Planned (P50)
+**Status:** Slice 1 built (2026-11-20): technique_grounding + tactic_correctness, `.claude/skills/taprover/`, 16 tests. Remaining slices planned.
+
+**Slice 1 notes (2026-11-20):**
+- *Principle audit:* one tension. This entry says TAprover "extends self_validation.py", but the independence invariant forbids sharing the generator's logic. Resolved: the prover imports nothing from `chatbot/` (enforced by a test) and reads `chatbot/data/enterprise-attack.json` as data only.
+- *Inputs:* threatmodel/0.1 (grounding + tactic) and ta-export/1.0 (grounding only; ta-export carries no tactic, so none is claimed).
+- *Verdict rules (revised same day after review):* scope follows spec §2 (Enterprise, ICS, ATLAS). A technique ID in none of the loaded catalogs is REFUTED by default (`--lenient` downgrades to UNVERIFIABLE). A domain whose catalog file is missing makes its IDs UNVERIFIABLE (`catalog_not_loaded`), never REFUTED. An empty `technique_id` is UNVERIFIABLE with `reason: no_claim`, never REFUTED: an unmade claim cannot be false, and tmbench-check already scores the absence. Zero claims overall is UNVERIFIABLE, never VERIFIED. Every claim carries a machine-readable `reason`.
+- *ATLAS + ICS loaded (2026-11-20, user: both matter, ATLAS especially for agentic architectures):* Enterprise 835, ICS 127 (`chatbot/data/ics-attack.json`, fetched from mitre-attack/attack-stix-data; gitignored like the Enterprise bundle, refresh via /update-data), ATLAS 170 (`chatbot/data/atlas/*.yaml`, parsed directly: tactics are `{{anchor.id}}` templates, sub-techniques inherit the parent's tactics). The lookup half of Entry 249's `atlas_grounding` is therefore folded into `technique_grounding` (one lookup, per-claim `domain`); its other half, "agentic architecture must trigger >=1 ATLAS technique", stays in the logic slice. Tactics are checked within the technique's own domain; old ATLAS "ML ..." tactic names are accepted as the v5.6 "AI ..." names.
+- *Discovered while loading ICS:* ATT&CK v20.1 revoked legacy ICS IDs (`T0855` -> `T1692.001`, 9 revoked) and is merging ICS into the `T1xxx` space. So ID shape cannot select the catalog, and my first assumption "ICS = T08xx" was stale. A bare T-ID is REFUTED only when both Enterprise and ICS are loaded; revoked IDs are REFUTED with the successor ID in the evidence. Open: a revoked technique's tactic still reads VERIFIED against its own record; arguably should be UNVERIFIABLE.
+- *Follow-up (user):* create ICS architectures for the corpus if needed; the corpus currently has no ICS fixture, so ICS grounding is exercised only by unit tests and a hand-built sample.
+- *Correction:* my first run reported all 11 grounding claims in `docs/tmbench/results/` (axios, openai_skill_estimate) as REFUTED and called it a corpus spec violation. Wrong. Both adapters document "No ATT&CK IDs in original — left empty": the external tools never claimed a technique. The prover conflated "no claim" with "false claim". Now UNVERIFIABLE/no_claim (22 claims, 0 refuted). Lesson for Principle 4: a verifier must distinguish absence, unprovable, and false.
+- *pass@k / pass^k:* not applicable to the prover (deterministic, same input same verdict). Applicable to the stochastic pipeline it checks: per-claim pass^k over k runs = stability, pass@k minus pass^k gap = luck. Attestation carries run_id/arch/model_id/routing_mode so a later `--aggregate` layer can compute it; deliberately not built in slice 1 (Principles 1, 8). Practical k = 3 to 5 (full pipeline cost per run). See Entry 257.
 
 **What:** TAprover — a standalone independent verifier for ThreatAssessor threat model outputs. Reads the final TM JSON (ta-export/1.0 or threatmodel/0.1), verifies each factual claim against authoritative external evidence sources, and produces a ProofAttestation: VERIFIED / UNVERIFIABLE / REFUTED per claim, with the evidence grain that produced the verdict.
 
