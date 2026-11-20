@@ -208,3 +208,15 @@ def test_unloaded_domain_unverifiable_not_refuted():
     # catalog without ICS/ATLAS: those IDs cannot be proven, and must not be called false
     a = tp.prove(tm(technique_id="AML.T0043", technique_name=None, tactic=None), CAT)
     assert a["claims"][0]["reason"] == "catalog_not_loaded" and a["overall"] == "UNVERIFIABLE"
+
+
+def test_drift_labels_only_baseline_accepted_refutations():
+    old = {"T1562": {"name": "Impair Defenses", "tactics": {"defense-evasion"}, "deprecated": False, "revoked": False}}
+    new = {"T1562": {"name": "Impair Defenses", "tactics": {"defense-impairment"}, "deprecated": False, "revoked": False}}
+    t = {"spec_version": "0.1", "architecture_id": "a", "attack_paths": [
+        {"path_id": "P1", "technique_id": "T1562", "technique_name": "Impair Defenses", "tactic": "Defense Evasion"},
+        {"path_id": "P2", "technique_id": "T1562", "technique_name": "Wrong Name", "tactic": "Defense Evasion"}]}
+    latest = tp.prove(t, new, loaded=ALL)
+    att = tp.mark_drift(latest, tp.prove(t, old, loaded=ALL))
+    assert att["counts"]["DRIFT"] >= 1 and att["counts"]["REFUTED"] >= 1  # name_mismatch is real, tactic move is drift
+    assert att["overall"] == "REFUTED"

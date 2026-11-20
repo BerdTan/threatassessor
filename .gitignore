@@ -80,3 +80,4 @@ security-assessment/
 .claude/codemap/
 .readme-forge/
 tests/data/taclaw/**/last_result.json
+chatbot/data/attack_latest/

@@ -27,3 +27,12 @@ python3 .claude/skills/taprover/scripts/taprover.py --prove <tm.json> --refuted-
 - Attestation carries `run_id`, `arch`, `model_id`, `routing_mode` and input/evidence hashes so k-run pass^k aggregation can be layered on later.
 
 Later slices (Entry 249): coverage/mitigation/agentic-trigger logic, cvss_validity, atlas_grounding, control_existence.
+
+## Catalog drift (Entry 261)
+The pipeline is pinned to `chatbot/data/enterprise-attack.json`; the latest ATT&CK bundle lives in `chatbot/data/attack_latest/` (gitignored). To prove against latest and separate catalog age from model error:
+```bash
+python3 .claude/skills/taprover/scripts/taprover.py --prove-dir docs/tmbench/corpus \
+  --stix chatbot/data/attack_latest/enterprise-attack.json --ics chatbot/data/attack_latest/ics-attack.json \
+  --baseline-stix chatbot/data/enterprise-attack.json --summary
+```
+Claims the pinned catalog accepts but latest refutes are `DRIFT`; they do not fail the exit code.

@@ -4,6 +4,21 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 261 — ATT&CK catalog drift: pin the pipeline, give TAprover the latest bundle, migrate separately
+
+**Date:** 2026-11-20
+**Status:** Staged. TAprover drift mode built (29 tests). Pipeline migration is a planned item, not started.
+
+**Finding:** `chatbot/data/enterprise-attack.json` is ~v18; upstream is v20.1. Defense Evasion is split into `stealth` + `defense-impairment` (15 tactics), 262 techniques change tactic, 17 are newly revoked/deprecated (T1562 family), 4 renamed, 32 added. ICS is merged into `T1xxx` (T0855 → T1692.001).
+
+**Decision:** Do not replace the Enterprise file in place. It feeds TA Brain (18/462 pattern, 117/2445 instance, 31/1447 cache mentions hit revoked IDs; 64/295/165 hit changed-tactic techniques), 11+ files that assume `defense-evasion`, the embeddings cache, and the Brier 0.165 / recall 96% baselines. TAprover stays independent and reads the latest bundle from `chatbot/data/attack_latest/` (gitignored). `--baseline-stix` labels any REFUTED claim the pinned catalog accepts as **DRIFT**, not REFUTED. Overall = DRIFT when every refutation is drift; exit 1 only for real REFUTED.
+
+**Measured (docs/tmbench/corpus, 10 TMs, 136 claims):** pinned 12 REFUTED (AML name_mismatch/not_a_tactic, T1484, T1530). Latest 26 REFUTED = the same 12 + **14 drift** (wrong_tactic 4→20, deprecated 0→6; T1562 ×12, T1078 ×8). 6 of the 10 TMs are DRIFT-only. The 12 are real and were present before.
+
+**Migration item (not started):** tactic split in 11 files, brain re-ingest, embeddings rebuild (~274 OpenRouter calls, needs approval), Brier re-baseline, threatmodel.md/TATB tactic list. Run TAprover drift over brain output first to size it. ATLAS upstream vs local 5.6.0 unchecked.
+
+**Rejected:** in-place refresh (silently changes brain calibration); counting drift as hallucination (misattributes catalog age to the model).
+
 ### Entry 260 — Trajectory evals for TA: score the path and the end state, not only the final output
 
 **Date:** 2026-11-15

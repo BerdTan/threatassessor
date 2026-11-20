@@ -217,6 +217,23 @@ def prove(tm, cat, stix_sha=None, src_sha=None, lenient=False, run_id=None, load
             "lenient": lenient, "overall": overall, "counts": counts, "claims": results}
 
 
+def mark_drift(att, base_att):
+    """Label REFUTED claims that the pinned (baseline) catalog accepts as catalog drift, not model error.
+    Overall becomes DRIFT when every refutation is drift; real refutations keep it REFUTED."""
+    key = lambda r: (r["path"], r["category"])
+    base = {key(r): r for r in base_att["claims"]}
+    for r in att["claims"]:
+        b = base.get(key(r))
+        r["drift"] = bool(r["verdict"] == "REFUTED" and b and b["verdict"] != "REFUTED")
+    d = sum(r["drift"] for r in att["claims"])
+    att["counts"]["DRIFT"] = d
+    att["counts"]["REFUTED"] -= d
+    att["baseline"] = base_att["evidence_sha256"]
+    if att["overall"] == "REFUTED" and att["counts"]["REFUTED"] == 0:
+        att["overall"] = "DRIFT"
+    return att
+
+
 def _load_inputs(args):
     paths = []
     if args.prove:
@@ -233,6 +250,8 @@ def main(argv=None):
     ap.add_argument("--stix", default=DEFAULT_STIX, help="Enterprise STIX bundle")
     ap.add_argument("--ics", default=DEFAULT_ICS, help="ICS STIX bundle (optional; ICS IDs UNVERIFIABLE if absent)")
     ap.add_argument("--atlas", default=DEFAULT_ATLAS, help="ATLAS YAML dir (optional; ATLAS IDs UNVERIFIABLE if absent)")
+    ap.add_argument("--baseline-stix", help="pinned Enterprise bundle; REFUTED claims it accepts are labelled DRIFT, not REFUTED")
+    ap.add_argument("--baseline-ics", default=DEFAULT_ICS, help="pinned ICS bundle for --baseline-stix")
     ap.add_argument("--lenient", action="store_true", help="treat IDs absent from the Enterprise catalog as UNVERIFIABLE instead of REFUTED")
     ap.add_argument("--summary", action="store_true", help="one line per input")
     ap.add_argument("--refuted-only", action="store_true", help="show only REFUTED claims")
@@ -255,6 +274,12 @@ def main(argv=None):
     else:
         print(f"warning: ATLAS catalog not found at {args.atlas}; ATLAS IDs will be UNVERIFIABLE", file=sys.stderr)
     stix_sha = shas
+    bcat = bshas = None
+    if args.baseline_stix:
+        bcat = load_catalog(args.baseline_stix); bshas = {"enterprise": _sha(args.baseline_stix)}
+        if Path(args.baseline_ics).exists():
+            bcat.update(load_ics(args.baseline_ics)); bshas["ics"] = _sha(args.baseline_ics)
+        bcat.update({k: v for k, v in cat.items() if v.get("domain") == "atlas"})  # ATLAS is not versioned here
     atts, any_refuted = [], False
     for p in paths:
         try:
@@ -264,16 +289,18 @@ def main(argv=None):
             print(f"{p.name}: ERROR {e}", file=sys.stderr)
             any_refuted = True
             continue
+        if bcat is not None:
+            att = mark_drift(att, prove(tm, bcat, bshas, _sha(p), args.lenient))
         att["source"] = str(p)
         atts.append(att)
         any_refuted |= att["overall"] == "REFUTED"
         c = att["counts"]
-        print(f"{p.name}: {att['overall']}  verified={c['VERIFIED']} unverifiable={c['UNVERIFIABLE']} refuted={c['REFUTED']}")
+        print(f"{p.name}: {att['overall']}  verified={c['VERIFIED']} unverifiable={c['UNVERIFIABLE']} refuted={c['REFUTED']}" + (f" drift={c['DRIFT']}" if "DRIFT" in c else ""))
         if not args.summary:
             for r in att["claims"]:
                 if args.refuted_only and r["verdict"] != "REFUTED":
                     continue
-                print(f"  [{r['verdict']:<12}] {r['path']} {r['technique_id']} {r['category']} ({r['reason']}): {r['evidence']}")
+                print(f"  [{'DRIFT' if r.get('drift') else r['verdict']:<12}] {r['path']} {r['technique_id']} {r['category']} ({r['reason']}): {r['evidence']}")
     if args.out:
         Path(args.out).write_text(json.dumps(atts[0] if len(atts) == 1 else atts, indent=2))
     return 1 if any_refuted else 0
