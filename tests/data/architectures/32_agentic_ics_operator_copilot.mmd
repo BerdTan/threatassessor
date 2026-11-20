@@ -1,0 +1,97 @@
+flowchart TB
+    Operators((Control Room Operators))
+    Maintenance((Maintenance Engineers))
+
+    subgraph Operator_Interface[Operator Interface]
+        CopilotUI[Operator Copilot Chat UI]
+        ApprovalConsole[Human Approval Console]
+    end
+
+    subgraph Agent_Layer[Agent Orchestration Layer]
+        CopilotAgent[Copilot Agent Orchestrator]
+        ToolRegistry[Tool Registry]
+        PromptManager[Prompt Manager]
+        PolicyGuard[Action Policy Guard]
+    end
+
+    subgraph AI_Services[AI Services]
+        LLMGateway[LLM API Gateway]
+        HostedLLM[Hosted LLM API]
+        EmbeddingService[Embedding Service]
+    end
+
+    subgraph Knowledge_Layer[Knowledge Layer]
+        RunbookVectorDB[(Runbook Vector Database)]
+        ManualStore[(Vendor Manual Store)]
+        IncidentHistory[(Incident History)]
+    end
+
+    subgraph Agent_Tools[Agent Tools]
+        HistorianQueryTool[Historian Query Tool]
+        AlarmTriageTool[Alarm Triage Tool]
+        SetpointWriteTool[Setpoint Write Tool]
+        PLCProgramTool[PLC Logic Update Tool]
+        TicketTool[Maintenance Ticket Tool]
+        WebSearchTool[Vendor Web Search Tool]
+    end
+
+    subgraph Supervisory_Zone[Supervisory Control Zone]
+        SCADAServer[SCADA Server]
+        Historian[(Process Historian)]
+        AlarmServer[Alarm Server]
+        EngWorkstation[Engineering Workstation]
+    end
+
+    subgraph Control_Zone[Control Zone]
+        PLC_Boiler[PLC Boiler Control]
+        PLC_Turbine[PLC Turbine Control]
+        ProtocolGateway[Modbus-OPC Gateway]
+    end
+
+    subgraph Safety_Zone[Safety Instrumented System]
+        SIS[Safety Controller]
+    end
+
+    subgraph Governance[Audit and Governance]
+        AuditLog[(Agent Audit Log)]
+        SIEM[SIEM]
+    end
+
+    Operators --> CopilotUI
+    Maintenance --> CopilotUI
+    CopilotUI --> CopilotAgent
+    CopilotAgent --> PromptManager
+    PromptManager --> LLMGateway
+    LLMGateway --> HostedLLM
+    CopilotAgent --> EmbeddingService
+    EmbeddingService --> RunbookVectorDB
+    CopilotAgent --> RunbookVectorDB
+    CopilotAgent --> ManualStore
+    CopilotAgent --> IncidentHistory
+    CopilotAgent --> ToolRegistry
+    ToolRegistry --> PolicyGuard
+    PolicyGuard --> HistorianQueryTool
+    PolicyGuard --> AlarmTriageTool
+    PolicyGuard --> SetpointWriteTool
+    PolicyGuard --> PLCProgramTool
+    PolicyGuard --> TicketTool
+    ToolRegistry --> WebSearchTool
+    WebSearchTool -->|HTTPS| HostedLLM
+    SetpointWriteTool --> ApprovalConsole
+    PLCProgramTool --> ApprovalConsole
+    Operators --> ApprovalConsole
+    HistorianQueryTool -->|OPC UA| Historian
+    AlarmTriageTool --> AlarmServer
+    SetpointWriteTool -->|OPC UA write| SCADAServer
+    PLCProgramTool -->|Program download| EngWorkstation
+    EngWorkstation --> PLC_Turbine
+    SCADAServer -->|Modbus TCP| ProtocolGateway
+    ProtocolGateway --> PLC_Boiler
+    ProtocolGateway --> PLC_Turbine
+    SCADAServer --> Historian
+    SCADAServer --> AlarmServer
+    PLC_Boiler --> SIS
+    PLC_Turbine --> SIS
+    CopilotAgent --> AuditLog
+    AuditLog --> SIEM
+    IncidentHistory -->|ingests ticket text| TicketTool

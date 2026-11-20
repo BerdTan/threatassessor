@@ -1,0 +1,73 @@
+flowchart TB
+    Operators((Plant Operators))
+    Vendor((Vendor Remote Support))
+
+    subgraph Enterprise_Zone[Enterprise IT Zone]
+        CorpAD[(Corporate Active Directory)]
+        Historian_Replica[(Historian Replica)]
+        BusinessReporting[Business Reporting]
+    end
+
+    subgraph DMZ[Industrial DMZ]
+        JumpHost[Remote Access Jump Host]
+        PatchServer[Patch Server]
+        DataDiode[Historian Data Diode]
+        IndustrialFirewall[Industrial Firewall]
+    end
+
+    subgraph Supervisory_Zone[Supervisory Control Zone]
+        HMI[Operator HMI]
+        SCADAServer[SCADA Server]
+        Historian[(Process Historian)]
+        EngWorkstation[Engineering Workstation]
+        AlarmServer[Alarm Server]
+    end
+
+    subgraph Control_Zone[Control Zone]
+        PLC_Intake[PLC Intake Pumps]
+        PLC_Chem[PLC Chemical Dosing]
+        PLC_Filter[PLC Filtration]
+        RTU_Remote[RTU Remote Reservoir]
+        ProtocolGateway[Modbus-OPC Gateway]
+    end
+
+    subgraph Safety_Zone[Safety Instrumented System]
+        SIS[Safety Controller]
+        ESD[Emergency Shutdown Valves]
+    end
+
+    subgraph Field_Layer[Field Devices]
+        Sensors[Flow and Turbidity Sensors]
+        DosingPumps[Chlorine Dosing Pumps]
+        Actuators[Valve Actuators]
+    end
+
+    Operators --> HMI
+    Vendor -->|VPN| JumpHost
+    CorpAD -->|LDAP| JumpHost
+    JumpHost -->|RDP| EngWorkstation
+    JumpHost --> IndustrialFirewall
+    PatchServer --> IndustrialFirewall
+    IndustrialFirewall --> SCADAServer
+    HMI -->|OPC UA| SCADAServer
+    SCADAServer -->|DNP3| RTU_Remote
+    SCADAServer -->|Modbus TCP| ProtocolGateway
+    ProtocolGateway -->|Modbus| PLC_Intake
+    ProtocolGateway -->|Modbus| PLC_Chem
+    ProtocolGateway -->|Modbus| PLC_Filter
+    EngWorkstation -->|Program download| PLC_Chem
+    EngWorkstation -->|Program download| PLC_Filter
+    SCADAServer --> Historian
+    SCADAServer --> AlarmServer
+    Historian --> DataDiode
+    DataDiode --> Historian_Replica
+    Historian_Replica --> BusinessReporting
+    PLC_Intake --> Actuators
+    PLC_Chem --> DosingPumps
+    PLC_Filter --> Actuators
+    RTU_Remote --> Sensors
+    Sensors --> PLC_Intake
+    Sensors --> PLC_Filter
+    Sensors --> SIS
+    SIS --> ESD
+    SIS -->|hardwired trip| DosingPumps
