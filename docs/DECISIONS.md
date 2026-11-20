@@ -19,6 +19,8 @@ Read this file at the start of every session. After any significant decision abo
 
 **Rejected:** in-place refresh (silently changes brain calibration); counting drift as hallucination (misattributes catalog age to the model).
 
+**Addendum 2026-11-20 — new corpus archs (31 ICS water treatment, 32 agentic ICS copilot), deterministic engine, TAprover over `technique_validation`/`atlas_techniques`:** 0 real REFUTED. 31: 217 verified + 7 drift (T1562→T1685). 32: 407 verified + 3 drift; its 16 ATLAS claims all VERIFIED. **Gap found:** neither arch cites any ICS-domain technique (0 of 127 ICS IDs hit) — the engine is Enterprise-only, so the ICS corpus arch tests grounding but not ICS reasoning. Candidate: ICS-aware technique mapping for PLC/SCADA/RTU/SIS nodes, then re-score. **Bug found:** `ta_exporter._build_assessment` reads `gt["attack_paths"]` but the engine writes `expected_attack_paths`, so `ta-export` has 0 attack paths for freshly generated reports and TAprover cannot read them; prove used `technique_validation` as a workaround. Not fixed yet.
+
 ### Entry 260 — Trajectory evals for TA: score the path and the end state, not only the final output
 
 **Date:** 2026-11-15
