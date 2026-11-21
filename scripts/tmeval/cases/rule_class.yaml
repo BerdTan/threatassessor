@@ -1,0 +1,21 @@
+# Hijack vs drift tag per DETECT domain (Entry 264, step 4). AUTHOR JUDGMENT: review before relying on it.
+#   hijack = an adversary controls the agent, credentials or inputs  -> should map to block/kill
+#   drift  = the agent or pipeline degrades without an adversary     -> should map to steer/throttle
+domains:
+  INJ: hijack
+  EXF: hijack
+  SCT: hijack
+  MCP: hijack
+  PER: hijack
+  SEC: hijack
+  AGT: hijack
+  ABU: hijack
+  QC: drift
+  RES: drift
+# Per-rule overrides where the name says adversary even though the domain default is drift.
+overrides:
+  DETECT-QC-009: hijack   # sm_endogenous_evasion
+  DETECT-QC-011: hijack   # orchestrator_state_poisoning
+  DETECT-QC-016: hijack   # debug_bypass_artifact
+  DETECT-RES-002: hijack  # distributed_agentic_sweep
+  DETECT-RES-005: hijack  # exposed_inference_endpoint
