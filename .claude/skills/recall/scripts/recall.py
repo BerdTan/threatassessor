@@ -45,10 +45,13 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 PRIORITY_STEPS = [
     # ── Current head of queue (2026-11-15 reconciliation) ────────────────────
     (45, 51, "✅ brain_fast → brain_route: routing oracle only, api_only floor, brain_expected/confirmed/missed annotations in ta-export (Entry 250)", "chatbot/harness/smart_router.py + ta_exporter.py", None),
-    (46, 50, "🔶 slices 1-2 DONE (grounding, tactic, drift, agentic parity, coverage, mitigation, --aggregate; Entry 262); remaining: cvss_validity, control_existence, ai_system classifier fix. TAprover: technique_grounding + tactic_correctness vs ATT&CK STIX; ProofAttestation; skill taprover (Entry 249)", ".claude/skills/taprover/", 45),
+    (46, 50, "🔶 slices 1-2 DONE (grounding, tactic, drift, agentic parity, coverage, mitigation, --aggregate; Entry 262); ai_system classifier fix DONE (Entry 263); remaining: cvss_validity, control_existence. TAprover: technique_grounding + tactic_correctness vs ATT&CK STIX; ProofAttestation; skill taprover (Entry 249)", ".claude/skills/taprover/", 45),
     (47, 0,  "Sequence Entries 243/244 (TMbench-gap pipeline roadmap, tiered arch weighting) into steps", "docs/DECISIONS.md", None),
     (48, 0,  "EvalWatch (Entry 253): ingest AI Risk Explorer evals catalogue -> DETECT coverage view; gated on TAwatch 65-rule heatmap + calibration loop live", "chatbot/modules/evalwatch.py", 26),
     (49, 0,  "✅ Blog P42 published — 'My Incident Heatmap Was Lying to Me' (https://medium.com/@breadtan/my-incident-heatmap-was-lying-to-me-fixing-it-produced-new-detection-rules-8ab099e6a439)", "docs/BLOG_INDEX.md", None),
+    (50, 52, "🔶 TA-firewall / token-abuse (Entry 264): steps 1-2 DONE (caller_id+source+usage on run events, MCP mcp_tool_call to Langfuse); remaining: per-caller spend collector, simulate relay/MCP-worker/model-probe/force_mode incidents, gap map vs RES/ABU/MCP rules, new DETECT rules; per-caller keys is the real fix for spoofable TM-CALLER", "chatbot/harness/caller_context.py + mcp_server/access_logger.py + policies/soc_detection_rules.yaml", 46),
+    (51, 0,  "Blog P43 draft ready (docs/blog/drafts/draft_2026-11-15_p43.md); LinkedIn hook written, awaiting author read + publish", "docs/blog/drafts/draft_2026-11-15_p43.md", None),
+    (52, 0,  "Blog P44 (was 42c) TAgym continuity from P42: 'When the flywheel spins backward: why principle-based reflection catches what metrics miss'; evidence = brain_fast cycle, catalog drift false REFUTED, exporter key mismatch, vacuous PASS test, agent classifier bug caught by TAprover, TA-firewall investigation-signal audit; run gen-blog harvest", "docs/blog/drafts/", 50),
     # ── Priority 33/34/35 — DONE ─────────────────────────────────────────────
     (1,  33, "✅ DETECT-ABU 6 rules + MCPAccessLogger",  "policies/soc_detection_rules.yaml",         None),
     (2,  34, "✅ Jev Phase 2: GT noul ❻ + CISO posture ❽", "ground_truth_generator.py + ta_exporter.py", 1),
@@ -132,6 +135,7 @@ ADR_TO_STEPS: dict[int, list[int]] = {
     234: [38],
     249: [46],                   # TAprover
     250: [45],                   # brain_route
+    264: [50],                   # TA-firewall investigation signals
     253: [48],                   # EvalWatch                    # TMagent — model-swappable TM generation agent
 }
 
