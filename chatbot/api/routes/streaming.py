@@ -17,6 +17,7 @@ from typing import AsyncGenerator, Optional
 
 from chatbot.services import ThreatAnalysisService
 from chatbot.api.dependencies import verify_api_key
+from chatbot.harness.caller_context import build_caller_context
 from chatbot.api.streaming import SSEStream, ProgressTracker
 from chatbot.config import get_settings as _get_cfg
 
@@ -552,7 +553,11 @@ async def analyze_architecture_stream(
 
     try:
         return StreamingResponse(
-            analyze_with_progress(tmp_path, filename, include_validation, ssp_profile, enable_ssp),
+            analyze_with_progress(
+                tmp_path, filename, include_validation, ssp_profile, enable_ssp,
+                extra_ctx=build_caller_context(
+                    request.headers, request.client.host if request.client else None, "rest"),
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

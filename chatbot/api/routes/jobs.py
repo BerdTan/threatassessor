@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from chatbot.api.dependencies import verify_api_key
+from chatbot.harness.caller_context import build_caller_context
 from chatbot.api.rate_limit import limiter
 from chatbot.api.job_store import get_job_store
 from chatbot.config import get_settings
@@ -89,6 +90,8 @@ async def submit_expert_review(request: Request, body: ExpertReviewRequest):
         report_dir=str(report_dir),
         critic_mode=body.critic_mode,
         critic_model=body.critic_model,
+        caller=build_caller_context(
+            request.headers, request.client.host if request.client else None, "job"),
     ))
 
     return {
@@ -147,6 +150,7 @@ async def _run_expert_review(
     report_dir: str,
     critic_mode: str,
     critic_model: str | None = None,
+    caller: dict | None = None,
 ) -> None:
     store = get_job_store()
     store.update(job_id, status="running", progress=5, message="Starting expert review")
@@ -195,7 +199,7 @@ async def _run_expert_review(
             critic_mode=critic_mode,
             architecture_name=arch_name,
             agent_models=_agent_models,
-            metadata={"routing_mode": "full_moe"},
+            metadata={"routing_mode": "full_moe", **(caller or {})},
         )
 
         harness = AsyncThreatAssessorHarness(scenario=ScenarioConfig.FULL_MOE)

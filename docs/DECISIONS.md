@@ -4,6 +4,30 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 264 — TA-firewall: investigation-signal audit before any new rules (Blog P44 groundwork)
+
+**Date:** 2026-11-21
+**Status:** Audit done; plan steps 1–2 built (2026-11-21). Next: per-caller spend collector, then simulate abuse incidents end to end.
+
+**Trigger:** token-fraud / model-abuse concern (relay, MCP-as-worker, model probing, trial farming, spend growth). Two chatprd.ai pages were read. The payment-rules page is not applicable (TA takes no payments). The token-fraud page is one operator's anecdote with no thresholds, so it is a source of patterns, not of numbers.
+
+**Principles audit:** P5 (enforcement in harness code, which supports the work), P8 and P1 (do not build a "firewall" God component; add one signal collector in the `MCPAccessLogger` pattern, feed DETECT rules, let `BouncerStage`/`PolicyBroker` enforce), P3 (spend, allowlist and host signals are all deterministic), P4 (any downgrade to a cheaper model must be visible in the export). Tension: none blocking.
+
+**Audit result: can an investigator replay an abuse incident from Langfuse today? No.**
+- **Who:** auth is one shared `API_KEY` (`chatbot/api/dependencies.py`, header `TM-API-KEY`). There is no per-caller identity, so spend cannot be attributed to a caller. `run_start` carries only scenario, architecture and routing_mode (`controller.py:614`).
+- **Source:** nothing records REST versus MCP versus job.
+- **Cost:** token and cost fields exist only on `critic_complete` / `critic_generation`. `run_complete` carries no total tokens or cost, and I did not verify that analysis-stage LLM calls emit any.
+- **Tool calls:** `MCPAccessLogger` is in-memory and process-local. It is keyed on tool and architecture, with no caller id and no tokens, and it does not emit HarnessEvents, so MCP activity never reaches Langfuse.
+- **Visibility:** emits are wrapped in `try/except: pass`, and eval scripts run with `LANGFUSE_SKIP=1`, so an incident can be lost silently.
+
+**Plan:** (1) add caller id, source and per-run total tokens/cost to `run_start`/`run_complete`; (2) have `MCPAccessLogger` emit events and carry caller id; (3) add a per-caller spend collector; (4) simulate relay, MCP-worker and model-probe incidents through `incident_simulator` and check the trace reconstructs the story; (5) derive DETECT rules from the gap map. Blog 42c is renumbered to Blog P44 (TAgym continuity from P42).
+
+**Update 2026-11-21 (steps 1–2 built):** `chatbot/harness/caller_context.py` derives `caller_id` (self-asserted `TM-CALLER` header, else `anon-<hash of client host>`) and `source`; `run_start`/`run_complete` carry them plus per-run `usage` (summed from `critic_generation` only; analysis-stage LLM calls are not counted and the payload says so, P4). `/analyze-stream` and `/jobs/expert-review` pass the caller into the run. `MCPAccessLogger` records a caller (env `TA_MCP_CALLER`, default `mcp-stdio`) and emits a new `mcp_tool_call` event, best effort, to Langfuse via an `mcp_trace` preset. 13 tests in `tests/unit/test_investigation_signals.py`; EventBroker 65/65; check-mcp 33/33 under `.venv`. Known limits: the label is spoofable on a shared key (per-caller keys are the real fix); `force_mode` on `/analyze-stream` lets any key holder force full_moe (fake-reroute cost path, goes in the gap map); the MCP trace is per server session, not per run.
+
+**Alternatives rejected:** a new firewall stage (God component, P8); writing rules first (we could not prove they are investigable).
+
+---
+
 ### Entry 263 — `detect_architecture_type`: a bare "agent" is not an AI signal
 
 **Date:** 2026-11-21

@@ -42,6 +42,7 @@ class BaseSink(ABC):
             "critic_trace": {"critic_complete", "critic_generation"},
             "governance":   {"governance_complete"},
             "aivss":        {"aivss_complete", "aivss_gate"},
+            "mcp_trace":    {"mcp_tool_call"},
         }
         for preset, types in presets.items():
             if preset in self._subscribed and event_type in types:
@@ -233,9 +234,22 @@ class LangfuseSink(BaseSink):
                         "scenario": p.get("scenario", ""),
                         "architecture": p.get("architecture", ""),
                         "routing_mode": _routing_mode,
+                        "caller_id": p.get("caller_id", ""),
+                        "caller_asserted": p.get("caller_asserted", False),
+                        "source": p.get("source", "unknown"),
                     },
                 )
                 self._current_trace = self._trace
+
+            elif event.event_type == "mcp_tool_call":
+                # Standalone span on a per-MCP-session trace (no run in flight).
+                span = self._lf.start_observation(
+                    trace_context={"trace_id": event.run_id},
+                    name=f"mcp:{p.get('tool', event.source)}",
+                    as_type="span",
+                    metadata=p,
+                )
+                span.end()
 
             elif event.event_type == "stage_complete" and self._trace:
                 child = self._trace.start_observation(
@@ -375,6 +389,9 @@ class LangfuseSink(BaseSink):
                     "arch_type":       p.get("arch_type", ""),
                     "aivss_composite": p.get("aivss_composite"),
                     "pipeline_wall_s": p.get("pipeline_wall_s"),
+                    "caller_id":       p.get("caller_id", ""),
+                    "source":          p.get("source", "unknown"),
+                    "usage":           p.get("usage", {}),
                 })
                 self._trace.end()
 

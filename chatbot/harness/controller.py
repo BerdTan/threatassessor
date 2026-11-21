@@ -619,6 +619,9 @@ class ThreatAssessorHarness:
                         "scenario": self.scenario,
                         "architecture": ctx.get("architecture_name", ""),
                         "routing_mode": ctx.get("routing_mode", ""),
+                        "caller_id": ctx.get("caller_id", ""),
+                        "caller_asserted": ctx.get("caller_asserted", False),
+                        "source": ctx.get("source", "unknown"),
                     },
                 ))
         except Exception:
@@ -761,6 +764,9 @@ class ThreatAssessorHarness:
                         "pipeline_wall_s": _pipeline_wall,
                         "arch_type": ctx.get("arch_metadata", {}).get("arch_type", ""),
                         "aivss_composite": getattr(ctx.get("_aivss_score"), "overall", None),
+                        "caller_id": ctx.get("caller_id", ""),
+                        "source": ctx.get("source", "unknown"),
+                        "usage": _broker.usage(ctx.get("_run_id", "")),
                     },
                 ))
                 _broker.flush()

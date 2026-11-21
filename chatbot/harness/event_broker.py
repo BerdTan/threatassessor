@@ -32,6 +32,7 @@ EVENT_TYPES = frozenset({
     "aivss_gate",
     "sm_verdicts",
     "run_complete",
+    "mcp_tool_call",
 })
 
 
@@ -69,6 +70,7 @@ class EventBrokerCritic:
         self._sinks: List[Any] = []           # BaseSink instances
         self._current_trace: Optional[Any] = None  # Langfuse trace handle (set by LangfuseSink)
         self._enabled = False
+        self._usage: Dict[str, Dict[str, Any]] = {}   # run_id -> usage totals (Entry 264)
         self._load_sinks(policy_path)
 
     # ------------------------------------------------------------------
@@ -77,6 +79,7 @@ class EventBrokerCritic:
 
     def emit(self, event: HarnessEvent) -> None:
         """Dispatch event to all enabled sinks that subscribe to this event type."""
+        self._track_usage(event)
         if not self._enabled or not self._sinks:
             return
         for sink in self._sinks:
@@ -84,6 +87,27 @@ class EventBrokerCritic:
                 sink.emit(event)
             except Exception as exc:
                 logger.warning(f"EventBroker sink {type(sink).__name__} failed (non-fatal): {exc}")
+
+    def _track_usage(self, event: HarnessEvent) -> None:
+        """Sum per-call LLM usage by run so run_complete can carry a total.
+
+        Only ``critic_generation`` events are summed (one per LLM call), so
+        totals are not double-counted against ``critic_complete`` aggregates.
+        """
+        if event.event_type != "critic_generation":
+            return
+        p = event.payload or {}
+        u = self._usage.setdefault(
+            event.run_id, {"tokens": 0, "cost_usd": 0.0, "llm_calls": 0})
+        u["tokens"] += int(p.get("prompt_tokens", 0) or 0) + int(p.get("completion_tokens", 0) or 0)
+        u["cost_usd"] = round(u["cost_usd"] + float(p.get("cost_usd", 0.0) or 0.0), 6)
+        u["llm_calls"] += 1
+
+    def usage(self, run_id: str) -> Dict[str, Any]:
+        """Usage totals for a run. ``counted`` names what is included (P4:
+        analysis-stage LLM calls do not emit events, so they are not counted)."""
+        u = self._usage.get(run_id, {"tokens": 0, "cost_usd": 0.0, "llm_calls": 0})
+        return {**u, "counted": "critic_generation"}
 
     def flush(self) -> None:
         """Flush all sinks (LangfuseSink flushes buffered spans; others are no-ops)."""

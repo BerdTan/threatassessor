@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import threading
 import time
+import os
+import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass, field, asdict
 from typing import Deque, Dict, List, Optional, Set
@@ -109,6 +111,8 @@ class MCPAccessLogger:
         self._calls:         Deque[dict] = deque()   # {ts, tool, arch, success}
         self._auth_failures: Deque[float] = deque()  # timestamps of 401s
         self._session_start: Optional[float] = None
+        self._session_id = uuid.uuid4().hex[:12]   # trace id for investigation replay
+        self._broker = None                         # lazy EventBrokerCritic (Entry 264)
 
     def record_tool_call(
         self,
@@ -116,8 +120,11 @@ class MCPAccessLogger:
         arch_name: str = "",
         success: bool = True,
         auth_failed: bool = False,
+        caller_id: Optional[str] = None,
     ) -> None:
         now = time.time()
+        # MCP over stdio has no headers: caller comes from env (self-asserted).
+        caller = (caller_id or os.getenv("TA_MCP_CALLER") or "mcp-stdio").strip()[:64]
         with self._lock:
             if self._session_start is None:
                 self._session_start = now
@@ -126,10 +133,36 @@ class MCPAccessLogger:
                 "tool":    tool_name,
                 "arch":    arch_name,
                 "success": success,
+                "caller":  caller,
             })
             if auth_failed:
                 self._auth_failures.append(now)
             self._prune(now)
+        self._emit_event(now, tool_name, arch_name, success, auth_failed, caller)
+
+    def _emit_event(self, now, tool, arch, success, auth_failed, caller) -> None:
+        """Best-effort mcp_tool_call event so MCP activity reaches Langfuse.
+
+        Never raises: observability must not break a tool call (Principle 6).
+        """
+        try:
+            from chatbot.harness.event_broker import EventBrokerCritic, HarnessEvent
+            import datetime as _dt
+            if self._broker is None:
+                self._broker = EventBrokerCritic()
+            if not self._broker._enabled:
+                return
+            self._broker.emit(HarnessEvent(
+                event_type="mcp_tool_call",
+                source=tool,
+                run_id=f"mcp-{self._session_id}",
+                ts=_dt.datetime.fromtimestamp(now, _dt.timezone.utc).isoformat(),
+                payload={"tool": tool, "architecture": arch, "success": success,
+                         "auth_failed": auth_failed, "caller_id": caller, "source": "mcp"},
+            ))
+            self._broker.flush()
+        except Exception:
+            pass
 
     def get_signals(self) -> dict:
         now = time.time()
