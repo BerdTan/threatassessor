@@ -51,7 +51,9 @@ Read this file at the start of every session. After any significant decision abo
 
 **Alternatives rejected:** a graded verdict (e.g. WARN) for agentic parity, because it would add a fourth state for one check; checking mitigation framework IDs (NIST, CIS, CSA ART) against a bundled list, because it duplicates tmbench-check's rubric and breaks independence.
 
-**Follow-ups:** fix the `ai_system` classifier; regenerate the stale agt/exf reports; map controls to M-IDs in the exporter so `mitigation_validity` has data; cvss_validity and control_existence remain open.
+**Update 2026-11-21 (after Entry 263):** regenerated 10 stale reports (6 `agt_*`, `exf_c2_beacon`, `ad002_hybrid_identity_adcs_1`, `t3_container_orchestration`, `t3_hybrid_identity`). Re-proved all 88 exports against the latest catalog with the pinned baseline: **0 real REFUTED**, 24 VERIFIED, 64 DRIFT (152 drift claims, all catalog age). Deliberately not regenerated: `21_`/`22_` (brain hold-outs), `*_boxing_bot`, `architectures`, `t4_*` (reference baselines; regenerating would move Brier/scorecard numbers, and none is REFUTED).
+
+**Follow-ups (done: classifier, stale reports):** fix the `ai_system` classifier; regenerate the stale agt/exf reports; map controls to M-IDs in the exporter so `mitigation_validity` has data; cvss_validity and control_existence remain open.
 
 ---
 
