@@ -48,6 +48,16 @@ SPEND_ROUTES: tuple[tuple[str, str], ...] = (
 )
 
 
+# What one request costs on the caller's ledger. A forced full_moe run (critics + ScrumMaster)
+# costs several plain runs, so it counts as several requests, not one (Entry 264, step 7).
+MODE_WEIGHT = {"full_moe": 5}
+
+
+def request_weight(entry_point: str = "", force_mode: Optional[str] = None) -> int:
+    """Ledger weight of one request: 1, or more when the caller forces an expensive mode."""
+    return MODE_WEIGHT.get(force_mode or "", 1)
+
+
 @dataclass(frozen=True)
 class Verdict:
     action: str

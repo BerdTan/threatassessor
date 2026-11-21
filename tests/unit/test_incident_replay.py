@@ -86,12 +86,11 @@ def test_model_probe_is_detected_but_response_is_alert_only():
     assert resp["DETECT-ABU-001"] == "alert_only"  # flips when a response is added
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN GAP (Entry 264): the gate is mode-blind. "
-                   "force_mode=full_moe costs several times a plain run but counts as one "
-                   "request. Flips to XPASS, and fails, when the gate weights by mode.")
 def test_force_mode_escalation_costs_more_than_a_plain_request():
+    """Was a strict xfail (gate was mode-blind); fixed in step 7."""
     assert sg.request_weight("analyze-stream", force_mode="full_moe") > \
            sg.request_weight("analyze-stream", force_mode=None)
+    assert sg.request_weight("analyze-stream", force_mode="api_only") == 1
 
 
 class TestSessionCorrelation:
@@ -136,3 +135,13 @@ class TestSessionCorrelation:
                                {"session_id": "s-1", "caller_id": "u-1"}))
         sink.emit(HarnessEvent("critic_generation", "x", "r" * 32, "t", {}))  # later event keeps scope
         assert seen == [{"session_id": "s-1", "user_id": "u-1"}] * 2
+
+
+def test_force_mode_reaches_the_generator_and_is_charged():
+    """force_mode was a form field never passed on (NameError in the generator). It must
+    reach analyze_with_progress, and a forced full_moe must charge the caller's ledger."""
+    import inspect
+    from chatbot.api.routes import streaming
+    assert "force_mode" in inspect.signature(streaming.analyze_with_progress).parameters
+    assert "force_mode=force_mode" in inspect.getsource(streaming.analyze_architecture_stream)
+    assert "request_weight" in inspect.getsource(streaming.analyze_with_progress)

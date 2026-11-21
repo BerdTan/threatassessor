@@ -113,6 +113,7 @@ async def analyze_with_progress(
     ssp_profile: str = "low_risk_cloud",
     enable_ssp: bool = True,
     extra_ctx: Optional[dict] = None,
+    force_mode: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Run analysis with SSE progress updates via ThreatAssessorHarness.
@@ -163,6 +164,12 @@ async def analyze_with_progress(
             # Benchmark/testing override: bypass smart routing, run harness directly
             import dataclasses as _dc
             _routing = _dc.replace(_routing, mode=force_mode)
+            # The gate counted this request as 1; charge the rest of the mode's weight so a
+            # caller cannot escalate cost per request for free.
+            from chatbot.harness.spend_gate import request_weight as _rw
+            from chatbot.harness.spend_ledger import LEDGER as _LEDGER
+            _LEDGER.record((extra_ctx or {}).get("caller_id", ""),
+                           requests=_rw("analyze-stream", force_mode) - 1)
         # brain_fast: collect annotations then run api_only — brain informs routing,
         # never replaces the pipeline. The minimum output is always a fresh TM.
         _brain_annotations: Optional[dict] = None
@@ -557,6 +564,7 @@ async def analyze_architecture_stream(
                 tmp_path, filename, include_validation, ssp_profile, enable_ssp,
                 extra_ctx=build_caller_context(
                     request.headers, request.client.host if request.client else None, "rest"),
+                force_mode=force_mode,
             ),
             media_type="text/event-stream",
             headers={
