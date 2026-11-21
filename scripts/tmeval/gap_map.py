@@ -44,7 +44,8 @@ def build() -> dict:
         if cls == "hijack" and resp not in ("block", "kill"):
             gaps["hijack_unenforced"].append(r["id"])
             if r["severity"] == "Critical":
-                gaps["hijack_unenforced_critical"].append(r["id"])
+                key = "critical_accepted" if r["id"] in cfg.get("accepted_alert_only", {}) else "hijack_unenforced_critical"
+                gaps[key].append(r["id"])
         if cls == "drift" and resp == "block":
             gaps["drift_overblocked"].append(r["id"])
         if cls == "drift" and resp not in ("throttle", "steer"):

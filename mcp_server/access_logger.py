@@ -111,7 +111,7 @@ class MCPAccessLogger:
         self._calls:         Deque[dict] = deque()   # {ts, tool, arch, success}
         self._auth_failures: Deque[float] = deque()  # timestamps of 401s
         self._session_start: Optional[float] = None
-        self._session_id = uuid.uuid4().hex[:12]   # trace id for investigation replay
+        self._session_id = uuid.uuid4().hex   # 32-hex: a valid Langfuse trace id for investigation replay
         self._broker = None                         # lazy EventBrokerCritic (Entry 264)
 
     def record_tool_call(
@@ -155,7 +155,7 @@ class MCPAccessLogger:
             self._broker.emit(HarnessEvent(
                 event_type="mcp_tool_call",
                 source=tool,
-                run_id=f"mcp-{self._session_id}",
+                run_id=self._session_id,  # must be 32-hex for Langfuse v4 trace_context
                 ts=_dt.datetime.fromtimestamp(now, _dt.timezone.utc).isoformat(),
                 payload={"tool": tool, "architecture": arch, "success": success,
                          "auth_failed": auth_failed, "caller_id": caller, "source": "mcp"},

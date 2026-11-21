@@ -82,7 +82,7 @@ class TestMcpAttribution:
         lg = MCPAccessLogger(); lg._broker = B()
         lg.record_tool_call("analyze_architecture", success=False, caller_id="x")
         e = got[0]
-        assert e.event_type == "mcp_tool_call" and e.run_id.startswith("mcp-")
+        assert e.event_type == "mcp_tool_call" and len(e.run_id) == 32 and int(e.run_id, 16) >= 0  # valid Langfuse trace id
         assert e.payload["caller_id"] == "x" and e.payload["success"] is False
         assert e.payload["source"] == "mcp"
 

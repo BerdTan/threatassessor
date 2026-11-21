@@ -27,6 +27,8 @@ def _headers() -> Dict[str, str]:
     h = {"Content-Type": "application/json"}
     if key:
         h["TM-API-KEY"] = key
+    # Self-asserted label so the REST spend gate can attribute MCP traffic (Entry 264).
+    h["TM-CALLER"] = os.environ.get("TA_MCP_CALLER", "mcp-stdio")
     return h
 
 

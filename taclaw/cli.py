@@ -84,7 +84,11 @@ def _get_api_key(cfg: dict) -> str:
 
 
 def _headers(cfg: dict) -> dict:
-    return {"TM-API-KEY": _get_api_key(cfg), "Content-Type": "application/json"}
+    return {
+        "TM-API-KEY": _get_api_key(cfg),
+        "Content-Type": "application/json",
+        "TM-CALLER": os.environ.get("TA_CALLER", "taclaw-cli"),  # self-asserted
+    }
 
 
 def _client(cfg: dict) -> httpx.Client:

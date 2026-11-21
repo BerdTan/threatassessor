@@ -19,3 +19,7 @@ overrides:
   DETECT-QC-016: hijack   # debug_bypass_artifact
   DETECT-RES-002: hijack  # distributed_agentic_sweep
   DETECT-RES-005: hijack  # exposed_inference_endpoint
+# Reviewed alert-only decisions (hijack rules where block_run is NOT the right response).
+accepted_alert_only:
+  DETECT-INJ-010: "design-time finding on the analysed architecture; block_run would abort TA's own run on a customer diagram. The response is a deployment label, not a pipeline stop."
+  DETECT-AGT-007: "regex on reasoning text; false positives would abort legitimate runs. Quarantine is right; this is the natural first user of a steer response."
