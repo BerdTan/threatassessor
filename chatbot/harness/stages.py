@@ -180,8 +180,10 @@ class CriticStage(PipelineStage):
                 "critics_run": [k for k in ["architect", "tester", "red_team", "purple_team", "blackhat"]
                                 if getattr(moe, f"{k}_result", None) is not None],
                 "final_confidence": getattr(moe, "final_confidence", 0),
-                "moe_total_tokens": perf.get("total_tokens", 0),
-                "moe_total_cost": perf.get("total_cost_usd", 0.0),
+                # The orchestrator writes total_llm_* (the old total_tokens/total_cost_usd keys
+                # never existed, so this was always 0 while the critics used 68k tokens).
+                "moe_total_tokens": perf.get("total_llm_tokens", perf.get("total_tokens", 0)),
+                "moe_total_cost": perf.get("total_llm_cost_usd", perf.get("total_cost_usd", 0.0)),
                 "model": perf.get("model", ""),
             })
             # Per-critic generation spans: ValidationResult.perf carries per-agent token data
@@ -197,6 +199,18 @@ class CriticStage(PipelineStage):
                     "cost_usd": _cp.get("llm_cost_usd", 0.0),
                     "latency_s": _cp.get("llm_latency_s", 0.0),
                     "validation_status": getattr(_vr, "validation_status", ""),
+                })
+            # Orchestrator synthesis calls are in the MoE total but belong to no critic: emit
+            # them as their own generation so the run's counted usage matches the total.
+            _orch = (perf.get("critics") or {}).get("orchestrator")
+            if _orch and _orch.get("llm_tokens", 0) > 0:
+                _emit(ctx, "critic_generation", "critic_orchestrator", {
+                    "model": _orch.get("llm_model", ""),
+                    "prompt_tokens": _orch.get("llm_tokens", 0),
+                    "completion_tokens": 0,
+                    "cost_usd": _orch.get("llm_cost_usd", 0.0),
+                    "latency_s": _orch.get("llm_latency_s", 0.0),
+                    "validation_status": "",
                 })
         return ctx
 

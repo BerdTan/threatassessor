@@ -59,6 +59,12 @@ def record_expert_review(
                 "cost_usd": cp.get("llm_cost_usd", 0.0),
                 "latency_s": cp.get("llm_latency_s", 0.0),
                 "validation_status": getattr(vr, "validation_status", "")})
+        orch = (perf.get("critics") or {}).get("orchestrator") or {}
+        if orch.get("llm_tokens", 0) > 0:  # synthesis calls: in the MoE total, owned by no critic
+            _ev("critic_generation", "critic_orchestrator", {
+                "model": orch.get("llm_model", ""), "prompt_tokens": orch.get("llm_tokens", 0),
+                "completion_tokens": 0, "cost_usd": orch.get("llm_cost_usd", 0.0),
+                "latency_s": orch.get("llm_latency_s", 0.0), "validation_status": ""})
         usage = broker.usage(run_id)
         _ev("run_complete", "expert-review", {
             "confidence": getattr(moe, "final_confidence", None), "errors": [],

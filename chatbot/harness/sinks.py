@@ -325,12 +325,12 @@ class LangfuseSink(BaseSink):
                 child.end()
 
             elif event.event_type == "critic_complete" and self._trace:
+                # A span, not a generation: the per-critic critic_generation events carry the
+                # usage, and Langfuse sums generations, so usage here would count it twice.
+                # The aggregate stays visible in metadata (moe_total_tokens).
                 child = self._trace.start_observation(
                     name=event.source,
-                    as_type="generation",
-                    model=p.get("model", ""),
-                    usage_details={"total_tokens": p.get("moe_total_tokens", 0)},
-                    cost_details={"total_cost": p.get("moe_total_cost", 0.0)},
+                    as_type="span",
                     metadata=p,
                 )
                 child.end()
