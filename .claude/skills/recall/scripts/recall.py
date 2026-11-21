@@ -45,7 +45,7 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 PRIORITY_STEPS = [
     # ── Current head of queue (2026-11-15 reconciliation) ────────────────────
     (45, 51, "✅ brain_fast → brain_route: routing oracle only, api_only floor, brain_expected/confirmed/missed annotations in ta-export (Entry 250)", "chatbot/harness/smart_router.py + ta_exporter.py", None),
-    (46, 50, "🔶 slice 1 DONE (grounding+tactic); remaining: logic checks, cvss, atlas, controls, --aggregate. TAprover: technique_grounding + tactic_correctness vs ATT&CK STIX; ProofAttestation; skill taprover (Entry 249)", ".claude/skills/taprover/", 45),
+    (46, 50, "🔶 slices 1-2 DONE (grounding, tactic, drift, agentic parity, coverage, mitigation, --aggregate; Entry 262); remaining: cvss_validity, control_existence, ai_system classifier fix. TAprover: technique_grounding + tactic_correctness vs ATT&CK STIX; ProofAttestation; skill taprover (Entry 249)", ".claude/skills/taprover/", 45),
     (47, 0,  "Sequence Entries 243/244 (TMbench-gap pipeline roadmap, tiered arch weighting) into steps", "docs/DECISIONS.md", None),
     (48, 0,  "EvalWatch (Entry 253): ingest AI Risk Explorer evals catalogue -> DETECT coverage view; gated on TAwatch 65-rule heatmap + calibration loop live", "chatbot/modules/evalwatch.py", 26),
     (49, 0,  "✅ Blog P42 published — 'My Incident Heatmap Was Lying to Me' (https://medium.com/@breadtan/my-incident-heatmap-was-lying-to-me-fixing-it-produced-new-detection-rules-8ab099e6a439)", "docs/BLOG_INDEX.md", None),

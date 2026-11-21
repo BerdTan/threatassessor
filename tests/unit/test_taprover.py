@@ -23,18 +23,19 @@ def tm(**kw):
 
 
 ALL = {"enterprise", "ics", "atlas"}
+SLICE1 = {"technique_grounding", "tactic_correctness"}
 
 
 def verdicts(t, **kw):
     kw.setdefault("loaded", ALL)  # hand-built CAT stands in for all three catalogs unless a test says otherwise
     a = tp.prove(t, CAT, **kw)
-    return {(c["category"]): c["verdict"] for c in a["claims"]}, a
+    return {(c["category"]): c["verdict"] for c in a["claims"] if c["category"] in SLICE1}, a
 
 
 def test_valid_claim_verified():
     v, a = verdicts(tm())
     assert v == {"technique_grounding": "VERIFIED", "tactic_correctness": "VERIFIED"}
-    assert a["overall"] == "VERIFIED"
+    assert a["overall"] == "VERIFIED"  # coverage also verifies: one path citing one technique
 
 
 def test_name_mismatch_refuted():
@@ -59,7 +60,7 @@ def test_tactic_spelling_normalised():
 
 def test_empty_id_is_no_claim_not_refuted():
     a = tp.prove(tm(technique_id=""), CAT)
-    assert all(c["verdict"] == "UNVERIFIABLE" and c["reason"] == "no_claim" for c in a["claims"])
+    assert all(c["verdict"] == "UNVERIFIABLE" and c["reason"] in ("no_claim", "empty_path") for c in a["claims"])
     assert a["overall"] == "UNVERIFIABLE"
 
 
@@ -95,7 +96,8 @@ def test_ta_export_format_grounding_only():
     ex = {"schema": "ta-export/1.0", "assessment": {"architecture": "x", "attack_paths": [
         {"id": "AP-1", "techniques": ["T1190", "T1078"], "technique_names": ["Exploit Public-Facing Application", "Valid Accounts"]}]}}
     a = tp.prove(ex, CAT)
-    assert a["counts"]["VERIFIED"] == 2 and all(c["category"] == "technique_grounding" for c in a["claims"])
+    g = [c for c in a["claims"] if c["category"] == "technique_grounding"]
+    assert len(g) == 2 and all(c["verdict"] == "VERIFIED" for c in g) and not any(c["category"] == "tactic_correctness" for c in a["claims"])
 
 
 def test_attestation_carries_grouping_fields():
@@ -220,3 +222,108 @@ def test_drift_labels_only_baseline_accepted_refutations():
     att = tp.mark_drift(latest, tp.prove(t, old, loaded=ALL))
     assert att["counts"]["DRIFT"] >= 1 and att["counts"]["REFUTED"] >= 1  # name_mismatch is real, tactic move is drift
     assert att["overall"] == "REFUTED"
+
+
+# ---- slice 2: logic checks -------------------------------------------------
+ATLAS_CAT = dict(CAT, **{"AML.T0051": {"name": "LLM Prompt Injection", "tactics": {"initial-access"}, "deprecated": False, "revoked": False, "domain": "atlas"}})
+MIT = {"M1030": {"name": "Network Segmentation", "deprecated": False, "revoked": False},
+       "M9999": {"name": "Old Mitigation", "deprecated": True, "revoked": False}}
+
+
+def export(techs, summary=None, agentic=False, mitre=None):
+    ex = {"schema": "ta-export/1.0", "architecture": {"name": "x", "type": "ai_system" if agentic else "cloud"},
+          "assessment": {"attack_paths": [{"id": "AP-1", "techniques": techs}], "mitre_techniques": summary if summary is not None else techs}}
+    if mitre:
+        ex["otm"] = {"mitigations": [{"mitre_mitigations": mitre}]}
+    return ex
+
+
+def by_cat(a, cat):
+    return [c for c in a["claims"] if c["category"] == cat]
+
+
+def test_agentic_without_atlas_refuted():
+    a = tp.prove(export(["T1190"], agentic=True), ATLAS_CAT)
+    r = by_cat(a, "agentic_trigger_parity")[0]
+    assert r["verdict"] == "REFUTED" and r["reason"] == "agentic_no_atlas" and a["overall"] == "REFUTED"
+
+
+def test_agentic_with_atlas_in_summary_only_verified():
+    a = tp.prove(export(["T1190"], summary=["T1190", "AML.T0051"], agentic=True), ATLAS_CAT)
+    assert by_cat(a, "agentic_trigger_parity")[0]["verdict"] == "VERIFIED"
+    assert any(c["path"] == "ARCH" and c["technique_id"] == "AML.T0051" for c in a["claims"])  # summary-level ATLAS is proven too
+
+
+def test_non_agentic_has_no_parity_check():
+    assert not by_cat(tp.prove(export(["T1190"]), ATLAS_CAT), "agentic_trigger_parity")
+
+
+def test_agentic_atlas_catalog_missing_is_unverifiable_not_refuted():
+    a = tp.prove(export(["T1190"], summary=["T1190", "AML.T0051"], agentic=True), CAT, loaded={"enterprise", "ics"})
+    assert by_cat(a, "agentic_trigger_parity")[0]["verdict"] == "UNVERIFIABLE"
+
+
+def test_threatmodel_agentic_flag_triggers_parity():
+    t = tm()
+    t["architecture_summary"] = {"is_agentic": True}
+    assert by_cat(tp.prove(t, CAT), "agentic_trigger_parity")[0]["reason"] == "agentic_no_atlas"
+    t2 = tm(); t2["governance"] = {"agentic": {"agent_autonomy_level": "supervised"}}
+    assert by_cat(tp.prove(t2, CAT), "agentic_trigger_parity")
+
+
+def test_coverage_path_technique_missing_from_summary_refuted():
+    a = tp.prove(export(["T1190", "T1078"], summary=["T1190"]), CAT)
+    assert by_cat(a, "coverage")[0]["reason"] == "not_in_summary"
+
+
+def test_coverage_empty_path_unverifiable():
+    a = tp.prove(export([], summary=["T1190"]), CAT)
+    assert by_cat(a, "coverage")[0]["verdict"] == "UNVERIFIABLE"
+
+
+def test_mitigation_unknown_and_deprecated_refuted_known_verified():
+    base = dict(tm(), mitigations=[
+        {"control_id": "M1030", "addresses_technique": ["T1190"]},
+        {"control_id": "M9999", "addresses_technique": ["T1190"]},
+        {"control_id": "M1234", "addresses_technique": ["T1190"]}])
+    a = tp.prove(base, CAT, mitigations=MIT)
+    reasons = [c["reason"] for c in by_cat(a, "mitigation_validity")]
+    assert reasons == ["ok", "deprecated", "unknown_mitigation"]
+
+
+def test_mitigation_addressing_technique_not_in_model_refuted():
+    t = dict(tm(), mitigations=[{"control_id": "M1030", "addresses_technique": ["T1078"]}])
+    assert by_cat(tp.prove(t, CAT, mitigations=MIT), "mitigation_validity")[0]["reason"] == "addresses_unknown_technique"
+
+
+def test_mitigation_external_framework_unverifiable_and_gap_noted():
+    t = dict(tm(), mitigations=[{"control_id": "NIST PR.AC-1", "addresses_technique": []}])
+    a = tp.prove(t, CAT, mitigations=MIT)
+    assert by_cat(a, "mitigation_validity")[0]["reason"] == "external_framework"
+    assert not by_cat(a, "mitigation_coverage")  # nothing addressed -> no coverage claim to test
+
+
+def test_mitigation_path_coverage_gap_unverifiable():
+    t = dict(tm(), mitigations=[{"control_id": "M1030", "addresses_technique": ["T1190"]}])
+    t["attack_paths"].append({"path_id": "P2", "technique_id": "T1078", "technique_name": "Valid Accounts", "tactic": "Persistence"})
+    assert by_cat(tp.prove(t, CAT, mitigations=MIT), "mitigation_coverage")[0]["reason"] == "path_unmitigated"
+
+
+def test_no_mitigations_key_emits_nothing():
+    assert not by_cat(tp.prove(tm(), CAT, mitigations=MIT), "mitigation_validity")
+
+
+def test_export_mitre_mitigations_checked():
+    a = tp.prove(export(["T1190"], mitre=["M1030", "M1234"]), CAT, mitigations=MIT)
+    assert [c["reason"] for c in by_cat(a, "mitigation_validity")] == ["ok", "unknown_mitigation"]
+
+
+def test_aggregate_pass_at_k_vs_pass_pow_k():
+    ok = {"arch": "a", "overall": "VERIFIED"}
+    drift = {"arch": "a", "overall": "DRIFT"}
+    bad = {"arch": "a", "overall": "REFUTED"}
+    g = tp.aggregate([ok, bad, ok, {"arch": "b", "overall": "UNVERIFIABLE"}, drift])["archs"]
+    assert g["a"] == {"k": 4, "passes": 3, "pass_at_k": True, "pass_pow_k": False}
+    assert g["b"]["pass_pow_k"] is True  # UNVERIFIABLE is not a failure: no REFUTED claim
+    r = tp.aggregate([ok, bad, {"arch": "b", "overall": "VERIFIED"}])
+    assert r["pass_at_k_rate"] == 1.0 and r["pass_pow_k_rate"] == 0.5

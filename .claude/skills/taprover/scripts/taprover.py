@@ -3,6 +3,8 @@
 
 Slice 1+: technique_grounding + tactic_correctness across the three spec domains:
 Enterprise (STIX), ICS (STIX), ATLAS (YAML). Domain is chosen from the ID shape.
+Slice 2 (logic checks): agentic_trigger_parity, coverage, mitigation_validity, and --aggregate
+(pass@k / pass^k over repeated runs of the same architecture). All deterministic.
 
 Independence invariant: this file imports NOTHING from chatbot/ or agentic/. It sees only
 the TM JSON and the STIX bundle. Deterministic: no LLM, no network.
@@ -18,6 +20,8 @@ DEFAULT_ICS = "chatbot/data/ics-attack.json"
 DEFAULT_ATLAS = "chatbot/data/atlas"
 TECH_ID = re.compile(r"^T\d{4}(\.\d{3})?$")
 ATLAS_ID = re.compile(r"^AML\.T\d{4}(\.\d{3})?$")
+MIT_ID = re.compile(r"^M\d{4}(\.\d{3})?$")
+AGENTIC_TYPES = {"ai_system", "agentic", "agentic_system", "ai_agent"}  # ta-export architecture.type values meaning AI/agentic
 # ATLAS v5.6 renamed "ML ..." tactics to "AI ..."; accept the old names as the same tactic.
 ATLAS_TACTIC_ALIASES = {"ml-attack-staging": "ai-attack-staging", "ml-model-access": "ai-model-access"}
 TACTICS = {
@@ -73,6 +77,22 @@ def load_catalog(stix_path):  # Enterprise; kept for callers/tests
     return load_stix(stix_path, "enterprise", "mitre-attack")
 
 
+def load_mitigations(*paths):
+    """MITRE mitigation ID (M1xxx / M08xx) -> {name, deprecated, revoked} from course-of-action objects."""
+    out = {}
+    for path in paths:
+        if not path or not Path(path).exists():
+            continue
+        d = json.load(open(path))
+        for o in (d["objects"] if isinstance(d, dict) else d):
+            if o.get("type") != "course-of-action":
+                continue
+            ext = next((r["external_id"] for r in o.get("external_references", []) if MIT_ID.match(r.get("external_id", ""))), None)
+            if ext:
+                out[ext] = {"name": o.get("name", ""), "deprecated": bool(o.get("x_mitre_deprecated")), "revoked": bool(o.get("revoked"))}
+    return out
+
+
 def load_ics(path):
     return load_stix(path, "ics", "mitre-ics-attack")
 
@@ -118,24 +138,48 @@ def _norm_tactic(s):
 
 
 def extract_claims(tm):
-    """Return (meta, [claim dicts]) from threatmodel/0.1 or ta-export/1.0. Only stated facts are claims."""
+    """Return (meta, [claim dicts]) from threatmodel/0.1 or ta-export/1.0. Only stated facts are claims.
+    meta also carries what the logic checks need: agentic flag, per-path technique lists, summary list, mitigations."""
     claims, meta = [], {}
     if isinstance(tm.get("assessment"), dict):  # ta-export/1.0
         a = tm["assessment"]
-        meta = {"format": tm.get("schema", "ta-export"), "arch": a.get("architecture") or tm.get("architecture"),
-                "routing_mode": (tm.get("routing") or {}).get("mode")}
+        ab = tm.get("architecture") if isinstance(tm.get("architecture"), dict) else {}
+        meta = {"format": tm.get("schema", "ta-export"), "arch": ab.get("name") or a.get("architecture") or tm.get("architecture"),
+                "routing_mode": (tm.get("routing") or {}).get("mode"),
+                "agentic": ab.get("is_agentic") is True or ab.get("type") in AGENTIC_TYPES, "paths": {}, "mitigations": None}
         for ap in a.get("attack_paths", []):
             pid = ap.get("id", "?")
             names = ap.get("technique_names") or []
+            meta["paths"][pid] = [t for t in ap.get("techniques", []) if isinstance(t, str)]
             for i, t in enumerate(ap.get("techniques", [])):
                 claims.append({"path": pid, "technique_id": t,
                                "technique_name": names[i] if i < len(names) else None, "tactic": None})
+        summary = [t for t in (a.get("mitre_techniques") or []) if isinstance(t, str)]
+        meta["summary"] = summary
+        seen = {c["technique_id"] for c in claims}
+        for t in summary:  # architecture-level list: includes ATLAS, which per-path lists may omit; it is a claim too
+            if t not in seen:
+                claims.append({"path": "ARCH", "technique_id": t, "technique_name": None, "tactic": None})
+                seen.add(t)
+        mm = [{"control_id": m, "addresses": []} for x in (tm.get("otm") or {}).get("mitigations", []) for m in x.get("mitre_mitigations", [])]
+        meta["mitigations"] = mm or None
     else:  # threatmodel/0.1
+        summ = tm.get("architecture_summary") if isinstance(tm.get("architecture_summary"), dict) else {}
+        gov = tm.get("governance") if isinstance(tm.get("governance"), dict) else {}
         meta = {"format": "threatmodel/" + str(tm.get("spec_version", "?")), "arch": tm.get("architecture_id"),
-                "model_id": tm.get("produced_by")}
+                "model_id": tm.get("produced_by"), "summary": None, "paths": {},
+                "agentic": summ.get("is_agentic") is True or isinstance(gov.get("agentic"), dict)}
         for ap in tm.get("attack_paths", []):
-            claims.append({"path": ap.get("path_id", "?"), "technique_id": ap.get("technique_id"),
+            pid = ap.get("path_id", "?")
+            if isinstance(ap.get("technique_id"), str) and ap["technique_id"].strip():
+                meta["paths"].setdefault(pid, []).append(ap["technique_id"])
+            else:
+                meta["paths"].setdefault(pid, [])
+            claims.append({"path": pid, "technique_id": ap.get("technique_id"),
                            "technique_name": ap.get("technique_name"), "tactic": ap.get("tactic")})
+        ms = tm.get("mitigations")
+        meta["mitigations"] = [{"control_id": m.get("control_id"), "addresses": [x for x in ([m["addresses_technique"]] if isinstance(m.get("addresses_technique"), str) else (m.get("addresses_technique") or [])) if isinstance(x, str)]}
+                               for m in ms if isinstance(m, dict)] if isinstance(ms, list) and ms else None
     return meta, claims
 
 
@@ -195,7 +239,69 @@ def check_tactic_correctness(c, cat, vt=None):
     return _v(tc, c, "REFUTED", f"{tid} tactics are {sorted(e['tactics'])}, claim says {tac}", "wrong_tactic")
 
 
-def prove(tm, cat, stix_sha=None, src_sha=None, lenient=False, run_id=None, loaded=None):
+def _arch(category, verdict, evidence, reason):
+    return {"category": category, "path": "ARCH", "technique_id": None, "verdict": verdict, "reason": reason, "evidence": evidence}
+
+
+def check_agentic_parity(meta, results):
+    """An architecture that declares itself agentic/AI must cite at least one verifiable ATLAS technique (spec 1.3)."""
+    if not meta.get("agentic"):
+        return None
+    atlas = [r for r in results if r["category"] == "technique_grounding" and r["technique_id"] and ATLAS_ID.match(str(r["technique_id"]))]
+    if any(r["verdict"] == "VERIFIED" for r in atlas):
+        return _arch("agentic_trigger_parity", "VERIFIED", f"{sum(r['verdict'] == 'VERIFIED' for r in atlas)} ATLAS technique(s) verified for an agentic architecture", "ok")
+    if atlas and all(r["verdict"] == "UNVERIFIABLE" for r in atlas):
+        return _arch("agentic_trigger_parity", "UNVERIFIABLE", "ATLAS techniques are cited but could not be checked", "atlas_unverifiable")
+    return _arch("agentic_trigger_parity", "REFUTED", "architecture is declared agentic/AI but no verified ATLAS technique is cited", "agentic_no_atlas")
+
+
+def check_coverage(meta):
+    """Every attack path cites a technique, and every path technique appears in the architecture-level list."""
+    paths = meta.get("paths") or {}
+    if not paths:
+        return None
+    empty = sorted(p for p, t in paths.items() if not t)
+    summ = meta.get("summary")
+    stray = sorted({t for ts in paths.values() for t in ts} - set(summ)) if summ else []
+    if stray:
+        return _arch("coverage", "REFUTED", f"path technique(s) missing from the architecture-level list: {stray[:5]}", "not_in_summary")
+    if empty:
+        return _arch("coverage", "UNVERIFIABLE", f"{len(empty)} path(s) cite no technique: {empty[:5]}", "empty_path")
+    return _arch("coverage", "VERIFIED", f"{len(paths)} path(s) each cite a technique", "ok")
+
+
+def check_mitigations(meta, model_ids, mit):
+    """Cited MITRE mitigation IDs exist and are current; addressed techniques are in the model; paths are covered."""
+    ms = meta.get("mitigations")
+    if not ms:
+        return []
+    out, addressed = [], set()
+    for m in ms:
+        cid, addr = m.get("control_id"), m.get("addresses") or []
+        addressed.update(addr)
+        claim = {"path": "ARCH", "technique_id": cid}
+        stray = sorted(set(addr) - model_ids)
+        if stray:
+            out.append(_v("mitigation_validity", claim, "REFUTED", f"mitigation {cid} addresses technique(s) not in the model: {stray[:5]}", "addresses_unknown_technique"))
+        elif not isinstance(cid, str) or not MIT_ID.match(cid):
+            out.append(_v("mitigation_validity", claim, "UNVERIFIABLE", f"control '{cid}' is not a MITRE mitigation ID; framework not checked here", "external_framework"))
+        elif mit is None:
+            out.append(_v("mitigation_validity", claim, "UNVERIFIABLE", "mitigation catalog not loaded", "catalog_not_loaded"))
+        elif cid not in mit:
+            out.append(_v("mitigation_validity", claim, "REFUTED", f"{cid} is not a MITRE mitigation", "unknown_mitigation"))
+        elif mit[cid]["deprecated"] or mit[cid]["revoked"]:
+            out.append(_v("mitigation_validity", claim, "REFUTED", f"{cid} is revoked or deprecated", "deprecated"))
+        else:
+            out.append(_v("mitigation_validity", claim, "VERIFIED", f"{cid} = '{mit[cid]['name']}'", "ok"))
+    if addressed:  # only meaningful when mitigations say what they address
+        gap = sorted({t for ts in (meta.get("paths") or {}).values() for t in ts} - addressed)
+        out.append(_arch("mitigation_coverage", "UNVERIFIABLE" if gap else "VERIFIED",
+                         f"{len(gap)} path technique(s) have no mitigation addressing them: {gap[:5]}" if gap else "every path technique is addressed by a mitigation",
+                         "path_unmitigated" if gap else "ok"))
+    return out
+
+
+def prove(tm, cat, stix_sha=None, src_sha=None, lenient=False, run_id=None, loaded=None, mitigations=None):
     meta, claims = extract_claims(tm)
     loaded = loaded if loaded is not None else {e.get("domain", "enterprise") for e in cat.values()}
     vt = valid_tactics(cat)
@@ -205,6 +311,10 @@ def prove(tm, cat, stix_sha=None, src_sha=None, lenient=False, run_id=None, load
         t = check_tactic_correctness(c, cat, vt)
         if t:
             results.append(t)
+    for extra in (check_agentic_parity(meta, results), check_coverage(meta)):
+        if extra:
+            results.append(extra)
+    results += check_mitigations(meta, {c["technique_id"] for c in claims if c["technique_id"]}, mitigations)
     counts = {k: sum(r["verdict"] == k for r in results) for k in ("VERIFIED", "UNVERIFIABLE", "REFUTED")}
     if not results:  # nothing proven is not the same as proven
         overall = "UNVERIFIABLE"
@@ -234,6 +344,18 @@ def mark_drift(att, base_att):
     return att
 
 
+def aggregate(atts):
+    """pass@k / pass^k per architecture over repeated runs. A run passes when it has no REFUTED claim (DRIFT is not a failure).
+    pass@k: at least one of k runs passes. pass^k: all k runs pass. Use pass^k for CI gates and public claims."""
+    by = {}
+    for a in atts:
+        by.setdefault(a.get("arch") or "?", []).append(a["overall"] != "REFUTED")
+    rows = {k: {"k": len(v), "passes": sum(v), "pass_at_k": any(v), "pass_pow_k": all(v)} for k, v in by.items()}
+    n = len(rows) or 1
+    return {"archs": rows, "pass_at_k_rate": round(sum(r["pass_at_k"] for r in rows.values()) / n, 3),
+            "pass_pow_k_rate": round(sum(r["pass_pow_k"] for r in rows.values()) / n, 3)}
+
+
 def _load_inputs(args):
     paths = []
     if args.prove:
@@ -255,6 +377,7 @@ def main(argv=None):
     ap.add_argument("--lenient", action="store_true", help="treat IDs absent from the Enterprise catalog as UNVERIFIABLE instead of REFUTED")
     ap.add_argument("--summary", action="store_true", help="one line per input")
     ap.add_argument("--refuted-only", action="store_true", help="show only REFUTED claims")
+    ap.add_argument("--aggregate", action="store_true", help="group attestations by architecture and report pass@k / pass^k over the runs")
     ap.add_argument("--out", help="write attestation(s) JSON here")
     args = ap.parse_args(argv)
     paths = _load_inputs(args)
@@ -274,6 +397,7 @@ def main(argv=None):
     else:
         print(f"warning: ATLAS catalog not found at {args.atlas}; ATLAS IDs will be UNVERIFIABLE", file=sys.stderr)
     stix_sha = shas
+    mit = load_mitigations(args.stix, args.ics)
     bcat = bshas = None
     if args.baseline_stix:
         bcat = load_catalog(args.baseline_stix); bshas = {"enterprise": _sha(args.baseline_stix)}
@@ -284,13 +408,13 @@ def main(argv=None):
     for p in paths:
         try:
             tm = json.load(open(p))
-            att = prove(tm, cat, stix_sha, _sha(p), args.lenient)
+            att = prove(tm, cat, stix_sha, _sha(p), args.lenient, mitigations=mit or None)
         except Exception as e:  # unreadable input is a failure, not a pass
             print(f"{p.name}: ERROR {e}", file=sys.stderr)
             any_refuted = True
             continue
         if bcat is not None:
-            att = mark_drift(att, prove(tm, bcat, bshas, _sha(p), args.lenient))
+            att = mark_drift(att, prove(tm, bcat, bshas, _sha(p), args.lenient, mitigations=load_mitigations(args.baseline_stix, args.baseline_ics) or None))
         att["source"] = str(p)
         atts.append(att)
         any_refuted |= att["overall"] == "REFUTED"
@@ -301,8 +425,14 @@ def main(argv=None):
                 if args.refuted_only and r["verdict"] != "REFUTED":
                     continue
                 print(f"  [{'DRIFT' if r.get('drift') else r['verdict']:<12}] {r['path']} {r['technique_id']} {r['category']} ({r['reason']}): {r['evidence']}")
+    agg = aggregate(atts) if args.aggregate else None
+    if agg:
+        for k, r in sorted(agg["archs"].items()):
+            print(f"aggregate {k}: k={r['k']} passes={r['passes']} pass@k={r['pass_at_k']} pass^k={r['pass_pow_k']}")
+        print(f"aggregate: pass@k={agg['pass_at_k_rate']} pass^k={agg['pass_pow_k_rate']} over {len(agg['archs'])} architecture(s)")
     if args.out:
-        Path(args.out).write_text(json.dumps(atts[0] if len(atts) == 1 else atts, indent=2))
+        body = {"attestations": atts, "aggregate": agg} if agg else (atts[0] if len(atts) == 1 else atts)
+        Path(args.out).write_text(json.dumps(body, indent=2))
     return 1 if any_refuted else 0
 
 

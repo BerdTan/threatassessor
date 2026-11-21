@@ -26,7 +26,9 @@ python3 .claude/skills/taprover/scripts/taprover.py --prove <tm.json> --refuted-
 - ta-export carries no tactic, so only `technique_grounding` runs there; tactic claims come from threatmodel/0.1.
 - Attestation carries `run_id`, `arch`, `model_id`, `routing_mode` and input/evidence hashes so k-run pass^k aggregation can be layered on later.
 
-Later slices (Entry 249): coverage/mitigation/agentic-trigger logic, cvss_validity, atlas_grounding, control_existence.
+Logic checks (Entry 262): `agentic_trigger_parity` (declared agentic/AI architecture must cite a verified ATLAS technique; REFUTED if not), `coverage` (every path cites a technique, all in the architecture-level list), `mitigation_validity` / `mitigation_coverage` (MITRE M-IDs exist and are current; addressed techniques are in the model).
+Repeated runs: `--aggregate` groups attestations by architecture and prints pass@k (any run passes) and pass^k (all runs pass). A run passes when it has no REFUTED claim. Use pass^k for CI gates and public claims.
+Later slices (Entry 249): cvss_validity, control_existence.
 
 ## Catalog drift (Entry 261)
 The pipeline is pinned to `chatbot/data/enterprise-attack.json`; the latest ATT&CK bundle lives in `chatbot/data/attack_latest/` (gitignored). To prove against latest and separate catalog age from model error:

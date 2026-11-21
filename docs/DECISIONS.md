@@ -4,6 +4,34 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 262 — TAprover slice 2: logic checks (agentic ATLAS parity, coverage, mitigation validity) + --aggregate pass@k / pass^k
+
+**Date:** 2026-11-21
+**Status:** Built (43 tests). Deterministic, no LLM, still imports nothing from `chatbot/`.
+
+**Principles audit (docs/PRINCIPLES.md):**
+- **P3 deterministic:** all four additions are lookups or set logic over the TM JSON plus the STIX bundles. No tension.
+- **P4 uncertainty visible:** the one real tension. Entry 249 says an absent claim is `no_claim`, not REFUTED, and tmbench-check scores absence. The agentic parity check is different: the export itself *declares* `architecture.type = ai_system`, and spec §1.3 says such an architecture MUST cite ATLAS, so a TM that declares AI and cites none contradicts its own header. That is REFUTED (`agentic_no_atlas`). Every other gap stays UNVERIFIABLE: empty path (`empty_path`), unmitigated path technique (`path_unmitigated`), non-MITRE control ID (`external_framework`), unloaded catalog (`catalog_not_loaded`, `atlas_unverifiable`).
+- **P8 bounded components:** one function per claim class; `aggregate()` is a pure function over attestations, not a new stage (P1).
+- **Independence kept:** the agentic test reads the TM's own flags only (`architecture.type`, `is_agentic`, `governance.agentic`), the spec's role list is not imported from tmbench-check.
+
+**What was added:**
+- `agentic_trigger_parity`: declared agentic/AI architecture must have at least one verified ATLAS technique.
+- `coverage`: every attack path cites a technique; every path technique is in the architecture-level list (`not_in_summary` is REFUTED).
+- `mitigation_validity` + `mitigation_coverage`: cited MITRE mitigation IDs exist and are not revoked (course-of-action objects from the Enterprise + ICS bundles); a mitigation may not address a technique absent from the model; path techniques with no addressing mitigation are noted, not refuted.
+- `--aggregate`: groups attestations by architecture; a run passes when it has no REFUTED claim (DRIFT and UNVERIFIABLE are not failures). pass@k = any run passes, pass^k = all runs pass. Use pass^k for CI gates and public claims (advice from the Entry 249 discussion).
+- Architecture-level `assessment.mitre_techniques` are now claims (path `ARCH`). Before this, ATLAS techniques that were not in a path's first 10 were never proven at all.
+
+**First corpus run (88 exports, latest catalog with pinned baseline):** 79 pass, 9 REFUTED, all `agentic_no_atlas`; 0 coverage or mitigation findings (exports carry no MITRE mitigation IDs, so `mitigation_validity` is vacuous on them until the exporter maps controls to M-IDs).
+- **6 are stale reports, not engine failures.** `agt_permission_escalation` (+_1,_2) and `agt_tool_bypass` (+_1,_2) are real LLM/agent architectures, generated 2026-11-06, before ATLAS wiring landed on 2026-11-08. Regenerating `agt_tool_bypass` under the current engine gives AML.T0043/0048/0051 and parity VERIFIED. Fix is a re-run, not a code change.
+- **3 are a classifier defect.** `ad002_hybrid_identity_adcs_1` ("Hybrid Join Agent"), `t3_container_orchestration` ("CI Agent") and `exf_c2_beacon` ("ImplantAgent", malware) are typed `ai_system` because a node label contains "agent". The parity check is right about the document's own claim; the type heuristic is what is wrong. Candidate fix: require an LLM/model/AI-role signal, not the bare word "agent". Not built.
+
+**Alternatives rejected:** a graded verdict (e.g. WARN) for agentic parity, because it would add a fourth state for one check; checking mitigation framework IDs (NIST, CIS, CSA ART) against a bundled list, because it duplicates tmbench-check's rubric and breaks independence.
+
+**Follow-ups:** fix the `ai_system` classifier; regenerate the stale agt/exf reports; map controls to M-IDs in the exporter so `mitigation_validity` has data; cvss_validity and control_existence remain open.
+
+---
+
 ### Entry 261 — ATT&CK catalog drift: pin the pipeline, give TAprover the latest bundle, migrate separately
 
 **Date:** 2026-11-20
