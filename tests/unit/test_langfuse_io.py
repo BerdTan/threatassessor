@@ -110,3 +110,28 @@ def test_gate_refusal_on_a_route_emits_a_verdict(monkeypatch, tmp_path):
     assert c.post("/api/v1/boxing/run", json={}, headers=h).status_code == 429
     assert seen == [("throttle", "noisy")]
     LEDGER.reset()
+
+
+def test_readers_request_metadata_fields():
+    """Live finding 2026-11-21: observations.get_many returns metadata=None unless the
+    `metadata` field group is requested, which silently emptied every run view."""
+    from unittest.mock import MagicMock
+    import importlib.util, pathlib
+    from scripts.bench import langfuse_token_report as tr
+    lf = MagicMock()
+    lf.api.observations.get_many.return_value = MagicMock(data=[])
+    tr._fetch_traces(lf, 5, None)
+    assert "metadata" in lf.api.observations.get_many.call_args.kwargs["fields"]
+    p = pathlib.Path(".claude/skills/langfuse-to-ocsf/scripts/langfuse_to_ocsf.py")
+    spec = importlib.util.spec_from_file_location("l2o", p)
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    lf2 = MagicMock(); lf2.api.observations.get_many.return_value = MagicMock(data=[])
+    m.fetch_traces(lf2, None, None, None, 5)
+    assert "metadata" in lf2.api.observations.get_many.call_args.kwargs["fields"]
+
+
+def test_token_report_reads_usage_from_run_metadata():
+    from types import SimpleNamespace
+    from scripts.bench.langfuse_token_report import _Run
+    r = _Run(SimpleNamespace(metadata={"usage": {"tokens": 1234, "cost_usd": 0.5}}, output=None))
+    assert r.total_tokens == 1234 and r.total_cost == 0.5

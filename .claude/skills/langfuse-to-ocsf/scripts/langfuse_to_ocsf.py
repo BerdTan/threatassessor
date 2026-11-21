@@ -393,10 +393,10 @@ def fetch_traces(lf, arch: Optional[str], trace_id: Optional[str],
                  since: Optional[str], limit: int) -> List:
     """Return a list of Trace objects from Langfuse."""
     kwargs = {"name": "threat_assessment", "is_root_observation": True,
-              "fields": "core,basic,io", "limit": min(limit * 4, 200) if arch else limit}
+              "fields": "core,basic,io,metadata", "limit": min(limit * 4, 200) if arch else limit}
     if trace_id:
         kwargs = {"trace_id": trace_id, "is_root_observation": True,
-                  "fields": "core,basic,io", "limit": 1}
+                  "fields": "core,basic,io,metadata", "limit": 1}
     if since:
         try:
             kwargs["from_start_time"] = datetime.fromisoformat(since.replace("Z", "+00:00"))

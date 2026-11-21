@@ -47,14 +47,17 @@ class _Run:
         self.metadata = getattr(obs, "metadata", None) or {}
         self.output = getattr(obs, "output", None) or {}
         self.tags = []
-        self.total_tokens = 0
-        self.total_cost = 0.0
+        # The run records its own usage in metadata (counted from critic_generation events).
+        u = self.metadata.get("usage") if isinstance(self.metadata, dict) else None
+        u = u if isinstance(u, dict) else {}
+        self.total_tokens = int(u.get("tokens") or 0)
+        self.total_cost = float(u.get("cost_usd") or 0.0)
 
 
 def _fetch_traces(lf, limit: int, since: str | None):
     """Return run views from Langfuse (root observations via the observations API)."""
     kwargs: dict = {"name": "threat_assessment", "is_root_observation": True,
-                    "fields": "core,basic,io", "limit": limit}
+                    "fields": "core,basic,io,metadata", "limit": limit}
     if since:
         import datetime
         kwargs["from_start_time"] = datetime.datetime.fromisoformat(since)
